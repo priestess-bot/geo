@@ -602,6 +602,23 @@ class RuntimeCitationGraphPage:
 
 
 @dataclass(frozen=True)
+class RuntimeReportExport:
+    report_export: dict[str, Any]
+    score_snapshots: tuple[dict[str, Any], ...]
+    answer_runs: tuple[dict[str, Any], ...]
+    citation_graph: RuntimeCitationGraph | None
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeReportExportPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeReportExport, ...]
+
+
+@dataclass(frozen=True)
 class AuditEvent:
     id: str
     event_type: str

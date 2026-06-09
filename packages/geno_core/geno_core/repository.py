@@ -26,6 +26,8 @@ from geno_core.models import (
     RuntimeCitationGraphPage,
     RuntimeEvidencePage,
     RuntimeEvidenceRun,
+    RuntimeReportExport,
+    RuntimeReportExportPage,
     RuntimeScoreSnapshot,
     RuntimeScoreSnapshotPage,
     RuntimeScoreSnapshotRun,
@@ -236,6 +238,27 @@ COMPETITOR_BENCHMARK_COLUMNS = (
     "answer_run_ids",
     "created_at",
 )
+REPORT_EXPORT_COLUMNS = (
+    "id",
+    "project_id",
+    "market_code",
+    "report_version",
+    "report_type",
+    "score_snapshot_ids",
+    "answer_run_ids",
+    "prompt_version",
+    "scoring_formula_version",
+    "platform_weights_snapshot",
+    "sample_size",
+    "window_start",
+    "window_end",
+    "methodology_hash",
+    "markdown_url",
+    "pdf_url",
+    "csv_url",
+    "exported_by",
+    "exported_at",
+)
 AUDIT_EVENT_COLUMNS = (
     "id",
     "event_type",
@@ -406,6 +429,119 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=records,
+        )
+
+    def list_runtime_report_exports(
+        self,
+        *,
+        project_id: str | None = None,
+        report_type: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeReportExportPage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id))
+        if report_type:
+            filters.append("report_type = %s")
+            params.append(report_type)
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM report_exports {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(REPORT_EXPORT_COLUMNS)}
+                FROM report_exports
+                {where_clause}
+                ORDER BY exported_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            reports = _rows_dict(cursor.fetchall(), REPORT_EXPORT_COLUMNS)
+            records = tuple(
+                self._load_runtime_report_export(cursor=cursor, report_export=report)
+                for report in reports
+            )
+        return RuntimeReportExportPage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=records,
+        )
+
+    def _load_runtime_report_export(
+        self,
+        *,
+        cursor: DbCursor,
+        report_export: dict[str, Any],
+    ) -> RuntimeReportExport:
+        score_snapshots: list[dict[str, Any]] = []
+        for score_snapshot_id in tuple(str(value) for value in report_export["score_snapshot_ids"]):
+            cursor.execute(
+                f"""
+                SELECT {", ".join(VISIBILITY_SCORE_SNAPSHOT_COLUMNS)}
+                FROM visibility_score_snapshots
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(score_snapshot_id),),
+            )
+            snapshot_row = cursor.fetchone()
+            if snapshot_row:
+                score_snapshots.append(_row_dict(snapshot_row, VISIBILITY_SCORE_SNAPSHOT_COLUMNS))
+        answer_runs: list[dict[str, Any]] = []
+        for answer_run_id in tuple(str(value) for value in report_export["answer_run_ids"]):
+            cursor.execute(
+                f"""
+                SELECT {", ".join(f"ar.{column}" for column in ANSWER_RUN_COLUMNS)},
+                       pq.text AS prompt_text,
+                       pq.intent_type AS prompt_intent_type,
+                       pq.priority AS prompt_priority,
+                       pq.prompt_version AS prompt_version
+                FROM report_evidence re
+                JOIN answer_runs ar ON ar.id = re.answer_run_id
+                LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id
+                WHERE re.report_export_id = %s AND re.answer_run_id = %s
+                ORDER BY re.created_at ASC
+                LIMIT 1
+                """,
+                (_uuid(str(report_export["id"])), _uuid(answer_run_id)),
+            )
+            answer_run_row = cursor.fetchone()
+            if answer_run_row:
+                answer_runs.append(_row_dict(answer_run_row, ANSWER_RUN_READ_COLUMNS))
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE target_type = %s AND target_id = %s
+            ORDER BY created_at ASC
+            """,
+            ("report_export", str(report_export["id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        cursor.execute("SELECT count(*) FROM source_graphs WHERE project_id = %s", (_uuid(str(report_export["project_id"])),))
+        graph_count_row = cursor.fetchone()
+        graph_count = int(graph_count_row[0] if not isinstance(graph_count_row, dict) else graph_count_row["count"])
+        citation_graph = (
+            self._load_runtime_citation_graph(cursor=cursor, project_id=str(report_export["project_id"]))
+            if graph_count > 0
+            else None
+        )
+        return RuntimeReportExport(
+            report_export=report_export,
+            score_snapshots=tuple(score_snapshots),
+            answer_runs=tuple(answer_runs),
+            citation_graph=citation_graph,
+            audit_events=audit_events,
         )
 
     def _load_runtime_citation_graph(self, *, cursor: DbCursor, project_id: str) -> RuntimeCitationGraph:

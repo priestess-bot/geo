@@ -70,6 +70,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_reports_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get("/v1/reports/runtime")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_m2b_google_spike_plan_endpoint(self) -> None:
         response = self.client.get("/v1/google-spikes/au/plan")
         self.assertEqual(response.status_code, 200)
@@ -170,9 +175,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEvidenceRun", payload["persistence"])
         self.assertIn("RuntimeScoreSnapshot", payload["persistence"])
         self.assertIn("RuntimeCitationGraph", payload["persistence"])
+        self.assertIn("RuntimeReportExport", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])
         self.assertIn("/v1/visibility-scores/runtime", payload["persistence"])
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])
+        self.assertIn("/v1/reports/runtime", payload["persistence"])
 
 
 if __name__ == "__main__":

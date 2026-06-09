@@ -17,6 +17,7 @@ const modules = [
   "Prompt-linked Runtime Evidence API",
   "Runtime Score API",
   "Runtime Citation Graph API",
+  "Runtime Report API",
   "Audit / Provenance",
   "AUVisibilityScore",
   "Evidence Report"

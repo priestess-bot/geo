@@ -88,7 +88,7 @@
 
 - `[ ]` 生成 Citation Graph，识别 source gap，输出 3–5 竞品 Benchmark
 - `[ ]` 导出含方法说明（含 API/消费者界面差异抽检结论、Google spike 结论、平台覆盖/降级口径）、审计摘要、分数解释包与原始证据附录的 PDF/CSV
-- `[~]` 任意报告数值可沿 `ReportExport -> VisibilityScoreSnapshot -> ScoreContribution -> AnswerAnalysis -> PromptQuestion -> AnswerRun -> RawAnswer/AnswerCitation/EvidenceAsset -> SourceGraph/SourceGap/CompetitorBenchmark` 追溯（fixture TraceabilityBundle、prompt-linked runtime evidence API、runtime score API 与 runtime citation graph API 已落；持久化报告查询 UI 待接）
+- `[~]` 任意报告数值可沿 `ReportExport -> VisibilityScoreSnapshot -> ScoreContribution -> AnswerAnalysis -> PromptQuestion -> AnswerRun -> RawAnswer/AnswerCitation/EvidenceAsset -> SourceGraph/SourceGap/CompetitorBenchmark` 追溯（fixture TraceabilityBundle、prompt-linked runtime evidence API、runtime score API、runtime citation graph API 与 runtime report API 已落；持久化报告查询 UI 待接）
 
 **架构验收门槛**（开源·可插拔，搬自 AU 路径 §9）：
 
@@ -110,14 +110,14 @@
 - `[x]` (P0a) 仓库骨架：`apps/`、`packages/`、`workers/`、`infra/`、`tests/`、`decisions/`
 - `[x]` (P0a/P0b/P0c) 数据契约：优先实现 MarketProfile、IndustryProfile、PromptQuestion、GeoSample、AnswerRun、RawAnswer、AnswerCitation、AnswerAnalysis、SourceGraph、CompetitorBenchmark、VisibilityScoreSnapshot、BrandEntity/CompetitorEntity/EntityAlias、CollectionCost、AuditEvent、ReportExport、ScoreContribution、EvidenceLink、TraceabilityBundle 关联表；P1/P2 表可延后 — `§8`
 - `[x]` (P0a) 接口契约 stub（先定义不实现）：CollectorBackend、LLMGateway、ParserEngine、VectorStore、GraphStore、GeoProvider、ScoringFormula、ReportExporter — `Step3.2`
-- `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web、repository 映射、`DATABASE_URL` connection factory、AU 启动包/prompt 元数据持久化、worker `--persist` / `--persist-analysis`、prompt-linked runtime evidence API、runtime score API 与 runtime citation graph API；LiteLLM、连接池与完整 runtime 查询 UI 待接）
+- `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web、repository 映射、`DATABASE_URL` connection factory、AU 启动包/prompt 元数据持久化、worker `--persist` / `--persist-analysis`、prompt-linked runtime evidence API、runtime score API、runtime citation graph API 与 runtime report API；LiteLLM、连接池与完整 runtime 查询 UI 待接）
 - `[x]` (P0c/P1) 重组件接入点：ClickHouse、Temporal、Langfuse、promptfoo、SearXNG、Metabase 写 ADR 和接口适配计划，但不阻塞 P0a — `§6`
 - `[~]` (P0a) 空 CI：lint + 测试 + 迁移起服（已落 contract tests、Compose config、repository mapping/runtime tests；lint 与真实迁移起服待补）
 - `[~]` (P0a) LLM 网关配置 + 调用日志 + 对象存储配置 — `E10-01 / E10-03 / E10-05`（已落 LLMGateway 接口与对象存储配置；运行时调用日志待接）
 
 DoD：
 
-- `[~]` 一键起核心依赖；P0a/P0b/P0c 相关表可建可回滚；8 接口 stub + CI 绿（本地配置、repository runtime mapping、AU 启动包持久化、prompt-linked runtime evidence/runtime score/runtime citation graph read model 和 Docker 写库验证已完成；完整 CI 起服待补）
+- `[~]` 一键起核心依赖；P0a/P0b/P0c 相关表可建可回滚；8 接口 stub + CI 绿（本地配置、repository runtime mapping、AU 启动包持久化、prompt-linked runtime evidence/runtime score/runtime citation graph/runtime report read model 和 Docker 写库验证已完成；完整 CI 起服待补）
 - `[x]` 三个可插拔点（向量库/图库/LLM）已留好接口，替换演示排入 P0c/P1
 - `[x]` AuditEvent / ReportExport / ScoreContribution / EvidenceLink / TraceabilityBundle 相关表可建可回滚
 
@@ -237,15 +237,15 @@ DoD：
 
 任务：
 
-- `[~]` (P0c) ReportExporter 接口 + PDF/CSV 导出（方法说明 + 证据附录）— `Step13`（Markdown+CSV 已落；PDF renderer 待接）
-- `[x]` (P0c) ReportExport 快照：冻结 score_snapshot_ids、answer_run_ids、prompt_version、公式版本、平台权重、采样窗口；导出不可覆盖 — `Step5.1 / §8.17`
-- `[~]` (P0c) 报告展示：采集窗口/平台覆盖/access_method/样本量(k)/离散度/双分母/公式版本/API-界面差异抽检结论/Google spike pass/fail/limited coverage/审计摘要/分数解释包/非确定性说明 — `Step13`（核心方法/分数/证据/limited coverage 已落；API-界面差异抽检与真实 Google 结论待接）
+- `[~]` (P0c) ReportExporter 接口 + Markdown/CSV 导出（方法说明 + 证据附录）与 runtime report API；PDF renderer 待接 — `Step13`
+- `[x]` (P0c) ReportExport 快照：冻结 score_snapshot_ids、answer_run_ids、prompt_version、公式版本、平台权重、采样窗口；worker `--persist-analysis` 已写入不可覆盖版本，runtime report API 可读回 — `Step5.1 / §8.17`
+- `[~]` (P0c) 报告展示：采集窗口/平台覆盖/access_method/样本量(k)/离散度/双分母/公式版本/API-界面差异抽检结论/Google spike pass/fail/limited coverage/审计摘要/分数解释包/非确定性说明 — `Step13`（核心方法/分数/证据/source gap/competitor/report snapshot 已落；PDF、API-界面差异抽检与真实 Google 结论待接）
 - `[ ]` (P1) 代理商工作流：多客户/多项目/白标/导出历史 — `Step13`
 
 DoD：
 
-- `[~]` 可导出含方法说明和证据附录的 PDF/CSV（Markdown+CSV 已落；PDF 待接）
-- `[x]` 报告每个数字可追溯 answer_run_ids
+- `[~]` 可导出含方法说明和证据附录的 Markdown/CSV，并通过 runtime report API 读取冻结快照；PDF 待接
+- `[x]` 报告每个数字可追溯 answer_run_ids、prompt metadata、score snapshot 和 citation graph
 - `[x]` 报告导出写 AuditEvent；重复导出生成新 ReportExport 版本，不覆盖旧报告
 
 ### M6 · Phase 6：Action Plan + 复测（P1）
@@ -294,7 +294,7 @@ DoD：
 | 架构可插拔是否为真 | M0 起持续 | 接口先行；P0a 先完成接口级可插拔，深度切换演示排到 P0c/P1 | Collector/Parser/Scoring/Report 可插拔；向量库/图库/LLM 后续演示 |
 | 城市级地理定位实现成本 | M2a/M2b | GeoProvider 抽象（uule/代理池/供应商可换）；P0a 四地理样本可降级但保留字段 | 地理样本可区分且成本可控 |
 | 单位经济不透明 | M2a 起 | CollectionCost 从首个采集器记录；P0a planned_runs 默认 2400，Google spike 默认 240 | 每份报告成本、耗时、成功率可估算 |
-| 审计链/解释链断裂 | M0 起，M5 验收 | AuditEvent、ReportExport、ScoreContribution、EvidenceLink 从 P0 建表并写入关键事件 | TraceabilityBundle fixture 已证明报告可追到原始证据；runtime evidence API 已读回 prompt 文本；runtime score API 已读回评分解释包；runtime graph API 已读回 source gap/竞品对标；持久化查询 UI 待接 |
+| 审计链/解释链断裂 | M0 起，M5 验收 | AuditEvent、ReportExport、ScoreContribution、EvidenceLink 从 P0 建表并写入关键事件 | TraceabilityBundle fixture 已证明报告可追到原始证据；runtime evidence API 已读回 prompt 文本；runtime score API 已读回评分解释包；runtime graph API 已读回 source gap/竞品对标；runtime report API 已读回报告快照；持久化查询 UI 待接 |
 | 打不过 Semrush/Ahrefs 数据规模 | 全程定位 | 押证据链/本地信源/代理商工作流，不拼分数广度 | design partner 认可证据价值 |
 | 评分构念效度未验证 | M6 后 | 复测展示变化；拿到客户转化数据再做相关性 | 报告标注 MVP 阶段不声称强因果 |
 

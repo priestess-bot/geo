@@ -24,6 +24,7 @@ from geno_core.google_spike import (
     select_google_spike_prompts,
 )
 from geno_core.models import CollectionFailureRecord, ProjectBootstrap, RawEvidenceRecord
+from geno_core.report import MarkdownCsvReportExporter
 from geno_core.runtime import RuntimePersistenceError, build_repository_from_env
 
 
@@ -80,6 +81,19 @@ def _persist_records(
             industry_profile=bootstrap.industry_profile,
         )
         repository.save_citation_graph(bootstrap.project.id, graph)
+        report = MarkdownCsvReportExporter().export(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            report_version="worker-runtime-v1",
+            report_type="worker_runtime",
+            prompt_version=bootstrap.project.prompt_version,
+            snapshot=analysis_result.snapshot,
+            contributions=analysis_result.contributions,
+            records=successes,
+            graph=graph,
+            platform_weights_snapshot=platform_weights_snapshot,
+        )
+        repository.save_report_export(report.report_export, report.audit_event)
         analysis_summary = {
             "enabled": True,
             "analysis_count": len(analysis_result.analyses),
@@ -90,6 +104,8 @@ def _persist_records(
             "source_graph_evidence": len(graph.evidence_links),
             "source_gaps": len(graph.source_gaps),
             "competitor_benchmarks": len(graph.competitor_benchmarks),
+            "report_export_id": report.report_export.id,
+            "report_evidence_answer_runs": len(report.report_evidence_answer_run_ids),
         }
     elif persist_analysis:
         analysis_summary = {
