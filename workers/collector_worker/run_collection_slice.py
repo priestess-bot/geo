@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import asdict
 
+from geno_core.audit import build_audit_event
 from geno_core.action_plan import (
     build_action_plan_audit_event,
     build_action_recommendations,
@@ -31,6 +33,7 @@ from geno_core.google_spike import (
     select_google_spike_prompts,
 )
 from geno_core.models import CollectionFailureRecord, ProjectBootstrap, RawEvidenceRecord
+from geno_core.object_store import archive_report_artifacts
 from geno_core.knowledge import (
     build_content_drafts,
     build_content_engine_audit_event,
@@ -40,7 +43,7 @@ from geno_core.knowledge import (
     search_knowledge_facts,
 )
 from geno_core.report import MarkdownCsvReportExporter
-from geno_core.runtime import RuntimePersistenceError, build_repository_from_env
+from geno_core.runtime import RuntimePersistenceError, build_object_store_from_env, build_repository_from_env
 from geno_core.traceability import build_traceability_bundle
 
 
@@ -110,6 +113,35 @@ def _persist_records(
             platform_weights_snapshot=platform_weights_snapshot,
         )
         repository.save_report_export(report.report_export, report.audit_event)
+        report_artifact_summary: dict[str, object] = {
+            "enabled": False,
+            "reason": "OBJECT_STORE_ENDPOINT not configured",
+        }
+        if os.environ.get("OBJECT_STORE_ENDPOINT", "").strip():
+            stored_artifacts = archive_report_artifacts(report, build_object_store_from_env())
+            archive_audit = build_audit_event(
+                event_type="report_artifacts_archived",
+                project_id=bootstrap.project.id,
+                actor_type="worker",
+                actor_id="collector_worker",
+                target_type="report_export",
+                target_id=report.report_export.id,
+                before=None,
+                after={
+                    "report_export_id": report.report_export.id,
+                    "stored_artifacts": [asdict(item) for item in stored_artifacts],
+                },
+                input_refs={"report_export_ids": [report.report_export.id]},
+                output_refs={"artifact_uris": [item.uri for item in stored_artifacts]},
+                method_version="s3_compatible_report_artifact_archive_v1",
+                reason="Archive M5 report artifacts to configured object storage",
+            )
+            repository.save_audit_events((archive_audit,))
+            report_artifact_summary = {
+                "enabled": True,
+                "stored_artifacts": [asdict(item) for item in stored_artifacts],
+                "audit_event_id": archive_audit.id,
+            }
         actions = build_action_recommendations(
             project_id=bootstrap.project.id,
             graph=graph,
@@ -217,6 +249,7 @@ def _persist_records(
             "competitor_benchmarks": len(graph.competitor_benchmarks),
             "report_export_id": report.report_export.id,
             "report_evidence_answer_runs": len(report.report_evidence_answer_run_ids),
+            "report_artifacts": report_artifact_summary,
             "action_recommendations": len(actions),
             "retest_schedule_id": schedule.id,
             "retest_comparison_id": comparison.id,

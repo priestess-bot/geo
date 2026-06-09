@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import asdict
 
 from fastapi import FastAPI, HTTPException, Query
@@ -434,6 +435,8 @@ def au_p0a_fixture_report() -> dict[str, object]:
         "report_export": asdict(report.report_export),
         "markdown": report.markdown,
         "csv_content": report.csv_content,
+        "pdf_content_hash": hashlib.sha256(report.pdf_content).hexdigest(),
+        "pdf_size_bytes": len(report.pdf_content),
         "audit_event": asdict(report.audit_event),
         "report_evidence_answer_run_ids": list(report.report_evidence_answer_run_ids),
     }
@@ -755,6 +758,7 @@ def contracts() -> dict[str, list[str]]:
         ],
         "persistence": [
             "build_repository_from_env",
+            "build_object_store_from_env",
             "connect_postgres_from_env",
             "close_repository_connection",
             "RuntimePersistenceError",

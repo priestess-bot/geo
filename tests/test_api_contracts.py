@@ -141,9 +141,12 @@ class ApiContractsTest(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["report_export"]["report_version"], "p0a-fixture-v1")
         self.assertTrue(payload["report_export"]["markdown_url"].endswith(".md"))
+        self.assertTrue(payload["report_export"]["pdf_url"].endswith(".pdf"))
         self.assertTrue(payload["report_export"]["csv_url"].endswith(".csv"))
         self.assertIn("GENO AU Evidence Report", payload["markdown"])
         self.assertIn("answer_run_id", payload["csv_content"])
+        self.assertGreater(payload["pdf_size_bytes"], 0)
+        self.assertEqual(len(payload["pdf_content_hash"]), 64)
         self.assertEqual(payload["audit_event"]["event_type"], "report_export_created")
         self.assertEqual(
             payload["report_evidence_answer_run_ids"],
@@ -205,6 +208,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeActionPlan", payload["persistence"])
         self.assertIn("RuntimeContentEngine", payload["persistence"])
         self.assertIn("RuntimeTraceabilityDetail", payload["persistence"])
+        self.assertIn("build_object_store_from_env", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])
         self.assertIn("/v1/visibility-scores/runtime", payload["persistence"])
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])

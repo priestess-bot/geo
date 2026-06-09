@@ -4,6 +4,7 @@ import os
 from collections.abc import Mapping
 from typing import Callable
 
+from geno_core.object_store import RequestFn, S3CompatibleObjectStore
 from geno_core.repository import DbConnection, PostgresEvidenceRepository
 
 
@@ -37,6 +38,22 @@ def build_repository_from_env(
     connector: Callable[[str], DbConnection] | None = None,
 ) -> PostgresEvidenceRepository:
     return PostgresEvidenceRepository(connect_postgres_from_env(env, connector=connector))
+
+
+def build_object_store_from_env(
+    env: Mapping[str, str] | None = None,
+    *,
+    requester: RequestFn | None = None,
+) -> S3CompatibleObjectStore:
+    runtime_env = os.environ if env is None else env
+    return S3CompatibleObjectStore(
+        endpoint=runtime_env.get("OBJECT_STORE_ENDPOINT", "").strip(),
+        bucket=runtime_env.get("OBJECT_STORE_BUCKET", "geno-reports").strip(),
+        access_key=runtime_env.get("OBJECT_STORE_ACCESS_KEY", "").strip(),
+        secret_key=runtime_env.get("OBJECT_STORE_SECRET_KEY", "").strip(),
+        region=runtime_env.get("OBJECT_STORE_REGION", "us-east-1").strip(),
+        requester=requester,
+    )
 
 
 def close_repository_connection(repository: PostgresEvidenceRepository) -> None:

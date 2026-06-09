@@ -57,6 +57,7 @@ from geno_core.models import (
     RuntimeReportExportPage,
     RuntimeTraceabilityDetail,
 )
+from geno_core.object_store import S3CompatibleObjectStore, archive_report_artifacts
 from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.parser import RuleBasedAnswerParser
 from geno_core.report import MarkdownCsvReportExporter
@@ -531,11 +532,89 @@ class CoreContractsTest(unittest.TestCase):
         )
         self.assertEqual(report.report_export.score_snapshot_ids, (analysis_result.snapshot.id,))
         self.assertEqual(report.report_export.answer_run_ids, tuple(record.answer_run.id for record in records))
+        self.assertTrue(report.report_export.markdown_url.endswith(".md"))
+        assert report.report_export.pdf_url is not None
+        self.assertTrue(report.report_export.pdf_url.endswith(".pdf"))
+        self.assertTrue(report.report_export.csv_url.endswith(".csv"))
         self.assertIn("GENO AU Evidence Report", report.markdown)
         self.assertIn("answer_run_id", report.csv_content)
+        self.assertTrue(report.pdf_content.startswith(b"%PDF-1.4"))
+        self.assertIn(b"%%EOF", report.pdf_content)
         self.assertEqual(report.audit_event.event_type, "report_export_created")
         self.assertEqual(report.audit_event.output_refs["report_export_ids"], [report.report_export.id])
         self.assertEqual(report.report_evidence_answer_run_ids, report.report_export.answer_run_ids)
+
+    def test_report_artifacts_archive_to_s3_compatible_store(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=1,
+        )
+        analysis_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25},
+        )
+        graph = build_citation_graph(
+            project_id=bootstrap.project.id,
+            records=records,
+            analyses=analysis_result.analyses,
+            competitors=bootstrap.competitors,
+            industry_profile=bootstrap.industry_profile,
+        )
+        report = MarkdownCsvReportExporter().export(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            report_version="p0a-fixture-v1",
+            report_type="design_partner_fixture",
+            prompt_version=bootstrap.project.prompt_version,
+            snapshot=analysis_result.snapshot,
+            contributions=analysis_result.contributions,
+            records=records,
+            graph=graph,
+            platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25},
+        )
+        requests: list[tuple[str, str, dict[str, str], bytes]] = []
+
+        def requester(
+            method: str,
+            url: str,
+            headers: object,
+            body: bytes,
+        ) -> tuple[int, dict[str, str], bytes]:
+            requests.append((method, url, dict(headers), body))
+            return 200, {"ETag": '"test-etag"'}, b""
+
+        store = S3CompatibleObjectStore(
+            endpoint="http://minio:9000",
+            bucket="geno-reports",
+            access_key="minio",
+            secret_key="minio123",
+            requester=requester,
+        )
+        stored = archive_report_artifacts(report, store)
+
+        self.assertEqual(len(stored), 3)
+        self.assertEqual(
+            [item.content_type for item in stored],
+            ["text/markdown; charset=utf-8", "application/pdf", "text/csv; charset=utf-8"],
+        )
+        self.assertTrue(all(item.uri.startswith("s3://geno-reports/") for item in stored))
+        self.assertTrue(all(item.content_hash for item in stored))
+        object_puts = [item for item in requests if item[0] == "PUT" and item[1].count("/") > 3]
+        self.assertEqual(len(object_puts), 3)
+        self.assertTrue(any(item[1].endswith(".pdf") and item[3].startswith(b"%PDF-1.4") for item in object_puts))
 
     def test_m6_action_plan_and_retest_schedule_trace_evidence(self) -> None:
         bootstrap = build_au_project_bootstrap(

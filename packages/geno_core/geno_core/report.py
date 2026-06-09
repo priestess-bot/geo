@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import StringIO
@@ -26,6 +27,7 @@ class EvidenceReport:
     report_export: ReportExport
     markdown: str
     csv_content: str
+    pdf_content: bytes
     audit_event: AuditEvent
     report_evidence_answer_run_ids: tuple[str, ...]
 
@@ -66,6 +68,7 @@ class MarkdownCsvReportExporter:
         methodology_hash = hash_payload(methodology)
         report_id = _stable_id("report-export", project_id, report_version, methodology_hash)
         markdown_url = f"s3://geno-reports/{project_id}/{report_version}.md"
+        pdf_url = f"s3://geno-reports/{project_id}/{report_version}.pdf"
         csv_url = f"s3://geno-reports/{project_id}/{report_version}.csv"
         report_export = ReportExport(
             id=report_id,
@@ -83,7 +86,7 @@ class MarkdownCsvReportExporter:
             window_end=window_end,
             methodology_hash=methodology_hash,
             markdown_url=markdown_url,
-            pdf_url=None,
+            pdf_url=pdf_url,
             csv_url=csv_url,
             exported_by=exported_by,
             exported_at=datetime.now(UTC),
@@ -96,6 +99,7 @@ class MarkdownCsvReportExporter:
             methodology=methodology,
         )
         csv_content = _build_csv_evidence(records)
+        pdf_content = render_markdown_pdf(markdown)
         audit_event = build_audit_event(
             event_type="report_export_created",
             project_id=project_id,
@@ -110,7 +114,11 @@ class MarkdownCsvReportExporter:
                 "score_snapshot_ids": list(report_export.score_snapshot_ids),
                 "answer_run_ids": list(answer_run_ids),
                 "methodology_hash": methodology_hash,
+                "markdown_url": markdown_url,
+                "pdf_url": pdf_url,
+                "csv_url": csv_url,
                 "markdown_hash": hash_payload(markdown),
+                "pdf_hash": _content_sha256(pdf_content),
                 "csv_hash": hash_payload(csv_content),
             },
             input_refs={
@@ -125,6 +133,7 @@ class MarkdownCsvReportExporter:
             report_export=report_export,
             markdown=markdown,
             csv_content=csv_content,
+            pdf_content=pdf_content,
             audit_event=audit_event,
             report_evidence_answer_run_ids=answer_run_ids,
         )
@@ -229,3 +238,102 @@ def _build_csv_evidence(records: tuple[RawEvidenceRecord, ...]) -> str:
             }
         )
     return output.getvalue()
+
+
+def _content_sha256(content: str | bytes) -> str:
+    payload = content.encode("utf-8") if isinstance(content, str) else content
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _pdf_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def _wrap_pdf_line(value: str, *, width: int = 92) -> list[str]:
+    if not value:
+        return [""]
+    words = value.split()
+    if not words:
+        return [""]
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        if not current:
+            current = word
+            continue
+        if len(current) + len(word) + 1 <= width:
+            current = f"{current} {word}"
+            continue
+        lines.append(current)
+        current = word
+    if current:
+        lines.append(current)
+    return lines
+
+
+def render_markdown_pdf(markdown: str) -> bytes:
+    text_lines: list[str] = []
+    for line in markdown.splitlines():
+        text_lines.extend(_wrap_pdf_line(line))
+    if not text_lines:
+        text_lines = ["GENO AU Evidence Report"]
+
+    max_lines_per_page = 52
+    pages = [
+        text_lines[index : index + max_lines_per_page]
+        for index in range(0, len(text_lines), max_lines_per_page)
+    ]
+
+    objects: list[tuple[int, bytes]] = [
+        (1, b"<< /Type /Catalog /Pages 2 0 R >>"),
+        (3, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"),
+    ]
+    page_object_ids: list[int] = []
+    next_object_id = 4
+    for page_lines in pages:
+        page_id = next_object_id
+        content_id = next_object_id + 1
+        next_object_id += 2
+        page_object_ids.append(page_id)
+
+        commands = ["BT", "/F1 10 Tf", "50 760 Td", "13 TL"]
+        for line in page_lines:
+            commands.append(f"({_pdf_escape(line)}) Tj")
+            commands.append("T*")
+        commands.append("ET")
+        stream = "\n".join(commands).encode("latin-1", errors="replace")
+        content_body = (
+            f"<< /Length {len(stream)} >>\nstream\n".encode("ascii")
+            + stream
+            + b"\nendstream"
+        )
+        page_body = (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            f"/Resources << /Font << /F1 3 0 R >> >> /Contents {content_id} 0 R >>"
+        ).encode("ascii")
+        objects.extend([(page_id, page_body), (content_id, content_body)])
+
+    kids = " ".join(f"{page_id} 0 R" for page_id in page_object_ids)
+    objects.append(
+        (
+            2,
+            f"<< /Type /Pages /Kids [{kids}] /Count {len(page_object_ids)} >>".encode("ascii"),
+        )
+    )
+    objects.sort(key=lambda item: item[0])
+
+    pdf = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"
+    offsets: list[int] = [0]
+    for object_id, body in objects:
+        offsets.append(len(pdf))
+        pdf += f"{object_id} 0 obj\n".encode("ascii") + body + b"\nendobj\n"
+
+    xref_offset = len(pdf)
+    pdf += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode("ascii")
+    for offset in offsets[1:]:
+        pdf += f"{offset:010d} 00000 n \n".encode("ascii")
+    pdf += (
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+        f"startxref\n{xref_offset}\n%%EOF\n"
+    ).encode("ascii")
+    return pdf

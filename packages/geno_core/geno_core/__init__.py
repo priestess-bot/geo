@@ -45,6 +45,7 @@ from geno_core.report import MarkdownCsvReportExporter
 from geno_core.repository import PostgresEvidenceRepository
 from geno_core.runtime import (
     RuntimePersistenceError,
+    build_object_store_from_env,
     build_repository_from_env,
     close_repository_connection,
     connect_postgres_from_env,
@@ -68,6 +69,7 @@ __all__ = [
     "collect_prompt_with_failure_record",
     "compare_retest_windows",
     "build_google_spike_plan",
+    "build_object_store_from_env",
     "build_citation_graph",
     "build_content_drafts",
     "build_content_engine_audit_event",
