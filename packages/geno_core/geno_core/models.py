@@ -619,6 +619,23 @@ class RuntimeReportExportPage:
 
 
 @dataclass(frozen=True)
+class RuntimeActionPlan:
+    retest_schedule: dict[str, Any]
+    action_recommendations: tuple[dict[str, Any], ...]
+    retest_comparisons: tuple[dict[str, Any], ...]
+    answer_runs: tuple[dict[str, Any], ...]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeActionPlanPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeActionPlan, ...]
+
+
+@dataclass(frozen=True)
 class AuditEvent:
     id: str
     event_type: str

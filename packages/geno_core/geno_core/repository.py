@@ -21,6 +21,8 @@ from geno_core.models import (
     ReportExport,
     RetestComparison,
     RetestSchedule,
+    RuntimeActionPlan,
+    RuntimeActionPlanPage,
     RuntimeCitationGraph,
     RuntimeCitationGraphNode,
     RuntimeCitationGraphPage,
@@ -259,6 +261,41 @@ REPORT_EXPORT_COLUMNS = (
     "exported_by",
     "exported_at",
 )
+ACTION_RECOMMENDATION_COLUMNS = (
+    "id",
+    "project_id",
+    "title",
+    "description",
+    "priority",
+    "status",
+    "owner_id",
+    "source_gap_type",
+    "evidence_answer_run_ids",
+    "related_source_types",
+    "next_check_date",
+    "created_at",
+)
+RETEST_SCHEDULE_COLUMNS = (
+    "id",
+    "project_id",
+    "prompt_version",
+    "sample_size",
+    "offsets_days",
+    "scheduled_dates",
+    "answer_run_ids",
+    "created_at",
+)
+RETEST_COMPARISON_COLUMNS = (
+    "id",
+    "project_id",
+    "baseline_score",
+    "retest_score",
+    "score_delta",
+    "baseline_answer_run_ids",
+    "retest_answer_run_ids",
+    "trend",
+    "created_at",
+)
 AUDIT_EVENT_COLUMNS = (
     "id",
     "event_type",
@@ -475,6 +512,134 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=records,
+        )
+
+    def list_runtime_action_plans(
+        self,
+        *,
+        project_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeActionPlanPage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("rs.project_id = %s")
+            params.append(_uuid(project_id))
+        if status:
+            filters.append(
+                "EXISTS (SELECT 1 FROM action_recommendations ar WHERE ar.project_id = rs.project_id AND ar.status = %s)"
+            )
+            params.append(status)
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM retest_schedules rs {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(f"rs.{column}" for column in RETEST_SCHEDULE_COLUMNS)}
+                FROM retest_schedules rs
+                {where_clause}
+                ORDER BY rs.created_at DESC, rs.id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            schedules = _rows_dict(cursor.fetchall(), RETEST_SCHEDULE_COLUMNS)
+            records = tuple(
+                self._load_runtime_action_plan(cursor=cursor, schedule=schedule, status=status)
+                for schedule in schedules
+            )
+        return RuntimeActionPlanPage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=records,
+        )
+
+    def _load_runtime_action_plan(
+        self,
+        *,
+        cursor: DbCursor,
+        schedule: dict[str, Any],
+        status: str | None,
+    ) -> RuntimeActionPlan:
+        action_filters = ["project_id = %s"]
+        action_params: list[object] = [_uuid(str(schedule["project_id"]))]
+        if status:
+            action_filters.append("status = %s")
+            action_params.append(status)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(ACTION_RECOMMENDATION_COLUMNS)}
+            FROM action_recommendations
+            WHERE {" AND ".join(action_filters)}
+            ORDER BY priority ASC, next_check_date ASC, id ASC
+            """,
+            tuple(action_params),
+        )
+        actions = _rows_dict(cursor.fetchall(), ACTION_RECOMMENDATION_COLUMNS)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(RETEST_COMPARISON_COLUMNS)}
+            FROM retest_comparisons
+            WHERE project_id = %s
+            ORDER BY created_at DESC, id DESC
+            """,
+            (_uuid(str(schedule["project_id"])),),
+        )
+        comparisons = _rows_dict(cursor.fetchall(), RETEST_COMPARISON_COLUMNS)
+        answer_runs: list[dict[str, Any]] = []
+        for answer_run_id in tuple(str(value) for value in schedule["answer_run_ids"]):
+            cursor.execute(
+                f"""
+                SELECT {", ".join(f"ar.{column}" for column in ANSWER_RUN_COLUMNS)},
+                       pq.text AS prompt_text,
+                       pq.intent_type AS prompt_intent_type,
+                       pq.priority AS prompt_priority,
+                       pq.prompt_version AS prompt_version
+                FROM answer_runs ar
+                LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id
+                WHERE ar.id = %s
+                LIMIT 1
+                """,
+                (_uuid(answer_run_id),),
+            )
+            answer_run_row = cursor.fetchone()
+            if answer_run_row:
+                answer_runs.append(_row_dict(answer_run_row, ANSWER_RUN_READ_COLUMNS))
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE target_type = %s AND target_id = %s
+            ORDER BY created_at ASC
+            """,
+            ("action_plan", str(schedule["id"])),
+        )
+        audit_events = list(_rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS))
+        for comparison in comparisons:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE target_type = %s AND target_id = %s
+                ORDER BY created_at ASC
+                """,
+                ("retest_comparison", str(comparison["id"])),
+            )
+            audit_events.extend(_rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS))
+        return RuntimeActionPlan(
+            retest_schedule=schedule,
+            action_recommendations=actions,
+            retest_comparisons=comparisons,
+            answer_runs=tuple(answer_runs),
+            audit_events=tuple(audit_events),
         )
 
     def _load_runtime_report_export(

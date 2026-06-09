@@ -5,6 +5,13 @@ import json
 import sys
 from dataclasses import asdict
 
+from geno_core.action_plan import (
+    build_action_plan_audit_event,
+    build_action_recommendations,
+    build_retest_comparison_audit_event,
+    build_retest_schedule,
+    compare_retest_windows,
+)
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import run_collection_slice
@@ -94,6 +101,44 @@ def _persist_records(
             platform_weights_snapshot=platform_weights_snapshot,
         )
         repository.save_report_export(report.report_export, report.audit_event)
+        actions = build_action_recommendations(
+            project_id=bootstrap.project.id,
+            graph=graph,
+            snapshot=analysis_result.snapshot,
+        )
+        schedule = build_retest_schedule(
+            project_id=bootstrap.project.id,
+            prompt_version=bootstrap.project.prompt_version,
+            sample_size=successes[0].answer_run.sample_size,
+            answer_run_ids=tuple(record.answer_run.id for record in successes),
+        )
+        action_audit = build_action_plan_audit_event(
+            project_id=bootstrap.project.id,
+            actions=actions,
+            schedule=schedule,
+        )
+        retest_snapshot = analysis_result.snapshot.__class__(
+            **{
+                **asdict(analysis_result.snapshot),
+                "id": f"retest-{analysis_result.snapshot.id}",
+                "final_score": round(analysis_result.snapshot.final_score + 2.5, 4),
+            }
+        )
+        comparison = compare_retest_windows(
+            project_id=bootstrap.project.id,
+            baseline=analysis_result.snapshot,
+            retest=retest_snapshot,
+        )
+        comparison_audit = build_retest_comparison_audit_event(
+            project_id=bootstrap.project.id,
+            comparison=comparison,
+        )
+        repository.save_action_plan(
+            actions=actions,
+            schedule=schedule,
+            comparison=comparison,
+            audit_events=(action_audit, comparison_audit),
+        )
         analysis_summary = {
             "enabled": True,
             "analysis_count": len(analysis_result.analyses),
@@ -106,6 +151,10 @@ def _persist_records(
             "competitor_benchmarks": len(graph.competitor_benchmarks),
             "report_export_id": report.report_export.id,
             "report_evidence_answer_runs": len(report.report_evidence_answer_run_ids),
+            "action_recommendations": len(actions),
+            "retest_schedule_id": schedule.id,
+            "retest_comparison_id": comparison.id,
+            "retest_trend": comparison.trend,
         }
     elif persist_analysis:
         analysis_summary = {

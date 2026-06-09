@@ -110,7 +110,7 @@
 - `[x]` (P0a) 仓库骨架：`apps/`、`packages/`、`workers/`、`infra/`、`tests/`、`decisions/`
 - `[x]` (P0a/P0b/P0c) 数据契约：优先实现 MarketProfile、IndustryProfile、PromptQuestion、GeoSample、AnswerRun、RawAnswer、AnswerCitation、AnswerAnalysis、SourceGraph、CompetitorBenchmark、VisibilityScoreSnapshot、BrandEntity/CompetitorEntity/EntityAlias、CollectionCost、AuditEvent、ReportExport、ScoreContribution、EvidenceLink、TraceabilityBundle 关联表；P1/P2 表可延后 — `§8`
 - `[x]` (P0a) 接口契约 stub（先定义不实现）：CollectorBackend、LLMGateway、ParserEngine、VectorStore、GraphStore、GeoProvider、ScoringFormula、ReportExporter — `Step3.2`
-- `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web、repository 映射、`DATABASE_URL` connection factory、AU 启动包/prompt 元数据持久化、worker `--persist` / `--persist-analysis`、prompt-linked runtime evidence API、runtime score API、runtime citation graph API 与 runtime report API；LiteLLM、连接池与完整 runtime 查询 UI 待接）
+- `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web、repository 映射、`DATABASE_URL` connection factory、AU 启动包/prompt 元数据持久化、worker `--persist` / `--persist-analysis`、prompt-linked runtime evidence API、runtime score API、runtime citation graph API、runtime report API 与 runtime action plan API；LiteLLM、连接池与完整 runtime 查询 UI 待接）
 - `[x]` (P0c/P1) 重组件接入点：ClickHouse、Temporal、Langfuse、promptfoo、SearXNG、Metabase 写 ADR 和接口适配计划，但不阻塞 P0a — `§6`
 - `[~]` (P0a) 空 CI：lint + 测试 + 迁移起服（已落 contract tests、Compose config、repository mapping/runtime tests；lint 与真实迁移起服待补）
 - `[~]` (P0a) LLM 网关配置 + 调用日志 + 对象存储配置 — `E10-01 / E10-03 / E10-05`（已落 LLMGateway 接口与对象存储配置；运行时调用日志待接）
@@ -255,15 +255,15 @@ DoD：
 任务：
 
 - `[x]` (P1) ActionRecommendation：缺口转任务，绑 evidence/source_gap/related_runs/owner/next_check — `Step11 / §8.11`
-- `[~]` (P1) 复测调度 T0/T+7/T+14/T+30（Temporal 可重放，同 prompt_version、同 k）— `Step14`（同口径 RetestSchedule 已落；Temporal 可重放调度待接）
-- `[x]` (P1) 前后窗口对比 + 趋势聚合，保留全部 raw runs — `Step14`
+- `[~]` (P1) 复测调度 T0/T+7/T+14/T+30（Temporal 可重放，同 prompt_version、同 k）— `Step14`（同口径 RetestSchedule 已落，worker `--persist-analysis` 可写入并通过 runtime action plan API 读回；Temporal 可重放调度待接）
+- `[x]` (P1) 前后窗口对比 + 趋势聚合，保留全部 raw runs；worker `--persist-analysis` 已保存 RetestComparison，runtime action plan API 可读回 comparison、prompt metadata 与 action/retest audit events — `Step14`
 - `[~]` (P1) 预警：负面/品牌缺失/竞品压制 — `E9-04/05/06`（source gap、低 mention rate、低 recommendation rate 已转 action；实时预警/竞品压制规则待接）
 
 DoD：
 
 - `[x]` 基于 source gap 生成 Action Plan
 - `[x]` 任务有 owner/status/next_check_date
-- `[~]` 按 T+7/14/30 复测，报告展示前后变化（API 已返回 RetestComparison；报告模板/UI 展示待接）
+- `[~]` 按 T+7/14/30 复测，报告展示前后变化（runtime action plan API 已返回 RetestSchedule、RetestComparison、关联 AnswerRun/PromptQuestion 与 audit events；Temporal 调度、报告模板/UI 展示待接）
 
 ### M7 · Phase 7：Knowledge Facts + Content Engine + Integrations（P2）
 
@@ -294,7 +294,7 @@ DoD：
 | 架构可插拔是否为真 | M0 起持续 | 接口先行；P0a 先完成接口级可插拔，深度切换演示排到 P0c/P1 | Collector/Parser/Scoring/Report 可插拔；向量库/图库/LLM 后续演示 |
 | 城市级地理定位实现成本 | M2a/M2b | GeoProvider 抽象（uule/代理池/供应商可换）；P0a 四地理样本可降级但保留字段 | 地理样本可区分且成本可控 |
 | 单位经济不透明 | M2a 起 | CollectionCost 从首个采集器记录；P0a planned_runs 默认 2400，Google spike 默认 240 | 每份报告成本、耗时、成功率可估算 |
-| 审计链/解释链断裂 | M0 起，M5 验收 | AuditEvent、ReportExport、ScoreContribution、EvidenceLink 从 P0 建表并写入关键事件 | TraceabilityBundle fixture 已证明报告可追到原始证据；runtime evidence API 已读回 prompt 文本；runtime score API 已读回评分解释包；runtime graph API 已读回 source gap/竞品对标；runtime report API 已读回报告快照；持久化查询 UI 待接 |
+| 审计链/解释链断裂 | M0 起，M5/M6 验收 | AuditEvent、ReportExport、ScoreContribution、EvidenceLink 从 P0 建表并写入关键事件 | TraceabilityBundle fixture 已证明报告可追到原始证据；runtime evidence API 已读回 prompt 文本；runtime score API 已读回评分解释包；runtime graph API 已读回 source gap/竞品对标；runtime report API 已读回报告快照；runtime action plan API 已读回 action/retest audit events；持久化查询 UI 待接 |
 | 打不过 Semrush/Ahrefs 数据规模 | 全程定位 | 押证据链/本地信源/代理商工作流，不拼分数广度 | design partner 认可证据价值 |
 | 评分构念效度未验证 | M6 后 | 复测展示变化；拿到客户转化数据再做相关性 | 报告标注 MVP 阶段不声称强因果 |
 
