@@ -27,6 +27,7 @@ from geno_core.google_spike import (
     evaluate_google_spike_gate,
     select_google_spike_prompts,
 )
+from geno_core.graph import build_citation_graph
 from geno_core.market import build_au_market_profile
 from geno_core.models import AnswerAnalysis, CollectionFailureRecord, ReportExport
 from geno_core.prompt_pack import INTENT_WEIGHTS
@@ -375,6 +376,43 @@ class CoreContractsTest(unittest.TestCase):
             result.audit_event.output_refs["score_snapshot_ids"],
             [result.snapshot.id],
         )
+
+    def test_m4_citation_graph_and_competitor_benchmark_trace_to_answer_runs(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia", "Sydney"),
+            sample_size=1,
+            prompt_limit=10,
+        )
+        analysis_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+        )
+        graph = build_citation_graph(
+            project_id=bootstrap.project.id,
+            records=records,
+            analyses=analysis_result.analyses,
+            competitors=bootstrap.competitors,
+            industry_profile=bootstrap.industry_profile,
+        )
+        self.assertGreaterEqual(len(graph.nodes), 3)
+        self.assertGreater(len(graph.evidence_links), 0)
+        self.assertTrue(graph.source_gaps)
+        self.assertEqual(len(graph.competitor_benchmarks), 3)
+        self.assertTrue(all(node.answer_run_ids for node in graph.nodes))
+        self.assertTrue(all(link.answer_run_id for link in graph.evidence_links))
+        self.assertTrue(any(item.mention_count > 0 for item in graph.competitor_benchmarks))
 
 
 if __name__ == "__main__":

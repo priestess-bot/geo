@@ -44,7 +44,7 @@
 | **M2a** | Stable AI Answer Runner + Raw Evidence Store | E3 | Perplexity + OpenAI 可采，证据全留，含触发状态、k=3、成本 | P0a | `[~]` |
 | **M2b** | Google AIO / AI Mode Spike | E3 | Google 自建/第三方/人工路径限时对比，输出 pass/fail gate | P0b | `[~]` |
 | **M3** | Answer Parser + AUVisibilityScore | E4 | 自动解析 + 可拆解可版本化评分 + 双分母 | P0a | `[~]` |
-| **M4** | Citation Graph + Competitor Benchmark | E5 | 信源图谱 + source gap + 3–5 竞品对标 | P0c | `[ ]` |
+| **M4** | Citation Graph + Competitor Benchmark | E5 | 信源图谱 + source gap + 3–5 竞品对标 | P0c | `[~]` |
 | **M5** | Evidence Report Export | E9（部分） | 导出含方法说明、Google spike 结论与证据附录的 PDF/CSV | P0c | `[ ]` |
 | **M6** | Action Plan + 复测 | E9（部分） | 缺口转任务 + T+7/14/30 复测前后对比 | P1 | `[ ]` |
 | **M7** | Knowledge Facts + Content Engine + Integrations | E6、E7、E8 | 本地事实库 + 证据驱动内容 + 集成 | P2 | `[ ]` |
@@ -218,18 +218,18 @@ DoD：
 
 任务：
 
-- `[ ]` (P0c) GraphStore 接口 + PG 邻接表实现 + SourceGraph 表 — `Step8 / §8.9`
-- `[ ]` (P0c) Citation Graph 输出：常被引/竞品独占/过旧/本地缺失信源 — `Step8`
-- `[ ]` (P0c) CompetitorBenchmark（3–5 竞品：mention/recommend/position/citation overlap/local relevance…）— `Step10 / §8.10`
-- `[ ]` (P0c) 监测看板：总览/平台对比/竞品对比/问题明细/风险 — `E5-01..05`
+- `[x]` (P0c) GraphStore 接口 + PG 邻接表实现 + SourceGraph 表 — `Step8 / §8.9`
+- `[x]` (P0c) Citation Graph 输出：常被引/竞品独占/过旧/本地缺失信源 — `Step8`
+- `[x]` (P0c) CompetitorBenchmark（3–5 竞品：mention/recommend/position/citation overlap/local relevance…）— `Step10 / §8.10`
+- `[~]` (P0c) 监测看板：总览/平台对比/竞品对比/问题明细/风险 — `E5-01..05`（API 输出已落；完整 UI 看板待接）
 - `[ ]` (P1) 看板筛选与导出 — `E5-06`
 - `[ ]` (P1) GraphStore 切 Neo4j 验证可插拔 — `架构验收`
 
 DoD：
 
-- `[ ]` 生成 Citation Graph，识别 source gap
-- `[ ]` 输出 3–5 竞品 Benchmark
-- `[ ]` 每个分数/引用可点回原始回答
+- `[x]` 生成 Citation Graph，识别 source gap
+- `[x]` 输出 3–5 竞品 Benchmark
+- `[x]` 每个分数/引用可点回原始回答
 
 ### M5 · Phase 5：Evidence Report Export（P0c）
 

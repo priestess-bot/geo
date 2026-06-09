@@ -22,6 +22,7 @@ from geno_core.google_spike import (
     evaluate_google_spike_gate,
     select_google_spike_prompts,
 )
+from geno_core.graph import build_citation_graph
 from geno_core.industry import build_au_dtc_ecommerce_profile
 from geno_core.market import build_au_market_profile
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
@@ -148,6 +149,43 @@ def au_p0a_fixture_visibility_score() -> dict[str, object]:
     }
 
 
+@app.get("/v1/citation-graphs/au/p0a-fixture")
+def au_p0a_fixture_citation_graph() -> dict[str, object]:
+    bootstrap = build_au_project_bootstrap()
+    records = run_fixture_collection_slice(
+        project_id=bootstrap.project.id,
+        prompts=bootstrap.prompt_questions,
+        market_profile=bootstrap.market_profile,
+        collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+        cities=("Australia", "Sydney"),
+        sample_size=1,
+        prompt_limit=10,
+    )
+    analysis_result = analyze_and_score_records(
+        project_id=bootstrap.project.id,
+        records=records,
+        brand=bootstrap.brand,
+        competitors=bootstrap.competitors,
+        platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
+    )
+    graph = build_citation_graph(
+        project_id=bootstrap.project.id,
+        records=records,
+        analyses=analysis_result.analyses,
+        competitors=bootstrap.competitors,
+        industry_profile=bootstrap.industry_profile,
+    )
+    return {
+        "node_count": len(graph.nodes),
+        "evidence_link_count": len(graph.evidence_links),
+        "source_gap_count": len(graph.source_gaps),
+        "competitor_count": len(graph.competitor_benchmarks),
+        "nodes": [asdict(node) for node in graph.nodes],
+        "source_gaps": [asdict(gap) for gap in graph.source_gaps],
+        "competitor_benchmarks": [asdict(item) for item in graph.competitor_benchmarks],
+    }
+
+
 @app.get("/v1/contracts")
 def contracts() -> dict[str, list[str]]:
     return {
@@ -204,5 +242,12 @@ def contracts() -> dict[str, list[str]]:
             "VisibilityScoreSnapshot",
             "ScoreContribution",
             "au_visibility_v1",
+        ],
+        "m4_graph_benchmark": [
+            "SourceGraphNode",
+            "SourceGraphEvidence",
+            "SourceGap",
+            "CompetitorBenchmark",
+            "CitationGraphResult",
         ],
     }

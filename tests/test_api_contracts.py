@@ -80,6 +80,16 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(len(payload["contributions"]), 8)
         self.assertEqual(payload["audit_event"]["event_type"], "visibility_score_snapshot_created")
 
+    def test_m4_citation_graph_fixture_endpoint(self) -> None:
+        response = self.client.get("/v1/citation-graphs/au/p0a-fixture")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertGreaterEqual(payload["node_count"], 3)
+        self.assertGreater(payload["evidence_link_count"], 0)
+        self.assertGreater(payload["source_gap_count"], 0)
+        self.assertEqual(payload["competitor_count"], 4)
+        self.assertTrue(any(item["answer_run_ids"] for item in payload["competitor_benchmarks"]))
+
 
 if __name__ == "__main__":
     unittest.main()

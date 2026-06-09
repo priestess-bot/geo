@@ -102,7 +102,8 @@ class FixtureAICollector:
         prompt_slug = quote(prompt.lower().replace(" ", "-")[:80], safe="-")
         answer_text = (
             f"{self._platform} fixture answer for {market.market_code}/{city}: "
-            f"{prompt}. Citations include official, review, and comparison sources."
+            f"{prompt}. Citations include official, review, and comparison sources. "
+            "Common competitor references include Emma Sleep, Sleeping Duck, and Ecosa."
         )
         citations = [
             {

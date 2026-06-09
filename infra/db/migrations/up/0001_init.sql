@@ -153,6 +153,7 @@ CREATE TABLE source_graphs (
   topic text,
   source_gap_type text,
   answer_run_ids uuid[] NOT NULL DEFAULT '{}',
+  citation_count integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 

@@ -17,7 +17,7 @@ from geno_core.models import (
 from geno_core.prompt_pack import PROMPT_VERSION_AU_DTC_V1, build_au_dtc_prompt_pack
 
 
-DEFAULT_AU_COMPETITORS = ("The Iconic", "Kogan", "Catch", "Amazon Australia")
+DEFAULT_AU_COMPETITORS = ("Emma Sleep", "Sleeping Duck", "Ecosa", "IKEA Australia")
 
 
 def _stable_id(kind: str, *parts: str) -> str:

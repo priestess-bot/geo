@@ -290,6 +290,58 @@ class GoogleSpikeGateResult:
 
 
 @dataclass(frozen=True)
+class SourceGraphNode:
+    id: str
+    project_id: str
+    source_url: str
+    source_domain: str
+    source_type: str
+    topic: str | None
+    source_gap_type: str | None
+    answer_run_ids: tuple[str, ...]
+    citation_count: int
+
+
+@dataclass(frozen=True)
+class SourceGraphEvidence:
+    id: str
+    source_graph_id: str
+    answer_run_id: str
+    answer_citation_id: str | None
+    relation_type: str
+
+
+@dataclass(frozen=True)
+class SourceGap:
+    source_type: str
+    gap_type: str
+    observed_count: int
+    expected_weight: float
+    recommendation: str
+
+
+@dataclass(frozen=True)
+class CompetitorBenchmark:
+    id: str
+    project_id: str
+    competitor_name: str
+    mention_count: int
+    mention_rate: float
+    recommendation_count: int
+    citation_overlap_count: int
+    local_relevance_average: float
+    answer_run_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CitationGraphResult:
+    nodes: tuple[SourceGraphNode, ...]
+    evidence_links: tuple[SourceGraphEvidence, ...]
+    source_gaps: tuple[SourceGap, ...]
+    competitor_benchmarks: tuple[CompetitorBenchmark, ...]
+
+
+@dataclass(frozen=True)
 class AnswerAnalysis:
     id: str
     answer_run_id: str

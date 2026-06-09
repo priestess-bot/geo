@@ -5,6 +5,7 @@ const modules = [
   "Raw Evidence Store wired",
   "Google spike gate fixture",
   "Rule Parser + AUVisibilityScore",
+  "Citation Graph + Benchmark",
   "Audit / Provenance",
   "AUVisibilityScore",
   "Evidence Report"

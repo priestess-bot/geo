@@ -22,6 +22,7 @@ from geno_core.collectors import (
 )
 from geno_core.geo import StaticAUGeoProvider
 from geno_core.google_spike import build_google_spike_plan, evaluate_google_spike_gate
+from geno_core.graph import build_citation_graph
 from geno_core.industry import build_au_dtc_ecommerce_profile
 from geno_core.market import build_au_market_profile
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
@@ -37,6 +38,7 @@ __all__ = [
     "build_p0a_collection_plan",
     "collect_prompt_with_failure_record",
     "build_google_spike_plan",
+    "build_citation_graph",
     "evaluate_google_spike_gate",
     "FixtureGoogleAIModeCollector",
     "FixtureGoogleAIOCollector",
