@@ -20,6 +20,8 @@ from geno_core.models import (
     ReportExport,
     RetestComparison,
     RetestSchedule,
+    RuntimeEvidencePage,
+    RuntimeEvidenceRun,
     ScoreContribution,
     TraceabilityBundle,
     VisibilityScoreSnapshot,
@@ -28,6 +30,10 @@ from geno_core.models import (
 
 class DbCursor(Protocol):
     def execute(self, sql: str, params: tuple[object, ...] = ()) -> Any: ...
+
+    def fetchone(self) -> Any: ...
+
+    def fetchall(self) -> Any: ...
 
     def __enter__(self) -> "DbCursor": ...
 
@@ -78,8 +84,84 @@ def _datetime(value: datetime | None) -> datetime | None:
     return value
 
 
+def _row_dict(row: Any, columns: tuple[str, ...]) -> dict[str, Any]:
+    if row is None:
+        return {}
+    if isinstance(row, dict):
+        return {key: _json_compatible(value) for key, value in row.items()}
+    return {column: _json_compatible(row[index]) for index, column in enumerate(columns)}
+
+
+def _rows_dict(rows: Any, columns: tuple[str, ...]) -> tuple[dict[str, Any], ...]:
+    return tuple(_row_dict(row, columns) for row in rows)
+
+
 def _stable_id(kind: str, *parts: object) -> str:
     return str(uuid5(NAMESPACE_URL, ":".join(("geno", kind, *(str(part) for part in parts)))))
+
+
+ANSWER_RUN_COLUMNS = (
+    "id",
+    "project_id",
+    "prompt_question_id",
+    "platform",
+    "surface",
+    "access_method",
+    "market_code",
+    "city",
+    "language",
+    "device",
+    "answer_present",
+    "surface_triggered",
+    "sample_index",
+    "sample_size",
+    "model_or_surface",
+    "account_state",
+    "collector_backend_id",
+    "collector_version",
+    "collected_at",
+    "status",
+)
+RAW_ANSWER_COLUMNS = ("id", "answer_run_id", "answer_text", "raw_payload", "raw_payload_hash", "created_at")
+CITATION_COLUMNS = ("id", "answer_run_id", "url", "domain", "position", "source_type", "created_at")
+ASSET_COLUMNS = ("id", "answer_run_id", "asset_type", "url", "content_hash", "created_at")
+COLLECTOR_LOG_COLUMNS = (
+    "id",
+    "answer_run_id",
+    "collector_backend_id",
+    "event_type",
+    "payload",
+    "created_at",
+)
+COLLECTION_COST_COLUMNS = (
+    "id",
+    "answer_run_id",
+    "project_id",
+    "collector_backend_id",
+    "llm_provider",
+    "llm_tokens",
+    "llm_cost",
+    "proxy_or_vendor_cost",
+    "compute_cost",
+    "total_cost",
+    "created_at",
+)
+AUDIT_EVENT_COLUMNS = (
+    "id",
+    "event_type",
+    "project_id",
+    "actor_type",
+    "actor_id",
+    "target_type",
+    "target_id",
+    "before_hash",
+    "after_hash",
+    "input_refs",
+    "output_refs",
+    "method_version",
+    "reason",
+    "created_at",
+)
 
 
 class PostgresEvidenceRepository:
@@ -87,6 +169,135 @@ class PostgresEvidenceRepository:
 
     def __init__(self, connection: DbConnection) -> None:
         self.connection = connection
+
+    def list_runtime_evidence_runs(
+        self,
+        *,
+        project_id: str | None = None,
+        platform: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeEvidencePage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id))
+        if platform:
+            filters.append("platform = %s")
+            params.append(platform)
+        if status:
+            filters.append("status = %s")
+            params.append(status)
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM answer_runs {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ANSWER_RUN_COLUMNS)}
+                FROM answer_runs
+                {where_clause}
+                ORDER BY collected_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            answer_runs = _rows_dict(cursor.fetchall(), ANSWER_RUN_COLUMNS)
+            records: list[RuntimeEvidenceRun] = []
+            for answer_run in answer_runs:
+                answer_run_id = str(answer_run["id"])
+                records.append(self._load_runtime_evidence_run(cursor=cursor, answer_run=answer_run, answer_run_id=answer_run_id))
+        return RuntimeEvidencePage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=tuple(records),
+        )
+
+    def _load_runtime_evidence_run(
+        self,
+        *,
+        cursor: DbCursor,
+        answer_run: dict[str, Any],
+        answer_run_id: str,
+    ) -> RuntimeEvidenceRun:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(RAW_ANSWER_COLUMNS)}
+            FROM raw_answers
+            WHERE answer_run_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (_uuid(answer_run_id),),
+        )
+        raw_answer_row = cursor.fetchone()
+        cursor.execute(
+            f"""
+            SELECT {", ".join(CITATION_COLUMNS)}
+            FROM answer_citations
+            WHERE answer_run_id = %s
+            ORDER BY position ASC, created_at ASC
+            """,
+            (_uuid(answer_run_id),),
+        )
+        citations = _rows_dict(cursor.fetchall(), CITATION_COLUMNS)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(ASSET_COLUMNS)}
+            FROM evidence_assets
+            WHERE answer_run_id = %s
+            ORDER BY asset_type ASC, created_at ASC
+            """,
+            (_uuid(answer_run_id),),
+        )
+        assets = _rows_dict(cursor.fetchall(), ASSET_COLUMNS)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(COLLECTOR_LOG_COLUMNS)}
+            FROM collector_logs
+            WHERE answer_run_id = %s
+            ORDER BY created_at ASC
+            """,
+            (_uuid(answer_run_id),),
+        )
+        logs = _rows_dict(cursor.fetchall(), COLLECTOR_LOG_COLUMNS)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(COLLECTION_COST_COLUMNS)}
+            FROM collection_costs
+            WHERE answer_run_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (_uuid(answer_run_id),),
+        )
+        cost_row = cursor.fetchone()
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE target_type = %s AND target_id = %s
+            ORDER BY created_at ASC
+            """,
+            ("answer_run", answer_run_id),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeEvidenceRun(
+            answer_run=answer_run,
+            raw_answer=_row_dict(raw_answer_row, RAW_ANSWER_COLUMNS) if raw_answer_row else None,
+            citations=citations,
+            evidence_assets=assets,
+            collector_logs=logs,
+            collection_cost=_row_dict(cost_row, COLLECTION_COST_COLUMNS) if cost_row else None,
+            audit_events=audit_events,
+        )
 
     def save_raw_evidence_records(self, records: tuple[RawEvidenceRecord, ...]) -> None:
         with self.connection.cursor() as cursor:

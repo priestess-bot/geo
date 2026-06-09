@@ -44,7 +44,7 @@ from geno_core.knowledge import (
     search_knowledge_facts,
 )
 from geno_core.market import build_au_market_profile
-from geno_core.models import AnswerAnalysis, CollectionFailureRecord, ReportExport
+from geno_core.models import AnswerAnalysis, CollectionFailureRecord, ReportExport, RuntimeEvidencePage
 from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.parser import RuleBasedAnswerParser
 from geno_core.report import MarkdownCsvReportExporter
@@ -55,8 +55,13 @@ from geno_core.traceability import build_traceability_bundle
 
 
 class RecordingCursor:
-    def __init__(self, calls: list[tuple[str, tuple[object, ...]]]) -> None:
+    def __init__(
+        self,
+        calls: list[tuple[str, tuple[object, ...]]],
+        result_sets: list[object],
+    ) -> None:
         self.calls = calls
+        self.result_sets = result_sets
 
     def __enter__(self) -> "RecordingCursor":
         return self
@@ -67,14 +72,25 @@ class RecordingCursor:
     def execute(self, sql: str, params: tuple[object, ...] = ()) -> None:
         self.calls.append((" ".join(sql.split()), params))
 
+    def fetchone(self) -> object:
+        result = self.result_sets.pop(0)
+        if isinstance(result, list):
+            return result[0] if result else None
+        return result
+
+    def fetchall(self) -> object:
+        result = self.result_sets.pop(0)
+        return result
+
 
 class RecordingConnection:
-    def __init__(self) -> None:
+    def __init__(self, result_sets: list[object] | None = None) -> None:
         self.calls: list[tuple[str, tuple[object, ...]]] = []
         self.commit_count = 0
+        self.result_sets = result_sets or []
 
     def cursor(self) -> RecordingCursor:
-        return RecordingCursor(self.calls)
+        return RecordingCursor(self.calls, self.result_sets)
 
     def commit(self) -> None:
         self.commit_count += 1
@@ -968,6 +984,131 @@ class CoreContractsTest(unittest.TestCase):
         first_answer_run_insert = next(params for sql, params in connection.calls if "INSERT INTO answer_runs" in sql)
         self.assertEqual(first_answer_run_insert[19], "failed")
         self.assertEqual(connection.commit_count, 1)
+
+    def test_postgres_repository_reads_runtime_evidence_page(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [
+                    {
+                        "id": answer_run_id,
+                        "project_id": project_id,
+                        "prompt_question_id": "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0",
+                        "platform": "perplexity",
+                        "surface": "sonar",
+                        "access_method": "official_api",
+                        "market_code": "AU",
+                        "city": "Australia",
+                        "language": "en-AU",
+                        "device": "desktop",
+                        "answer_present": True,
+                        "surface_triggered": True,
+                        "sample_index": 1,
+                        "sample_size": 1,
+                        "model_or_surface": "sonar",
+                        "account_state": "api_key",
+                        "collector_backend_id": "fixture_perplexity_sonar",
+                        "collector_version": "fixture-v1",
+                        "collected_at": now,
+                        "status": "completed",
+                    }
+                ],
+                {
+                    "id": "5d714ed1-25aa-5651-b8b3-5e4b275d278a",
+                    "answer_run_id": answer_run_id,
+                    "answer_text": "answer",
+                    "raw_payload": {"citations": 1},
+                    "raw_payload_hash": "hash",
+                    "created_at": now,
+                },
+                [
+                    {
+                        "id": "6e5c424e-1674-58ce-b075-6c52259bbbe5",
+                        "answer_run_id": answer_run_id,
+                        "url": "https://reviews.example/koala",
+                        "domain": "reviews.example",
+                        "position": 1,
+                        "source_type": "review_site",
+                        "created_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": "29a279b8-3313-5306-a959-4f0f0de9c950",
+                        "answer_run_id": answer_run_id,
+                        "asset_type": "html_snapshot",
+                        "url": "s3://asset.html",
+                        "content_hash": "asset-hash",
+                        "created_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": "09e818ce-9c02-5fb4-af15-60f3fef55d55",
+                        "answer_run_id": answer_run_id,
+                        "collector_backend_id": "fixture_perplexity_sonar",
+                        "event_type": "collection_completed",
+                        "payload": {"answer_present": True},
+                        "created_at": now,
+                    }
+                ],
+                {
+                    "id": "a428e674-b6ee-51cb-b59c-f0676654c46f",
+                    "answer_run_id": answer_run_id,
+                    "project_id": project_id,
+                    "collector_backend_id": "fixture_perplexity_sonar",
+                    "llm_provider": "perplexity",
+                    "llm_tokens": 12,
+                    "llm_cost": 0.001,
+                    "proxy_or_vendor_cost": 0.001,
+                    "compute_cost": 0.0005,
+                    "total_cost": 0.0015,
+                    "created_at": now,
+                },
+                [
+                    {
+                        "id": "495d24da-90cf-4073-bd9c-16afeb5b3169",
+                        "event_type": "answer_run_collected",
+                        "project_id": project_id,
+                        "actor_type": "worker",
+                        "actor_id": "fixture_perplexity_sonar",
+                        "target_type": "answer_run",
+                        "target_id": answer_run_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"prompt_question_ids": ["prompt"]},
+                        "output_refs": {"answer_run_ids": [answer_run_id]},
+                        "method_version": "fixture-v1",
+                        "reason": "test",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+        page = PostgresEvidenceRepository(connection).list_runtime_evidence_runs(
+            project_id=project_id,
+            platform="perplexity",
+            status="completed",
+            limit=10,
+            offset=0,
+        )
+        self.assertIsInstance(page, RuntimeEvidencePage)
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(len(page.records), 1)
+        record = page.records[0]
+        self.assertEqual(record.answer_run["id"], answer_run_id)
+        self.assertEqual(record.raw_answer["raw_payload"]["citations"], 1)
+        self.assertEqual(record.citations[0]["domain"], "reviews.example")
+        self.assertEqual(record.evidence_assets[0]["asset_type"], "html_snapshot")
+        self.assertEqual(record.collector_logs[0]["event_type"], "collection_completed")
+        self.assertEqual(record.collection_cost["total_cost"], 0.0015)
+        self.assertEqual(record.audit_events[0]["event_type"], "answer_run_collected")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM answer_runs WHERE project_id = %s AND platform = %s AND status = %s", executed_sql)
+        self.assertIn("FROM raw_answers", executed_sql)
 
 
 if __name__ == "__main__":

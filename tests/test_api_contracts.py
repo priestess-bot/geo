@@ -55,6 +55,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertGreater(first["collection_cost"]["total_cost"], 0)
         self.assertEqual(first["audit_events"][0]["event_type"], "answer_run_collected")
 
+    def test_runtime_evidence_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get("/v1/evidence-runs/runtime")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_m2b_google_spike_plan_endpoint(self) -> None:
         response = self.client.get("/v1/google-spikes/au/plan")
         self.assertEqual(response.status_code, 200)
@@ -152,6 +157,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("ManualDistributionRecord", payload["m7_content_integrations"])
         self.assertIn("TraceabilityBundle", payload["auditability"])
         self.assertIn("build_traceability_bundle", payload["traceability"])
+        self.assertIn("RuntimeEvidenceRun", payload["persistence"])
+        self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])
 
 
 if __name__ == "__main__":

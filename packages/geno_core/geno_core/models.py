@@ -538,6 +538,25 @@ class TraceabilityBundle:
 
 
 @dataclass(frozen=True)
+class RuntimeEvidenceRun:
+    answer_run: dict[str, Any]
+    raw_answer: dict[str, Any] | None
+    citations: tuple[dict[str, Any], ...]
+    evidence_assets: tuple[dict[str, Any], ...]
+    collector_logs: tuple[dict[str, Any], ...]
+    collection_cost: dict[str, Any] | None
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeEvidencePage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeEvidenceRun, ...]
+
+
+@dataclass(frozen=True)
 class AuditEvent:
     id: str
     event_type: str

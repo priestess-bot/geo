@@ -43,7 +43,12 @@ from geno_core.market import build_au_market_profile
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.repository import PostgresEvidenceRepository
-from geno_core.runtime import RuntimePersistenceError, build_repository_from_env, connect_postgres_from_env
+from geno_core.runtime import (
+    RuntimePersistenceError,
+    build_repository_from_env,
+    close_repository_connection,
+    connect_postgres_from_env,
+)
 from geno_core.scoring import AU_VISIBILITY_V1, score_answer_analyses, score_answer_analysis
 from geno_core.traceability import build_traceability_bundle
 
@@ -71,6 +76,7 @@ __all__ = [
     "build_manual_distribution_records",
     "evaluate_google_spike_gate",
     "build_repository_from_env",
+    "close_repository_connection",
     "connect_postgres_from_env",
     "FixtureGoogleAIModeCollector",
     "FixtureGoogleAIOCollector",

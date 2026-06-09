@@ -12,6 +12,7 @@ const modules = [
   "Traceability Bundle",
   "DATABASE_URL Runtime",
   "Worker --persist",
+  "Runtime Evidence API",
   "Audit / Provenance",
   "AUVisibilityScore",
   "Evidence Report"
@@ -25,7 +26,7 @@ export default function Home() {
           <p className="eyebrow">GENO SaaS AU</p>
           <h1>Evidence-first AI Search Visibility</h1>
         </div>
-        <span className="status">Runtime persistence slice</span>
+        <span className="status">Runtime read/write slice</span>
       </section>
       <section className="grid">
         {modules.map((module) => (

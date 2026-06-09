@@ -65,6 +65,14 @@ Docker worker profile：
 docker compose -f infra/docker-compose.yml --profile worker run --rm collector-worker
 ```
 
+运行时证据查询 API：
+
+```bash
+curl "http://localhost:8000/v1/evidence-runs/runtime?limit=20"
+```
+
+该接口从 PostgreSQL 读取 `AnswerRun -> RawAnswer -> Citation/Asset/Log/Cost/Audit` 聚合页；未配置 `DATABASE_URL` 时返回 503。
+
 ## 核心文档
 
 | 文档 | 内容 |

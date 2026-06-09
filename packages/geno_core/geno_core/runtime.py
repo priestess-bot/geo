@@ -37,3 +37,9 @@ def build_repository_from_env(
     connector: Callable[[str], DbConnection] | None = None,
 ) -> PostgresEvidenceRepository:
     return PostgresEvidenceRepository(connect_postgres_from_env(env, connector=connector))
+
+
+def close_repository_connection(repository: PostgresEvidenceRepository) -> None:
+    close = getattr(repository.connection, "close", None)
+    if callable(close):
+        close()

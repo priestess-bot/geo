@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 
 from geno_core.action_plan import (
     build_action_plan_audit_event,
@@ -42,6 +42,7 @@ from geno_core.knowledge import (
 from geno_core.market import build_au_market_profile
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.report import MarkdownCsvReportExporter
+from geno_core.runtime import RuntimePersistenceError, build_repository_from_env, close_repository_connection
 from geno_core.traceability import build_traceability_bundle
 
 app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
@@ -107,6 +108,31 @@ def au_p0a_fixture_slice() -> dict[str, object]:
         "answer_run_ids": [record.answer_run.id for record in records],
         "records": [asdict(record) for record in records],
     }
+
+
+@app.get("/v1/evidence-runs/runtime")
+def runtime_evidence_runs(
+    project_id: str | None = None,
+    platform: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.list_runtime_evidence_runs(
+            project_id=project_id,
+            platform=platform,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
 
 
 @app.get("/v1/google-spikes/au/plan")
@@ -567,13 +593,17 @@ def contracts() -> dict[str, list[str]]:
         "persistence": [
             "build_repository_from_env",
             "connect_postgres_from_env",
+            "close_repository_connection",
             "RuntimePersistenceError",
             "PostgresEvidenceRepository",
+            "RuntimeEvidenceRun",
+            "RuntimeEvidencePage",
             "RawEvidenceRecord",
             "CollectionFailureRecord",
             "VisibilityScoreSnapshot",
             "ReportExport",
             "TraceabilityBundle",
+            "/v1/evidence-runs/runtime",
             "worker --persist",
         ],
     }
