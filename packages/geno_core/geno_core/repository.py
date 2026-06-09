@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from typing import Any, Protocol
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from geno_core.models import (
     ActionRecommendation,
     AnswerAnalysis,
     AuditEvent,
     CitationGraphResult,
+    CollectionFailureRecord,
     ContentDraft,
     IntegrationConnector,
     LocalizedKnowledgeFact,
@@ -38,10 +40,38 @@ class DbConnection(Protocol):
     def commit(self) -> None: ...
 
 
+def _json_compatible(value: object) -> object:
+    return json.loads(json.dumps(value, ensure_ascii=False, default=str))
+
+
 def _json_payload(value: object) -> object:
     if is_dataclass(value):
-        return asdict(value)
-    return value
+        value = asdict(value)
+    payload = _json_compatible(value)
+    try:
+        from psycopg.types.json import Jsonb
+    except ModuleNotFoundError:
+        return payload
+    return Jsonb(payload)
+
+
+def _uuid_array(values: tuple[str, ...] | list[str]) -> list[object]:
+    converted: list[object] = []
+    for value in values:
+        try:
+            converted.append(UUID(str(value)))
+        except (TypeError, ValueError):
+            converted.append(str(value))
+    return converted
+
+
+def _uuid(value: str | None) -> object | None:
+    if value is None:
+        return None
+    try:
+        return UUID(str(value))
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def _datetime(value: datetime | None) -> datetime | None:
@@ -72,9 +102,9 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        record.answer_run.id,
-                        record.answer_run.project_id,
-                        record.answer_run.prompt_question_id,
+                        _uuid(record.answer_run.id),
+                        _uuid(record.answer_run.project_id),
+                        _uuid(record.answer_run.prompt_question_id),
                         record.answer_run.platform,
                         record.answer_run.surface,
                         record.answer_run.access_method,
@@ -101,8 +131,8 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        record.raw_answer.id,
-                        record.raw_answer.answer_run_id,
+                        _uuid(record.raw_answer.id),
+                        _uuid(record.raw_answer.answer_run_id),
                         record.raw_answer.answer_text,
                         _json_payload(record.raw_answer.raw_payload),
                         record.raw_answer.raw_payload_hash,
@@ -116,8 +146,8 @@ class PostgresEvidenceRepository:
                         ON CONFLICT (id) DO NOTHING
                         """,
                         (
-                            citation.id,
-                            citation.answer_run_id,
+                            _uuid(citation.id),
+                            _uuid(citation.answer_run_id),
                             citation.url,
                             citation.domain,
                             citation.position,
@@ -131,7 +161,13 @@ class PostgresEvidenceRepository:
                         VALUES (%s, %s, %s, %s, %s)
                         ON CONFLICT (id) DO NOTHING
                         """,
-                        (asset.id, asset.answer_run_id, asset.asset_type, asset.url, asset.content_hash),
+                        (
+                            _uuid(asset.id),
+                            _uuid(asset.answer_run_id),
+                            asset.asset_type,
+                            asset.url,
+                            asset.content_hash,
+                        ),
                     )
                 for log in record.collector_logs:
                     cursor.execute(
@@ -142,8 +178,8 @@ class PostgresEvidenceRepository:
                         ON CONFLICT (id) DO NOTHING
                         """,
                         (
-                            log.id,
-                            log.answer_run_id,
+                            _uuid(log.id),
+                            _uuid(log.answer_run_id),
                             log.collector_backend_id,
                             log.event_type,
                             _json_payload(log.payload),
@@ -159,9 +195,87 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        record.collection_cost.id,
-                        record.collection_cost.answer_run_id,
-                        record.collection_cost.project_id,
+                        _uuid(record.collection_cost.id),
+                        _uuid(record.collection_cost.answer_run_id),
+                        _uuid(record.collection_cost.project_id),
+                        record.collection_cost.collector_backend_id,
+                        record.collection_cost.llm_provider,
+                        record.collection_cost.llm_tokens,
+                        record.collection_cost.llm_cost,
+                        record.collection_cost.proxy_or_vendor_cost,
+                        record.collection_cost.compute_cost,
+                        record.collection_cost.total_cost,
+                        _datetime(record.collection_cost.created_at),
+                    ),
+                )
+                self.save_audit_events(record.audit_events, cursor=cursor)
+        self.connection.commit()
+
+    def save_collection_failure_records(self, records: tuple[CollectionFailureRecord, ...]) -> None:
+        with self.connection.cursor() as cursor:
+            for record in records:
+                cursor.execute(
+                    """
+                    INSERT INTO answer_runs (
+                      id, project_id, prompt_question_id, platform, surface, access_method,
+                      market_code, city, language, device, answer_present, surface_triggered,
+                      sample_index, sample_size, model_or_surface, account_state,
+                      collector_backend_id, collector_version, collected_at, status
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    (
+                        _uuid(record.answer_run.id),
+                        _uuid(record.answer_run.project_id),
+                        _uuid(record.answer_run.prompt_question_id),
+                        record.answer_run.platform,
+                        record.answer_run.surface,
+                        record.answer_run.access_method,
+                        record.answer_run.market_code,
+                        record.answer_run.city,
+                        record.answer_run.language,
+                        record.answer_run.device,
+                        record.answer_run.answer_present,
+                        record.answer_run.surface_triggered,
+                        record.answer_run.sample_index,
+                        record.answer_run.sample_size,
+                        record.answer_run.model_or_surface,
+                        record.answer_run.account_state,
+                        record.answer_run.collector_backend_id,
+                        record.answer_run.collector_version,
+                        _datetime(record.answer_run.collected_at),
+                        record.answer_run.status,
+                    ),
+                )
+                for log in record.collector_logs:
+                    cursor.execute(
+                        """
+                        INSERT INTO collector_logs (
+                          id, answer_run_id, collector_backend_id, event_type, payload, created_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (id) DO NOTHING
+                        """,
+                        (
+                            _uuid(log.id),
+                            _uuid(log.answer_run_id),
+                            log.collector_backend_id,
+                            log.event_type,
+                            _json_payload(log.payload),
+                            _datetime(log.created_at),
+                        ),
+                    )
+                cursor.execute(
+                    """
+                    INSERT INTO collection_costs (
+                      id, answer_run_id, project_id, collector_backend_id, llm_provider, llm_tokens,
+                      llm_cost, proxy_or_vendor_cost, compute_cost, total_cost, created_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    (
+                        _uuid(record.collection_cost.id),
+                        _uuid(record.collection_cost.answer_run_id),
+                        _uuid(record.collection_cost.project_id),
                         record.collection_cost.collector_backend_id,
                         record.collection_cost.llm_provider,
                         record.collection_cost.llm_tokens,
@@ -186,8 +300,8 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        analysis.id,
-                        analysis.answer_run_id,
+                        _uuid(analysis.id),
+                        _uuid(analysis.answer_run_id),
                         analysis.parser_engine_id,
                         analysis.analysis_version,
                         _json_payload(analysis),
@@ -213,8 +327,8 @@ class PostgresEvidenceRepository:
                 ON CONFLICT (id) DO NOTHING
                 """,
                 (
-                    snapshot.id,
-                    snapshot.project_id,
+                    _uuid(snapshot.id),
+                    _uuid(snapshot.project_id),
                     snapshot.scope_type,
                     snapshot.scope_value,
                     snapshot.formula_version,
@@ -223,7 +337,7 @@ class PostgresEvidenceRepository:
                     snapshot.trigger_rate,
                     snapshot.mention_rate,
                     snapshot.recommendation_rate,
-                    list(snapshot.answer_run_ids),
+                    _uuid_array(snapshot.answer_run_ids),
                     _datetime(snapshot.created_at),
                     snapshot.dispersion,
                 ),
@@ -240,14 +354,14 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        contribution.id,
-                        contribution.score_snapshot_id,
+                        _uuid(contribution.id),
+                        _uuid(contribution.score_snapshot_id),
                         contribution.component_name,
                         contribution.component_score,
                         contribution.weight,
                         contribution.weighted_contribution,
                         contribution.denominator,
-                        list(contribution.evidence_answer_run_ids),
+                        _uuid_array(contribution.evidence_answer_run_ids),
                         contribution.positive_evidence_summary,
                         contribution.negative_evidence_summary,
                         contribution.confidence_note,
@@ -262,9 +376,9 @@ class PostgresEvidenceRepository:
                         ON CONFLICT (id) DO NOTHING
                         """,
                         (
-                            _stable_id("score-snapshot-run", snapshot.id, answer_run_id, contribution.component_name),
-                            snapshot.id,
-                            answer_run_id,
+                            _uuid(_stable_id("score-snapshot-run", snapshot.id, answer_run_id, contribution.component_name)),
+                            _uuid(snapshot.id),
+                            _uuid(answer_run_id),
                             contribution.component_name,
                         ),
                     )
@@ -283,14 +397,14 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        node.id,
-                        node.project_id,
+                        _uuid(node.id),
+                        _uuid(node.project_id),
                         node.source_url,
                         node.source_domain,
                         node.source_type,
                         node.topic,
                         node.source_gap_type,
-                        list(node.answer_run_ids),
+                        _uuid_array(node.answer_run_ids),
                         node.citation_count,
                     ),
                 )
@@ -303,10 +417,10 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        evidence.id,
-                        evidence.source_graph_id,
-                        evidence.answer_run_id,
-                        evidence.answer_citation_id,
+                        _uuid(evidence.id),
+                        _uuid(evidence.source_graph_id),
+                        _uuid(evidence.answer_run_id),
+                        _uuid(evidence.answer_citation_id),
                         evidence.relation_type,
                     ),
                 )
@@ -319,12 +433,12 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        benchmark.id,
-                        benchmark.project_id,
+                        _uuid(benchmark.id),
+                        _uuid(benchmark.project_id),
                         benchmark.competitor_name,
                         "project",
                         _json_payload(benchmark),
-                        list(benchmark.answer_run_ids),
+                        _uuid_array(benchmark.answer_run_ids),
                     ),
                 )
         self.connection.commit()
@@ -342,13 +456,13 @@ class PostgresEvidenceRepository:
                 ON CONFLICT (id) DO NOTHING
                 """,
                 (
-                    report_export.id,
-                    report_export.project_id,
+                    _uuid(report_export.id),
+                    _uuid(report_export.project_id),
                     report_export.market_code,
                     report_export.report_version,
                     report_export.report_type,
-                    list(report_export.score_snapshot_ids),
-                    list(report_export.answer_run_ids),
+                    _uuid_array(report_export.score_snapshot_ids),
+                    _uuid_array(report_export.answer_run_ids),
                     report_export.prompt_version,
                     report_export.scoring_formula_version,
                     _json_payload(report_export.platform_weights_snapshot),
@@ -371,9 +485,9 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        _stable_id("report-evidence", report_export.id, answer_run_id, "raw_evidence"),
-                        report_export.id,
-                        answer_run_id,
+                        _uuid(_stable_id("report-evidence", report_export.id, answer_run_id, "raw_evidence")),
+                        _uuid(report_export.id),
+                        _uuid(answer_run_id),
                         "raw_evidence",
                     ),
                 )
@@ -400,15 +514,15 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        action.id,
-                        action.project_id,
+                        _uuid(action.id),
+                        _uuid(action.project_id),
                         action.title,
                         action.description,
                         action.priority,
                         action.status,
                         action.owner_id,
                         action.source_gap_type,
-                        list(action.evidence_answer_run_ids),
+                        _uuid_array(action.evidence_answer_run_ids),
                         list(action.related_source_types),
                         _datetime(action.next_check_date),
                         _datetime(action.created_at),
@@ -423,13 +537,13 @@ class PostgresEvidenceRepository:
                 ON CONFLICT (id) DO NOTHING
                 """,
                 (
-                    schedule.id,
-                    schedule.project_id,
+                    _uuid(schedule.id),
+                    _uuid(schedule.project_id),
                     schedule.prompt_version,
                     schedule.sample_size,
                     list(schedule.offsets_days),
                     list(schedule.scheduled_dates),
-                    list(schedule.answer_run_ids),
+                    _uuid_array(schedule.answer_run_ids),
                     _datetime(schedule.created_at),
                 ),
             )
@@ -443,13 +557,13 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        comparison.id,
-                        comparison.project_id,
+                        _uuid(comparison.id),
+                        _uuid(comparison.project_id),
                         comparison.baseline_score,
                         comparison.retest_score,
                         comparison.score_delta,
-                        list(comparison.baseline_answer_run_ids),
-                        list(comparison.retest_answer_run_ids),
+                        _uuid_array(comparison.baseline_answer_run_ids),
+                        _uuid_array(comparison.retest_answer_run_ids),
                         comparison.trend,
                         _datetime(comparison.created_at),
                     ),
@@ -477,15 +591,15 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        fact.id,
-                        fact.project_id,
+                        _uuid(fact.id),
+                        _uuid(fact.project_id),
                         fact.market_code,
                         fact.fact_type,
                         fact.subject,
                         fact.predicate,
                         fact.object_value,
                         fact.city,
-                        fact.evidence_source_id,
+                        _uuid(fact.evidence_source_id),
                         fact.confidence,
                         fact.status,
                         _datetime(fact.valid_from),
@@ -504,19 +618,19 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        draft.id,
-                        draft.project_id,
+                        _uuid(draft.id),
+                        _uuid(draft.project_id),
                         draft.title,
                         draft.content_type,
                         draft.content_template_id,
-                        list(draft.target_question_ids),
+                        _uuid_array(draft.target_question_ids),
                         draft.target_city,
                         draft.target_platform,
                         draft.target_source_type,
-                        list(draft.used_knowledge_fact_ids),
+                        _uuid_array(draft.used_knowledge_fact_ids),
                         list(draft.source_gap_types),
-                        draft.source_action_id,
-                        list(draft.evidence_answer_run_ids),
+                        _uuid(draft.source_action_id),
+                        _uuid_array(draft.evidence_answer_run_ids),
                         draft.draft_markdown,
                         draft.review_status,
                         draft.created_by,
@@ -532,8 +646,8 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        connector.id,
-                        connector.project_id,
+                        _uuid(connector.id),
+                        _uuid(connector.project_id),
                         connector.provider,
                         connector.connection_status,
                         list(connector.capabilities),
@@ -551,9 +665,9 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        record.id,
-                        record.project_id,
-                        record.content_draft_id,
+                        _uuid(record.id),
+                        _uuid(record.project_id),
+                        _uuid(record.content_draft_id),
                         record.platform,
                         record.target_url,
                         record.status,
@@ -577,14 +691,14 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        link.id,
-                        link.project_id,
+                        _uuid(link.id),
+                        _uuid(link.project_id),
                         link.source_type,
-                        link.source_id,
+                        _uuid(link.source_id),
                         link.target_type,
-                        link.target_id,
+                        _uuid(link.target_id),
                         link.relation_type,
-                        list(link.answer_run_ids),
+                        _uuid_array(link.answer_run_ids),
                     ),
                 )
             cursor.execute(
@@ -599,22 +713,22 @@ class PostgresEvidenceRepository:
                 ON CONFLICT (id) DO NOTHING
                 """,
                 (
-                    bundle.id,
-                    bundle.project_id,
+                    _uuid(bundle.id),
+                    _uuid(bundle.project_id),
                     bundle.subject_type,
-                    bundle.subject_id,
-                    list(bundle.report_export_ids),
-                    list(bundle.score_snapshot_ids),
-                    list(bundle.score_contribution_ids),
-                    list(bundle.answer_run_ids),
-                    list(bundle.raw_answer_ids),
-                    list(bundle.answer_citation_ids),
-                    list(bundle.evidence_asset_ids),
-                    list(bundle.source_graph_ids),
+                    _uuid(bundle.subject_id),
+                    _uuid_array(bundle.report_export_ids),
+                    _uuid_array(bundle.score_snapshot_ids),
+                    _uuid_array(bundle.score_contribution_ids),
+                    _uuid_array(bundle.answer_run_ids),
+                    _uuid_array(bundle.raw_answer_ids),
+                    _uuid_array(bundle.answer_citation_ids),
+                    _uuid_array(bundle.evidence_asset_ids),
+                    _uuid_array(bundle.source_graph_ids),
                     list(bundle.source_gap_types),
-                    list(bundle.action_recommendation_ids),
-                    list(bundle.content_draft_ids),
-                    list(bundle.audit_event_ids),
+                    _uuid_array(bundle.action_recommendation_ids),
+                    _uuid_array(bundle.content_draft_ids),
+                    _uuid_array(bundle.audit_event_ids),
                     bundle.explanation_summary,
                 ),
             )
@@ -636,9 +750,9 @@ class PostgresEvidenceRepository:
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
-                        event.id,
+                        _uuid(event.id),
                         event.event_type,
-                        event.project_id,
+                        _uuid(event.project_id),
                         event.actor_type,
                         event.actor_id,
                         event.target_type,

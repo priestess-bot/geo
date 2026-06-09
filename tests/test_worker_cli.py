@@ -8,16 +8,25 @@ import unittest
 
 
 class WorkerCliTest(unittest.TestCase):
-    def _run_worker(self, *args: str) -> dict[str, object]:
+    def _run_worker_result(
+        self,
+        *args: str,
+        unset_env: tuple[str, ...] = (),
+    ) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
+        for key in unset_env:
+            env.pop(key, None)
         env["PYTHONPATH"] = "packages/geno_core:apps/api"
-        result = subprocess.run(
+        return subprocess.run(
             [sys.executable, "workers/collector_worker/run_collection_slice.py", *args],
-            check=True,
             capture_output=True,
             text=True,
             env=env,
         )
+
+    def _run_worker(self, *args: str) -> dict[str, object]:
+        result = self._run_worker_result(*args)
+        result.check_returncode()
         return json.loads(result.stdout)
 
     def test_fixture_worker_slice_succeeds(self) -> None:
@@ -25,6 +34,7 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(payload["record_count"], 4)
         self.assertEqual(payload["success_count"], 4)
         self.assertEqual(payload["failure_count"], 0)
+        self.assertEqual(payload["persistence"], {"enabled": False})
 
     def test_api_worker_slice_without_keys_is_audited_failure(self) -> None:
         payload = self._run_worker("--mode", "api", "--prompt-limit", "1", "--cities", "Australia")
@@ -42,6 +52,18 @@ class WorkerCliTest(unittest.TestCase):
         gate = payload["google_spike_gate"]
         self.assertEqual(gate["gate_status"], "pass")
         self.assertFalse(gate["limited_coverage"])
+
+    def test_persist_without_database_url_fails_loudly(self) -> None:
+        result = self._run_worker_result(
+            "--mode",
+            "fixture",
+            "--prompt-limit",
+            "1",
+            "--persist",
+            unset_env=("DATABASE_URL",),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("DATABASE_URL", result.stderr)
 
 
 if __name__ == "__main__":

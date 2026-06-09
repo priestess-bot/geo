@@ -49,6 +49,7 @@ from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.parser import RuleBasedAnswerParser
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.repository import PostgresEvidenceRepository
+from geno_core.runtime import RuntimePersistenceError, build_repository_from_env
 from geno_core.scoring import AU_VISIBILITY_V1, score_answer_analysis
 from geno_core.traceability import build_traceability_bundle
 
@@ -920,10 +921,53 @@ class CoreContractsTest(unittest.TestCase):
             self.assertIn(f"INSERT INTO {table}", executed_sql)
         self.assertGreaterEqual(connection.commit_count, 8)
         first_answer_run_insert = next(params for sql, params in connection.calls if "INSERT INTO answer_runs" in sql)
-        self.assertEqual(first_answer_run_insert[0], records[0].answer_run.id)
+        self.assertEqual(str(first_answer_run_insert[0]), records[0].answer_run.id)
         first_analysis_insert = next(params for sql, params in connection.calls if "INSERT INTO answer_analyses" in sql)
-        self.assertEqual(first_analysis_insert[0], analysis_result.analyses[0].id)
+        self.assertEqual(str(first_analysis_insert[0]), analysis_result.analyses[0].id)
         self.assertEqual(len(str(first_analysis_insert[0])), 36)
+
+    def test_runtime_repository_requires_database_url(self) -> None:
+        with self.assertRaises(RuntimePersistenceError):
+            build_repository_from_env({})
+
+    def test_runtime_repository_uses_database_url_connector(self) -> None:
+        seen_urls: list[str] = []
+        connection = RecordingConnection()
+
+        def connector(database_url: str) -> RecordingConnection:
+            seen_urls.append(database_url)
+            return connection
+
+        repository = build_repository_from_env(
+            {"DATABASE_URL": "postgresql://geno:geno@localhost:5432/geno"},
+            connector=connector,
+        )
+        self.assertIsInstance(repository, PostgresEvidenceRepository)
+        self.assertEqual(seen_urls, ["postgresql://geno:geno@localhost:5432/geno"])
+
+    def test_postgres_repository_maps_collection_failures_to_audit_tables(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        failure = collect_prompt_with_failure_record(
+            project_id=bootstrap.project.id,
+            prompt=bootstrap.prompt_questions[0],
+            market_profile=bootstrap.market_profile,
+            collector=OpenAIWebSearchCollector(api_key=""),
+            city="Australia",
+            sample_index=1,
+            sample_size=1,
+        )
+        self.assertIsInstance(failure, CollectionFailureRecord)
+        assert isinstance(failure, CollectionFailureRecord)
+        connection = RecordingConnection()
+        PostgresEvidenceRepository(connection).save_collection_failure_records((failure,))
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO answer_runs", executed_sql)
+        self.assertIn("INSERT INTO collector_logs", executed_sql)
+        self.assertIn("INSERT INTO collection_costs", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+        first_answer_run_insert = next(params for sql, params in connection.calls if "INSERT INTO answer_runs" in sql)
+        self.assertEqual(first_answer_run_insert[19], "failed")
+        self.assertEqual(connection.commit_count, 1)
 
 
 if __name__ == "__main__":

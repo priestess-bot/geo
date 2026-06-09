@@ -60,7 +60,7 @@
 - `[~]` 代码有单测；关键路径有集成测试（fixture/API/core 已覆盖；真实外部采集 E2E 待接）
 - `[~]` 通过 CI（lint + 测试 + 迁移可起）（本地 `make test` / `make docker-config` 通过；完整 lint/真实迁移起服待接）
 - `[x]` 若改了行为/口径，同 PR 更新对应 `docs/`，必要时加 `decisions/` ADR
-- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `AnswerRun` / `answer_run_ids`（fixture TraceabilityBundle 已落；持久化查询 UI 待接）
+- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `AnswerRun` / `answer_run_ids`（fixture TraceabilityBundle 与 worker `--persist` 写库开关已落；持久化查询 UI 待接）
 - `[~]` 关键动作写入 `AuditEvent`；关键输出能生成 provenance 链路和解释包（采集/评分/报告/action/content fixture 已落；人工补录/实体确认待接）
 - `[~]` 有一次可演示（API fixture endpoints 已可演示；真实 design partner 数据演示待接）
 
@@ -110,14 +110,14 @@
 - `[x]` (P0a) 仓库骨架：`apps/`、`packages/`、`workers/`、`infra/`、`tests/`、`decisions/`
 - `[x]` (P0a/P0b/P0c) 数据契约：优先实现 MarketProfile、IndustryProfile、PromptQuestion、GeoSample、AnswerRun、RawAnswer、AnswerCitation、AnswerAnalysis、SourceGraph、CompetitorBenchmark、VisibilityScoreSnapshot、BrandEntity/CompetitorEntity/EntityAlias、CollectionCost、AuditEvent、ReportExport、ScoreContribution、EvidenceLink、TraceabilityBundle 关联表；P1/P2 表可延后 — `§8`
 - `[x]` (P0a) 接口契约 stub（先定义不实现）：CollectorBackend、LLMGateway、ParserEngine、VectorStore、GraphStore、GeoProvider、ScoringFormula、ReportExporter — `Step3.2`
-- `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web 与 repository 映射；LiteLLM、真实连接池与 worker runtime 待接）
+- `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web、repository 映射、`DATABASE_URL` connection factory 与 worker `--persist`；LiteLLM、连接池与真实起服写库验证待接）
 - `[x]` (P0c/P1) 重组件接入点：ClickHouse、Temporal、Langfuse、promptfoo、SearXNG、Metabase 写 ADR 和接口适配计划，但不阻塞 P0a — `§6`
-- `[~]` (P0a) 空 CI：lint + 测试 + 迁移起服（已落 contract tests、Compose config、repository mapping tests；lint 与真实迁移起服待补）
+- `[~]` (P0a) 空 CI：lint + 测试 + 迁移起服（已落 contract tests、Compose config、repository mapping/runtime tests；lint 与真实迁移起服待补）
 - `[~]` (P0a) LLM 网关配置 + 调用日志 + 对象存储配置 — `E10-01 / E10-03 / E10-05`（已落 LLMGateway 接口与对象存储配置；运行时调用日志待接）
 
 DoD：
 
-- `[~]` 一键起核心依赖；P0a/P0b/P0c 相关表可建可回滚；8 接口 stub + CI 绿（本地配置、repository mapping 和 contract tests 已验证，真实起服待补）
+- `[~]` 一键起核心依赖；P0a/P0b/P0c 相关表可建可回滚；8 接口 stub + CI 绿（本地配置、repository runtime mapping 和 contract tests 已验证，真实起服待补）
 - `[x]` 三个可插拔点（向量库/图库/LLM）已留好接口，替换演示排入 P0c/P1
 - `[x]` AuditEvent / ReportExport / ScoreContribution / EvidenceLink / TraceabilityBundle 相关表可建可回滚
 
@@ -149,14 +149,14 @@ DoD：
 
 - `[~]` (P0a) CollectorBackend 接口落地 + **Perplexity Sonar 后端**（最易采，先打通全链路）— `Step4`（fixture + 真实 API adapter shell 已落；真实凭证联调待验证）
 - `[~]` (P0a) **OpenAI web search / ChatGPT Search** 官方 API 后端 — `Step4`（fixture + 真实 API adapter shell 已落；真实凭证联调待验证）
-- `[x]` (P0a) Raw Evidence Store：AnswerRun/RawAnswer/AnswerCitation/EvidenceAsset/CollectorLog，含 `answer_present`/`surface_triggered`/`sample_index`/`sample_size`/`access_method`，并有 PostgreSQL repository 写入映射 — `Step5 / §8.5..8.7`
+- `[x]` (P0a) Raw Evidence Store：AnswerRun/RawAnswer/AnswerCitation/EvidenceAsset/CollectorLog，含 `answer_present`/`surface_triggered`/`sample_index`/`sample_size`/`access_method`，并有 PostgreSQL repository 写入映射、JSONB/UUID runtime adapter 与 worker `--persist` 写库开关 — `Step5 / §8.5..8.7`
 - `[~]` (P0a) Audit / Provenance 基础：采集开始/完成/失败、原始证据入库、人工补录写 `AuditEvent`；`ReportEvidence` / `ScoreSnapshotRun` / `SourceGraphEvidence` 关联表先建表 — `Step5.1 / §8.16..8.19`（采集完成/失败审计已落；人工补录待接）
 - `[x]` (P0a) P0a 采样量闸门：100 prompts × 2 platforms × 4 geo × k=3 = 2400 planned_runs，可配置降级 prompt/geo 但不降级证据字段 — `Step9.3`
 - `[x]` (P0a) GeoProvider 抽象 + 城市采样（Australia/Sydney/Melbourne/Brisbane）— `Step6 / §8.4`
 - `[x]` (P0a) 截图/HTML 快照 + `raw_payload_hash` — `E3-05`
 - `[x]` (P0a) CollectionCost 记录（从首个采集器起），输出成功率/平均耗时/单位成本 — `§8.15`
 - `[ ]` (P0c/P1) 保真度抽检：同批 prompt 跑 官方 API vs 浏览器 两后端，量化差异率并入报告 — `Step4`
-- `[~]` (P1) 定时采集（Temporal）/复杂失败重试/限流/人工补录工作台 — `E3-03/06/07/08`（worker CLI 已落；复杂调度/限流/人工补录待接）
+- `[~]` (P1) 定时采集（Temporal）/复杂失败重试/限流/人工补录工作台 — `E3-03/06/07/08`（worker CLI 与 `--persist` 已落；复杂调度/限流/人工补录待接）
 
 DoD：
 

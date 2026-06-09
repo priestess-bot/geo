@@ -565,10 +565,15 @@ def contracts() -> dict[str, list[str]]:
             "build_traceability_bundle",
         ],
         "persistence": [
+            "build_repository_from_env",
+            "connect_postgres_from_env",
+            "RuntimePersistenceError",
             "PostgresEvidenceRepository",
             "RawEvidenceRecord",
+            "CollectionFailureRecord",
             "VisibilityScoreSnapshot",
             "ReportExport",
             "TraceabilityBundle",
+            "worker --persist",
         ],
     }

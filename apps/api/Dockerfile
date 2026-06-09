@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY packages/geno_core ./packages/geno_core
 COPY apps/api ./apps/api
+COPY workers ./workers
 
 ENV PYTHONPATH=/app/packages/geno_core:/app/apps/api
 
