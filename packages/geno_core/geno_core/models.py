@@ -624,7 +624,7 @@ class RuntimeReportArtifact:
     artifact_type: str
     filename: str
     media_type: str
-    content: str
+    content: str | bytes
     content_hash: str
 
 

@@ -327,6 +327,7 @@ export default async function Home() {
               <div className="downloadRow">
                 <a href={`${reportArtifactBase}?type=markdown`}>Download Markdown</a>
                 <a href={`${reportArtifactBase}?type=csv`}>Download CSV</a>
+                <a href={`${reportArtifactBase}?type=pdf`}>Download PDF</a>
               </div>
             </div>
           ) : (

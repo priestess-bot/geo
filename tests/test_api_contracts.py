@@ -80,6 +80,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_report_pdf_artifact_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get("/v1/reports/runtime/report-1/artifact?type=pdf")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_runtime_action_plans_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/action-plans/runtime")
         self.assertEqual(response.status_code, 503)

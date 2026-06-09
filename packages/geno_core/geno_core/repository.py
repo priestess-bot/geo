@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
@@ -118,6 +119,11 @@ def _stable_id(kind: str, *parts: object) -> str:
     return str(uuid5(NAMESPACE_URL, ":".join(("geno", kind, *(str(part) for part in parts)))))
 
 
+def _artifact_hash(content: str | bytes) -> str:
+    payload = content.encode("utf-8") if isinstance(content, str) else content
+    return hashlib.sha256(payload).hexdigest()
+
+
 def _render_runtime_report_markdown(report: RuntimeReportExport) -> str:
     report_export = report.report_export
     snapshot = report.score_snapshots[0] if report.score_snapshots else {}
@@ -217,6 +223,100 @@ def _render_runtime_report_csv(report: RuntimeReportExport) -> str:
             }
         )
     return output.getvalue()
+
+
+def _pdf_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def _wrap_pdf_line(value: str, *, width: int = 92) -> list[str]:
+    if not value:
+        return [""]
+    words = value.split()
+    if not words:
+        return [""]
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        if not current:
+            current = word
+            continue
+        if len(current) + len(word) + 1 <= width:
+            current = f"{current} {word}"
+            continue
+        lines.append(current)
+        current = word
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _render_runtime_report_pdf(report: RuntimeReportExport) -> bytes:
+    text_lines: list[str] = []
+    for line in _render_runtime_report_markdown(report).splitlines():
+        text_lines.extend(_wrap_pdf_line(line))
+    if not text_lines:
+        text_lines = ["GENO AU Evidence Report"]
+
+    max_lines_per_page = 52
+    pages = [
+        text_lines[index : index + max_lines_per_page]
+        for index in range(0, len(text_lines), max_lines_per_page)
+    ]
+
+    objects: list[tuple[int, bytes]] = [
+        (1, b"<< /Type /Catalog /Pages 2 0 R >>"),
+        (3, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"),
+    ]
+    page_object_ids: list[int] = []
+    next_object_id = 4
+    for page_lines in pages:
+        page_id = next_object_id
+        content_id = next_object_id + 1
+        next_object_id += 2
+        page_object_ids.append(page_id)
+
+        commands = ["BT", "/F1 10 Tf", "50 760 Td", "13 TL"]
+        for line in page_lines:
+            commands.append(f"({_pdf_escape(line)}) Tj")
+            commands.append("T*")
+        commands.append("ET")
+        stream = "\n".join(commands).encode("latin-1", errors="replace")
+        content_body = (
+            f"<< /Length {len(stream)} >>\nstream\n".encode("ascii")
+            + stream
+            + b"\nendstream"
+        )
+        page_body = (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            f"/Resources << /Font << /F1 3 0 R >> >> /Contents {content_id} 0 R >>"
+        ).encode("ascii")
+        objects.extend([(page_id, page_body), (content_id, content_body)])
+
+    kids = " ".join(f"{page_id} 0 R" for page_id in page_object_ids)
+    objects.append(
+        (
+            2,
+            f"<< /Type /Pages /Kids [{kids}] /Count {len(page_object_ids)} >>".encode("ascii"),
+        )
+    )
+    objects.sort(key=lambda item: item[0])
+
+    pdf = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"
+    offsets: list[int] = [0]
+    for object_id, body in objects:
+        offsets.append(len(pdf))
+        pdf += f"{object_id} 0 obj\n".encode("ascii") + body + b"\nendobj\n"
+
+    xref_offset = len(pdf)
+    pdf += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode("ascii")
+    for offset in offsets[1:]:
+        pdf += f"{offset:010d} 00000 n \n".encode("ascii")
+    pdf += (
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+        f"startxref\n{xref_offset}\n%%EOF\n"
+    ).encode("ascii")
+    return pdf
 
 
 ANSWER_RUN_COLUMNS = (
@@ -728,8 +828,8 @@ class PostgresEvidenceRepository:
         artifact_type: str,
     ) -> RuntimeReportArtifact | None:
         artifact_type = artifact_type.lower()
-        if artifact_type not in {"markdown", "csv"}:
-            raise ValueError("artifact_type must be markdown or csv")
+        if artifact_type not in {"markdown", "csv", "pdf"}:
+            raise ValueError("artifact_type must be markdown, csv, or pdf")
         with self.connection.cursor() as cursor:
             report_export = self._load_report_export_by_id(
                 cursor=cursor,
@@ -745,10 +845,14 @@ class PostgresEvidenceRepository:
             content = _render_runtime_report_markdown(runtime_report)
             extension = "md"
             media_type = "text/markdown; charset=utf-8"
-        else:
+        elif artifact_type == "csv":
             content = _render_runtime_report_csv(runtime_report)
             extension = "csv"
             media_type = "text/csv; charset=utf-8"
+        else:
+            content = _render_runtime_report_pdf(runtime_report)
+            extension = "pdf"
+            media_type = "application/pdf"
         filename = f"{report_export['report_version']}.{extension}"
         return RuntimeReportArtifact(
             report_export=report_export,
@@ -756,7 +860,7 @@ class PostgresEvidenceRepository:
             filename=filename,
             media_type=media_type,
             content=content,
-            content_hash=_stable_id("runtime-report-artifact", report_export["id"], artifact_type, content),
+            content_hash=_artifact_hash(content),
         )
 
     def get_runtime_traceability_detail(

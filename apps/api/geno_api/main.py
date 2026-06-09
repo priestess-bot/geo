@@ -206,7 +206,7 @@ def runtime_reports(
 @app.get("/v1/reports/runtime/{report_export_id}/artifact")
 def runtime_report_artifact(
     report_export_id: str,
-    artifact_type: str = Query(default="markdown", alias="type", pattern="^(markdown|csv)$"),
+    artifact_type: str = Query(default="markdown", alias="type", pattern="^(markdown|csv|pdf)$"),
 ) -> Response:
     try:
         repository = build_repository_from_env()

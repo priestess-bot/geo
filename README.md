@@ -49,7 +49,7 @@ make docker-config
 docker compose -f infra/docker-compose.yml up --build
 ```
 
-默认地址：API `http://localhost:8000/health`，控制台 `http://localhost:3000`。控制台会读取 runtime evidence / score / graph / report / report artifact / action / content / traceability API，并在 Report Snapshot 面板提供 Markdown/CSV 下载入口；Traceability Detail 面板展示报告到评分、证据、图谱、行动、内容、审计事件和 evidence links 的聚合链路；节点级 details 区可展开查看 score components、answer evidence、citation/asset nodes、actions/content drafts 和 audit event nodes。如果还没有数据，先运行 worker profile 写入一批 fixture runtime 数据。
+默认地址：API `http://localhost:8000/health`，控制台 `http://localhost:3000`。控制台会读取 runtime evidence / score / graph / report / report artifact / action / content / traceability API，并在 Report Snapshot 面板提供 Markdown/CSV/PDF 下载入口；Traceability Detail 面板展示报告到评分、证据、图谱、行动、内容、审计事件和 evidence links 的聚合链路；节点级 details 区可展开查看 score components、answer evidence、citation/asset nodes、actions/content drafts 和 audit event nodes。如果还没有数据，先运行 worker profile 写入一批 fixture runtime 数据。
 
 采集 worker 默认只输出 JSON；显式启用持久化时会先把 AU `ProjectBootstrap`、品牌/竞品和 100 条 `PromptQuestion` 写入 PostgreSQL，再把成功的 `RawEvidenceRecord` 和失败的 `CollectionFailureRecord` 写入 PostgreSQL：
 
@@ -82,6 +82,7 @@ curl "http://localhost:8000/v1/citation-graphs/runtime?limit=20"
 curl "http://localhost:8000/v1/reports/runtime?limit=20"
 curl "http://localhost:8000/v1/reports/runtime/{report_export_id}/artifact?type=markdown"
 curl "http://localhost:8000/v1/reports/runtime/{report_export_id}/artifact?type=csv"
+curl "http://localhost:8000/v1/reports/runtime/{report_export_id}/artifact?type=pdf"
 curl "http://localhost:8000/v1/action-plans/runtime?limit=20"
 curl "http://localhost:8000/v1/content-engines/runtime?limit=20"
 curl "http://localhost:8000/v1/traceability/runtime"
