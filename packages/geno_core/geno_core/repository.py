@@ -16,6 +16,7 @@ from geno_core.models import (
     IntegrationConnector,
     LocalizedKnowledgeFact,
     ManualDistributionRecord,
+    ProjectBootstrap,
     RawEvidenceRecord,
     ReportExport,
     RetestComparison,
@@ -122,6 +123,12 @@ ANSWER_RUN_COLUMNS = (
     "collected_at",
     "status",
 )
+ANSWER_RUN_READ_COLUMNS = ANSWER_RUN_COLUMNS + (
+    "prompt_text",
+    "prompt_intent_type",
+    "prompt_priority",
+    "prompt_version",
+)
 RAW_ANSWER_COLUMNS = ("id", "answer_run_id", "answer_text", "raw_payload", "raw_payload_hash", "created_at")
 CITATION_COLUMNS = ("id", "answer_run_id", "url", "domain", "position", "source_type", "created_at")
 ASSET_COLUMNS = ("id", "answer_run_id", "asset_type", "url", "content_hash", "created_at")
@@ -184,31 +191,36 @@ class PostgresEvidenceRepository:
         filters: list[str] = []
         params: list[object] = []
         if project_id:
-            filters.append("project_id = %s")
+            filters.append("ar.project_id = %s")
             params.append(_uuid(project_id))
         if platform:
-            filters.append("platform = %s")
+            filters.append("ar.platform = %s")
             params.append(platform)
         if status:
-            filters.append("status = %s")
+            filters.append("ar.status = %s")
             params.append(status)
         where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
 
         with self.connection.cursor() as cursor:
-            cursor.execute(f"SELECT count(*) FROM answer_runs {where_clause}", tuple(params))
+            cursor.execute(f"SELECT count(*) FROM answer_runs ar {where_clause}", tuple(params))
             total_row = cursor.fetchone()
             total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
             cursor.execute(
                 f"""
-                SELECT {", ".join(ANSWER_RUN_COLUMNS)}
-                FROM answer_runs
+                SELECT {", ".join(f"ar.{column}" for column in ANSWER_RUN_COLUMNS)},
+                       pq.text AS prompt_text,
+                       pq.intent_type AS prompt_intent_type,
+                       pq.priority AS prompt_priority,
+                       pq.prompt_version AS prompt_version
+                FROM answer_runs ar
+                LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id
                 {where_clause}
-                ORDER BY collected_at DESC, id DESC
+                ORDER BY ar.collected_at DESC, ar.id DESC
                 LIMIT %s OFFSET %s
                 """,
                 (*params, limit, offset),
             )
-            answer_runs = _rows_dict(cursor.fetchall(), ANSWER_RUN_COLUMNS)
+            answer_runs = _rows_dict(cursor.fetchall(), ANSWER_RUN_READ_COLUMNS)
             records: list[RuntimeEvidenceRun] = []
             for answer_run in answer_runs:
                 answer_run_id = str(answer_run["id"])
@@ -298,6 +310,180 @@ class PostgresEvidenceRepository:
             collection_cost=_row_dict(cost_row, COLLECTION_COST_COLUMNS) if cost_row else None,
             audit_events=audit_events,
         )
+
+    def save_project_bootstrap(self, bootstrap: ProjectBootstrap) -> None:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO market_profiles (id, market_code, payload)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (market_code) DO UPDATE SET payload = EXCLUDED.payload
+                """,
+                (
+                    _uuid(_stable_id("market-profile", bootstrap.market_profile.market_code)),
+                    bootstrap.market_profile.market_code,
+                    _json_payload(bootstrap.market_profile),
+                ),
+            )
+            cursor.execute(
+                """
+                INSERT INTO industry_profiles (id, market_code, industry_code, payload)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload
+                """,
+                (
+                    _uuid(
+                        _stable_id(
+                            "industry-profile",
+                            bootstrap.industry_profile.market_code,
+                            bootstrap.industry_profile.industry_code,
+                        )
+                    ),
+                    bootstrap.industry_profile.market_code,
+                    bootstrap.industry_profile.industry_code,
+                    _json_payload(bootstrap.industry_profile),
+                ),
+            )
+            cursor.execute(
+                """
+                INSERT INTO tenants (id, name, slug, created_at)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, slug = EXCLUDED.slug
+                """,
+                (
+                    _uuid(bootstrap.tenant.id),
+                    bootstrap.tenant.name,
+                    bootstrap.tenant.slug,
+                    _datetime(bootstrap.tenant.created_at),
+                ),
+            )
+            cursor.execute(
+                """
+                INSERT INTO projects (
+                  id, tenant_id, name, market_code, industry_code, target_brand, category,
+                  prompt_version, status, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                  name = EXCLUDED.name,
+                  market_code = EXCLUDED.market_code,
+                  industry_code = EXCLUDED.industry_code,
+                  target_brand = EXCLUDED.target_brand,
+                  category = EXCLUDED.category,
+                  prompt_version = EXCLUDED.prompt_version,
+                  status = EXCLUDED.status
+                """,
+                (
+                    _uuid(bootstrap.project.id),
+                    _uuid(bootstrap.project.tenant_id),
+                    bootstrap.project.name,
+                    bootstrap.project.market_code,
+                    bootstrap.project.industry_code,
+                    bootstrap.project.target_brand,
+                    bootstrap.project.category,
+                    bootstrap.project.prompt_version,
+                    bootstrap.project.status,
+                    _datetime(bootstrap.project.created_at),
+                ),
+            )
+            for member in bootstrap.members:
+                cursor.execute(
+                    """
+                    INSERT INTO project_members (id, project_id, user_id, role, created_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role
+                    """,
+                    (
+                        _uuid(member.id),
+                        _uuid(member.project_id),
+                        member.user_id,
+                        member.role,
+                        _datetime(member.created_at),
+                    ),
+                )
+            cursor.execute(
+                """
+                INSERT INTO brand_entities (
+                  id, project_id, canonical_name, official_domains, parent_company, product_lines, status
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                  canonical_name = EXCLUDED.canonical_name,
+                  official_domains = EXCLUDED.official_domains,
+                  parent_company = EXCLUDED.parent_company,
+                  product_lines = EXCLUDED.product_lines,
+                  status = EXCLUDED.status
+                """,
+                (
+                    _uuid(bootstrap.brand.id),
+                    _uuid(bootstrap.brand.project_id),
+                    bootstrap.brand.canonical_name,
+                    _json_payload(bootstrap.brand.official_domains),
+                    bootstrap.brand.parent_company,
+                    _json_payload(bootstrap.brand.product_lines),
+                    bootstrap.brand.status,
+                ),
+            )
+            for competitor in bootstrap.competitors:
+                cursor.execute(
+                    """
+                    INSERT INTO competitor_entities (
+                      id, project_id, canonical_name, official_domains, parent_company, product_lines, status
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                      canonical_name = EXCLUDED.canonical_name,
+                      official_domains = EXCLUDED.official_domains,
+                      parent_company = EXCLUDED.parent_company,
+                      product_lines = EXCLUDED.product_lines,
+                      status = EXCLUDED.status
+                    """,
+                    (
+                        _uuid(competitor.id),
+                        _uuid(competitor.project_id),
+                        competitor.canonical_name,
+                        _json_payload(competitor.official_domains),
+                        competitor.parent_company,
+                        _json_payload(competitor.product_lines),
+                        competitor.status,
+                    ),
+                )
+            for prompt in bootstrap.prompt_questions:
+                cursor.execute(
+                    """
+                    INSERT INTO prompt_questions (
+                      id, project_id, market_code, industry_code, text, intent_type, city,
+                      language, target_brand, competitors, priority, intent_weight,
+                      prompt_version, status
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                      text = EXCLUDED.text,
+                      intent_type = EXCLUDED.intent_type,
+                      city = EXCLUDED.city,
+                      language = EXCLUDED.language,
+                      target_brand = EXCLUDED.target_brand,
+                      competitors = EXCLUDED.competitors,
+                      priority = EXCLUDED.priority,
+                      intent_weight = EXCLUDED.intent_weight,
+                      prompt_version = EXCLUDED.prompt_version,
+                      status = EXCLUDED.status
+                    """,
+                    (
+                        _uuid(prompt.id),
+                        _uuid(prompt.project_id),
+                        prompt.market_code,
+                        prompt.industry_code,
+                        prompt.text,
+                        prompt.intent_type,
+                        prompt.city,
+                        prompt.language,
+                        prompt.target_brand,
+                        _json_payload(prompt.competitors),
+                        prompt.priority,
+                        prompt.intent_weight,
+                        prompt.prompt_version,
+                        prompt.status,
+                    ),
+                )
+            self.save_audit_events(bootstrap.audit_events, cursor=cursor)
+        self.connection.commit()
 
     def save_raw_evidence_records(self, records: tuple[RawEvidenceRecord, ...]) -> None:
         with self.connection.cursor() as cursor:

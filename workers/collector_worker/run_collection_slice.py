@@ -21,7 +21,7 @@ from geno_core.google_spike import (
     evaluate_google_spike_gate,
     select_google_spike_prompts,
 )
-from geno_core.models import CollectionFailureRecord, RawEvidenceRecord
+from geno_core.models import CollectionFailureRecord, ProjectBootstrap, RawEvidenceRecord
 from geno_core.runtime import RuntimePersistenceError, build_repository_from_env
 
 
@@ -37,16 +37,23 @@ def _collectors(mode: str) -> tuple[CollectorBackend, ...]:
 
 def _persist_records(
     *,
+    bootstrap: ProjectBootstrap,
     successes: tuple[RawEvidenceRecord, ...],
     failures: tuple[CollectionFailureRecord, ...],
 ) -> dict[str, object]:
     repository = build_repository_from_env()
+    repository.save_project_bootstrap(bootstrap)
     if successes:
         repository.save_raw_evidence_records(successes)
     if failures:
         repository.save_collection_failure_records(failures)
     return {
         "enabled": True,
+        "project_bootstrap": True,
+        "tenant_id": bootstrap.tenant.id,
+        "project_id": bootstrap.project.id,
+        "prompt_questions": len(bootstrap.prompt_questions),
+        "competitors": len(bootstrap.competitors),
         "raw_evidence_records": len(successes),
         "collection_failure_records": len(failures),
     }
@@ -90,7 +97,7 @@ def main() -> None:
     persistence: dict[str, object] = {"enabled": False}
     if args.persist:
         try:
-            persistence = _persist_records(successes=successes, failures=failures)
+            persistence = _persist_records(bootstrap=bootstrap, successes=successes, failures=failures)
         except RuntimePersistenceError as exc:
             print(f"persistence_error: {exc}", file=sys.stderr)
             raise SystemExit(2) from exc

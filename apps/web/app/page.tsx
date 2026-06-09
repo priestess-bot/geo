@@ -11,8 +11,9 @@ const modules = [
   "Knowledge Facts + Content Draft",
   "Traceability Bundle",
   "DATABASE_URL Runtime",
+  "Project Bootstrap Persistence",
   "Worker --persist",
-  "Runtime Evidence API",
+  "Prompt-linked Runtime Evidence API",
   "Audit / Provenance",
   "AUVisibilityScore",
   "Evidence Report"

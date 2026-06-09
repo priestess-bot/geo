@@ -2,7 +2,7 @@
 
 本仓库是围绕 **智推时代（GenOptima）** 及其 **GEO（Generative Engine Optimization，生成式引擎优化）** 业务的一次完整调研与产品落地规划。内容包括：公司与行业可审计调研复盘、GENO 方法论与技术栈拆解、竞品格局、合作案例核查，以及面向**澳大利亚首发**的 GENO SaaS MVP 技术设计与需求拆解。
 
-本库已从文档与规划进入工程实现：除调研文档外，当前已包含 FastAPI API 壳、Next.js 控制台壳、Python 核心契约、AU 项目启动包、DTC 电商行业模板、100 条 Prompt Pack、M2a evidence chain、M2b Google spike gate fixture、M3 rule parser + AUVisibilityScore、M4 Citation Graph + Competitor Benchmark、M5 Markdown/CSV Evidence Report Export、M6 Action Plan + Retest comparison、M7 Knowledge Facts + Content Draft + Integrations fixture、Traceability Bundle、PostgreSQL repository 映射、`DATABASE_URL` runtime connection、worker `--persist` 写库开关、SQL 迁移、Docker Compose、CI、ADR 与工程实施审计日志。核心原则仍是**可审计**：每一个调研结论尽量回指原始来源（PDF、网页快照、行业报告），每一个工程输出逐步建立 `AuditEvent / EvidenceLink / ScoreContribution / ReportExport / ActionRecommendation / RetestComparison / ContentDraft / TraceabilityBundle` 溯源链。
+本库已从文档与规划进入工程实现：除调研文档外，当前已包含 FastAPI API 壳、Next.js 控制台壳、Python 核心契约、AU 项目启动包、DTC 电商行业模板、100 条 Prompt Pack、M2a evidence chain、M2b Google spike gate fixture、M3 rule parser + AUVisibilityScore、M4 Citation Graph + Competitor Benchmark、M5 Markdown/CSV Evidence Report Export、M6 Action Plan + Retest comparison、M7 Knowledge Facts + Content Draft + Integrations fixture、Traceability Bundle、PostgreSQL repository 映射、`DATABASE_URL` runtime connection、AU 启动包/prompt 元数据持久化、worker `--persist` 写库开关、SQL 迁移、Docker Compose、CI、ADR 与工程实施审计日志。核心原则仍是**可审计**：每一个调研结论尽量回指原始来源（PDF、网页快照、行业报告），每一个工程输出逐步建立 `AuditEvent / EvidenceLink / ScoreContribution / ReportExport / ActionRecommendation / RetestComparison / ContentDraft / TraceabilityBundle` 溯源链。
 
 > 🛠 **开发与管理入口**：[PROJECT-PLAN.md](PROJECT-PLAN.md) —— 把澳大利亚首发规格拆成 8 个里程碑、任务清单与验收标准（DoD），是从 `docs/` 规格走向工程交付的待办层。
 >
@@ -51,7 +51,7 @@ docker compose -f infra/docker-compose.yml up --build
 
 默认地址：API `http://localhost:8000/health`，控制台 `http://localhost:3000`。
 
-采集 worker 默认只输出 JSON；显式启用持久化时会把成功的 `RawEvidenceRecord` 和失败的 `CollectionFailureRecord` 写入 PostgreSQL：
+采集 worker 默认只输出 JSON；显式启用持久化时会先把 AU `ProjectBootstrap`、品牌/竞品和 100 条 `PromptQuestion` 写入 PostgreSQL，再把成功的 `RawEvidenceRecord` 和失败的 `CollectionFailureRecord` 写入 PostgreSQL：
 
 ```bash
 DATABASE_URL=postgresql://geno:geno@localhost:5432/geno make worker-fixture-persist
@@ -71,7 +71,7 @@ docker compose -f infra/docker-compose.yml --profile worker run --rm collector-w
 curl "http://localhost:8000/v1/evidence-runs/runtime?limit=20"
 ```
 
-该接口从 PostgreSQL 读取 `AnswerRun -> RawAnswer -> Citation/Asset/Log/Cost/Audit` 聚合页；未配置 `DATABASE_URL` 时返回 503。
+该接口从 PostgreSQL 读取 `AnswerRun -> PromptQuestion -> RawAnswer -> Citation/Asset/Log/Cost/Audit` 聚合页，返回的 `answer_run` 含 prompt 文本、intent、priority 和 prompt version；未配置 `DATABASE_URL` 时返回 503。
 
 ## 核心文档
 

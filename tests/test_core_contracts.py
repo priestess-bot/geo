@@ -942,6 +942,37 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(str(first_analysis_insert[0]), analysis_result.analyses[0].id)
         self.assertEqual(len(str(first_analysis_insert[0])), 36)
 
+    def test_postgres_repository_persists_project_bootstrap_metadata(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        connection = RecordingConnection()
+
+        PostgresEvidenceRepository(connection).save_project_bootstrap(bootstrap)
+
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        expected_tables = (
+            "market_profiles",
+            "industry_profiles",
+            "tenants",
+            "projects",
+            "project_members",
+            "brand_entities",
+            "competitor_entities",
+            "prompt_questions",
+            "audit_events",
+        )
+        for table in expected_tables:
+            self.assertIn(f"INSERT INTO {table}", executed_sql)
+        prompt_inserts = [params for sql, params in connection.calls if "INSERT INTO prompt_questions" in sql]
+        competitor_inserts = [params for sql, params in connection.calls if "INSERT INTO competitor_entities" in sql]
+        first_project_insert = next(params for sql, params in connection.calls if "INSERT INTO projects" in sql)
+        first_prompt_insert = prompt_inserts[0]
+        self.assertEqual(len(prompt_inserts), 100)
+        self.assertEqual(len(competitor_inserts), 4)
+        self.assertEqual(str(first_project_insert[0]), bootstrap.project.id)
+        self.assertEqual(str(first_prompt_insert[0]), bootstrap.prompt_questions[0].id)
+        self.assertEqual(first_prompt_insert[4], bootstrap.prompt_questions[0].text)
+        self.assertEqual(connection.commit_count, 1)
+
     def test_runtime_repository_requires_database_url(self) -> None:
         with self.assertRaises(RuntimePersistenceError):
             build_repository_from_env({})
@@ -1014,6 +1045,10 @@ class CoreContractsTest(unittest.TestCase):
                         "collector_version": "fixture-v1",
                         "collected_at": now,
                         "status": "completed",
+                        "prompt_text": "Best mattresses in Australia",
+                        "prompt_intent_type": "category_recommendation",
+                        "prompt_priority": 1,
+                        "prompt_version": "au_dtc_ecommerce_v1",
                     }
                 ],
                 {
@@ -1100,6 +1135,8 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(len(page.records), 1)
         record = page.records[0]
         self.assertEqual(record.answer_run["id"], answer_run_id)
+        self.assertEqual(record.answer_run["prompt_text"], "Best mattresses in Australia")
+        self.assertEqual(record.answer_run["prompt_version"], "au_dtc_ecommerce_v1")
         self.assertEqual(record.raw_answer["raw_payload"]["citations"], 1)
         self.assertEqual(record.citations[0]["domain"], "reviews.example")
         self.assertEqual(record.evidence_assets[0]["asset_type"], "html_snapshot")
@@ -1107,7 +1144,8 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(record.collection_cost["total_cost"], 0.0015)
         self.assertEqual(record.audit_events[0]["event_type"], "answer_run_collected")
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
-        self.assertIn("FROM answer_runs WHERE project_id = %s AND platform = %s AND status = %s", executed_sql)
+        self.assertIn("FROM answer_runs ar WHERE ar.project_id = %s AND ar.platform = %s AND ar.status = %s", executed_sql)
+        self.assertIn("LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id", executed_sql)
         self.assertIn("FROM raw_answers", executed_sql)
 
 
