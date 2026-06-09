@@ -224,6 +224,29 @@ code {
   text-align: center;
 }
 
+.downloadRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.downloadRow a {
+  background: #245d61;
+  border: 1px solid #245d61;
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 10px 12px;
+  text-decoration: none;
+}
+
+.downloadRow a + a {
+  background: #ffffff;
+  color: #245d61;
+}
+
 .compactList,
 .plainList {
   display: grid;

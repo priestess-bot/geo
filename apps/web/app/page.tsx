@@ -51,6 +51,7 @@ type CitationGraph = {
 
 type ReportExport = {
   report_export: {
+    id: string;
     report_version: string;
     sample_size: number;
     exported_at: string;
@@ -210,6 +211,9 @@ export default async function Home() {
   const latestAction = data.actions.records[0];
   const latestContent = data.content.records[0];
   const traceability = data.traceability;
+  const reportArtifactBase = latestReport
+    ? `${displayUrl}/v1/reports/runtime/${latestReport.report_export.id}/artifact`
+    : null;
   const totalAuditEvents =
     (latestEvidence?.audit_events.length || 0) +
     (latestScore?.audit_events.length || 0) +
@@ -313,12 +317,18 @@ export default async function Home() {
 
         <Panel title="Report Snapshot" subtitle={latestReport?.report_export.report_version || "No report"}>
           {latestReport ? (
-            <dl className="facts">
-              <Fact label="Sample size" value={latestReport.report_export.sample_size} />
-              <Fact label="Evidence links" value={latestReport.answer_runs.length} />
-              <Fact label="Markdown" value={latestReport.report_export.markdown_url || "pending object store"} />
-              <Fact label="CSV" value={latestReport.report_export.csv_url || "pending object store"} />
-            </dl>
+            <div className="stack">
+              <dl className="facts">
+                <Fact label="Sample size" value={latestReport.report_export.sample_size} />
+                <Fact label="Evidence links" value={latestReport.answer_runs.length} />
+                <Fact label="Frozen MD URL" value={latestReport.report_export.markdown_url || "pending object store"} />
+                <Fact label="Frozen CSV URL" value={latestReport.report_export.csv_url || "pending object store"} />
+              </dl>
+              <div className="downloadRow">
+                <a href={`${reportArtifactBase}?type=markdown`}>Download Markdown</a>
+                <a href={`${reportArtifactBase}?type=csv`}>Download CSV</a>
+              </div>
+            </div>
           ) : (
             <EmptyState />
           )}

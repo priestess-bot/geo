@@ -2,7 +2,7 @@
 
 本仓库是围绕 **智推时代（GenOptima）** 及其 **GEO（Generative Engine Optimization，生成式引擎优化）** 业务的一次完整调研与产品落地规划。内容包括：公司与行业可审计调研复盘、GENO 方法论与技术栈拆解、竞品格局、合作案例核查，以及面向**澳大利亚首发**的 GENO SaaS MVP 技术设计与需求拆解。
 
-本库已从文档与规划进入工程实现：除调研文档外，当前已包含 FastAPI API、Next.js Runtime Console、Python 核心契约、AU 项目启动包、DTC 电商行业模板、100 条 Prompt Pack、M2a evidence chain、M2b Google spike gate fixture、M3 rule parser + AUVisibilityScore、M4 Citation Graph + Competitor Benchmark、M5 Markdown/CSV Evidence Report Export、M6 Action Plan + Retest comparison、M7 Knowledge Facts + Content Draft + Integrations fixture、Traceability Bundle、PostgreSQL repository 映射、`DATABASE_URL` runtime connection、AU 启动包/prompt 元数据持久化、worker `--persist` / `--persist-analysis` 写库开关、runtime evidence / score / citation graph / report / action plan / content engine / traceability 查询 API、Runtime Console Traceability Detail 与节点级 details 钻取面板、SQL 迁移、Docker Compose、CI、ADR 与工程实施审计日志。核心原则仍是**可审计**：每一个调研结论尽量回指原始来源（PDF、网页快照、行业报告），每一个工程输出逐步建立 `AuditEvent / EvidenceLink / ScoreContribution / ReportExport / ActionRecommendation / RetestComparison / ContentDraft / TraceabilityBundle` 溯源链。
+本库已从文档与规划进入工程实现：除调研文档外，当前已包含 FastAPI API、Next.js Runtime Console、Python 核心契约、AU 项目启动包、DTC 电商行业模板、100 条 Prompt Pack、M2a evidence chain、M2b Google spike gate fixture、M3 rule parser + AUVisibilityScore、M4 Citation Graph + Competitor Benchmark、M5 Markdown/CSV Evidence Report Export、M6 Action Plan + Retest comparison、M7 Knowledge Facts + Content Draft + Integrations fixture、Traceability Bundle、PostgreSQL repository 映射、`DATABASE_URL` runtime connection、AU 启动包/prompt 元数据持久化、worker `--persist` / `--persist-analysis` 写库开关、runtime evidence / score / citation graph / report / report artifact / action plan / content engine / traceability 查询 API、Runtime Console Traceability Detail 与节点级 details 钻取面板、SQL 迁移、Docker Compose、CI、ADR 与工程实施审计日志。核心原则仍是**可审计**：每一个调研结论尽量回指原始来源（PDF、网页快照、行业报告），每一个工程输出逐步建立 `AuditEvent / EvidenceLink / ScoreContribution / ReportExport / ActionRecommendation / RetestComparison / ContentDraft / TraceabilityBundle` 溯源链。
 
 > 🛠 **开发与管理入口**：[PROJECT-PLAN.md](PROJECT-PLAN.md) —— 把澳大利亚首发规格拆成 8 个里程碑、任务清单与验收标准（DoD），是从 `docs/` 规格走向工程交付的待办层。
 >
@@ -49,7 +49,7 @@ make docker-config
 docker compose -f infra/docker-compose.yml up --build
 ```
 
-默认地址：API `http://localhost:8000/health`，控制台 `http://localhost:3000`。控制台会读取 runtime evidence / score / graph / report / action / content / traceability API，并在 Traceability Detail 面板展示报告到评分、证据、图谱、行动、内容、审计事件和 evidence links 的聚合链路；节点级 details 区可展开查看 score components、answer evidence、citation/asset nodes、actions/content drafts 和 audit event nodes。如果还没有数据，先运行 worker profile 写入一批 fixture runtime 数据。
+默认地址：API `http://localhost:8000/health`，控制台 `http://localhost:3000`。控制台会读取 runtime evidence / score / graph / report / report artifact / action / content / traceability API，并在 Report Snapshot 面板提供 Markdown/CSV 下载入口；Traceability Detail 面板展示报告到评分、证据、图谱、行动、内容、审计事件和 evidence links 的聚合链路；节点级 details 区可展开查看 score components、answer evidence、citation/asset nodes、actions/content drafts 和 audit event nodes。如果还没有数据，先运行 worker profile 写入一批 fixture runtime 数据。
 
 采集 worker 默认只输出 JSON；显式启用持久化时会先把 AU `ProjectBootstrap`、品牌/竞品和 100 条 `PromptQuestion` 写入 PostgreSQL，再把成功的 `RawEvidenceRecord` 和失败的 `CollectionFailureRecord` 写入 PostgreSQL：
 
@@ -80,6 +80,8 @@ curl "http://localhost:8000/v1/evidence-runs/runtime?limit=20"
 curl "http://localhost:8000/v1/visibility-scores/runtime?limit=20"
 curl "http://localhost:8000/v1/citation-graphs/runtime?limit=20"
 curl "http://localhost:8000/v1/reports/runtime?limit=20"
+curl "http://localhost:8000/v1/reports/runtime/{report_export_id}/artifact?type=markdown"
+curl "http://localhost:8000/v1/reports/runtime/{report_export_id}/artifact?type=csv"
 curl "http://localhost:8000/v1/action-plans/runtime?limit=20"
 curl "http://localhost:8000/v1/content-engines/runtime?limit=20"
 curl "http://localhost:8000/v1/traceability/runtime"

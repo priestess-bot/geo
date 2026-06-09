@@ -75,6 +75,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_report_artifact_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get("/v1/reports/runtime/report-1/artifact?type=markdown")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_runtime_action_plans_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/action-plans/runtime")
         self.assertEqual(response.status_code, 503)
@@ -190,6 +195,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEvidenceRun", payload["persistence"])
         self.assertIn("RuntimeScoreSnapshot", payload["persistence"])
         self.assertIn("RuntimeCitationGraph", payload["persistence"])
+        self.assertIn("RuntimeReportArtifact", payload["persistence"])
         self.assertIn("RuntimeReportExport", payload["persistence"])
         self.assertIn("RuntimeActionPlan", payload["persistence"])
         self.assertIn("RuntimeContentEngine", payload["persistence"])
@@ -198,6 +204,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/visibility-scores/runtime", payload["persistence"])
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])
         self.assertIn("/v1/reports/runtime", payload["persistence"])
+        self.assertIn("/v1/reports/runtime/{report_export_id}/artifact", payload["persistence"])
         self.assertIn("/v1/action-plans/runtime", payload["persistence"])
         self.assertIn("/v1/content-engines/runtime", payload["persistence"])
         self.assertIn("/v1/traceability/runtime", payload["persistence"])

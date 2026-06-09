@@ -88,7 +88,7 @@
 
 - `[ ]` 生成 Citation Graph，识别 source gap，输出 3–5 竞品 Benchmark
 - `[ ]` 导出含方法说明（含 API/消费者界面差异抽检结论、Google spike 结论、平台覆盖/降级口径）、审计摘要、分数解释包与原始证据附录的 PDF/CSV
-- `[~]` 任意报告数值可沿 `ReportExport -> VisibilityScoreSnapshot -> ScoreContribution -> AnswerAnalysis -> PromptQuestion -> AnswerRun -> RawAnswer/AnswerCitation/EvidenceAsset -> SourceGraph/SourceGap/CompetitorBenchmark` 追溯（fixture TraceabilityBundle、prompt-linked runtime evidence API、runtime score API、runtime citation graph API、runtime report API、runtime traceability detail API 与 Runtime Console Traceability Detail / node drilldown 已落；报告下载、筛选和深链路详情 UI 待接）
+- `[~]` 任意报告数值可沿 `ReportExport -> VisibilityScoreSnapshot -> ScoreContribution -> AnswerAnalysis -> PromptQuestion -> AnswerRun -> RawAnswer/AnswerCitation/EvidenceAsset -> SourceGraph/SourceGap/CompetitorBenchmark` 追溯（fixture TraceabilityBundle、prompt-linked runtime evidence API、runtime score API、runtime citation graph API、runtime report API、runtime report artifact API、runtime traceability detail API 与 Runtime Console Traceability Detail / node drilldown 已落；PDF/MinIO 上传、筛选和深链路详情 UI 待接）
 
 **架构验收门槛**（开源·可插拔，搬自 AU 路径 §9）：
 
@@ -237,14 +237,14 @@ DoD：
 
 任务：
 
-- `[~]` (P0c) ReportExporter 接口 + Markdown/CSV 导出（方法说明 + 证据附录）与 runtime report API；PDF renderer 待接 — `Step13`
+- `[~]` (P0c) ReportExporter 接口 + Markdown/CSV 导出（方法说明 + 证据附录）、runtime report API 与 Markdown/CSV artifact 下载；PDF renderer / MinIO 上传待接 — `Step13`
 - `[x]` (P0c) ReportExport 快照：冻结 score_snapshot_ids、answer_run_ids、prompt_version、公式版本、平台权重、采样窗口；worker `--persist-analysis` 已写入不可覆盖版本，runtime report API 可读回 — `Step5.1 / §8.17`
 - `[~]` (P0c) 报告展示：采集窗口/平台覆盖/access_method/样本量(k)/离散度/双分母/公式版本/API-界面差异抽检结论/Google spike pass/fail/limited coverage/审计摘要/分数解释包/非确定性说明 — `Step13`（核心方法/分数/证据/source gap/competitor/report snapshot 已落；PDF、API-界面差异抽检与真实 Google 结论待接）
 - `[ ]` (P1) 代理商工作流：多客户/多项目/白标/导出历史 — `Step13`
 
 DoD：
 
-- `[~]` 可导出含方法说明和证据附录的 Markdown/CSV，并通过 runtime report API 读取冻结快照；PDF 待接
+- `[~]` 可导出含方法说明和证据附录的 Markdown/CSV，并通过 runtime report API 读取冻结快照、通过 artifact API 下载 Markdown/CSV；PDF 待接
 - `[x]` 报告每个数字可追溯 answer_run_ids、prompt metadata、score snapshot 和 citation graph
 - `[x]` 报告导出写 AuditEvent；重复导出生成新 ReportExport 版本，不覆盖旧报告
 

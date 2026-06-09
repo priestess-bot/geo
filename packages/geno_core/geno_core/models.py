@@ -619,6 +619,16 @@ class RuntimeReportExportPage:
 
 
 @dataclass(frozen=True)
+class RuntimeReportArtifact:
+    report_export: dict[str, Any]
+    artifact_type: str
+    filename: str
+    media_type: str
+    content: str
+    content_hash: str
+
+
+@dataclass(frozen=True)
 class RuntimeActionPlan:
     retest_schedule: dict[str, Any]
     action_recommendations: tuple[dict[str, Any], ...]

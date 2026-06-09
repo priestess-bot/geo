@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import csv
 import json
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
+from io import StringIO
 from typing import Any, Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -31,6 +33,7 @@ from geno_core.models import (
     RuntimeContentEnginePage,
     RuntimeEvidencePage,
     RuntimeEvidenceRun,
+    RuntimeReportArtifact,
     RuntimeReportExport,
     RuntimeReportExportPage,
     RuntimeScoreSnapshot,
@@ -113,6 +116,107 @@ def _rows_dict(rows: Any, columns: tuple[str, ...]) -> tuple[dict[str, Any], ...
 
 def _stable_id(kind: str, *parts: object) -> str:
     return str(uuid5(NAMESPACE_URL, ":".join(("geno", kind, *(str(part) for part in parts)))))
+
+
+def _render_runtime_report_markdown(report: RuntimeReportExport) -> str:
+    report_export = report.report_export
+    snapshot = report.score_snapshots[0] if report.score_snapshots else {}
+    graph = report.citation_graph
+    lines = [
+        "# GENO AU Evidence Report",
+        "",
+        f"- Report version: {report_export['report_version']}",
+        f"- Market: {report_export['market_code']}",
+        f"- Sample size: {report_export['sample_size']}",
+        f"- Prompt version: {report_export['prompt_version']}",
+        f"- Formula: {report_export['scoring_formula_version']}",
+        f"- Methodology hash: {report_export['methodology_hash']}",
+        f"- Window: {report_export['window_start']} to {report_export['window_end']}",
+        "",
+        "## Score Snapshot",
+        "",
+        f"- Final score: {snapshot.get('final_score', 'n/a')}",
+        f"- Trigger rate: {snapshot.get('trigger_rate', 'n/a')}",
+        f"- Mention rate: {snapshot.get('mention_rate', 'n/a')}",
+        f"- Recommendation rate: {snapshot.get('recommendation_rate', 'n/a')}",
+        f"- Dispersion: {snapshot.get('dispersion', 'n/a')}",
+        "",
+        "## Evidence Appendix",
+        "",
+    ]
+    for answer_run in report.answer_runs:
+        lines.append(
+            f"- {answer_run['platform']} / {answer_run['surface']} / {answer_run['city']}: "
+            f"{answer_run.get('prompt_text') or answer_run['prompt_question_id']} "
+            f"(answer_run_id={answer_run['id']})"
+        )
+    lines.extend(["", "## Citation Graph", ""])
+    if graph:
+        lines.append(f"- Source nodes: {len(graph.nodes)}")
+        lines.append(f"- Evidence links: {len(graph.evidence_links)}")
+        lines.append(f"- Source gaps: {len(graph.source_gaps)}")
+        lines.append(f"- Competitor benchmarks: {len(graph.competitor_benchmarks)}")
+        lines.extend(["", "### Source Gaps", ""])
+        for gap in graph.source_gaps:
+            lines.append(f"- {gap['source_type']}: {gap['gap_type']}; {gap['recommendation']}")
+    else:
+        lines.append("- No citation graph stored for this report.")
+    lines.extend(["", "## Audit Summary", ""])
+    for event in report.audit_events:
+        lines.append(
+            f"- {event['event_type']} target={event['target_type']} "
+            f"method={event.get('method_version') or 'n/a'}"
+        )
+    lines.extend(["", "## Traceability", ""])
+    lines.append(
+        "This artifact is regenerated from frozen runtime data: "
+        "ReportExport -> VisibilityScoreSnapshot -> ReportEvidence/AnswerRun -> CitationGraph -> AuditEvent."
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _render_runtime_report_csv(report: RuntimeReportExport) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "report_export_id",
+            "report_version",
+            "answer_run_id",
+            "prompt_question_id",
+            "prompt_text",
+            "platform",
+            "surface",
+            "city",
+            "access_method",
+            "sample_index",
+            "sample_size",
+            "answer_present",
+            "surface_triggered",
+            "status",
+        ],
+    )
+    writer.writeheader()
+    for answer_run in report.answer_runs:
+        writer.writerow(
+            {
+                "report_export_id": report.report_export["id"],
+                "report_version": report.report_export["report_version"],
+                "answer_run_id": answer_run["id"],
+                "prompt_question_id": answer_run["prompt_question_id"],
+                "prompt_text": answer_run.get("prompt_text") or "",
+                "platform": answer_run["platform"],
+                "surface": answer_run["surface"],
+                "city": answer_run["city"],
+                "access_method": answer_run["access_method"],
+                "sample_index": answer_run["sample_index"],
+                "sample_size": answer_run["sample_size"],
+                "answer_present": answer_run["answer_present"],
+                "surface_triggered": answer_run["surface_triggered"],
+                "status": answer_run["status"],
+            }
+        )
+    return output.getvalue()
 
 
 ANSWER_RUN_COLUMNS = (
@@ -615,6 +719,44 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=records,
+        )
+
+    def get_runtime_report_artifact(
+        self,
+        *,
+        report_export_id: str,
+        artifact_type: str,
+    ) -> RuntimeReportArtifact | None:
+        artifact_type = artifact_type.lower()
+        if artifact_type not in {"markdown", "csv"}:
+            raise ValueError("artifact_type must be markdown or csv")
+        with self.connection.cursor() as cursor:
+            report_export = self._load_report_export_by_id(
+                cursor=cursor,
+                report_export_id=report_export_id,
+            )
+            if not report_export:
+                return None
+            runtime_report = self._load_runtime_report_export(
+                cursor=cursor,
+                report_export=report_export,
+            )
+        if artifact_type == "markdown":
+            content = _render_runtime_report_markdown(runtime_report)
+            extension = "md"
+            media_type = "text/markdown; charset=utf-8"
+        else:
+            content = _render_runtime_report_csv(runtime_report)
+            extension = "csv"
+            media_type = "text/csv; charset=utf-8"
+        filename = f"{report_export['report_version']}.{extension}"
+        return RuntimeReportArtifact(
+            report_export=report_export,
+            artifact_type=artifact_type,
+            filename=filename,
+            media_type=media_type,
+            content=content,
+            content_hash=_stable_id("runtime-report-artifact", report_export["id"], artifact_type, content),
         )
 
     def get_runtime_traceability_detail(

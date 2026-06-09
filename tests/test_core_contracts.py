@@ -53,6 +53,7 @@ from geno_core.models import (
     RuntimeActionPlanPage,
     RuntimeContentEnginePage,
     RuntimeScoreSnapshotPage,
+    RuntimeReportArtifact,
     RuntimeReportExportPage,
     RuntimeTraceabilityDetail,
 )
@@ -1514,6 +1515,202 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM report_exports WHERE project_id = %s AND report_type = %s", executed_sql)
         self.assertIn("FROM report_evidence re JOIN answer_runs ar ON ar.id = re.answer_run_id", executed_sql)
         self.assertIn("SELECT count(*) FROM source_graphs WHERE project_id = %s", executed_sql)
+
+    def test_postgres_repository_renders_runtime_report_artifact(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        snapshot_id = "a7f7f8aa-5d40-4fdf-a2b3-b8729a9a5e2f"
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_row = {
+            "id": report_export_id,
+            "project_id": project_id,
+            "market_code": "AU",
+            "report_version": "worker-runtime-v1",
+            "report_type": "worker_runtime",
+            "score_snapshot_ids": [snapshot_id],
+            "answer_run_ids": [answer_run_id],
+            "prompt_version": "au_dtc_ecommerce_v1",
+            "scoring_formula_version": "au_visibility_v1",
+            "platform_weights_snapshot": {"chatgpt": 0.30, "perplexity": 0.25},
+            "sample_size": 1,
+            "window_start": now,
+            "window_end": now,
+            "methodology_hash": "methodology-hash",
+            "markdown_url": "s3://geno-reports/report.md",
+            "pdf_url": None,
+            "csv_url": "s3://geno-reports/report.csv",
+            "exported_by": "system",
+            "exported_at": now,
+        }
+        answer_run_row = {
+            "id": answer_run_id,
+            "project_id": project_id,
+            "prompt_question_id": "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0",
+            "platform": "perplexity",
+            "surface": "sonar",
+            "access_method": "official_api",
+            "market_code": "AU",
+            "city": "Australia",
+            "language": "en-AU",
+            "device": "desktop",
+            "answer_present": True,
+            "surface_triggered": True,
+            "sample_index": 1,
+            "sample_size": 1,
+            "model_or_surface": "sonar",
+            "account_state": "api_key",
+            "collector_backend_id": "fixture_perplexity_sonar",
+            "collector_version": "fixture-v1",
+            "collected_at": now,
+            "status": "completed",
+            "prompt_text": "Is ExampleBrand good in Australia?",
+            "prompt_intent_type": "brand_awareness",
+            "prompt_priority": 1,
+            "prompt_version": "au_dtc_ecommerce_v1",
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                report_row,
+                {
+                    "id": snapshot_id,
+                    "project_id": project_id,
+                    "scope_type": "collection_slice",
+                    "scope_value": "worker_runtime",
+                    "formula_version": "au_visibility_v1",
+                    "platform_weights_snapshot": {"chatgpt": 0.30, "perplexity": 0.25},
+                    "final_score": 87.35,
+                    "trigger_rate": 1.0,
+                    "mention_rate": 1.0,
+                    "recommendation_rate": 1.0,
+                    "answer_run_ids": [answer_run_id],
+                    "created_at": now,
+                    "dispersion": 0.0,
+                },
+                answer_run_row,
+                [
+                    {
+                        "id": "d5f57d79-4834-4bd3-92a3-a1c917fbb3cf",
+                        "event_type": "report_export_created",
+                        "project_id": project_id,
+                        "actor_type": "system",
+                        "actor_id": "markdown_csv_report_exporter_v1",
+                        "target_type": "report_export",
+                        "target_id": report_export_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"answer_run_ids": [answer_run_id]},
+                        "output_refs": {"report_export_ids": [report_export_id]},
+                        "method_version": "markdown_csv_report_exporter_v1",
+                        "reason": "test",
+                        "created_at": now,
+                    }
+                ],
+                {"count": 0},
+            ]
+        )
+        artifact = PostgresEvidenceRepository(connection).get_runtime_report_artifact(
+            report_export_id=report_export_id,
+            artifact_type="markdown",
+        )
+        self.assertIsInstance(artifact, RuntimeReportArtifact)
+        assert artifact is not None
+        self.assertEqual(artifact.filename, "worker-runtime-v1.md")
+        self.assertEqual(artifact.media_type, "text/markdown; charset=utf-8")
+        self.assertIn("GENO AU Evidence Report", artifact.content)
+        self.assertIn("Is ExampleBrand good in Australia?", artifact.content)
+        self.assertIn("ReportExport -> VisibilityScoreSnapshot", artifact.content)
+        self.assertTrue(artifact.content_hash)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM report_exports WHERE id = %s", executed_sql)
+
+    def test_postgres_repository_renders_runtime_report_csv_artifact(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        snapshot_id = "a7f7f8aa-5d40-4fdf-a2b3-b8729a9a5e2f"
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_row = {
+            "id": report_export_id,
+            "project_id": project_id,
+            "market_code": "AU",
+            "report_version": "worker-runtime-v1",
+            "report_type": "worker_runtime",
+            "score_snapshot_ids": [snapshot_id],
+            "answer_run_ids": [answer_run_id],
+            "prompt_version": "au_dtc_ecommerce_v1",
+            "scoring_formula_version": "au_visibility_v1",
+            "platform_weights_snapshot": {"chatgpt": 0.30, "perplexity": 0.25},
+            "sample_size": 1,
+            "window_start": now,
+            "window_end": now,
+            "methodology_hash": "methodology-hash",
+            "markdown_url": "s3://geno-reports/report.md",
+            "pdf_url": None,
+            "csv_url": "s3://geno-reports/report.csv",
+            "exported_by": "system",
+            "exported_at": now,
+        }
+        answer_run_row = {
+            "id": answer_run_id,
+            "project_id": project_id,
+            "prompt_question_id": "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0",
+            "platform": "perplexity",
+            "surface": "sonar",
+            "access_method": "official_api",
+            "market_code": "AU",
+            "city": "Australia",
+            "language": "en-AU",
+            "device": "desktop",
+            "answer_present": True,
+            "surface_triggered": True,
+            "sample_index": 1,
+            "sample_size": 1,
+            "model_or_surface": "sonar",
+            "account_state": "api_key",
+            "collector_backend_id": "fixture_perplexity_sonar",
+            "collector_version": "fixture-v1",
+            "collected_at": now,
+            "status": "completed",
+            "prompt_text": "Is ExampleBrand good in Australia?",
+            "prompt_intent_type": "brand_awareness",
+            "prompt_priority": 1,
+            "prompt_version": "au_dtc_ecommerce_v1",
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                report_row,
+                {
+                    "id": snapshot_id,
+                    "project_id": project_id,
+                    "scope_type": "collection_slice",
+                    "scope_value": "worker_runtime",
+                    "formula_version": "au_visibility_v1",
+                    "platform_weights_snapshot": {"chatgpt": 0.30, "perplexity": 0.25},
+                    "final_score": 87.35,
+                    "trigger_rate": 1.0,
+                    "mention_rate": 1.0,
+                    "recommendation_rate": 1.0,
+                    "answer_run_ids": [answer_run_id],
+                    "created_at": now,
+                    "dispersion": 0.0,
+                },
+                answer_run_row,
+                [],
+                {"count": 0},
+            ]
+        )
+        artifact = PostgresEvidenceRepository(connection).get_runtime_report_artifact(
+            report_export_id=report_export_id,
+            artifact_type="csv",
+        )
+        self.assertIsInstance(artifact, RuntimeReportArtifact)
+        assert artifact is not None
+        self.assertEqual(artifact.filename, "worker-runtime-v1.csv")
+        self.assertEqual(artifact.media_type, "text/csv; charset=utf-8")
+        self.assertIn("answer_run_id", artifact.content)
+        self.assertIn("Is ExampleBrand good in Australia?", artifact.content)
+        self.assertTrue(artifact.content_hash)
 
     def test_postgres_repository_reads_runtime_action_plan_page(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

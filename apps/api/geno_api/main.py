@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import Response
 
 from geno_core.action_plan import (
     build_action_plan_audit_event,
@@ -198,6 +199,34 @@ def runtime_reports(
             offset=offset,
         )
         return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/reports/runtime/{report_export_id}/artifact")
+def runtime_report_artifact(
+    report_export_id: str,
+    artifact_type: str = Query(default="markdown", alias="type", pattern="^(markdown|csv)$"),
+) -> Response:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        artifact = repository.get_runtime_report_artifact(
+            report_export_id=report_export_id,
+            artifact_type=artifact_type,
+        )
+        if artifact is None:
+            raise HTTPException(status_code=404, detail="Runtime report artifact not found")
+        return Response(
+            content=artifact.content,
+            media_type=artifact.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{artifact.filename}"',
+                "X-GENO-Report-Artifact-Hash": artifact.content_hash,
+            },
+        )
     finally:
         close_repository_connection(repository)
 
@@ -737,6 +766,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeScoreSnapshotPage",
             "RuntimeCitationGraph",
             "RuntimeCitationGraphPage",
+            "RuntimeReportArtifact",
             "RuntimeReportExport",
             "RuntimeReportExportPage",
             "RuntimeActionPlan",
@@ -758,6 +788,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/visibility-scores/runtime",
             "/v1/citation-graphs/runtime",
             "/v1/reports/runtime",
+            "/v1/reports/runtime/{report_export_id}/artifact",
             "/v1/action-plans/runtime",
             "/v1/content-engines/runtime",
             "/v1/traceability/runtime",
