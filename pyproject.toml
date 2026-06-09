@@ -1,0 +1,8 @@
+[project]
+name = "geno-saas-au"
+version = "0.1.0"
+description = "Evidence-first GENO SaaS AU launch implementation scaffold"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100

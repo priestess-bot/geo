@@ -1,0 +1,13 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY apps/api/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY packages/geno_core ./packages/geno_core
+COPY apps/api ./apps/api
+
+ENV PYTHONPATH=/app/packages/geno_core:/app/apps/api
+
+CMD ["uvicorn", "geno_api.main:app", "--host", "0.0.0.0", "--port", "8000"]

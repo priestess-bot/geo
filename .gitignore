@@ -20,18 +20,32 @@ desktop.ini
 *.temp
 *.bak
 *.log
+tmp/
 
-# Python（如后续加入采集/分析脚本）
-__pycache__/
-*.py[cod]
-.venv/
-venv/
+# 环境变量
 .env
 .env.*
+!.env.example
 
-# Node（如后续加入前端/工具）
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node / frontend
 node_modules/
 npm-debug.log*
 yarn-error.log*
+.next/
+
+# Build / coverage
+dist/
+build/
+coverage/
+htmlcov/
 
 # 注意：docs/ 下的 .md / .html / .pdf 均为可审计证据链的一部分，应纳入版本管理，不在此忽略。

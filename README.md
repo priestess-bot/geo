@@ -2,7 +2,7 @@
 
 本仓库是围绕 **智推时代（GenOptima）** 及其 **GEO（Generative Engine Optimization，生成式引擎优化）** 业务的一次完整调研与产品落地规划。内容包括：公司与行业可审计调研复盘、GENO 方法论与技术栈拆解、竞品格局、合作案例核查，以及面向**澳大利亚首发**的 GENO SaaS MVP 技术设计与需求拆解。
 
-本库当前为文档与规划项目（暂不含代码）。核心原则是**可审计**：每一个结论都尽量回指原始来源（PDF、网页快照、行业报告），并标注证据等级（A/B/C/D）。
+本库已从文档与规划进入 **M0 工程骨架**：除调研文档外，当前已包含 FastAPI API 壳、Next.js 控制台壳、Python 核心契约、SQL 迁移、Docker Compose、CI、ADR 与工程实施审计日志。核心原则仍是**可审计**：每一个调研结论尽量回指原始来源（PDF、网页快照、行业报告），每一个工程输出逐步建立 `AuditEvent / EvidenceLink / ScoreContribution / ReportExport` 溯源链。
 
 > 🛠 **开发与管理入口**：[PROJECT-PLAN.md](PROJECT-PLAN.md) —— 把澳大利亚首发规格拆成 8 个里程碑、任务清单与验收标准（DoD），是从 `docs/` 规格走向工程交付的待办层。
 >
@@ -12,10 +12,22 @@
 
 ```
 .
-├── README.md                           # 本文件：文档库导航
+├── README.md                           # 本文件：项目导航
 ├── PROJECT-PLAN.md                     # 开发与管理：里程碑 / 任务 / 验收(DoD)
 ├── ARCHITECTURE.md                     # 系统架构图（分层 / 可插拔 / 数据流，Mermaid）
-└── docs/                               # 规格源
+├── apps/
+│   ├── api/                            # FastAPI API 壳
+│   └── web/                            # Next.js 控制台壳
+├── packages/
+│   └── geno_core/                      # 核心数据契约、接口契约、审计与评分模型
+├── infra/
+│   ├── docker-compose.yml              # PostgreSQL+pgvector、MinIO、API、Web
+│   └── db/migrations/                  # up/ 初始化迁移，down/ 回滚脚本
+├── workers/                            # 采集 worker 入口预留
+├── tests/                              # 核心契约测试
+├── decisions/                          # ADR 架构决策记录
+├── .github/workflows/                  # CI
+└── docs/                               # 规格源、调研报告、审计日志
     ├── 智推时代-全球GEO业务介绍.pdf        # 智推时代官方商业介绍（公司自述原始材料）
     ├── 智推时代GENO项目完整调研报告.md       # ★ 总报告：整合下列全部分项调研
     ├── *-可审计调研复盘.md                  # 7 份分项调研复盘
@@ -23,6 +35,21 @@
     ├── figure-specs.md                      # 架构图出版级图注与设计规范
     └── research_sources/                    # 逐来源证据（摘要 + 原始网页快照 + 报告 PDF）
 ```
+
+## 本地验证
+
+```bash
+make test
+make docker-config
+```
+
+核心服务一键启动入口：
+
+```bash
+docker compose -f infra/docker-compose.yml up --build
+```
+
+默认地址：API `http://localhost:8000/health`，控制台 `http://localhost:3000`。
 
 ## 核心文档
 

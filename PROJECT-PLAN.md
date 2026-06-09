@@ -39,7 +39,7 @@
 
 | 里程碑 | 阶段 | 覆盖 Epic | 出口标准（一句话） | P 级 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| **M0** | 接口契约与轻量开源底座 | E10（部分） | 核心依赖一键起，8 个接口有 stub，P0a/P0b/P0c 表可迁移，CI 绿 | P0a | `[ ]` |
+| **M0** | 接口契约与轻量开源底座 | E10（部分） | 核心依赖一键起，8 个接口有 stub，P0a/P0b/P0c 表可迁移，CI 绿 | P0a | `[~]` |
 | **M1** | AU MarketProfile + 行业模板 + Prompt Pack | E1、E2 | 能建 market=AU 项目，配 1 行业 + 100 prompt + 3–5 竞品 | P0a | `[ ]` |
 | **M2a** | Stable AI Answer Runner + Raw Evidence Store | E3 | Perplexity + OpenAI 可采，证据全留，含触发状态、k=3、成本 | P0a | `[ ]` |
 | **M2b** | Google AIO / AI Mode Spike | E3 | Google 自建/第三方/人工路径限时对比，输出 pass/fail gate | P0b | `[ ]` |
@@ -107,19 +107,19 @@
 
 任务：
 
-- `[ ]` (P0a) 仓库骨架：`apps/`、`packages/`、`workers/`、`infra/`、`tests/`、`decisions/`
-- `[ ]` (P0a/P0b/P0c) 数据契约：优先实现 MarketProfile、IndustryProfile、PromptQuestion、GeoSample、AnswerRun、RawAnswer、AnswerCitation、AnswerAnalysis、SourceGraph、CompetitorBenchmark、VisibilityScoreSnapshot、BrandEntity/CompetitorEntity/EntityAlias、CollectionCost、AuditEvent、ReportExport、ScoreContribution、EvidenceLink 关联表；P1/P2 表可延后 — `§8`
-- `[ ]` (P0a) 接口契约 stub（先定义不实现）：CollectorBackend、LLMGateway、ParserEngine、VectorStore、GraphStore、GeoProvider、ScoringFormula、ReportExporter — `Step3.2`
-- `[ ]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`
-- `[ ]` (P0c/P1) 重组件接入点：ClickHouse、Temporal、Langfuse、promptfoo、SearXNG、Metabase 写 ADR 和接口适配计划，但不阻塞 P0a — `§6`
-- `[ ]` (P0a) 空 CI：lint + 测试 + 迁移起服
-- `[ ]` (P0a) LLM 网关配置 + 调用日志 + 对象存储配置 — `E10-01 / E10-03 / E10-05`
+- `[x]` (P0a) 仓库骨架：`apps/`、`packages/`、`workers/`、`infra/`、`tests/`、`decisions/`
+- `[x]` (P0a/P0b/P0c) 数据契约：优先实现 MarketProfile、IndustryProfile、PromptQuestion、GeoSample、AnswerRun、RawAnswer、AnswerCitation、AnswerAnalysis、SourceGraph、CompetitorBenchmark、VisibilityScoreSnapshot、BrandEntity/CompetitorEntity/EntityAlias、CollectionCost、AuditEvent、ReportExport、ScoreContribution、EvidenceLink 关联表；P1/P2 表可延后 — `§8`
+- `[x]` (P0a) 接口契约 stub（先定义不实现）：CollectorBackend、LLMGateway、ParserEngine、VectorStore、GraphStore、GeoProvider、ScoringFormula、ReportExporter — `Step3.2`
+- `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web；LiteLLM 与 worker runtime 待接）
+- `[x]` (P0c/P1) 重组件接入点：ClickHouse、Temporal、Langfuse、promptfoo、SearXNG、Metabase 写 ADR 和接口适配计划，但不阻塞 P0a — `§6`
+- `[~]` (P0a) 空 CI：lint + 测试 + 迁移起服（已落 contract tests；lint 与真实迁移起服待补）
+- `[~]` (P0a) LLM 网关配置 + 调用日志 + 对象存储配置 — `E10-01 / E10-03 / E10-05`（已落 LLMGateway 接口与对象存储配置；运行时调用日志待接）
 
 DoD：
 
-- `[ ]` 一键起核心依赖；P0a/P0b/P0c 相关表可建可回滚；8 接口 stub + CI 绿
-- `[ ]` 三个可插拔点（向量库/图库/LLM）已留好接口，替换演示排入 P0c/P1
-- `[ ]` AuditEvent / ReportExport / ScoreContribution / EvidenceLink 相关表可建可回滚
+- `[~]` 一键起核心依赖；P0a/P0b/P0c 相关表可建可回滚；8 接口 stub + CI 绿（本地配置和 contract tests 待验证，真实起服待补）
+- `[x]` 三个可插拔点（向量库/图库/LLM）已留好接口，替换演示排入 P0c/P1
+- `[x]` AuditEvent / ReportExport / ScoreContribution / EvidenceLink 相关表可建可回滚
 
 ### M1 · Phase 1：AU MarketProfile + 行业模板 + Prompt Pack（P0a）
 
