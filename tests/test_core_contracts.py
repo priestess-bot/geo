@@ -6,6 +6,9 @@ from datetime import UTC, datetime
 
 from geno_core.audit import build_audit_event, hash_payload
 from geno_core.bootstrap import build_au_project_bootstrap
+from geno_core.collection import build_p0a_collection_plan, run_fixture_collection_slice
+from geno_core.collectors import FixtureOpenAIWebSearchCollector, FixturePerplexitySonarCollector
+from geno_core.geo import StaticAUGeoProvider
 from geno_core.market import build_au_market_profile
 from geno_core.models import AnswerAnalysis, ReportExport
 from geno_core.prompt_pack import INTENT_WEIGHTS
@@ -120,6 +123,67 @@ class CoreContractsTest(unittest.TestCase):
     def test_m1_bootstrap_rejects_invalid_competitor_count(self) -> None:
         with self.assertRaises(ValueError):
             build_au_project_bootstrap(competitors=("Only One",))
+
+    def test_m2a_p0a_collection_plan_matches_2400_runs(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        plan = build_p0a_collection_plan(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+        )
+        self.assertEqual(plan.prompt_count, 100)
+        self.assertEqual(plan.platform_count, 2)
+        self.assertEqual(plan.geo_count, 4)
+        self.assertEqual(plan.sample_size, 3)
+        self.assertEqual(plan.planned_runs, 2400)
+        self.assertEqual(set(plan.platform_surfaces), {"chatgpt:chatgpt_search", "perplexity:sonar"})
+        self.assertEqual(set(plan.geo_cities), {"Australia", "Sydney", "Melbourne", "Brisbane"})
+
+    def test_m2a_fixture_collection_slice_preserves_raw_evidence(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia", "Sydney"),
+            sample_size=1,
+            prompt_limit=2,
+        )
+        self.assertEqual(len(records), 8)
+        first = records[0]
+        self.assertTrue(first.answer_run.answer_present)
+        self.assertTrue(first.answer_run.surface_triggered)
+        self.assertEqual(first.answer_run.sample_index, 1)
+        self.assertEqual(first.answer_run.sample_size, 1)
+        self.assertEqual(first.answer_run.access_method, "official_api")
+        self.assertEqual(len(first.citations), 3)
+        self.assertEqual({asset.asset_type for asset in first.evidence_assets}, {"screenshot", "html_snapshot"})
+        self.assertTrue(first.raw_answer.raw_payload_hash)
+        self.assertIsNotNone(first.audit_events[0].after_hash)
+        self.assertGreater(first.collection_cost.total_cost, 0)
+        self.assertEqual(first.audit_events[0].event_type, "answer_run_collected")
+        self.assertIn(first.answer_run.id, first.audit_events[0].output_refs["answer_run_ids"])
+        self.assertIn(first.raw_answer.id, first.audit_events[0].output_refs["raw_answer_ids"])
+        self.assertEqual(
+            len(first.audit_events[0].output_refs["answer_citation_ids"]),
+            len(first.citations),
+        )
+        self.assertEqual(
+            len(first.audit_events[0].output_refs["evidence_asset_ids"]),
+            len(first.evidence_assets),
+        )
+
+    def test_m2a_static_au_geo_provider_resolves_city_params(self) -> None:
+        params = StaticAUGeoProvider().resolve(
+            market_code="AU",
+            city="Sydney",
+            language="en-AU",
+            device="desktop",
+        )
+        self.assertEqual(params["gl"], "au")
+        self.assertEqual(params["near"], "Sydney, New South Wales")
+        self.assertEqual(params["device"], "desktop")
 
 
 if __name__ == "__main__":

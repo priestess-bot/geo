@@ -5,6 +5,8 @@ from dataclasses import asdict
 from fastapi import FastAPI
 
 from geno_core.bootstrap import build_au_project_bootstrap
+from geno_core.collection import build_p0a_collection_plan, run_fixture_collection_slice
+from geno_core.collectors import FixtureOpenAIWebSearchCollector, FixturePerplexitySonarCollector
 from geno_core.industry import build_au_dtc_ecommerce_profile
 from geno_core.market import build_au_market_profile
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
@@ -46,6 +48,34 @@ def au_dtc_project_bootstrap() -> dict[str, object]:
     return asdict(build_au_project_bootstrap())
 
 
+@app.get("/v1/collection-plans/au/p0a")
+def au_p0a_collection_plan() -> dict[str, object]:
+    bootstrap = build_au_project_bootstrap()
+    return asdict(
+        build_p0a_collection_plan(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+        )
+    )
+
+
+@app.get("/v1/evidence-runs/au/p0a-fixture-slice")
+def au_p0a_fixture_slice() -> dict[str, object]:
+    bootstrap = build_au_project_bootstrap()
+    records = run_fixture_collection_slice(
+        project_id=bootstrap.project.id,
+        prompts=bootstrap.prompt_questions,
+        market_profile=bootstrap.market_profile,
+        collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+    )
+    return {
+        "record_count": len(records),
+        "answer_run_ids": [record.answer_run.id for record in records],
+        "records": [asdict(record) for record in records],
+    }
+
+
 @app.get("/v1/contracts")
 def contracts() -> dict[str, list[str]]:
     return {
@@ -74,5 +104,15 @@ def contracts() -> dict[str, list[str]]:
             "IndustryProfile",
             "PromptQuestion",
             "ProjectBootstrap",
+        ],
+        "m2a_evidence": [
+            "CollectionPlan",
+            "AnswerRun",
+            "RawAnswer",
+            "AnswerCitation",
+            "EvidenceAsset",
+            "CollectorLog",
+            "CollectionCost",
+            "RawEvidenceRecord",
         ],
     }

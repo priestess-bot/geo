@@ -1,12 +1,14 @@
 # Collector Worker
 
-M0 only defines the worker boundary. Real collectors are added as adapters that implement
-`CollectorBackend`.
+M2a has a deterministic fixture runner in `geno_core.collection` and fixture adapters in
+`geno_core.collectors`. They implement the same `CollectorBackend` contract expected by real
+platform adapters, so tests can verify AnswerRun, RawAnswer, citations, evidence assets, cost, and
+AuditEvent without external API credentials.
 
-P0a planned adapters:
+P0a adapters:
 
-- `PerplexitySonarCollector`
-- `OpenAIWebSearchCollector`
+- Implemented for contract testing: `FixturePerplexitySonarCollector`, `FixtureOpenAIWebSearchCollector`
+- Planned real adapters: `PerplexitySonarCollector`, `OpenAIWebSearchCollector`
 
 P0b planned adapters:
 

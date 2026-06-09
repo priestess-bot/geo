@@ -1,8 +1,8 @@
 const modules = [
   "AU MarketProfile configured",
   "DTC Prompt Pack: 100",
-  "AI Answer Runner",
-  "Raw Evidence Store",
+  "AI Answer Runner fixture",
+  "Raw Evidence Store wired",
   "Audit / Provenance",
   "AUVisibilityScore",
   "Evidence Report"

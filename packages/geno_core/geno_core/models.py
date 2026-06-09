@@ -8,6 +8,7 @@ from typing import Any, Literal
 ActorType = Literal["user", "system", "worker", "api"]
 AccessMethod = Literal["browser", "official_api", "third_party_api", "manual"]
 ProjectRole = Literal["owner", "admin", "analyst", "viewer"]
+CollectionStatus = Literal["planned", "completed", "failed"]
 
 
 @dataclass(frozen=True)
@@ -143,11 +144,103 @@ class RawCollectResult:
 
 
 @dataclass(frozen=True)
+class AnswerRun:
+    id: str
+    project_id: str
+    prompt_question_id: str
+    platform: str
+    surface: str
+    access_method: AccessMethod
+    market_code: str
+    city: str
+    language: str
+    device: str
+    answer_present: bool
+    surface_triggered: bool
+    sample_index: int
+    sample_size: int
+    model_or_surface: str | None
+    account_state: str | None
+    collector_backend_id: str
+    collector_version: str
+    collected_at: datetime
+    status: CollectionStatus
+
+
+@dataclass(frozen=True)
 class RawAnswer:
     id: str
     answer_run_id: str
     answer_text: str
+    raw_payload: dict[str, Any]
     raw_payload_hash: str
+
+
+@dataclass(frozen=True)
+class AnswerCitation:
+    id: str
+    answer_run_id: str
+    url: str
+    domain: str
+    position: int
+    source_type: str | None
+
+
+@dataclass(frozen=True)
+class EvidenceAsset:
+    id: str
+    answer_run_id: str
+    asset_type: str
+    url: str
+    content_hash: str | None
+
+
+@dataclass(frozen=True)
+class CollectorLog:
+    id: str
+    answer_run_id: str | None
+    collector_backend_id: str
+    event_type: str
+    payload: dict[str, Any]
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class CollectionCost:
+    id: str
+    answer_run_id: str | None
+    project_id: str
+    collector_backend_id: str
+    llm_provider: str | None
+    llm_tokens: int
+    llm_cost: float
+    proxy_or_vendor_cost: float
+    compute_cost: float
+    total_cost: float
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class RawEvidenceRecord:
+    answer_run: AnswerRun
+    raw_answer: RawAnswer
+    citations: tuple[AnswerCitation, ...]
+    evidence_assets: tuple[EvidenceAsset, ...]
+    collector_logs: tuple[CollectorLog, ...]
+    collection_cost: CollectionCost
+    audit_events: tuple["AuditEvent", ...]
+
+
+@dataclass(frozen=True)
+class CollectionPlan:
+    project_id: str
+    prompt_count: int
+    platform_count: int
+    geo_count: int
+    sample_size: int
+    planned_runs: int
+    platform_surfaces: tuple[str, ...]
+    geo_cities: tuple[str, ...]
 
 
 @dataclass(frozen=True)

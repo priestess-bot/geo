@@ -41,7 +41,7 @@
 | --- | --- | --- | --- | --- | --- |
 | **M0** | 接口契约与轻量开源底座 | E10（部分） | 核心依赖一键起，8 个接口有 stub，P0a/P0b/P0c 表可迁移，CI 绿 | P0a | `[~]` |
 | **M1** | AU MarketProfile + 行业模板 + Prompt Pack | E1、E2 | 能建 market=AU 项目，配 1 行业 + 100 prompt + 3–5 竞品 | P0a | `[~]` |
-| **M2a** | Stable AI Answer Runner + Raw Evidence Store | E3 | Perplexity + OpenAI 可采，证据全留，含触发状态、k=3、成本 | P0a | `[ ]` |
+| **M2a** | Stable AI Answer Runner + Raw Evidence Store | E3 | Perplexity + OpenAI 可采，证据全留，含触发状态、k=3、成本 | P0a | `[~]` |
 | **M2b** | Google AIO / AI Mode Spike | E3 | Google 自建/第三方/人工路径限时对比，输出 pass/fail gate | P0b | `[ ]` |
 | **M3** | Answer Parser + AUVisibilityScore | E4 | 自动解析 + 可拆解可版本化评分 + 双分母 | P0a | `[ ]` |
 | **M4** | Citation Graph + Competitor Benchmark | E5 | 信源图谱 + source gap + 3–5 竞品对标 | P0c | `[ ]` |
@@ -147,25 +147,25 @@ DoD：
 
 任务（构建顺序：稳定 API → 证据 → 成本 → 地理）：
 
-- `[ ]` (P0a) CollectorBackend 接口落地 + **Perplexity Sonar 后端**（最易采，先打通全链路）— `Step4`
-- `[ ]` (P0a) **OpenAI web search / ChatGPT Search** 官方 API 后端 — `Step4`
-- `[ ]` (P0a) Raw Evidence Store：AnswerRun/RawAnswer/AnswerCitation/EvidenceAsset/CollectorLog，含 `answer_present`/`surface_triggered`/`sample_index`/`sample_size`/`access_method` — `Step5 / §8.5..8.7`
-- `[ ]` (P0a) Audit / Provenance 基础：采集开始/完成/失败、原始证据入库、人工补录写 `AuditEvent`；`ReportEvidence` / `ScoreSnapshotRun` / `SourceGraphEvidence` 关联表先建表 — `Step5.1 / §8.16..8.19`
-- `[ ]` (P0a) P0a 采样量闸门：100 prompts × 2 platforms × 4 geo × k=3 = 2400 planned_runs，可配置降级 prompt/geo 但不降级证据字段 — `Step9.3`
-- `[ ]` (P0a) GeoProvider 抽象 + 城市采样（Australia/Sydney/Melbourne/Brisbane）— `Step6 / §8.4`
-- `[ ]` (P0a) 截图/HTML 快照 + `raw_payload_hash` — `E3-05`
-- `[ ]` (P0a) CollectionCost 记录（从首个采集器起），输出成功率/平均耗时/单位成本 — `§8.15`
+- `[~]` (P0a) CollectorBackend 接口落地 + **Perplexity Sonar 后端**（最易采，先打通全链路）— `Step4`（fixture 后端已跑通；真实 Sonar API adapter 待接）
+- `[~]` (P0a) **OpenAI web search / ChatGPT Search** 官方 API 后端 — `Step4`（fixture 后端已跑通；真实 OpenAI API adapter 待接）
+- `[x]` (P0a) Raw Evidence Store：AnswerRun/RawAnswer/AnswerCitation/EvidenceAsset/CollectorLog，含 `answer_present`/`surface_triggered`/`sample_index`/`sample_size`/`access_method` — `Step5 / §8.5..8.7`
+- `[~]` (P0a) Audit / Provenance 基础：采集开始/完成/失败、原始证据入库、人工补录写 `AuditEvent`；`ReportEvidence` / `ScoreSnapshotRun` / `SourceGraphEvidence` 关联表先建表 — `Step5.1 / §8.16..8.19`（采集完成审计已落；失败/人工补录运行时待接）
+- `[x]` (P0a) P0a 采样量闸门：100 prompts × 2 platforms × 4 geo × k=3 = 2400 planned_runs，可配置降级 prompt/geo 但不降级证据字段 — `Step9.3`
+- `[x]` (P0a) GeoProvider 抽象 + 城市采样（Australia/Sydney/Melbourne/Brisbane）— `Step6 / §8.4`
+- `[x]` (P0a) 截图/HTML 快照 + `raw_payload_hash` — `E3-05`
+- `[x]` (P0a) CollectionCost 记录（从首个采集器起），输出成功率/平均耗时/单位成本 — `§8.15`
 - `[ ]` (P0c/P1) 保真度抽检：同批 prompt 跑 官方 API vs 浏览器 两后端，量化差异率并入报告 — `Step4`
 - `[ ]` (P1) 定时采集（Temporal）/复杂失败重试/限流/人工补录工作台 — `E3-03/06/07/08`
 
 DoD：
 
-- `[ ]` Perplexity + OpenAI 两个平台均能采到 answer+citation+截图/HTML
-- `[ ]` 每条记录平台/surface/access_method/city/language/device/时间/collector_version/collector_backend_id
-- `[ ]` 记录 answer_present/surface_triggered；P0a 每 prompt k=3
-- `[ ]` 采集事件和人工补录事件写 AuditEvent；原始证据能通过 EvidenceLink 关联到后续报告和评分
-- `[ ]` 每个采集器写 CollectionCost，能估算单项目 2400 planned_runs 的成本和耗时
-- `[ ]` 采集后端可插拔：新增后端只实现 CollectorBackend，不改业务代码
+- `[~]` Perplexity + OpenAI 两个平台均能采到 answer+citation+截图/HTML（fixture 可采；真实外部 API 待接）
+- `[x]` 每条记录平台/surface/access_method/city/language/device/时间/collector_version/collector_backend_id
+- `[x]` 记录 answer_present/surface_triggered；P0a 每 prompt k=3
+- `[~]` 采集事件和人工补录事件写 AuditEvent；原始证据能通过 EvidenceLink 关联到后续报告和评分（采集完成审计已落；人工补录待接）
+- `[x]` 每个采集器写 CollectionCost，能估算单项目 2400 planned_runs 的成本和耗时
+- `[x]` 采集后端可插拔：新增后端只实现 CollectorBackend，不改业务代码
 
 ### M2b · Phase 2b：Google AIO / AI Mode Spike（P0b，高风险限时）
 
