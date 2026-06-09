@@ -68,7 +68,7 @@
 
 **正式题注**
 
-> **图 1. GENO 澳大利亚首发系统的四层引用架构。** 系统自上而下分为控制台、应用服务、能力模块与基础设施四个泳道（填充由冷至暖区分层级）。依赖严格单向向下（实心箭头，箭尾为依赖方）。能力模块层的八个模块经接口契约（朱红 «» 标签，虚线描边）与可替换后端解耦，构成贯穿系统的"可替换缝隙"；带 «» 的模块即图 2 枚举的八个可插拔点。采集经隔离的 Worker 执行（圆角矩形），证据写入三类存储（圆柱）。**本图仅表达调用与持久化关系；模块间的数据依赖见图 3。**
+> **图 1. GENO 澳大利亚首发系统的四层引用架构。** 系统自上而下分为控制台、应用服务、能力模块与基础设施四个泳道（填充由冷至暖区分层级）。依赖严格单向向下（实心箭头，箭尾为依赖方）。能力模块层的八个模块经接口契约（朱红 «» 标签，虚线描边）与可替换后端解耦，构成贯穿系统的"可替换缝隙"；带 «» 的模块即图 2 枚举的八个可插拔点。采集经隔离的 Worker 执行（圆角矩形），原始证据、审计事件、溯源关联、分数解释与报告快照分别写入数据契约。**本图仅表达调用与持久化关系；模块间的数据依赖见图 3。**
 
 **设计意图（视觉论点）**：让读者一眼读出两件事——(1) **严格单向分层**；(2) **接口缝隙的位置**（朱红标签在哪，可替换性就在哪）。
 
@@ -81,6 +81,8 @@
 - **L3（最高带）**：八个能力模块按 **2 行 × 4 列**网格——
   - 上行：`Collector` · `EvidenceStore` · `Parser` · `ScoringEngine`
   - 下行：`CitationGraph` · `CompetitorBenchmark` · `ActionPlanner` · `ReportExporter`
+  - 在 `ScoringEngine` 下方贴一个小型数据制品 `ScoreContribution`，表示分数解释包；在 `ReportExporter` 旁贴 `ReportExport` 快照，表示导出不可覆盖。
+  - 在 L3 底部横向放一条浅黄"审计/溯源总线"：`AuditEvent` · `EvidenceLink` · `ScoreSnapshotRun` · `ReportEvidence`。所有关键模块以细线写入该总线。
   - 右侧竖排两个接口标签 `«LLMGateway»`、`«GeoProvider»`（朱红）。
   - 带 «» 的模块（Collector / Parser / ScoringEngine / CitationGraph）其接口名以**朱红折角小标**贴在该模块右上角。
 - **L4（底带）**：六个存储/平台横向一行——`PostgreSQL+pgvector` · `ClickHouse` · `MinIO` · `PG邻接表/Neo4j` · `Temporal` · `Langfuse/promptfoo`（前四为圆柱，后两为圆角矩形）。
@@ -91,6 +93,9 @@
 - `Collector → Worker → «GeoProvider»` 单独走右侧通道，与主链分离，强化"采集旁路"。
 - `Collector / Parser / ActionPlanner → «LLMGateway» → Langfuse` 用同色（中性灰）成束。
 - L3 → L4 持久化边一律**垂直下落**，落到对应圆柱正上方。
+- `Collector / Parser / ScoringEngine / CitationGraph / CompetitorBenchmark / ReportExporter → 审计/溯源总线` 用细实线，表示必须写入 `AuditEvent` 或 `EvidenceLink`，但不要画成主业务依赖。
+- `ScoringEngine → ScoreContribution → ReportExporter` 用主箭头，表示报告分数必须经过解释包，不允许只有总分。
+- `ReportExporter → ReportExport` 用主箭头，旁注"不可覆盖版本快照"。
 - **关键标注**：在 L3 与右侧 «» 标签之间画一道朱红方括号，标"**可替换缝隙（swap seam）**"；并注"`CompetitorBenchmark` 的数据依赖见图 3"以消除与图三的歧义。
 
 **图例（右下角）**：直角矩形 = 模块、圆角 = 进程、圆柱 = 存储、«» 虚线 = 接口；实心箭头 = 依赖 ↓；冷 → 暖 = 层级。
@@ -101,7 +106,7 @@
 
 **正式题注**
 
-> **图 2. 八个可插拔接口及其可替换实现。** 左列为先定义的接口契约（朱红 «»），右列为满足该契约的实现；空心三角箭头表示"实现 → 契约"的实现关系。每行内的默认实现以实心底色标出，备选实现以虚线外框标出，二者间的 ⇄ 表示可在不改业务代码的前提下整体替换或并存。八行相互独立，不存在跨行连接。**右侧纵贯括号标明：替换仅需新增适配器。**
+> **图 2. 八个可插拔接口及其可替换实现。** 左列为先定义的接口契约（朱红 «»），右列为满足该契约的实现；空心三角箭头表示"实现 → 契约"的实现关系。每行内的默认实现以实心底色标出，备选实现以虚线外框标出，二者间的 ⇄ 表示可在不改业务代码的前提下整体替换或并存。八行相互独立，不存在跨行连接。**右侧纵贯括号标明：替换仅需新增适配器；底部数据契约带标明：任一实现都必须写入相同的审计、溯源和解释对象。**
 
 **设计意图**：把"开源优先·可插拔"做成**可数的、对齐的八条独立缝隙**——读者应能立刻数出"有 8 个点可换"，并看出替换边界统一落在接口处。
 
@@ -118,12 +123,22 @@
 7. `«GeoProvider»` ｜ **uule 参数** ｜ 代理池、第三方供应商
 8. `«ReportExporter»` ｜ **模板引擎** ｜ Metabase（PDF·CSV）
 
+底部横贯全图放一条浅黄数据契约带：
+
+```text
+Shared Data Contracts:
+AuditEvent · EvidenceLink · ScoreContribution · ReportExport
+```
+
+该带不作为第 9 个接口，而是八个接口共同遵守的输出约束。
+
 **编码细化**
 
 - 实现关系箭头：**空心三角**由每个实现指向其接口；同一接口的多实现共用一个汇入点，呈"扇入接口"。
 - 默认实现：填充 `#F4F4F4`、实线边；备选实现：白底、虚线边 + 右上"⤴外部"角标。
 - ⇄ 用朱红双箭头图元，仅出现在"可热切换"处（第 5 行 A/B、第 6 行版本升级）。
 - **关键标注**：右缘一道纵贯八行的方括号，标"**替换 = 仅新增适配器，业务代码不变**"，并引到图一的"可替换缝隙"形成跨图呼应。
+- **审计标注**：底部数据契约带右侧标"**可替换不等于可改口径：所有实现写入同一审计/溯源/解释契约**"。
 
 **图例**：朱红 «» = 接口；空心三角 = 实现关系；实底 = 默认、虚框 = 备选；⇄ = 可切换。
 
@@ -133,7 +148,7 @@
 
 **正式题注**
 
-> **图 3. 证据优先的数据流水线与复测闭环。** 数据自左向右流动（实心箭头为主数据流）：市场/行业画像 → 问题集 → 采集运行器 → **原始证据库** → 解析与信源图谱两路并行 → 评分、竞品对标 → 行动计划 → 证据报告 → 复测，复测以虚线"同口径回采"反馈回运行器形成闭环。**原始证据库（朱红描边圆柱，居中加重）是全流程唯一事实源**，所有分数与结论均可回溯至其中的 AnswerRun / RawAnswer / Citation。证据库向解析与信源图谱**双路分叉**；竞品对标由评分与信源图谱**双路汇入**；证据报告由评分、信源图谱、竞品对标、行动计划**四路汇入**。
+> **图 3. 证据优先的数据流水线与复测闭环。** 数据自左向右流动（实心箭头为主数据流）：市场/行业画像 → 问题集 → 采集运行器 → **原始证据库** → 解析与信源图谱两路并行 → 评分解释、竞品对标 → 行动计划 → 证据报告 → 复测，复测以虚线"同口径回采"反馈回运行器形成闭环。**原始证据库（朱红描边圆柱，居中加重）是全流程唯一事实源**，所有分数与结论均可回溯至其中的 AnswerRun / RawAnswer / Citation；`AuditEvent` 和 `EvidenceLink` 记录谁在何时用哪些证据生成了哪些输出；`ScoreContribution` 解释分数权重、分母、正负证据与局限。证据报告由评分解释、信源图谱、竞品对标、行动计划、审计摘要**五路汇入**，最终冻结为不可覆盖的 `ReportExport`。
 
 **设计意图**：让读者一眼读出两点——(1) **证据库是单一事实源**（视觉上最重、居中、朱红）；(2) **全链闭环可复测**（末端虚线回采）。
 
@@ -144,15 +159,19 @@
 - 主干：`MarketProfile+IndustryProfile → Prompt Pack(100×k=3) → AI Answer Runner → 原始证据库`。
 - **双路分叉**：证据库 → `Answer Parser`（脊上方）与 `Citation Graph`（脊下方）。
 - 上路：`Answer Parser → AUVisibilityScore`。
+- 评分解释：`AUVisibilityScore → ScoreContribution`，节点内部列出 `component_score / weight / denominator / evidence_answer_run_ids`。
 - **双路汇聚**：`AUVisibilityScore` 与 `Citation Graph` → `Competitor Benchmark → Action Plan`。
-- **四路汇聚**：`AUVisibilityScore`、`Citation Graph`、`Competitor Benchmark`、`Action Plan` → `Evidence Report(PDF/CSV)`。
-- **闭环**：`Evidence Report → 复测(T+7/14/30)`，复测以**虚线开放箭头**沿底部回弧指向 `AI Answer Runner`，线上标"**同口径回采（prompt_version, k=3）**"。
+- **审计/溯源支路**：从 `Raw Evidence Store`、`Answer Parser`、`Citation Graph`、`AUVisibilityScore`、`Competitor Benchmark`、`Evidence Report` 各画细线写入 `Audit / Provenance Trail`，该节点包含 `AuditEvent / EvidenceLink / ScoreSnapshotRun / ReportEvidence`。
+- **五路汇聚**：`ScoreContribution`、`Citation Graph`、`Competitor Benchmark`、`Action Plan`、`Audit / Provenance Trail` → `Evidence Report(PDF/CSV)`。
+- **报告快照**：`Evidence Report → ReportExport`，`ReportExport` 节点标注"不可覆盖；冻结 answer_run_ids / score_snapshot_ids / formula_version / window"。
+- **闭环**：`ReportExport → 复测(T+7/14/30)`，复测以**虚线开放箭头**沿底部回弧指向 `AI Answer Runner`，线上标"**同口径回采（prompt_version, k=3）**"。
 
 **编码与标注**
 
 - 证据库标注"**单一证据源 · 所有分数可回溯**"。
-- 报告汇入处标"**四源汇聚**"。
+- 报告汇入处标"**五源汇聚：解释 + 图谱 + 竞品 + 行动 + 审计**"。
 - 采集运行器下挂一枚朱红 `«CollectorBackend»` 小标，呼应图二。
+- `Audit / Provenance Trail` 旁标"**人工补录、实体确认、评分修改必须留痕**"。
 - **底部脚注框**（7.5 pt 斜体）："**本图箭头是数据流向；采集构建序（Perplexity 先、Google AIO 后）与平台评分权重（45/30/25）均与箭头无关。**"——固化关键去歧义。
 
 **图例**：圆角 = 处理阶段；圆柱 = 数据存储；折角文档 = 数据制品；实心箭头 = 主数据流；虚线 = 反馈回采。
