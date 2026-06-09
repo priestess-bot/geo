@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Generforce">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="msapplication-tap-highlight" content="no">
+    <meta name="msapplication-config" content="none">
+
+    <!-- PWA 支持 -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="images/favicon.png">
+    <link rel="icon" href="images/favicon.png" type="image/png">
+
+    <!-- SEO -->
+    <title>AI搜索洞察系统-百分点科技GEO洞察与优化平台</title>
+    <meta name="description" content="百分点科技是国内领先的GEO服务商与解决方案厂商,依托一站式GEO洞察与优化平台Generforce,专注于AI生成式引擎优化与AI搜索排名优化,为品牌提供专业的GEO公司级策略与一站式AI搜索优化服务.">
+    <meta name="keywords" content="Generforce,GEO,GEO优化,GEO服务商,GEO厂商,GEO公司,AI搜索排名优化,AI搜索优化,AI优化,AI生成式引擎优化">
+    <meta name="robots" content="index, follow">
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="LLMs Information">
+    <meta name="llms" content="/llms.txt">
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+    <meta name="ai-purpose" content="GEO策略,GEO方案,AI搜索优化,AI可见性指标优化">
+    <meta name="ai-services" content="AI对话监测,AI搜索优化,品牌可见性优化,产品可见性优化,AI内容生成,AI引用来源分析,品牌情感分析,AI优化建议与效果追踪">
+    <meta name="ai-models" content="豆包,腾讯元宝,deepseek,通义千问,kimi,文心一言,智谱清言,百度AI">
+    <meta name="copyright" content="百分点科技Generforce,百分点科技AI洞察">
+    <link rel="canonical" href="https://www.generforce.cn/product.html">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Swiper CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/swiper/swiper-bundle.min.css"/>
+    <!-- Swiper JS -->
+    <script src="https://unpkg.com/swiper/swiper-bundle.min.js"></script>
+
+    <script>
+        // Configure Tailwind to include our custom 3D transform utilities
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'geist': ['Geist', 'sans-serif'],
+                        'playfair': ['Playfair Display', 'serif'],
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        /* 现代深色主题样式 */
+        .font-geist { font-family: 'Geist', sans-serif !important; }
+        .font-playfair { font-family: 'Playfair Display', serif !important; }
+
+        /* 渐变背景 */
+        .gradient-bg {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 25%, #334155 50%, #475569 75%, #64748b 100%);
+        }
+
+        /* 卡片悬停效果 */
+        .card-hover {
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(255, 255, 255, 0.1), 0 10px 10px -5px rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        /* 响应式设计 */
+        /* 移动端优化 */
+        @media (max-width: 640px) {
+            .mobile-text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+            .mobile-text-base { font-size: 1rem; line-height: 1.5rem; }
+            .mobile-text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+            .mobile-text-xl { font-size: 1.25rem; line-height: 1.75rem; }
+            .mobile-text-2xl { font-size: 1.5rem; line-height: 2rem; }
+            .mobile-text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+            .mobile-text-4xl { font-size: 2.25rem; line-height: 2.5rem; }
+            .mobile-text-5xl { font-size: 3rem; line-height: 1; }
+
+            .mobile-p-2 { padding: 0.5rem; }
+            .mobile-p-4 { padding: 1rem; }
+            .mobile-p-6 { padding: 1.5rem; }
+            .mobile-p-8 { padding: 2rem; }
+
+            .mobile-gap-4 { gap: 1rem; }
+            .mobile-gap-6 { gap: 1.5rem; }
+            .mobile-gap-8 { gap: 2rem; }
+            .mobile-gap-12 { gap: 3rem; }
+        }
+
+        /* 平板端优化 */
+        @media (min-width: 641px) and (max-width: 1024px) {
+            .tablet-text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+            .tablet-text-base { font-size: 1rem; line-height: 1.5rem; }
+            .tablet-text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+            .tablet-text-xl { font-size: 1.25rem; line-height: 1.75rem; }
+            .tablet-text-2xl { font-size: 1.5rem; line-height: 2rem; }
+            .tablet-text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+            .tablet-text-4xl { font-size: 2.25rem; line-height: 2.5rem; }
+            .tablet-text-5xl { font-size: 3rem; line-height: 1; }
+        }
+
+        /* 触摸设备优化 */
+        @media (hover: none) and (pointer: coarse) {
+            .touch-target {
+                min-height: 28px;
+                min-width: 28px;
+            }
+
+            .touch-card:hover {
+                transform: none;
+                box-shadow: none;
+            }
+
+            .touch-card:active {
+                transform: scale(0.98);
+                background: rgba(255, 255, 255, 0.1);
+            }
+        }
+
+        /* 高分辨率屏幕优化 */
+        @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+            .retina-image {
+                image-rendering: -webkit-optimize-contrast;
+                image-rendering: crisp-edges;
+            }
+        }
+
+        /* 深色模式支持 */
+        @media (prefers-color-scheme: dark) {
+            .auto-dark {
+                background-color: #0a0a0a;
+                color: #f4f4f5;
+            }
+        }
+
+        @media (prefers-color-scheme: light) {
+            .auto-light {
+                background-color: #ffffff;
+                color: #18181b;
+            }
+        }
+
+        /* 安全区域支持（刘海屏、挖孔屏） */
+        @supports (padding: max(0px)) {
+            .safe-area-top {
+                padding-top: max(1rem, env(safe-area-inset-top));
+            }
+            .safe-area-bottom {
+                padding-bottom: max(1rem, env(safe-area-inset-bottom));
+            }
+            .safe-area-left {
+                padding-left: max(1rem, env(safe-area-inset-left));
+            }
+            .safe-area-right {
+                padding-right: max(1rem, env(safe-area-inset-right));
+            }
+        }
+
+        /* 滚动优化 */
+        .smooth-scroll {
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* 触摸反馈 */
+        .touch-feedback {
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        /* 性能优化 */
+        .will-change-transform {
+            will-change: transform;
+        }
+
+        .will-change-opacity {
+            will-change: opacity;
+        }
+
+        /* 无障碍支持 */
+        .focus-visible:focus {
+            outline: 2px solid #3b82f6;
+            outline-offset: 2px;
+        }
+        /* 分割线 */
+        .gap-line {
+            background: #7821C7;
+        }
+
+        /* 打印样式 */
+        @media print {
+            .no-print { display: none !important; }
+            .print-break { page-break-before: always; }
+        }
+
+        /* 动画优化 */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        /* 横屏模式优化 */
+        @media (orientation: landscape) and (max-height: 500px) {
+            .landscape-compact {
+                padding-top: 0.5rem;
+                padding-bottom: 0.5rem;
+            }
+        }
+
+        /* 超宽屏优化 */
+        @media (min-width: 1920px) {
+            .ultra-wide {
+                max-width: 1400px;
+                margin-left: auto;
+                margin-right: auto;
+            }
+        }
+
+        /* 超小屏幕优化 */
+        @media (max-width: 375px) {
+            .tiny-screen {
+                font-size: 0.75rem;
+                padding: 0.25rem;
+            }
+        }
+
+        /* 折叠屏支持 */
+        @media (screen-spanning: single-fold-vertical) {
+            .fold-vertical {
+                width: 100vw;
+                height: 100vh;
+            }
+        }
+
+        @media (screen-spanning: single-fold-horizontal) {
+            .fold-horizontal {
+                width: 100vw;
+                height: 100vh;
+            }
+        }
+
+        .carousel {
+            width: 600px; /* 根据需要调整 */
+            height: 400px; /* 根据需要调整 */
+            overflow: hidden;
+            position: relative;
+        }
+
+        .carousel-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .carousel-item {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.5s ease; /* 平滑过渡效果 */
+        }
+
+        .carousel-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* 保持图片比例 */
+        }
+    </style>
+    <script>
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "https://hm.baidu.com/hm.js?6e5abf529e48c4e46b6c73e6880a788f";
+  var s = document.getElementsByTagName("script")[0]; 
+  s.parentNode.insertBefore(hm, s);
+})();
+</script>
+    <script>
+(function(){
+var el = document.createElement("script");
+el.src = "https://lf1-cdn-tos.bytegoofy.com/goofy/ttzz/push.js?be878c0e17fb674490825bec6e0126ac3fe547318aaac34b8aab18c80da4e48565e0a2ada1d5e86b11e7de7c1a83287d04743a02fd1ee8dd8558a8cad50e91cb354f8c6f3f78e5fd97613c481f678e6d";
+el.id = "ttzz";
+var s = document.getElementsByTagName("script")[0];
+s.parentNode.insertBefore(el, s);
+})(window)
+</script>
+    <script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "v573tg74y1");
+</script>
+</head>
+<body class="min-h-screen antialiased selection:bg-white/10 text-zinc-100 bg-zinc-950 pb-16 lg:pb-0" style="font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, Noto Sans, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji;">
+    <!-- 导航栏 -->
+    <header class="w-full bg-zinc-950/80 backdrop-blur-sm border-b border-white/5 sticky top-0 z-50 safe-area-top">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div class="flex h-16 items-center justify-between">
+                <a href="index.html" class="inline-flex items-center gap-2 touch-target">
+                    <img src="images/logo.png" alt="Generforce Logo" class="h-8 w-auto retina-image">
+                </a>
+
+                <!-- 桌面端导航 -->
+                <nav class="hidden lg:flex items-center gap-6 xl:gap-8 text-sm text-zinc-300" style="height: 28px;">
+                    <a href="index.html" class="hover:text-zinc-100 transition-colors font-sans touch-target px-2 py-1 rounded">首页</a>
+                    <a href="product.html" class="hover:text-zinc-100 transition-colors font-sans touch-target px-2 py-1 rounded bg-white/5">产品</a>
+                    <a href="solutions.html" class="hover:text-zinc-100 transition-colors font-sans touch-target px-2 py-1 rounded">解决方案</a>
+                    <div class="relative group">
+                        <a href="#" class="hover:text-zinc-100 transition-colors font-sans flex items-center touch-target px-2 py-1 rounded">
+                            行业洞察
+                            <i class="fas fa-chevron-down ml-1 text-xs"></i>
+                        </a>
+                        <div class="absolute top-full left-0 mt-2 w-48 bg-zinc-900 rounded-lg shadow-lg border border-zinc-700 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50">
+                            <a href="tech-blog.html" class="block px-4 py-3 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 rounded-t-lg touch-target">
+                                产品技术
+                            </a>
+                            <a href="ai-industry-reports.html" class="block px-4 py-3 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 rounded-b-lg touch-target">
+                                行业报告
+                            </a>
+                            <!-- <a href="ai-leaderboard.html" class="block px-4 py-3 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 rounded-b-lg touch-target">
+
+                                AI可见性排行
+
+                            </a> -->
+                        </div>
+                    </div>
+                    <a href="about.html" class="hover:text-zinc-100 transition-colors font-sans touch-target px-2 py-1 rounded">关于我们</a>
+                    <a href="contact.html" class="hover:text-zinc-100 transition-colors font-sans touch-target px-2 py-1 rounded">联系我们</a>
+                </nav>
+
+                <!-- 平板端导航 -->
+                <nav class="hidden md:flex lg:hidden items-center gap-4 text-sm text-zinc-300" style="height: 28px;">
+                    <a href="index.html" class="hover:text-zinc-100 transition-colors font-sans touch-target px-2 py-1 rounded">首页</a>
+                    <a href="product.html" class="hover:text-zinc-100 transition-colors font-sans touch-target px-2 py-1 rounded bg-white/5">产品</a>
+                    <a href="solutions.html" class="hover:text-zinc-100 transition-colors font-sans touch-target px-2 py-1 rounded">解决方案</a>
+                    <div class="relative group">
+                        <a href="#" class="hover:text-zinc-100 transition-colors font-sans flex items-center touch-target px-2 py-1 rounded">
+                            行业洞察
+                            <i class="fas fa-chevron-down ml-1 text-xs"></i>
+                        </a>
+                        <div class="absolute top-full left-0 mt-2 w-48 bg-zinc-900 rounded-lg shadow-lg border border-zinc-700 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50">
+                            <a href="tech-blog.html" class="block px-4 py-3 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 rounded-t-lg touch-target">
+                                产品技术
+                            </a>
+                            <a href="ai-industry-reports.html" class="block px-4 py-3 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 rounded-b-lg touch-target">
+                                行业报告
+                            </a>
+                        </div>
+                    </div>
+                    <a href="about.html" class="hover:text-zinc-100 transition-colors font-sans touch-target px-2 py-1 rounded">关于我们</a>
+                    <a href="contact.html" class="hover:text-zinc-100 transition-colors font-sans touch-target px-2 py-1 rounded">联系我们</a>
+                </nav>
+
+                <div class="flex items-center gap-2 sm:gap-3" style="width: auto; display: flex; justify-content: flex-end; gap: 20px;">
+                    <span class="hidden md:flex items-center gap-1.5 text-sm text-zinc-300 whitespace-nowrap">
+                        <img src="images/phone.png" alt="电话" class="w-3.5 h-3.5">
+                        <span class="font-sans font-medium">400-6298-600</span>
+                    </span>
+                    <a href="http://testbmf-geo.percent.cn/login" id="login" target="_blank" class="sm:inline-flex gap-2 hover:text-zinc-100 hover:bg-white/5 ring-1 ring-white/15 text-sm text-zinc-300 rounded-md py-2 px-3 items-center justify-center touch-target">
+                        <span class="font-medium font-sans">登录</span>
+                    </a>
+                    <!-- <a href="contact.html" class="group relative inline-flex shadow-[0_8px_16px_-4px_rgba(255,255,255,0.05)] hover:shadow-[0_12px_20px_-6px_rgba(255,255,255,0.1)] transition duration-300 ease-out select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 transform-gpu hover:-translate-y-0.5 text-white rounded-lg pt-[1px] pr-[1px] pb-[1px] pl-[1px] items-center justify-center touch-target" style="background-image: linear-gradient(144deg,rgba(255,255,255,0.3), rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.2));">
+                        <span class="flex items-center justify-center gap-2 leading-none min-w-[120px] sm:min-w-[140px] w-full h-full transition-colors duration-300 group-hover:bg-black/50 font-medium bg-black/80 rounded-lg pt-1.5 pr-3 pb-1.5 pl-3">
+                            <span class="text-sm">立即咨询</span>
+                        </span>
+                    </a> -->
+
+                    <!-- 移动端菜单按钮 -->
+                    <button class="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-md ring-1 ring-white/15 hover:bg-white/5 touch-target" id="mobile-menu-button" aria-label="打开菜单">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="menu" class="lucide lucide-menu h-5 w-5"><path d="M4 12h16"></path><path d="M4 18h16"></path><path d="M4 6h16"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 移动端菜单 -->
+            <div class="md:hidden hidden" id="mobile-menu">
+                <div class="py-4 space-y-2 border-t border-white/10 mt-4">
+                    <a href="index.html" class="block px-4 py-3 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 rounded-lg touch-target">首页</a>
+                    <a href="product.html" class="block px-4 py-3 text-zinc-300 bg-zinc-800 text-zinc-100 rounded-lg touch-target">产品</a>
+                    <a href="solutions.html" class="block px-4 py-3 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 rounded-lg touch-target">解决方案</a>
+                    
+                    <!-- 行业洞察一级菜单 -->
+                    <div class="space-y-0">
+                        <button id="industry-insight-toggle" class="w-full flex items-center justify-between px-4 py-3 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 rounded-lg touch-target">
+                            <span>行业洞察</span>
+                            <i class="fas fa-chevron-down text-xs transition-transform duration-200 rotate-180" id="industry-insight-icon"></i>
+                        </button>
+                        <!-- 子菜单 -->
+                        <div id="industry-insight-submenu" class="pl-4 space-y-0">
+                            <a href="tech-blog.html" class="block px-4 py-3 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 rounded-lg touch-target">
+                                产品技术
+                            </a>
+                            <a href="ai-industry-reports.html" class="block px-4 py-3 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 rounded-lg touch-target">
+                                行业报告
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <a href="about.html" class="block px-4 py-3 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 rounded-lg touch-target">关于我们</a>
+                    <a href="contact.html" class="block px-4 py-3 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 rounded-lg touch-target">联系我们</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 页面标题 -->
+    <section class="relative overflow-hidden pt-25 pb-20">
+        <div class="max-w-7xl sm:px-6 lg:px-8 mr-auto ml-auto pt-14 pr-4 pl-4">
+            <div class="text-center max-w-3xl mx-auto">
+                <div class="inline-flex gap-2 text-xs text-zinc-300 bg-white/5 border-white/10 border rounded-full pt-1 pr-3 pb-1 pl-3 items-center mb-4 sm:mb-6">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3 w-3 sm:h-3.5 sm:w-3.5">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                    </svg>
+                    <span class="font-medium font-sans">产品功能</span>
+                </div>
+                <h1 class="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-light tracking-tighter font-geist text-white mb-4 sm:mb-6 leading-tight">
+                    <span class="block">百分点AI搜索洞察系统</span>
+                    <span class="block">Generforce</span>
+                </h1>
+                <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+                    <a href="contact.html" id="getDemoBtn" target="_blank" class="inline-flex items-center justify-center min-w-[140px] px-6 py-3 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white text-[15px] font-semibold rounded-lg shadow-[0_0_20px_rgba(147,51,234,0.5)] hover:shadow-[0_0_28px_rgba(147,51,234,0.7)] transition-all duration-300 hover:-translate-y-0.5 select-none cursor-pointer">
+                        立即咨询
+                    </a>
+                    <!-- <a href="tech-blog.html" class="inline-flex items-center gap-2 ring-1 ring-white/5 hover:bg-white/5 text-sm font-medium text-zinc-200 rounded-md pt-2.5 pr-4 pb-2.5 pl-4">
+                        <span class="font-sans">查看洞察</span>
+                    </a> -->
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 产品介绍 -->
+    <section class="py-12 sm:py-16 lg:py-24 relative">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-10 lg:gap-12 items-start lg:items-center">
+                <div>
+                    <h2 class="text-4xl sm:text-3xl font-light tracking-tighter font-geist text-white mb-6">首个 AI原生 一站式GEO洞察与优化系统</h2>
+                    <p class="text-lg text-zinc-300 mb-8 font-sans">聚焦用户购买旅程，精准洞察 AI 问答中品牌印象，赋能品牌认知升级，突破 AI 场景业务增长</p>
+                    <ul class="space-y-4">
+                        <li class="flex items-start"><i class="fas fa-check text-emerald-400 mr-3 mt-1"></i><div><strong class="text-white">AI 问答 Agent</strong><p class="text-zinc-400 text-sm font-sans">洞察消费者的AI辅助决策全过程</p></div></li>
+                        <li class="flex items-start"><i class="fas fa-check text-emerald-400 mr-3 mt-1"></i><div><strong class="text-white">AI 指标 Agent</strong><p class="text-zinc-400 text-sm font-sans">用指标衡量消费者品牌认知</p></div></li>
+                        <li class="flex items-start"><i class="fas fa-check text-emerald-400 mr-3 mt-1"></i><div><strong class="text-white">AI 内容 Agent</strong><p class="text-zinc-400 text-sm font-sans">影响和优化AI品牌认知</p></div></li>
+                    </ul>
+                </div>
+                <div>
+                    <div class="relative">
+                        <!-- <div id="carousel" class="carousel">
+                            <div class="carousel-inner">
+                                <div class="carousel-item"><img src="images/swiper1.png" alt="Image 1"></div>
+                                <div class="carousel-item"><img src="images/swiper2.png" alt="Image 2"></div>
+                                <div class="carousel-item"><img src="images/swiper3.png" alt="Image 3"></div>
+                                <div class="carousel-item"><img src="images/swiper4.png" alt="Image 4"></div>
+                            </div>
+                        </div> -->
+                        <video
+                            autoplay="autoplay"
+                            loop="loop"
+                            muted
+                            class="w-full h-auto rounded-lg"
+                            controls
+                            preload="metadata"
+                            style="min-height: 225px; background: #1f2937;"
+                        >
+                            <source src="video/productVideo.mp4" type="video/mp4">
+                            <source src="产品视频.webm" type="video/webm">
+                            <div style="display: flex; align-items: center; justify-content: center; height: 225px; color: #9ca3af; font-size: 14px;">
+                                <div style="text-align: center;">
+                                    <div style="width: 80px; height: 80px; background: #374151; border-radius: 50%; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;">
+                                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                        </svg>
+                                    </div>
+                                    <p>视频文件未找到</p>
+                                    <p style="font-size: 12px; margin-top: 8px;">请确保"产品视频.mp4"文件存在</p>
+                                </div>
+                            </div>
+                        </video>
+                        <!-- <div class="mt-4 text-center">
+                            <p class="text-sm text-zinc-400 font-sans">观看产品功能演示，了解AI协作流程</p>
+                        </div> -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 核心功能 -->
+    <section class="py-24 relative">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-3xl mx-auto mb-16">
+                <div class="inline-flex gap-2 text-xs text-zinc-300 bg-white/5 border-white/10 border rounded-full pt-1 pr-3 pb-1 pl-3 items-center mb-6">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5">
+                        <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 1 14 18.469V19a2 2 0 0 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547Z"></path>
+                    </svg>
+                    <span class="font-medium font-sans">核心功能</span>
+                </div>
+                <h2 class="text-4xl sm:text-5xl font-light tracking-tighter font-geist text-white mb-4">核心功能</h2>
+                <p class="text-lg text-zinc-300 font-sans">强大的AI洞察系统，助力您的品牌在AI时代脱颖而出</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!-- 品牌/产品可见性分析 -->
+                <div class="bg-zinc-900/50 border border-white/10 rounded-2xl p-8 backdrop-blur-sm card-hover">
+                    <div class="flex items-center mb-4 gap-2">
+                        <img src="images/ppcpkjxfx.png" alt="品牌/产品可见性分析" class="w-8 h-8" />
+                        <h3 class="text-xl font-semibold text-white font-geist">AI可见性指标</h3>
+                    </div>
+
+                    <p class="text-zinc-300 mb-6 font-sans">自动分析品牌在AI中的提及情况，以可见性指数、行业排名、AI好感度等为显性指标，诊断品牌在AI平台的曝光情况，比较品牌与竞品的AI可见性，洞悉品牌在AI眼中的标签。</p>
+                    <ul class="text-sm text-zinc-400 space-y-1 font-sans">
+                        <li>• 7大AI平台覆盖</li>
+                        <li>• 实时可见性分析</li>
+                        <li>• 行业竞争趋势</li>
+                        <li>• 产品标签画像</li>
+                    </ul>
+                </div>
+
+                <!-- AI引用来源分析 -->
+                <div class="bg-zinc-900/50 border border-white/10 rounded-2xl p-8 backdrop-blur-sm card-hover">
+                    <div class="flex items-center mb-4 gap-2">
+                        <img src="images/aiyylyfx.png" alt="AI引用来源分析" class="w-8 h-8" />
+                        <h3 class="text-xl font-semibold text-white font-geist">AI引用来源分析</h3>
+                    </div>
+                    <p class="text-zinc-300 mb-6 font-sans">智能解析AI回答引用的来源渠道、文章等偏好，解构高引用内容的标题、结构、内容特征，以真实数据解析不同大模型对网络信源权重的判断和信任偏向，定位影响AI认知的关键信息节点。</p>
+                    <ul class="text-sm text-zinc-400 space-y-1 font-sans">
+                        <li>• 引用信源分布</li>
+                        <li>• 热门文章排行</li>
+                        <li>• 动态溯源追踪</li>
+                    </ul>
+                </div>
+
+                <!-- 品牌情感分析 -->
+                <div class="bg-zinc-900/50 border border-white/10 rounded-2xl p-8 backdrop-blur-sm card-hover">
+                    <div class="flex items-center mb-4 gap-2">
+                        <img src="images/ppqgfx.png" alt="品牌情感分析" class="w-8 h-8" />
+                        <h3 class="text-xl font-semibold text-white font-geist">品牌情感分析</h3>
+                    </div>
+                    <p class="text-zinc-300 mb-6 font-sans">自动分析AI回答和引用文章的情感倾向，衡量AI大模型对品牌的情感偏向，评估品牌内容信息的正确度，避免错误信息的负面影响，保证品牌正面信息的精准传播、有效触达。</p>
+                    <ul class="text-sm text-zinc-400 space-y-1 font-sans">
+                        <li>• 情感倾向智能识别</li>
+                        <li>• 负面标签画像</li>
+                        <li>• 负面文章发现</li>
+                    </ul>
+                </div>
+
+                <!-- AI优化建议与效果追踪 -->
+                <div class="bg-zinc-900/50 border border-white/10 rounded-2xl p-8 backdrop-blur-sm card-hover">
+                    <div class="flex items-center mb-4 gap-2">
+                        <img src="images/aiyhjyyxgzz.png" alt="AI优化建议与效果追踪" class="w-8 h-8" />
+                        <h3 class="text-xl font-semibold text-white font-geist">AI优化建议与效果追踪</h3>
+                    </div>
+                    <p class="text-zinc-300 mb-6 font-sans">基于分析结果，结合大模型信源偏好，智能制定品牌内容优化及平台选择策略，并追踪稿件的参考及引用趋势，洞察品牌指标的变化情况，自动评估整体优化效果。</p>
+                    <ul class="text-sm text-zinc-400 space-y-1 font-sans">
+                        <li>• 个性化优化策略制定</li>
+                        <li>• 内容与渠道优化建议</li>
+                        <li>• 优化前后对比分析</li>
+                        <li>• 量化效果追踪</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 页脚 -->
+    <footer class="mt-24 border-t border-white/10">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
+            <!-- 桌面端 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8 hidden lg:flex justify-between">
+                <!-- 快速链接 -->
+                <div class="gap-4 text-sm text-zinc-400">
+                    <h3 class="text-lg font-semibold text-white mb-4">快速链接</h3>
+                    <div class="space-y-3 text-sm">
+                        <div><a href="product.html" target="_blank" class="text-zinc-400 hover:text-white transition-colors">产品介绍</a></div>
+                        <div><a href="solutions.html" target="_blank" class="text-zinc-400 hover:text-white transition-colors">解决方案</a></div>
+                        <div><a href="about.html" target="_blank" class="text-zinc-400 hover:text-white transition-colors">关于我们</a></div>
+                    </div>
+                </div>
+
+
+                <!-- 联系信息 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-4">联系我们</h3>
+                    <div class="space-y-3 text-sm text-zinc-400">
+                        <div class="flex items-center gap-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-500">
+                                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                            </svg>
+                            <span>联系电话</span>
+                        </div>
+                        <div class="text-lg font-semibold text-white" style="margin-top: 4px">400 6298 600</div>
+                        <div class="flex items-center gap-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-500">
+                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                                <polyline points="22,6 12,13 2,6"></polyline>
+                            </svg>
+                            <span>gf@percent.cn</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-500">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                <circle cx="12" cy="10" r="3"></circle>
+                            </svg>
+                            <span style="white-space: nowrap;">北京市海淀区金隅智造工场S5西侧</span>
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- 关注我们 -->
+                <div>
+                    <h3 class="text-lg font-semibold text-white mb-2">关注我们</h3>
+                    <div class="">
+                        <div class="h-24 rounded-lg mx-auto mb-2 flex ">
+                            <img src="images/qrCode.jpeg" alt="二维码" class="w-auto">
+                        </div>
+                        <div class="text-xs text-zinc-400" style="width: 96px;text-align: center;">微信公众号</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 移动端 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 mb-8 lg:hidden text-center">
+                <!-- 快速链接 -->
+                <div class="gap-4 text-sm text-zinc-400 text-center">
+                    <h3 class="text-lg font-semibold text-white mb-4">快速链接</h3>
+                    <div class="text-sm flex items-center justify-around md:flex-col md:items-center md:gap-3 lg:flex-row lg:justify-around lg:items-center lg:gap-0">
+                        <div><a href="product.html" target="_blank" class="text-zinc-400 hover:text-white transition-colors">产品介绍</a></div>
+                        <div><a href="solutions.html" target="_blank" class="text-zinc-400 hover:text-white transition-colors">解决方案</a></div>
+                        <div><a href="about.html" target="_blank" class="text-zinc-400 hover:text-white transition-colors">关于我们</a></div>
+                    </div>
+                </div>
+
+
+                <!-- 联系信息 -->
+                <div class="mt-8 md:mt-0">
+                    <h3 class="text-lg font-semibold text-white mb-4">联系我们</h3>
+                    <div class="space-y-3 text-sm text-zinc-400">
+                        <div class="flex items-center justify-center gap-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-500">
+                                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                            </svg>
+                            <span>联系电话</span>
+                        </div>
+                        <div class="text-lg font-semibold text-white" style="margin-top: 4px">400 6298 600</div>
+                        <div class="flex items-center justify-center gap-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-500">
+                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                                <polyline points="22,6 12,13 2,6"></polyline>
+                            </svg>
+                            <span>gf@percent.cn</span>
+                        </div>
+                        <div class="flex items-center justify-center gap-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-500">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                <circle cx="12" cy="10" r="3"></circle>
+                            </svg>
+                            <span style="white-space: nowrap;">北京市海淀区金隅智造工场S5西侧</span>
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- 关注我们 -->
+                <div class="mt-8 md:mt-0">
+                    <h3 class="text-lg font-semibold text-white mb-2">关注我们</h3>
+                    <div>
+                        <div class="h-24 rounded-lg mx-auto mb-2 flex justify-center">
+                            <img src="images/qrCode.jpeg" alt="二维码" class="w-auto">
+                        </div>
+                        <div class="text-xs text-zinc-400" style="width: 96px;text-align: center;margin: 0 auto;">微信公众号</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 版权信息 -->
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-zinc-400 border-t border-white/10 pt-6">
+                <div class="flex items-center gap-2">
+                    <!-- <img src="images/logo.png" alt="Percent Logo" class="h-6 w-auto"> -->
+                    <span class="font-sans">Copyright © 2026 百分点科技集团股份有限公司 版权所有 <a target="_blank" href="https://beian.miit.gov.cn/#/Integrated/recordQuery">京ICP备09109727号-38</a> <a target="_blank" href="https://beian.mps.gov.cn/#/query/webSearch">京公网安备11010802036555号</a></span>
+                </div>
+                <div class="flex items-center gap-6">
+                    <a href="privacy.html" target="_blank" class="hover:text-zinc-200 font-sans">隐私政策</a>
+                    <a href="legal.html" target="_blank" class="hover:text-zinc-200 font-sans">法律声明</a>
+                    <a href="contact.html" target="_blank" class="hover:text-zinc-200 font-sans">联系我们</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        var fullURL = window.location.href;
+        var link = document.getElementById('login');
+        link.setAttribute('href', fullURL?.includes('testbmf-geo-official.percent.cn') ? 'http://testbmf-geo.percent.cn/login' : 'https://gf.percent.cn/login');
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const items = document.querySelectorAll('.carousel-item');
+            console.log(items);
+
+            let currentIndex = 0; // 当前显示的图片索引
+            const totalItems = items.length; // 总图片数
+            const itemHeight = items[0].offsetHeight; // 图片高度，用于计算位置
+            const carouselInner = document.querySelector('.carousel-inner');
+            carouselInner.style.transform = `translateY(-${currentIndex * itemHeight}px)`; // 初始化位置
+
+            // document.getElementById('next').addEventListener('click', function() {
+            //     currentIndex = (currentIndex + 1) % totalItems; // 切换到下一张图片，并循环显示第一张图片
+            //     updateCarousel(); // 更新轮播图位置
+            // });
+
+            // document.getElementById('prev').addEventListener('click', function() {
+            //     currentIndex = (currentIndex - 1 + totalItems) % totalItems; // 切换到上一张图片，并循环显示最后一张图片
+            //     updateCarousel(); // 更新轮播图位置
+            // });
+
+            function updateCarousel() {
+                carouselInner.style.transform = `translateY(-${currentIndex * itemHeight}px)`; // 更新轮播图位置到当前图片位置
+            }
+
+            setInterval(updateCarousel, 3000);
+        });
+
+        // document.addEventListener('DOMContentLoaded', function() {
+        //     const slides = document.querySelector('.slides');
+        //     const images = document.querySelectorAll('.slides img'); // 获取所有图片元素
+        //     let index = 0; // 当前显示图片的索引
+        //     const totalImages = images.length; // 总图片数
+
+        //     function showNextImage() {
+        //         index = (index + 1) % totalImages; // 计算下一个索引，循环显示图片
+        //         slides.style.transform = `translateX(-${index * 100}%)`; // 更新transform属性来切换图片
+        //     }
+
+        //     setInterval(showNextImage, 3000); // 每3秒切换一次图片
+        // });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            const y = document.getElementById('y');
+            if (y) y.textContent = new Date().getFullYear();
+
+            // 移动端菜单功能
+            const mobileMenuButton = document.getElementById('mobile-menu-button');
+            const mobileMenu = document.getElementById('mobile-menu');
+
+            if (mobileMenuButton && mobileMenu) {
+                mobileMenuButton.addEventListener('click', () => {
+                    mobileMenu.classList.toggle('hidden');
+                });
+
+                // 点击外部关闭菜单
+                document.addEventListener('click', (e) => {
+                    if (!mobileMenuButton.contains(e.target) && !mobileMenu.contains(e.target)) {
+                        mobileMenu.classList.add('hidden');
+                    }
+                });
+
+                // ESC键关闭菜单
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') {
+                        mobileMenu.classList.add('hidden');
+                    }
+                });
+            }
+            
+            // 行业洞察菜单展开/收起功能
+            const industryInsightToggle = document.getElementById('industry-insight-toggle');
+            const industryInsightSubmenu = document.getElementById('industry-insight-submenu');
+            const industryInsightIcon = document.getElementById('industry-insight-icon');
+
+            if (industryInsightToggle && industryInsightSubmenu && industryInsightIcon) {
+                industryInsightToggle.addEventListener('click', () => {
+                    industryInsightSubmenu.classList.toggle('hidden');
+                    industryInsightIcon.classList.toggle('rotate-180');
+                });
+            }
+
+            // 触摸设备优化
+            if ('ontouchstart' in window) {
+                document.body.classList.add('touch-device');
+            }
+
+            // 检测设备类型
+            const userAgent = navigator.userAgent.toLowerCase();
+            if (userAgent.includes('android')) {
+                document.body.classList.add('android-device');
+            } else if (userAgent.includes('iphone') || userAgent.includes('ipad')) {
+                document.body.classList.add('ios-device');
+            } else if (userAgent.includes('harmonyos')) {
+                document.body.classList.add('harmonyos-device');
+            }
+
+            // 响应式图片加载优化
+            const images = document.querySelectorAll('img');
+            images.forEach(img => {
+                if (img.dataset.src) {
+                    const observer = new IntersectionObserver((entries) => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting) {
+                                img.src = img.dataset.src;
+                                img.classList.remove('lazy');
+                                observer.unobserve(img);
+                            }
+                        });
+                    });
+                    observer.observe(img);
+                }
+            });
+
+            // 平滑滚动优化
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const target = document.querySelector(this.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                });
+            });
+
+            // 性能监控
+            if ('performance' in window) {
+                window.addEventListener('load', () => {
+                    setTimeout(() => {
+                        const perfData = performance.getEntriesByType('navigation')[0];
+                        if (perfData) {
+                            console.log('页面加载时间:', perfData.loadEventEnd - perfData.loadEventStart, 'ms');
+                        }
+                    }, 0);
+                });
+            }
+
+            // 处理"立即咨询"按钮点击事件，传递hash参数
+            const getDemoBtn = document.getElementById('getDemoBtn');
+            if (getDemoBtn) {
+                getDemoBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const hash = window.location.hash;
+                    let targetUrl = 'contact.html';
+                    
+                    if (hash && hash.length > 1) {
+                        // 提取#后面的内容（去掉#符号）
+                        const sourceCode = hash.substring(1);
+                        targetUrl = `contact.html?s=${sourceCode}`;
+                    }
+                    
+                    // 在新标签页打开
+                    window.open(targetUrl, '_blank');
+                });
+            }
+
+            // 处理"免费试用"按钮点击事件，传递hash参数
+            document.querySelectorAll('.free-trial-btn').forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const hash = window.location.hash;
+                    let targetUrl = 'contact.html';
+                    
+                    if (hash && hash.length > 1) {
+                        // 提取#后面的内容（去掉#符号）
+                        const sourceCode = hash.substring(1);
+                        targetUrl = `contact.html?s=${sourceCode}`;
+                    }
+                    
+                    // 跳转到contact.html
+                    window.location.href = targetUrl;
+                });
+            });
+        });
+    </script>
+    
+    <!-- 手机端底部导航栏 -->
+    <div class="fixed bottom-0 left-0 right-0 z-50 lg:hidden ">
+        <div class="grid grid-cols-2 shadow-lg" style="background: linear-gradient(90deg, #9333EA 0%, #010101 100%);">
+            <!-- 电话咨询 -->
+            <a href="tel:400-6298-600" class="flex items-center justify-center gap-2 py-3 text-white hover:bg-white/10 transition-all duration-300">
+                <img src="images/phone.png" alt="电话" class="w-5 h-5">
+                <span class="text-sm font-medium">电话咨询</span>
+            </a>
+            
+            <!-- 免费试用 -->
+            <a href="contact.html" class="free-trial-btn flex items-center justify-center gap-2 py-3 text-white hover:bg-white/10 transition-all duration-300">
+                <img src="images/try.png" alt="试用" class="w-5 h-5">
+                <span class="text-sm font-medium">联系我们</span>
+            </a>
+        </div>
+    </div>
+    
+    <!-- 右侧固定按钮组 - 移动端 -->
+    <div class="fixed right-1 bottom-[25vh] z-40 flex flex-col gap-1.5 lg:hidden">
+        <!-- 电话按钮 -->
+        <a href="tel:400-6298-600" class="flex items-center justify-center w-[48px] h-[48px] bg-gradient-to-br from-purple-600 to-purple-700 rounded-md shadow-lg transition-all duration-300">
+            <img src="images/phone.png" alt="电话" class="w-5 h-5">
+        </a>
+        
+        <!-- 回到顶部 -->
+        <button id="back-to-top-mobile" class="flex items-center justify-center w-[48px] h-[34px] bg-gradient-to-br from-purple-600 to-purple-700 rounded-md shadow-lg transition-all duration-300 opacity-0 pointer-events-none">
+            <img src="images/back.png" alt="返回顶部" class="w-5 h-5">
+        </button>
+    </div>
+    
+    <!-- 右侧固定按钮组 - 桌面端 -->
+    <div class="fixed right-4 bottom-48 z-40 flex flex-col gap-2 hidden lg:flex">
+        <!-- 电话咨询和免费试用合并块 -->
+        <div class="relative">
+            <div class="w-[70px] bg-gradient-to-br from-purple-600 to-purple-700 rounded-md shadow-lg hover:shadow-xl transition-all duration-300">
+                <!-- 联系我们 -->
+                <a href="contact.html" class="free-trial-btn flex flex-col items-center justify-center h-[70px] hover:bg-white/10 rounded-t-md transition-all duration-300">
+                    <img src="images/try.png" alt="试用" class="w-5 h-5 mb-1">
+                    <span class="text-white text-xs font-medium">联系我们</span>
+                </a>
+
+                <!-- 分隔线 -->
+                <div class="h-px gap-line mx-3"></div>
+
+                <!-- 电话咨询 -->
+                <div class="relative group flex flex-col items-center justify-center h-[70px] hover:bg-white/10 rounded-b-md transition-all duration-300 cursor-pointer">
+                    <!-- 悬浮显示的联系信息 -->
+                    <div class="absolute right-full mr-3 top-0 bg-gradient-to-br from-purple-600 to-purple-700 rounded-md shadow-xl px-4 py-3 whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300">
+                <div class="text-white text-sm font-medium mb-1">联系我们</div>
+                <div class="text-white text-lg font-bold">400-6298-600</div>
+            </div>
+                    <img src="images/phone.png" alt="电话" class="w-5 h-5 mb-1">
+                    <span class="text-white text-xs font-medium">电话咨询</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 回到顶部 -->
+        <button id="back-to-top-desktop" class="group flex flex-col items-center justify-center w-[70px] h-[70px] bg-gradient-to-br from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 rounded-md shadow-lg hover:shadow-xl transition-all duration-300  opacity-0 pointer-events-none">
+            <img src="images/back.png" alt="返回顶部" class="w-6 h-6 mb-1">
+            <span class="text-white text-xs font-medium">回到顶部</span>
+        </button>
+    </div>
+    
+    <script>
+        // 回到顶部功能
+        const backToTopBtnMobile = document.getElementById('back-to-top-mobile');
+        const backToTopBtnDesktop = document.getElementById('back-to-top-desktop');
+        
+        // 移动端按钮点击事件
+        if (backToTopBtnMobile) {
+            backToTopBtnMobile.addEventListener('click', () => {
+                window.scrollTo({
+                    top: 0,
+                    behavior: 'smooth'
+                });
+            });
+        }
+        
+        // 桌面端按钮点击事件
+        if (backToTopBtnDesktop) {
+            backToTopBtnDesktop.addEventListener('click', () => {
+                window.scrollTo({
+                    top: 0,
+                    behavior: 'smooth'
+                });
+            });
+        }
+        
+        // 滚动监听，超过一屏时显示按钮
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > window.innerHeight) {
+                if (backToTopBtnMobile) {
+                    backToTopBtnMobile.classList.remove('opacity-0', 'pointer-events-none');
+                    backToTopBtnMobile.classList.add('opacity-100');
+                }
+                if (backToTopBtnDesktop) {
+                    backToTopBtnDesktop.classList.remove('opacity-0', 'pointer-events-none');
+                    backToTopBtnDesktop.classList.add('opacity-100');
+                }
+            } else {
+                if (backToTopBtnMobile) {
+                    backToTopBtnMobile.classList.remove('opacity-100');
+                    backToTopBtnMobile.classList.add('opacity-0', 'pointer-events-none');
+                }
+                if (backToTopBtnDesktop) {
+                    backToTopBtnDesktop.classList.remove('opacity-100');
+                    backToTopBtnDesktop.classList.add('opacity-0', 'pointer-events-none');
+                }
+            }
+        });
+    </script>
+</body>
+</html>

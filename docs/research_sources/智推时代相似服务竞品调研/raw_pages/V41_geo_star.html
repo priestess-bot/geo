@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GEO-Star官网 | GEO优化服务 | AI搜索引擎优化</title>
+  <meta name="description" content="GEO-Star GEO 引擎，帮助企业在 DeepSeek、豆包、元宝、Kimi、千问 等 AI 决策入口建立品牌权威，提升品牌影响力。" />
+  <link rel="stylesheet" href="css/main.css" />
+</head>
+<body class="page-home">
+  <div class="bg-grid" aria-hidden="true"></div>
+<div class="home-hero-glow" aria-hidden="true"></div>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="index.php">
+        <span class="brand-mark" aria-hidden="true">
+          <img class="brand-logo" src="img/logo.png" width="160" height="40" alt="" decoding="async" />
+        </span>
+        <span class="brand-text">GEO-Star</span>
+      </a>
+      <button type="button" class="nav-toggle" aria-label="打开菜单">☰</button>
+      <div class="nav-main-wrap">
+        <nav class="nav-main" aria-label="主导航">
+          <a class="active" href="index.php">首页</a>
+          <details class="nav-dropdown">
+            <summary>解决方案</summary>
+            <div class="nav-dropdown-panel">
+              <a href="solutions-industry.php">行业解决方案</a>
+              <a href="solutions-scenarios.php">典型业务场景</a>
+              <a href="cases.php">成功案例</a>
+              <a href="faq.php">常见问题</a>
+            </div>
+          </details>
+          <a href="model_list.php">主流模型</a>
+          <a href="geo-service.php">GEO服务</a>
+          <a href="analysis.php">数据分析</a>
+          <a href="insights.php">观点洞察</a>
+          <a href="about.php">关于我们</a>
+        </nav>
+      </div>
+      <div class="header-auth">
+        <a class="header-auth-link" href="login.php">登录</a>
+        <a class="header-auth-cta" href="register.php">注册</a>
+      </div>
+    </div>
+  </header>
+<main>
+    <!--
+      双屏 Hero 轮播（首屏完整 CTA + 第二屏极简 CTA 与诊断维度示意）
+    -->
+    <section
+      class="home-hero-carousel wrap"
+      id="home-hero-carousel"
+      role="region"
+      aria-roledescription="轮播"
+      aria-label="首页主推"
+      data-autoplay-ms="6500"
+    >
+      <div class="home-hero-viewport">
+        <div class="home-hero-track" id="home-hero-track">
+          <!-- Slide 1：完整转化路径 -->
+          <div class="home-hero-slide is-active" data-slide="0" aria-hidden="false">
+            <div class="hero home-hero home-hero--slide">
+              <span class="hero-badge hero-badge--pulse">限时免费 · GEO 品牌诊断</span>
+              <h1>
+                抢占 <span class="gradient-text">AI 搜索展示位</span><br />
+                提升品牌被推荐的机率
+              </h1>
+              <p class="hero-lead">
+                GEO-Star GEO 引擎，基于行业专利技术，帮助企业在 DeepSeek、豆包、元宝、Kimi、千问 等 AI 决策入口建立品牌权威，提升品牌影响力。
+              </p>
+              <div class="hero-actions">
+                <a class="btn btn-primary" href="#diagnosis-form">立即获取专属诊断</a>
+                <a class="btn btn-ghost" href="cases.php">查看成功案例</a>
+              </div>
+              <div class="hero-actions hero-actions--secondary">
+                <a class="btn btn-ghost btn-arrow" href="#report-preview">查看诊断报告示例</a>
+                <a class="btn btn-primary btn-compact" href="#diagnosis-form">获取专属诊断 →</a>
+              </div>
+              <div class="pills pills--hero" aria-label="覆盖平台">
+                <span class="pill">DeepSeek</span>
+                <span class="pill">豆包</span>
+                <span class="pill">元宝</span>
+                <span class="pill">Kimi</span>
+                <span class="pill">通义千问</span>
+              </div>
+              <a class="hero-scroll-hint" href="#report-preview">
+                <span>向下滚动查看诊断报告</span>
+                <span class="hero-scroll-icon" aria-hidden="true"></span>
+              </a>
+            </div>
+          </div>
+          <!-- Slide 2：极简 CTA + 诊断维度示意 -->
+          <div class="home-hero-slide" data-slide="1" aria-hidden="true">
+            <div class="hero home-hero home-hero--slide home-hero--slide-b">
+              <span class="hero-badge">限时免费</span>
+              <h1>
+                抢占 <span class="gradient-text">AI 搜索展示位</span><br />
+                提升品牌被推荐的机率
+              </h1>
+              <p class="hero-lead">
+                GEO-Star GEO 引擎，基于行业专利技术，帮助企业在 DeepSeek、豆包、元宝、Kimi、千问 等 AI 决策入口建立品牌权威，提升品牌影响力。
+              </p>
+              <div class="hero-actions hero-actions--single">
+                <a class="btn btn-primary btn-slide-b-cta" href="#diagnosis-form">获取专属诊断 →</a>
+              </div>
+              <div class="home-hero-lazy-panel home-hero-lazy-panel--ready" id="home-hero-lazy-panel">
+                <div class="home-lazy-panel-ready">
+                  <p class="home-lazy-ready-title">诊断维度已就绪</p>
+                  <div class="home-lazy-chips">
+                    <span>可见性</span><span>竞品</span><span>信源</span><span>意图词</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="home-hero-toolbar">
+        <button type="button" class="home-hero-arrow home-hero-prev" aria-label="上一屏">‹</button>
+        <div class="home-hero-dots" role="tablist" aria-label="切换首屏画面">
+          <button type="button" class="home-hero-dot is-active" role="tab" aria-selected="true" aria-label="第 1 屏：完整入口"></button>
+          <button type="button" class="home-hero-dot" role="tab" aria-selected="false" aria-label="第 2 屏：专属诊断"></button>
+        </div>
+        <button type="button" class="home-hero-arrow home-hero-next" aria-label="下一屏">›</button>
+      </div>
+      <p class="home-hero-hint">左右滑动或点击圆点切换 · 将自动轮播</p>
+    </section>
+
+    <!-- 诊断维度预览 -->
+    <section class="home-lazy-strip wrap home-reveal home-lazy-strip--done" id="home-lazy-strip" aria-label="诊断维度预览">
+      <div class="home-lazy-strip-inner">
+        <div class="home-lazy-strip-loaded">
+          <h3 class="home-lazy-strip-title">全景诊断将为您梳理</h3>
+          <ul class="home-lazy-strip-list">
+            <li><strong>可见性矩阵</strong>：多模型下的品牌露出与位次</li>
+            <li><strong>竞品对话路径</strong>：用户常问中的首选与替代选项</li>
+            <li><strong>信源与事实库</strong>：权威引用缺口与更新优先级</li>
+          </ul>
+          <a class="btn btn-ghost btn-sm" href="#report-preview">查看报告示例</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- 平台跑马灯（强化「全入口覆盖」感知） -->
+    <section class="home-marquee wrap home-reveal" aria-label="覆盖的 AI 入口">
+      <p class="home-marquee-label">覆盖主流 AI 决策与对话入口</p>
+      <div class="home-marquee-viewport">
+        <div class="home-marquee-inner">
+          <span>DeepSeek</span><span>豆包</span><span>元宝</span><span>Kimi</span><span>通义千问</span><span>文心一言</span><span>腾讯元宝</span><span>智谱</span>
+          <span>DeepSeek</span><span>豆包</span><span>元宝</span><span>Kimi</span><span>通义千问</span><span>文心一言</span><span>腾讯元宝</span><span>智谱</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap home-reveal">
+      <div class="stats-row stats-row--home">
+        <div class="stat-card">
+          <div class="stat-num">360°</div>
+          <div class="stat-label">品牌可见性扫描</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">全栈</div>
+          <div class="stat-label">AI 决策入口覆盖</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">每日</div>
+          <div class="stat-label">策略迭代与监测</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">专利</div>
+          <div class="stat-label">方法论与工具链</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 一站式三条（与 GEO 服务页叙事一致，首页精简版） -->
+    <section class="section wrap home-reveal" id="value-pillars">
+      <div class="section-head">
+        <h2>一站式 GEO 增长路径</h2>
+        <p>洞察意图 → 多平台分发 → 数据驱动优化，让每一次 AI 曝光更接近转化。</p>
+      </div>
+      <div class="home-pillar-row">
+        <article class="home-pillar">
+          <span class="home-pillar-tag">01</span>
+          <h3>让用户更容易找到你</h3>
+          <p>提前布局用户常搜问题与购买意图路径，占据优先推荐位。</p>
+        </article>
+        <article class="home-pillar">
+          <span class="home-pillar-tag">02</span>
+          <h3>让用户随处看到你</h3>
+          <p>一次创作、多平台同步，持续追踪 AI 引用路径与信源健康。</p>
+        </article>
+        <article class="home-pillar">
+          <span class="home-pillar-tag">03</span>
+          <h3>让每次曝光更有价值</h3>
+          <p>结合推荐数据与转化反馈，迭代内容与呈现，拉动咨询与复购。</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- 为不同业务目标定制的 GEO 解决方案（对齐 geokeji.com 首页交互区块） -->
+    <section class="home-scenario-section home-reveal" id="scenario-solutions" aria-labelledby="scenario-solutions-title">
+      <div class="wrap home-scenario-inner">
+        <h2 class="home-scenario-title" id="scenario-solutions-title">为不同业务目标定制的 GEO 解决方案</h2>
+        <div class="home-scenario-shell">
+          <div class="home-scenario-tabs" role="tablist" aria-label="业务场景">
+            <button type="button" class="home-scenario-tab" role="tab" id="tab-brand" aria-selected="false" aria-controls="panel-brand" data-panel="brand" tabindex="-1">
+              <span class="home-scenario-tab-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 20h16M6 20V10l6-4 6 4v10M9 16h6M9 12h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 6V4M12 4l2 2M12 4l-2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </span>
+              <span class="home-scenario-tab-label">品牌建设</span>
+            </button>
+            <button type="button" class="home-scenario-tab" role="tab" id="tab-sales" aria-selected="false" aria-controls="panel-sales" data-panel="sales" tabindex="-1">
+              <span class="home-scenario-tab-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 18h16M7 14l3-3 3 2 5-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 7v4h-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
+              <span class="home-scenario-tab-label">销售转化</span>
+            </button>
+            <button type="button" class="home-scenario-tab" role="tab" id="tab-content" aria-selected="false" aria-controls="panel-content" data-panel="content" tabindex="-1">
+              <span class="home-scenario-tab-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 6h12v14H8V6zM8 6V4H6v16h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M11 10h6M11 14h6M11 18h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </span>
+              <span class="home-scenario-tab-label">内容营销</span>
+            </button>
+            <button type="button" class="home-scenario-tab" role="tab" id="tab-service" aria-selected="false" aria-controls="panel-service" data-panel="service" tabindex="-1">
+              <span class="home-scenario-tab-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 18v-4a7 7 0 0114 0v4M8 18h8M10 14h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><ellipse cx="12" cy="9" rx="3" ry="2" stroke="currentColor" stroke-width="1.6"/></svg>
+              </span>
+              <span class="home-scenario-tab-label">客户服务</span>
+            </button>
+            <button type="button" class="home-scenario-tab" role="tab" id="tab-crisis" aria-selected="false" aria-controls="panel-crisis" data-panel="crisis" tabindex="-1">
+              <span class="home-scenario-tab-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 8v5M12 17h.01M10.3 4h3.4l7.3 14H3l7.3-14z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
+              <span class="home-scenario-tab-label">危机公关</span>
+            </button>
+            <button type="button" class="home-scenario-tab is-active" role="tab" id="tab-market" aria-selected="true" aria-controls="panel-market" data-panel="market" tabindex="0">
+              <span class="home-scenario-tab-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M3 12h18M12 3a15 15 0 000 18M12 3a15 15 0 010 18" stroke="currentColor" stroke-width="1.5"/></svg>
+              </span>
+              <span class="home-scenario-tab-label">市场扩张</span>
+            </button>
+          </div>
+          <div class="home-scenario-panels">
+            <div class="home-scenario-panel" role="tabpanel" id="panel-brand" aria-labelledby="tab-brand" hidden>
+              <h3 class="home-scenario-panel-title">品牌建设</h3>
+              <p class="home-scenario-panel-lead">围绕品类认知与权威叙事，在 AI 答案中持续输出可被引用的一致品牌形象与证据链。</p>
+              <ul class="home-scenario-panel-list">
+                <li>构建品牌事实库与第三方背书矩阵</li>
+                <li>优化「品类定义 / 首选推荐」类问题的露出位次</li>
+                <li>对齐媒体稿、白皮书与结构化站内资产</li>
+                <li>监测叙事偏移与竞品话术挤压风险</li>
+              </ul>
+              <a class="home-scenario-cta" href="#diagnosis-form">获取我的场景解决方案 →</a>
+            </div>
+            <div class="home-scenario-panel" role="tabpanel" id="panel-sales" aria-labelledby="tab-sales" hidden>
+              <h3 class="home-scenario-panel-title">销售转化</h3>
+              <p class="home-scenario-panel-lead">把高意向提问路径与落地证据对齐，让用户在对话式搜索中更快完成「了解 → 信任 → 留资」。</p>
+              <ul class="home-scenario-panel-list">
+                <li>梳理比价、替代方案与采购周期相关问题集</li>
+                <li>强化案例、评测与 ROI 证据在答案中的引用率</li>
+                <li>打通站内表单与可追踪转化归因口径</li>
+                <li>迭代话术与素材以匹配模型摘要偏好</li>
+              </ul>
+              <a class="home-scenario-cta" href="#diagnosis-form">获取我的场景解决方案 →</a>
+            </div>
+            <div class="home-scenario-panel" role="tabpanel" id="panel-content" aria-labelledby="tab-content" hidden>
+              <h3 class="home-scenario-panel-title">内容营销</h3>
+              <p class="home-scenario-panel-lead">以可被 AI 摘录的结构生产内容，形成「问答 → 深度 → 转化」的可引用素材闭环。</p>
+              <ul class="home-scenario-panel-list">
+                <li>意图矩阵驱动的选题与更新节奏</li>
+                <li>多媒体摘要与要点列表适配合成答案</li>
+                <li>FAQ / HowTo 等结构化标记友好呈现</li>
+                <li>基于引用片段反馈优化标题与段落密度</li>
+              </ul>
+              <a class="home-scenario-cta" href="#diagnosis-form">获取我的场景解决方案 →</a>
+            </div>
+            <div class="home-scenario-panel" role="tabpanel" id="panel-service" aria-labelledby="tab-service" hidden>
+              <h3 class="home-scenario-panel-title">客户服务</h3>
+              <p class="home-scenario-panel-lead">把售后政策、常见工单与官方口径沉淀为可信答案源，降低错误摘要带来的服务成本。</p>
+              <ul class="home-scenario-panel-list">
+                <li>整理高频售后问答与版本变更记录</li>
+                <li>统一多渠道口径避免模型抓取陈旧页面</li>
+                <li>提升官方文档与帮助中心可被引用性</li>
+                <li>监控负面摘要并快速迭代事实库</li>
+              </ul>
+              <a class="home-scenario-cta" href="#diagnosis-form">获取我的场景解决方案 →</a>
+            </div>
+            <div class="home-scenario-panel" role="tabpanel" id="panel-crisis" aria-labelledby="tab-crisis" hidden>
+              <h3 class="home-scenario-panel-title">危机公关</h3>
+              <p class="home-scenario-panel-lead">在舆情高发期以可核验事实与合规文本抢占 AI 答案的话语权，压缩谣言摘要的生存空间。</p>
+              <ul class="home-scenario-panel-list">
+                <li>快速上线权威声明与时间线事实源</li>
+                <li>联动媒体与第三方信源交叉印证</li>
+                <li>监测模型答案倾向与关键词变异</li>
+                <li>迭代 FAQ 与法务审核模板降低二次伤害</li>
+              </ul>
+              <a class="home-scenario-cta" href="#diagnosis-form">获取我的场景解决方案 →</a>
+            </div>
+            <div class="home-scenario-panel is-active" role="tabpanel" id="panel-market" aria-labelledby="tab-market">
+              <h3 class="home-scenario-panel-title">市场扩张</h3>
+              <p class="home-scenario-panel-lead">针对新市场拓展与本地化曝光需求，GEO 优化帮助品牌在不同地区的 AI 语境中快速建立可见度与信任感。</p>
+              <ul class="home-scenario-panel-list">
+                <li>构建本地化关键词与内容体系</li>
+                <li>优化区域信源与行业 AI 曝光度</li>
+                <li>分析区域竞争格局与机会区间</li>
+                <li>提升多地区品牌认知与口碑积累</li>
+              </ul>
+              <a class="home-scenario-cta" href="#diagnosis-form">获取我的场景解决方案 →</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 覆盖全行业的 GEO 解决方案（对齐 geokeji.com：横向行业 Tab + 大卡内容） -->
+    <section class="home-industry-section home-reveal" id="industry-solutions" aria-labelledby="industry-solutions-title">
+      <div class="wrap home-industry-inner">
+        <h2 class="home-industry-title" id="industry-solutions-title">覆盖全行业的 GEO 解决方案</h2>
+        <div class="home-industry-tabs" role="tablist" aria-label="行业分类">
+          <button type="button" class="home-industry-tab is-active" role="tab" id="industry-tab-saas" aria-selected="true" aria-controls="industry-panel-saas" data-panel="saas" tabindex="0">
+            企业软件
+          </button>
+          <button type="button" class="home-industry-tab" role="tab" id="industry-tab-finance" aria-selected="false" aria-controls="industry-panel-finance" data-panel="finance" tabindex="-1">
+            金融投资
+          </button>
+          <button type="button" class="home-industry-tab" role="tab" id="industry-tab-edu" aria-selected="false" aria-controls="industry-panel-edu" data-panel="edu" tabindex="-1">
+            教育培训
+          </button>
+          <button type="button" class="home-industry-tab" role="tab" id="industry-tab-mfg" aria-selected="false" aria-controls="industry-panel-mfg" data-panel="mfg" tabindex="-1">
+            制造业
+          </button>
+          <button type="button" class="home-industry-tab" role="tab" id="industry-tab-energy" aria-selected="false" aria-controls="industry-panel-energy" data-panel="energy" tabindex="-1">
+            能源电力
+          </button>
+        </div>
+        <div class="home-industry-panels">
+          <div class="home-industry-panel is-active" role="tabpanel" id="industry-panel-saas" aria-labelledby="industry-tab-saas">
+            <p class="home-industry-badge">让 AI 选型搜索优先理解你的产品价值</p>
+            <h3 class="home-industry-card-title">企业软件行业</h3>
+            <p class="home-industry-lead">
+              SaaS 行业的竞争在于可见度与专业可信度。GEO 优化帮助科技品牌在 AI 选型场景中被优先推荐，让复杂产品特性、对比方案与客户案例以 AI 可理解的方式呈现，从而缩短决策周期。
+            </p>
+            <ul class="home-industry-list">
+              <li>重构技术方案与产品优势的语义表达</li>
+              <li>优化行业对比内容与 AI 选型信源</li>
+              <li>构建产品知识图谱与 AI 推荐逻辑</li>
+              <li>提升品牌在 AI 搜索中的专业可见度</li>
+            </ul>
+            <a class="home-industry-cta" href="#diagnosis-form">获取行业分析报告 →</a>
+          </div>
+          <div class="home-industry-panel" role="tabpanel" id="industry-panel-finance" aria-labelledby="industry-tab-finance" hidden>
+            <p class="home-industry-badge">让 AI 理财与投研问答优先引用你的合规观点</p>
+            <h3 class="home-industry-card-title">金融投资行业</h3>
+            <p class="home-industry-lead">
+              信任与合规是金融品牌的生命线。GEO 优化帮助基金、证券与财富管理机构在 AI 决策入口呈现可核验的投研观点、产品条款与风险提示，降低「二手摘要」带来的合规与声誉风险。
+            </p>
+            <ul class="home-industry-list">
+              <li>梳理监管口径下的可引用话术与事实库</li>
+              <li>强化招募说明书、策略解读等权威信源结构</li>
+              <li>监测竞品叙事与敏感意图问答路径</li>
+              <li>提升品牌在 AI 搜索中的专业可信度</li>
+            </ul>
+            <a class="home-industry-cta" href="#diagnosis-form">获取行业分析报告 →</a>
+          </div>
+          <div class="home-industry-panel" role="tabpanel" id="industry-panel-edu" aria-labelledby="industry-tab-edu" hidden>
+            <p class="home-industry-badge">让课程优势与师资背书在 AI 问询中被准确呈现</p>
+            <h3 class="home-industry-card-title">教育培训行业</h3>
+            <p class="home-industry-lead">
+              用户会用自然语言比较机构、课程与师资。GEO 优化帮助教育品牌在招生咨询、课程对比与口碑问答场景中，以结构化内容呈现差异点与成果案例，提升「被首选推荐」的概率。
+            </p>
+            <ul class="home-industry-list">
+              <li>构建课程矩阵与师资介绍的语义标签体系</li>
+              <li>优化学员案例、就业数据等可引用证据链</li>
+              <li>对齐招生旺季高频问题与落地页承接</li>
+              <li>提升品牌在 AI 搜索中的口碑可见度</li>
+            </ul>
+            <a class="home-industry-cta" href="#diagnosis-form">获取行业分析报告 →</a>
+          </div>
+          <div class="home-industry-panel" role="tabpanel" id="industry-panel-mfg" aria-labelledby="industry-tab-mfg" hidden>
+            <p class="home-industry-badge">让参数、交付与认证在 B2B 选型问答中优先出现</p>
+            <h3 class="home-industry-card-title">制造业</h3>
+            <p class="home-industry-lead">
+              复杂产品与长决策链决定制造业内容必须「可被模型理解」。GEO 优化帮助装备与零部件企业在规格参数、交付能力与行业认证等问答中建立权威引用，缩短询盘到技术确认的路径。
+            </p>
+            <ul class="home-industry-list">
+              <li>结构化产品规格书与行业应用场景叙事</li>
+              <li>强化案例库、认证与第三方检测报告信源</li>
+              <li>覆盖招投标与替代品牌对比类意图词</li>
+              <li>提升品牌在 AI 搜索中的技术与交付可信度</li>
+            </ul>
+            <a class="home-industry-cta" href="#diagnosis-form">获取行业分析报告 →</a>
+          </div>
+          <div class="home-industry-panel" role="tabpanel" id="industry-panel-energy" aria-labelledby="industry-tab-energy" hidden>
+            <p class="home-industry-badge">让绿色转型叙事与安全合规在 AI 科普与采购语境中前置</p>
+            <h3 class="home-industry-card-title">能源电力行业</h3>
+            <p class="home-industry-lead">
+              政策解读、项目招标与 ESG 议题高度交织。GEO 优化帮助能源企业在可再生、电网与工业能效等话题中，以权威数据与项目案例占据 AI 摘要引用位，支撑品牌公信与商务拓展。
+            </p>
+            <ul class="home-industry-list">
+              <li>沉淀政策解读与行业标准的事实库与口径</li>
+              <li>优化项目案例、白皮书与学术合作信源</li>
+              <li>覆盖招标采购与对标问答中的关键意图</li>
+              <li>提升品牌在 AI 搜索中的政策与技术影响力</li>
+            </ul>
+            <a class="home-industry-cta" href="#diagnosis-form">获取行业分析报告 →</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 真实的成功案例（对齐 geokeji：横向卡片轮播 + 左右箭头） -->
+    <section class="home-cases-section home-reveal" id="home-cases" aria-labelledby="home-cases-title">
+      <div class="wrap home-cases-wrap">
+        <header class="home-cases-head">
+          <h2 class="home-cases-title" id="home-cases-title">真实的成功案例</h2>
+          <p class="home-cases-sub">真实数据，真实成果</p>
+        </header>
+        <div class="home-cases-carousel" id="home-cases-carousel" aria-roledescription="carousel" aria-label="成功案例">
+          <button type="button" class="home-cases-nav home-cases-prev" aria-label="上一组案例">
+            <span aria-hidden="true">‹</span>
+          </button>
+          <div class="home-cases-viewport">
+            <div class="home-cases-track" id="home-cases-track">
+              <article class="home-case-card">
+                <span class="home-case-tag">科技行业</span>
+                <h3 class="home-case-name">移山科技</h3>
+                <p class="home-case-desc">
+                  一家具备技术背景的创新公司，通过关键词矩阵 + 专属AI知识库 + 结构化内容优化，在不到两周时间内实现显著提升。
+                </p>
+                <div class="home-case-metrics">
+                  <div class="home-case-metric">
+                    <span class="home-case-metric-val">+62%</span>
+                    <span class="home-case-metric-label">品牌可见率提升</span>
+                  </div>
+                  <div class="home-case-metric">
+                    <span class="home-case-metric-val">Top1</span>
+                    <span class="home-case-metric-label">AI 推荐率行业排名</span>
+                  </div>
+                </div>
+              </article>
+              <article class="home-case-card">
+                <span class="home-case-tag">消费行业</span>
+                <h3 class="home-case-name">家居品牌</h3>
+                <p class="home-case-desc">
+                  新消费品牌借助 GEO 内容矩阵与差异化话术，将核心卖点转化为 AI 可识别语言。
+                </p>
+                <div class="home-case-metrics">
+                  <div class="home-case-metric">
+                    <span class="home-case-metric-val">75%</span>
+                    <span class="home-case-metric-label">品牌可见度</span>
+                  </div>
+                  <div class="home-case-metric">
+                    <span class="home-case-metric-val">第一</span>
+                    <span class="home-case-metric-label">可见度行业排名</span>
+                  </div>
+                </div>
+              </article>
+              <article class="home-case-card">
+                <span class="home-case-tag">消费品行业</span>
+                <h3 class="home-case-name">儿童骑行品牌</h3>
+                <p class="home-case-desc">
+                  通过 GEO 策略构建权威内容链和问答语义结构，让 AI 真正理解品牌的技术优势与信任度。
+                </p>
+                <div class="home-case-metrics">
+                  <div class="home-case-metric">
+                    <span class="home-case-metric-val">+20%</span>
+                    <span class="home-case-metric-label">Top1 占比提升</span>
+                  </div>
+                  <div class="home-case-metric">
+                    <span class="home-case-metric-val">40%+</span>
+                    <span class="home-case-metric-label">领先竞品推荐率</span>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+          <button type="button" class="home-cases-nav home-cases-next" aria-label="下一组案例">
+            <span aria-hidden="true">›</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section wrap home-reveal" id="features">
+      <div class="section-head">
+        <h2>为什么选择 GEO-Star</h2>
+        <p>从内容资产到结构化信号，系统性提升品牌在生成式搜索中的权威度与引用率。</p>
+      </div>
+      <div class="grid-3">
+        <article class="card">
+          <img class="card-icon" src="img/icon-chart.svg" alt="" width="44" height="44" />
+          <h3>可见性量化</h3>
+          <p>围绕核心品类词与竞品对话路径，输出品牌在多家大模型答案中的曝光与位次洞察。</p>
+        </article>
+        <article class="card">
+          <img class="card-icon" src="img/icon-target.svg" alt="" width="44" height="44" />
+          <h3>意图对齐</h3>
+          <p>把用户真实提问方式映射到可运营的内容矩阵与权威背书布局，减少「搜得到却不被引用」的断层。</p>
+        </article>
+        <article class="card">
+          <img class="card-icon" src="img/icon-shield.svg" alt="" width="44" height="44" />
+          <h3>合规可持续</h3>
+          <p>遵循平台与版权边界，以结构化知识与可信来源构建长期品牌信任，而非短期堆砌关键词。</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- 诊断报告可视化预览（对应「查看诊断报告示例 / 向下滚动」） -->
+    <section class="section wrap home-report-section home-reveal" id="report-preview">
+      <div class="section-head">
+        <h2>专属 GEO 诊断报告 · 示例预览</h2>
+        <p>提交品牌与品类信息后，生成可视化报告：竞争格局、引用分布、内容缺口与 30 天行动路线。</p>
+      </div>
+      <div class="home-report-layout">
+        <div class="home-report-copy">
+          <ul class="home-report-bullets">
+            <li><strong>品类竞争格局</strong>：核心问题集合上的可见度与位次</li>
+            <li><strong>AI 答案引用分布</strong>：各模型下的提及与首选率</li>
+            <li><strong>内容缺口清单</strong>：待补足的事实源与结构化页面</li>
+            <li><strong>30 天优化路线图</strong>：优先级与资源建议</li>
+          </ul>
+          <div class="home-report-cta">
+            <a class="btn btn-primary" href="geo-service.php">了解 GEO 服务体系</a>
+            <a class="btn btn-ghost" href="faq.php">常见问题</a>
+          </div>
+        </div>
+        <div class="report-mock" id="report-mock-card" aria-label="诊断报告示意">
+          <div class="report-mock-header">
+            <span class="report-mock-dot"></span>
+            <span class="report-mock-dot"></span>
+            <span class="report-mock-dot"></span>
+            <span class="report-mock-title">GEO-Star · 品牌可见性诊断</span>
+          </div>
+          <div class="report-mock-loading" aria-live="polite">
+            <span class="report-mock-spinner"></span>
+            <span>加载中…</span>
+          </div>
+          <div class="report-mock-body">
+            <div class="report-mock-score">
+              <span class="report-mock-score-label">综合可见指数</span>
+              <span class="report-mock-score-num">72.4</span>
+            </div>
+            <div class="report-mock-bars">
+              <div class="report-mock-row"><span>DeepSeek</span><div class="report-mock-track"><div class="report-mock-bar" style="--w:78%"></div></div></div>
+              <div class="report-mock-row"><span>豆包</span><div class="report-mock-track"><div class="report-mock-bar report-mock-bar--2" style="--w:65%"></div></div></div>
+              <div class="report-mock-row"><span>Kimi</span><div class="report-mock-track"><div class="report-mock-bar report-mock-bar--3" style="--w:82%"></div></div></div>
+              <div class="report-mock-row"><span>通义</span><div class="report-mock-track"><div class="report-mock-bar report-mock-bar--4" style="--w:58%"></div></div></div>
+            </div>
+            <p class="report-mock-note">示意数据 · 正式报告以交付为准</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 四步流程 + 表单占位 -->
+    <section class="section wrap home-reveal" id="diagnosis">
+      <div class="section-head">
+        <h2>获取专属诊断</h2>
+        <p>标准化流程，快速对齐您的品类与目标平台。</p>
+      </div>
+      <ol class="home-steps">
+        <li class="home-step">
+          <span class="home-step-n">1</span>
+          <h4>提交信息</h4>
+          <p>品牌、品类、竞品与合规要求。</p>
+        </li>
+        <li class="home-step">
+          <span class="home-step-n">2</span>
+          <h4>全景扫描</h4>
+          <p>多模型采样与信源健康检查。</p>
+        </li>
+        <li class="home-step">
+          <span class="home-step-n">3</span>
+          <h4>诊断报告</h4>
+          <p>可见度、缺口与优先级路线图。</p>
+        </li>
+        <li class="home-step">
+          <span class="home-step-n">4</span>
+          <h4>顾问沟通</h4>
+          <p>解读报告并确认合作路径。</p>
+        </li>
+      </ol>
+
+      <div class="home-form-card" id="diagnosis-form">
+        <h3 class="home-form-title">预约专属诊断（演示表单）</h3>
+        <p class="home-form-desc">接入后端或表单服务后即可收集线索；以下为静态占位。</p>
+        <form class="home-form" action="#" method="post" onsubmit="return false;">
+          <label class="home-form-field">
+            <span>品牌 / 公司</span>
+            <input type="text" name="company" placeholder="例如：GEO-Star" autocomplete="organization" />
+          </label>
+          <label class="home-form-field">
+            <span>联系邮箱</span>
+            <input type="email" name="email" placeholder="name@company.com" autocomplete="email" />
+          </label>
+          <label class="home-form-field home-form-field--full">
+            <span>品类与需求简述</span>
+            <textarea name="note" rows="3" placeholder="希望覆盖的平台、核心竞品或当前痛点"></textarea>
+          </label>
+          <button type="submit" class="btn btn-primary home-form-submit">提交预约（演示）</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- 精简 FAQ -->
+    <section class="section wrap home-faq-mini home-reveal">
+      <div class="section-head">
+        <h2>开始前常见问题</h2>
+        <p>更多解答请见 <a href="faq.php" class="home-inline-link">常见问题</a>。</p>
+      </div>
+      <div class="home-faq-grid">
+        <details class="home-faq-item">
+          <summary>GEO 和 SEO 有什么区别？</summary>
+          <p>SEO 优化网页在搜索结果列表中的排名；GEO 关注品牌在 AI「合成答案」中的引用、位次与可信度。</p>
+        </details>
+        <details class="home-faq-item">
+          <summary>多久能看到变化？</summary>
+          <p>依品类竞争度与资产基础而异，通常首轮信号上线后数周可观察趋势，需持续迭代。</p>
+        </details>
+        <details class="home-faq-item">
+          <summary>诊断真的免费吗？</summary>
+          <p>限时活动以商务确认为准；演示站表单为占位，正式环境请对接您的 CRM。</p>
+        </details>
+      </div>
+    </section>
+
+    <section class="wrap home-reveal">
+      <div class="cta-strip cta-strip--home">
+        <h2>准备好占领下一个流量入口了吗？</h2>
+        <p>联系顾问获取限时免费诊断名额与行业对标样本。</p>
+        <div class="cta-strip-actions">
+          <a class="btn btn-primary" href="about.php#contact">预约沟通</a>
+          <a class="btn btn-ghost" href="insights.php">阅读 GEO 知识库</a>
+        </div>
+      </div>
+    </section>
+  </main>
+<!-- 滚动后浮现底栏（强化「立即获取专属诊断」转化） -->
+  <aside class="home-sticky-cta" id="home-sticky-cta" aria-hidden="true" hidden>
+    <div class="home-sticky-cta-inner wrap">
+      <span class="home-sticky-label"><strong>限时免费</strong> · GEO 品牌诊断</span>
+      <a class="btn btn-primary home-sticky-btn" href="#diagnosis-form">立即获取专属诊断</a>
+      <button type="button" class="home-sticky-close" aria-label="关闭底栏">×</button>
+    </div>
+  </aside>
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <div class="footer-brand">
+        <a class="brand brand--footer" href="index.php">
+          <span class="brand-mark" aria-hidden="true">
+            <img class="brand-logo" src="img/logo.png" width="160" height="40" alt="" decoding="async" />
+          </span>
+          <span class="brand-text">GEO-Star</span>
+        </a>
+        <p>GEO 引擎助力品牌在 AI 搜索时代赢得展示位与心智份额。</p>
+      </div>
+      <div class="footer-col">
+        <h4>解决方案</h4>
+        <ul>
+          <li><a href="solutions-industry.php">行业解决方案</a></li>
+          <li><a href="solutions-scenarios.php">典型业务场景</a></li>
+          <li><a href="cases.php">成功案例</a></li>
+          <li><a href="faq.php">常见问题</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="model_list.php">主流模型</a></li>
+          <li><a href="analysis.php">数据分析</a></li>
+          <li><a href="insights.php">观点洞察</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>公司</h4>
+        <ul>
+          <li><a href="geo-service.php">GEO服务</a></li>
+          <li><a href="about.php">关于我们</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom wrap">© 2026 GEO-Star.</div>
+  </footer>
+  <script src="js/main.js"></script>
+  <script src="js/home.js"></script>
+</body>
+</html>

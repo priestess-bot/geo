@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1">
+    <meta name="msvalidate.01" content="B5163518CBE4A854B63801277FE5E35C" >
+    <meta name="google-site-verification" content="ucqagxjVuq0lJZeLKs0F5AppzK111lNt3IoxU6mzlJE" >
+    <meta name="robots" content="index, follow" >
+    <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" >
+    <meta name="bingbot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" >
+
+    <meta property="og:locale" content="en_US" >
+    <meta property="og:type" content="article" >
+
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','GTM-WK23PSS');</script>
+    <title>Neo4j documentation - Neo4j Documentation</title>
+    <link rel="canonical" href="https://neo4j.com/docs/">
+
+
+<link rel="stylesheet" href="https://neo4j.com/wp-content/themes/neo4jweb/assets/neo4j-react-modules-assets/search-preact/chunkless/bundle.css" >
+<link rel="stylesheet" href="https://neo4j.com/wp-content/themes/neo4jweb/assets/neo4j-react-modules-assets/search-preact/chunkless/utilities.min.css" >
+
+
+<link rel="stylesheet" crossorigin href="https://neo4j.com/docs/assets/chatbot/index.css">
+
+    <link rel="preload" href="../docs/docs-home-assets/fonts/fontawesome-webfont.woff2?v=4.7.0" as="font">
+    <link rel="stylesheet" href="../docs/docs-home-assets/css/site.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="shortcut icon" href="https://neo4j.com/wp-content/themes/neo4jweb/favicon.ico" >
+
+
+    <meta property="neo:type" content="Developer Guide">
+    <meta property="neo:site" content="Developer Site">
+
+
+    <meta property="og:site_name" content="Neo4j Graph Data Platform" >
+    <meta property="article:publisher" content="https://www.facebook.com/neo4j.graph.database" >
+    <meta name="twitter:card" content="summary_large_image" >
+    <meta name="twitter:creator" content="@neo4j" >
+    <meta name="twitter:site" content="@neo4j" >
+    <meta property="og:type" content="article" >
+    <meta property="og:title" content="Neo4j documentation - Neo4j Documentation" >
+    <meta property="og:locale" content="en_US" >
+    <meta property="og:image" content="https://dist.neo4j.com/wp-content/uploads/20240513110808/Neo4j-logo-social-preview.png" >
+    <meta property="og:description" content="Neo4j documentation - Neo4j Documentation" >
+    <meta property="og:url" content="https://neo4j.com/docs/" >
+    <link rel="shortcut icon" href="https://neo4j.com/wp-content/themes/neo4jweb/favicon.ico" >
+<script>
+    const userColorSchemeName = 'neo4j-docs-theme';
+    const userColorScheme = localStorage.getItem(userColorSchemeName) || 'system';
+    console.log('User color scheme preference:', userColorScheme);
+    document.documentElement.style.colorScheme = userColorScheme;
+</script>
+  </head>
+  <body class="article docs-ndl hub docs">
+
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-WK23PSS"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+
+<script>(function(f,b){if(!b.__SV){var e,g,i,h;window.mixpanel=b;b._i=[];b.init=function(e,f,c){function g(a,d){var b=d.split(".");2==b.length&&(a=a[b[0]],d=b[1]);a[d]=function(){a.push([d].concat(Array.prototype.slice.call(arguments,0)))}}var a=b;"undefined"!==typeof c?a=b[c]=[]:c="mixpanel";a.people=a.people||[];a.toString=function(a){var d="mixpanel";"mixpanel"!==c&&(d+="."+c);a||(d+=" (stub)");return d};a.people.toString=function(){return a.toString(1)+".people (stub)"};i="disable time_event track track_pageview track_links track_forms track_with_groups add_group set_group remove_group register register_once alias unregister identify name_tag set_config reset opt_in_tracking opt_out_tracking has_opted_in_tracking has_opted_out_tracking clear_opt_in_out_tracking start_batch_senders people.set people.set_once people.unset people.increment people.append people.union people.track_charge people.clear_charges people.delete_user people.remove".split(" ");
+for(h=0;h<i.length;h++)g(a,i[h]);var j="set set_once union unset remove delete".split(" ");a.get_group=function(){function b(c){d[c]=function(){call2_args=arguments;call2=[c].concat(Array.prototype.slice.call(call2_args,0));a.push([e,call2])}}for(var d={},e=["get_group"].concat(Array.prototype.slice.call(arguments,0)),c=0;c<j.length;c++)b(j[c]);return d};b._i.push([e,f,c])};b.__SV=1.2;e=f.createElement("script");e.type="text/javascript";e.async=!0;e.src="undefined"!==typeof MIXPANEL_CUSTOM_LIB_URL?
+MIXPANEL_CUSTOM_LIB_URL:"file:"===f.location.protocol&&"//cdn.mxpnl.com/libs/mixpanel-2-latest.min.js".match(/^\/\//)?"https://cdn.mxpnl.com/libs/mixpanel-2-latest.min.js":"//cdn.mxpnl.com/libs/mixpanel-2-latest.min.js";g=f.getElementsByTagName("script")[0];g.parentNode.insertBefore(e,g)}})(document,window.mixpanel||[]);
+mixpanel.init("4bfb2414ab973c741b6f067bf06d5575", {batch_requests: true})
+mixpanel.track("Page View", {
+    pathname: window.location.origin + window.location.pathname,
+    search: window.location.search,
+    hash: window.location.hash,
+    referrer: document.referrer,
+})
+</script>
+<header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <a class="navbar-item" href="/">
+        <img class="navbar-logo" src="https://dist.neo4j.com/wp-content/uploads/20230926084108/Logo_FullColor_RGB_TransBG.svg" alt="Neo4j Docs" >
+      </a>
+      <a href="/docs/" class="navbar-item no-left-padding" aria-label="Docs">
+        Docs
+      </a>
+
+      </div>
+
+      <button class="navbar-search search-button" data-target="topbar-nav" id="search_open_mobile" aria-label="Open Search">
+        <svg width="23px" height="23px" viewBox="0 0 23 23" version="1.1" class="fill-current float-right" id="searchx" role="button" title="Search Website">
+          <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" stroke-linecap="round"
+            stroke-linejoin="round">
+            <g transform="translate(-2.000000, -2.000000)" stroke="#a0aec0" stroke-width="1.5">
+              <circle                 transform="translate(11.389364, 11.388564) rotate(-23.025000) translate(-11.389364, -11.388564) "
+                cx="11.3893642" cy="11.3885639" r="8.056"></circle>
+              <path d="M17.0853333,17.0844444 L23.3333333,23.3333333" ></path>
+            </g>
+          </g>
+        </svg>
+      </button>
+      <button class="navbar-burger" data-target="topbar-nav" aria-label="Mobile Navigation Button">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    
+    <div id="topbar-nav" class="navbar-menu">
+            <div class="navbar-end">
+
+
+
+
+        <div class="navbar-item has-dropdown is-hoverable docs">
+          <a class="navbar-link" href="/docs/">Docs</a>
+          <div class="navbar-dropdown">
+            <div class="navbar-item project">
+              <span class="project-name">Neo4j DBMS</span>
+              <ul class="project-links">
+                <li><a href="/docs/getting-started/current/" class="project-link">Getting Started</a></li>
+                <li><a href="/docs/operations-manual/current/" class="project-link">Operations</a></li>
+                <li><a href="/docs/migration-guide/current/" class="project-link">Migration and Upgrade</a></li>
+                <li><a href="/docs/status-codes/current/" class="project-link">Status Codes</a></li>
+                <li><a href="/docs/java-reference/current/" class="project-link">Java Reference</a></li>
+                <li><a href="/docs/kerberos-add-on/current/" class="project-link">Kerberos Add-on</a></li>
+              </ul>
+            </div>
+
+            <div class="navbar-item project">
+              <a class="project-name" href="/docs/aura/">Neo4j Aura</a>
+            </div>
+
+            <div class="navbar-item project">
+              <span class="project-name">Neo4j Tools</span>
+              <ul class="project-links">
+                <li><a href="/docs/bloom-user-guide/current/" class="project-link">Neo4j Bloom</a></li>
+                <li><a href="/docs/browser/" class="project-link">Neo4j Browser</a></li>
+                <li><a href="/docs/data-importer/current/" class="project-link">Neo4j Data Importer</a></li>
+                <li><a href="/docs/desktop-manual/current/" class="project-link">Neo4j Desktop</a></li>
+                <li><a href="/docs/ops-manager/current/" class="project-link">Neo4j Ops Manager</a></li>
+                <li><a href="/docs/neodash-commercial/current/" class="project-link">Neodash commercial</a></li>
+              </ul>
+            </div>
+
+            <div class="navbar-item project">
+              <span class="project-name">Neo4j Graph Data Science</span>
+              <ul class="project-links">
+                <li><a href="/docs/graph-data-science/current/" class="project-link">Neo4j Graph Data Science Library</a></li>
+                <li><a href="/docs/graph-data-science-client/current/" class="project-link">Neo4j Graph Data Science Client</a></li>
+                <li><a href="/docs/snowflake-graph-analytics/current/" class="project-link">Neo4j Graph Analytics for Snowflake</a></li>
+              </ul>
+            </div>
+
+            <div class="navbar-item project">
+              <span class="project-name">Cypher Query Language</span>
+              <ul class="project-links">
+                <li><a href="/docs/cypher-manual/current/" class="project-link">Cypher</a></li>
+                <li><a href="/docs/cypher-cheat-sheet/current/" class="project-link">Cypher Cheat Sheet</a></li>
+                <li><a href="/docs/apoc/current/" class="project-link">APOC Library</a></li>
+              </ul>
+            </div>
+
+           <div class="navbar-item project">
+              <span class="project-name" href="/docs/genai">Generative AI</span>
+              <ul class="project-links">
+                <li><a href="/docs/neo4j-graphrag-python/current/" class="project-link">Neo4j GraphRAG for Python</a></li>
+                <li><a href="/docs/genai/tutorials/current/embeddings-vector-indexes/" class="project-link">Embeddings and vector indexes tutorial</a></li>
+                <li><a href="/docs/genai/plugin/current/" class="project-link">GenAI plugin</a></li>
+                <li><a href="/docs/cypher-manual/current/indexes/semantic-indexes/vector-indexes/" class="project-link">Vector search indexes</a></li>
+                <li><a href="/docs/cypher-manual/current/functions/vector/" class="project-link">Vector search functions</a></li>
+                <li><a href="/docs/graphql/current/directives/indexes-and-constraints/#_vector_index_search" class="project-link">GraphQL vector index search documentation</a></li>
+              </ul>
+            </div>
+
+            <div class="navbar-item project">
+              <span class="project-name" href="/docs/create-applications/">Create applications</span>
+              <ul class="project-links">
+                <li><a href="/docs/python-manual/current/" class="project-link">Python Driver</a></li>
+                <li><a href="/docs/go-manual/current/" class="project-link">Go Driver</a></li>
+                <li><a href="/docs/java-manual/current/" class="project-link">Java Driver</a></li>
+                <li><a href="/docs/jdbc-manual/current/" class="project-link">JDBC Driver</a></li>
+                <li><a href="/docs/javascript-manual/current/" class="project-link">JavaScript Driver</a></li>
+                <li><a href="/docs/dotnet-manual/current/" class="project-link">.Net Driver</a></li>
+                <li><a href="/docs/graphql-manual/current/" class="project-link">Neo4j GraphQL Library</a></li>
+                <li><a href="/docs/nvl/current/" class="project-link">Neo4j Visualization Library</a></li>
+                <li><a href="/docs/ogm-manual/current/" class="project-link">OGM Library</a></li>
+                <li><a href="https://docs.spring.io/spring-data/neo4j/docs/current/reference/html/#reference" class="project-link">Spring Data Neo4j</a></li>
+                <li><a href="/docs/http-api/current/" class="project-link">HTTP API</a></li>
+                <li><a href="/docs/query-api/current/" class="project-link">Neo4j Query API</a></li>
+                <li><a href="/docs/bolt/current/" class="project-link">Bolt</a></li>
+              </ul>
+            </div>
+
+            <div class="navbar-item project">
+              <span class="project-name" href="/docs/connectors">Connect data sources</span>
+              <ul class="project-links">
+                <li><a href="/docs/spark/current/" class="project-link">Neo4j Connector for Apache Spark</a></li>
+                <li><a href="/docs/kafka/" class="project-link">Neo4j Connector for Apache Kafka</a></li>
+                <li><a href="/docs/cdc/" class="project-link">Change Data Capture (CDC)</a></li>
+                <li><a href="/docs/dataflow-bigquery/" class="project-link">BigQuery to Neo4j</a></li>
+                <li><a href="/docs/dataflow-google-cloud/" class="project-link">Google Cloud to Neo4j</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable labs">
+          <a class="navbar-link" href="/labs/">Labs</a>
+          <div class="navbar-dropdown">
+            <div class="navbar-item project">
+              <a class="project-name" href="/labs/genai-ecosystem/">GenAI Ecosystem</a>
+              <ul class="project-links">
+                <li><a href="/labs/genai-ecosystem/llm-graph-builder/" class="project-link">LLM Knowledge Graph Builder</a></li>
+                <li><a href="/labs/genai-ecosystem/vector-search/" class="project-link">Vector Index &amp; Search</a></li>
+                <li><a href="/labs/genai-ecosystem/langchain/" class="project-link">LangChain</a></li>
+                <li><a href="/labs/genai-ecosystem/langchain-js/" class="project-link">LangChain.js</a></li>
+                <li><a href="/labs/genai-ecosystem/llamaindex/" class="project-link">LlamaIndex</a></li>
+                <li><a href="/labs/genai-ecosystem/haystack/" class="project-link">Haystack</a></li>
+                <li><a href="/labs/genai-ecosystem/dspy/" class="project-link">DSPy</a></li>
+              </ul>
+            </div>
+
+            <div class="navbar-item project">
+              <strong class="project-name" href="/labs/apoc/">Developer Tools</strong>
+              <ul class="project-links">
+                <li><a href="/labs/apoc/" class="project-link">APOC Extended</a></li>
+                <li><a class="project-link" href="/labs/aura-cli/">Aura CLI</a></li>
+                <li><a class="project-link" href="/labs/arrows/">arrows.app</a></li>
+                <li><a class="project-link" href="/labs/cypher-workbench/">Cypher Workbench</a></li>
+                <li><a class="project-link" href="/labs/etl-tool/">ETL Tool</a></li>
+                <li><a class="project-link" href="/labs/neodash/">NeoDash</a></li>
+              </ul>
+            </div>
+
+            <div class="navbar-item project">
+              <strong class="project-name">Frameworks &amp; Integrations</strong>
+              <ul class="project-links">
+                <li><a class="project-link" href="/labs/neo4j-needle-starterkit/">Needle Starter Kit</a></li>
+                <li><a class="project-link" href="/labs/liquibase/">Neo4j Plugin for Liquibase</a></li>
+                <li><a class="project-link" href="/labs/neo4j-migrations/">Neo4j Migrations</a></li>
+                <li><a class="project-link" href="/labs/neomodel/">neomodel</a></li>
+              </ul>
+            </div>
+            <div class="navbar-item project">
+              <a class="project-name" href="/labs/neosemantics/">RDF &amp; Linked Data</a>
+              <ul class="project-links">
+                <li><a href="/labs/neosemantics/" class="project-link">Neosemantics (Java)</a></li>
+                <li><a href="/labs/rdflib-neo4j/" class="project-link">RDFLib-Neo4j (Python)</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable developer">
+          <a class="navbar-link" href="/developer/resources/">Get Help</a>
+          <div class="navbar-dropdown">
+            <div class="navbar-item project">
+              <a class="project-name" href="https://dev.neo4j.com/forum" target="_blank">Community Forum</a>
+            </div>
+            <div class="navbar-item project">
+              <a class="project-name" href="https://dev.neo4j.com/chat" target="_blank">Discord Chat</a>
+            </div>
+            <div class="navbar-item project">
+              <a class="project-name" href="http://support.neo4j.com" target="_blank">Product Support</a>
+            </div>
+            <div class="navbar-item project">
+              <a class="project-name" href="https://neo4j.com/blog/developer/" target="_blank">Neo4j Developer Blog</a>
+            </div>
+            <div class="navbar-item project">
+              <a class="project-name" href="/videos/" target="_blank">Neo4j Videos</a>
+            </div>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable developer">
+          <a class="navbar-link" href="https://graphacademy.neo4j.com/?ref=docs-nav">GraphAcademy</a>
+          <div class="navbar-dropdown">
+            <div class="navbar-item project">
+              <a class="project-name" href="https://graphacademy.neo4j.com/categories/beginners/?ref=docs-nav" target="_blank">Beginners Courses</a>
+              <ul class="project-links">
+                <li><a class="project-link" href="https://graphacademy.neo4j.com/courses/neo4j-fundamentals/?ref=docs-nav">Neo4j Fundamentals</a></li>
+                <li><a class="project-link" href="https://graphacademy.neo4j.com/courses/cypher-fundamentals/?ref=docs-nav">Cypher Fundamentals</a></li>
+                <li><a class="project-link" href="https://graphacademy.neo4j.com/courses/importing-fundamentals/?ref=docs-nav">Importing Data Fundamentals</a></li>
+                <li><a class="project-link" href="https://graphacademy.neo4j.com/courses/importing-csv-data/?ref=docs-nav">Importing CSV Data</a></li>
+                <li><a class="project-link" href="https://graphacademy.neo4j.com/courses/modeling-fundamentals/?ref=docs-nav">Graph Data Modeling</a></li>
+              </ul>
+            </div>
+            <div class="navbar-item project">
+              <a class="project-name" href="https://graphacademy.neo4j.com/categories/data-scientist/?ref=docs-nav" target="_blank">Data Scientist Courses</a>
+              <ul class="project-links">
+                <li><a class="project-link" href="https://graphacademy.neo4j.com/courses/gds-fundamentals/?ref=docs-nav">Get started with Graph Data Science</a></li>
+                <li><a class="project-link" href="https://graphacademy.neo4j.com/courses/gds-shortest-paths/?ref=docs-nav">Path Finding</a></li>
+              </ul>
+            </div>
+            <div class="navbar-item project">
+              <a class="project-name" href="https://graphacademy.neo4j.com/categories/llms/?ref=docs-nav" target="_blank">Generative AI Courses</a>
+              <ul class="project-links">
+                <li><a class="project-link" href="https://graphacademy.neo4j.com/courses/genai-fundamentals/?ref=docs-nav">Neo4j &amp; Generative AI Fundamentals</a></li>
+                <li><a class="project-link" href="https://graphacademy.neo4j.com/courses/llm-vectors-unstructured/?ref=docs-nav">Vector Indexes &amp; Unstructured Data</a></li>
+                <li><a class="project-link" href="https://graphacademy.neo4j.com/courses/genai-graphrag-python/?ref=docs-nav">Constructing Knowledge Graphs</a></li>
+                <li><a class="project-link" href="https://graphacademy.neo4j.com/courses/aura-agents/?ref=docs-nav">Building Agents in Neo4j Aura</a></li>
+              </ul>
+            </div>
+            <div class="navbar-item project">
+              <a class="project-name" href="https://graphacademy.neo4j.com/certification/?ref=docs-nav" target="_blank">Neo4j Certification</a>
+              <ul class="project-links">
+                <li><a class="project-link" href="https://graphacademy.neo4j.com/certifications/neo4j-certification/?ref=docs-nav">Neo4j Certified Professional</a></li>
+                <li><a class="project-link" href="https://graphacademy.neo4j.com/certifications/gds-certification/?ref=docs-nav">Neo4j Graph Data Science Certification</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="navbar-item is-hoverable getting-started-cta">
+          <a class="navbar-link primary" href="https://console.neo4j.io/?ref=docs-nav-get-started">Get Started Free</a>
+        </div>
+
+        <div id="theme-dropdown" class="navbar-item has-dropdown is-hoverable docs">
+    <span class="navbar-link" aria-label="Theme">
+      <span class="theme-label">Theme</span>
+      <svg class="theme-icon theme-icon-light" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 3V5.25M18.364 5.63604L16.773 7.22703M21 12H18.75M18.364 18.364L16.773 16.773M12 18.75V21M7.22703 16.773L5.63604 18.364M5.25 12H3M7.22703 7.22703L5.63604 5.63604M15.75 12C15.75 14.0711 14.0711 15.75 12 15.75C9.92893 15.75 8.25 14.0711 8.25 12C8.25 9.92893 9.92893 8.25 12 8.25C14.0711 8.25 15.75 9.92893 15.75 12Z"></path>
+      </svg>
+      <svg class="theme-icon theme-icon-dark" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21.7519 15.0021C20.597 15.484 19.3296 15.7501 18 15.7501C12.6152 15.7501 8.25 11.3849 8.25 6.00011C8.25 4.67052 8.51614 3.40308 8.99806 2.24817C5.47566 3.71798 3 7.19493 3 11.2501C3 16.6349 7.36522 21.0001 12.75 21.0001C16.8052 21.0001 20.2821 18.5245 21.7519 15.0021Z"></path>
+      </svg>
+    </span>
+    <div class="navbar-dropdown navbar-dropdown-narrow">
+    <div class="navbar-item project" data-theme="light">
+        <svg class="theme-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3V5.25M18.364 5.63604L16.773 7.22703M21 12H18.75M18.364 18.364L16.773 16.773M12 18.75V21M7.22703 16.773L5.63604 18.364M5.25 12H3M7.22703 7.22703L5.63604 5.63604M15.75 12C15.75 14.0711 14.0711 15.75 12 15.75C9.92893 15.75 8.25 14.0711 8.25 12C8.25 9.92893 9.92893 8.25 12 8.25C14.0711 8.25 15.75 9.92893 15.75 12Z"></path>
+        </svg>
+        <span class="project-name">Light</span>
+    </div>
+    <div class="navbar-item project" data-theme="dark">
+        <svg class="theme-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21.7519 15.0021C20.597 15.484 19.3296 15.7501 18 15.7501C12.6152 15.7501 8.25 11.3849 8.25 6.00011C8.25 4.67052 8.51614 3.40308 8.99806 2.24817C5.47566 3.71798 3 7.19493 3 11.2501C3 16.6349 7.36522 21.0001 12.75 21.0001C16.8052 21.0001 20.2821 18.5245 21.7519 15.0021Z"></path>
+        </svg>
+        <span class="project-name">Dark</span>
+    </div>
+    </div>
+</div>
+
+        <div class="navbar-item">
+          <a class="navbar-link search-button" href="#search" id="search_open"><svg width="23px" height="23px" viewBox="0 0 23 23"
+              version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+              class="fill-current float-right" id="search" role="button" title="Search Website">
+              <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" stroke-linecap="round"
+                stroke-linejoin="round">
+                <g transform="translate(-2.000000, -2.000000)" stroke="#a0aec0" stroke-width="1.5">
+                  <circle                     transform="translate(11.389364, 11.388564) rotate(-23.025000) translate(-11.389364, -11.388564) "
+                    cx="11.3893642" cy="11.3885639" r="8.056"></circle>
+                  <path d="M17.0853333,17.0844444 L23.3333333,23.3333333" ></path>
+                </g>
+              </g>
+            </svg><span class="navbar-mobile">Search</span></a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+</header>
+
+<div class="body">
+<div class="nav-container" data-component="docs" data-version="master">
+  <aside class="nav">
+    <div class="panels">
+
+
+
+      <div class="nav-panel-menu is-active" data-panel="menu">
+        <nav class="nav-menu">
+
+        
+
+                
+        <div class="nav-root">
+        <ul class="nav-list">
+    <li class="nav-item" data-module="ROOT" data-depth="0">
+        <ul class="nav-list">
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <span class="nav-text nav-section-header">
+        <strong>Working with data</strong>
+        </span>
+                  </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="model/">Model a dataset</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="connectors/">Connect data sources</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="import/">Import your data</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="cypher/">Query a database</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="visualize/">Visualize and explore</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/cdc/current/">Monitor data changes</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="gds/">Use graph algorithms</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="create-applications/">Create applications</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="genai/">Integrate GenAI functions</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <span class="nav-text nav-section-header">
+        <strong>Fully-managed cloud (Aura)</strong>
+        </span>
+                  </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/aura/getting-started/create-instance/">Create an instance</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/aura/import/quick-start/">Import your data</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/aura/metrics/view-metrics/">Monitor an instance</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/aura/managing-instances/instance-actions/">Manage a deployment</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/aura/managing-instances/backup-restore-export/">Backup, export, and restore</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <span class="nav-text nav-section-header">
+        <strong>Self-managed deployment</strong>
+        </span>
+                  </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/operations-manual/current/installation/">Installation</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/operations-manual/current/database-administration/">Manage a database</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/operations-manual/current/tools/neo4j-admin/neo4j-admin-import/">Import your data</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/operations-manual/current/clustering/">Deploy and manage a cluster</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/operations-manual/current/scalability/concepts/">Scale your deployment</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/operations-manual/current/database-internals/">Database internals</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/operations-manual/current/authentication-authorization/">Manage users, roles, and privileges</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/operations-manual/current/monitoring/">Monitor a database</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/operations-manual/current/backup-restore/">Backup and restore</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/upgrade-migration-guide/current/">Upgrade and migration</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/operations-manual/current/cloud-deployments/">Cloud deployments</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/operations-manual/current/docker/">Docker</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/operations-manual/current/kubernetes/">Kubernetes</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/kerberos-add-on/">Kerberos add-on</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <span class="nav-text nav-section-header">
+        <strong>Reference</strong>
+        </span>
+                  </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="reference/license/">License and disclaimers</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="reference/">Reference materials</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="security-docs/">Secure your project</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="https://neo4j.com/docs/getting-started/appendix/graphdb-concepts/">Graph database concepts</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="reference/docs-archive/">All documentation</a>
+            </li>
+    <li class="nav-item" data-module="ROOT" data-depth="1">
+      <a class="nav-link" href="reference/usage-data/">Usage data report</a>
+            </li>
+</ul>
+    </li>
+</ul>
+        </div>
+        
+        
+
+      </nav>
+    </div>
+      
+      
+      
+    </div>
+  </aside>
+</div>
+<main class="article">
+<div class="toolbar is-home" role="navigation">
+  <div class="toolbar-wrapper">
+    <button class="nav-toggle" aria-label="Toggle Table of Contents"></button>
+    
+  </div>
+</div>
+
+
+  <div class="content">
+<article class="doc">
+
+<div class="sect-header">
+  <h1 class="page">Neo4j documentation</h1>
+</div>
+
+
+
+
+
+<div class="sect1 widget banner start">
+<h2 id="_getting_started"><a class="anchor" href="#_getting_started"></a>Getting started</h2>
+<div class="sectionbody">
+<div class="openblock">
+<div class="content">
+<div class="paragraph caption">
+<p>Get started with Neo4j</p>
+</div>
+<div class="paragraph description">
+<p>Explore the capabilities of graph databases.</p>
+</div>
+<div class="paragraph button">
+<p><a href="https://neo4j.com/docs/getting-started/">Get started</a></p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1 cards selectable">
+<h2 id="_cta_cards"><a class="anchor" href="#_cta_cards"></a>CTA cards</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_deployment_options"><a class="anchor" href="#_deployment_options"></a>Deployment options</h3>
+<div class="paragraph icon icon-l">
+<p><span class="image"><img src="_images/deployment-options.svg" alt="deployment options"></span></p>
+</div>
+<div class="paragraph description">
+<p>Choose from fully and self-managed local and cloud deployments. Run Neo4j on Docker or Kubernetes.</p>
+</div>
+<div class="paragraph link display">
+<p><a href="deployment-options/" class="xref page">Get a Neo4j instance</a></p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_cypher"><a class="anchor" href="#_cypher"></a>Cypher</h3>
+<div class="paragraph icon icon-l">
+<p><span class="image"><img src="_images/cypher-manual.svg" alt="cypher manual"></span></p>
+</div>
+<div class="paragraph description">
+<p>Learn how to write Cypher&reg;, Neo4j&#8217;s declarative query language.</p>
+</div>
+<div class="paragraph link display">
+<p><a href="cypher/" class="xref page">Query your data</a></p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_neo4j_tools"><a class="anchor" href="#_neo4j_tools"></a>Neo4j Tools</h3>
+<div class="paragraph icon icon-l">
+<p><span class="image"><img src="_images/neo4j-tools.svg" alt="neo4j tools"></span></p>
+</div>
+<div class="paragraph description">
+<p>Use Neo4j&#8217;s tools to explore, visualize, manage, monitor, and import data to your graph.</p>
+</div>
+<div class="paragraph link display">
+<p><a href="tools/" class="xref page">Discover the products</a></p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_graph_data_science"><a class="anchor" href="#_graph_data_science"></a>Graph Data Science</h3>
+<div class="paragraph icon icon-l">
+<p><span class="image"><img src="_images/data-science.svg" alt="data science"></span></p>
+</div>
+<div class="paragraph description">
+<p>Run graph algorithms and machine learning models to analyze your data at scale.</p>
+</div>
+<div class="paragraph link display">
+<p><a href="gds/" class="xref page">Get insights from data</a></p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_create_applications"><a class="anchor" href="#_create_applications"></a>Create applications</h3>
+<div class="paragraph icon icon-l">
+<p><span class="image"><img src="_images/create-applications.svg" alt="create applications"></span></p>
+</div>
+<div class="paragraph description">
+<p>Discover the client libraries and APIs to develop applications with Neo4j and AuraDB.</p>
+</div>
+<div class="paragraph link display">
+<p><a href="create-applications/" class="xref page">Start developing</a></p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_connect_data_sources"><a class="anchor" href="#_connect_data_sources"></a>Connect data sources</h3>
+<div class="paragraph icon icon-l">
+<p><span class="image"><img src="_images/connectors.svg" alt="connectors"></span></p>
+</div>
+<div class="paragraph description">
+<p>Learn how to use connectors and other tools to connect Neo4j with other data sources.</p>
+</div>
+<div class="paragraph link display">
+<p><a href="connectors/" class="xref page">Connect to Neo4j</a></p>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1 widget lists">
+<h2 id="_tailored_for_you"><a class="anchor" href="#_tailored_for_you"></a>Tailored for you</h2>
+<div class="sectionbody">
+<div class="paragraph caption">
+<p>Keep exploring</p>
+</div>
+<div class="sect2">
+<h3 id="_developer"><a class="anchor" href="#_developer"></a>Developer</h3>
+<div class="paragraph icon">
+<p><span class="image"><img src="_images/icon-developer.svg" alt="icon developer"></span></p>
+</div>
+<div class="ulist list">
+<ul>
+<li>
+<p><a href="https://neo4j.com/docs/deployment-options">Choose your deployment</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/getting-started/cypher-intro/">Learn Cypher</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/cypher-manual/current/queries/">Start querying</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/create-applications/">Create applications</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/connectors/">Connect data sources</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/genai">Integrate GenAI functions</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/cypher-manual/current/planning-and-tuning/query-tuning/">Improve app performance</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/java-reference">Extend Neo4j</a></p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_database_admin"><a class="anchor" href="#_database_admin"></a>Database Admin</h3>
+<div class="paragraph icon">
+<p><span class="image"><img src="_images/icon-admin.svg" alt="icon admin"></span></p>
+</div>
+<div class="ulist list">
+<ul>
+<li>
+<p><a href="https://neo4j.com/docs/operations-manual/current/database-administration/">Manage your database</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/operations-manual/current/clustering/">Deploy and manage a cluster</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/operations-manual/current/database-internals/">Database internals</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/operations-manual/current/authentication-authorization/">Manage users, roles, and privileges</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/operations-manual/current/monitoring/">Monitor your database</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/operations-manual/current/backup-restore/">Backup and restore</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/upgrade-migration-guide/current/">Upgrade and migration</a></p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_data_scientist"><a class="anchor" href="#_data_scientist"></a>Data Scientist</h3>
+<div class="paragraph icon">
+<p><span class="image"><img src="_images/icon-scientist.svg" alt="icon scientist"></span></p>
+</div>
+<div class="ulist list">
+<ul>
+<li>
+<p><a href="https://neo4j.com/docs/graph-data-science/current/getting-started/">Analyze your data</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/graph-data-science/current/production-deployment/">Set up your deployment</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/bloom-user-guide/current/bloom-tutorial/gds-integration/">Create data visualizations</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/graph-data-science/current/machine-learning/machine-learning/">Use machine learning algorithms</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/graph-data-science-client/current/">Set up a Python client</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/graph-data-science/current/management-ops/">Manage your graph</a></p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_data_engineer"><a class="anchor" href="#_data_engineer"></a>Data Engineer</h3>
+<div class="paragraph icon">
+<p><span class="image"><img src="_images/icon-engineer.svg" alt="icon engineer"></span></p>
+</div>
+<div class="ulist list">
+<ul>
+<li>
+<p><a href="https://neo4j.com/docs/getting-started/appendix/graphdb-concepts/">Graph database concepts</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/model/">Model your data</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/connectors/">Connect data sources</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/import/">Import your dataset</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/cdc/current/">Monitor data changes</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/getting-started/data-modeling/data-modeling-tools/">Data modeling tools</a></p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1 widget highlights">
+<h2 id="_tutorials_how_to_guides"><a class="anchor" href="#_tutorials_how_to_guides"></a>Tutorials &amp; How-to guides</h2>
+<div class="sectionbody">
+<div class="paragraph icon">
+<p><span class="image"><img src="_images/highlights.svg" alt="highlights"></span></p>
+</div>
+<div class="openblock">
+<div class="content">
+<div class="paragraph caption">
+<p>Tutorials &amp; How-to guides</p>
+</div>
+<div class="ulist list">
+<ul>
+<li>
+<p><a href="https://neo4j.com/docs/genai/tutorials/embeddings-vector-indexes/">Embedding &amp; Vector Indexes Tutorial</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/getting-started/appendix/tutorials/guide-import-relational-and-etl/">Import data from a relational database into Neo4j</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/getting-started/appendix/tutorials/guide-build-a-recommendation-engine/">Build a Cypher recommendation engine</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/operations-manual/current/tutorial/tutorial-composite-database/">Set up and use a composite database</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/cdc/current/procedures/query-examples/">Capture and track changes in real-time</a></p>
+</li>
+<li>
+<p><a href="https://neo4j.com/docs/graph-data-science-client/current/tutorials/centrality-algorithms/">Apply centrality algorithms to your graph</a></p>
+</li>
+</ul>
+</div>
+<div class="ulist footer-link">
+<ul>
+<li>
+<p><a href="https://neo4j.com/docs/tutorials">All tutorials</a></p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1 widget highlights">
+<h2 id="_graphacademy_courses"><a class="anchor" href="#_graphacademy_courses"></a>GraphAcademy courses</h2>
+<div class="sectionbody">
+<div class="paragraph icon">
+<p><span class="image"><img src="_images/ga-home.svg" alt="ga home"></span></p>
+</div>
+<div class="openblock">
+<div class="content">
+<div class="paragraph caption">
+<p>GraphAcademy courses</p>
+</div>
+<div class="ulist list">
+<ul>
+<li>
+<p><a href="https://graphacademy.neo4j.com/courses/neo4j-fundamentals/">Introduction to Neo4j and graph databases</a></p>
+</li>
+<li>
+<p><a href="https://graphacademy.neo4j.com/courses/cypher-fundamentals/">Cypher query language fundamentals</a></p>
+</li>
+<li>
+<p><a href="https://graphacademy.neo4j.com/courses/importing-fundamentals/">How to import data to Neo4j</a></p>
+</li>
+<li>
+<p><a href="https://graphacademy.neo4j.com/courses/genai-fundamentals/">Neo4j &amp; GenerativeAI Fundamentals</a></p>
+</li>
+<li>
+<p><a href="https://graphacademy.neo4j.com/courses/llm-vectors-unstructured/">Vector indexes and unstructured data</a></p>
+</li>
+<li>
+<p><a href="https://graphacademy.neo4j.com/courses/gds-product-introduction/">Introduction to Graph Data Science</a></p>
+</li>
+</ul>
+</div>
+<div class="paragraph footer-link">
+<p><a href="https://graphacademy.neo4j.com/">All courses</a></p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1 cards bottom-cards">
+<h2 id="_other_resources"><a class="anchor" href="#_other_resources"></a>Other resources</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_join_forums_and_discussions"><a class="anchor" href="#_join_forums_and_discussions"></a>Join forums and discussions</h3>
+<div class="paragraph icon">
+<p><span class="image"><img src="_images/icon-community.svg" alt="icon community"></span></p>
+</div>
+<div class="paragraph link">
+<p><a href="https://community.neo4j.com/">Community forum</a>
+<a href="https://discord.com/invite/neo4j">Discord</a></p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_developer_blogs_articles_and_books"><a class="anchor" href="#_developer_blogs_articles_and_books"></a>Developer blogs, articles and books</h3>
+<div class="paragraph icon">
+<p><span class="image"><img src="_images/icon-developercenter.svg" alt="icon developercenter"></span></p>
+</div>
+<div class="paragraph link">
+<p><a href="https://neo4j.com/developer-blog/">Developer blog</a> <a href="https://neo4j.com/docs/reference/resources/">Other resources</a></p>
+</div>
+</div>
+</div>
+</div>
+</article>
+<aside class="toc sidebar" data-title="Contents"
+  data-levels="-1">
+  <div class="toc-menu">
+    <div class="toc-menu-placeholder"></div>
+      </div>
+  </aside>  </div>
+</main>
+</div>
+
+
+
+<footer class="footer">
+  <div class="wrapper">
+
+  <div class="column logo">
+    <div class="logo-footer"></div>
+  </div>
+  
+  <div class="column links">
+    <h2>Learn</h2>
+    <ul>
+      <li><i class="fa fa-wrench" aria-hidden="true"></i> <a rel="noopener" href="https://neo4j.com/sandbox/?ref=developer-footer">Sandbox</a></li>
+      <li><i class="fa fa-comments-o" aria-hidden="true"></i> <a rel="noopener" href="https://community.neo4j.com?ref=developer-footer" target="_blank">Neo4j Community Site</a></li>
+      <li><i class="fa fa-book" aria-hidden="true"></i> <a rel="noopener" href="https://medium.com/neo4j" target="_blank">Neo4j Developer Blog</a></li>
+      <li><i class="fa fa-youtube" aria-hidden="true"></i> <a rel="noopener" href="https://www.youtube.com/neo4j" target="_blank">Neo4j Videos</a></li>
+      <li><i class="fa fa-graduation-cap" aria-hidden="true"></i> <a rel="noopener" href="https://neo4j.com/graphacademy/?ref=developer-footer">GraphAcademy</a></li>
+      <li><i class="fa fa-flask" aria-hidden="true"></i> <a href="https://neo4j.com/labs/?ref=developer-footer">Neo4j Labs</a></li>
+    </ul>
+  </div>
+  <div class="column links">
+    <h2>Social</h2>
+    <ul>
+      <li><i class="fa fa-twitter" aria-hidden="true"></i> <a rel="noopener" href="https://twitter.com/neo4j" target="_blank">Twitter</a></li>
+      <li><i class="fa fa-meetup" aria-hidden="true"></i> <a rel="noopener" href="https://www.meetup.com/Neo4j-Online-Meetup/" target="_blank">Meetups</a></li>
+      <li><i class="fa fa-github" aria-hidden="true"></i> <a rel="noopener" href="https://github.com/neo4j/neo4j" target="_blank">Github</a></li>
+      <li><i class="fa fa-stack-overflow" aria-hidden="true"></i> <a rel="noopener" href="https://stackoverflow.com/questions/tagged/neo4j" target="_blank">Stack Overflow</a></li>
+
+      <li class="speaker-program"><a href="https://docs.google.com/forms/d/e/1FAIpQLSdEcNnMruES5iwvOVYovmS1D_P1ZL_HdUOitFrwrvruv5PZvA/viewform">Want to Speak?</a></li>
+    </ul>
+  </div>
+  <div class="column links">
+    <h2><a href="https://neo4j.com/contact-us/?ref=footer">Contact Us →</a></h2>
+    <ul>
+      <li>US: 1-855-636-4532</li>
+      <li>Sweden +46 171 480 113</li>
+      <li>UK: +44 20 3868 3223</li>
+      <li>France: +33 (0) 1 88 46 13 20</li>
+    </ul>
+  </div>
+
+    <div class="column">
+    <p>© <span id="footer-copyright-year">2026</span> Neo4j, Inc.<br>
+      <a href="https://neo4j.com/terms/">Terms</a> | <a href="https://neo4j.com/privacy-policy/">Privacy </a> | <a href="https://neo4j.com/sitemap/">Sitemap</a></p>
+    <p>Neo4j<sup>®</sup>, Neo Technology<sup>®</sup>, Cypher<sup>®</sup>, Neo4j<sup>®</sup> Bloom<sup>™</sup> and
+      Neo4j<sup>®</sup> Aura<sup>™</sup> are registered trademarks
+      of Neo4j, Inc. All other marks are owned by their respective companies.</p>
+  </div>
+
+  
+</div>
+</footer>
+
+  <script src="../docs/docs-home-assets/js/vendor/auth0.js"></script>
+  <script src="../docs/docs-home-assets/js/site.js"></script>
+  <script async src="../docs/docs-home-assets/js/vendor/highlight.js"></script>
+  <script async src="../docs/docs-home-assets/js/vendor/image-zoom.js"></script>
+
+
+<div id="docs_chatbot" class="ndl-theme"></div>
+<script type="module" crossorigin src="https://neo4j.com/docs/assets/chatbot/index.js"></script>
+
+<div id="neo4j-algolia-search-v2"></div>
+<script src="https://neo4j.com/wp-content/themes/neo4jweb/assets/neo4j-react-modules-assets/search-preact/chunkless/bundle.js"></script>
+<script src="https://neo4j.com/wp-content/themes/neo4jweb/assets/neo4j-react-modules-assets/search-preact/chunkless/polyfill.js"></script>
+<script>window.algoliaSearchOptions = {indexName: "docs",placeholder: "Search Documentation",template: "docs"}</script>
+  </body>
+</html>

@@ -1,0 +1,9 @@
+# 原始网页快照属于可审计证据，保持抓取时的原始字节，禁止换行符转换
+docs/research_sources/**/raw_pages/*.html -text
+
+# PDF 等二进制证据按二进制处理
+*.pdf binary
+
+# 作者撰写的文本统一使用 LF
+*.md text eol=lf
+*.txt text eol=lf

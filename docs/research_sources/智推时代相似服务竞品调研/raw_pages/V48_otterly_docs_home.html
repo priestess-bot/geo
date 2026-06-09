@@ -1,0 +1,4741 @@
+<!doctype html><html lang="en"><head>
+    <meta charset="utf-8">
+    
+      
+        <title>OtterlyAI's knowledge habitat 🦦</title>
+      
+    
+
+    
+      <link rel="SHORTCUT ICON" href="https://help.otterly.ai/hubfs/favicon-1.png">
+    <meta name="description" content="These articles should help you use OtterlyAI faster and more efficiently.">
+    
+    
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    
+    <meta property="og:description" content="These articles should help you use OtterlyAI faster and more efficiently.">
+    <meta property="og:title" content="OtterlyAI's knowledge habitat 🦦">
+    <meta name="twitter:description" content="These articles should help you use OtterlyAI faster and more efficiently.">
+    <meta name="twitter:title" content="OtterlyAI's knowledge habitat 🦦">
+
+    
+
+    
+    <style>
+a.cta_button{-moz-box-sizing:content-box !important;-webkit-box-sizing:content-box !important;box-sizing:content-box !important;vertical-align:middle}.hs-breadcrumb-menu{list-style-type:none;margin:0px 0px 0px 0px;padding:0px 0px 0px 0px}.hs-breadcrumb-menu-item{float:left;padding:10px 0px 10px 10px}.hs-breadcrumb-menu-divider:before{content:'›';padding-left:10px}.hs-featured-image-link{border:0}.hs-featured-image{float:right;margin:0 0 20px 20px;max-width:50%}@media (max-width: 568px){.hs-featured-image{float:none;margin:0;width:100%;max-width:100%}}.hs-screen-reader-text{clip:rect(1px, 1px, 1px, 1px);height:1px;overflow:hidden;position:absolute !important;width:1px}
+</style>
+
+<style>
+/* Theme base styles */
+
+/* Generic */
+
+  
+
+*,
+*:before,
+*:after {
+  box-sizing: border-box;
+}
+
+/*! normalize.css v8.0.1 | MIT License | github.com/necolas/normalize.css */
+
+/* Document
+   ========================================================================== */
+
+/**
+ * 1. Correct the line height in all browsers.
+ * 2. Prevent adjustments of font size after orientation changes in iOS.
+ */
+
+html {
+  line-height: 1.15; /* 1 */
+  -webkit-text-size-adjust: 100%; /* 2 */
+}
+
+/* Sections
+   ========================================================================== */
+
+/**
+ * Remove the margin in all browsers.
+ */
+
+body {
+  margin: 0;
+}
+
+/**
+ * Render the `main` element consistently in IE.
+ */
+
+main {
+  display: block;
+}
+
+/**
+ * Correct the font size and margin on `h1` elements within `section` and
+ * `article` contexts in Chrome, Firefox, and Safari.
+ */
+
+h1 {
+  font-size: 2em;
+  margin: 0.67em 0;
+}
+
+/* Grouping content
+   ========================================================================== */
+
+/**
+ * 1. Add the correct box sizing in Firefox.
+ * 2. Show the overflow in Edge and IE.
+ */
+
+hr {
+  box-sizing: content-box; /* 1 */
+  height: 0; /* 1 */
+  overflow: visible; /* 2 */
+}
+
+/**
+ * 1. Correct the inheritance and scaling of font size in all browsers.
+ * 2. Correct the odd `em` font sizing in all browsers.
+ */
+
+pre {
+  font-family: monospace, monospace; /* 1 */
+  font-size: 1em; /* 2 */
+}
+
+/* Text-level semantics
+   ========================================================================== */
+
+/**
+ * Remove the gray background on active links in IE 10.
+ */
+
+a {
+  background-color: transparent;
+}
+
+/**
+ * 1. Remove the bottom border in Chrome 57-
+ * 2. Add the correct text decoration in Chrome, Edge, IE, Opera, and Safari.
+ */
+
+abbr[title] {
+  border-bottom: none; /* 1 */ /* 2 */
+  text-decoration: underline;
+  text-decoration: underline dotted; /* 2 */
+}
+
+/**
+ * Add the correct font weight in Chrome, Edge, and Safari.
+ */
+
+b,
+strong {
+  font-weight: bolder;
+}
+
+/**
+ * 1. Correct the inheritance and scaling of font size in all browsers.
+ * 2. Correct the odd `em` font sizing in all browsers.
+ */
+
+code,
+kbd,
+samp {
+  font-family: monospace, monospace; /* 1 */
+  font-size: 1em; /* 2 */
+}
+
+/**
+ * Add the correct font size in all browsers.
+ */
+
+small {
+  font-size: 80%;
+}
+
+/**
+ * Prevent `sub` and `sup` elements from affecting the line height in
+ * all browsers.
+ */
+
+sub,
+sup {
+  font-size: 75%;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+
+/* Embedded content
+   ========================================================================== */
+
+/**
+ * Remove the border on images inside links in IE 10.
+ */
+
+img {
+  border-style: none;
+}
+
+/* Forms
+   ========================================================================== */
+
+/**
+ * 1. Change the font styles in all browsers.
+ * 2. Remove the margin in Firefox and Safari.
+ */
+
+button,
+input,
+optgroup,
+select,
+textarea {
+  font-family: inherit; /* 1 */
+  font-size: 100%; /* 1 */
+  line-height: 1.15; /* 1 */
+  margin: 0; /* 2 */
+}
+
+/**
+ * Show the overflow in IE.
+ * 1. Show the overflow in Edge.
+ */
+
+button,
+input {
+  /* 1 */
+  overflow: visible;
+}
+
+/**
+ * Remove the inheritance of text transform in Edge, Firefox, and IE.
+ * 1. Remove the inheritance of text transform in Firefox.
+ */
+
+button,
+select {
+  /* 1 */
+  text-transform: none;
+}
+
+/**
+ * Correct the inability to style clickable types in iOS and Safari.
+ */
+
+button,
+[type='button'],
+[type='reset'],
+[type='submit'] {
+  -webkit-appearance: button;
+}
+
+/**
+ * Remove the inner border and padding in Firefox.
+ */
+
+button::-moz-focus-inner,
+[type='button']::-moz-focus-inner,
+[type='reset']::-moz-focus-inner,
+[type='submit']::-moz-focus-inner {
+  border-style: none;
+  padding: 0;
+}
+
+/**
+ * Restore the focus styles unset by the previous rule.
+ */
+
+button:-moz-focusring,
+[type='button']:-moz-focusring,
+[type='reset']:-moz-focusring,
+[type='submit']:-moz-focusring {
+  outline: 1px dotted ButtonText;
+}
+
+/**
+ * Correct the padding in Firefox.
+ */
+
+fieldset {
+  padding: 0.35em 0.75em 0.625em;
+}
+
+/**
+ * 1. Correct the text wrapping in Edge and IE.
+ * 2. Correct the color inheritance from `fieldset` elements in IE.
+ * 3. Remove the padding so developers are not caught out when they zero out
+ *    `fieldset` elements in all browsers.
+ */
+
+legend {
+  box-sizing: border-box; /* 1 */
+  color: inherit; /* 2 */
+  display: table; /* 1 */
+  max-width: 100%; /* 1 */
+  padding: 0; /* 3 */
+  white-space: normal; /* 1 */
+}
+
+/**
+ * Add the correct vertical alignment in Chrome, Firefox, and Opera.
+ */
+
+progress {
+  vertical-align: baseline;
+}
+
+/**
+ * Remove the default vertical scrollbar in IE 10+.
+ */
+
+textarea {
+  overflow: auto;
+}
+
+/**
+ * 1. Add the correct box sizing in IE 10.
+ * 2. Remove the padding in IE 10.
+ */
+
+[type='checkbox'],
+[type='radio'] {
+  box-sizing: border-box; /* 1 */
+  padding: 0; /* 2 */
+}
+
+/**
+ * Correct the cursor style of increment and decrement buttons in Chrome.
+ */
+
+[type='number']::-webkit-inner-spin-button,
+[type='number']::-webkit-outer-spin-button {
+  height: auto;
+}
+
+/**
+ * 1. Correct the odd appearance in Chrome and Safari.
+ * 2. Correct the outline style in Safari.
+ */
+
+[type='search'] {
+  -webkit-appearance: textfield; /* 1 */
+  outline-offset: -2px; /* 2 */
+}
+
+/**
+ * Remove the inner padding in Chrome and Safari on macOS.
+ */
+
+[type='search']::-webkit-search-decoration {
+  -webkit-appearance: none;
+}
+
+/**
+ * 1. Correct the inability to style clickable types in iOS and Safari.
+ * 2. Change font properties to `inherit` in Safari.
+ */
+
+::-webkit-file-upload-button {
+  -webkit-appearance: button; /* 1 */
+  font: inherit; /* 2 */
+}
+
+/* Interactive
+   ========================================================================== */
+
+/*
+ * Add the correct display in Edge, IE 10+, and Firefox.
+ */
+
+details {
+  display: block;
+}
+
+/*
+ * Add the correct display in all browsers.
+ */
+
+summary {
+  display: list-item;
+}
+
+/* Misc
+   ========================================================================== */
+
+/**
+ * Add the correct display in IE 10+.
+ */
+
+template {
+  display: none;
+}
+
+/**
+ * Add the correct display in IE 10.
+ */
+
+[hidden] {
+  display: none;
+}
+
+/* Settings */
+
+:root {
+  --container-width: 1000px;
+
+  --column-gap: 2.13%;
+  --column-width-multiplier: 8.333;
+
+  --primary-color: #2a5f8d;
+  --secondary-color: #e2ebf4;
+  --accent-color: #2a8d8a;
+  --body-bg-color: #ffffff;
+
+  --primary-body-font-family: 'Rubik', sans-serif;
+  --primary-body-font-style: normal;
+  --primary-body-font-weight: 400;
+  --primary-body-font-size: 1rem;
+  --primary-body-line-height: 1.4;
+  --primary-body-font-color: #33475b;
+
+  --secondary-header-font-family: 'Rubik', sans-serif;
+  --secondary-header-font-style: normal;
+  --secondary-header-font-weight: 700;
+  --secondary-header-font-size: 1rem;
+  --secondary-header-line-height: 1.5;
+  --secondary-header-font-color: #33475b;
+
+  --header-menu-font-color: #33475b;
+
+  --h1-secondary-header-font-family: var(--secondary-header-font-family);
+  --h1-secondary-header-font-style: var(--secondary-header-font-style);
+  --h1-secondary-header-font-weight: var(--secondary-header-font-weight);
+  --h1-secondary-header-font-size: 32px;
+  --h1-secondary-header-line-height: var(--secondary-header-line-height);
+  --h1-secondary-header-font-color: var(--secondary-header-font-color);
+  --h1-secondary-header-text-decoration: var(
+    --secondary-header-text-decoration
+  );
+  --h1-secondary-header-text-transform: var(--secondary-header-text-transform);
+
+  --h2-secondary-header-font-family: var(--secondary-header-font-family);
+  --h2-secondary-header-font-style: var(--secondary-header-font-style);
+  --h2-secondary-header-font-weight: var(--secondary-header-font-weight);
+  --h2-secondary-header-font-size: 24px;
+  --h2-secondary-header-line-height: var(--secondary-header-line-height);
+  --h2-secondary-header-font-color: var(--secondary-header-font-color);
+  --h2-secondary-header-text-decoration: var(
+    --secondary-header-text-decoration
+  );
+  --h2-secondary-header-text-transform: var(--secondary-header-text-transform);
+
+  --h3-secondary-header-font-family: var(--secondary-header-font-family);
+  --h3-secondary-header-font-style: var(--secondary-header-font-style);
+  --h3-secondary-header-font-weight: var(--secondary-header-font-weight);
+  --h3-secondary-header-font-size: 22px;
+  --h3-secondary-header-line-height: var(--secondary-header-line-height);
+  --h3-secondary-header-font-color: var(--secondary-header-font-color);
+  --h3-secondary-header-text-decoration: var(
+    --secondary-header-text-decoration
+  );
+  --h3-secondary-header-text-transform: var(--secondary-header-text-transform);
+
+  --h4-secondary-header-font-family: var(--secondary-header-font-family);
+  --h4-secondary-header-font-style: var(--secondary-header-font-style);
+  --h4-secondary-header-font-weight: var(--secondary-header-font-weight);
+  --h4-secondary-header-font-size: 18px;
+  --h4-secondary-header-line-height: var(--secondary-header-line-height);
+  --h4-secondary-header-font-color: var(--secondary-header-font-color);
+  --h4-secondary-header-text-decoration: var(
+    --secondary-header-text-decoration
+  );
+  --h4-secondary-header-text-transform: var(--secondary-header-text-transform);
+
+  --h5-secondary-header-font-family: var(--secondary-header-font-family);
+  --h5-secondary-header-font-style: var(--secondary-header-font-style);
+  --h5-secondary-header-font-weight: var(--secondary-header-font-weight);
+  --h5-secondary-header-font-size: 16px;
+  --h5-secondary-header-line-height: var(--secondary-header-line-height);
+  --h5-secondary-header-font-color: var(--secondary-header-font-color);
+  --h5-secondary-header-text-decoration: var(
+    --secondary-header-text-decoration
+  );
+  --h5-secondary-header-text-transform: var(--secondary-header-text-transform);
+
+  --h6-secondary-header-font-family: var(--secondary-header-font-family);
+  --h6-secondary-header-font-style: var(--secondary-header-font-style);
+  --h6-secondary-header-font-weight: var(--secondary-header-font-weight);
+  --h6-secondary-header-font-size: 16px;
+  --h6-secondary-header-line-height: var(--secondary-header-line-height);
+  --h6-secondary-header-font-color: #7c98b6;
+  --h6-secondary-header-text-decoration: var(
+    --secondary-header-text-decoration
+  );
+  --h6-secondary-header-text-transform: var(--secondary-header-text-transform);
+
+  --a-primary-body-font-family: var(--primary-body-font-family);
+  --a-primary-body-font-style: var(--primary-body-font-style);
+  --a-primary-body-font-weight: var(--primary-body-font-weight);
+  --a-primary-body-font-size: 16px;
+  --a-primary-body-line-height: var(--primary-body-line-height);
+  --a-primary-body-font-color: #1773d1;
+  --a-primary-body-text-decoration: var(--primary-body-text-decoration);
+  --a-primary-body-text-transform: var(--primary-body-text-transform);
+
+  --header-top-bar-background-color: var(--secondary-color);
+
+  --top-bar-font-family: var(--primary-body-font-family);
+  --top-bar-font-style: var(--primary-body-font-style);
+  --top-bar-font-weight: var(--primary-body-font-weight);
+  --top-bar-font-size: var(--a-primary-body-font-size);
+  --top-bar-line-height: ;
+  --top-bar-font-color: var(--header-menu-font-color);
+  --top-bar-text-decoration: var(--a-primary-body-text-decoration);
+  --top-bar-text-transform: var(--a-primary-body-text-transform);
+
+  --language-switcher-dropdown-bg: #ff0000;
+  --language-switcher-dropdown-font-family: var(--primary-body-font-family);
+  --language-switcher-dropdown-font-style: var(--primary-body-font-style);
+  --language-switcher-dropdown-font-weight: var(--primary-body-font-weight);
+  --language-switcher-dropdown-font-size: var(--a-primary-body-font-size);
+  --language-switcher-dropdown-line-height: ;
+  --language-switcher-dropdown-font-color: var(--header-menu-font-color);
+  --language-switcher-dropdown-text-decoration: var(
+    --a-primary-body-text-decoration
+  );
+  --language-switcher-dropdown-text-transform: var(
+    --a-primary-body-text-transform
+  );
+
+  --top-bar-hover-dropdown-bg: #00ff00;
+  --top-bar-hover-dropdown-font-family: var(--primary-body-font-family);
+  --top-bar-hover-dropdown-font-style: var(--primary-body-font-style);
+  --top-bar-hover-dropdown-font-weight: var(--primary-body-font-weight);
+  --top-bar-hover-dropdown-font-size: var(--a-primary-body-font-size);
+  --top-bar-hover-dropdown-line-height: ;
+  --top-bar-hover-dropdown-font-color: var(--header-menu-font-color);
+  --top-bar-hover-dropdown-text-decoration: var(
+    --a-primary-body-text-decoration
+  );
+  --top-bar-hover-dropdown-text-transform: var(--a-primary-body-text-transform);
+
+  --header-bottom-bar-background-color: #fff;
+
+  --header-menu-main-font-family: var(--primary-body-font-family);
+  --header-menu-main-font-style: var(--primary-body-font-style);
+  --header-menu-main-font-weight: var(--primary-body-font-weight);
+  --header-menu-main-font-size: var(--a-primary-body-font-size);
+  --header-menu-main-line-height: ;
+  --header-menu-main-font-color: var(--header-menu-font-color);
+  --header-menu-main-text-decoration: var(--a-primary-body-text-decoration);
+  --header-menu-main-text-transform: var(--a-primary-body-text-transform);
+
+  --header-menu-mobile-box-shadow: 0 4px 2px -2px rgba(0, 0, 0, 0.125);
+
+  --header-menu-main-hover-font-family: var(--primary-body-font-family);
+  --header-menu-main-hover-font-style: var(--primary-body-font-style);
+  --header-menu-main-hover-font-weight: var(--primary-body-font-weight);
+  --header-menu-main-hover-font-size: var(--a-primary-body-font-size);
+  --header-menu-main-hover-line-height: ;
+  --header-menu-main-hover-font-color: var(--header-menu-font-color);
+  --header-menu-main-hover-text-decoration: var(
+    --a-primary-body-text-decoration
+  );
+  --header-menu-main-hover-text-transform: var(--a-primary-body-text-transform);
+
+  --header-menu-submenu-bg: #fff;
+  --header-menu-submenu-font-family: var(--primary-body-font-family);
+  --header-menu-submenu-font-style: var(--primary-body-font-style);
+  --header-menu-submenu-font-weight: var(--primary-body-font-weight);
+  --header-menu-submenu-font-size: var(--a-primary-body-font-size);
+  --header-menu-submenu-line-height: ;
+  --header-menu-submenu-font-color: var(--header-menu-font-color);
+  --header-menu-submenu-text-decoration: var(--a-primary-body-text-decoration);
+  --header-menu-submenu-text-transform: var(--a-primary-body-text-transform);
+
+  --header-menu-hover-submenu-bg: #f00;
+
+  --header-menu-hover-submenu-font-family: var(--primary-body-font-family);
+  --header-menu-hover-submenu-font-style: var(--primary-body-font-style);
+  --header-menu-hover-submenu-font-weight: var(--primary-body-font-weight);
+  --header-menu-hover-submenu-font-size: var(--a-primary-body-font-size);
+  --header-menu-hover-submenu-line-height: ;
+  --header-menu-hover-submenu-font-color: var(--header-menu-font-color);
+  --header-menu-hover-submenu-text-decoration: var(
+    --a-primary-body-text-decoration
+  );
+  --header-menu-hover-submenu-text-transform: var(
+    --a-primary-body-text-transform
+  );
+
+  --header-button-font-family: var(--primary-body-font-family);
+  --header-button-font-style: var(--primary-body-font-style);
+  --header-button-font-weight: var(--primary-body-font-weight);
+  --header-button-font-size: var(--a-primary-body-font-size);
+  --header-button-line-height: 16px;
+  --header-button-font-color: #fff;
+  --header-button-text-decoration: var(--a-primary-body-text-decoration);
+  --header-button-text-transform: var(--a-primary-body-text-transform);
+
+  --header-button-padding: 10px 20px;
+  --header-button-border-radius: 20px;
+  --header-button-border: 3px solid pink;
+
+  --header-button-background-color: var(--accent-color);
+
+  --header-button-hover-text-decoration: var(--a-primary-body-text-decoration);
+  --header-button-hover-background-color: var(--accent-color);
+  --header-button-hover-font-color: #fff;
+  --header-button-hover-border: 3px solid gray;
+
+  --primary-button-font-family: var(--primary-body-font-family);
+  --primary-button-font-style: var(--primary-body-font-style);
+  --primary-button-font-weight: var(--primary-body-font-weight);
+  --primary-button-font-size: var(--a-primary-body-font-size);
+  --primary-button-line-height: 16px;
+  --primary-button-font-color: #fff;
+  --primary-button-text-decoration: var(--a-primary-body-text-decoration);
+  --primary-button-text-transform: var(--a-primary-body-text-transform);
+
+  --primary-button-padding: 10px 20px;
+  --primary-button-border-radius: 20px;
+  --primary-button-border: 3px solid pink;
+
+  --primary-button-background-color: var(--accent-color);
+
+  --primary-button-hover-text-decoration: var(--a-primary-body-text-decoration);
+  --primary-button-hover-background-color: var(--accent-color);
+  --primary-button-hover-font-color: #fff;
+  --primary-button-hover-border: 3px solid gray;
+
+  --secondary-button-font-family: var(--primary-body-font-family);
+  --secondary-button-font-style: var(--primary-body-font-style);
+  --secondary-button-font-weight: var(--primary-body-font-weight);
+  --secondary-button-font-size: var(--a-primary-body-font-size);
+  --secondary-button-line-height: 16px;
+  --secondary-button-font-color: var(--primary-body-font-color);
+  --secondary-button-text-decoration: var(--a-primary-body-text-decoration);
+  --secondary-button-text-transform: var(--a-primary-body-text-transform);
+
+  --secondary-button-padding: 10px 20px;
+  --secondary-button-border-radius: 2px;
+  --secondary-button-border: 3px solid pink;
+
+  --secondary-button-background-color: var(--secondary-color);
+
+  --secondary-button-hover-text-decoration: var(
+    --a-primary-body-text-decoration
+  );
+  --secondary-button-hover-background-color: var(--secondary-color);
+  --secondary-button-hover-font-color: var(--primary-body-font-color);
+  --secondary-button-hover-border: 3px solid gray;
+
+  --search-field-label-font-family: var(--secondary-header-font-family);
+  --search-field-label-font-style: var(--secondary-header-font-style);
+  --search-field-label-font-weight: var(--secondary-header-font-weight);
+  --search-field-label-font-size: 32px;
+  --search-field-label-line-height: var(--secondary-header-line-height);
+  --search-field-label-text-decoration: var(--secondary-header-text-decoration);
+  --search-field-label-text-transform: var(--secondary-header-text-transform);
+
+  --footer-bg-color: #fff;
+
+  --footer-font-style: var(--primary-body-font-style);
+  --footer-font-weight: var(--primary-body-font-weight);
+  --footer-font-size: var(--a-primary-body-font-size);
+  --footer-line-height: ;
+  --footer-font-color: var(--a-primary-body-font-color);
+  --footer-text-decoration: var(--a-primary-body-text-decoration);
+  --footer-text-transform: var(--a-primary-body-text-transform);
+
+  --footer-menu-font-family: var(--primary-body-font-family);
+  --footer-menu-font-style: var(--primary-body-font-style);
+  --footer-menu-font-weight: var(--primary-body-font-weight);
+  --footer-menu-font-size: var(--a-primary-body-font-size);
+  --footer-menu-line-height: 2.2rem;
+  --footer-menu-font-color: var(--header-menu-font-color);
+  --footer-menu-text-decoration: var(--a-primary-body-text-decoration);
+  --footer-menu-text-transform: var(--a-primary-body-text-transform);
+
+  --footer-menu-hover-font-family: var(--primary-body-font-family);
+  --footer-menu-hover-font-style: var(--primary-body-font-style);
+  --footer-menu-hover-font-weight: var(--primary-body-font-weight);
+  --footer-menu-hover-font-size: var(--a-primary-body-font-size);
+  --footer-menu-hover-line-height: ;
+  --footer-menu-hover-font-color: var(--header-menu-font-color);
+  --footer-menu-hover-text-decoration: var(--a-primary-body-text-decoration);
+  --footer-menu-hover-text-transform: var(--a-primary-body-text-transform);
+
+  --social-follow-icon-sizes: 32px;
+  --social-follow-icon-shape: circle;
+  --social-follow-icon-color: #fff;
+  --social-follow-icon-background-color: #494a52;
+  --social-follow-icon-space-between-icons: 12px;
+  --social-follow-icon-alignment: right;
+
+  --hs-kb-card-highlight-border-color: var(--primary-color);
+
+  --hs-kb-home-tiles-background-color: #f2f7fc;
+
+    
+  --hs-kb-home-grid-item-padding: 24px 18px;
+}
+
+.theme-overrides {
+    
+  --primary-color:  #7928ca  ;
+  --secondary-color:  #e40072  ;
+  --accent-color:  #e40072  ;
+  --body-bg-color:  #FFFFFF  ;
+
+  --footer-bg-color:  #FFFFFF  ;
+
+    
+   
+  
+    
+      
+        --primary-body-font-family: Roboto, sans-serif;
+      
+    
+      
+        --primary-body-font-style: normal;
+      
+    
+      
+        --primary-body-font-weight: normal;
+      
+    
+      
+        --primary-body-text-decoration: none;
+      
+    
+  
+  
+    --primary-body-font-color: #33475B;
+  
+  
+ 
+   
+  
+    
+      
+        --secondary-header-font-family: Roboto, sans-serif;
+      
+    
+      
+        --secondary-header-font-style: normal;
+      
+    
+      
+        --secondary-header-font-weight: normal;
+      
+    
+      
+        --secondary-header-text-decoration: none;
+      
+    
+  
+  
+    --secondary-header-font-color: #33475B;
+  
+  
+ 
+
+   
+  
+    
+      
+        --h1-secondary-header-font-family: Roboto, sans-serif;
+      
+    
+      
+        --h1-secondary-header-font-style: normal;
+      
+    
+      
+        --h1-secondary-header-font-weight: normal;
+      
+    
+      
+        --h1-secondary-header-text-decoration: none;
+      
+    
+  
+  
+    --h1-secondary-header-font-color: #e40072;
+  
+  
+      
+    --h1-secondary-header-font-size: 32px;
+  
+ 
+  --h1-secondary-header-text-transform:  none  ;
+
+   
+  
+    
+      
+        --h2-secondary-header-font-family: Roboto, sans-serif;
+      
+    
+      
+        --h2-secondary-header-font-style: normal;
+      
+    
+      
+        --h2-secondary-header-font-weight: normal;
+      
+    
+      
+        --h2-secondary-header-text-decoration: none;
+      
+    
+  
+  
+    --h2-secondary-header-font-color: #33475B;
+  
+  
+      
+    --h2-secondary-header-font-size: 24px;
+  
+ 
+  --h2-secondary-header-text-transform:  none  ;
+
+   
+  
+    
+      
+        --h3-secondary-header-font-family: Roboto, sans-serif;
+      
+    
+      
+        --h3-secondary-header-font-style: normal;
+      
+    
+      
+        --h3-secondary-header-font-weight: normal;
+      
+    
+      
+        --h3-secondary-header-text-decoration: none;
+      
+    
+  
+  
+    --h3-secondary-header-font-color: #33475B;
+  
+  
+      
+    --h3-secondary-header-font-size: 22px;
+  
+ 
+  --h3-secondary-header-text-transform:  none  ;
+
+   
+  
+    
+      
+        --h4-secondary-header-font-family: Roboto, sans-serif;
+      
+    
+      
+        --h4-secondary-header-font-style: normal;
+      
+    
+      
+        --h4-secondary-header-font-weight: normal;
+      
+    
+      
+        --h4-secondary-header-text-decoration: none;
+      
+    
+  
+  
+    --h4-secondary-header-font-color: #33475B;
+  
+  
+      
+    --h4-secondary-header-font-size: 18px;
+  
+ 
+  --h4-secondary-header-text-transform:  none  ;
+
+   
+  
+    
+      
+        --h5-secondary-header-font-family: Roboto, sans-serif;
+      
+    
+      
+        --h5-secondary-header-font-style: normal;
+      
+    
+      
+        --h5-secondary-header-font-weight: normal;
+      
+    
+      
+        --h5-secondary-header-text-decoration: none;
+      
+    
+  
+  
+    --h5-secondary-header-font-color: #33475B;
+  
+  
+      
+    --h5-secondary-header-font-size: 16px;
+  
+ 
+  --h5-secondary-header-text-transform:  none  ;
+
+   
+  
+    
+      
+        --h6-secondary-header-font-family: Roboto, sans-serif;
+      
+    
+      
+        --h6-secondary-header-font-style: normal;
+      
+    
+      
+        --h6-secondary-header-font-weight: normal;
+      
+    
+      
+        --h6-secondary-header-text-decoration: none;
+      
+    
+  
+  
+    --h6-secondary-header-font-color: #33475B;
+  
+  
+      
+    --h6-secondary-header-font-size: 16px;
+  
+ 
+  --h6-secondary-header-text-transform:  none  ;
+
+   
+  
+    
+      
+        --primary-body-font-family: Roboto, sans-serif;
+      
+    
+      
+        --primary-body-font-style: normal;
+      
+    
+      
+        --primary-body-font-weight: normal;
+      
+    
+      
+        --primary-body-text-decoration: none;
+      
+    
+  
+  
+    --primary-body-font-color: #33475B;
+  
+  
+      
+    --primary-body-font-size: 16px;
+  
+ 
+
+   
+  
+    
+      
+        --a-primary-body-font-family: Roboto, sans-serif;
+      
+    
+      
+        --a-primary-body-font-style: normal;
+      
+    
+      
+        --a-primary-body-font-weight: normal;
+      
+    
+      
+        --a-primary-body-text-decoration: none;
+      
+    
+  
+  
+    --a-primary-body-font-color: #e40072;
+  
+  
+ 
+
+   
+  
+    
+      
+        --a-hover-primary-body-font-family: Roboto, sans-serif;
+      
+    
+      
+        --a-hover-primary-body-font-style: normal;
+      
+    
+      
+        --a-hover-primary-body-font-weight: normal;
+      
+    
+      
+        --a-hover-primary-body-text-decoration: underline;
+      
+    
+  
+  
+    --a-hover-primary-body-font-color: #9A00FF;
+  
+  
+ 
+
+   
+  
+    
+      
+        --top-bar-font-weight: normal;
+      
+    
+      
+        --top-bar-text-decoration: none;
+      
+    
+      
+        --top-bar-font-family: Roboto, sans-serif;
+      
+    
+      
+        --top-bar-font-style: normal;
+      
+    
+  
+  
+    --top-bar-font-color: #33475B;
+  
+  
+ 
+   
+  
+    
+      
+        --top-bar-hover-font-weight: normal;
+      
+    
+      
+        --top-bar-hover-text-decoration: underline;
+      
+    
+      
+        --top-bar-hover-font-family: Roboto, sans-serif;
+      
+    
+      
+        --top-bar-hover-font-style: normal;
+      
+    
+  
+  
+    --top-bar-hover-font-color: #33475B;
+  
+  
+ 
+
+  --language-switcher-dropdown-bg:  
+  
+    
+    
+      
+    
+
+
+    rgba(255, 255, 255, 1.0)
+  
+  ;
+   
+  
+  
+  
+ 
+
+  --top-bar-hover-dropdown-bg:  
+  
+    
+    
+      
+    
+
+
+    rgba(228, 0, 114, 1.0)
+  
+  ;
+   
+  
+  
+  
+ 
+
+  --header-max-width:  auto  ;
+  --footer-max-width:  auto  ;
+
+   
+  
+    
+      
+        --header-menu-main-font-weight: normal;
+      
+    
+      
+        --header-menu-main-text-decoration: none;
+      
+    
+      
+        --header-menu-main-font-family: Roboto, sans-serif;
+      
+    
+      
+        --header-menu-main-font-style: normal;
+      
+    
+  
+  
+    --header-menu-main-font-color: #33475B;
+  
+  
+ 
+
+   
+  
+    
+      
+        --header-menu-main-hover-font-weight: normal;
+      
+    
+      
+        --header-menu-main-hover-text-decoration: underline;
+      
+    
+      
+        --header-menu-main-hover-font-family: Roboto, sans-serif;
+      
+    
+      
+        --header-menu-main-hover-font-style: normal;
+      
+    
+  
+  
+    --header-menu-main-hover-font-color: #33475B;
+  
+  
+ 
+
+  --header-menu-submenu-bg:  
+  
+    
+    
+      
+    
+
+
+    rgba(255, 255, 255, 1.0)
+  
+  ;
+   
+  
+    
+      
+        --header-menu-submenu-font-weight: normal;
+      
+    
+      
+        --header-menu-submenu-text-decoration: none;
+      
+    
+      
+        --header-menu-submenu-font-family: Roboto, sans-serif;
+      
+    
+      
+        --header-menu-submenu-font-style: normal;
+      
+    
+  
+  
+    --header-menu-submenu-font-color: #33475B;
+  
+  
+ 
+
+  --header-menu-hover-submenu-bg:  
+  
+    
+    
+      
+    
+
+
+    rgba(228, 0, 114, 1.0)
+  
+  ;
+   
+  
+    
+      
+        --header-menu-hover-submenu-font-weight: normal;
+      
+    
+      
+        --header-menu-hover-submenu-text-decoration: none;
+      
+    
+      
+        --header-menu-hover-submenu-font-family: Roboto, sans-serif;
+      
+    
+      
+        --header-menu-hover-submenu-font-style: normal;
+      
+    
+  
+  
+    --header-menu-hover-submenu-font-color: #FFFFFF;
+  
+  
+ 
+
+   
+  
+    
+      
+        --header-button-font-family: Roboto, sans-serif;
+      
+    
+      
+        --header-button-font-style: normal;
+      
+    
+      
+        --header-button-font-weight: normal;
+      
+    
+      
+        --header-button-text-decoration: none;
+      
+    
+  
+  
+    --header-button-font-color: #FFFFFF;
+  
+  
+ 
+  --header-button-text-transform:    ;
+  --header-button-border:  
+  
+    
+    
+  
+  ;
+
+   
+  
+    
+      
+        --primary-button-font-family: Roboto, sans-serif;
+      
+    
+      
+        --primary-button-font-style: normal;
+      
+    
+      
+        --primary-button-font-weight: normal;
+      
+    
+      
+        --primary-button-text-decoration: none;
+      
+    
+  
+  
+    --primary-button-font-color: #FFFFFF;
+  
+  
+ 
+  --primary-button-text-transform:    ;
+  --primary-button-border:  
+  
+    
+    
+  
+  ;
+
+   
+  
+    
+      
+        --header-button-hover-font-family: Roboto, sans-serif;
+      
+    
+      
+        --header-button-hover-font-style: normal;
+      
+    
+      
+        --header-button-hover-font-weight: normal;
+      
+    
+      
+        --header-button-hover-text-decoration: none;
+      
+    
+  
+  
+  
+ 
+
+  --header-button-background-color:  
+  
+    
+    
+      
+    
+
+
+    rgba(228, 0, 114, 1.0)
+  
+  ;
+  --header-button-border-radius:  20px  ;
+
+  --header-button-hover-border:  
+  
+    
+    
+    
+    
+    
+  
+  ;
+  --header-button-hover-background-color:  
+  
+    
+    
+      
+    
+
+
+    rgba(228, 0, 114, 1.0)
+  
+  ;
+
+  --search-input-wrapper-background-color:  
+  
+    
+    
+      
+    
+
+
+    rgba(121, 40, 202, 1.0)
+  
+  ;
+  --search-input-wrapper-background-gradient:  linear-gradient(to bottom, rgba(204, 204, 204, 1), rgba(153, 153, 153, 1))  ;
+   
+  
+    
+      
+        --search-field-label-font-family: Roboto, sans-serif;
+      
+    
+      
+        --search-field-label-font-style: normal;
+      
+    
+      
+        --search-field-label-font-weight: normal;
+      
+    
+      
+        --search-field-label-text-decoration: none;
+      
+    
+  
+  
+    --search-field-label-font-color: #FFFFFF;
+  
+  
+      
+    --search-field-label-font-size: 32px;
+  
+ 
+
+  --search-field-text-font-color:  
+  
+    
+    
+      
+    
+
+
+    rgba(51, 71, 91, 1.0)
+  
+  ;
+  --search-field-button-background-color:  
+  
+    
+    
+      
+    
+
+
+    rgba(228, 0, 114, 1.0)
+  
+  ;
+  --search-field-button-icon-color:  
+  
+    
+    
+      
+    
+
+
+    rgba(51, 71, 91, 1.0)
+  
+  ;
+
+  --header-top-bar-background-color:  
+  
+    
+    
+      
+    
+
+
+    rgba(228, 0, 114, 1.0)
+  
+  ;
+
+  --header-bottom-bar-background-color:  
+  
+    
+    
+      
+    
+
+
+    rgba(255, 255, 255, 1.0)
+  
+  ;
+
+   
+  
+    
+      
+        --footer-font-weight: normal;
+      
+    
+      
+        --footer-text-decoration: none;
+      
+    
+      
+        --footer-font-family: Roboto, sans-serif;
+      
+    
+      
+        --footer-font-style: normal;
+      
+    
+  
+  
+    --footer-font-color: #33475B;
+  
+  
+      
+    --footer-font-size: 16px;
+  
+ 
+
+   
+  
+    
+      
+        --footer-menu-font-weight: normal;
+      
+    
+      
+        --footer-menu-text-decoration: none;
+      
+    
+      
+        --footer-menu-font-family: Roboto, sans-serif;
+      
+    
+      
+        --footer-menu-font-style: normal;
+      
+    
+  
+  
+    --footer-menu-font-color: #33475B;
+  
+  
+ 
+
+   
+  
+    
+      
+        --footer-menu-hover-font-weight: normal;
+      
+    
+      
+        --footer-menu-hover-text-decoration: underline;
+      
+    
+      
+        --footer-menu-hover-font-family: Roboto, sans-serif;
+      
+    
+      
+        --footer-menu-hover-font-style: normal;
+      
+    
+  
+  
+    --footer-menu-hover-font-color: #33475B;
+  
+  
+ 
+
+  --hs-kb-card-highlight-border-color:  
+  
+    
+    
+      
+    
+
+
+    rgba(121, 40, 202, 1.0)
+  
+  ;
+
+    
+  --hs-kb-home-tiles-background-color:  
+  
+    
+    
+      
+    
+
+
+    rgba(255, 255, 255, 1.0)
+  
+  ;
+  --hs-kb-home-tiles-border:  
+  
+    
+     1px none #FFFFFF;
+
+  
+  ;
+  --hs-kb-home-tiles-corner-radius:  3px  ;
+
+  --social-follow-icon-size:  
+  
+  
+    
+  
+  32px
+  ;
+  --social-follow-icon-shape-radius:  
+  
+  
+  50%
+  ;
+  --social-follow-icon-color:  
+  
+    
+    
+      
+    
+
+
+    rgba(255, 255, 255, 1)
+  
+  ;
+  --social-follow-icon-background-color:  
+  
+    
+    
+      
+    
+
+
+    rgba(73, 74, 82, 1)
+  
+  ;
+  --social-follow-icon-space-between-icons: 12px;
+  --social-follow-icon-alignment:  
+  
+  
+  flex-end
+  ;
+}
+
+/* Objects */
+
+  
+
+.kb-body-wrapper {
+  background-color: #ffffff;
+  background-color: var(--body-bg-color);
+}
+
+#main-content {
+  padding: 0 0 36px 0;
+}
+
+/* Mobile layout */
+
+.row-fluid {
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+  
+
+ .row-fluid .span1 
+
+ , 
+
+ .row-fluid .span2 
+
+ , 
+
+ .row-fluid .span3 
+
+ , 
+
+ .row-fluid .span4 
+
+ , 
+
+ .row-fluid .span5 
+
+ , 
+
+ .row-fluid .span6 
+
+ , 
+
+ .row-fluid .span7 
+
+ , 
+
+ .row-fluid .span8 
+
+ , 
+
+ .row-fluid .span9 
+
+ , 
+
+ .row-fluid .span10 
+
+ , 
+
+ .row-fluid .span11 
+
+ , 
+
+ .row-fluid .span12 
+
+ {
+  min-height: 1px;
+  width: 100%;
+}
+
+/* Desktop layout */
+
+@media (min-width: 768px) {
+  .row-fluid {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+  }
+
+    
+   .row-fluid .span1 
+   {
+    width: calc(
+      8.333 * 1% * 1 - 2.13% *
+        (11 * 8.333 / 100)
+    );
+    width: calc(
+      var(--column-width-multiplier) * 1% * 1 - var(--column-gap) *
+        (
+          11 * var(--column-width-multiplier) /
+            100
+        )
+    );
+  }
+    
+   .row-fluid .span2 
+   {
+    width: calc(
+      8.333 * 1% * 2 - 2.13% *
+        (10 * 8.333 / 100)
+    );
+    width: calc(
+      var(--column-width-multiplier) * 1% * 2 - var(--column-gap) *
+        (
+          10 * var(--column-width-multiplier) /
+            100
+        )
+    );
+  }
+    
+   .row-fluid .span3 
+   {
+    width: calc(
+      8.333 * 1% * 3 - 2.13% *
+        (9 * 8.333 / 100)
+    );
+    width: calc(
+      var(--column-width-multiplier) * 1% * 3 - var(--column-gap) *
+        (
+          9 * var(--column-width-multiplier) /
+            100
+        )
+    );
+  }
+    
+   .row-fluid .span4 
+   {
+    width: calc(
+      8.333 * 1% * 4 - 2.13% *
+        (8 * 8.333 / 100)
+    );
+    width: calc(
+      var(--column-width-multiplier) * 1% * 4 - var(--column-gap) *
+        (
+          8 * var(--column-width-multiplier) /
+            100
+        )
+    );
+  }
+    
+   .row-fluid .span5 
+   {
+    width: calc(
+      8.333 * 1% * 5 - 2.13% *
+        (7 * 8.333 / 100)
+    );
+    width: calc(
+      var(--column-width-multiplier) * 1% * 5 - var(--column-gap) *
+        (
+          7 * var(--column-width-multiplier) /
+            100
+        )
+    );
+  }
+    
+   .row-fluid .span6 
+   {
+    width: calc(
+      8.333 * 1% * 6 - 2.13% *
+        (6 * 8.333 / 100)
+    );
+    width: calc(
+      var(--column-width-multiplier) * 1% * 6 - var(--column-gap) *
+        (
+          6 * var(--column-width-multiplier) /
+            100
+        )
+    );
+  }
+    
+   .row-fluid .span7 
+   {
+    width: calc(
+      8.333 * 1% * 7 - 2.13% *
+        (5 * 8.333 / 100)
+    );
+    width: calc(
+      var(--column-width-multiplier) * 1% * 7 - var(--column-gap) *
+        (
+          5 * var(--column-width-multiplier) /
+            100
+        )
+    );
+  }
+    
+   .row-fluid .span8 
+   {
+    width: calc(
+      8.333 * 1% * 8 - 2.13% *
+        (4 * 8.333 / 100)
+    );
+    width: calc(
+      var(--column-width-multiplier) * 1% * 8 - var(--column-gap) *
+        (
+          4 * var(--column-width-multiplier) /
+            100
+        )
+    );
+  }
+    
+   .row-fluid .span9 
+   {
+    width: calc(
+      8.333 * 1% * 9 - 2.13% *
+        (3 * 8.333 / 100)
+    );
+    width: calc(
+      var(--column-width-multiplier) * 1% * 9 - var(--column-gap) *
+        (
+          3 * var(--column-width-multiplier) /
+            100
+        )
+    );
+  }
+    
+   .row-fluid .span10 
+   {
+    width: calc(
+      8.333 * 1% * 10 - 2.13% *
+        (2 * 8.333 / 100)
+    );
+    width: calc(
+      var(--column-width-multiplier) * 1% * 10 - var(--column-gap) *
+        (
+          2 * var(--column-width-multiplier) /
+            100
+        )
+    );
+  }
+    
+   .row-fluid .span11 
+   {
+    width: calc(
+      8.333 * 1% * 11 - 2.13% *
+        (1 * 8.333 / 100)
+    );
+    width: calc(
+      var(--column-width-multiplier) * 1% * 11 - var(--column-gap) *
+        (
+          1 * var(--column-width-multiplier) /
+            100
+        )
+    );
+  }
+    
+}
+
+/* Overall layout */
+
+.hs-kb-content-wrapper--responsive-spacing,
+.hs-kb-home-list {
+  box-sizing: content-box;
+  max-width: 1000px;
+  padding: 0 24px;
+  margin: 0 auto;
+}
+
+@media only screen and (max-width: 767px) {
+  .hs-kb-search-input-wrapper .hs-search-field__bar {
+    min-height: auto;
+  }
+
+  .hidden-phone {
+    display: none;
+  }
+}
+
+/* Content wrappers for blog post and system templates */
+
+.content-wrapper {
+  padding: 0 20px;
+  margin: 0 auto;
+}
+
+/* Drag and drop layout styles */
+
+.dnd-section > .row-fluid {
+  margin: 0 auto;
+}
+
+@media (max-width: 767px) {
+  .dnd-section .dnd-column {
+    padding: 0;
+  }
+}
+
+/* Elements */
+
+body {
+  word-wrap: break-word;
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--primary-body-font-family);
+  font-size: 1rem;
+  font-size: var(--primary-body-font-size);
+  font-weight: 400;
+  font-weight: var(--primary-body-font-weight);
+  line-height: 1.4;
+  line-height: var(--primary-body-line-height);
+  font-style: normal;
+  font-style: var(--primary-body-font-style);
+  color: #33475b;
+  color: var(--primary-body-font-color);
+}
+
+html[lang^='ja'] body,
+html[lang^='zh'] body,
+html[lang^='ko'] body {
+  line-break: strict;
+  word-wrap: normal;
+  word-break: break-all;
+}
+
+/* Paragraphs */
+
+p {
+  margin: 0 0 1.4rem;
+}
+
+/* Anchors */
+
+a {
+  cursor: pointer;
+}
+
+/* Headings */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0 0 1.4rem;
+}
+
+/* Lists */
+
+ul,
+ol {
+  padding-left: 1rem;
+  margin: 0 0 1.4rem;
+}
+
+ul li,
+ol li {
+  margin: 0.7rem;
+}
+
+ul ul,
+ol ul,
+ul ol,
+ol ol {
+  margin: 1.4rem 0;
+}
+
+.no-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.no-list li {
+  margin: 0;
+}
+
+/* Code blocks */
+
+pre {
+  overflow: auto;
+}
+
+code {
+  vertical-align: bottom;
+}
+
+/* Blockquotes */
+
+blockquote {
+  position: relative;
+  margin-bottom: 1.4rem;
+}
+
+blockquote:before {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 100%;
+  background-color: #e2ebf4;
+  background-color: var(--secondary-color);
+  position: absolute;
+  left: -13px;
+}
+
+/* Horizontal rules */
+
+hr {
+  border: 0 none;
+  border-bottom: 1px solid;
+}
+
+/* Subscripts and superscripts */
+
+sup,
+sub {
+  position: relative;
+  font-size: 75%;
+  line-height: 0;
+  vertical-align: baseline;
+}
+
+sup {
+  top: -0.5em;
+}
+
+sub {
+  bottom: -0.25em;
+}
+
+/* Image alt text */
+
+img {
+  font-size: 1rem;
+  word-break: normal;
+}
+
+h1 {
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--h1-secondary-header-font-family);
+  font-style: normal;
+  font-style: var(--h1-secondary-header-font-style);
+  font-weight: 700;
+  font-weight: var(--h1-secondary-header-font-weight);
+  font-size: 32px;
+  font-size: var(--h1-secondary-header-font-size);
+  line-height: 1.5;
+  line-height: var(--h1-secondary-header-line-height);
+  color: #33475b;
+  color: var(--h1-secondary-header-font-color);
+  text-decoration: var(--secondary-header-text-decoration);
+  text-decoration: var(--h1-secondary-header-text-decoration);
+  text-transform: var(--secondary-header-text-transform);
+  text-transform: var(--h1-secondary-header-text-transform);
+}
+
+h2 {
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--h2-secondary-header-font-family);
+  font-style: normal;
+  font-style: var(--h2-secondary-header-font-style);
+  font-weight: 700;
+  font-weight: var(--h2-secondary-header-font-weight);
+  font-size: 24px;
+  font-size: var(--h2-secondary-header-font-size);
+  line-height: 1.5;
+  line-height: var(--h2-secondary-header-line-height);
+  color: #33475b;
+  color: var(--h2-secondary-header-font-color);
+  text-decoration: var(--secondary-header-text-decoration);
+  text-decoration: var(--h2-secondary-header-text-decoration);
+  text-transform: var(--secondary-header-text-transform);
+  text-transform: var(--h2-secondary-header-text-transform);
+}
+
+h3,
+h3 a,
+h3 a:hover {
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--h3-secondary-header-font-family);
+  font-style: normal;
+  font-style: var(--h3-secondary-header-font-style);
+  font-weight: 700;
+  font-weight: var(--h3-secondary-header-font-weight);
+  font-size: 22px;
+  font-size: var(--h3-secondary-header-font-size);
+  line-height: 1.5;
+  line-height: var(--h3-secondary-header-line-height);
+  color: #33475b;
+  color: var(--h3-secondary-header-font-color);
+  text-decoration: var(--secondary-header-text-decoration);
+  text-decoration: var(--h3-secondary-header-text-decoration);
+  text-transform: var(--secondary-header-text-transform);
+  text-transform: var(--h3-secondary-header-text-transform);
+}
+
+h3 a:hover {
+  text-decoration: underline;
+}
+
+h4 {
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--h4-secondary-header-font-family);
+  font-style: normal;
+  font-style: var(--h4-secondary-header-font-style);
+  font-weight: 700;
+  font-weight: var(--h4-secondary-header-font-weight);
+  font-size: 18px;
+  font-size: var(--h4-secondary-header-font-size);
+  line-height: 1.5;
+  line-height: var(--h4-secondary-header-line-height);
+  color: #33475b;
+  color: var(--h4-secondary-header-font-color);
+  text-decoration: var(--secondary-header-text-decoration);
+  text-decoration: var(--h4-secondary-header-text-decoration);
+  text-transform: var(--secondary-header-text-transform);
+  text-transform: var(--h4-secondary-header-text-transform);
+}
+
+h5 {
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--h5-secondary-header-font-family);
+  font-style: normal;
+  font-style: var(--h5-secondary-header-font-style);
+  font-weight: 700;
+  font-weight: var(--h5-secondary-header-font-weight);
+  font-size: 16px;
+  font-size: var(--h5-secondary-header-font-size);
+  line-height: 1.5;
+  line-height: var(--h5-secondary-header-line-height);
+  color: #33475b;
+  color: var(--h5-secondary-header-font-color);
+  text-decoration: var(--secondary-header-text-decoration);
+  text-decoration: var(--h5-secondary-header-text-decoration);
+  text-transform: var(--secondary-header-text-transform);
+  text-transform: var(--h5-secondary-header-text-transform);
+}
+
+h6 {
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--h6-secondary-header-font-family);
+  font-style: normal;
+  font-style: var(--h6-secondary-header-font-style);
+  font-weight: 700;
+  font-weight: var(--h6-secondary-header-font-weight);
+  font-size: 16px;
+  font-size: var(--h6-secondary-header-font-size);
+  line-height: 1.5;
+  line-height: var(--h6-secondary-header-line-height);
+  color: #7c98b6;
+  color: var(--h6-secondary-header-font-color);
+  text-decoration: var(--secondary-header-text-decoration);
+  text-decoration: var(--h6-secondary-header-text-decoration);
+  text-transform: var(--secondary-header-text-transform);
+  text-transform: var(--h6-secondary-header-text-transform);
+}
+
+a {
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--a-primary-body-font-family);
+  font-style: normal;
+  font-style: var(--a-primary-body-font-style);
+  font-weight: 400;
+  font-weight: var(--a-primary-body-font-weight);
+  line-height: 1.4;
+  line-height: var(--a-primary-body-line-height);
+  color: #1773d1;
+  color: var(--a-primary-body-font-color);
+  text-decoration: var(--primary-body-text-decoration);
+  text-decoration: var(--a-primary-body-text-decoration);
+  text-transform: var(--primary-body-text-transform);
+  text-transform: var(--a-primary-body-text-transform);
+}
+
+a:hover,
+a:focus {
+  font-family: var(--a-hover-primary-body-font-family);
+  font-style: var(--a-hover-primary-body-font-style);
+  font-weight: var(--a-hover-primary-body-font-weight);
+  color: var(--a-hover-primary-body-font-color);
+  text-decoration: var(--a-hover-primary-body-text-decoration);
+  text-transform: var(--a-hover-primary-body-text-transform);
+}
+
+a:active {
+  color: var(--a-hover-primary-body-font-color);
+}
+
+a.unstyled {
+  font-family: inherit;
+  font-style: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  color: inherit;
+  text-decoration: inherit;
+  text-transform: inherit;
+}
+
+/* Primary button */
+
+.button,
+.hs-button {
+  display: inline-flex;
+  padding: 10px 20px;
+  align-items: center;
+  cursor: pointer;
+  text-align: center;
+  transition: color 0.15s linear;
+  white-space: normal;
+}
+
+.button.button--primary {
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--primary-button-font-family);
+  font-style: normal;
+  font-style: var(--primary-button-font-style);
+  font-weight: 400;
+  font-weight: var(--primary-button-font-weight);
+  font-size: 16px;
+  font-size: var(--primary-button-font-size);
+  line-height: 16px;
+  line-height: var(--primary-button-line-height);
+  color: #fff;
+  text-decoration: var(--primary-body-text-decoration);
+  text-decoration: var(--primary-button-text-decoration);
+  text-transform: var(--primary-body-text-transform);
+  text-transform: var(--primary-button-text-transform);
+
+  background-color: #2a8d8a;
+
+  background-color: var(--primary-button-background-color);
+  color: var(--primary-button-font-color);
+  padding: 10px 20px;
+  padding: var(--primary-button-padding);
+  border-radius: 20px;
+  border-radius: var(--primary-button-border-radius);
+}
+
+.button.button--secondary {
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--secondary-button-font-family);
+  font-style: normal;
+  font-style: var(--secondary-button-font-style);
+  font-weight: 400;
+  font-weight: var(--secondary-button-font-weight);
+  font-size: 16px;
+  font-size: var(--secondary-button-font-size);
+  line-height: 16px;
+  line-height: var(--secondary-button-line-height);
+  color: #33475b;
+  text-decoration: var(--primary-body-text-decoration);
+  text-decoration: var(--secondary-button-text-decoration);
+  text-transform: var(--primary-body-text-transform);
+  text-transform: var(--secondary-button-text-transform);
+
+  background-color: #e2ebf4;
+
+  background-color: var(--secondary-button-background-color);
+  color: var(--secondary-button-font-color);
+  padding: 10px 20px;
+  padding: var(--secondary-button-padding);
+  border-radius: 2px;
+  border-radius: var(--secondary-button-border-radius);
+}
+
+/* Disabled button */
+
+.button:disabled,
+.hs-button:disabled {
+  border-color: #f1f1f1;
+  background-color: #f1f1f1;
+  pointer-events: none;
+}
+
+.button:disabled,
+.button.button--secondary:disabled,
+.button.button--simple:disabled {
+  color: #d0d0d0;
+}
+
+/* No button */
+
+.no-button,
+.no-button:hover,
+.no-button:focus,
+.no-button:active {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  margin-bottom: 0;
+  background: none;
+  color: #000;
+  color: initial;
+  font-family: inherit;
+  font-size: inherit;
+  font-style: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-align: left;
+  text-decoration: none;
+  transition: none;
+}
+
+/* Button icons */
+
+.button {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.button.right {
+  flex-flow: row-reverse;
+}
+
+.button .button__icon svg {
+  display: block;
+  height: 1.25rem;
+  fill: inherit;
+}
+
+@media screen and (-ms-high-contrast: active), (-ms-high-contrast: none) {
+  .button .button__icon svg {
+    width: 1.25rem;
+  }
+}
+
+.button--icon-right .button__icon {
+  order: 1;
+}
+
+.button--icon-right .button__icon svg {
+  margin-right: 0;
+  margin-left: 1rem;
+}
+
+/* Form title */
+
+.form-title {
+  margin: 0;
+}
+
+.form-title ~ div > form {
+  border-top: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* Labels */
+
+form label {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+/* Form fields */
+
+form .hs-form-field {
+  margin-bottom: 1.4rem;
+}
+
+form input[type='text'],
+form input[type='email'],
+form input[type='password'],
+form input[type='tel'],
+form input[type='number'],
+form input[type='file'],
+form input[type='search'],
+form select,
+form textarea {
+  width: 100% !important;
+}
+
+form input[type='text'],
+form input[type='email'],
+form input[type='password'],
+form input[type='tel'],
+form input[type='number'],
+form input[type='file'],
+form input[type='search'],
+form select,
+form textarea {
+  display: inline-block; /* stylelint-disable-line declaration-no-important */
+}
+
+form fieldset {
+  max-width: 100% !important;
+}
+
+form fieldset {
+  /* stylelint-disable-line declaration-no-important */
+}
+
+/* Form fields - checkbox/radio */
+
+form .inputs-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+form .inputs-list > li {
+  display: block;
+  margin: 0.7rem 0;
+}
+
+form .inputs-list input,
+form .inputs-list span {
+  vertical-align: middle;
+}
+
+form input[type='checkbox'],
+form input[type='radio'] {
+  margin-right: 0.35rem;
+  cursor: pointer;
+}
+
+/* Form fields - date picker */
+
+form .hs-dateinput {
+  position: relative;
+}
+
+form .hs-dateinput:before {
+  position: absolute;
+  top: 50%;
+  content: '\01F4C5';
+  transform: translateY(-50%);
+}
+
+form .is-selected .pika-button {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+form .is-selected .pika-button {
+  /* stylelint-disable-line declaration-no-important */ /* stylelint-disable-line declaration-no-important */
+}
+
+form .fn-date-picker .pika-button:hover,
+form .fn-date-picker .pika-button:focus {
+  border-radius: 0 !important;
+}
+
+form .fn-date-picker .pika-button:hover,
+form .fn-date-picker .pika-button:focus {
+  /* stylelint-disable-line declaration-no-important */
+}
+
+/* Form fields - file picker */
+
+form input[type='file'] {
+  padding: 0;
+  padding: initial;
+  border: medium none currentColor;
+  border: initial;
+  background-color: transparent;
+}
+
+/* Headings and text */
+
+form .hs-richtext,
+form .hs-richtext p {
+  margin: 0 0 1.4rem;
+  font-size: 0.8rem;
+}
+
+form .hs-richtext img {
+  max-width: 100% !important;
+}
+
+form .hs-richtext img {
+  height: auto; /* stylelint-disable-line declaration-no-important */
+}
+
+/* GDPR */
+
+form .legal-consent-container .hs-form-booleancheckbox-display > span {
+  margin-left: 1rem !important;
+}
+
+form .legal-consent-container .hs-form-booleancheckbox-display > span {
+  /* stylelint-disable-line declaration-no-important */
+}
+
+/* Validation */
+
+form .hs-form-required {
+  color: #ef6b51;
+}
+
+form .hs-input.error {
+  border-color: #ef6b51;
+}
+
+form .hs-error-msg,
+form .hs-error-msgs {
+  margin-top: 0.35rem;
+  color: #ef6b51;
+}
+
+/* Submit button */
+
+form input[type='submit'],
+form .hs-button {
+  white-space: normal !important;
+}
+
+form input[type='submit'],
+form .hs-button {
+  display: inline-block;
+  width: 100%;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s linear; /* stylelint-disable-line declaration-no-important */
+}
+
+/* Captcha */
+
+.grecaptcha-badge {
+  margin: 0 auto;
+}
+
+/* Icon wrapper */
+
+.icon {
+  display: inline-flex;
+  border-radius: 50%;
+}
+
+.icon--square .icon {
+  border-radius: 0;
+}
+
+/* Icon */
+
+.icon svg {
+  vertical-align: middle;
+}
+
+/* Table */
+
+table {
+  border-collapse: collapse;
+  margin-bottom: 1.4rem;
+  word-wrap: break-word;
+}
+
+table p {
+  margin: 0;
+}
+
+table p + p {
+  margin: 1.4rem 0 0;
+}
+
+/* Table cells */
+
+th,
+td {
+  padding: 0.7rem;
+  vertical-align: top;
+}
+
+/* Table header */
+
+thead th,
+thead td {
+  vertical-align: bottom;
+}
+
+/* Components */
+
+/* Navigation skipper */
+
+.header__skip {
+  position: absolute;
+  top: -1000px;
+  left: -1000px;
+  overflow: hidden;
+  height: 1px;
+  width: 1px;
+  text-align: left;
+}
+
+.header__skip:hover,
+.header__skip:focus,
+.header__skip:active {
+  z-index: 2;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  height: auto;
+  width: auto;
+}
+
+.header__wrapper {
+  max-width: var(--header-max-width);
+}
+
+.header__top {
+  background-color: #e2ebf4;
+  background-color: var(--header-top-bar-background-color);
+}
+
+.header__bottom {
+  background-color: #fff;
+  background-color: var(--header-bottom-bar-background-color);
+   padding: 24px;
+ 
+}
+
+.header__logo-company-name {
+  font-size: 24px;
+  font-weight: 700;
+  font-weight: var(--h2-secondary-header-font-weight);
+  line-height: 42px;
+}
+
+a.header__menu-link {
+  color: var(--header-menu-font-color);
+  text-decoration: none;
+}
+
+.header__menu--desktop {
+  display: flex;
+  align-items: flex-start;
+}
+
+.header__menu--mobile {
+  background-color: #ffffff;
+  background-color: var(--body-bg-color);
+  box-shadow: 0 4px 2px -2px rgba(0, 0, 0, 0.125);
+  box-shadow: var(--header-menu-mobile-box-shadow);
+}
+
+.header__language-switcher-current-label,
+a.header__nav-link {
+  color: #33475b;
+  color: var(--top-bar-font-color);
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--top-bar-font-family);
+  font-size: 16px;
+  font-size: var(--top-bar-font-size);
+  font-style: normal;
+  font-style: var(--top-bar-font-style);
+  font-weight: 400;
+  font-weight: var(--top-bar-font-weight);
+  line-height: ;
+  line-height: var(--top-bar-line-height);
+  text-decoration: var(--primary-body-text-decoration);
+  text-decoration: var(--top-bar-text-decoration);
+  text-transform: var(--primary-body-text-transform);
+  text-transform: var(--top-bar-text-transform);
+}
+
+.header__language-switcher-current-label:hover,
+.header__language-switcher-current-label:focus,
+a.header__nav-link:hover,
+a.header__nav-link:focus {
+  color: var(--top-bar-hover-font-color);
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--top-bar-font-family);
+  font-style: var(--top-bar-hover-font-style);
+  font-weight: var(--top-bar-hover-font-weight);
+  line-height: var(--top-bar-hover-line-height);
+  text-decoration: var(--top-bar-hover-text-decoration);
+  text-transform: var(--top-bar-hover-text-transform);
+}
+
+.header__language-switcher-child-toggle {
+  color: inherit;
+}
+
+.header__language-switcher-current-label:hover
+  .header__language-switcher-child-toggle,
+.header__language-switcher-current-label:focus
+  .header__language-switcher-current-label {
+  color: var(--top-bar-hover-font-color);
+}
+
+.header__language-switcher .lang_list_class li a {
+  background-color: #ff0000;
+  background-color: var(--language-switcher-dropdown-bg);
+  color: #33475b;
+  color: var(--language-switcher-dropdown-font-color);
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--language-switcher-dropdown-font-family);
+  font-size: 16px;
+  font-size: var(--language-switcher-dropdown-font-size);
+  font-style: normal;
+  font-style: var(--language-switcher-dropdown-font-style);
+  font-weight: 400;
+  font-weight: var(--language-switcher-dropdown-font-weight);
+  line-height: ;
+  line-height: var(--language-switcher-dropdown-line-height);
+  text-decoration: var(--primary-body-text-decoration);
+  text-decoration: var(--language-switcher-dropdown-text-decoration);
+  text-transform: var(--primary-body-text-transform);
+  text-transform: var(--language-switcher-dropdown-text-transform);
+}
+
+.header__language-switcher .lang_list_class a:hover,
+.header__language-switcher .lang_list_class a:focus,
+.header__language-switcher .lang_list_class a:active {
+  background-color: #00ff00;
+  background-color: var(--top-bar-hover-dropdown-bg);
+  color: #33475b;
+  color: var(--top-bar-hover-dropdown-font-color);
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--top-bar-hover-dropdown-font-family);
+  font-size: 16px;
+  font-size: var(--top-bar-hover-dropdown-font-size);
+  font-style: normal;
+  font-style: var(--top-bar-hover-dropdown-font-style);
+  font-weight: 400;
+  font-weight: var(--top-bar-hover-dropdown-font-weight);
+  line-height: ;
+  line-height: var(--top-bar-hover-dropdown-line-height);
+  text-decoration: var(--primary-body-text-decoration);
+  text-decoration: var(--top-bar-hover-dropdown-text-decoration);
+  text-transform: var(--primary-body-text-transform);
+  text-transform: var(--top-bar-hover-dropdown-text-transform);
+}
+
+a.header__menu-link {
+  color: #33475b;
+  color: var(--header-menu-main-font-color);
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--header-menu-main-font-family);
+  font-size: 16px;
+  font-size: var(--header-menu-main-font-size);
+  font-style: normal;
+  font-style: var(--header-menu-main-font-style);
+  font-weight: 400;
+  font-weight: var(--header-menu-main-font-weight);
+  line-height: ;
+  line-height: var(--header-menu-main-line-height);
+  text-decoration: var(--primary-body-text-decoration);
+  text-decoration: var(--header-menu-main-text-decoration);
+  text-transform: var(--primary-body-text-transform);
+  text-transform: var(--header-menu-main-text-transform);
+}
+
+a.header__menu-link:hover,
+a.header__menu-link:focus,
+a.header__menu-link:active {
+  color: #33475b;
+  color: var(--header-menu-main-hover-font-color);
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--header-menu-main-hover-font-family);
+  font-size: 16px;
+  font-size: var(--header-menu-main-hover-font-size);
+  font-style: normal;
+  font-style: var(--header-menu-main-hover-font-style);
+  font-weight: 400;
+  font-weight: var(--header-menu-main-hover-font-weight);
+  line-height: ;
+  line-height: var(--header-menu-main-hover-line-height);
+  text-decoration: var(--primary-body-text-decoration);
+  text-decoration: var(--header-menu-main-hover-text-decoration);
+}
+
+.header__menu-submenu {
+  background-color: #fff;
+  background-color: var(--header-menu-submenu-bg);
+}
+
+.header__menu-submenu a.header__menu-link {
+  color: #33475b;
+  color: var(--header-menu-submenu-font-color);
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--header-menu-submenu-font-family);
+  font-size: 16px;
+  font-size: var(--header-menu-submenu-font-size);
+  font-style: normal;
+  font-style: var(--header-menu-submenu-font-style);
+  font-weight: 400;
+  font-weight: var(--header-menu-submenu-font-weight);
+  line-height: ;
+  line-height: var(--header-menu-submenu-line-height);
+  text-decoration: var(--primary-body-text-decoration);
+  text-decoration: var(--header-menu-submenu-text-decoration);
+  text-transform: var(--primary-body-text-transform);
+  text-transform: var(--header-menu-submenu-text-transform);
+}
+
+.header__menu-submenu .header__menu-item:hover,
+.header__menu-submenu .header__menu-item:focus,
+.header__menu-submenu .header__menu-item:focus-within {
+  background-color: #f00;
+  background-color: var(--header-menu-hover-submenu-bg);
+}
+
+.header__menu-submenu a.header__menu-link:hover,
+.header__menu-submenu a.header__menu-link:focus,
+.header__menu-submenu a.header__menu-link:active {
+  color: #33475b;
+  color: var(--header-menu-hover-submenu-font-color);
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--header-menu-hover-submenu-font-family);
+  font-size: 16px;
+  font-size: var(--header-menu-hover-submenu-font-size);
+  font-style: normal;
+  font-style: var(--header-menu-hover-submenu-font-style);
+  font-weight: 400;
+  font-weight: var(--header-menu-hover-submenu-font-weight);
+  line-height: ;
+  line-height: var(--header-menu-hover-submenu-line-height);
+  text-decoration: var(--primary-body-text-decoration);
+  text-decoration: var(--header-menu-hover-submenu-text-decoration);
+  text-transform: var(--primary-body-text-transform);
+  text-transform: var(--header-menu-hover-submenu-text-transform);
+}
+
+.header__menu-submenu
+  .header__menu-item:hover
+  > .header__menu-link-toggle-wrapper
+  > a.header__menu-link,
+.header__menu-submenu
+  .header__menu-item:focus
+  > .header__menu-link-toggle-wrapper
+  > a.header__menu-link {
+  color: #33475b;
+  color: var(--header-menu-hover-submenu-font-color);
+}
+
+.header__menu-child-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-inline-start: 0.5rem;
+}
+
+.header__button.button {
+  padding: 10px 20px;
+  padding: var(--header-button-padding);
+  border: 3px solid pink;
+  border: var(--header-button-border);
+  border-radius: 20px;
+  border-radius: var(--header-button-border-radius);
+  background-color: #2a8d8a;
+  background-color: var(--header-button-background-color);
+  color: #fff;
+  color: var(--header-button-font-color);
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--header-button-font-family);
+  font-size: 16px;
+  font-size: var(--header-button-font-size);
+  font-style: normal;
+  font-style: var(--header-button-font-style);
+  font-weight: 400;
+  font-weight: var(--header-button-font-weight);
+  line-height: 16px;
+  line-height: var(--header-button-line-height);
+  text-decoration: var(--primary-body-text-decoration);
+  text-decoration: var(--header-button-text-decoration);
+  text-transform: var(--primary-body-text-transform);
+  text-transform: var(--header-button-text-transform);
+}
+
+.header__button.button:hover,
+.header__button.button:active {
+  border: 3px solid gray;
+  border: var(--header-button-hover-border);
+  background-color: #2a8d8a;
+  background-color: var(--header-button-hover-background-color);
+  color: #fff;
+  color: var(--header-button-hover-font-color);
+  text-decoration: var(--primary-body-text-decoration);
+  text-decoration: var(--header-button-hover-text-decoration);
+}
+
+.header__button.button svg {
+  fill: currentColor;
+}
+
+/* Search input */
+
+.hs-kb-search-input-wrapper {
+  box-sizing: border-box;
+   padding-top: 100px;
+padding-right: 24px;
+padding-bottom: 100px;
+padding-left: 24px;
+ 
+   
+  
+    background-color: var(--search-input-wrapper-background-color);
+  
+ 
+}
+
+.hs-kb-search-input-wrapper .hs-search-field {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hs-kb-search-input-wrapper .hs-search-field__form {
+  padding: 0;
+  flex: 1;
+}
+
+.hs-kb-search-input-wrapper .hs-search-field__bar {
+  display: flex;
+  width: 100%;
+  max-width: 1000px;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Logo */
+
+.widget-type-logo img {
+  height: auto;
+  max-width: 100%;
+  margin-bottom: 1.4rem;
+}
+
+.header__logo img[src$='.svg'][width='0'],
+.hs_cos_wrapper_type_logo img[src$='.svg'][width='0'] {
+  width: auto !important;
+}
+
+.header__logo img[src$='.svg'][height='0'],
+.hs_cos_wrapper_type_logo img[src$='.svg'][height='0'] {
+  height: auto !important;
+}
+
+.header__logo img[src$='.svg']:not([width]):not([height]),
+.hs_cos_wrapper_type_logo img[src$='.svg']:not([width]):not([height]) {
+  width: auto !important;
+  height: auto !important;
+}
+
+.header__logo img[src$='.svg']:not([width]):not([height]),
+.hs_cos_wrapper_type_logo img[src$='.svg']:not([width]):not([height]) {
+  min-width: 130px;
+}
+
+/* Rich text */
+
+.widget-type-rich_text img {
+  height: auto;
+  max-width: 100%;
+}
+
+/* Search input */
+
+.hs-search-field__label {
+  color: var(--search-field-label-font-color);
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--search-field-label-font-family);
+  font-style: normal;
+  font-style: var(--search-field-label-font-style);
+  font-weight: 700;
+  font-weight: var(--search-field-label-font-weight);
+  font-size: 32px;
+  font-size: var(--search-field-label-font-size);
+  line-height: 1.5;
+  line-height: var(--search-field-label-line-height);
+  text-decoration: var(--secondary-header-text-decoration);
+  text-decoration: var(--search-field-label-text-decoration);
+  text-transform: var(--secondary-header-text-transform);
+  text-transform: var(--search-field-label-text-transform);
+}
+
+.hs-search-field__input {
+  padding: 10px;
+  border: none;
+  color: var(--search-field-text-font-color);
+}
+
+.hs-search-field__input::-moz-placeholder {
+  color: var(--search-field-text-font-color);
+}
+
+.hs-search-field__input::placeholder {
+  color: var(--search-field-text-font-color);
+}
+
+.hs-search-field__button {
+  border-radius: 0px;
+  width: 38px;
+  border: none;
+  background-color: var(--search-field-button-background-color);
+}
+
+.hs-kb-search-input-wrapper .hs-search-field__bar .hs-search-field__button {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hs-kb-search-input-wrapper
+  .hs-search-field__bar
+  .hs-search-field__button
+  span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hs-kb-search-input-wrapper .hs-search-field__bar .hs-search-field__button svg {
+  height: 14px;
+  fill: var(--search-field-button-icon-color);
+}
+
+.hs-search-field:not(.hs-search-field--open) .results-for {
+  color: var(--search-field-label-font-color);
+}
+
+.hs-kb-home-list__icon {
+  color: #2a5f8d;
+  color: var(--primary-color);
+}
+
+/* Only styled for "tiles" and "cards" layout */
+
+.hs-knowledge-listing-layout--tiles #main-content,
+.hs-knowledge-listing-layout--cards #main-content {
+  background-color: #f2f7fc;
+  background-color: var(--hs-kb-home-tiles-background-color);
+}
+
+.hs-kb-home-list--tiles .hs-kb-home-list__category {
+  border: var(--hs-kb-home-tiles-border);
+  padding: 24px 18px;
+  padding: var(--hs-kb-home-grid-item-padding);
+}
+
+.hs-kb-home-list--cards .hs-kb-home-list__category {
+  padding: 24px 18px;
+  padding: var(--hs-kb-home-grid-item-padding);
+}
+
+.hs-kb-social_follow__link {
+  background-color: var(--social-follow-background-color);
+}
+
+/* Prevents a floated image in the end of a rich text from breaking out of the container */
+
+.hs_cos_wrapper_type_inline_richtext_field {
+  overflow-y: auto;
+}
+
+.hs-kb-content .hs-search-results__link h2 {
+  margin: 0;
+}
+
+.hs-kb-content .hs-search-results__category {
+  font-size: 0.875rem;
+}
+
+.footer {
+  background-color: #fff;
+  background-color: var(--footer-bg-color);
+}
+
+.footer__menu {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-around;
+  padding: 48px 0;
+  margin: 0 auto;
+  list-style: none;
+  max-width: var(--footer-max-width);
+}
+
+.footer__menu-item {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.footer__menu-item--depth-1 > .footer__menu-link:first-child {
+  line-height: 3.2rem;
+}
+
+.footer__menu-link {
+  display: inline-block;
+  box-sizing: border-box;
+  padding: 0 20px;
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--footer-menu-font-family);
+  font-style: normal;
+  font-style: var(--footer-menu-font-style);
+  font-weight: 400;
+  font-weight: var(--footer-menu-font-weight);
+  font-size: 16px;
+  font-size: var(--footer-menu-font-size);
+  line-height: 2.2rem;
+  line-height: var(--footer-menu-line-height);
+  color: #33475b;
+  color: var(--footer-menu-font-color);
+  text-decoration: var(--primary-body-text-decoration);
+  text-decoration: var(--footer-menu-text-decoration);
+  text-transform: var(--primary-body-text-transform);
+  text-transform: var(--footer-menu-text-transform);
+}
+
+.footer__menu-link:hover,
+.footer__menu-link:focus,
+.footer__menu-link:active {
+  font-family: 'Rubik', sans-serif;
+  font-family: var(--footer-menu-hover-font-family);
+  font-style: normal;
+  font-style: var(--footer-menu-hover-font-style);
+  font-weight: 400;
+  font-weight: var(--footer-menu-hover-font-weight);
+  font-size: 16px;
+  font-size: var(--footer-menu-hover-font-size);
+  color: #33475b;
+  color: var(--footer-menu-hover-font-color);
+  text-decoration: var(--primary-body-text-decoration);
+  text-decoration: var(--footer-menu-hover-text-decoration);
+  text-transform: var(--primary-body-text-transform);
+  text-transform: var(--footer-menu-hover-text-transform);
+}
+
+.footer p {
+  font-family: var(--footer-font-family);
+  font-style: normal;
+  font-style: var(--footer-font-style);
+  font-weight: 400;
+  font-weight: var(--footer-font-weight);
+  font-size: 16px;
+  font-size: var(--footer-font-size);
+  line-height: ;
+  line-height: var(--footer-line-height);
+  color: #1773d1;
+  color: var(--footer-font-color);
+  text-decoration: var(--primary-body-text-decoration);
+  text-decoration: var(--footer-text-decoration);
+  text-transform: var(--primary-body-text-transform);
+  text-transform: var(--footer-text-transform);
+}
+
+@media (max-width: 767px) {
+  .footer__menu {
+    flex-direction: column;
+  }
+
+  .footer__menu-item {
+    margin-bottom: 1.4rem;
+  }
+}
+
+.footer__bottom {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  padding: 48px 24px;
+  margin: 0 auto;
+  max-width: var(--footer-max-width);
+  box-sizing: content-box;
+  border-top: 1px solid #e0e0e0;
+}
+
+.footer__bottom--left {
+  display: flex;
+  flex-flow: column;
+  justify-content: flex-end;
+}
+
+.footer__bottom--right {
+  display: flex;
+  flex-flow: column;
+  justify-content: space-between;
+}
+
+.hs-kb-social_follow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: right;
+  justify-content: var(--social-follow-icon-alignment);
+  gap: 12px;
+  margin-bottom: 1.4rem;
+}
+
+a.hs-kb-social_follow__link {
+  background-color: #494a52;
+  background-color: var(--social-follow-icon-background-color);
+  color: #fff;
+  color: var(--social-follow-icon-color);
+  display: inline-block;
+  height: var(--social-follow-icon-size);
+  width: var(--social-follow-icon-size);
+  border-radius: var(--social-follow-icon-shape-radius);
+}
+
+.hs-kb-social_follow__icon {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.hs-kb-social_follow__icon svg {
+  height: 50%;
+  width: 50%;
+  fill: currentColor;
+}
+
+#hs_cos_wrapper_footer_copyright {
+  margin-top: auto;
+}
+
+/* Utilities */
+
+/* For content that needs to be visually hidden but stay visible for screenreaders */
+
+/* stylelint-disable declaration-no-important */
+
+.show-for-sr {
+  position: absolute !important;
+  overflow: hidden !important;
+  height: 1px !important;
+  width: 1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 767px) {
+  .show-for-sr--mobile {
+    position: absolute !important;
+    overflow: hidden !important;
+    height: 1px !important;
+    width: 1px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+  }
+}
+
+/* stylelint-enable declaration-no-important */
+</style>
+
+<link rel="stylesheet" href="https://7052064.fs1.hubspotusercontent-na1.net/hubfs/7052064/hub_generated/module_assets/1/-107255593217/1780675623236/module_website-header.min.css">
+
+  <style>
+    #hs_cos_wrapper_knowledgebase_header .header__language-switcher-current-label>span {}
+
+#hs_cos_wrapper_knowledgebase_header .header__language-switcher:hover .header__language-switcher-current-label>span,
+#hs_cos_wrapper_knowledgebase_header .header__language-switcher:focus .header__language-switcher-current-label>span {}
+
+#hs_cos_wrapper_knowledgebase_header .header__language-switcher .lang_list_class a:hover,
+#hs_cos_wrapper_knowledgebase_header .header__language-switcher .lang_list_class a:focus {}
+
+#hs_cos_wrapper_knowledgebase_header .header__language-switcher .lang_list_class a:active {}
+
+#hs_cos_wrapper_knowledgebase_header .header__menu-link,
+#hs_cos_wrapper_knowledgebase_header .header__nav-link {}
+
+#hs_cos_wrapper_knowledgebase_header .header__menu-item--depth-1>.header__menu-link:hover,
+#hs_cos_wrapper_knowledgebase_header .header__menu-item--depth-1>.header__menu-link:focus {}
+
+#hs_cos_wrapper_knowledgebase_header .header__menu-item--depth-1>.header__menu-link:active {}
+
+#hs_cos_wrapper_knowledgebase_header .header__menu-item--depth-1>.header__menu-link--active-link {}
+
+#hs_cos_wrapper_knowledgebase_header .header__menu-submenu .header__menu-link:hover,
+#hs_cos_wrapper_knowledgebase_header .header__menu-submenu .header__menu-link:focus {}
+
+#hs_cos_wrapper_knowledgebase_header .button {}
+
+#hs_cos_wrapper_knowledgebase_header .button:hover,
+#hs_cos_wrapper_knowledgebase_header .button:focus {}
+
+#hs_cos_wrapper_knowledgebase_header .button:active {}
+
+  </style>
+
+<link rel="stylesheet" href="https://7052064.fs1.hubspotusercontent-na1.net/hubfs/7052064/hub_generated/module_assets/1/-153268142413/1780675624690/module_kb-search-input.min.css">
+
+<style>
+  #hs_cos_wrapper_hs_kb-search-input-module .hs-search-field__bar>form { border-radius:px; }
+
+#hs_cos_wrapper_hs_kb-search-input-module .hs-search-field__bar>form>label {}
+
+#hs_cos_wrapper_hs_kb-search-input-module .hs-search-field__bar>form>.hs-search-field__input { border-radius:px; }
+
+#hs_cos_wrapper_hs_kb-search-input-module .hs-search-field__button { border-radius:px; }
+
+#hs_cos_wrapper_hs_kb-search-input-module .hs-search-field__button:hover,
+#hs_cos_wrapper_hs_kb-search-input-module .hs-search-field__button:focus {}
+
+#hs_cos_wrapper_hs_kb-search-input-module .hs-search-field__button:active {}
+
+#hs_cos_wrapper_hs_kb-search-input-module .hs-search-field--open .hs-search-field__suggestions { border-radius:px; }
+
+#hs_cos_wrapper_hs_kb-search-input-module .hs-search-field--open .hs-search-field__suggestions a {}
+
+#hs_cos_wrapper_hs_kb-search-input-module .hs-search-field--open .hs-search-field__suggestions a:hover {}
+
+</style>
+
+<link rel="stylesheet" href="https://7052064.fs1.hubspotusercontent-na1.net/hubfs/7052064/hub_generated/module_assets/1/-112598395241/1780675523285/module_kb_home_category_listing.min.css">
+
+  <style>
+    .hs-kb-home-list {
+      justify-content: center;
+    }
+
+    
+
+    
+
+    
+
+  </style>
+
+<style>
+  @font-face {
+    font-family: "Roboto";
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+    src: url("/_hcms/googlefonts/Roboto/regular.woff2") format("woff2"), url("/_hcms/googlefonts/Roboto/regular.woff") format("woff");
+  }
+  @font-face {
+    font-family: "Roboto";
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+    src: url("/_hcms/googlefonts/Roboto/700.woff2") format("woff2"), url("/_hcms/googlefonts/Roboto/700.woff") format("woff");
+  }
+  @font-face {
+    font-family: "Rubik";
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+    src: url("/_hcms/googlefonts/Rubik/700.woff2") format("woff2"), url("/_hcms/googlefonts/Rubik/700.woff") format("woff");
+  }
+  @font-face {
+    font-family: "Rubik";
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+    src: url("/_hcms/googlefonts/Rubik/regular.woff2") format("woff2"), url("/_hcms/googlefonts/Rubik/regular.woff") format("woff");
+  }
+</style>
+
+    
+<script data-search_input-config="config_hs_kb-search-input-module" type="application/json">
+{
+  "autosuggest_results_message": "Results for \u201C[[search_term]]\u201D",
+  "autosuggest_no_results_message": "There are no autosuggest results for \u201C[[search_term]]\u201D",
+  "sr_empty_search_field_message": "There are no suggestions because the search field is empty.",
+  "sr_autosuggest_results_message": "There are currently [[number_of_results]] auto-suggested results for [[search_term]]. Navigate to the results list by pressing the down arrow key, or press return to search for all results.",
+  "sr_search_field_aria_label": "This is a search field with an auto-suggest feature attached.",
+  "sr_search_button_aria_label": "Search"
+}
+</script>
+
+
+    
+    <link rel="canonical" href="https://help.otterly.ai">
+
+
+<meta property="og:url" content="https://help.otterly.ai">
+<meta http-equiv="content-language" content="en">
+
+
+
+
+
+
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-5FKKNZ47');</script>
+<!-- End Google Tag Manager -->
+  <meta name="generator" content="HubSpot"></head>
+  
+  <body class="  hs-content-id-192782813315   hs-knowledge-listing-page hs-knowledge-listing-layout--content_rich theme-overrides" data-hs-theme-group_header-group_background-background_image="true">
+    <div class="kb-body-wrapper theme-overrides ">
+      
+      
+      
+
+      
+        <div data-global-resource-path="@hubspot/cms-knowledge-base-theme/templates/partials/knowledgebase-header.html">
+
+<header class="header">
+  
+
+  <a href="#main-content" class="header__skip">Skip to content</a>
+  <div id="hs_cos_wrapper_knowledgebase_header" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_module" style="" data-hs-cos-general-type="widget" data-hs-cos-type="module">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="header__container header__container--left"><div class="header__top">
+      <div class="header__wrapper header__wrapper--top"><div class="header__nav-wrapper">
+            
+  
+    
+    
+    
+  
+
+          </div></div>
+    </div><div class="header__bottom">
+    <div class="header__wrapper header__wrapper--bottom">
+      
+        <div class="header__logo-col">
+          
+
+  
+    
+  
+
+  <div class="header__logo">
+    
+      <a class="header__logo-link" href="https://otterly.ai/">
+      
+
+      
+
+      
+
+        <img class="header__logo-image" src="https://help.otterly.ai/hs-fs/hubfs/otterlyai-1.png?width=200&amp;height=46&amp;name=otterlyai-1.png" loading="eager" alt="otterlyai logo" height="46" width="200" srcset="https://help.otterly.ai/hs-fs/hubfs/otterlyai-1.png?width=100&amp;height=23&amp;name=otterlyai-1.png 100w, https://help.otterly.ai/hs-fs/hubfs/otterlyai-1.png?width=200&amp;height=46&amp;name=otterlyai-1.png 200w, https://help.otterly.ai/hs-fs/hubfs/otterlyai-1.png?width=300&amp;height=69&amp;name=otterlyai-1.png 300w, https://help.otterly.ai/hs-fs/hubfs/otterlyai-1.png?width=400&amp;height=92&amp;name=otterlyai-1.png 400w, https://help.otterly.ai/hs-fs/hubfs/otterlyai-1.png?width=500&amp;height=115&amp;name=otterlyai-1.png 500w, https://help.otterly.ai/hs-fs/hubfs/otterlyai-1.png?width=600&amp;height=138&amp;name=otterlyai-1.png 600w" sizes="(max-width: 200px) 100vw, 200px">
+
+        
+
+      
+
+      
+      </a>
+    
+  </div>
+
+
+        </div>
+      
+      <div class="header__menu-col">
+        
+
+  <nav class="header__menu header__menu--desktop" aria-label="Desktop navigation">
+    <ul class="header__menu-wrapper no-list">
+      
+
+  
+  
+
+  
+  
+    <li class="header__menu-item header__menu-item--depth-1  hs-skip-lang-url-rewrite">
+      
+      <a data-depth="1" class="header__menu-link  " href="https://otterly.ai">Home</a>
+      
+      
+    </li>
+  
+  
+  
+    <li class="header__menu-item header__menu-item--depth-1  hs-skip-lang-url-rewrite">
+      
+      <a data-depth="1" class="header__menu-link  " href="https://otterly.ai/features">Products</a>
+      
+      
+    </li>
+  
+  
+  
+    <li class="header__menu-item header__menu-item--depth-1  hs-skip-lang-url-rewrite">
+      
+      <a data-depth="1" class="header__menu-link  " href="https://otterly.ai/pricing">Pricing</a>
+      
+      
+    </li>
+  
+  
+  
+    <li class="header__menu-item header__menu-item--depth-1  hs-skip-lang-url-rewrite">
+      
+      <a data-depth="1" class="header__menu-link  " href="https://otterly.ai/blog">Blog</a>
+      
+      
+    </li>
+  
+  
+  
+    <li class="header__menu-item header__menu-item--depth-1  hs-skip-lang-url-rewrite">
+      
+      <a data-depth="1" class="header__menu-link  " href="https://otterly.ai/about">Company</a>
+      
+      
+    </li>
+  
+  
+
+
+    </ul>
+  </nav>
+
+
+        
+  <div class="header__menu-container header__menu-container--mobile">
+    <button class="header__menu-toggle header__menu-toggle--open header__menu-toggle--show no-button">
+      <span class="show-for-sr">Open main navigation</span>
+      <svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 448 512" width="24" aria-hidden="true"><g id="bars1_layer"><path d="M16 132h416c8.837 0 16-7.163 16-16V76c0-8.837-7.163-16-16-16H16C7.163 60 0 67.163 0 76v40c0 8.837 7.163 16 16 16zm0 160h416c8.837 0 16-7.163 16-16v-40c0-8.837-7.163-16-16-16H16c-8.837 0-16 7.163-16 16v40c0 8.837 7.163 16 16 16zm0 160h416c8.837 0 16-7.163 16-16v-40c0-8.837-7.163-16-16-16H16c-8.837 0-16 7.163-16 16v40c0 8.837 7.163 16 16 16z" /></g></svg>
+    </button>
+    <button class="header__menu-toggle header__menu-toggle--close no-button">
+      <span class="show-for-sr">Close main navigation</span>
+      <svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 384 512" width="24" aria-hidden="true"><g id="times2_layer"><path d="M323.1 441l53.9-53.9c9.4-9.4 9.4-24.5 0-33.9L279.8 256l97.2-97.2c9.4-9.4 9.4-24.5 0-33.9L323.1 71c-9.4-9.4-24.5-9.4-33.9 0L192 168.2 94.8 71c-9.4-9.4-24.5-9.4-33.9 0L7 124.9c-9.4 9.4-9.4 24.5 0 33.9l97.2 97.2L7 353.2c-9.4 9.4-9.4 24.5 0 33.9L60.9 441c9.4 9.4 24.5 9.4 33.9 0l97.2-97.2 97.2 97.2c9.3 9.3 24.5 9.3 33.9 0z" /></g></svg>
+    </button>
+    <nav class="header__menu header__menu--mobile" aria-label="Mobile navigation">
+      <ul class="header__menu-wrapper no-list">
+        
+
+  
+  
+
+  
+  
+    <li class="header__menu-item header__menu-item--depth-1  hs-skip-lang-url-rewrite">
+      
+      <a data-depth="1" class="header__menu-link  " href="https://otterly.ai">Home</a>
+      
+      
+    </li>
+  
+  
+  
+    <li class="header__menu-item header__menu-item--depth-1  hs-skip-lang-url-rewrite">
+      
+      <a data-depth="1" class="header__menu-link  " href="https://otterly.ai/features">Products</a>
+      
+      
+    </li>
+  
+  
+  
+    <li class="header__menu-item header__menu-item--depth-1  hs-skip-lang-url-rewrite">
+      
+      <a data-depth="1" class="header__menu-link  " href="https://otterly.ai/pricing">Pricing</a>
+      
+      
+    </li>
+  
+  
+  
+    <li class="header__menu-item header__menu-item--depth-1  hs-skip-lang-url-rewrite">
+      
+      <a data-depth="1" class="header__menu-link  " href="https://otterly.ai/blog">Blog</a>
+      
+      
+    </li>
+  
+  
+  
+    <li class="header__menu-item header__menu-item--depth-1  hs-skip-lang-url-rewrite">
+      
+      <a data-depth="1" class="header__menu-link  " href="https://otterly.ai/about">Company</a>
+      
+      
+    </li>
+  
+  
+
+
+        
+        
+  
+    
+    
+    
+  
+
+        
+          <li class="header__menu-item header__menu-item--button header__menu-item--depth-1 hs-skip-lang-url-rewrite">
+            
+
+  
+
+  
+
+  
+
+  
+
+  
+  
+  
+  
+  
+
+  <a href="https://otterly.ai/" class="header__button button   left">
+    
+    Back to website
+  </a>
+
+
+          </li>
+        
+      </ul>
+    </nav>
+  </div>
+
+
+      </div>
+      
+        <div class="header__button-col hidden-phone">
+          
+
+  
+
+  
+
+  
+
+  
+
+  
+  
+  
+  
+  
+
+  <a href="https://otterly.ai/" class="header__button button   left">
+    
+    Back to website
+  </a>
+
+
+        </div>
+      
+    </div>
+  </div>
+</div></div>
+
+  
+  
+
+<section class="hs-kb-search-input-wrapper">
+  <div id="hs_cos_wrapper_hs_kb-search-input-module" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_module" style="" data-hs-cos-general-type="widget" data-hs-cos-type="module">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="hs-search-field">
+    <div class="hs-search-field__bar hs-search-field__bar--button-inline  ">
+      <form data-hs-do-not-collect="true" class="hs-search-field__form" action="https://help.otterly.ai/kb-search-results">
+
+        <label class="hs-search-field__label " for="hs_kb-search-input-module-input">
+          How can OtterlyAI help you?
+        </label>
+
+        <input role="combobox" aria-expanded="false" aria-controls="autocomplete-results" aria-label="This is a search field with an auto-suggest feature attached." type="search" class="hs-search-field__input" id="hs_kb-search-input-module-input" name="q" autocomplete="off" aria-autocomplete="list" placeholder="Enter your questions here">
+
+        
+        
+        
+        
+          <input type="hidden" name="type" value="KNOWLEDGE_ARTICLE">
+        
+        
+          <input type="hidden" name="groupId" value="192783007873">
+        
+
+        <button class="hs-search-field__button " aria-label="Search">
+          <span id="hs_cos_wrapper_hs_kb-search-input-module_" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 512 512" aria-hidden="true"><g id="search3_layer"><path d="M505 442.7L405.3 343c-4.5-4.5-10.6-7-17-7H372c27.6-35.3 44-79.7 44-128C416 93.1 322.9 0 208 0S0 93.1 0 208s93.1 208 208 208c48.3 0 92.7-16.4 128-44v16.3c0 6.4 2.5 12.5 7 17l99.7 99.7c9.4 9.4 24.6 9.4 33.9 0l28.3-28.3c9.4-9.4 9.4-24.6.1-34zM208 336c-70.7 0-128-57.2-128-128 0-70.7 57.2-128 128-128 70.7 0 128 57.2 128 128 0 70.7-57.2 128-128 128z" /></g></svg></span>
+           </button>
+        <div class="hs-search-field__suggestions-container ">
+          <ul id="autocomplete-results" role="listbox" aria-label="term" class="hs-search-field__suggestions">
+            
+              <li role="option" tabindex="-1" aria-posinset="1" aria-setsize="0" class="results-for show-for-sr">There are no suggestions because the search field is empty.</li>
+            
+          </ul>
+        </div>
+      </form>
+    </div>
+    <div id="sr-messenger" class="hs-search-sr-message-container show-for-sr" role="status" aria-live="polite" aria-atomic="true">
+    </div>
+</div>
+
+</div>
+</section>
+</header></div>
+      
+
+      
+      <main id="main-content">
+        
+  
+
+  <div id="hs_cos_wrapper_knowledgebase_category_listing" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_module" style="" data-hs-cos-general-type="widget" data-hs-cos-type="module">
+
+
+
+
+  
+  
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="hs-kb-home-list hs-kb-home-list--content_rich">
+  
+    
+  
+  
+  
+    <div class="hs-kb-home-list__category">
+      <a class="hs-kb-home-list__category-link unstyled" href="https://help.otterly.ai/getting-started?hsLang=en">
+        
+          <div class="hs-kb-home-list__icon" style="color: rgba(124, 152, 182, 1);">
+            
+              <span id="hs_cos_wrapper_knowledgebase_category_listing_category_icon" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon hs-kb-home-list__icon-svg" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 640 512" aria-hidden="true"><g id="Otter4_layer"><path d="M181.5 197.1l12.9 6.4c5.9 3 12.4 4.5 19.1 4.5c23.5 0 42.6-19.1 42.6-42.6V144c0-35.3-28.7-64-64-64H128c-35.3 0-64 28.7-64 64v21.4c0 23.5 19.1 42.6 42.6 42.6c6.6 0 13.1-1.5 19.1-4.5l12.9-6.4 8.4-4.2L135.1 185c-4.5-3-7.1-8-7.1-13.3V168c0-13.3 10.7-24 24-24h16c13.3 0 24 10.7 24 24v3.7c0 5.3-2.7 10.3-7.1 13.3l-11.8 7.9 8.4 4.2zm-8.6 49.4L160 240l-12.9 6.4c-12.6 6.3-26.5 9.6-40.5 9.6c-3.6 0-7.1-.2-10.6-.6v.6c0 35.3 28.7 64 64 64h64c17.7 0 32 14.3 32 32s-14.3 32-32 32H384V336 320c0-23.7 12.9-44.4 32-55.4c9.4-5.4 20.3-8.6 32-8.6V240c0-26.5 21.5-48 48-48c8.8 0 16 7.2 16 16v32 16 48c0 8.8 7.2 16 16 16s16-7.2 16-16V204.3c0-48.2-30.8-91-76.6-106.3l-8.5-2.8c-8-2.7-12.6-11.1-10.4-19.3s10.3-13.2 18.6-11.6l19.9 4C576 86.1 640 164.2 640 254.9l0 1.1h0c0 123.7-100.3 224-224 224h-1.1H256h-.6C132 480 32 380 32 256.6V256 216.8c-10.1-14.6-16-32.3-16-51.4V144l0-1.4C6.7 139.3 0 130.5 0 120c0-13.3 10.7-24 24-24h2.8C44.8 58.2 83.3 32 128 32h64c44.7 0 83.2 26.2 101.2 64H296c13.3 0 24 10.7 24 24c0 10.5-6.7 19.3-16 22.6l0 1.4v21.4c0 1.4 0 2.8-.1 4.3c12-6.2 25.7-9.6 40.1-9.6h8c17.7 0 32 14.3 32 32s-14.3 32-32 32h-8c-13.3 0-24 10.7-24 24v8h56.4c-15.2 17-24.4 39.4-24.4 64H320c-42.3 0-78.2-27.4-91-65.3c-5.1 .9-10.3 1.3-15.6 1.3c-14.1 0-27.9-3.3-40.5-9.6zM96 128a16 16 0 1 1 0 32 16 16 0 1 1 0-32zm112 16a16 16 0 1 1 32 0 16 16 0 1 1 -32 0z" /></g></svg></span>
+            
+          </div>
+        
+        <div class="hs-kb-home-list__text">
+          <h3 class="hs-kb-home-list__text__category-title">Getting started</h3>
+          
+            <p class="hs-kb-home-list__text__category-description">
+              Here is a great starting point to better understand how to start and what to do with OtterlyAI - the AI search monitoring and optimization platform. 
+            </p>
+          
+        </div>
+      </a>
+      
+        <ul class="hs-kb-category-article-list">
+          
+          
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/what-is-otterly.ai?hsLang=en">What is OtterlyAI and how does it work?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/learn-more?hsLang=en">OtterlyAI Explained in Minutes (Video Tutorials)</a>
+              </li>
+              
+            
+          
+          
+        </ul>
+        <a class="hs-kb-home-list__text__category-link" href="https://help.otterly.ai/getting-started?hsLang=en">See more</a>
+      
+    </div>
+  
+
+  
+    
+  
+  
+  
+    <div class="hs-kb-home-list__category">
+      <a class="hs-kb-home-list__category-link unstyled" href="https://help.otterly.ai/onboarding-guide?hsLang=en">
+        
+          <div class="hs-kb-home-list__icon" style="color: rgba(124, 152, 182, 1);">
+            
+              <span id="hs_cos_wrapper_knowledgebase_category_listing_category_icon" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon hs-kb-home-list__icon-svg" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 448 512" aria-hidden="true"><g id="Book5_layer"><path d="M96 0C43 0 0 43 0 96V416c0 53 43 96 96 96H384h32c17.7 0 32-14.3 32-32s-14.3-32-32-32V384c17.7 0 32-14.3 32-32V32c0-17.7-14.3-32-32-32H384 96zm0 384H352v64H96c-17.7 0-32-14.3-32-32s14.3-32 32-32zm32-240c0-8.8 7.2-16 16-16H336c8.8 0 16 7.2 16 16s-7.2 16-16 16H144c-8.8 0-16-7.2-16-16zm16 48H336c8.8 0 16 7.2 16 16s-7.2 16-16 16H144c-8.8 0-16-7.2-16-16s7.2-16 16-16z" /></g></svg></span>
+            
+          </div>
+        
+        <div class="hs-kb-home-list__text">
+          <h3 class="hs-kb-home-list__text__category-title">Onboarding Guide</h3>
+          
+            <p class="hs-kb-home-list__text__category-description">
+              This guide is designed to walk you through everything users should learn to get started with OtterlyAI: from understanding the basics to actionable monitoring and optimization steps.  
+            </p>
+          
+        </div>
+      </a>
+      
+        <ul class="hs-kb-category-article-list">
+          
+          
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/otterlyai-onboarding-guide?hsLang=en">OtterlyAI Onboarding Guide</a>
+              </li>
+              
+            
+          
+          
+        </ul>
+        <a class="hs-kb-home-list__text__category-link" href="https://help.otterly.ai/onboarding-guide?hsLang=en">See more</a>
+      
+    </div>
+  
+
+  
+    
+  
+  
+  
+    <div class="hs-kb-home-list__category">
+      <a class="hs-kb-home-list__category-link unstyled" href="https://help.otterly.ai/general?hsLang=en">
+        
+          <div class="hs-kb-home-list__icon" style="color: rgba(124, 152, 182, 1);">
+            
+              <span id="hs_cos_wrapper_knowledgebase_category_listing_category_icon" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon hs-kb-home-list__icon-svg" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 576 512" aria-hidden="true"><g id="Arrow Up Right Dots6_layer"><path d="M160 0c-17.7 0-32 14.3-32 32s14.3 32 32 32h50.7L9.4 265.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L256 109.3V160c0 17.7 14.3 32 32 32s32-14.3 32-32V32c0-17.7-14.3-32-32-32H160zM576 80a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM448 208a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM400 384a48 48 0 1 0 0-96 48 48 0 1 0 0 96zm48 80a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zm128 0a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM272 384a48 48 0 1 0 0-96 48 48 0 1 0 0 96zm48 80a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM144 512a48 48 0 1 0 0-96 48 48 0 1 0 0 96zM576 336a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zm-48-80a48 48 0 1 0 0-96 48 48 0 1 0 0 96z" /></g></svg></span>
+            
+          </div>
+        
+        <div class="hs-kb-home-list__text">
+          <h3 class="hs-kb-home-list__text__category-title">General</h3>
+          
+            <p class="hs-kb-home-list__text__category-description">
+              Common questions around OtterlyAI
+            </p>
+          
+        </div>
+      </a>
+      
+        <ul class="hs-kb-category-article-list">
+          
+          
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/which-ai-searches-does-otterlyai-support?hsLang=en">Which AI searches does OtterlyAI support?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/countries-otterlyai?hsLang=en">How many countries does OtterlyAI support?</a>
+              </li>
+              
+            
+          
+          
+        </ul>
+        <a class="hs-kb-home-list__text__category-link" href="https://help.otterly.ai/general?hsLang=en">See more</a>
+      
+    </div>
+  
+
+  
+    
+  
+  
+  
+    <div class="hs-kb-home-list__category">
+      <a class="hs-kb-home-list__category-link unstyled" href="https://help.otterly.ai/prompt-research?hsLang=en">
+        
+          <div class="hs-kb-home-list__icon" style="color: rgba(124, 152, 182, 1);">
+            
+              <span id="hs_cos_wrapper_knowledgebase_category_listing_category_icon" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon hs-kb-home-list__icon-svg" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 512 512" aria-hidden="true"><g id="Magnifying Glass7_layer"><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352a144 144 0 1 0 0-288 144 144 0 1 0 0 288z" /></g></svg></span>
+            
+          </div>
+        
+        <div class="hs-kb-home-list__text">
+          <h3 class="hs-kb-home-list__text__category-title">Prompt Research</h3>
+          
+            <p class="hs-kb-home-list__text__category-description">
+              How to find the right search prompts that your customers might ask AI searches.
+            </p>
+          
+        </div>
+      </a>
+      
+        <ul class="hs-kb-category-article-list">
+          
+          
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/relevant-prompts?hsLang=en">How to find relevant prompts for your brand?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/languages-ai-keyword-research?hsLang=en">Which languages does the AI prompt research support?</a>
+              </li>
+              
+            
+          
+          
+        </ul>
+        <a class="hs-kb-home-list__text__category-link" href="https://help.otterly.ai/prompt-research?hsLang=en">See more</a>
+      
+    </div>
+  
+
+  
+    
+  
+  
+  
+    <div class="hs-kb-home-list__category">
+      <a class="hs-kb-home-list__category-link unstyled" href="https://help.otterly.ai/brand-reports-kpis?hsLang=en">
+        
+          <div class="hs-kb-home-list__icon" style="color: rgba(124, 152, 182, 1);">
+            
+              <span id="hs_cos_wrapper_knowledgebase_category_listing_category_icon" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon hs-kb-home-list__icon-svg" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 640 512" aria-hidden="true"><g id="Accusoft8_layer"><path d="M322.1 252v-1l-51.2-65.8s-12 1.6-25 15.1c-9 9.3-242.1 239.1-243.4 240.9-7 10 1.6 6.8 15.7 1.7.8 0 114.5-36.6 114.5-36.6.5-.6-.1-.1.6-.6-.4-5.1-.8-26.2-1-27.7-.6-5.2 2.2-6.9 7-8.9l92.6-33.8c.6-.8 88.5-81.7 90.2-83.3zm160.1 120.1c13.3 16.1 20.7 13.3 30.8 9.3 3.2-1.2 115.4-47.6 117.8-48.9 8-4.3-1.7-16.7-7.2-23.4-2.1-2.5-205.1-245.6-207.2-248.3-9.7-12.2-14.3-12.9-38.4-12.8-10.2 0-106.8.5-116.5.6-19.2.1-32.9-.3-19.2 16.9C250 75 476.5 365.2 482.2 372.1zm152.7 1.6c-2.3-.3-24.6-4.7-38-7.2 0 0-115 50.4-117.5 51.6-16 7.3-26.9-3.2-36.7-14.6l-57.1-74c-5.4-.9-60.4-9.6-65.3-9.3-3.1.2-9.6.8-14.4 2.9-4.9 2.1-145.2 52.8-150.2 54.7-5.1 2-11.4 3.6-11.1 7.6.2 2.5 2 2.6 4.6 3.5 2.7.8 300.9 67.6 308 69.1 15.6 3.3 38.5 10.5 53.6 1.7 2.1-1.2 123.8-76.4 125.8-77.8 5.4-4 4.3-6.8-1.7-8.2z" /></g></svg></span>
+            
+          </div>
+        
+        <div class="hs-kb-home-list__text">
+          <h3 class="hs-kb-home-list__text__category-title">Brand Reports &amp; KPIs</h3>
+          
+            <p class="hs-kb-home-list__text__category-description">
+              What to learn from the insights in the brand report?
+            </p>
+          
+        </div>
+      </a>
+      
+        <ul class="hs-kb-category-article-list">
+          
+          
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/set-up-a-brand-report?hsLang=en">How to set up a brand report and what you can learn from it?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/add-domains?hsLang=en">How can I add more domains or domain variations to a brand report?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/insights-on-brand-reports?hsLang=en">What can you learn from the insights on brand reports?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/can-i-manage-multiple-brands-under-one-account?hsLang=en">Can I manage multiple brands under one account?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/add-brands?hsLang=en">How can I add more brands and brand variations to a brand report?</a>
+              </li>
+              
+            
+          
+          
+        </ul>
+        <a class="hs-kb-home-list__text__category-link" href="https://help.otterly.ai/brand-reports-kpis?hsLang=en">See more</a>
+      
+    </div>
+  
+
+  
+    
+  
+  
+  
+    <div class="hs-kb-home-list__category">
+      <a class="hs-kb-home-list__category-link unstyled" href="https://help.otterly.ai/analysis-insights?hsLang=en">
+        
+          <div class="hs-kb-home-list__icon" style="color: rgba(124, 152, 182, 1);">
+            
+              <span id="hs_cos_wrapper_knowledgebase_category_listing_category_icon" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon hs-kb-home-list__icon-svg" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 512 512" aria-hidden="true"><g id="Arrows Spin9_layer"><path d="M256 96c38.4 0 73.7 13.5 101.3 36.1l-32.6 32.6c-4.6 4.6-5.9 11.5-3.5 17.4s8.3 9.9 14.8 9.9H448c8.8 0 16-7.2 16-16V64c0-6.5-3.9-12.3-9.9-14.8s-12.9-1.1-17.4 3.5l-34 34C363.4 52.6 312.1 32 256 32c-10.9 0-21.5 .8-32 2.3V99.2c10.3-2.1 21-3.2 32-3.2zM132.1 154.7l32.6 32.6c4.6 4.6 11.5 5.9 17.4 3.5s9.9-8.3 9.9-14.8V64c0-8.8-7.2-16-16-16H64c-6.5 0-12.3 3.9-14.8 9.9s-1.1 12.9 3.5 17.4l34 34C52.6 148.6 32 199.9 32 256c0 10.9 .8 21.5 2.3 32H99.2c-2.1-10.3-3.2-21-3.2-32c0-38.4 13.5-73.7 36.1-101.3zM477.7 224H412.8c2.1 10.3 3.2 21 3.2 32c0 38.4-13.5 73.7-36.1 101.3l-32.6-32.6c-4.6-4.6-11.5-5.9-17.4-3.5s-9.9 8.3-9.9 14.8V448c0 8.8 7.2 16 16 16H448c6.5 0 12.3-3.9 14.8-9.9s1.1-12.9-3.5-17.4l-34-34C459.4 363.4 480 312.1 480 256c0-10.9-.8-21.5-2.3-32zM256 416c-38.4 0-73.7-13.5-101.3-36.1l32.6-32.6c4.6-4.6 5.9-11.5 3.5-17.4s-8.3-9.9-14.8-9.9H64c-8.8 0-16 7.2-16 16l0 112c0 6.5 3.9 12.3 9.9 14.8s12.9 1.1 17.4-3.5l34-34C148.6 459.4 199.9 480 256 480c10.9 0 21.5-.8 32-2.3V412.8c-10.3 2.1-21 3.2-32 3.2z" /></g></svg></span>
+            
+          </div>
+        
+        <div class="hs-kb-home-list__text">
+          <h3 class="hs-kb-home-list__text__category-title">Analysis &amp; Insights</h3>
+          
+            <p class="hs-kb-home-list__text__category-description">
+              Learn how to get more insights from the data out of OtterlyAI
+            </p>
+          
+        </div>
+      </a>
+      
+        <ul class="hs-kb-category-article-list">
+          
+          
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/analyze-citation-links?hsLang=en">Why should I analyze the citation links of AI searches?</a>
+              </li>
+              
+            
+          
+          
+        </ul>
+        <a class="hs-kb-home-list__text__category-link" href="https://help.otterly.ai/analysis-insights?hsLang=en">See more</a>
+      
+    </div>
+  
+
+  
+    
+  
+  
+  
+    <div class="hs-kb-home-list__category">
+      <a class="hs-kb-home-list__category-link unstyled" href="https://help.otterly.ai/tracking-monitoring?hsLang=en">
+        
+          <div class="hs-kb-home-list__icon" style="color: rgba(124, 152, 182, 1);">
+            
+              <span id="hs_cos_wrapper_knowledgebase_category_listing_category_icon" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon hs-kb-home-list__icon-svg" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 512 512" aria-hidden="true"><g id="Arrows Turn To Dots10_layer"><path d="M249.4 25.4c12.5-12.5 32.8-12.5 45.3 0s12.5 32.8 0 45.3L269.3 96 416 96c53 0 96 43 96 96v32c0 17.7-14.3 32-32 32s-32-14.3-32-32V192c0-17.7-14.3-32-32-32l-146.7 0 25.4 25.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0l-80-80c-12.5-12.5-12.5-32.8 0-45.3l80-80zm13.3 256l80 80c12.5 12.5 12.5 32.8 0 45.3l-80 80c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L242.7 416 96 416c-17.7 0-32 14.3-32 32v32c0 17.7-14.3 32-32 32s-32-14.3-32-32V448c0-53 43-96 96-96l146.7 0-25.4-25.4c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0zM384 384a64 64 0 1 1 128 0 64 64 0 1 1 -128 0zM64 192A64 64 0 1 1 64 64a64 64 0 1 1 0 128z" /></g></svg></span>
+            
+          </div>
+        
+        <div class="hs-kb-home-list__text">
+          <h3 class="hs-kb-home-list__text__category-title">Tracking &amp; Monitoring</h3>
+          
+            <p class="hs-kb-home-list__text__category-description">
+              How to track and monitor search prompts for your AI brand visibility.
+            </p>
+          
+        </div>
+      </a>
+      
+        <ul class="hs-kb-category-article-list">
+          
+          
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/search-prompt-monitoring?hsLang=en">How does Search Prompt Monitoring with OtterlyAI work?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/intent-volume?hsLang=en">What is the intent volume of a search prompt?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/languages?hsLang=en">Which languages in monitoring does OtterlyAI support?</a>
+              </li>
+              
+            
+          
+          
+        </ul>
+        <a class="hs-kb-home-list__text__category-link" href="https://help.otterly.ai/tracking-monitoring?hsLang=en">See more</a>
+      
+    </div>
+  
+
+  
+    
+  
+  
+  
+    <div class="hs-kb-home-list__category">
+      <a class="hs-kb-home-list__category-link unstyled" href="https://help.otterly.ai/geo-audit?hsLang=en">
+        
+          <div class="hs-kb-home-list__icon" style="color: rgba(159, 23, 213, 1);">
+            
+              <span id="hs_cos_wrapper_knowledgebase_category_listing_category_icon" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon hs-kb-home-list__icon-svg" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 576 512" aria-hidden="true"><g id="Arrow Down Wide Short11_layer"><path d="M151.6 469.6C145.5 476.2 137 480 128 480s-17.5-3.8-23.6-10.4l-88-96c-11.9-13-11.1-33.3 2-45.2s33.3-11.1 45.2 2L96 365.7V64c0-17.7 14.3-32 32-32s32 14.3 32 32V365.7l32.4-35.4c11.9-13 32.2-13.9 45.2-2s13.9 32.2 2 45.2l-88 96zM320 480c-17.7 0-32-14.3-32-32s14.3-32 32-32h32c17.7 0 32 14.3 32 32s-14.3 32-32 32H320zm0-128c-17.7 0-32-14.3-32-32s14.3-32 32-32h96c17.7 0 32 14.3 32 32s-14.3 32-32 32H320zm0-128c-17.7 0-32-14.3-32-32s14.3-32 32-32H480c17.7 0 32 14.3 32 32s-14.3 32-32 32H320zm0-128c-17.7 0-32-14.3-32-32s14.3-32 32-32H544c17.7 0 32 14.3 32 32s-14.3 32-32 32H320z" /></g></svg></span>
+            
+          </div>
+        
+        <div class="hs-kb-home-list__text">
+          <h3 class="hs-kb-home-list__text__category-title">GEO audit</h3>
+          
+            <p class="hs-kb-home-list__text__category-description">
+              Do a technical on-site audit for Generative Engines Optimization. Learn what the GEO audit can help you on your website. 
+            </p>
+          
+        </div>
+      </a>
+      
+        <ul class="hs-kb-category-article-list">
+          
+          
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/what-does-the-geo-audit-do?hsLang=en">What is the GEO Audit and what it does?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/ai-readiness?hsLang=en">What is Readiness analysis in the GEO audit?</a>
+              </li>
+              
+            
+          
+          
+        </ul>
+        <a class="hs-kb-home-list__text__category-link" href="https://help.otterly.ai/geo-audit?hsLang=en">See more</a>
+      
+    </div>
+  
+
+  
+    
+  
+  
+  
+    <div class="hs-kb-home-list__category">
+      <a class="hs-kb-home-list__category-link unstyled" href="https://help.otterly.ai/optimization-geo-recommendations?hsLang=en">
+        
+          <div class="hs-kb-home-list__icon" style="color: rgba(124, 152, 182, 1);">
+            
+              <span id="hs_cos_wrapper_knowledgebase_category_listing_category_icon" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon hs-kb-home-list__icon-svg" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 576 512" aria-hidden="true"><g id="Arrow Up Right Dots12_layer"><path d="M160 0c-17.7 0-32 14.3-32 32s14.3 32 32 32h50.7L9.4 265.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L256 109.3V160c0 17.7 14.3 32 32 32s32-14.3 32-32V32c0-17.7-14.3-32-32-32H160zM576 80a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM448 208a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM400 384a48 48 0 1 0 0-96 48 48 0 1 0 0 96zm48 80a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zm128 0a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM272 384a48 48 0 1 0 0-96 48 48 0 1 0 0 96zm48 80a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM144 512a48 48 0 1 0 0-96 48 48 0 1 0 0 96zM576 336a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zm-48-80a48 48 0 1 0 0-96 48 48 0 1 0 0 96z" /></g></svg></span>
+            
+          </div>
+        
+        <div class="hs-kb-home-list__text">
+          <h3 class="hs-kb-home-list__text__category-title">Optimization &amp; GEO Recommendations</h3>
+          
+            <p class="hs-kb-home-list__text__category-description">
+              What GEO methods can help you rank better on ChatGPT and other AI searches?
+            </p>
+          
+        </div>
+      </a>
+      
+        <ul class="hs-kb-category-article-list">
+          
+          
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/what-is-generative-engine-optimization-geo?hsLang=en">What is Generative Engine Optimization (GEO)?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/optimize-for-ai-searches?hsLang=en">Does OtterlyAI provide actionable insights to optimize for AI searches to rank higher?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/what-methods-for-optimization-on-ai-searches-geo-are-there-and-how-do-they-work-for-me?hsLang=en">What methods for optimization on AI searches (GEO) are there and how do they work for me?</a>
+              </li>
+              
+            
+          
+          
+        </ul>
+        <a class="hs-kb-home-list__text__category-link" href="https://help.otterly.ai/optimization-geo-recommendations?hsLang=en">See more</a>
+      
+    </div>
+  
+
+  
+    
+  
+  
+  
+    <div class="hs-kb-home-list__category">
+      <a class="hs-kb-home-list__category-link unstyled" href="https://help.otterly.ai/integrations-data-export?hsLang=en">
+        
+          <div class="hs-kb-home-list__icon" style="color: rgba(124, 152, 182, 1);">
+            
+              <span id="hs_cos_wrapper_knowledgebase_category_listing_category_icon" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon hs-kb-home-list__icon-svg" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 576 512" aria-hidden="true"><g id="File Export13_layer"><path d="M0 64C0 28.7 28.7 0 64 0H224V128c0 17.7 14.3 32 32 32H384V288H216c-13.3 0-24 10.7-24 24s10.7 24 24 24H384V448c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64V64zM384 336V288H494.1l-39-39c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l80 80c9.4 9.4 9.4 24.6 0 33.9l-80 80c-9.4 9.4-24.6 9.4-33.9 0s-9.4-24.6 0-33.9l39-39H384zm0-208H256V0L384 128z" /></g></svg></span>
+            
+          </div>
+        
+        <div class="hs-kb-home-list__text">
+          <h3 class="hs-kb-home-list__text__category-title">Integrations &amp; Data Export</h3>
+          
+            <p class="hs-kb-home-list__text__category-description">
+              What integrations are possible with OtterlyAI and what can you export?
+            </p>
+          
+        </div>
+      </a>
+      
+        <ul class="hs-kb-category-article-list">
+          
+          
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/can-i-export-my-data-and-reports?hsLang=en">Can I export my data and reports?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/export-to-pdf?hsLang=en">Is there an export to PDF option for your brand report?</a>
+              </li>
+              
+            
+          
+          
+        </ul>
+        <a class="hs-kb-home-list__text__category-link" href="https://help.otterly.ai/integrations-data-export?hsLang=en">See more</a>
+      
+    </div>
+  
+
+  
+    
+  
+  
+  
+    <div class="hs-kb-home-list__category">
+      <a class="hs-kb-home-list__category-link unstyled" href="https://help.otterly.ai/workspace-account-management?hsLang=en">
+        
+          <div class="hs-kb-home-list__icon" style="color: rgba(124, 152, 182, 1);">
+            
+              <span id="hs_cos_wrapper_knowledgebase_category_listing_category_icon" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon hs-kb-home-list__icon-svg" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 640 512" aria-hidden="true"><g id="Anchor Lock14_layer"><path d="M320 96a32 32 0 1 1 -64 0 32 32 0 1 1 64 0zm21.1 80C367 158.8 384 129.4 384 96c0-53-43-96-96-96s-96 43-96 96c0 33.4 17 62.8 42.9 80H224c-17.7 0-32 14.3-32 32s14.3 32 32 32h32V448H208c-53 0-96-43-96-96v-6.1l7 7c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9L97 263c-9.4-9.4-24.6-9.4-33.9 0L7 319c-9.4 9.4-9.4 24.6 0 33.9s24.6 9.4 33.9 0l7-7V352c0 88.4 71.6 160 160 160h80 80c8 0 15.9-.6 23.6-1.7c-4.8-9-7.6-19.3-7.6-30.3V446.7c-5.2 .9-10.5 1.3-16 1.3H320V240h32c17.7 0 32-14.3 32-32s-14.3-32-32-32H341.1zM528 240c17.7 0 32 14.3 32 32v48H496V272c0-17.7 14.3-32 32-32zm-80 32v48c-17.7 0-32 14.3-32 32V480c0 17.7 14.3 32 32 32H608c17.7 0 32-14.3 32-32V352c0-17.7-14.3-32-32-32V272c0-44.2-35.8-80-80-80s-80 35.8-80 80z" /></g></svg></span>
+            
+          </div>
+        
+        <div class="hs-kb-home-list__text">
+          <h3 class="hs-kb-home-list__text__category-title">Workspace &amp; Account Management</h3>
+          
+            <p class="hs-kb-home-list__text__category-description">
+              How to manage your account and workspace.
+            </p>
+          
+        </div>
+      </a>
+      
+        <ul class="hs-kb-category-article-list">
+          
+          
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/trial-extended?hsLang=en">Can I get my free trial extended?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/free-trial?hsLang=en">How long is the free trial and how many prompts are included?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/sso?hsLang=en">Do you provide Single-Sign-On (SSO) for OtterlyAI?</a>
+              </li>
+              
+            
+          
+          
+        </ul>
+        <a class="hs-kb-home-list__text__category-link" href="https://help.otterly.ai/workspace-account-management?hsLang=en">See more</a>
+      
+    </div>
+  
+
+  
+    
+  
+  
+  
+    <div class="hs-kb-home-list__category">
+      <a class="hs-kb-home-list__category-link unstyled" href="https://help.otterly.ai/billing-payment?hsLang=en">
+        
+          <div class="hs-kb-home-list__icon" style="color: rgba(124, 152, 182, 1);">
+            
+              <span id="hs_cos_wrapper_knowledgebase_category_listing_category_icon" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon hs-kb-home-list__icon-svg" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 640 512" aria-hidden="true"><g id="Money Bills15_layer"><path d="M96 96V320c0 35.3 28.7 64 64 64H576c35.3 0 64-28.7 64-64V96c0-35.3-28.7-64-64-64H160c-35.3 0-64 28.7-64 64zm64 160c35.3 0 64 28.7 64 64H160V256zM224 96c0 35.3-28.7 64-64 64V96h64zM576 256v64H512c0-35.3 28.7-64 64-64zM512 96h64v64c-35.3 0-64-28.7-64-64zM288 208a80 80 0 1 1 160 0 80 80 0 1 1 -160 0zM48 120c0-13.3-10.7-24-24-24S0 106.7 0 120V360c0 66.3 53.7 120 120 120H520c13.3 0 24-10.7 24-24s-10.7-24-24-24H120c-39.8 0-72-32.2-72-72V120z" /></g></svg></span>
+            
+          </div>
+        
+        <div class="hs-kb-home-list__text">
+          <h3 class="hs-kb-home-list__text__category-title">Billing &amp; Payment</h3>
+          
+            <p class="hs-kb-home-list__text__category-description">
+              How can you purchase OtterlyAI subscriptions.
+            </p>
+          
+        </div>
+      </a>
+      
+        <ul class="hs-kb-category-article-list">
+          
+          
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/buy-a-plan?hsLang=en">I want to buy a plan for OtterlyAI - how does that work?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/upgrade-subscription?hsLang=en">How can I upgrade my subscription?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/change-company-data-for-the-invoices?hsLang=en">Where can I change the company data for the invoices?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/invoices?hsLang=en">How do I get my invoices?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/buy-more-prompts?hsLang=en">How can I buy more prompts?</a>
+              </li>
+              
+            
+          
+          
+        </ul>
+        <a class="hs-kb-home-list__text__category-link" href="https://help.otterly.ai/billing-payment?hsLang=en">See more</a>
+      
+    </div>
+  
+
+  
+    
+  
+  
+  
+    <div class="hs-kb-home-list__category">
+      <a class="hs-kb-home-list__category-link unstyled" href="https://help.otterly.ai/agencies-enterprises?hsLang=en">
+        
+          <div class="hs-kb-home-list__icon" style="color: rgba(124, 152, 182, 1);">
+            
+              <span id="hs_cos_wrapper_knowledgebase_category_listing_category_icon" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon hs-kb-home-list__icon-svg" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 640 512" aria-hidden="true"><g id="People Carry Box16_layer"><path d="M80 48a48 48 0 1 1 96 0A48 48 0 1 1 80 48zm64 193.7v65.1l51 51c7.1 7.1 11.8 16.2 13.4 26.1l15.2 90.9c2.9 17.4-8.9 33.9-26.3 36.8s-33.9-8.9-36.8-26.3l-14.3-85.9L66.8 320C54.8 308 48 291.7 48 274.7V186.6c0-32.4 26.2-58.6 58.6-58.6c24.1 0 46.5 12 59.9 32l47.4 71.1 10.1 5V160c0-17.7 14.3-32 32-32H384c17.7 0 32 14.3 32 32v76.2l10.1-5L473.5 160c13.3-20 35.8-32 59.9-32c32.4 0 58.6 26.2 58.6 58.6v88.1c0 17-6.7 33.3-18.7 45.3l-79.4 79.4-14.3 85.9c-2.9 17.4-19.4 29.2-36.8 26.3s-29.2-19.4-26.3-36.8l15.2-90.9c1.6-9.9 6.3-19 13.4-26.1l51-51V241.7l-19 28.5c-4.6 7-11 12.6-18.5 16.3l-59.6 29.8c-2.4 1.3-4.9 2.2-7.6 2.8c-2.6 .6-5.3 .9-7.9 .8H256.7c-2.5 .1-5-.2-7.5-.7c-2.9-.6-5.6-1.6-8.1-3l-59.5-29.8c-7.5-3.7-13.8-9.4-18.5-16.3l-19-28.5zM2.3 468.1L50.1 348.6l49.2 49.2-37.6 94c-6.6 16.4-25.2 24.4-41.6 17.8S-4.3 484.5 2.3 468.1zM512 0a48 48 0 1 1 0 96 48 48 0 1 1 0-96zm77.9 348.6l47.8 119.5c6.6 16.4-1.4 35-17.8 41.6s-35-1.4-41.6-17.8l-37.6-94 49.2-49.2z" /></g></svg></span>
+            
+          </div>
+        
+        <div class="hs-kb-home-list__text">
+          <h3 class="hs-kb-home-list__text__category-title">Agencies &amp; Enterprises</h3>
+          
+            <p class="hs-kb-home-list__text__category-description">
+              You need an Enterprise quote or have a required procurement process. Or if you are an agency or you are looking for an agency - this is the right section for you
+            </p>
+          
+        </div>
+      </a>
+      
+        <ul class="hs-kb-category-article-list">
+          
+          
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/partner-agencies?hsLang=en">Can I hire partner agencies of OtterlyAI Partner?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/monitor-multiple-clients?hsLang=en">Can I use OtterlyAI to monitor multiple clients?</a>
+              </li>
+              
+            
+          
+          
+        </ul>
+        <a class="hs-kb-home-list__text__category-link" href="https://help.otterly.ai/agencies-enterprises?hsLang=en">See more</a>
+      
+    </div>
+  
+
+  
+    
+  
+  
+  
+    <div class="hs-kb-home-list__category">
+      <a class="hs-kb-home-list__category-link unstyled" href="https://help.otterly.ai/security-terms?hsLang=en">
+        
+          <div class="hs-kb-home-list__icon" style="color: rgba(124, 152, 182, 1);">
+            
+              <span id="hs_cos_wrapper_knowledgebase_category_listing_category_icon" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon hs-kb-home-list__icon-svg" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 448 512" aria-hidden="true"><g id="Unlock Keyhole17_layer"><path d="M224 64c-44.2 0-80 35.8-80 80v48H384c35.3 0 64 28.7 64 64V448c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64V256c0-35.3 28.7-64 64-64H80V144C80 64.5 144.5 0 224 0c57.5 0 107 33.7 130.1 82.3c7.6 16 .8 35.1-15.2 42.6s-35.1 .8-42.6-15.2C283.4 82.6 255.9 64 224 64zm32 320c17.7 0 32-14.3 32-32s-14.3-32-32-32H192c-17.7 0-32 14.3-32 32s14.3 32 32 32h64z" /></g></svg></span>
+            
+          </div>
+        
+        <div class="hs-kb-home-list__text">
+          <h3 class="hs-kb-home-list__text__category-title">Security &amp; Terms</h3>
+          
+            <p class="hs-kb-home-list__text__category-description">
+              Find all the relevant information on security, certifications and terms &amp; conditions.
+            </p>
+          
+        </div>
+      </a>
+      
+        <ul class="hs-kb-category-article-list">
+          
+          
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/terms?hsLang=en">Where do I find the terms and conditions of OtterlyAI?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/compliance?hsLang=en">Is OtterlyAI ISO-27001 or SOC-2 compliant?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/data-deletion?hsLang=en">How do I request data deletion or export under GDPR?</a>
+              </li>
+              
+            
+          
+          
+        </ul>
+        <a class="hs-kb-home-list__text__category-link" href="https://help.otterly.ai/security-terms?hsLang=en">See more</a>
+      
+    </div>
+  
+
+  
+    
+  
+  
+  
+    <div class="hs-kb-home-list__category">
+      <a class="hs-kb-home-list__category-link unstyled" href="https://help.otterly.ai/customer-support-demos-and-onboarding?hsLang=en">
+        
+          <div class="hs-kb-home-list__icon" style="color: rgba(124, 152, 182, 1);">
+            
+              <span id="hs_cos_wrapper_knowledgebase_category_listing_category_icon" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_icon hs-kb-home-list__icon-svg" style="" data-hs-cos-general-type="widget" data-hs-cos-type="icon"><svg version="1.0" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 640 512" aria-hidden="true"><g id="Handshake Angle18_layer"><path d="M544 248v3.3l69.7-69.7c21.9-21.9 21.9-57.3 0-79.2L535.6 24.4c-21.9-21.9-57.3-21.9-79.2 0L416.3 64.5c-2.7-.3-5.5-.5-8.3-.5H296c-37.1 0-67.6 28-71.6 64H224V248c0 22.1 17.9 40 40 40s40-17.9 40-40V176c0 0 0-.1 0-.1V160l16 0 136 0c0 0 0 0 .1 0H464c44.2 0 80 35.8 80 80v8zM336 192v56c0 39.8-32.2 72-72 72s-72-32.2-72-72V129.4c-35.9 6.2-65.8 32.3-76 68.2L99.5 255.2 26.3 328.4c-21.9 21.9-21.9 57.3 0 79.2l78.1 78.1c21.9 21.9 57.3 21.9 79.2 0l37.7-37.7c.9 0 1.8 .1 2.7 .1H384c26.5 0 48-21.5 48-48c0-5.6-1-11-2.7-16H432c26.5 0 48-21.5 48-48c0-12.8-5-24.4-13.2-33c25.7-5 45.1-27.6 45.2-54.8v-.4c-.1-30.8-25.1-55.8-56-55.8c0 0 0 0 0 0l-120 0z" /></g></svg></span>
+            
+          </div>
+        
+        <div class="hs-kb-home-list__text">
+          <h3 class="hs-kb-home-list__text__category-title">Customer Support, Demos and Onboarding</h3>
+          
+            <p class="hs-kb-home-list__text__category-description">
+              Learn more about how to contact our support, book a demo and an onboarding session.
+            </p>
+          
+        </div>
+      </a>
+      
+        <ul class="hs-kb-category-article-list">
+          
+          
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/customer-support?hsLang=en">How can I contact your customer support?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/suggest-feature?hsLang=en">How can I suggest a feature for OtterlyAI?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/demos-for-prospects?hsLang=en">Do you provide demos of OtterlyAI?</a>
+              </li>
+              
+            
+              
+              
+              <li>
+                <a class="hs-kb-category-article-list__link" href="https://help.otterly.ai/onboarding-calls?hsLang=en">Do you provide onboarding sessions for customers?</a>
+              </li>
+              
+            
+          
+          
+        </ul>
+        <a class="hs-kb-home-list__text__category-link" href="https://help.otterly.ai/customer-support-demos-and-onboarding?hsLang=en">See more</a>
+      
+    </div>
+  
+
+  
+</div></div>
+
+      </main>
+
+      
+        <div data-global-resource-path="@hubspot/cms-knowledge-base-theme/templates/partials/knowledgebase-footer.html">
+
+<footer class="footer">
+  <div id="hs_cos_wrapper_knowledgebase_footer" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_module" style="" data-hs-cos-general-type="widget" data-hs-cos-type="module">
+
+</div>
+  <div class="footer__bottom">
+    <div class="footer__bottom--left">
+      <div id="hs_cos_wrapper_footer_logo" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_module widget-type-logo" style="" data-hs-cos-general-type="widget" data-hs-cos-type="module">
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  <span id="hs_cos_wrapper_footer_logo_hs_logo_widget" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_logo" style="" data-hs-cos-general-type="widget" data-hs-cos-type="logo"><a href="https://otterly.ai" id="hs-link-footer_logo_hs_logo_widget" style="border-width:0px;border:0px;"><img src="https://help.otterly.ai/hs-fs/hubfs/67387c4f44f0de67a9ccb2af_icon_otterly_32.png?width=50&amp;height=50&amp;name=67387c4f44f0de67a9ccb2af_icon_otterly_32.png" class="hs-image-widget " height="50" style="height: auto;width:50px;border-width:0px;border:0px;" width="50" alt="67387c4f44f0de67a9ccb2af_icon_otterly_32" title="67387c4f44f0de67a9ccb2af_icon_otterly_32" srcset="https://help.otterly.ai/hs-fs/hubfs/67387c4f44f0de67a9ccb2af_icon_otterly_32.png?width=25&amp;height=25&amp;name=67387c4f44f0de67a9ccb2af_icon_otterly_32.png 25w, https://help.otterly.ai/hs-fs/hubfs/67387c4f44f0de67a9ccb2af_icon_otterly_32.png?width=50&amp;height=50&amp;name=67387c4f44f0de67a9ccb2af_icon_otterly_32.png 50w, https://help.otterly.ai/hs-fs/hubfs/67387c4f44f0de67a9ccb2af_icon_otterly_32.png?width=75&amp;height=75&amp;name=67387c4f44f0de67a9ccb2af_icon_otterly_32.png 75w, https://help.otterly.ai/hs-fs/hubfs/67387c4f44f0de67a9ccb2af_icon_otterly_32.png?width=100&amp;height=100&amp;name=67387c4f44f0de67a9ccb2af_icon_otterly_32.png 100w, https://help.otterly.ai/hs-fs/hubfs/67387c4f44f0de67a9ccb2af_icon_otterly_32.png?width=125&amp;height=125&amp;name=67387c4f44f0de67a9ccb2af_icon_otterly_32.png 125w, https://help.otterly.ai/hs-fs/hubfs/67387c4f44f0de67a9ccb2af_icon_otterly_32.png?width=150&amp;height=150&amp;name=67387c4f44f0de67a9ccb2af_icon_otterly_32.png 150w" sizes="(max-width: 50px) 100vw, 50px"></a></span>
+</div>
+      <div id="hs_cos_wrapper_footer_address" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_module widget-type-rich_text" style="" data-hs-cos-general-type="widget" data-hs-cos-type="module"><span id="hs_cos_wrapper_footer_address_" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_rich_text" style="" data-hs-cos-general-type="widget" data-hs-cos-type="rich_text"><p>Copyright by OtterlyAI GmbH</p></span></div>
+    </div>
+    <div class="footer__bottom--right">
+      <div id="hs_cos_wrapper_footer_social_follow" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_module" style="" data-hs-cos-general-type="widget" data-hs-cos-type="module">
+
+</div>
+      <div id="hs_cos_wrapper_footer_copyright" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_module widget-type-rich_text" style="" data-hs-cos-general-type="widget" data-hs-cos-type="module"><span id="hs_cos_wrapper_footer_copyright_" class="hs_cos_wrapper hs_cos_wrapper_widget hs_cos_wrapper_type_rich_text" style="" data-hs-cos-general-type="widget" data-hs-cos-type="rich_text"></span></div>
+    </div>
+  </div>
+</footer></div>
+      
+    </div>
+    
+    
+    
+    
+<!-- HubSpot performance collection script -->
+<script defer src="/hs/hsstatic/content-cwv-embed/static-1.1293/embed.js"></script>
+<script>
+var hsVars = hsVars || {}; hsVars['language'] = 'en';
+</script>
+
+<script src="/hs/hsstatic/cos-i18n/static-1.53/bundles/project.js"></script>
+<script src="https://7052064.fs1.hubspotusercontent-na1.net/hubfs/7052064/hub_generated/module_assets/1/-107255593217/1780675623236/module_website-header.min.js"></script>
+<script src="https://7052064.fs1.hubspotusercontent-na1.net/hubfs/7052064/hub_generated/module_assets/1/-153268142413/1780675624690/module_kb-search-input.min.js"></script>
+<script src="//7052064.fs1.hubspotusercontent-na1.net/hubfs/7052064/hub_generated/template_assets/DEFAULT_ASSET/1780675537277/template_purify.min.js"></script>
+
+<!-- Start of HubSpot Analytics Code -->
+<script type="text/javascript">
+var _hsq = _hsq || [];
+_hsq.push(["setContentType", "listing-page"]);
+_hsq.push(["setCanonicalUrl", "https:\/\/help.otterly.ai"]);
+_hsq.push(["setPageId", "192782813315"]);
+_hsq.push(["setContentMetadata", {
+    "contentPageId": 192782813315,
+    "legacyPageId": "192782813315",
+    "contentFolderId": null,
+    "contentGroupId": 192783007873,
+    "abTestId": null,
+    "languageVariantId": 192782813315,
+    "languageCode": "en",
+    
+    
+}]);
+</script>
+
+<script type="text/javascript" id="hs-script-loader" async defer src="/hs/scriptloader/49489634.js"></script>
+<!-- End of HubSpot Analytics Code -->
+
+
+<script type="text/javascript">
+var hsVars = {
+    render_id: "6df7bc5d-d524-4702-90a6-69937d4492b0",
+    ticks: 1780872675763,
+    page_id: 192782813315,
+    
+    content_group_id: 192783007873,
+    portal_id: 49489634,
+    app_hs_base_url: "https://app.hubspot.com",
+    cp_hs_base_url: "https://cp.hubspot.com",
+    language: "en",
+    analytics_page_type: "listing-page",
+    scp_content_type: "",
+    
+    analytics_page_id: "192782813315",
+    category_id: 12,
+    folder_id: 0,
+    is_hubspot_user: false
+}
+</script>
+
+
+<script defer src="/hs/hsstatic/HubspotToolsMenu/static-1.640/js/index.js"></script>
+
+
+
+
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5FKKNZ47" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+  
+</body></html>

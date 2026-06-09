@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>百付科技-GEO优化公司创新者</title>
+        <meta name="description" content="百付科技,GEO优化公司，帮你实现AI关键词霸榜，同行都在抢！我们帮企业抢占豆包搜索前三，内容自动优化成高大上话术，直接提升品牌可信度。">
+    <meta name="keywords" content="百付科技，geo优化,geo优化公司,geo优化软件">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #0a0a0a;
+            --secondary: #1a1a1a;
+            --accent: #3b82f6;
+            --accent-light: #60a5fa;
+            --light: #f8fafc;
+            --dark: #0f0f0f;
+            --text: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --gradient: linear-gradient(135deg, var(--accent), var(--accent-light));
+            --card-bg: rgba(30, 30, 30, 0.7);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: var(--primary);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 15px;
+        }
+        
+        /* 背景图片样式 */
+        .bg-section {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .bg-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            opacity: 0.15;
+            z-index: 1;
+        }
+        
+        .hero-bg::before {
+            background-image: url('https://images.unsplash.com/photo-1677442136019-21780ecad995?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80');
+        }
+        
+        .services-bg::before {
+            background-image: url('https://images.unsplash.com/photo-1635070041078-e363dbe005cb?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80');
+        }
+        
+        .advantages-bg::before {
+            background-image: url('https://images.unsplash.com/photo-1677442135337-6b5c6a97b1b3?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80');
+        }
+        
+        .features-bg::before {
+            background-image: url('https://images.unsplash.com/photo-1677442136019-21780ecad995?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80');
+        }
+        
+        .comparison-bg::before {
+            background-image: url('https://images.unsplash.com/photo-1677442136019-21780ecad995?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80');
+        }
+        
+        .testimonials-bg::before {
+            background-image: url('https://images.unsplash.com/photo-1635070041078-e363dbe005cb?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80');
+        }
+        
+        .section-content {
+            position: relative;
+            z-index: 2;
+        }
+        
+        /* 导航栏样式 */
+        header {
+            background: rgba(10, 10, 10, 0.95);
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+            position: fixed;
+            width: 100%;
+            z-index: 1000;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+        }
+        
+        .logo h1 {
+            color: white;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-left: 10px;
+            background: linear-gradient(90deg, #fff, var(--accent-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .logo-icon {
+            color: var(--accent);
+            font-size: 2rem;
+        }
+        
+        .nav-links {
+            display: flex;
+            list-style: none;
+        }
+        
+        .nav-links li {
+            margin-left: 30px;
+        }
+        
+        .nav-links a {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+            position: relative;
+        }
+        
+        .nav-links a:hover {
+            color: var(--accent-light);
+        }
+        
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--accent);
+            transition: width 0.3s;
+        }
+        
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+        
+        .cta-button {
+            background: var(--gradient);
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 30px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+        }
+        
+        .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
+        }
+        
+        /* 英雄区域样式 */
+        .hero {
+            background: linear-gradient(135deg, var(--dark) 0%, var(--primary) 100%);
+            color: white;
+            padding: 180px 0 120px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .hero h1 {
+            font-size: 3.5rem;
+            margin-bottom: 20px;
+            font-weight: 800;
+            text-shadow: 2px 2px 10px rgba(0, 0, 0, 0.3);
+        }
+        
+        .hero p {
+            font-size: 1.3rem;
+            max-width: 700px;
+            margin: 0 auto 30px;
+            opacity: 0.9;
+            color: var(--text);
+        }
+        
+        .hero-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 30px;
+        }
+        
+        .secondary-button {
+            background: transparent;
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            padding: 10px 25px;
+            border-radius: 30px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .secondary-button:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid var(--accent);
+        }
+        
+        .ai-platforms {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 50px;
+            flex-wrap: wrap;
+        }
+        
+        .platform-logo {
+            width: 80px;
+            height: 80px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: var(--accent);
+            transition: all 0.3s;
+        }
+        
+        .platform-logo:hover {
+            transform: translateY(-5px);
+            background: rgba(59, 130, 246, 0.2);
+        }
+        
+        /* 服务区域样式 */
+        .services {
+            padding: 100px 0;
+            background: var(--secondary);
+            position: relative;
+        }
+        
+        .section-title {
+            text-align: center;
+            margin-bottom: 60px;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .section-title h2 {
+            font-size: 2.5rem;
+            color: var(--text);
+            margin-bottom: 15px;
+            position: relative;
+            display: inline-block;
+        }
+        
+        .section-title h2::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 4px;
+            background: var(--accent);
+            border-radius: 2px;
+        }
+        
+        .section-title p {
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .service-card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+            text-align: center;
+            border-top: 4px solid var(--accent);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .service-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3);
+        }
+        
+        .service-icon {
+            font-size: 3rem;
+            color: var(--accent);
+            margin-bottom: 20px;
+        }
+        
+        .service-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            color: var(--text);
+        }
+        
+        .service-card p {
+            color: var(--text-secondary);
+        }
+        
+        /* 什么是GEO区域 */
+        .what-is-geo {
+            padding: 100px 0;
+            background: var(--primary);
+            position: relative;
+        }
+        
+        .geo-content {
+            display: flex;
+            align-items: center;
+            gap: 50px;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .geo-text {
+            flex: 1;
+        }
+        
+        .geo-visual {
+            flex: 1;
+            text-align: center;
+        }
+        
+        .geo-definition {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border-left: 4px solid var(--accent);
+        }
+        
+        /* 为什么做GEO区域 */
+        .why-geo {
+            padding: 100px 0;
+            background: var(--secondary);
+            position: relative;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px;
+            margin-top: 50px;
+        }
+        
+        .stat-card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .stat-number {
+            font-size: 3rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 10px;
+        }
+        
+        /* GEO与SEO对比区域 */
+        .comparison {
+            padding: 100px 0;
+            background: var(--primary);
+            position: relative;
+        }
+        
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 50px;
+        }
+        
+        .comparison-card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .comparison-card.seo {
+            border-top: 4px solid #ff6b6b;
+        }
+        
+        .comparison-card.geo {
+            border-top: 4px solid var(--accent);
+        }
+        
+        .comparison-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .comparison-list {
+            list-style: none;
+        }
+        
+        .comparison-list li {
+            margin-bottom: 15px;
+            padding-left: 25px;
+            position: relative;
+        }
+        
+        .comparison-list li:before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: var(--accent);
+            font-weight: bold;
+        }
+        
+        .comparison-list.seo li:before {
+            color: #ff6b6b;
+        }
+        
+        /* 核心功能区域 */
+        .features {
+            padding: 100px 0;
+            background: var(--secondary);
+            position: relative;
+        }
+        
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 50px;
+        }
+        
+        .feature-card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: transform 0.3s;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .feature-icon {
+            font-size: 2.5rem;
+            color: var(--accent);
+            margin-bottom: 20px;
+        }
+        
+        /* 客户评价区域样式 */
+        .testimonials {
+            padding: 100px 0;
+            background: var(--primary);
+            position: relative;
+        }
+        
+        .testimonial-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .testimonial-card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .testimonial-text {
+            font-style: italic;
+            margin-bottom: 20px;
+            position: relative;
+            color: var(--text);
+        }
+        
+        .testimonial-text::before {
+            content: '"';
+            font-size: 4rem;
+            color: var(--accent);
+            position: absolute;
+            top: -20px;
+            left: -10px;
+            opacity: 0.3;
+        }
+        
+        .testimonial-author {
+            display: flex;
+            align-items: center;
+        }
+        
+        .author-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: var(--gradient);
+            margin-right: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .testimonial-author h4 {
+            color: var(--text);
+        }
+        
+        .testimonial-author p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        
+        /* CTA区域样式 */
+        .cta-section {
+            padding: 50px 0;
+            background: linear-gradient(135deg, var(--dark) 0%, var(--primary) 100%);
+            color: white;
+            text-align: center;
+            position: relative;
+        }
+        
+        .cta-section h2 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+        }
+        
+        .cta-section p {
+            /*max-width: 600px;*/
+            margin: 0 auto 30px;
+            opacity: 0.9;
+            color: var(--text);
+        }
+        
+        /* 页脚样式 */
+        footer {
+            background: var(--dark);
+            color: white;
+            padding: 70px 0 20px;
+            position: relative;
+        }
+        
+        .footer-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 40px;
+            margin-bottom: 50px;
+        }
+        
+        .footer-column h3 {
+            font-size: 1.3rem;
+            margin-bottom: 20px;
+            position: relative;
+            padding-bottom: 10px;
+            color: var(--text);
+        }
+        
+        .footer-column h3::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 40px;
+            height: 2px;
+            background: var(--accent);
+        }
+        
+        .footer-links {
+            list-style: none;
+        }
+        
+        .footer-links li {
+            margin-bottom: 10px;
+        }
+        
+        .footer-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        
+        .footer-links a:hover {
+            color: var(--accent-light);
+        }
+        
+        .social-links {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .social-links a {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            color: white;
+            transition: all 0.3s;
+        }
+        
+        .social-links a:hover {
+            background: var(--accent);
+            transform: translateY(-3px);
+        }
+        
+        .copyright {
+            text-align: center;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        .platform-icon {
+            width: 50px; /* 设置统一的宽度 */
+            height: 50px; /* 设置统一的高度 */
+            object-fit: contain; /* 保持图片比例 */
+        }
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+            
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+            
+            .hero p {
+                font-size: 1.1rem;
+            }
+            
+            .hero-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .geo-content {
+                flex-direction: column;
+            }
+            
+            .ai-platforms {
+                gap: 13px;
+            }
+            
+            .platform-logo {
+                width: 60px;
+                height: 60px;
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <header>
+        <div class="container">
+            <nav>
+                <div class="logo">
+                    <i class="fas fa-search-dollar logo-icon"></i>
+                    <h1>百付科技</h1>
+                </div>
+                <ul class="nav-links">
+                    <li><a href="#home">首页</a></li>
+                    <li><a href="#features">核心功能</a></li>
+                    <li><a href="#what-is-geo">什么是GEO</a></li>
+                    <li><a href="#why-geo">为什么做GEO</a></li>
+                    <li><a href="#comparison">GEO vs SEO</a></li>
+                    <!--<li><a href="#contact2">合作客户</a></li>-->
+                    <li><a href="#contact">联系我们</a></li>
+                </ul>
+               <a href="https://work.weixin.qq.com/ca/cawcdef601b0f8ca6e" target="_blank" rel="noopener noreferrer">
+    <button class="cta-button">免费咨询</button>
+</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- 英雄区域 -->
+    <section class="hero bg-section hero-bg" id="home">
+        <div class="container section-content">
+            <h1>GEO优化排名服务</h1>
+            <h2>自研悟空GEO优化系统</h2>
+            <p>帮企业在DeepSeek、豆包、元宝等实现霸屏</p>
+            <div class="hero-buttons">
+                   <a href="https://work.weixin.qq.com/ca/cawcdef601b0f8ca6e" target="_blank" rel="noopener noreferrer">
+    <button class="cta-button">立即咨询</button>
+</a>
+               <a href="https://work.weixin.qq.com/ca/cawcdef601b0f8ca6e" target="_blank" rel="noopener noreferrer">
+    <button class="cta-button">查看案例</button>
+</a>
+            </div>
+            
+            <div class="ai-platforms">
+                <div class="platform-logo">
+                    <img src="1.png" alt="robot" class="platform-icon">
+<!--                    <i class="fas fa-robot"></i>-->
+                </div>
+                <div class="platform-logo">
+                    <img src="2.png" alt="robot" class="platform-icon">
+<!--                    <i class="fas fa-brain"></i>-->
+                </div>
+                <div class="platform-logo">
+                    <img src="3.png" alt="robot" class="platform-icon">
+<!--                    <i class="fas fa-comment-dots"></i>-->
+                </div>
+                <div class="platform-logo">
+                    <img src="4.png" alt="robot" class="platform-icon">
+<!--                    <i class="fas fa-search"></i>-->
+                </div>
+                <div class="platform-logo">
+                    <img src="5.png" alt="robot" class="platform-icon">
+<!--                    <i class="fas fa-chart-line"></i>-->
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 核心功能区域 -->
+    <section class="features bg-section features-bg" id="features">
+        <div class="container section-content">
+            <div class="section-title">
+                <h2>悟空GEO系统核心功能</h2>
+                <p>一站式AI搜索优化解决方案，一个系统搞定所有</p>
+            </div>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <i class="fas fa-brain feature-icon"></i>
+                    <h3>大模型训练</h3>
+                    <p>独家内置算法，自动训练大模型，让大模型达到更快的收录效果，稳定收录排名。</p>
+                </div>
+
+                <div class="feature-card">
+                    <i class="fas fa-share-alt feature-icon"></i>
+                    <h3>自媒体投喂</h3>
+                    <p>同时优化17个平台：12个自媒体平台+5个AI平台，全方位覆盖目标用户。</p>
+                </div>
+
+                <div class="feature-card">
+                    <i class="fas fa-database feature-icon"></i>
+                    <h3>智能体知识库</h3>
+                    <p>引入专有企业信息，让AI通过智能体知识库系统了解企业业务，提供精准回答。</p>
+                </div>
+
+                <div class="feature-card">
+                    <i class="fas fa-search feature-icon"></i>
+                    <h3>查询收录系统</h3>
+                    <p>系统内置查询收录系统，支持5大平台同时查询，无需单独购买。</p>
+                </div>
+
+                <div class="feature-card">
+                    <i class="fas fa-chart-bar feature-icon"></i>
+                    <h3>实时数据报表</h3>
+                    <p>实时显示查询到的最新数据，可通过链接查看排名实际情况。</p>
+                </div>
+
+                <div class="feature-card">
+                    <i class="fas fa-pen-fancy feature-icon"></i>
+                    <h3>AI自动创作</h3>
+                    <p>支持5大平台模型AI自动创作，自定义指令跟模型，高效产出内容。</p>
+                </div>
+
+                <div class="feature-card">
+                    <i class="fas fa-copy feature-icon"></i>
+                    <h3>流量复刻</h3>
+                    <p>批量自动采集网络相关爆文，自动使用AI改写出新的文章，支持直接发布。</p>
+                </div>
+
+<!--                <div class="feature-card">-->
+<!--                    <i class="fas fa-robot feature-icon"></i>-->
+<!--                    <h3>支持5大模型</h3>-->
+<!--                    <p>支持deepseek、豆包、通义千问、腾讯元宝、百度文心等主流AI平台。</p>-->
+<!--                </div>-->
+
+                <div class="feature-card">
+                    <i class="fas fa-filter feature-icon"></i>
+                    <h3>AI蒸馏词</h3>
+                    <p>无需人工拓展词汇，系统AI大模型自动抓取用户热门搜索的相关词。</p>
+                </div>
+
+                <div class="feature-card">
+                    <i class="fas fa-paper-plane feature-icon"></i>
+                    <h3>AI批量发布</h3>
+                    <p>只需打开授权发布助手，一键开启自动发布文章至12+自媒体平台。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- 什么是GEO区域 -->
+    <section class="what-is-geo bg-section advantages-bg" id="what-is-geo">
+        <div class="container section-content">
+            <div class="section-title">
+                <h2>什么是GEO？</h2>
+                <p>直接教育AI，让AI回答时主动推荐您的产品</p>
+            </div>
+            <div class="geo-content">
+                <div class="geo-text">
+                    <div class="geo-definition">
+                        <p>AI大模型GEO，又称为AI搜索推荐或者AI搜索优化，是通过大模型内容投喂+训练，将企业品牌及产品信息在多平台AI生成的答案中获取优先展现，更精准触达潜在目标客户，让企业品牌出现在AI搜索里。</p>
+                    </div>
+                    <p>让客户一搜就看到你，实现<strong>一问就有你，一查就信你，一看就找你</strong>的营销效果。</p>
+                </div>
+                <div class="geo-visual">
+                    <div style="background: var(--card-bg); border-radius: 10px; padding: 30px; text-align: left; max-width: 400px;">
+                        <h3 style="color: var(--accent); margin-bottom: 15px;">用户问AI:</h3>
+                        <p style="background: rgba(59, 130, 246, 0.2); padding: 10px; border-radius: 5px; margin-bottom: 20px;">"碰一碰拓客系统推荐"</p>
+                        
+                        <h3 style="color: var(--accent); margin-bottom: 15px;">AI回答:</h3>
+                        <p style="background: rgba(59, 130, 246, 0.3); padding: 10px; border-radius: 5px; font-weight: bold;">"百付科技的碰碰兔"</p>
+                        
+                        <p style="margin-top: 20px; font-size: 0.9rem; color: var(--text-secondary);">核心价值：用户主动提问时推荐，植入自然不生硬，信任度远超广告</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 为什么做GEO区域 -->
+    <section class="why-geo bg-section services-bg" id="why-geo">
+        <div class="container section-content">
+            <div class="section-title">
+                <h2>为什么做GEO优化？</h2>
+                <p>AI正在改变人们的搜索习惯，主流AI工具已成为超级流量入口！</p>
+            </div>
+            
+            <div class="geo-content">
+                <div class="geo-text">
+                    <h3 style="margin-bottom: 20px;">AI搜索习惯的转变</h3>
+                    <p>2025年以前，用户的搜索习惯主要是百度、抖音、小红书等传统平台。</p>
+                    <p style="margin: 20px 0;">2025年以后，用户的搜索习惯转向Deepseek、豆包、文心一言等AI平台。</p>
+                    <p>做GEO（生成式引擎优化）的根本原因是：用户的搜索和信息获取方式正在发生转移，为了在新的环境中保持可见性、影响力和流量，我们必须优化内容以适应生成式AI引擎的工作方式。</p>
+                </div>
+                <div class="geo-visual">
+                    <div style="background: var(--card-bg); border-radius: 10px; padding: 20px; text-align: center;">
+                        <h4 style="color: var(--accent); margin-bottom: 15px;">AI平台用户规模</h4>
+                        <div class="stats-grid" style="grid-template-columns: 1fr; gap: 15px;">
+                            <div class="stat-card">
+                                <div class="stat-number">8.8亿+</div>
+                                <p>文心一言+豆包+其他</p>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">7.6亿+</div>
+                                <p>Deepseek（月增长）</p>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">1.26亿+</div>
+                                <p>AI用户快速增长</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 50px; text-align: center;">
+                <h3>不AI，即出局</h3>
+                <p style="max-width: 800px; margin: 20px auto;">AI已经成为超级流量入口，用户通过高频交互如DeepSeek、豆包、文心一言等正在垄断用户需求的响应权。AI的发展趋势，势不可挡，很多用户不再使用自媒体跟传统的搜索引擎去搜索问题，越来越多的用户使用AI平台去搜索，特别是deepseek出现，更是把AI搜索推向高潮，所以布局AI搜索推荐刻不容缓。</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- GEO与SEO对比区域 -->
+    <section class="comparison bg-section comparison-bg" id="comparison">
+        <div class="container section-content">
+            <div class="section-title">
+                <h2>GEO优化 VS 传统SEO</h2>
+                <p>相比传统SEO优化，GEO推广优化机会更大，效果更好</p>
+            </div>
+            
+            <div class="comparison-grid">
+                <div class="comparison-card seo">
+                    <h3>传统SEO优化</h3>
+                    <ul class="comparison-list seo">
+                        <li>搜索结果为"链接"</li>
+                        <li>猜用户搜什么关键词</li>
+                        <li>关键词堆砌</li>
+                        <li>依赖搜索框</li>
+                        <li>10个人点击9个是同行</li>
+                        <li>求着平台给流量</li>
+                        <li>时效慢</li>
+                        <li>新入场无机会</li>
+                    </ul>
+                </div>
+                
+                <div class="comparison-card geo">
+                    <h3>GEO推广优化</h3>
+                    <ul class="comparison-list">
+                        <li>搜索结果为"答案"</li>
+                        <li>AI主动推荐你给客户</li>
+                        <li>客观推荐你认可度更高</li>
+                        <li>精准锁定需求人群</li>
+                        <li>10个人搜索8个是客户</li>
+                        <li>新机会先占先得</li>
+                        <li>见效更快</li>
+                        <li>AI搜索是新的流量趋势</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div style="text-align: center; margin-top: 40px; padding: 20px; background: var(--card-bg); border-radius: 10px;">
+                <h3 style="color: var(--accent);">SEO是链接，GEO是答案</h3>
+                <p>SEO吸引用户点击链接，而GEO是直接把你的内容变成AI的回答</p>
+            </div>
+            
+            <div style="text-align: center; margin-top: 40px;">
+                <h2>错过了百度搜索，又错过了抖音搜索</h2>
+                <h3 style="color: var(--accent); margin: 10px 0;">这次不能再错过AI大模型 GEO搜索排名了！</h3>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- 客户评价区域 -->
+    <section class="testimonials bg-section testimonials-bg">
+        <div class="container section-content">
+            <div class="section-title">
+                <h2>客户评价</h2>
+                <p>听听我们的客户如何评价百付科技的AI搜索排名优化服务</p>
+            </div>
+            <div class="testimonial-grid">
+                <div class="testimonial-card">
+                    <div class="testimonial-text">
+                        百付科技的AI搜索优化服务让我们的品牌在DeepSeek平台上迅速提升到首位，咨询量增加了300%。
+                    </div>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">张</div>
+                        <div>
+                            <h4>张明华</h4>
+                            <p>某科技公司市场总监</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="testimonial-text">
+                        通过百付科技的优化，我们在豆包等AI平台的品牌搜索排名稳居第一，获客成本降低了40%。
+                    </div>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">李</div>
+                        <div>
+                            <h4>李雪</h4>
+                            <p>某SaaS企业CEO</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="testimonial-text">
+                        百付科技的专业团队为我们制定了精准的AI搜索优化策略，品牌曝光度和行业影响力显著提升。
+                    </div>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">王</div>
+                        <div>
+                            <h4>王建国</h4>
+                            <p>某教育科技公司运营总监</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- CTA区域 -->
+    <!--<section class="cta-section" id="contact2">-->
+    <!--    <div class="container cta-content">-->
+    <!--        <div class="">-->
+    <!--            <h2>合作客户</h2>-->
+    <!--            <p><img src="./6.png" alt=""></p>-->
+    <!--        </div>-->
+         
+    <!--    </div>-->
+    <!--</section>-->
+
+    <!-- CTA区域 -->
+    <section class="cta-section" id="contact">
+        <div class="container cta-content">
+            <h2>准备好抢占AI搜索C位了吗？</h2>
+            <p>立即联系我们的专家团队，获取免费的AI搜索排名优化咨询和解决方案</p>
+          <a href="https://work.weixin.qq.com/ca/cawcdef601b0f8ca6e" target="_blank" rel="noopener noreferrer">
+    <button class="cta-button">立即咨询</button>
+</a>
+        </div>
+    </section>
+
+    <!-- 页脚 -->
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-column">
+                    <h3>百付科技</h3>
+                    <p>北京百付科技有限公司</p>
+                    <p>AI搜索排名优化专家，致力于帮助企业在新一代AI平台上抢占品牌C位，提升曝光和获客能力。</p>
+                    <div class="social-links">
+                        <a href="#"><i class="fab fa-weixin"></i></a>
+                        <a href="#"><i class="fab fa-weibo"></i></a>
+                        <a href="#"><i class="fab fa-linkedin-in"></i></a>
+                        <a href="#"><i class="fab fa-github"></i></a>
+                    </div>
+                </div>
+                <div class="footer-column">
+                    <h3>快速链接</h3>
+                    <ul class="footer-links">
+                        <li><a href="#home">首页</a></li>
+                        <li><a href="#what-is-geo">什么是GEO</a></li>
+                        <li><a href="#why-geo">为什么做GEO</a></li>
+                        <li><a href="#comparison">GEO vs SEO</a></li>
+                        <li><a href="#features">核心功能</a></li>
+                        <!--<li><a href="#contact2">合作客户</a></li>-->
+                        <li><a href="#contact">联系我们</a></li>
+                    </ul>
+                </div>
+                <div class="footer-column">
+                    <h3>服务项目</h3>
+                    <ul class="footer-links">
+                        <li><a href="#">AI搜索排名优化</a></li>
+                        <li><a href="#">品牌C位抢占</a></li>
+                        <li><a href="#">搜索数据分析</a></li>
+                        <li><a href="#">定制优化策略</a></li>
+                        <li><a href="#">效果监测报告</a></li>
+                    </ul>
+                </div>
+                <div class="footer-column">
+                    <h3>联系我们</h3>
+                    <ul class="footer-links">
+                        <li><i class="fas fa-globe"></i> 官网：https://geo.salqu.com</li>
+                        <li><i class="fas fa-map-marker-alt"></i> 北京百付科技有限公司</li>
+                        <li><i class="fas fa-phone"></i> 13691494191</li>
+                        <li><i class="fas fa-envelope"></i> 4796333@qq.com</li>
+                        <li><i class="fas fa-clock"></i> 周一至周日 9:00-18:00</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="copyright">
+                <p>&copy; 2025 百付科技 版权所有 | 北京百付科技有限公司</p>
+            </div>
+        </div>
+    </footer>
+
+<script>
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "https://hm.baidu.com/hm.js?468ebe5e4d633d496ec0853f13fd7c52";
+  var s = document.getElementsByTagName("script")[0]; 
+  s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+    <script>
+        // 简单的动画效果
+        document.addEventListener('DOMContentLoaded', function() {
+            // 导航栏滚动效果
+            window.addEventListener('scroll', function() {
+                const header = document.querySelector('header');
+                if (window.scrollY > 50) {
+                    header.style.background = 'rgba(10, 10, 10, 0.98)';
+                    header.style.padding = '10px 0';
+                } else {
+                    header.style.background = 'rgba(10, 10, 10, 0.95)';
+                    header.style.padding = '20px 0';
+                }
+            });
+            
+            // 平滑滚动
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href');
+                    if (targetId === '#') return;
+                    
+                    const targetElement = document.querySelector(targetId);
+                    if (targetElement) {
+                        window.scrollTo({
+                            top: targetElement.offsetTop - 80,
+                            behavior: 'smooth'
+                        });
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

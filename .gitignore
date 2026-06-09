@@ -1,0 +1,37 @@
+# 操作系统垃圾文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+# 编辑器/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.*.swp
+
+# 临时与备份文件
+*.tmp
+*.temp
+*.bak
+*.log
+
+# Python（如后续加入采集/分析脚本）
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+
+# Node（如后续加入前端/工具）
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# 注意：docs/ 下的 .md / .html / .pdf 均为可审计证据链的一部分，应纳入版本管理，不在此忽略。
