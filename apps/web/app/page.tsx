@@ -14,8 +14,12 @@ type EvidenceRun = {
     prompt_intent_type?: string;
     collected_at: string;
   };
-  citations: unknown[];
-  evidence_assets: unknown[];
+  raw_answer?: {
+    answer_text?: string;
+    raw_payload_hash?: string;
+  } | null;
+  citations: Array<{ domain?: string; url?: string; source_type?: string; position?: number }>;
+  evidence_assets: Array<{ asset_type?: string; url?: string; content_hash?: string | null }>;
   audit_events: unknown[];
 };
 
@@ -31,6 +35,9 @@ type ScoreSnapshot = {
     component_name: string;
     component_score: number;
     weighted_contribution: number;
+    denominator?: string;
+    positive_evidence_summary?: string;
+    negative_evidence_summary?: string;
   }>;
   answer_runs: unknown[];
   audit_events: unknown[];
@@ -92,9 +99,16 @@ type TraceabilityDetail = {
   report_exports: Array<{ report_version: string }>;
   score_snapshots: ScoreSnapshot[];
   evidence_runs: EvidenceRun[];
-  action_recommendations: Array<{ title: string; priority: string; status: string }>;
+  action_recommendations: Array<{
+    title: string;
+    priority: string;
+    status: string;
+    source_gap_type?: string | null;
+  }>;
   content_drafts: Array<{
-    draft: { title: string; review_status: string };
+    draft: { title: string; review_status: string; target_city?: string; target_platform?: string };
+    target_questions?: Array<{ text: string }>;
+    answer_runs?: Array<{ prompt_text?: string; platform?: string; city?: string }>;
   }>;
   audit_events: Array<{ event_type: string; target_type: string; method_version?: string | null }>;
   evidence_links: Array<{
@@ -181,6 +195,10 @@ function pct(value: number | undefined): string {
 
 function num(value: number | undefined): string {
   return Number(value || 0).toFixed(2);
+}
+
+function shortId(value: string | undefined): string {
+  return value ? value.slice(0, 8) : "unknown";
 }
 
 export default async function Home() {
@@ -396,6 +414,104 @@ export default async function Home() {
                     </li>
                   ))}
                 </ul>
+              </div>
+              <div className="traceDrilldown">
+                <h3>Node Drilldown</h3>
+                <div className="detailGrid">
+                  <details open>
+                    <summary>Score Components</summary>
+                    <ul className="nodeList">
+                      {traceability.score_snapshots[0]?.contributions.map((item) => (
+                        <li key={item.component_name}>
+                          <strong>{item.component_name}</strong>
+                          <span>
+                            {num(item.weighted_contribution)} weighted · denominator {item.denominator || "unknown"}
+                          </span>
+                          <small>{item.positive_evidence_summary || "No positive evidence summary"}</small>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                  <details open>
+                    <summary>Answer Evidence</summary>
+                    <ul className="nodeList">
+                      {traceability.evidence_runs.slice(0, 4).map((run) => (
+                        <li key={run.answer_run.id}>
+                          <strong>
+                            {run.answer_run.platform} · {run.answer_run.city} · {shortId(run.answer_run.id)}
+                          </strong>
+                          <span>{run.answer_run.prompt_text || "No prompt text"}</span>
+                          <small>
+                            {run.citations.length} citations · {run.evidence_assets.length} assets · raw_payload_hash{" "}
+                            {run.raw_answer?.raw_payload_hash || "missing"}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                  <details>
+                    <summary>Citation & Asset Nodes</summary>
+                    <ul className="nodeList">
+                      {traceability.evidence_runs.slice(0, 3).flatMap((run) =>
+                        [
+                          ...run.citations.slice(0, 2).map((citation, index) => ({
+                            key: `${run.answer_run.id}-citation-${index}`,
+                            title: citation.domain || citation.url || "citation",
+                            body: citation.url || "No URL",
+                            meta: `${citation.source_type || "unknown source"} · position ${citation.position || index + 1}`
+                          })),
+                          ...run.evidence_assets.slice(0, 1).map((asset, index) => ({
+                            key: `${run.answer_run.id}-asset-${index}`,
+                            title: asset.asset_type || "asset",
+                            body: asset.url || "No asset URL",
+                            meta: asset.content_hash || "No content hash"
+                          }))
+                        ].map((item) => (
+                          <li key={item.key}>
+                            <strong>{item.title}</strong>
+                            <span>{item.body}</span>
+                            <small>{item.meta}</small>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  </details>
+                  <details>
+                    <summary>Actions & Content Drafts</summary>
+                    <ul className="nodeList">
+                      {traceability.action_recommendations.slice(0, 4).map((action) => (
+                        <li key={action.title}>
+                          <strong>{action.priority}</strong>
+                          <span>{action.title}</span>
+                          <small>
+                            {action.status} · {action.source_gap_type || "no source gap"}
+                          </small>
+                        </li>
+                      ))}
+                      {traceability.content_drafts.slice(0, 4).map((item) => (
+                        <li key={item.draft.title}>
+                          <strong>{item.draft.review_status}</strong>
+                          <span>{item.draft.title}</span>
+                          <small>
+                            {item.draft.target_city || "no city"} · {item.draft.target_platform || "no platform"}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                  <details>
+                    <summary>Audit Event Nodes</summary>
+                    <ul className="nodeList">
+                      {traceability.audit_events.map((event, index) => (
+                        <li key={`${event.event_type}-${index}`}>
+                          <strong>{event.event_type}</strong>
+                          <span>{event.target_type}</span>
+                          <small>{event.method_version || "no method version"}</small>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </div>
               </div>
             </div>
           ) : (
