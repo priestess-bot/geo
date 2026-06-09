@@ -4,6 +4,7 @@ from dataclasses import asdict
 
 from fastapi import FastAPI
 
+from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
     build_p0a_collection_plan,
@@ -118,6 +119,35 @@ def au_google_spike_fixture_gate() -> dict[str, object]:
     }
 
 
+@app.get("/v1/visibility-scores/au/p0a-fixture")
+def au_p0a_fixture_visibility_score() -> dict[str, object]:
+    bootstrap = build_au_project_bootstrap()
+    records = run_fixture_collection_slice(
+        project_id=bootstrap.project.id,
+        prompts=bootstrap.prompt_questions,
+        market_profile=bootstrap.market_profile,
+        collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+        cities=("Australia", "Sydney"),
+        sample_size=1,
+        prompt_limit=10,
+    )
+    result = analyze_and_score_records(
+        project_id=bootstrap.project.id,
+        records=records,
+        brand=bootstrap.brand,
+        competitors=bootstrap.competitors,
+        platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
+        scope_type="project",
+        scope_value="p0a_fixture",
+    )
+    return {
+        "analysis_count": len(result.analyses),
+        "snapshot": asdict(result.snapshot),
+        "contributions": [asdict(contribution) for contribution in result.contributions],
+        "audit_event": asdict(result.audit_event),
+    }
+
+
 @app.get("/v1/contracts")
 def contracts() -> dict[str, list[str]]:
     return {
@@ -167,5 +197,12 @@ def contracts() -> dict[str, list[str]]:
             "PlaywrightAIModeCollector",
             "ThirdPartySerpCollector",
             "ManualBackfillCollector",
+        ],
+        "m3_analysis_scoring": [
+            "RuleBasedAnswerParser",
+            "AnswerAnalysis",
+            "VisibilityScoreSnapshot",
+            "ScoreContribution",
+            "au_visibility_v1",
         ],
     }

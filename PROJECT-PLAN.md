@@ -43,7 +43,7 @@
 | **M1** | AU MarketProfile + 行业模板 + Prompt Pack | E1、E2 | 能建 market=AU 项目，配 1 行业 + 100 prompt + 3–5 竞品 | P0a | `[~]` |
 | **M2a** | Stable AI Answer Runner + Raw Evidence Store | E3 | Perplexity + OpenAI 可采，证据全留，含触发状态、k=3、成本 | P0a | `[~]` |
 | **M2b** | Google AIO / AI Mode Spike | E3 | Google 自建/第三方/人工路径限时对比，输出 pass/fail gate | P0b | `[~]` |
-| **M3** | Answer Parser + AUVisibilityScore | E4 | 自动解析 + 可拆解可版本化评分 + 双分母 | P0a | `[ ]` |
+| **M3** | Answer Parser + AUVisibilityScore | E4 | 自动解析 + 可拆解可版本化评分 + 双分母 | P0a | `[~]` |
 | **M4** | Citation Graph + Competitor Benchmark | E5 | 信源图谱 + source gap + 3–5 竞品对标 | P0c | `[ ]` |
 | **M5** | Evidence Report Export | E9（部分） | 导出含方法说明、Google spike 结论与证据附录的 PDF/CSV | P0c | `[ ]` |
 | **M6** | Action Plan + 复测 | E9（部分） | 缺口转任务 + T+7/14/30 复测前后对比 | P1 | `[ ]` |
@@ -194,23 +194,23 @@ DoD：
 
 任务：
 
-- `[ ]` (P0a) ParserEngine 接口 + 规则解析实现（brand/competitor/recommend/rank/sentiment/local_relevance/citations…）— `Step7 / E4-01..06`
-- `[ ]` (P0a) 实体/别名表 + 同名消歧人工确认 — `§8.14 / Step7`
-- `[ ]` (P0a) ScoringFormula 接口 + `au_visibility_v1`（8 项，权重和 1.00，版本化）— `Step9 / E4-08`
-- `[ ]` (P0a) 双分母：Trigger Rate vs Mention/Recommendation Rate — `Step9.2`
-- `[ ]` (P0a) k 次聚合 + 均值/离散度；P0a k=3，Google spike k=2 且单独标注 — `Step9.3`
-- `[ ]` (P0a) VisibilityScoreSnapshot 聚合表（project/platform/city/intent/prompt）— `§8.13`
-- `[ ]` (P0a) ScoreContribution 分数解释包：子指标贡献、权重、分母、正负证据、局限说明 — `Step5.1 / §8.18`
+- `[x]` (P0a) ParserEngine 接口 + 规则解析实现（brand/competitor/recommend/rank/sentiment/local_relevance/citations…）— `Step7 / E4-01..06`
+- `[~]` (P0a) 实体/别名表 + 同名消歧人工确认 — `§8.14 / Step7`（实体契约已落；人工确认工作流待接）
+- `[x]` (P0a) ScoringFormula 接口 + `au_visibility_v1`（8 项，权重和 1.00，版本化）— `Step9 / E4-08`
+- `[x]` (P0a) 双分母：Trigger Rate vs Mention/Recommendation Rate — `Step9.2`
+- `[x]` (P0a) k 次聚合 + 均值/离散度；P0a k=3，Google spike k=2 且单独标注 — `Step9.3`
+- `[x]` (P0a) VisibilityScoreSnapshot 聚合表（project/platform/city/intent/prompt）— `§8.13`
+- `[x]` (P0a) ScoreContribution 分数解释包：子指标贡献、权重、分母、正负证据、局限说明 — `Step5.1 / §8.18`
 - `[ ]` (P1) LLM-as-judge 解析实现（与规则 A/B）— `Step7`
 - `[ ]` (P1) 评分权重可配置 + 审计；人工复核留痕 — `E4-10/11`
 
 DoD：
 
-- `[ ]` 自动解析提及/推荐/排名/竞品/引用/本地相关性
-- `[ ]` 生成可拆解、公式版本化的 AUVisibilityScore，能点回 AnswerRun
-- `[ ]` 任意总分/平台分/城市分/intent 分都有 ScoreContribution 解释包
-- `[ ]` 报告能区分 Trigger Rate 与 Mention/Recommendation Rate
-- `[ ]` 评分公式可升级，历史分数按旧版本可重算
+- `[x]` 自动解析提及/推荐/排名/竞品/引用/本地相关性
+- `[x]` 生成可拆解、公式版本化的 AUVisibilityScore，能点回 AnswerRun
+- `[x]` 任意总分/平台分/城市分/intent 分都有 ScoreContribution 解释包
+- `[x]` 报告能区分 Trigger Rate 与 Mention/Recommendation Rate
+- `[x]` 评分公式可升级，历史分数按旧版本可重算
 
 ### M4 · Phase 4：Citation Graph + Competitor Benchmark（P0c）
 

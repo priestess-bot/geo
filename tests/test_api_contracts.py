@@ -71,6 +71,15 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["gate"]["gate_status"], "pass")
         self.assertFalse(payload["gate"]["limited_coverage"])
 
+    def test_m3_visibility_score_fixture_endpoint(self) -> None:
+        response = self.client.get("/v1/visibility-scores/au/p0a-fixture")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["analysis_count"], 40)
+        self.assertEqual(payload["snapshot"]["formula_version"], "au_visibility_v1")
+        self.assertEqual(len(payload["contributions"]), 8)
+        self.assertEqual(payload["audit_event"]["event_type"], "visibility_score_snapshot_created")
+
 
 if __name__ == "__main__":
     unittest.main()

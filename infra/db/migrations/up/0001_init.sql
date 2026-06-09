@@ -178,7 +178,8 @@ CREATE TABLE visibility_score_snapshots (
   mention_rate numeric(8,4) NOT NULL,
   recommendation_rate numeric(8,4) NOT NULL,
   answer_run_ids uuid[] NOT NULL DEFAULT '{}',
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  dispersion numeric(8,4) NOT NULL DEFAULT 0
 );
 
 CREATE TABLE collection_costs (

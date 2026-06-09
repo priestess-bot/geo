@@ -322,6 +322,7 @@ class VisibilityScoreSnapshot:
     recommendation_rate: float
     answer_run_ids: list[str]
     created_at: datetime
+    dispersion: float = 0.0
 
 
 @dataclass(frozen=True)

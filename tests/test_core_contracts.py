@@ -5,6 +5,7 @@ from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
 
 from geno_core.audit import build_audit_event, hash_payload
+from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
     build_p0a_collection_plan,
@@ -29,6 +30,7 @@ from geno_core.google_spike import (
 from geno_core.market import build_au_market_profile
 from geno_core.models import AnswerAnalysis, CollectionFailureRecord, ReportExport
 from geno_core.prompt_pack import INTENT_WEIGHTS
+from geno_core.parser import RuleBasedAnswerParser
 from geno_core.scoring import AU_VISIBILITY_V1, score_answer_analysis
 
 
@@ -312,6 +314,67 @@ class CoreContractsTest(unittest.TestCase):
         gate = evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=plan, records=records)
         self.assertEqual(gate.gate_status, "fail")
         self.assertTrue(gate.limited_coverage)
+
+    def test_m3_rule_parser_extracts_brand_competitors_and_citations(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(),),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=1,
+        )
+        analysis = RuleBasedAnswerParser().parse_record(
+            record=records[0],
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+        )
+        self.assertTrue(analysis.brand_mentioned)
+        self.assertTrue(analysis.brand_recommended)
+        self.assertEqual(analysis.citation_count, 3)
+        self.assertGreaterEqual(analysis.local_relevance_score, 40)
+        self.assertEqual(analysis.parser_engine_id, "rule_based_v1")
+
+    def test_m3_analysis_pipeline_creates_aggregate_score_and_explanation(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia", "Sydney"),
+            sample_size=1,
+            prompt_limit=10,
+        )
+        result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+        )
+        contribution_total = round(sum(item.weighted_contribution for item in result.contributions), 4)
+        self.assertEqual(len(result.analyses), 40)
+        self.assertEqual(len(result.contributions), len(AU_VISIBILITY_V1))
+        self.assertEqual(contribution_total, result.snapshot.final_score)
+        self.assertGreater(result.snapshot.mention_rate, 0)
+        self.assertLessEqual(result.snapshot.mention_rate, 1)
+        self.assertGreaterEqual(result.snapshot.dispersion, 0)
+        self.assertEqual(result.audit_event.event_type, "visibility_score_snapshot_created")
+        self.assertEqual(
+            result.audit_event.output_refs["score_snapshot_ids"],
+            [result.snapshot.id],
+        )
 
 
 if __name__ == "__main__":

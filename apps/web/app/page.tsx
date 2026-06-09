@@ -4,6 +4,7 @@ const modules = [
   "AI Answer Runner fixture",
   "Raw Evidence Store wired",
   "Google spike gate fixture",
+  "Rule Parser + AUVisibilityScore",
   "Audit / Provenance",
   "AUVisibilityScore",
   "Evidence Report"
