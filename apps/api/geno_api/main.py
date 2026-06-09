@@ -135,6 +135,29 @@ def runtime_evidence_runs(
         close_repository_connection(repository)
 
 
+@app.get("/v1/visibility-scores/runtime")
+def runtime_visibility_scores(
+    project_id: str | None = None,
+    scope_type: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.list_runtime_score_snapshots(
+            project_id=project_id,
+            scope_type=scope_type,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/google-spikes/au/plan")
 def au_google_spike_plan() -> dict[str, object]:
     bootstrap = build_au_project_bootstrap()
@@ -599,6 +622,8 @@ def contracts() -> dict[str, list[str]]:
             "save_project_bootstrap",
             "RuntimeEvidenceRun",
             "RuntimeEvidencePage",
+            "RuntimeScoreSnapshot",
+            "RuntimeScoreSnapshotPage",
             "ProjectBootstrap",
             "PromptQuestion",
             "RawEvidenceRecord",
@@ -608,5 +633,7 @@ def contracts() -> dict[str, list[str]]:
             "TraceabilityBundle",
             "/v1/evidence-runs/runtime",
             "worker --persist",
+            "worker --persist-analysis",
+            "/v1/visibility-scores/runtime",
         ],
     }

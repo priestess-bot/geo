@@ -65,6 +65,17 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("DATABASE_URL", result.stderr)
 
+    def test_persist_analysis_requires_persist(self) -> None:
+        result = self._run_worker_result(
+            "--mode",
+            "fixture",
+            "--prompt-limit",
+            "1",
+            "--persist-analysis",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--persist-analysis requires --persist", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

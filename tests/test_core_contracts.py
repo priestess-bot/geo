@@ -44,7 +44,13 @@ from geno_core.knowledge import (
     search_knowledge_facts,
 )
 from geno_core.market import build_au_market_profile
-from geno_core.models import AnswerAnalysis, CollectionFailureRecord, ReportExport, RuntimeEvidencePage
+from geno_core.models import (
+    AnswerAnalysis,
+    CollectionFailureRecord,
+    ReportExport,
+    RuntimeEvidencePage,
+    RuntimeScoreSnapshotPage,
+)
 from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.parser import RuleBasedAnswerParser
 from geno_core.report import MarkdownCsvReportExporter
@@ -1147,6 +1153,123 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM answer_runs ar WHERE ar.project_id = %s AND ar.platform = %s AND ar.status = %s", executed_sql)
         self.assertIn("LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id", executed_sql)
         self.assertIn("FROM raw_answers", executed_sql)
+
+    def test_postgres_repository_reads_runtime_score_snapshot_page(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        snapshot_id = "a7f7f8aa-5d40-4fdf-a2b3-b8729a9a5e2f"
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [
+                    {
+                        "id": snapshot_id,
+                        "project_id": project_id,
+                        "scope_type": "collection_slice",
+                        "scope_value": "worker_runtime",
+                        "formula_version": "au_visibility_v1",
+                        "platform_weights_snapshot": {"chatgpt": 0.30, "perplexity": 0.25},
+                        "final_score": 72.5,
+                        "trigger_rate": 1.0,
+                        "mention_rate": 1.0,
+                        "recommendation_rate": 0.75,
+                        "answer_run_ids": [answer_run_id],
+                        "created_at": now,
+                        "dispersion": 2.5,
+                    }
+                ],
+                [
+                    {
+                        "id": "df03794b-e8fc-4b69-aa62-2304a55ff3a9",
+                        "score_snapshot_id": snapshot_id,
+                        "component_name": "MentionScore",
+                        "component_score": 100.0,
+                        "weight": 0.18,
+                        "weighted_contribution": 18.0,
+                        "denominator": "surface_triggered",
+                        "evidence_answer_run_ids": [answer_run_id],
+                        "positive_evidence_summary": "brand mentioned",
+                        "negative_evidence_summary": "",
+                        "confidence_note": "avg_parser_confidence=0.9",
+                        "created_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": answer_run_id,
+                        "project_id": project_id,
+                        "prompt_question_id": "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0",
+                        "platform": "perplexity",
+                        "surface": "sonar",
+                        "access_method": "official_api",
+                        "market_code": "AU",
+                        "city": "Australia",
+                        "language": "en-AU",
+                        "device": "desktop",
+                        "answer_present": True,
+                        "surface_triggered": True,
+                        "sample_index": 1,
+                        "sample_size": 1,
+                        "model_or_surface": "sonar",
+                        "account_state": "api_key",
+                        "collector_backend_id": "fixture_perplexity_sonar",
+                        "collector_version": "fixture-v1",
+                        "collected_at": now,
+                        "status": "completed",
+                        "prompt_text": "Is ExampleBrand good in Australia?",
+                        "prompt_intent_type": "brand_awareness",
+                        "prompt_priority": 1,
+                        "prompt_version": "au_dtc_ecommerce_v1",
+                    }
+                ],
+                {
+                    "id": "d1466dad-237b-5f5f-b7cc-44e67d628d15",
+                    "answer_run_id": answer_run_id,
+                    "parser_engine_id": "rule_based_v1",
+                    "analysis_version": "v1",
+                    "payload": {"brand_mentioned": True},
+                    "confidence": 0.9,
+                    "created_at": now,
+                },
+                [
+                    {
+                        "id": "9b663656-4a0e-4fda-a764-0a4d62fa15f1",
+                        "event_type": "visibility_score_snapshot_created",
+                        "project_id": project_id,
+                        "actor_type": "system",
+                        "actor_id": "geno-core.scoring",
+                        "target_type": "visibility_score_snapshot",
+                        "target_id": snapshot_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"answer_run_ids": [answer_run_id]},
+                        "output_refs": {"score_snapshot_ids": [snapshot_id]},
+                        "method_version": "au_visibility_v1",
+                        "reason": "test",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+        page = PostgresEvidenceRepository(connection).list_runtime_score_snapshots(
+            project_id=project_id,
+            scope_type="collection_slice",
+            limit=10,
+            offset=0,
+        )
+        self.assertIsInstance(page, RuntimeScoreSnapshotPage)
+        self.assertEqual(page.total_count, 1)
+        record = page.records[0]
+        self.assertEqual(record.snapshot["final_score"], 72.5)
+        self.assertEqual(record.contributions[0]["component_name"], "MentionScore")
+        self.assertEqual(record.answer_runs[0].answer_run["prompt_text"], "Is ExampleBrand good in Australia?")
+        self.assertEqual(record.answer_runs[0].analysis["payload"]["brand_mentioned"], True)
+        self.assertEqual(record.audit_events[0]["event_type"], "visibility_score_snapshot_created")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM visibility_score_snapshots WHERE project_id = %s AND scope_type = %s", executed_sql)
+        self.assertIn("FROM score_snapshot_runs ssr JOIN answer_runs ar ON ar.id = ssr.answer_run_id", executed_sql)
+        self.assertIn("LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id", executed_sql)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,9 @@ from geno_core.models import (
     RetestSchedule,
     RuntimeEvidencePage,
     RuntimeEvidenceRun,
+    RuntimeScoreSnapshot,
+    RuntimeScoreSnapshotPage,
+    RuntimeScoreSnapshotRun,
     ScoreContribution,
     TraceabilityBundle,
     VisibilityScoreSnapshot,
@@ -153,6 +156,44 @@ COLLECTION_COST_COLUMNS = (
     "total_cost",
     "created_at",
 )
+VISIBILITY_SCORE_SNAPSHOT_COLUMNS = (
+    "id",
+    "project_id",
+    "scope_type",
+    "scope_value",
+    "formula_version",
+    "platform_weights_snapshot",
+    "final_score",
+    "trigger_rate",
+    "mention_rate",
+    "recommendation_rate",
+    "answer_run_ids",
+    "created_at",
+    "dispersion",
+)
+SCORE_CONTRIBUTION_COLUMNS = (
+    "id",
+    "score_snapshot_id",
+    "component_name",
+    "component_score",
+    "weight",
+    "weighted_contribution",
+    "denominator",
+    "evidence_answer_run_ids",
+    "positive_evidence_summary",
+    "negative_evidence_summary",
+    "confidence_note",
+    "created_at",
+)
+ANSWER_ANALYSIS_READ_COLUMNS = (
+    "id",
+    "answer_run_id",
+    "parser_engine_id",
+    "analysis_version",
+    "payload",
+    "confidence",
+    "created_at",
+)
 AUDIT_EVENT_COLUMNS = (
     "id",
     "event_type",
@@ -230,6 +271,128 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=tuple(records),
+        )
+
+    def list_runtime_score_snapshots(
+        self,
+        *,
+        project_id: str | None = None,
+        scope_type: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeScoreSnapshotPage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id))
+        if scope_type:
+            filters.append("scope_type = %s")
+            params.append(scope_type)
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM visibility_score_snapshots {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(VISIBILITY_SCORE_SNAPSHOT_COLUMNS)}
+                FROM visibility_score_snapshots
+                {where_clause}
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            snapshots = _rows_dict(cursor.fetchall(), VISIBILITY_SCORE_SNAPSHOT_COLUMNS)
+            records = tuple(
+                self._load_runtime_score_snapshot(
+                    cursor=cursor,
+                    snapshot=snapshot,
+                    snapshot_id=str(snapshot["id"]),
+                )
+                for snapshot in snapshots
+            )
+        return RuntimeScoreSnapshotPage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=records,
+        )
+
+    def _load_runtime_score_snapshot(
+        self,
+        *,
+        cursor: DbCursor,
+        snapshot: dict[str, Any],
+        snapshot_id: str,
+    ) -> RuntimeScoreSnapshot:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(SCORE_CONTRIBUTION_COLUMNS)}
+            FROM score_contributions
+            WHERE score_snapshot_id = %s
+            ORDER BY component_name ASC, created_at ASC
+            """,
+            (_uuid(snapshot_id),),
+        )
+        contributions = _rows_dict(cursor.fetchall(), SCORE_CONTRIBUTION_COLUMNS)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(f"ar.{column}" for column in ANSWER_RUN_COLUMNS)},
+                   pq.text AS prompt_text,
+                   pq.intent_type AS prompt_intent_type,
+                   pq.priority AS prompt_priority,
+                   pq.prompt_version AS prompt_version
+            FROM score_snapshot_runs ssr
+            JOIN answer_runs ar ON ar.id = ssr.answer_run_id
+            LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id
+            WHERE ssr.score_snapshot_id = %s
+            GROUP BY {", ".join(f"ar.{column}" for column in ANSWER_RUN_COLUMNS)},
+                     pq.text, pq.intent_type, pq.priority, pq.prompt_version
+            ORDER BY ar.collected_at ASC, ar.id ASC
+            """,
+            (_uuid(snapshot_id),),
+        )
+        answer_runs = _rows_dict(cursor.fetchall(), ANSWER_RUN_READ_COLUMNS)
+        runtime_answer_runs: list[RuntimeScoreSnapshotRun] = []
+        for answer_run in answer_runs:
+            answer_run_id = str(answer_run["id"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ANSWER_ANALYSIS_READ_COLUMNS)}
+                FROM answer_analyses
+                WHERE answer_run_id = %s
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (_uuid(answer_run_id),),
+            )
+            analysis_row = cursor.fetchone()
+            runtime_answer_runs.append(
+                RuntimeScoreSnapshotRun(
+                    answer_run=answer_run,
+                    analysis=_row_dict(analysis_row, ANSWER_ANALYSIS_READ_COLUMNS) if analysis_row else None,
+                )
+            )
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE target_type = %s AND target_id = %s
+            ORDER BY created_at ASC
+            """,
+            ("visibility_score_snapshot", snapshot_id),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeScoreSnapshot(
+            snapshot=snapshot,
+            contributions=contributions,
+            answer_runs=tuple(runtime_answer_runs),
+            audit_events=audit_events,
         )
 
     def _load_runtime_evidence_run(

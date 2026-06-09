@@ -5,6 +5,7 @@ import json
 import sys
 from dataclasses import asdict
 
+from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import run_collection_slice
 from geno_core.collectors import (
@@ -40,6 +41,7 @@ def _persist_records(
     bootstrap: ProjectBootstrap,
     successes: tuple[RawEvidenceRecord, ...],
     failures: tuple[CollectionFailureRecord, ...],
+    persist_analysis: bool,
 ) -> dict[str, object]:
     repository = build_repository_from_env()
     repository.save_project_bootstrap(bootstrap)
@@ -47,6 +49,42 @@ def _persist_records(
         repository.save_raw_evidence_records(successes)
     if failures:
         repository.save_collection_failure_records(failures)
+    analysis_summary: dict[str, object] = {"enabled": False}
+    if persist_analysis and successes:
+        platform_weights_snapshot = {
+            item.platform: item.weight
+            for item in bootstrap.market_profile.platforms
+            if item.enabled and item.platform in {"chatgpt", "perplexity"}
+        }
+        analysis_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=successes,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot=platform_weights_snapshot,
+            scope_type="collection_slice",
+            scope_value="worker_runtime",
+        )
+        repository.save_answer_analyses(analysis_result.analyses)
+        repository.save_score_snapshot(
+            analysis_result.snapshot,
+            analysis_result.contributions,
+            analysis_result.audit_event,
+        )
+        analysis_summary = {
+            "enabled": True,
+            "analysis_count": len(analysis_result.analyses),
+            "score_snapshot_id": analysis_result.snapshot.id,
+            "score_contributions": len(analysis_result.contributions),
+            "final_score": analysis_result.snapshot.final_score,
+        }
+    elif persist_analysis:
+        analysis_summary = {
+            "enabled": True,
+            "analysis_count": 0,
+            "score_contributions": 0,
+            "reason": "no_successful_records",
+        }
     return {
         "enabled": True,
         "project_bootstrap": True,
@@ -56,6 +94,7 @@ def _persist_records(
         "competitors": len(bootstrap.competitors),
         "raw_evidence_records": len(successes),
         "collection_failure_records": len(failures),
+        "analysis": analysis_summary,
     }
 
 
@@ -70,7 +109,14 @@ def main() -> None:
         action="store_true",
         help="Persist successful and failed collection records through DATABASE_URL",
     )
+    parser.add_argument(
+        "--persist-analysis",
+        action="store_true",
+        help="After --persist, parse successful records and persist score snapshot/contributions",
+    )
     args = parser.parse_args()
+    if args.persist_analysis and not args.persist:
+        parser.error("--persist-analysis requires --persist")
 
     bootstrap = build_au_project_bootstrap()
     prompts = bootstrap.prompt_questions
@@ -97,7 +143,12 @@ def main() -> None:
     persistence: dict[str, object] = {"enabled": False}
     if args.persist:
         try:
-            persistence = _persist_records(bootstrap=bootstrap, successes=successes, failures=failures)
+            persistence = _persist_records(
+                bootstrap=bootstrap,
+                successes=successes,
+                failures=failures,
+                persist_analysis=args.persist_analysis,
+            )
         except RuntimePersistenceError as exc:
             print(f"persistence_error: {exc}", file=sys.stderr)
             raise SystemExit(2) from exc

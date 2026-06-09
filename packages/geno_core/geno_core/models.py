@@ -557,6 +557,28 @@ class RuntimeEvidencePage:
 
 
 @dataclass(frozen=True)
+class RuntimeScoreSnapshotRun:
+    answer_run: dict[str, Any]
+    analysis: dict[str, Any] | None
+
+
+@dataclass(frozen=True)
+class RuntimeScoreSnapshot:
+    snapshot: dict[str, Any]
+    contributions: tuple[dict[str, Any], ...]
+    answer_runs: tuple[RuntimeScoreSnapshotRun, ...]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeScoreSnapshotPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeScoreSnapshot, ...]
+
+
+@dataclass(frozen=True)
 class AuditEvent:
     id: str
     event_type: str

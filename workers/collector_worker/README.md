@@ -30,6 +30,18 @@ python3 workers/collector_worker/run_collection_slice.py --mode fixture --persis
 `PostgresEvidenceRepository`. If `DATABASE_URL` is missing, the worker exits with code `2` and
 prints a persistence error instead of silently dropping evidence.
 
+Persisted fixture slice with analysis/scoring:
+
+```bash
+DATABASE_URL=postgresql://geno:geno@localhost:5432/geno \
+PYTHONPATH=packages/geno_core:apps/api \
+python3 workers/collector_worker/run_collection_slice.py --mode fixture --prompt-limit 1 --persist --persist-analysis
+```
+
+`--persist-analysis` requires `--persist`; it parses successful records with the rule parser and
+stores `AnswerAnalysis`, `VisibilityScoreSnapshot`, `ScoreContribution`, `ScoreSnapshotRun`, and
+the score audit event. Failed records remain auditable through `CollectionFailureRecord`.
+
 API adapter slice:
 
 ```bash

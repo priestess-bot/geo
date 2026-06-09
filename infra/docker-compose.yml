@@ -60,6 +60,7 @@ services:
       - --prompt-limit
       - "1"
       - --persist
+      - --persist-analysis
     depends_on:
       postgres:
         condition: service_healthy

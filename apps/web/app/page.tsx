@@ -13,7 +13,9 @@ const modules = [
   "DATABASE_URL Runtime",
   "Project Bootstrap Persistence",
   "Worker --persist",
+  "Worker --persist-analysis",
   "Prompt-linked Runtime Evidence API",
+  "Runtime Score API",
   "Audit / Provenance",
   "AUVisibilityScore",
   "Evidence Report"
