@@ -1,0 +1,296 @@
+# GENO SaaS 澳大利亚首发 · 项目管理计划（PROJECT-PLAN）
+
+本文件是**待办层**：把 `docs/` 里的规格拆成可追踪、可增量交付、可验收的里程碑与任务。规格变动时，改代码 + 改 `docs/` + 回写 `decisions/` ADR 在同一个 PR 内完成。
+
+- 规格源（不动）：[docs/GENO-SaaS-AU-首发技术落地路径.md](docs/GENO-SaaS-AU-首发技术落地路径.md)、[docs/GENO-SaaS-MVP-一期需求拆解表.md](docs/GENO-SaaS-MVP-一期需求拆解表.md)、[docs/GENO-SaaS-MVP-技术设计文档.md](docs/GENO-SaaS-MVP-技术设计文档.md)
+- 三层对应：`docs/`（规格）→ 本文件（待办）→ 代码（分模块）→ 分支/PR/验收（节奏）
+
+## 0. 使用约定
+
+**状态标记**：`[ ]` 待办 · `[~]` 进行中 · `[x]` 完成（用 issue 时以 issue 状态为准，本文件做总览）
+
+**优先级**（沿用 AU 路径 §4 分层，覆盖需求表中偏国内口径）：
+
+| 级别 | 含义 |
+| --- | --- |
+| P0 | 证据型 MVP 必须，缺则闭环不可用 |
+| P1 | 第二阶段，影响交付效率与客户体验 |
+| P2 | 验证市场后再做（内容生成、集成、更广平台） |
+
+**完成定义（DoD）**：每条验收勾选框来自 AU 路径 §9 与需求表各 Epic 的「验收标准」列。任务勾完 + 该里程碑 DoD 勾完 = 里程碑达成。
+
+**任务来源标注**：`Step N` = AU 路径实施步骤；`§8.x` = AU 路径数据模型；`EN-xx` = MVP 需求表 Epic 条目。
+
+### 0.1 范围对齐说明（重要，防止把旧流程带回来）
+
+本计划以 **AU 首发技术路径**为准，对通用《MVP 一期需求拆解表》做三处覆盖：
+
+1. **流程证据优先**：主线是「证据 → 信源图谱 → 竞品差距 → 行动 → 报告 → 复测 → 内容」，不是「配置 → 采集 → 评分 → 知识库 → 内容生成 → 分发」。
+2. **平台换成澳洲**：P0 平台为 `google_aio`、`google_ai_mode`、`chatgpt`、`perplexity`；需求表中 DeepSeek/豆包/Kimi/元宝/文小言等国内平台**不在 AU 首发范围**。
+3. **内容/知识库/分发降级**：需求表的 E6 知识库、E7 内容工作台、E8 分发在 AU 首发里整体降到 **P2（M7）**；P0/P1 只做证据、评分、信源、竞品、报告、行动、复测。
+
+确定性口径（与规格一致，不再浮动）：**1 个行业**首发、**100 条** prompt（上限 200）、每条重复采样 **k=3**、**3–5 个**竞品、评分公式 `au_visibility_v1`（8 项权重和 1.00）、平台权重 Google 45 / ChatGPT 30 / Perplexity 25。
+
+## 1. 里程碑总览
+
+里程碑 = AU 路径 §7 的 8 个阶段。**平台评分权重与采集构建顺序是两回事**：权重 Google 最高，但构建先做最易采的 Perplexity，Google AIO 当独立 spike。
+
+| 里程碑 | 阶段 | 覆盖 Epic | 出口标准（一句话） | P 级 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| **M0** | 接口契约与开源底座 | E10（部分） | 一键起开源底座，8 个接口有 stub，§8 表可迁移，CI 绿 | P0 | `[ ]` |
+| **M1** | AU MarketProfile + 行业模板 + Prompt Pack | E1、E2 | 能建 market=AU 项目，配 1 行业 + 100 prompt + 3–5 竞品 | P0 | `[ ]` |
+| **M2** | AI Answer Runner + Raw Evidence Store | E3 | 三平台可采，证据全留，含触发状态与 k=3 | P0 | `[ ]` |
+| **M3** | Answer Parser + AUVisibilityScore | E4 | 自动解析 + 可拆解可版本化评分 + 双分母 | P0 | `[ ]` |
+| **M4** | Citation Graph + Competitor Benchmark | E5 | 信源图谱 + source gap + 3–5 竞品对标 | P0 | `[ ]` |
+| **M5** | Evidence Report Export | E9（部分） | 导出含方法说明与证据附录的 PDF/CSV | P0 | `[ ]` |
+| **M6** | Action Plan + 复测 | E9（部分） | 缺口转任务 + T+7/14/30 复测前后对比 | P1 | `[ ]` |
+| **M7** | Knowledge Facts + Content Engine + Integrations | E6、E7、E8 | 本地事实库 + 证据驱动内容 + 集成 | P2 | `[ ]` |
+
+**P0 最小可上线 = M0–M5**（对应 AU 路径 §6「最小可落地版本」9 项）。
+
+## 2. 全局完成定义（通用 DoD）
+
+每个任务合并前都要满足：
+
+- `[ ]` 代码有单测；关键路径有集成测试
+- `[ ]` 通过 CI（lint + 测试 + 迁移可起）
+- `[ ]` 若改了行为/口径，同 PR 更新对应 `docs/`，必要时加 `decisions/` ADR
+- `[ ]` P0 数据写入可追溯：能点回 `AnswerRun` / `answer_run_ids`
+- `[ ]` 有一次可演示（哪怕命令行或截图）
+
+**P0 整体验收门槛**（搬自 AU 路径 §9，M0–M5 全绿才算 P0 达成）：
+
+- `[ ]` 可创建 `market=AU` 项目，配 1 行业模板 + 100 条澳洲问题集 + 3–5 竞品
+- `[ ]` 完成 Google、ChatGPT、Perplexity 三平台采集，每条有 answer + citation + 截图/HTML
+- `[ ]` 每条采集记录 platform/surface/access_method/city/language/device/collected_at/collector_version/collector_backend_id
+- `[ ]` 每条采集记录 `answer_present`/`surface_triggered`；每 prompt 重复采样 k=3
+- `[ ]` 自动解析品牌提及/推荐/排名/竞品/引用/本地相关性
+- `[ ]` 生成可拆解、公式版本化的 `AUVisibilityScore`，能点回原始 answer run
+- `[ ]` 报告区分 Trigger Rate 与 Mention/Recommendation Rate
+- `[ ]` 生成 Citation Graph，识别 source gap，输出 3–5 竞品 Benchmark
+- `[ ]` 导出含方法说明（含 API/消费者界面差异抽检结论）与原始证据附录的 PDF/CSV
+
+**架构验收门槛**（开源·可插拔，搬自 AU 路径 §9）：
+
+- `[ ]` 向量库 pgvector ↔ Qdrant 切换后业务不变
+- `[ ]` 图库 PG 邻接表 ↔ Neo4j 切换后 citation graph 查询不变
+- `[ ]` LLM 供应商经 LiteLLM 切换，解析与生成不改
+- `[ ]` 解析器规则实现与 LLM-as-judge 实现可对同一答案并行对比并保留版本
+- `[ ]` 评分公式可升级到新版本，历史分数仍可按旧版本重算
+
+## 3. 里程碑与任务拆解
+
+### M0 · Phase 0：接口契约与开源底座（P0）
+
+> 出口标准：`docker-compose up` 起全部依赖；8 个接口有 stub + 类型；§8 全部表可迁移可回滚；CI 绿。
+
+任务：
+
+- `[ ]` (P0) 仓库骨架：`apps/`、`packages/`、`workers/`、`infra/`、`tests/`、`decisions/`
+- `[ ]` (P0) 数据契约：实现 §8 全部表迁移（MarketProfile…CollectionCost）— `§8`
+- `[ ]` (P0) 接口契约 stub（先定义不实现）：CollectorBackend、LLMGateway、ParserEngine、VectorStore、GraphStore、GeoProvider、ScoringFormula、ReportExporter — `Step3.2`
+- `[ ]` (P0) `infra/docker-compose.yml` 开源底座：PostgreSQL+pgvector、MinIO、ClickHouse、Temporal、Langfuse、LiteLLM — `§6`
+- `[ ]` (P0) 空 CI：lint + 测试 + 迁移起服
+- `[ ]` (P0) LLM 网关配置 + 调用日志 + 对象存储配置 — `E10-01 / E10-03 / E10-05`
+
+DoD：
+
+- `[ ]` 一键起依赖；§8 表可建可回滚；8 接口 stub + CI 绿
+- `[ ]` 三个可插拔点（向量库/图库/LLM）已留好接口（架构验收的地基）
+
+### M1 · Phase 1：AU MarketProfile + 行业模板 + Prompt Pack（P0）
+
+> 出口标准：能创建 market=AU 项目，配 1 行业模板、100 条 AU prompt、3–5 竞品，且平台/城市/语言/货币/权重全部从 MarketProfile 读取。
+
+任务：
+
+- `[ ]` (P0) 租户/项目/品牌/竞品/角色权限 — `E1-01..05`
+- `[ ]` (P0) AU MarketProfile 固定值（locale/timezone/currency/cities/平台权重/信源分类）— `Step1`
+- `[ ]` (P0) 1 个 IndustryProfile 行业模板 — `Step2`
+- `[ ]` (P0) Prompt Pack：100 条 AU 英文问题集（上限 200），每条绑 intent_type/city/prompt_version — `Step3 / E2-03..05`
+- `[ ]` (P0) 平台字典（AU：google_aio/google_ai_mode/chatgpt/perplexity）+ 平台权重 — `E2-01..02`
+- `[ ]` (P1) 批量导入 prompt（CSV/XLSX）— `E2-06`
+- `[ ]` (P1) 操作审计日志 — `E1-06`
+
+DoD：
+
+- `[ ]` 可创建 market=AU 项目，配 3–5 竞品
+- `[ ]` 可选 1 行业模板并生成 100 条澳洲问题集
+- `[ ]` 平台、城市、语言、货币、权重无写死，全部来自 MarketProfile
+
+### M2 · Phase 2：AI Answer Runner + Raw Evidence Store（P0，最硬）
+
+> 出口标准：三平台均可采到 answer+citation+证据；每条记录触发状态与采集元数据；同一平台两后端可切换不改业务代码。
+
+任务（构建顺序：易→难）：
+
+- `[ ]` (P0) CollectorBackend 接口落地 + **Perplexity Sonar 后端**（最易采，先打通全链路）— `Step4`
+- `[ ]` (P0) **ChatGPT** 官方 web search 后端 — `Step4`
+- `[ ]` (P0·spike) **Google AIO 后端** + **google_ai_mode 后端**（最难，独立时限 spike，自建 vs 第三方再决策）— `Step4`
+- `[ ]` (P0) 保真度抽检：同批 prompt 跑 官方API vs 浏览器 两后端，量化差异率并入报告 — `Step4`
+- `[ ]` (P0) Raw Evidence Store：AnswerRun/RawAnswer/AnswerCitation/EvidenceAsset/CollectorLog，含 `answer_present`/`surface_triggered`/`sample_index`/`sample_size`/`access_method` — `Step5 / §8.5..8.7`
+- `[ ]` (P0) k=3 重复采样 — `Step9.3`
+- `[ ]` (P0) GeoProvider 抽象 + 城市采样（Sydney/Melbourne/Brisbane）— `Step6 / §8.4`
+- `[ ]` (P0) 截图/HTML 快照 + `raw_payload_hash` — `E3-05`
+- `[ ]` (P0) CollectionCost 记录（从首个采集器起）— `§8.15`
+- `[ ]` (P1) 定时采集（Temporal）/失败重试/限流/人工补录 — `E3-03/06/07/08`
+
+DoD：
+
+- `[ ]` 三平台均能采到 answer+citation+截图/HTML
+- `[ ]` 每条记录平台/surface/access_method/city/language/device/时间/collector_version/collector_backend_id
+- `[ ]` 记录 answer_present/surface_triggered；每 prompt k=3
+- `[ ]` 采集后端可插拔：同一平台两后端可切换，业务代码不变
+
+### M3 · Phase 3：Answer Parser + AUVisibilityScore（P0）
+
+> 出口标准：自动解析六要素 + 生成可拆解可版本化评分 + 双分母口径 + 能点回 AnswerRun。
+
+任务：
+
+- `[ ]` (P0) ParserEngine 接口 + 规则解析实现（brand/competitor/recommend/rank/sentiment/local_relevance/citations…）— `Step7 / E4-01..06`
+- `[ ]` (P0) 实体/别名表 + 同名消歧人工确认 — `§8.14 / Step7`
+- `[ ]` (P0) ScoringFormula 接口 + `au_visibility_v1`（8 项，权重和 1.00，版本化）— `Step9 / E4-08`
+- `[ ]` (P0) 双分母：Trigger Rate vs Mention/Recommendation Rate — `Step9.2`
+- `[ ]` (P0) k 次聚合 + 均值/离散度 — `Step9.3`
+- `[ ]` (P0) VisibilityScoreSnapshot 聚合表（project/platform/city/intent/prompt）— `§8.13`
+- `[ ]` (P1) LLM-as-judge 解析实现（与规则 A/B）— `Step7`
+- `[ ]` (P1) 评分权重可配置 + 审计；人工复核留痕 — `E4-10/11`
+
+DoD：
+
+- `[ ]` 自动解析提及/推荐/排名/竞品/引用/本地相关性
+- `[ ]` 生成可拆解、公式版本化的 AUVisibilityScore，能点回 AnswerRun
+- `[ ]` 报告能区分 Trigger Rate 与 Mention/Recommendation Rate
+- `[ ]` 评分公式可升级，历史分数按旧版本可重算
+
+### M4 · Phase 4：Citation Graph + Competitor Benchmark（P0）
+
+> 出口标准：生成信源图谱与 source gap，输出 3–5 竞品对标，每个数字可追溯原始回答。
+
+任务：
+
+- `[ ]` (P0) GraphStore 接口 + PG 邻接表实现 + SourceGraph 表 — `Step8 / §8.9`
+- `[ ]` (P0) Citation Graph 输出：常被引/竞品独占/过旧/本地缺失信源 — `Step8`
+- `[ ]` (P0) CompetitorBenchmark（3–5 竞品：mention/recommend/position/citation overlap/local relevance…）— `Step10 / §8.10`
+- `[ ]` (P0) 监测看板：总览/平台对比/竞品对比/问题明细/风险 — `E5-01..05`
+- `[ ]` (P1) 看板筛选与导出 — `E5-06`
+- `[ ]` (P1) GraphStore 切 Neo4j 验证可插拔 — `架构验收`
+
+DoD：
+
+- `[ ]` 生成 Citation Graph，识别 source gap
+- `[ ]` 输出 3–5 竞品 Benchmark
+- `[ ]` 每个分数/引用可点回原始回答
+
+### M5 · Phase 5：Evidence Report Export（P0）
+
+> 出口标准：导出客户可审计 PDF/CSV，含方法说明与原始证据附录，每个数字可追溯。
+
+任务：
+
+- `[ ]` (P0) ReportExporter 接口 + PDF/CSV 导出（方法说明 + 证据附录）— `Step13`
+- `[ ]` (P0) 报告展示：采集窗口/平台覆盖/access_method/样本量(k)/离散度/双分母/公式版本/API-界面差异抽检结论/非确定性说明 — `Step13`
+- `[ ]` (P1) 代理商工作流：多客户/多项目/白标/导出历史 — `Step13`
+
+DoD：
+
+- `[ ]` 可导出含方法说明和证据附录的 PDF/CSV
+- `[ ]` 报告每个数字可追溯 answer_run_ids
+
+### M6 · Phase 6：Action Plan + 复测（P1）
+
+> 出口标准：缺口转可执行任务；按 T+7/14/30 复测并展示前后变化。
+
+任务：
+
+- `[ ]` (P1) ActionRecommendation：缺口转任务，绑 evidence/source_gap/related_runs/owner/next_check — `Step11 / §8.11`
+- `[ ]` (P1) 复测调度 T0/T+7/T+14/T+30（Temporal 可重放，同 prompt_version、同 k）— `Step14`
+- `[ ]` (P1) 前后窗口对比 + 趋势聚合，保留全部 raw runs — `Step14`
+- `[ ]` (P1) 预警：负面/品牌缺失/竞品压制 — `E9-04/05/06`
+
+DoD：
+
+- `[ ]` 基于 source gap 生成 Action Plan
+- `[ ]` 任务有 owner/status/next_check_date
+- `[ ]` 按 T+7/14/30 复测，报告展示前后变化
+
+### M7 · Phase 7：Knowledge Facts + Content Engine + Integrations（P2）
+
+> 出口标准：本地事实库可检索；内容生成绑证据并过审核；接入主要英语市场工具。
+
+任务：
+
+- `[ ]` (P2) LocalizedKnowledgeFact 本地事实库 + VectorStore 检索（AU 优先，回退 global 标记）— `Step12 / §8.12 / E6`
+- `[ ]` (P2) Content Engine：基于 source/prompt gap 生成 FAQ/comparison/schema/landing outline，绑 evidence 并过人工审核 — `Step15 / E7`
+- `[ ]` (P2) Integrations：GSC/GA4/Shopify/WordPress/Webflow/HubSpot/Cloudflare — `Step15`
+- `[ ]` (P2) 更广平台：Gemini/Copilot/Claude/YouTube/Reddit/ProductReview — `§4.3`
+- `[ ]` (P2) Manual Distribution Record（仅记录 URL/状态，不自动发布）— `E8`
+
+DoD：
+
+- `[ ]` 内容生成绑 evidence/source_gap/knowledge_fact，过人工审核
+- `[ ]` 本地事实库可检索、可回退标记
+
+## 4. 风险登记册
+
+源自《首发技术路径》复核，按"何时必须处理"排期，逐条给出口判据。
+
+| 风险 | 何时处理 | 缓解动作 | 出口判据 |
+| --- | --- | --- | --- |
+| 采集保真度：API ≠ 消费者界面 | M2 | 接口化采集；官方API vs 浏览器两后端抽检 | 差异率量化并写入报告方法说明 |
+| Google AIO 选择性触发 / 采集脆弱 | M2（spike） | 拆 AIO/AI Mode 两后端；建模 answer_present；自建 vs 第三方限时对比 | AIO 能稳定采样并如实记录触发与否 |
+| AI 非确定性导致评分噪声 | M2–M3 | 证据表 + k=3 从第一天进库；报告展示离散度 | 同 prompt 多次采样 + 置信展示 |
+| 架构可插拔是否为真 | M0 起持续 | 接口先行；把切换写成测试 | 向量库/图库/LLM 各演示一次"换了业务不变" |
+| 城市级地理定位实现成本 | M2 | GeoProvider 抽象（uule/代理池/供应商可换） | 三城采样可区分且成本可控 |
+| 单位经济不透明 | M2 起 | CollectionCost 从首个采集器记录 | 每份报告成本可估算 |
+| 打不过 Semrush/Ahrefs 数据规模 | 全程定位 | 押证据链/本地信源/代理商工作流，不拼分数广度 | design partner 认可证据价值 |
+| 评分构念效度未验证 | M6 后 | 复测展示变化；拿到客户转化数据再做相关性 | 报告标注 MVP 阶段不声称强因果 |
+
+## 5. 工作流与约定
+
+### 5.1 分支与提交
+
+- `main` 受保护；每个任务开短命 feature 分支 → PR → 合并（建议 squash）。
+- 分支名：`m2/perplexity-collector`、`m3/scoring-v1`。
+- 提交/PR 关联 issue 号；PR 模板含「关联任务、DoD 勾选、是否回写 docs/ADR」。
+
+### 5.2 issue 命名与标签体系（建议）
+
+> 本地无远程时，用本文件的勾选框即可；推到 GitHub/GitLab 时按下表建 Milestone + Label。
+
+- **Milestone**：`M0`…`M7`（对应本文件里程碑）
+- **issue 标题**：`[M2][collector] Perplexity Sonar 采集后端`
+- **标签**：
+
+| 维度 | 标签 |
+| --- | --- |
+| 优先级 | `P0` `P1` `P2` |
+| 类型 | `type:feature` `type:infra` `type:spike` `type:test` `type:docs` `type:bug` |
+| 区域 | `area:collector` `area:evidence` `area:parser` `area:scoring` `area:citation` `area:benchmark` `area:report` `area:console` `area:platform` |
+| 状态 | `status:blocked` `status:in-progress`（用看板列时可省） |
+| 特殊 | `risk`（对应第 4 节）`good-first-slice`（垂直切片起步任务） |
+
+### 5.3 ADR（架构决策记录）
+
+- 位置：`decisions/NNNN-title.md`，每动一个可插拔点选型记一条（为什么 pgvector 起步、为什么 Temporal、为什么 Perplexity 先建）。
+- 换实现时新开一条 ADR `supersede` 旧条。这是"文档保持活规格"的机制。
+
+### 5.4 节奏
+
+- **一周一个垂直切片 + 一次自演示**；P0 阶段每周推进一个里程碑出口标准。
+- **尽快锁定一个澳洲 design partner 品牌**：它的真实 prompt 既是验收场景，也是最好的测试数据。
+- 每周回顾：勾选本文件进度，更新里程碑状态列。
+
+## 6. 立即可做的下一步（建 issue 用）
+
+1. `[M0][infra]` 仓库骨架 + docker-compose 开源底座 + 空 CI（`risk`、`good-first-slice`）
+2. `[M0][platform]` §8 全表迁移 + 8 个接口 stub
+3. `[M1][platform]` MarketProfile=AU 固定配置 + 1 行业模板
+4. `[M1][console]` 项目/品牌/竞品/prompt pack 最小后台
+5. `[M2][collector]` Perplexity Sonar 后端 + Raw Evidence Store（打通第一条垂直切片）
+6. `[M2][collector]` Google AIO 采集 spike（限时，`risk`、`type:spike`）
+
+---
+
+维护：本文件随里程碑推进更新状态列与勾选框；规格变更先改 `docs/` 再回链本文件。
