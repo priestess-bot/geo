@@ -31,6 +31,14 @@ from geno_core.geo import StaticAUGeoProvider
 from geno_core.google_spike import build_google_spike_plan, evaluate_google_spike_gate
 from geno_core.graph import build_citation_graph
 from geno_core.industry import build_au_dtc_ecommerce_profile
+from geno_core.knowledge import (
+    build_content_drafts,
+    build_content_engine_audit_event,
+    build_integration_connectors,
+    build_localized_knowledge_facts,
+    build_manual_distribution_records,
+    search_knowledge_facts,
+)
 from geno_core.market import build_au_market_profile
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.report import MarkdownCsvReportExporter
@@ -52,6 +60,11 @@ __all__ = [
     "compare_retest_windows",
     "build_google_spike_plan",
     "build_citation_graph",
+    "build_content_drafts",
+    "build_content_engine_audit_event",
+    "build_integration_connectors",
+    "build_localized_knowledge_facts",
+    "build_manual_distribution_records",
     "evaluate_google_spike_gate",
     "FixtureGoogleAIModeCollector",
     "FixtureGoogleAIOCollector",
@@ -67,6 +80,7 @@ __all__ = [
     "run_fixture_collection_slice",
     "score_answer_analyses",
     "score_answer_analysis",
+    "search_knowledge_facts",
     "StaticAUGeoProvider",
     "ThirdPartySerpCollector",
 ]

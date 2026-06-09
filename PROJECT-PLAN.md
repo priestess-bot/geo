@@ -47,7 +47,7 @@
 | **M4** | Citation Graph + Competitor Benchmark | E5 | 信源图谱 + source gap + 3–5 竞品对标 | P0c | `[~]` |
 | **M5** | Evidence Report Export | E9（部分） | 导出含方法说明、Google spike 结论与证据附录的 PDF/CSV | P0c | `[~]` |
 | **M6** | Action Plan + 复测 | E9（部分） | 缺口转任务 + T+7/14/30 复测前后对比 | P1 | `[~]` |
-| **M7** | Knowledge Facts + Content Engine + Integrations | E6、E7、E8 | 本地事实库 + 证据驱动内容 + 集成 | P2 | `[ ]` |
+| **M7** | Knowledge Facts + Content Engine + Integrations | E6、E7、E8 | 本地事实库 + 证据驱动内容 + 集成 | P2 | `[~]` |
 
 **P0a design partner 试点 = M0 + M1 + M2a + M3**。
 
@@ -271,16 +271,16 @@ DoD：
 
 任务：
 
-- `[ ]` (P2) LocalizedKnowledgeFact 本地事实库 + VectorStore 检索（AU 优先，回退 global 标记）— `Step12 / §8.12 / E6`
-- `[ ]` (P2) Content Engine：基于 source/prompt gap 生成 FAQ/comparison/schema/landing outline，绑 evidence 并过人工审核 — `Step15 / E7`
-- `[ ]` (P2) Integrations：GSC/GA4/Shopify/WordPress/Webflow/HubSpot/Cloudflare — `Step15`
+- `[~]` (P2) LocalizedKnowledgeFact 本地事实库 + VectorStore 检索（AU 优先，回退 global 标记）— `Step12 / §8.12 / E6`（内存检索 fixture 已落；pgvector 持久化检索待接）
+- `[~]` (P2) Content Engine：基于 source/prompt gap 生成 FAQ/comparison/schema/landing outline，绑 evidence 并过人工审核 — `Step15 / E7`（证据绑定草稿已落；LLMGateway 生成与审核工作台待接）
+- `[~]` (P2) Integrations：GSC/GA4/Shopify/WordPress/Webflow/HubSpot/Cloudflare — `Step15`（connector 计划对象已落；真实 OAuth/API 接入待接）
 - `[ ]` (P2) 更广平台：Gemini/Copilot/Claude/YouTube/Reddit/ProductReview — `§4.3`
-- `[ ]` (P2) Manual Distribution Record（仅记录 URL/状态，不自动发布）— `E8`
+- `[x]` (P2) Manual Distribution Record（仅记录 URL/状态，不自动发布）— `E8`
 
 DoD：
 
-- `[ ]` 内容生成绑 evidence/source_gap/knowledge_fact，过人工审核
-- `[ ]` 本地事实库可检索、可回退标记
+- `[~]` 内容生成绑 evidence/source_gap/knowledge_fact，过人工审核（草稿默认 `pending_human_review`；人工审核 UI 待接）
+- `[~]` 本地事实库可检索、可回退标记（内存检索和 global fallback 标记已落；VectorStore/pgvector 运行时待接）
 
 ## 4. 风险登记册
 

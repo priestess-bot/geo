@@ -35,6 +35,14 @@ from geno_core.google_spike import (
     select_google_spike_prompts,
 )
 from geno_core.graph import build_citation_graph
+from geno_core.knowledge import (
+    build_content_drafts,
+    build_content_engine_audit_event,
+    build_integration_connectors,
+    build_localized_knowledge_facts,
+    build_manual_distribution_records,
+    search_knowledge_facts,
+)
 from geno_core.market import build_au_market_profile
 from geno_core.models import AnswerAnalysis, CollectionFailureRecord, ReportExport
 from geno_core.prompt_pack import INTENT_WEIGHTS
@@ -570,6 +578,82 @@ class CoreContractsTest(unittest.TestCase):
         )
         self.assertEqual(audit_event.event_type, "retest_comparison_created")
         self.assertEqual(audit_event.output_refs["retest_comparison_ids"], [comparison.id])
+
+    def test_m7_content_drafts_bind_knowledge_gap_and_evidence(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia", "Sydney"),
+            sample_size=1,
+            prompt_limit=10,
+        )
+        analysis_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+        )
+        graph = build_citation_graph(
+            project_id=bootstrap.project.id,
+            records=records,
+            analyses=analysis_result.analyses,
+            competitors=bootstrap.competitors,
+            industry_profile=bootstrap.industry_profile,
+        )
+        actions = build_action_recommendations(
+            project_id=bootstrap.project.id,
+            graph=graph,
+            snapshot=analysis_result.snapshot,
+        )
+        facts = build_localized_knowledge_facts(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            brand=bootstrap.brand,
+            category=bootstrap.project.category,
+            answer_run_ids=tuple(record.answer_run.id for record in records),
+            now=datetime(2026, 6, 10, tzinfo=UTC),
+        )
+        search_results = search_knowledge_facts(
+            facts=facts,
+            query="ExampleBrand Australia shipping review Sydney",
+            market_code="AU",
+            city="Sydney",
+            limit=6,
+        )
+        drafts = build_content_drafts(
+            project_id=bootstrap.project.id,
+            target_brand=bootstrap.project.target_brand,
+            category=bootstrap.project.category,
+            actions=actions,
+            prompts=bootstrap.prompt_questions,
+            knowledge_results=search_results,
+            now=datetime(2026, 6, 10, tzinfo=UTC),
+        )
+        connectors = build_integration_connectors(project_id=bootstrap.project.id)
+        distribution_records = build_manual_distribution_records(project_id=bootstrap.project.id, drafts=drafts)
+        audit_event = build_content_engine_audit_event(
+            project_id=bootstrap.project.id,
+            facts=facts,
+            drafts=drafts,
+            connectors=connectors,
+            distribution_records=distribution_records,
+        )
+        self.assertTrue(facts)
+        self.assertTrue(search_results)
+        self.assertTrue(any(result.fallback_used for result in search_results))
+        self.assertTrue(drafts)
+        self.assertTrue(all(draft.review_status == "pending_human_review" for draft in drafts))
+        self.assertTrue(all(draft.used_knowledge_fact_ids for draft in drafts))
+        self.assertTrue(all(draft.source_gap_types for draft in drafts))
+        self.assertTrue(all(draft.evidence_answer_run_ids for draft in drafts))
+        self.assertEqual(len(connectors), 7)
+        self.assertEqual(len(distribution_records), len(drafts))
+        self.assertEqual(audit_event.event_type, "content_engine_fixture_created")
+        self.assertEqual(audit_event.output_refs["content_draft_ids"], [draft.id for draft in drafts])
 
 
 if __name__ == "__main__":

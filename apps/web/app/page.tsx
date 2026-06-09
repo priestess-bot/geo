@@ -8,6 +8,7 @@ const modules = [
   "Citation Graph + Benchmark",
   "Evidence Report Export",
   "Action Plan + Retest",
+  "Knowledge Facts + Content Draft",
   "Audit / Provenance",
   "AUVisibilityScore",
   "Evidence Report"
@@ -21,7 +22,7 @@ export default function Home() {
           <p className="eyebrow">GENO SaaS AU</p>
           <h1>Evidence-first AI Search Visibility</h1>
         </div>
-        <span className="status">M6 fixture slice</span>
+        <span className="status">M7 fixture slice</span>
       </section>
       <section className="grid">
         {modules.map((module) => (

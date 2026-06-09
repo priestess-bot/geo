@@ -115,6 +115,27 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["audit_event"]["event_type"], "action_plan_created")
         self.assertEqual(payload["comparison_audit_event"]["event_type"], "retest_comparison_created")
 
+    def test_m7_content_engine_fixture_endpoint(self) -> None:
+        response = self.client.get("/v1/content-engines/au/p0a-fixture")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertGreater(payload["knowledge_fact_count"], 0)
+        self.assertGreater(payload["content_draft_count"], 0)
+        self.assertEqual(payload["audit_event"]["event_type"], "content_engine_fixture_created")
+        self.assertTrue(all(item["review_status"] == "pending_human_review" for item in payload["content_drafts"]))
+        self.assertTrue(all(item["used_knowledge_fact_ids"] for item in payload["content_drafts"]))
+        self.assertTrue(all(item["evidence_answer_run_ids"] for item in payload["content_drafts"]))
+        self.assertEqual(len(payload["integration_connectors"]), 7)
+        self.assertEqual(len(payload["manual_distribution_records"]), payload["content_draft_count"])
+
+    def test_contracts_include_m7_content_integrations(self) -> None:
+        response = self.client.get("/v1/contracts")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("LocalizedKnowledgeFact", payload["m7_content_integrations"])
+        self.assertIn("ContentDraft", payload["m7_content_integrations"])
+        self.assertIn("ManualDistributionRecord", payload["m7_content_integrations"])
+
 
 if __name__ == "__main__":
     unittest.main()

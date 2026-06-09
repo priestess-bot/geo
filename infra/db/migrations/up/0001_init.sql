@@ -205,6 +205,64 @@ CREATE TABLE retest_comparisons (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE localized_knowledge_facts (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL,
+  market_code text NOT NULL,
+  fact_type text NOT NULL,
+  subject text NOT NULL,
+  predicate text NOT NULL,
+  object_value text NOT NULL,
+  city text,
+  evidence_source_id uuid,
+  confidence numeric(6,4) NOT NULL,
+  status text NOT NULL DEFAULT 'active',
+  valid_from timestamptz NOT NULL,
+  valid_until timestamptz
+);
+
+CREATE TABLE content_drafts (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL,
+  title text NOT NULL,
+  content_type text NOT NULL,
+  content_template_id text NOT NULL,
+  target_question_ids uuid[] NOT NULL DEFAULT '{}',
+  target_city text NOT NULL,
+  target_platform text NOT NULL,
+  target_source_type text NOT NULL,
+  used_knowledge_fact_ids uuid[] NOT NULL DEFAULT '{}',
+  source_gap_types text[] NOT NULL DEFAULT '{}',
+  source_action_id uuid,
+  evidence_answer_run_ids uuid[] NOT NULL DEFAULT '{}',
+  draft_markdown text NOT NULL,
+  review_status text NOT NULL,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE integration_connectors (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL,
+  provider text NOT NULL,
+  connection_status text NOT NULL,
+  capabilities text[] NOT NULL DEFAULT '{}',
+  auth_mode text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE manual_distribution_records (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL,
+  content_draft_id uuid NOT NULL,
+  platform text NOT NULL,
+  target_url text NOT NULL,
+  status text NOT NULL,
+  submitted_at timestamptz,
+  checked_at timestamptz,
+  notes text NOT NULL DEFAULT ''
+);
+
 CREATE TABLE visibility_score_snapshots (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id uuid NOT NULL,
@@ -352,3 +410,5 @@ CREATE INDEX idx_audit_events_project ON audit_events(project_id, created_at);
 CREATE INDEX idx_report_exports_project ON report_exports(project_id, exported_at);
 CREATE INDEX idx_projects_tenant ON projects(tenant_id);
 CREATE INDEX idx_action_recommendations_project ON action_recommendations(project_id, status);
+CREATE INDEX idx_localized_knowledge_facts_project ON localized_knowledge_facts(project_id, market_code, status);
+CREATE INDEX idx_content_drafts_project ON content_drafts(project_id, review_status);

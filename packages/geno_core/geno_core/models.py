@@ -383,6 +383,75 @@ class RetestComparison:
 
 
 @dataclass(frozen=True)
+class LocalizedKnowledgeFact:
+    id: str
+    project_id: str
+    market_code: str
+    fact_type: str
+    subject: str
+    predicate: str
+    object_value: str
+    city: str | None
+    evidence_source_id: str | None
+    confidence: float
+    status: str
+    valid_from: datetime
+    valid_until: datetime | None
+
+
+@dataclass(frozen=True)
+class KnowledgeSearchResult:
+    fact: LocalizedKnowledgeFact
+    score: float
+    fallback_used: bool
+
+
+@dataclass(frozen=True)
+class ContentDraft:
+    id: str
+    project_id: str
+    title: str
+    content_type: str
+    content_template_id: str
+    target_question_ids: tuple[str, ...]
+    target_city: str
+    target_platform: str
+    target_source_type: str
+    used_knowledge_fact_ids: tuple[str, ...]
+    source_gap_types: tuple[str, ...]
+    source_action_id: str | None
+    evidence_answer_run_ids: tuple[str, ...]
+    draft_markdown: str
+    review_status: str
+    created_by: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class IntegrationConnector:
+    id: str
+    project_id: str
+    provider: str
+    connection_status: str
+    capabilities: tuple[str, ...]
+    auth_mode: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class ManualDistributionRecord:
+    id: str
+    project_id: str
+    content_draft_id: str
+    platform: str
+    target_url: str
+    status: str
+    submitted_at: datetime | None
+    checked_at: datetime | None
+    notes: str
+
+
+@dataclass(frozen=True)
 class AnswerAnalysis:
     id: str
     answer_run_id: str
