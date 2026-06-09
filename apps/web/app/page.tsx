@@ -3,6 +3,7 @@ const modules = [
   "DTC Prompt Pack: 100",
   "AI Answer Runner fixture",
   "Raw Evidence Store wired",
+  "Google spike gate fixture",
   "Audit / Provenance",
   "AUVisibilityScore",
   "Evidence Report"

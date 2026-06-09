@@ -35,6 +35,14 @@ class WorkerCliTest(unittest.TestCase):
         self.assertIsInstance(failure_events, list)
         self.assertEqual(failure_events[0]["audit_events"][0]["event_type"], "answer_run_failed")
 
+    def test_google_fixture_worker_slice_returns_gate(self) -> None:
+        payload = self._run_worker("--mode", "google-fixture")
+        self.assertEqual(payload["record_count"], 240)
+        self.assertEqual(payload["success_count"], 240)
+        gate = payload["google_spike_gate"]
+        self.assertEqual(gate["gate_status"], "pass")
+        self.assertFalse(gate["limited_coverage"])
+
 
 if __name__ == "__main__":
     unittest.main()

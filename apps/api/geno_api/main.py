@@ -5,8 +5,22 @@ from dataclasses import asdict
 from fastapi import FastAPI
 
 from geno_core.bootstrap import build_au_project_bootstrap
-from geno_core.collection import build_p0a_collection_plan, run_fixture_collection_slice
-from geno_core.collectors import FixtureOpenAIWebSearchCollector, FixturePerplexitySonarCollector
+from geno_core.collection import (
+    build_p0a_collection_plan,
+    run_collection_slice,
+    run_fixture_collection_slice,
+)
+from geno_core.collectors import (
+    FixtureGoogleAIModeCollector,
+    FixtureGoogleAIOCollector,
+    FixtureOpenAIWebSearchCollector,
+    FixturePerplexitySonarCollector,
+)
+from geno_core.google_spike import (
+    build_google_spike_plan,
+    evaluate_google_spike_gate,
+    select_google_spike_prompts,
+)
 from geno_core.industry import build_au_dtc_ecommerce_profile
 from geno_core.market import build_au_market_profile
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
@@ -76,6 +90,34 @@ def au_p0a_fixture_slice() -> dict[str, object]:
     }
 
 
+@app.get("/v1/google-spikes/au/plan")
+def au_google_spike_plan() -> dict[str, object]:
+    bootstrap = build_au_project_bootstrap()
+    return asdict(build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions))
+
+
+@app.get("/v1/google-spikes/au/fixture-gate")
+def au_google_spike_fixture_gate() -> dict[str, object]:
+    bootstrap = build_au_project_bootstrap()
+    plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
+    prompts = select_google_spike_prompts(bootstrap.prompt_questions)
+    records = run_collection_slice(
+        project_id=bootstrap.project.id,
+        prompts=prompts,
+        market_profile=bootstrap.market_profile,
+        collectors=(FixtureGoogleAIOCollector(), FixtureGoogleAIModeCollector()),
+        cities=plan.geo_cities,
+        sample_size=plan.sample_size,
+        prompt_limit=plan.prompt_count,
+    )
+    gate = evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=plan, records=records)
+    return {
+        "plan": asdict(plan),
+        "gate": asdict(gate),
+        "record_count": len(records),
+    }
+
+
 @app.get("/v1/contracts")
 def contracts() -> dict[str, list[str]]:
     return {
@@ -117,5 +159,13 @@ def contracts() -> dict[str, list[str]]:
             "CollectionFailureRecord",
             "PerplexitySonarCollector",
             "OpenAIWebSearchCollector",
+        ],
+        "m2b_google_spike": [
+            "GoogleSpikePlan",
+            "GoogleSpikeGateResult",
+            "PlaywrightGoogleAIOCollector",
+            "PlaywrightAIModeCollector",
+            "ThirdPartySerpCollector",
+            "ManualBackfillCollector",
         ],
     }

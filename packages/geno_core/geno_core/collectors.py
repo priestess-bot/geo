@@ -172,6 +172,143 @@ class FixtureOpenAIWebSearchCollector(FixtureAICollector):
         )
 
 
+class FixtureGoogleAIOCollector(FixtureAICollector):
+    def __init__(self) -> None:
+        super().__init__(
+            backend_id="google_aio.playwright.fixture",
+            platform="google",
+            surface="google_aio",
+            access_method="browser",
+            model_or_surface="google-aio-fixture",
+            vendor_cost=0.004,
+        )
+
+
+class FixtureGoogleAIModeCollector(FixtureAICollector):
+    def __init__(self) -> None:
+        super().__init__(
+            backend_id="google_ai_mode.playwright.fixture",
+            platform="google",
+            surface="google_ai_mode",
+            access_method="browser",
+            model_or_surface="google-ai-mode-fixture",
+            vendor_cost=0.005,
+        )
+
+
+class FixtureThirdPartySerpCollector(FixtureAICollector):
+    def __init__(self) -> None:
+        super().__init__(
+            backend_id="google.third_party_serp.fixture",
+            platform="google",
+            surface="google_aio",
+            access_method="third_party_api",
+            model_or_surface="third-party-serp-fixture",
+            vendor_cost=0.006,
+        )
+
+
+class FixtureManualBackfillCollector(FixtureAICollector):
+    def __init__(self) -> None:
+        super().__init__(
+            backend_id="google.manual_backfill.fixture",
+            platform="google",
+            surface="google_ai_mode",
+            access_method="manual",
+            model_or_surface="manual-backfill-fixture",
+            vendor_cost=0.001,
+        )
+
+
+class GoogleSpikeCollectorShell:
+    def __init__(
+        self,
+        *,
+        backend_id: str,
+        surface: str,
+        access_method: str,
+        required_env_var: str,
+        failure_reason: str = "not_configured",
+    ) -> None:
+        self._backend_id = backend_id
+        self._surface = surface
+        self._access_method = access_method
+        self._required_env_var = required_env_var
+        self._failure_reason = failure_reason
+
+    def id(self) -> str:
+        return self._backend_id
+
+    def capabilities(self) -> dict[str, object]:
+        return {
+            "platform": "google",
+            "surface": self._surface,
+            "supports_geo": True,
+            "supports_citation": True,
+            "supports_screenshot": True,
+            "supports_html_snapshot": True,
+            "access_method": self._access_method,
+        }
+
+    def health(self) -> str:
+        return "ready" if os.getenv(self._required_env_var) else "not_configured"
+
+    def collect(
+        self,
+        *,
+        prompt: str,
+        market: MarketProfile,
+        city: str,
+        language: str,
+        device: str,
+    ) -> RawCollectResult:
+        if not os.getenv(self._required_env_var):
+            raise CollectorConfigurationError(self._failure_reason)
+        raise NotImplementedError(
+            f"{self._backend_id} requires a runtime implementation for browser/API/manual capture"
+        )
+
+
+class PlaywrightGoogleAIOCollector(GoogleSpikeCollectorShell):
+    def __init__(self) -> None:
+        super().__init__(
+            backend_id="google_aio.playwright",
+            surface="google_aio",
+            access_method="browser",
+            required_env_var="GOOGLE_PLAYWRIGHT_ENABLED",
+        )
+
+
+class PlaywrightAIModeCollector(GoogleSpikeCollectorShell):
+    def __init__(self) -> None:
+        super().__init__(
+            backend_id="google_ai_mode.playwright",
+            surface="google_ai_mode",
+            access_method="browser",
+            required_env_var="GOOGLE_PLAYWRIGHT_ENABLED",
+        )
+
+
+class ThirdPartySerpCollector(GoogleSpikeCollectorShell):
+    def __init__(self) -> None:
+        super().__init__(
+            backend_id="google.third_party_serp",
+            surface="google_aio",
+            access_method="third_party_api",
+            required_env_var="SERP_API_KEY",
+        )
+
+
+class ManualBackfillCollector(GoogleSpikeCollectorShell):
+    def __init__(self) -> None:
+        super().__init__(
+            backend_id="google.manual_backfill",
+            surface="google_ai_mode",
+            access_method="manual",
+            required_env_var="MANUAL_BACKFILL_PATH",
+        )
+
+
 class PerplexitySonarCollector:
     def __init__(
         self,

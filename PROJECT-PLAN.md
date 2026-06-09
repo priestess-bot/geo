@@ -42,7 +42,7 @@
 | **M0** | 接口契约与轻量开源底座 | E10（部分） | 核心依赖一键起，8 个接口有 stub，P0a/P0b/P0c 表可迁移，CI 绿 | P0a | `[~]` |
 | **M1** | AU MarketProfile + 行业模板 + Prompt Pack | E1、E2 | 能建 market=AU 项目，配 1 行业 + 100 prompt + 3–5 竞品 | P0a | `[~]` |
 | **M2a** | Stable AI Answer Runner + Raw Evidence Store | E3 | Perplexity + OpenAI 可采，证据全留，含触发状态、k=3、成本 | P0a | `[~]` |
-| **M2b** | Google AIO / AI Mode Spike | E3 | Google 自建/第三方/人工路径限时对比，输出 pass/fail gate | P0b | `[ ]` |
+| **M2b** | Google AIO / AI Mode Spike | E3 | Google 自建/第三方/人工路径限时对比，输出 pass/fail gate | P0b | `[~]` |
 | **M3** | Answer Parser + AUVisibilityScore | E4 | 自动解析 + 可拆解可版本化评分 + 双分母 | P0a | `[ ]` |
 | **M4** | Citation Graph + Competitor Benchmark | E5 | 信源图谱 + source gap + 3–5 竞品对标 | P0c | `[ ]` |
 | **M5** | Evidence Report Export | E9（部分） | 导出含方法说明、Google spike 结论与证据附录的 PDF/CSV | P0c | `[ ]` |
@@ -173,20 +173,20 @@ DoD：
 
 任务：
 
-- `[ ]` (P0b·spike) `PlaywrightGoogleAIOCollector`：SERP 内嵌 AIO 采集，记录触发状态、截图/HTML、失败原因 — `Step4`
-- `[ ]` (P0b·spike) `PlaywrightAIModeCollector`：AI Mode 独立界面采集，记录账号状态、地理、设备、失败原因 — `Step4`
-- `[ ]` (P0b·spike) `ThirdPartySerpCollector`：至少接入一个第三方 SERP/AI-answer 供应商做对照 — `Step4`
-- `[ ]` (P0b·spike) `ManualBackfillCollector`：人工补录最小路径，保证样本可审计 — `Step4`
-- `[ ]` (P0b·spike) Google spike 采样：30 prompts × 2 surfaces × 2 geo（Australia + Sydney）× k=2 = 240 planned_runs — `Step4 / Step9.3`
-- `[ ]` (P0b·spike) 失败分类：not_triggered / layout_changed / blocked / timeout / geo_mismatch / account_state — `Step4`
-- `[ ]` (P0b·spike) pass/fail gate 报告：成功率、触发率、截图/HTML 样本、成本/耗时、推荐路径 — `Step4 / Step13`
+- `[~]` (P0b·spike) `PlaywrightGoogleAIOCollector`：SERP 内嵌 AIO 采集，记录触发状态、截图/HTML、失败原因 — `Step4`（shell + fixture 已落；真实浏览器运行待接）
+- `[~]` (P0b·spike) `PlaywrightAIModeCollector`：AI Mode 独立界面采集，记录账号状态、地理、设备、失败原因 — `Step4`（shell + fixture 已落；真实浏览器运行待接）
+- `[~]` (P0b·spike) `ThirdPartySerpCollector`：至少接入一个第三方 SERP/AI-answer 供应商做对照 — `Step4`（shell + candidate 已落；供应商 API 待接）
+- `[~]` (P0b·spike) `ManualBackfillCollector`：人工补录最小路径，保证样本可审计 — `Step4`（shell + candidate 已落；补录 UI/文件流待接）
+- `[x]` (P0b·spike) Google spike 采样：30 prompts × 2 surfaces × 2 geo（Australia + Sydney）× k=2 = 240 planned_runs — `Step4 / Step9.3`
+- `[x]` (P0b·spike) 失败分类：not_triggered / layout_changed / blocked / timeout / geo_mismatch / account_state — `Step4`
+- `[~]` (P0b·spike) pass/fail gate 报告：成功率、触发率、截图/HTML 样本、成本/耗时、推荐路径 — `Step4 / Step13`（fixture gate 已落；真实 spike 报告待跑）
 
 DoD：
 
-- `[ ]` 至少两条 Google 采集路径完成对照（自建浏览器、第三方 API、人工补录三选二）
-- `[ ]` 每条结果可靠记录 surface_triggered / answer_present
-- `[ ]` 至少一个 google_aio 后端在同一窗口完成 >= 80% 计划样本，才允许进入主评分
-- `[ ]` 未达标时，Google 只进 limited coverage 附录，报告明确标注不进入主评分分母
+- `[~]` 至少两条 Google 采集路径完成对照（自建浏览器、第三方 API、人工补录三选二）（fixture 路径可对照；真实路径待跑）
+- `[x]` 每条结果可靠记录 surface_triggered / answer_present
+- `[x]` 至少一个 google_aio 后端在同一窗口完成 >= 80% 计划样本，才允许进入主评分
+- `[x]` 未达标时，Google 只进 limited coverage 附录，报告明确标注不进入主评分分母
 
 ### M3 · Phase 3：Answer Parser + AUVisibilityScore（P0a）
 

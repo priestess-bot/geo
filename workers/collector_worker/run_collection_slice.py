@@ -7,12 +7,19 @@ from dataclasses import asdict
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import run_collection_slice
 from geno_core.collectors import (
+    FixtureGoogleAIModeCollector,
+    FixtureGoogleAIOCollector,
     FixtureOpenAIWebSearchCollector,
     FixturePerplexitySonarCollector,
     OpenAIWebSearchCollector,
     PerplexitySonarCollector,
 )
 from geno_core.contracts import CollectorBackend
+from geno_core.google_spike import (
+    build_google_spike_plan,
+    evaluate_google_spike_gate,
+    select_google_spike_prompts,
+)
 from geno_core.models import CollectionFailureRecord, RawEvidenceRecord
 
 
@@ -21,24 +28,36 @@ def _collectors(mode: str) -> tuple[CollectorBackend, ...]:
         return (FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector())
     if mode == "api":
         return (PerplexitySonarCollector(), OpenAIWebSearchCollector())
+    if mode == "google-fixture":
+        return (FixtureGoogleAIOCollector(), FixtureGoogleAIModeCollector())
     raise ValueError(f"Unsupported collector mode: {mode}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a small AU P0a collection slice")
-    parser.add_argument("--mode", choices=["fixture", "api"], default="fixture")
+    parser.add_argument("--mode", choices=["fixture", "api", "google-fixture"], default="fixture")
     parser.add_argument("--prompt-limit", type=int, default=2)
     parser.add_argument("--sample-size", type=int, default=1)
     parser.add_argument("--cities", default="Australia,Sydney")
     args = parser.parse_args()
 
     bootstrap = build_au_project_bootstrap()
+    prompts = bootstrap.prompt_questions
+    cities = tuple(city.strip() for city in args.cities.split(",") if city.strip())
+    if args.mode == "google-fixture":
+        plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
+        prompts = select_google_spike_prompts(bootstrap.prompt_questions)
+        cities = plan.geo_cities
+        args.sample_size = plan.sample_size
+        args.prompt_limit = plan.prompt_count
+    else:
+        plan = None
     records = run_collection_slice(
         project_id=bootstrap.project.id,
-        prompts=bootstrap.prompt_questions,
+        prompts=prompts,
         market_profile=bootstrap.market_profile,
         collectors=_collectors(args.mode),
-        cities=tuple(city.strip() for city in args.cities.split(",") if city.strip()),
+        cities=cities,
         sample_size=args.sample_size,
         prompt_limit=args.prompt_limit,
     )
@@ -52,6 +71,10 @@ def main() -> None:
         "answer_run_ids": [record.answer_run.id for record in records],
         "failure_events": [asdict(record) for record in failures],
     }
+    if plan is not None:
+        output["google_spike_gate"] = asdict(
+            evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=plan, records=records)
+        )
     print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
 
 

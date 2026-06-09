@@ -9,6 +9,15 @@ ActorType = Literal["user", "system", "worker", "api"]
 AccessMethod = Literal["browser", "official_api", "third_party_api", "manual"]
 ProjectRole = Literal["owner", "admin", "analyst", "viewer"]
 CollectionStatus = Literal["planned", "completed", "failed"]
+GoogleSpikeFailureReason = Literal[
+    "not_triggered",
+    "layout_changed",
+    "blocked",
+    "timeout",
+    "geo_mismatch",
+    "account_state",
+    "not_configured",
+]
 
 
 @dataclass(frozen=True)
@@ -251,6 +260,33 @@ class CollectionPlan:
     planned_runs: int
     platform_surfaces: tuple[str, ...]
     geo_cities: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class GoogleSpikePlan:
+    project_id: str
+    prompt_count: int
+    surfaces: tuple[str, ...]
+    geo_cities: tuple[str, ...]
+    sample_size: int
+    planned_runs: int
+    candidate_backends: tuple[str, ...]
+    failure_reasons: tuple[GoogleSpikeFailureReason, ...]
+
+
+@dataclass(frozen=True)
+class GoogleSpikeGateResult:
+    project_id: str
+    gate_status: Literal["pass", "fail"]
+    planned_runs: int
+    completed_runs: int
+    google_aio_completed_runs: int
+    success_rate: float
+    trigger_rate: float
+    best_backend_id: str | None
+    limited_coverage: bool
+    failure_summary: dict[str, int]
+    recommendation: str
 
 
 @dataclass(frozen=True)

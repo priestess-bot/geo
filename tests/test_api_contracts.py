@@ -55,6 +55,22 @@ class ApiContractsTest(unittest.TestCase):
         self.assertGreater(first["collection_cost"]["total_cost"], 0)
         self.assertEqual(first["audit_events"][0]["event_type"], "answer_run_collected")
 
+    def test_m2b_google_spike_plan_endpoint(self) -> None:
+        response = self.client.get("/v1/google-spikes/au/plan")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["planned_runs"], 240)
+        self.assertEqual(payload["prompt_count"], 30)
+        self.assertEqual(payload["surfaces"], ["google_aio", "google_ai_mode"])
+
+    def test_m2b_google_spike_fixture_gate_endpoint(self) -> None:
+        response = self.client.get("/v1/google-spikes/au/fixture-gate")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["record_count"], 240)
+        self.assertEqual(payload["gate"]["gate_status"], "pass")
+        self.assertFalse(payload["gate"]["limited_coverage"])
+
 
 if __name__ == "__main__":
     unittest.main()

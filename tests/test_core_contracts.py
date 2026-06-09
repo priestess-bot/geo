@@ -9,15 +9,23 @@ from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
     build_p0a_collection_plan,
     collect_prompt_with_failure_record,
+    run_collection_slice,
     run_fixture_collection_slice,
 )
 from geno_core.collectors import (
+    FixtureGoogleAIModeCollector,
+    FixtureGoogleAIOCollector,
     FixtureOpenAIWebSearchCollector,
     FixturePerplexitySonarCollector,
     OpenAIWebSearchCollector,
     PerplexitySonarCollector,
 )
 from geno_core.geo import StaticAUGeoProvider
+from geno_core.google_spike import (
+    build_google_spike_plan,
+    evaluate_google_spike_gate,
+    select_google_spike_prompts,
+)
 from geno_core.market import build_au_market_profile
 from geno_core.models import AnswerAnalysis, CollectionFailureRecord, ReportExport
 from geno_core.prompt_pack import INTENT_WEIGHTS
@@ -260,6 +268,50 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(result.answer_run.status, "failed")
         self.assertEqual(result.audit_events[0].event_type, "answer_run_failed")
         self.assertIn("PERPLEXITY_API_KEY", result.error_message)
+
+    def test_m2b_google_spike_plan_matches_240_runs(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
+        self.assertEqual(plan.prompt_count, 30)
+        self.assertEqual(plan.surfaces, ("google_aio", "google_ai_mode"))
+        self.assertEqual(plan.geo_cities, ("Australia", "Sydney"))
+        self.assertEqual(plan.sample_size, 2)
+        self.assertEqual(plan.planned_runs, 240)
+        self.assertIn("blocked", plan.failure_reasons)
+
+    def test_m2b_google_spike_fixture_gate_passes(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
+        records = run_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=select_google_spike_prompts(bootstrap.prompt_questions),
+            market_profile=bootstrap.market_profile,
+            collectors=(FixtureGoogleAIOCollector(), FixtureGoogleAIModeCollector()),
+            cities=plan.geo_cities,
+            sample_size=plan.sample_size,
+            prompt_limit=plan.prompt_count,
+        )
+        gate = evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=plan, records=records)
+        self.assertEqual(len(records), 240)
+        self.assertEqual(gate.gate_status, "pass")
+        self.assertFalse(gate.limited_coverage)
+        self.assertGreaterEqual(gate.google_aio_completed_runs, 120)
+
+    def test_m2b_google_spike_gate_fails_without_google_aio_coverage(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
+        records = run_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=select_google_spike_prompts(bootstrap.prompt_questions),
+            market_profile=bootstrap.market_profile,
+            collectors=(FixtureGoogleAIModeCollector(),),
+            cities=plan.geo_cities,
+            sample_size=plan.sample_size,
+            prompt_limit=plan.prompt_count,
+        )
+        gate = evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=plan, records=records)
+        self.assertEqual(gate.gate_status, "fail")
+        self.assertTrue(gate.limited_coverage)
 
 
 if __name__ == "__main__":

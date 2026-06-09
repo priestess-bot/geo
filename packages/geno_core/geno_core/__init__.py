@@ -7,8 +7,20 @@ from geno_core.collection import (
     run_collection_slice,
     run_fixture_collection_slice,
 )
-from geno_core.collectors import OpenAIWebSearchCollector, PerplexitySonarCollector
+from geno_core.collectors import (
+    FixtureGoogleAIModeCollector,
+    FixtureGoogleAIOCollector,
+    FixtureManualBackfillCollector,
+    FixtureThirdPartySerpCollector,
+    ManualBackfillCollector,
+    OpenAIWebSearchCollector,
+    PerplexitySonarCollector,
+    PlaywrightAIModeCollector,
+    PlaywrightGoogleAIOCollector,
+    ThirdPartySerpCollector,
+)
 from geno_core.geo import StaticAUGeoProvider
+from geno_core.google_spike import build_google_spike_plan, evaluate_google_spike_gate
 from geno_core.industry import build_au_dtc_ecommerce_profile
 from geno_core.market import build_au_market_profile
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
@@ -22,10 +34,20 @@ __all__ = [
     "build_au_project_bootstrap",
     "build_p0a_collection_plan",
     "collect_prompt_with_failure_record",
+    "build_google_spike_plan",
+    "evaluate_google_spike_gate",
+    "FixtureGoogleAIModeCollector",
+    "FixtureGoogleAIOCollector",
+    "FixtureManualBackfillCollector",
+    "FixtureThirdPartySerpCollector",
+    "ManualBackfillCollector",
     "OpenAIWebSearchCollector",
     "PerplexitySonarCollector",
+    "PlaywrightAIModeCollector",
+    "PlaywrightGoogleAIOCollector",
     "run_collection_slice",
     "run_fixture_collection_slice",
     "score_answer_analysis",
     "StaticAUGeoProvider",
+    "ThirdPartySerpCollector",
 ]
