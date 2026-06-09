@@ -229,6 +229,7 @@ CREATE TABLE report_exports (
   window_start timestamptz NOT NULL,
   window_end timestamptz NOT NULL,
   methodology_hash text NOT NULL,
+  markdown_url text,
   pdf_url text,
   csv_url text,
   exported_by text NOT NULL,

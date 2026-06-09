@@ -6,6 +6,7 @@ const modules = [
   "Google spike gate fixture",
   "Rule Parser + AUVisibilityScore",
   "Citation Graph + Benchmark",
+  "Evidence Report Export",
   "Audit / Provenance",
   "AUVisibilityScore",
   "Evidence Report"

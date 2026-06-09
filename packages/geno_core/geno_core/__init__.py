@@ -26,6 +26,7 @@ from geno_core.graph import build_citation_graph
 from geno_core.industry import build_au_dtc_ecommerce_profile
 from geno_core.market import build_au_market_profile
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
+from geno_core.report import MarkdownCsvReportExporter
 from geno_core.scoring import AU_VISIBILITY_V1, score_answer_analyses, score_answer_analysis
 
 __all__ = [
@@ -45,6 +46,7 @@ __all__ = [
     "FixtureManualBackfillCollector",
     "FixtureThirdPartySerpCollector",
     "ManualBackfillCollector",
+    "MarkdownCsvReportExporter",
     "OpenAIWebSearchCollector",
     "PerplexitySonarCollector",
     "PlaywrightAIModeCollector",

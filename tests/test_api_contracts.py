@@ -90,6 +90,21 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["competitor_count"], 4)
         self.assertTrue(any(item["answer_run_ids"] for item in payload["competitor_benchmarks"]))
 
+    def test_m5_report_fixture_endpoint(self) -> None:
+        response = self.client.get("/v1/reports/au/p0a-fixture")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["report_export"]["report_version"], "p0a-fixture-v1")
+        self.assertTrue(payload["report_export"]["markdown_url"].endswith(".md"))
+        self.assertTrue(payload["report_export"]["csv_url"].endswith(".csv"))
+        self.assertIn("GENO AU Evidence Report", payload["markdown"])
+        self.assertIn("answer_run_id", payload["csv_content"])
+        self.assertEqual(payload["audit_event"]["event_type"], "report_export_created")
+        self.assertEqual(
+            payload["report_evidence_answer_run_ids"],
+            payload["report_export"]["answer_run_ids"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

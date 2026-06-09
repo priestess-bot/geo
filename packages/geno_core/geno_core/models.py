@@ -427,6 +427,7 @@ class ReportExport:
     window_start: datetime
     window_end: datetime
     methodology_hash: str
+    markdown_url: str | None
     pdf_url: str | None
     csv_url: str | None
     exported_by: str

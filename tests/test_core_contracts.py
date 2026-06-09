@@ -32,6 +32,7 @@ from geno_core.market import build_au_market_profile
 from geno_core.models import AnswerAnalysis, CollectionFailureRecord, ReportExport
 from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.parser import RuleBasedAnswerParser
+from geno_core.report import MarkdownCsvReportExporter
 from geno_core.scoring import AU_VISIBILITY_V1, score_answer_analysis
 
 
@@ -107,6 +108,7 @@ class CoreContractsTest(unittest.TestCase):
             window_start=datetime(2026, 6, 1, tzinfo=UTC),
             window_end=datetime(2026, 6, 8, tzinfo=UTC),
             methodology_hash="hash",
+            markdown_url=None,
             pdf_url=None,
             csv_url=None,
             exported_by="system",
@@ -413,6 +415,55 @@ class CoreContractsTest(unittest.TestCase):
         self.assertTrue(all(node.answer_run_ids for node in graph.nodes))
         self.assertTrue(all(link.answer_run_id for link in graph.evidence_links))
         self.assertTrue(any(item.mention_count > 0 for item in graph.competitor_benchmarks))
+
+    def test_m5_report_export_freezes_snapshot_and_evidence_refs(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia", "Sydney"),
+            sample_size=1,
+            prompt_limit=10,
+        )
+        analysis_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+        )
+        graph = build_citation_graph(
+            project_id=bootstrap.project.id,
+            records=records,
+            analyses=analysis_result.analyses,
+            competitors=bootstrap.competitors,
+            industry_profile=bootstrap.industry_profile,
+        )
+        report = MarkdownCsvReportExporter().export(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            report_version="p0a-fixture-v1",
+            report_type="design_partner_fixture",
+            prompt_version=bootstrap.project.prompt_version,
+            snapshot=analysis_result.snapshot,
+            contributions=analysis_result.contributions,
+            records=records,
+            graph=graph,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+        )
+        self.assertEqual(report.report_export.score_snapshot_ids, (analysis_result.snapshot.id,))
+        self.assertEqual(report.report_export.answer_run_ids, tuple(record.answer_run.id for record in records))
+        self.assertIn("GENO AU Evidence Report", report.markdown)
+        self.assertIn("answer_run_id", report.csv_content)
+        self.assertEqual(report.audit_event.event_type, "report_export_created")
+        self.assertEqual(report.audit_event.output_refs["report_export_ids"], [report.report_export.id])
+        self.assertEqual(report.report_evidence_answer_run_ids, report.report_export.answer_run_ids)
 
 
 if __name__ == "__main__":

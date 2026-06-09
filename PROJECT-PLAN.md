@@ -45,7 +45,7 @@
 | **M2b** | Google AIO / AI Mode Spike | E3 | Google 自建/第三方/人工路径限时对比，输出 pass/fail gate | P0b | `[~]` |
 | **M3** | Answer Parser + AUVisibilityScore | E4 | 自动解析 + 可拆解可版本化评分 + 双分母 | P0a | `[~]` |
 | **M4** | Citation Graph + Competitor Benchmark | E5 | 信源图谱 + source gap + 3–5 竞品对标 | P0c | `[~]` |
-| **M5** | Evidence Report Export | E9（部分） | 导出含方法说明、Google spike 结论与证据附录的 PDF/CSV | P0c | `[ ]` |
+| **M5** | Evidence Report Export | E9（部分） | 导出含方法说明、Google spike 结论与证据附录的 PDF/CSV | P0c | `[~]` |
 | **M6** | Action Plan + 复测 | E9（部分） | 缺口转任务 + T+7/14/30 复测前后对比 | P1 | `[ ]` |
 | **M7** | Knowledge Facts + Content Engine + Integrations | E6、E7、E8 | 本地事实库 + 证据驱动内容 + 集成 | P2 | `[ ]` |
 
@@ -237,16 +237,16 @@ DoD：
 
 任务：
 
-- `[ ]` (P0c) ReportExporter 接口 + PDF/CSV 导出（方法说明 + 证据附录）— `Step13`
-- `[ ]` (P0c) ReportExport 快照：冻结 score_snapshot_ids、answer_run_ids、prompt_version、公式版本、平台权重、采样窗口；导出不可覆盖 — `Step5.1 / §8.17`
-- `[ ]` (P0c) 报告展示：采集窗口/平台覆盖/access_method/样本量(k)/离散度/双分母/公式版本/API-界面差异抽检结论/Google spike pass/fail/limited coverage/审计摘要/分数解释包/非确定性说明 — `Step13`
+- `[~]` (P0c) ReportExporter 接口 + PDF/CSV 导出（方法说明 + 证据附录）— `Step13`（Markdown+CSV 已落；PDF renderer 待接）
+- `[x]` (P0c) ReportExport 快照：冻结 score_snapshot_ids、answer_run_ids、prompt_version、公式版本、平台权重、采样窗口；导出不可覆盖 — `Step5.1 / §8.17`
+- `[~]` (P0c) 报告展示：采集窗口/平台覆盖/access_method/样本量(k)/离散度/双分母/公式版本/API-界面差异抽检结论/Google spike pass/fail/limited coverage/审计摘要/分数解释包/非确定性说明 — `Step13`（核心方法/分数/证据/limited coverage 已落；API-界面差异抽检与真实 Google 结论待接）
 - `[ ]` (P1) 代理商工作流：多客户/多项目/白标/导出历史 — `Step13`
 
 DoD：
 
-- `[ ]` 可导出含方法说明和证据附录的 PDF/CSV
-- `[ ]` 报告每个数字可追溯 answer_run_ids
-- `[ ]` 报告导出写 AuditEvent；重复导出生成新 ReportExport 版本，不覆盖旧报告
+- `[~]` 可导出含方法说明和证据附录的 PDF/CSV（Markdown+CSV 已落；PDF 待接）
+- `[x]` 报告每个数字可追溯 answer_run_ids
+- `[x]` 报告导出写 AuditEvent；重复导出生成新 ReportExport 版本，不覆盖旧报告
 
 ### M6 · Phase 6：Action Plan + 复测（P1）
 
