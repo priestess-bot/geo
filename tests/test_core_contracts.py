@@ -5,8 +5,10 @@ from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
 
 from geno_core.audit import build_audit_event, hash_payload
+from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.market import build_au_market_profile
 from geno_core.models import AnswerAnalysis, ReportExport
+from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.scoring import AU_VISIBILITY_V1, score_answer_analysis
 
 
@@ -89,6 +91,35 @@ class CoreContractsTest(unittest.TestCase):
         )
         with self.assertRaises(FrozenInstanceError):
             report.report_version = "v2"  # type: ignore[misc]
+
+    def test_m1_project_bootstrap_builds_au_prompt_pack(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa", "IKEA Australia"),
+        )
+        prompts = bootstrap.prompt_questions
+        self.assertEqual(bootstrap.project.market_code, "AU")
+        self.assertEqual(bootstrap.industry_profile.industry_code, "dtc_ecommerce")
+        self.assertEqual(len(bootstrap.competitors), 4)
+        self.assertEqual(len(prompts), 100)
+        self.assertEqual({prompt.language for prompt in prompts}, {"en-AU"})
+        self.assertEqual({prompt.prompt_version for prompt in prompts}, {"au_dtc_ecommerce_v1"})
+        self.assertEqual({prompt.intent_type for prompt in prompts}, set(INTENT_WEIGHTS))
+        self.assertEqual(
+            {prompt.city for prompt in prompts if prompt.intent_type == "city_category_recommendation"},
+            {"Sydney", "Melbourne", "Brisbane"},
+        )
+        self.assertIn("Australia", {prompt.city for prompt in prompts})
+        self.assertEqual(bootstrap.audit_events[0].event_type, "project_bootstrap_created")
+        self.assertEqual(
+            bootstrap.audit_events[0].output_refs["prompt_question_ids"],
+            [prompt.id for prompt in prompts],
+        )
+
+    def test_m1_bootstrap_rejects_invalid_competitor_count(self) -> None:
+        with self.assertRaises(ValueError):
+            build_au_project_bootstrap(competitors=("Only One",))
 
 
 if __name__ == "__main__":

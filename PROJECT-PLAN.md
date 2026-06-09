@@ -40,7 +40,7 @@
 | 里程碑 | 阶段 | 覆盖 Epic | 出口标准（一句话） | P 级 | 状态 |
 | --- | --- | --- | --- | --- | --- |
 | **M0** | 接口契约与轻量开源底座 | E10（部分） | 核心依赖一键起，8 个接口有 stub，P0a/P0b/P0c 表可迁移，CI 绿 | P0a | `[~]` |
-| **M1** | AU MarketProfile + 行业模板 + Prompt Pack | E1、E2 | 能建 market=AU 项目，配 1 行业 + 100 prompt + 3–5 竞品 | P0a | `[ ]` |
+| **M1** | AU MarketProfile + 行业模板 + Prompt Pack | E1、E2 | 能建 market=AU 项目，配 1 行业 + 100 prompt + 3–5 竞品 | P0a | `[~]` |
 | **M2a** | Stable AI Answer Runner + Raw Evidence Store | E3 | Perplexity + OpenAI 可采，证据全留，含触发状态、k=3、成本 | P0a | `[ ]` |
 | **M2b** | Google AIO / AI Mode Spike | E3 | Google 自建/第三方/人工路径限时对比，输出 pass/fail gate | P0b | `[ ]` |
 | **M3** | Answer Parser + AUVisibilityScore | E4 | 自动解析 + 可拆解可版本化评分 + 双分母 | P0a | `[ ]` |
@@ -127,19 +127,19 @@ DoD：
 
 任务：
 
-- `[ ]` (P0a) 租户/项目/品牌/竞品/角色权限 — `E1-01..05`
-- `[ ]` (P0a) AU MarketProfile 固定值（locale/timezone/currency/cities/平台权重/信源分类）— `Step1`
-- `[ ]` (P0a) 1 个 IndustryProfile 行业模板 — `Step2`
-- `[ ]` (P0a) Prompt Pack：100 条 AU 英文问题集（上限 200），每条绑 intent_type/city/prompt_version — `Step3 / E2-03..05`
-- `[ ]` (P0a/P0b) 平台字典（P0a：chatgpt/perplexity；P0b：google_aio/google_ai_mode）+ 平台权重 + build_stage — `E2-01..02`
+- `[~]` (P0a) 租户/项目/品牌/竞品/角色权限 — `E1-01..05`（已落契约与启动包；持久化 CRUD 待接）
+- `[x]` (P0a) AU MarketProfile 固定值（locale/timezone/currency/cities/平台权重/信源分类）— `Step1`
+- `[x]` (P0a) 1 个 IndustryProfile 行业模板 — `Step2`
+- `[x]` (P0a) Prompt Pack：100 条 AU 英文问题集（上限 200），每条绑 intent_type/city/prompt_version — `Step3 / E2-03..05`
+- `[x]` (P0a/P0b) 平台字典（P0a：chatgpt/perplexity；P0b：google_aio/google_ai_mode）+ 平台权重 + build_stage — `E2-01..02`
 - `[ ]` (P1) 批量导入 prompt（CSV/XLSX）— `E2-06`
-- `[ ]` (P1) 操作审计日志 — `E1-06`
+- `[~]` (P1) 操作审计日志 — `E1-06`（启动包创建已生成 `project_bootstrap_created`；用户级 CRUD 审计待接）
 
 DoD：
 
-- `[ ]` 可创建 market=AU 项目，配 3–5 竞品
-- `[ ]` 可选 1 行业模板并生成 100 条澳洲问题集
-- `[ ]` 平台、城市、语言、货币、权重无写死，全部来自 MarketProfile
+- `[~]` 可创建 market=AU 项目，配 3–5 竞品（启动包/API 已可生成；持久化创建待接）
+- `[x]` 可选 1 行业模板并生成 100 条澳洲问题集
+- `[x]` 平台、城市、语言、货币、权重无写死，全部来自 MarketProfile
 
 ### M2a · Phase 2a：Stable AI Answer Runner + Raw Evidence Store（P0a，第一条垂直切片）
 

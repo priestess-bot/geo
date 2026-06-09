@@ -16,6 +16,35 @@ CREATE TABLE industry_profiles (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE tenants (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name text NOT NULL,
+  slug text NOT NULL UNIQUE,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE projects (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  market_code text NOT NULL,
+  industry_code text NOT NULL,
+  target_brand text NOT NULL,
+  category text NOT NULL,
+  prompt_version text NOT NULL,
+  status text NOT NULL DEFAULT 'configured',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE project_members (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id text NOT NULL,
+  role text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(project_id, user_id)
+);
+
 CREATE TABLE prompt_questions (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id uuid NOT NULL,
@@ -280,3 +309,4 @@ CREATE INDEX idx_answer_runs_project ON answer_runs(project_id);
 CREATE INDEX idx_answer_runs_prompt ON answer_runs(prompt_question_id);
 CREATE INDEX idx_audit_events_project ON audit_events(project_id, created_at);
 CREATE INDEX idx_report_exports_project ON report_exports(project_id, exported_at);
+CREATE INDEX idx_projects_tenant ON projects(tenant_id);

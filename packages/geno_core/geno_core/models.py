@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 ActorType = Literal["user", "system", "worker", "api"]
 AccessMethod = Literal["browser", "official_api", "third_party_api", "manual"]
+ProjectRole = Literal["owner", "admin", "analyst", "viewer"]
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,102 @@ class MarketProfile:
     cities: list[str]
     source_types: list[str]
     platforms: list[PlatformConfig]
+
+
+@dataclass(frozen=True)
+class IndustryProfile:
+    market_code: str
+    industry_code: str
+    display_name: str
+    default_prompt_templates: tuple[str, ...]
+    source_type_weights: dict[str, float]
+    competitor_fields: tuple[str, ...]
+    required_local_facts: tuple[str, ...]
+    report_template: str
+
+
+@dataclass(frozen=True)
+class Tenant:
+    id: str
+    name: str
+    slug: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class Project:
+    id: str
+    tenant_id: str
+    name: str
+    market_code: str
+    industry_code: str
+    target_brand: str
+    category: str
+    prompt_version: str
+    status: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class ProjectMember:
+    id: str
+    project_id: str
+    user_id: str
+    role: ProjectRole
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class BrandEntity:
+    id: str
+    project_id: str
+    canonical_name: str
+    official_domains: tuple[str, ...]
+    parent_company: str | None
+    product_lines: tuple[str, ...]
+    status: str
+
+
+@dataclass(frozen=True)
+class CompetitorEntity:
+    id: str
+    project_id: str
+    canonical_name: str
+    official_domains: tuple[str, ...]
+    parent_company: str | None
+    product_lines: tuple[str, ...]
+    status: str
+
+
+@dataclass(frozen=True)
+class PromptQuestion:
+    id: str
+    project_id: str
+    market_code: str
+    industry_code: str
+    text: str
+    intent_type: str
+    city: str
+    language: str
+    target_brand: str
+    competitors: tuple[str, ...]
+    priority: int
+    intent_weight: float
+    prompt_version: str
+    status: str
+
+
+@dataclass(frozen=True)
+class ProjectBootstrap:
+    tenant: Tenant
+    project: Project
+    members: tuple[ProjectMember, ...]
+    brand: BrandEntity
+    competitors: tuple[CompetitorEntity, ...]
+    market_profile: MarketProfile
+    industry_profile: IndustryProfile
+    prompt_questions: tuple[PromptQuestion, ...]
+    audit_events: tuple["AuditEvent", ...]
 
 
 @dataclass(frozen=True)
