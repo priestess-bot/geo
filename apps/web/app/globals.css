@@ -53,6 +53,12 @@ h2 {
   letter-spacing: 0;
 }
 
+h3 {
+  font-size: 13px;
+  letter-spacing: 0;
+  margin: 0;
+}
+
 .apiBox {
   align-items: flex-end;
   background: #ffffff;
@@ -105,7 +111,7 @@ code {
 .metrics {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   margin-top: 18px;
 }
 
@@ -139,6 +145,11 @@ code {
 .panel {
   min-height: 278px;
   padding: 16px;
+}
+
+.panelWide {
+  grid-column: 1 / -1;
+  min-height: 0;
 }
 
 .panelHeader {
@@ -252,6 +263,27 @@ code {
   text-transform: uppercase;
 }
 
+.traceGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.3fr) minmax(220px, 0.85fr) minmax(220px, 0.85fr);
+}
+
+.traceSummary,
+.traceColumn {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.traceColumn {
+  align-content: start;
+  background: #f7fafc;
+  border: 1px solid #e1e7ee;
+  border-radius: 6px;
+  padding: 12px;
+}
+
 .empty {
   background: #f7fafc;
   border: 1px dashed #cbd5df;
@@ -260,9 +292,17 @@ code {
 }
 
 @media (max-width: 1100px) {
-  .metrics,
-  .dashboard {
+  .metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .dashboard,
+  .traceGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .traceSummary {
+    grid-column: 1 / -1;
   }
 }
 
@@ -283,8 +323,13 @@ code {
 
   .metrics,
   .dashboard,
-  .scoreRow {
+  .scoreRow,
+  .traceGrid {
     grid-template-columns: 1fr;
+  }
+
+  .traceSummary {
+    grid-column: auto;
   }
 
   .panel {

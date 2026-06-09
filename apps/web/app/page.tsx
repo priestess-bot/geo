@@ -73,6 +73,38 @@ type ContentEngine = {
   audit_events: unknown[];
 };
 
+type TraceabilityDetail = {
+  traceability_bundle: {
+    explanation_summary: string;
+    report_export_ids: string[];
+    score_snapshot_ids: string[];
+    score_contribution_ids: string[];
+    answer_run_ids: string[];
+    raw_answer_ids: string[];
+    answer_citation_ids: string[];
+    evidence_asset_ids: string[];
+    source_graph_ids: string[];
+    source_gap_types: string[];
+    action_recommendation_ids: string[];
+    content_draft_ids: string[];
+    audit_event_ids: string[];
+  };
+  report_exports: Array<{ report_version: string }>;
+  score_snapshots: ScoreSnapshot[];
+  evidence_runs: EvidenceRun[];
+  action_recommendations: Array<{ title: string; priority: string; status: string }>;
+  content_drafts: Array<{
+    draft: { title: string; review_status: string };
+  }>;
+  audit_events: Array<{ event_type: string; target_type: string; method_version?: string | null }>;
+  evidence_links: Array<{
+    source_type: string;
+    target_type: string;
+    relation_type: string;
+    answer_run_ids: string[];
+  }>;
+};
+
 type RuntimeData = {
   evidence: PageResponse<EvidenceRun>;
   scores: PageResponse<ScoreSnapshot>;
@@ -80,6 +112,7 @@ type RuntimeData = {
   reports: PageResponse<ReportExport>;
   actions: PageResponse<ActionPlan>;
   content: PageResponse<ContentEngine>;
+  traceability: TraceabilityDetail | null;
 };
 
 const endpoints = {
@@ -88,7 +121,8 @@ const endpoints = {
   graphs: "/v1/citation-graphs/runtime?limit=1",
   reports: "/v1/reports/runtime?limit=1",
   actions: "/v1/action-plans/runtime?limit=1",
-  content: "/v1/content-engines/runtime?limit=1"
+  content: "/v1/content-engines/runtime?limit=1",
+  traceability: "/v1/traceability/runtime"
 } as const;
 
 const emptyPage = { total_count: 0, records: [] };
@@ -131,7 +165,8 @@ async function fetchRuntimeData(): Promise<{
         graphs: emptyPage,
         reports: emptyPage,
         actions: emptyPage,
-        content: emptyPage
+        content: emptyPage,
+        traceability: null
       },
       error: error instanceof Error ? error.message : "Runtime API unavailable",
       fetchUrl: baseUrl,
@@ -156,12 +191,14 @@ export default async function Home() {
   const latestReport = data.reports.records[0];
   const latestAction = data.actions.records[0];
   const latestContent = data.content.records[0];
+  const traceability = data.traceability;
   const totalAuditEvents =
     (latestEvidence?.audit_events.length || 0) +
     (latestScore?.audit_events.length || 0) +
     (latestReport?.audit_events.length || 0) +
     (latestAction?.audit_events.length || 0) +
-    (latestContent?.audit_events.length || 0);
+    (latestContent?.audit_events.length || 0) +
+    (traceability?.audit_events.length || 0);
 
   return (
     <main className="shell">
@@ -191,6 +228,7 @@ export default async function Home() {
         <Metric label="Open actions" value={latestAction?.action_recommendations.length || 0} />
         <Metric label="Content drafts" value={latestContent?.content_drafts.length || 0} />
         <Metric label="Audit events" value={totalAuditEvents} />
+        <Metric label="Trace links" value={traceability?.evidence_links.length || 0} />
       </section>
 
       <section className="dashboard">
@@ -310,6 +348,60 @@ export default async function Home() {
             <EmptyState />
           )}
         </Panel>
+
+        <Panel
+          title="Traceability Detail"
+          subtitle={traceability?.report_exports[0]?.report_version || "No traceability bundle"}
+          wide
+        >
+          {traceability ? (
+            <div className="traceGrid">
+              <div className="traceSummary">
+                <p className="prompt">{traceability.traceability_bundle.explanation_summary}</p>
+                <dl className="facts">
+                  <Fact label="Reports" value={traceability.traceability_bundle.report_export_ids.length} />
+                  <Fact label="Score snapshots" value={traceability.traceability_bundle.score_snapshot_ids.length} />
+                  <Fact label="Score parts" value={traceability.traceability_bundle.score_contribution_ids.length} />
+                  <Fact label="Answer runs" value={traceability.traceability_bundle.answer_run_ids.length} />
+                  <Fact label="Raw answers" value={traceability.traceability_bundle.raw_answer_ids.length} />
+                  <Fact label="Citations" value={traceability.traceability_bundle.answer_citation_ids.length} />
+                  <Fact label="Assets" value={traceability.traceability_bundle.evidence_asset_ids.length} />
+                  <Fact label="Graph nodes" value={traceability.traceability_bundle.source_graph_ids.length} />
+                  <Fact label="Actions" value={traceability.traceability_bundle.action_recommendation_ids.length} />
+                  <Fact label="Drafts" value={traceability.traceability_bundle.content_draft_ids.length} />
+                </dl>
+              </div>
+              <div className="traceColumn">
+                <h3>Evidence Links</h3>
+                <ul className="plainList">
+                  {traceability.evidence_links.slice(0, 5).map((link, index) => (
+                    <li key={`${link.relation_type}-${index}`}>
+                      <strong>{link.relation_type}</strong>
+                      <span>
+                        {link.source_type} to {link.target_type} · {link.answer_run_ids.length} answer runs
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="traceColumn">
+                <h3>Audit Trail</h3>
+                <ul className="plainList">
+                  {traceability.audit_events.slice(0, 5).map((event, index) => (
+                    <li key={`${event.event_type}-${index}`}>
+                      <strong>{event.event_type}</strong>
+                      <span>
+                        {event.target_type} · {event.method_version || "no method version"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </Panel>
       </section>
     </main>
   );
@@ -324,9 +416,19 @@ function Metric({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function Panel({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
+function Panel({
+  title,
+  subtitle,
+  children,
+  wide = false
+}: {
+  title: string;
+  subtitle: string;
+  children: ReactNode;
+  wide?: boolean;
+}) {
   return (
-    <article className="panel">
+    <article className={wide ? "panel panelWide" : "panel"}>
       <header className="panelHeader">
         <h2>{title}</h2>
         <span>{subtitle}</span>
