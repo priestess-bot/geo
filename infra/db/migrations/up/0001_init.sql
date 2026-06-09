@@ -263,6 +263,37 @@ CREATE TABLE manual_distribution_records (
   notes text NOT NULL DEFAULT ''
 );
 
+CREATE TABLE evidence_links (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL,
+  source_type text NOT NULL,
+  source_id uuid NOT NULL,
+  target_type text NOT NULL,
+  target_id uuid NOT NULL,
+  relation_type text NOT NULL,
+  answer_run_ids uuid[] NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE traceability_bundles (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL,
+  subject_type text NOT NULL,
+  subject_id uuid NOT NULL,
+  report_export_ids uuid[] NOT NULL DEFAULT '{}',
+  score_snapshot_ids uuid[] NOT NULL DEFAULT '{}',
+  score_contribution_ids uuid[] NOT NULL DEFAULT '{}',
+  answer_run_ids uuid[] NOT NULL DEFAULT '{}',
+  raw_answer_ids uuid[] NOT NULL DEFAULT '{}',
+  answer_citation_ids uuid[] NOT NULL DEFAULT '{}',
+  evidence_asset_ids uuid[] NOT NULL DEFAULT '{}',
+  source_graph_ids uuid[] NOT NULL DEFAULT '{}',
+  source_gap_types text[] NOT NULL DEFAULT '{}',
+  action_recommendation_ids uuid[] NOT NULL DEFAULT '{}',
+  content_draft_ids uuid[] NOT NULL DEFAULT '{}',
+  audit_event_ids uuid[] NOT NULL DEFAULT '{}',
+  explanation_summary text NOT NULL
+);
+
 CREATE TABLE visibility_score_snapshots (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id uuid NOT NULL,
@@ -412,3 +443,5 @@ CREATE INDEX idx_projects_tenant ON projects(tenant_id);
 CREATE INDEX idx_action_recommendations_project ON action_recommendations(project_id, status);
 CREATE INDEX idx_localized_knowledge_facts_project ON localized_knowledge_facts(project_id, market_code, status);
 CREATE INDEX idx_content_drafts_project ON content_drafts(project_id, review_status);
+CREATE INDEX idx_evidence_links_project ON evidence_links(project_id, source_type, target_type);
+CREATE INDEX idx_traceability_bundles_project ON traceability_bundles(project_id, subject_type);

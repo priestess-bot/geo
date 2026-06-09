@@ -128,6 +128,21 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(len(payload["integration_connectors"]), 7)
         self.assertEqual(len(payload["manual_distribution_records"]), payload["content_draft_count"])
 
+    def test_traceability_fixture_endpoint(self) -> None:
+        response = self.client.get("/v1/traceability/au/p0a-fixture")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        bundle = payload["traceability_bundle"]
+        self.assertEqual(payload["answer_run_count"], 40)
+        self.assertEqual(payload["score_contribution_count"], 8)
+        self.assertEqual(bundle["report_export_ids"], [payload["report_export"]["id"]])
+        self.assertEqual(bundle["answer_run_ids"], payload["report_export"]["answer_run_ids"])
+        self.assertEqual(len(bundle["raw_answer_ids"]), payload["answer_run_count"])
+        self.assertGreater(len(bundle["answer_citation_ids"]), 0)
+        self.assertGreater(len(bundle["evidence_asset_ids"]), 0)
+        self.assertTrue(any(link["relation_type"] == "explained_by" for link in bundle["evidence_links"]))
+        self.assertTrue(any(link["relation_type"] == "supports_draft" for link in bundle["evidence_links"]))
+
     def test_contracts_include_m7_content_integrations(self) -> None:
         response = self.client.get("/v1/contracts")
         self.assertEqual(response.status_code, 200)
@@ -135,6 +150,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("LocalizedKnowledgeFact", payload["m7_content_integrations"])
         self.assertIn("ContentDraft", payload["m7_content_integrations"])
         self.assertIn("ManualDistributionRecord", payload["m7_content_integrations"])
+        self.assertIn("TraceabilityBundle", payload["auditability"])
+        self.assertIn("build_traceability_bundle", payload["traceability"])
 
 
 if __name__ == "__main__":

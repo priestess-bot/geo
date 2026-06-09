@@ -8,7 +8,7 @@
 
 ## 1. 分层系统架构
 
-三条硬约束在图中的体现：**开源优先**（基础设施全部开源自托管）、**松耦合**（上层只依赖下层接口、模块间走数据契约）、**可插拔**（带 `«接口»` 的模块其后端可替换，见图 2）。同时，P0a 开始就把 `AuditEvent`、`EvidenceLink`、`ScoreContribution`、`ReportExport` 作为跨模块数据契约，保证可审计、可溯源、可解释。
+三条硬约束在图中的体现：**开源优先**（基础设施全部开源自托管）、**松耦合**（上层只依赖下层接口、模块间走数据契约）、**可插拔**（带 `«接口»` 的模块其后端可替换，见图 2）。同时，P0a 开始就把 `AuditEvent`、`EvidenceLink`、`ScoreContribution`、`ReportExport`、`TraceabilityBundle` 作为跨模块数据契约，保证可审计、可溯源、可解释。
 
 ```mermaid
 flowchart TB
@@ -29,7 +29,7 @@ flowchart TB
     BEN["CompetitorBenchmark"]
     ACT["ActionPlanner"]
     REP["ReportExporter"]
-    AUD["Audit / Provenance<br/>AuditEvent · EvidenceLink"]
+    AUD["Audit / Provenance<br/>AuditEvent · EvidenceLink<br/>TraceabilityBundle"]
     LLM["«LLMGateway»"]
     GEO["«GeoProvider»"]
   end
@@ -129,5 +129,5 @@ flowchart LR
 - **模块间走数据契约**：稳定的表结构/事件结构，不共享内部对象。
 - **采集隔离**：采集 Worker 与主服务分进程，避免脆弱的浏览器自动化拖垮全局。
 - **采集两大保真度问题原生处理**：API ≠ 消费者界面（抽检差异）；Google AIO 选择性触发（`answer_present` 双分母）。
-- **审计/溯源/解释不可后补**：采集、解析、评分、人工补录、实体确认、报告导出必须写 `AuditEvent`；报告数值必须通过 `ReportExport -> VisibilityScoreSnapshot -> ScoreContribution -> AnswerAnalysis -> AnswerRun` 追溯；分数必须展示权重、分母、证据和局限。
+- **审计/溯源/解释不可后补**：采集、解析、评分、人工补录、实体确认、报告导出必须写 `AuditEvent`；报告数值必须通过 `TraceabilityBundle -> ReportExport -> VisibilityScoreSnapshot -> ScoreContribution -> AnswerAnalysis -> AnswerRun` 追溯；分数必须展示权重、分母、证据和局限。
 - **开源优先但接口前置**：MVP 能一个组件覆盖就不引第二个（向量先 pgvector、图先 PG 邻接表），但接口按"将来要换"设计。

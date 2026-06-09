@@ -49,6 +49,7 @@ from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.parser import RuleBasedAnswerParser
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.scoring import AU_VISIBILITY_V1, score_answer_analysis
+from geno_core.traceability import build_traceability_bundle
 
 
 class CoreContractsTest(unittest.TestCase):
@@ -654,6 +655,95 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(len(distribution_records), len(drafts))
         self.assertEqual(audit_event.event_type, "content_engine_fixture_created")
         self.assertEqual(audit_event.output_refs["content_draft_ids"], [draft.id for draft in drafts])
+
+    def test_traceability_bundle_connects_report_to_raw_evidence_and_actions(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia", "Sydney"),
+            sample_size=1,
+            prompt_limit=10,
+        )
+        analysis_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+        )
+        graph = build_citation_graph(
+            project_id=bootstrap.project.id,
+            records=records,
+            analyses=analysis_result.analyses,
+            competitors=bootstrap.competitors,
+            industry_profile=bootstrap.industry_profile,
+        )
+        report = MarkdownCsvReportExporter().export(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            report_version="p0a-fixture-v1",
+            report_type="design_partner_fixture",
+            prompt_version=bootstrap.project.prompt_version,
+            snapshot=analysis_result.snapshot,
+            contributions=analysis_result.contributions,
+            records=records,
+            graph=graph,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+        )
+        actions = build_action_recommendations(
+            project_id=bootstrap.project.id,
+            graph=graph,
+            snapshot=analysis_result.snapshot,
+        )
+        facts = build_localized_knowledge_facts(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            brand=bootstrap.brand,
+            category=bootstrap.project.category,
+            answer_run_ids=tuple(record.answer_run.id for record in records),
+        )
+        search_results = search_knowledge_facts(
+            facts=facts,
+            query="ExampleBrand Australia shipping review Sydney",
+            market_code="AU",
+            city="Sydney",
+            limit=5,
+        )
+        drafts = build_content_drafts(
+            project_id=bootstrap.project.id,
+            target_brand=bootstrap.project.target_brand,
+            category=bootstrap.project.category,
+            actions=actions,
+            prompts=bootstrap.prompt_questions,
+            knowledge_results=search_results,
+        )
+        bundle = build_traceability_bundle(
+            project_id=bootstrap.project.id,
+            report_export=report.report_export,
+            snapshot=analysis_result.snapshot,
+            contributions=analysis_result.contributions,
+            records=records,
+            graph=graph,
+            actions=actions,
+            content_drafts=drafts,
+            audit_events=tuple(record.audit_events[0] for record in records)
+            + (analysis_result.audit_event, report.audit_event),
+        )
+        self.assertEqual(bundle.report_export_ids, (report.report_export.id,))
+        self.assertEqual(bundle.score_snapshot_ids, (analysis_result.snapshot.id,))
+        self.assertEqual(bundle.answer_run_ids, report.report_export.answer_run_ids)
+        self.assertEqual(len(bundle.score_contribution_ids), len(analysis_result.contributions))
+        self.assertEqual(len(bundle.raw_answer_ids), len(records))
+        self.assertGreater(len(bundle.answer_citation_ids), 0)
+        self.assertGreater(len(bundle.evidence_asset_ids), 0)
+        self.assertEqual(bundle.action_recommendation_ids, tuple(action.id for action in actions))
+        self.assertEqual(bundle.content_draft_ids, tuple(draft.id for draft in drafts))
+        self.assertTrue(any(link.relation_type == "explained_by" for link in bundle.evidence_links))
+        self.assertTrue(any(link.relation_type == "supports_draft" for link in bundle.evidence_links))
+        self.assertIn("answer runs", bundle.explanation_summary)
 
 
 if __name__ == "__main__":

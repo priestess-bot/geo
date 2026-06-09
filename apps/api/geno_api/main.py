@@ -42,6 +42,7 @@ from geno_core.knowledge import (
 from geno_core.market import build_au_market_profile
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.report import MarkdownCsvReportExporter
+from geno_core.traceability import build_traceability_bundle
 
 app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
 
@@ -391,6 +392,91 @@ def au_p0a_fixture_content_engine() -> dict[str, object]:
     }
 
 
+@app.get("/v1/traceability/au/p0a-fixture")
+def au_p0a_fixture_traceability() -> dict[str, object]:
+    bootstrap = build_au_project_bootstrap()
+    records = run_fixture_collection_slice(
+        project_id=bootstrap.project.id,
+        prompts=bootstrap.prompt_questions,
+        market_profile=bootstrap.market_profile,
+        collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+        cities=("Australia", "Sydney"),
+        sample_size=1,
+        prompt_limit=10,
+    )
+    analysis_result = analyze_and_score_records(
+        project_id=bootstrap.project.id,
+        records=records,
+        brand=bootstrap.brand,
+        competitors=bootstrap.competitors,
+        platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
+    )
+    graph = build_citation_graph(
+        project_id=bootstrap.project.id,
+        records=records,
+        analyses=analysis_result.analyses,
+        competitors=bootstrap.competitors,
+        industry_profile=bootstrap.industry_profile,
+    )
+    report = MarkdownCsvReportExporter().export(
+        project_id=bootstrap.project.id,
+        market_code=bootstrap.project.market_code,
+        report_version="p0a-fixture-v1",
+        report_type="design_partner_fixture",
+        prompt_version=bootstrap.project.prompt_version,
+        snapshot=analysis_result.snapshot,
+        contributions=analysis_result.contributions,
+        records=records,
+        graph=graph,
+        platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
+    )
+    actions = build_action_recommendations(
+        project_id=bootstrap.project.id,
+        graph=graph,
+        snapshot=analysis_result.snapshot,
+    )
+    facts = build_localized_knowledge_facts(
+        project_id=bootstrap.project.id,
+        market_code=bootstrap.project.market_code,
+        brand=bootstrap.brand,
+        category=bootstrap.project.category,
+        answer_run_ids=tuple(record.answer_run.id for record in records),
+    )
+    knowledge_results = search_knowledge_facts(
+        facts=facts,
+        query=f"{bootstrap.project.target_brand} {bootstrap.project.category} Australia shipping reviews",
+        market_code=bootstrap.project.market_code,
+        city="Sydney",
+        limit=5,
+    )
+    drafts = build_content_drafts(
+        project_id=bootstrap.project.id,
+        target_brand=bootstrap.project.target_brand,
+        category=bootstrap.project.category,
+        actions=actions,
+        prompts=bootstrap.prompt_questions,
+        knowledge_results=knowledge_results,
+    )
+    bundle = build_traceability_bundle(
+        project_id=bootstrap.project.id,
+        report_export=report.report_export,
+        snapshot=analysis_result.snapshot,
+        contributions=analysis_result.contributions,
+        records=records,
+        graph=graph,
+        actions=actions,
+        content_drafts=drafts,
+        audit_events=tuple(record.audit_events[0] for record in records)
+        + (analysis_result.audit_event, report.audit_event),
+    )
+    return {
+        "traceability_bundle": asdict(bundle),
+        "report_export": asdict(report.report_export),
+        "score_contribution_count": len(analysis_result.contributions),
+        "answer_run_count": len(records),
+    }
+
+
 @app.get("/v1/contracts")
 def contracts() -> dict[str, list[str]]:
     return {
@@ -409,6 +495,7 @@ def contracts() -> dict[str, list[str]]:
             "EvidenceLink",
             "ScoreContribution",
             "ReportExport",
+            "TraceabilityBundle",
         ],
         "m1_bootstrap": [
             "Tenant",
@@ -471,5 +558,10 @@ def contracts() -> dict[str, list[str]]:
             "ContentDraft",
             "IntegrationConnector",
             "ManualDistributionRecord",
+        ],
+        "traceability": [
+            "EvidenceLink",
+            "TraceabilityBundle",
+            "build_traceability_bundle",
         ],
     }

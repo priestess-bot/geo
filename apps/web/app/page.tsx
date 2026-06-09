@@ -9,6 +9,7 @@ const modules = [
   "Evidence Report Export",
   "Action Plan + Retest",
   "Knowledge Facts + Content Draft",
+  "Traceability Bundle",
   "Audit / Provenance",
   "AUVisibilityScore",
   "Evidence Report"

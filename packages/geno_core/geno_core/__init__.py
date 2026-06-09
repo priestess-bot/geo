@@ -43,6 +43,7 @@ from geno_core.market import build_au_market_profile
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.scoring import AU_VISIBILITY_V1, score_answer_analyses, score_answer_analysis
+from geno_core.traceability import build_traceability_bundle
 
 __all__ = [
     "AU_VISIBILITY_V1",
@@ -55,6 +56,7 @@ __all__ = [
     "build_au_project_bootstrap",
     "build_p0a_collection_plan",
     "build_retest_schedule",
+    "build_traceability_bundle",
     "build_retest_comparison_audit_event",
     "collect_prompt_with_failure_record",
     "compare_retest_windows",

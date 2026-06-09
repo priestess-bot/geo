@@ -504,6 +504,40 @@ class ScoreContribution:
 
 
 @dataclass(frozen=True)
+class EvidenceLink:
+    id: str
+    project_id: str
+    source_type: str
+    source_id: str
+    target_type: str
+    target_id: str
+    relation_type: str
+    answer_run_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TraceabilityBundle:
+    id: str
+    project_id: str
+    subject_type: str
+    subject_id: str
+    report_export_ids: tuple[str, ...]
+    score_snapshot_ids: tuple[str, ...]
+    score_contribution_ids: tuple[str, ...]
+    answer_run_ids: tuple[str, ...]
+    raw_answer_ids: tuple[str, ...]
+    answer_citation_ids: tuple[str, ...]
+    evidence_asset_ids: tuple[str, ...]
+    source_graph_ids: tuple[str, ...]
+    source_gap_types: tuple[str, ...]
+    action_recommendation_ids: tuple[str, ...]
+    content_draft_ids: tuple[str, ...]
+    audit_event_ids: tuple[str, ...]
+    evidence_links: tuple[EvidenceLink, ...]
+    explanation_summary: str
+
+
+@dataclass(frozen=True)
 class AuditEvent:
     id: str
     event_type: str

@@ -57,12 +57,12 @@
 
 每个任务合并前都要满足：
 
-- `[ ]` 代码有单测；关键路径有集成测试
-- `[ ]` 通过 CI（lint + 测试 + 迁移可起）
-- `[ ]` 若改了行为/口径，同 PR 更新对应 `docs/`，必要时加 `decisions/` ADR
-- `[ ]` P0a/P0b/P0c 数据写入可追溯：能点回 `AnswerRun` / `answer_run_ids`
-- `[ ]` 关键动作写入 `AuditEvent`；关键输出能生成 provenance 链路和解释包
-- `[ ]` 有一次可演示（哪怕命令行或截图）
+- `[~]` 代码有单测；关键路径有集成测试（fixture/API/core 已覆盖；真实外部采集 E2E 待接）
+- `[~]` 通过 CI（lint + 测试 + 迁移可起）（本地 `make test` / `make docker-config` 通过；完整 lint/真实迁移起服待接）
+- `[x]` 若改了行为/口径，同 PR 更新对应 `docs/`，必要时加 `decisions/` ADR
+- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `AnswerRun` / `answer_run_ids`（fixture TraceabilityBundle 已落；持久化查询 UI 待接）
+- `[~]` 关键动作写入 `AuditEvent`；关键输出能生成 provenance 链路和解释包（采集/评分/报告/action/content fixture 已落；人工补录/实体确认待接）
+- `[~]` 有一次可演示（API fixture endpoints 已可演示；真实 design partner 数据演示待接）
 
 **P0a 稳定链路验收门槛**（M0 + M1 + M2a + M3 全绿才算可进入 design partner 试点）：
 
@@ -88,7 +88,7 @@
 
 - `[ ]` 生成 Citation Graph，识别 source gap，输出 3–5 竞品 Benchmark
 - `[ ]` 导出含方法说明（含 API/消费者界面差异抽检结论、Google spike 结论、平台覆盖/降级口径）、审计摘要、分数解释包与原始证据附录的 PDF/CSV
-- `[ ]` 任意报告数值可沿 `ReportExport -> VisibilityScoreSnapshot -> ScoreContribution -> AnswerAnalysis -> AnswerRun -> RawAnswer/AnswerCitation/EvidenceAsset` 追溯
+- `[~]` 任意报告数值可沿 `ReportExport -> VisibilityScoreSnapshot -> ScoreContribution -> AnswerAnalysis -> AnswerRun -> RawAnswer/AnswerCitation/EvidenceAsset` 追溯（fixture TraceabilityBundle 已落；持久化查询 UI 待接）
 
 **架构验收门槛**（开源·可插拔，搬自 AU 路径 §9）：
 
@@ -108,7 +108,7 @@
 任务：
 
 - `[x]` (P0a) 仓库骨架：`apps/`、`packages/`、`workers/`、`infra/`、`tests/`、`decisions/`
-- `[x]` (P0a/P0b/P0c) 数据契约：优先实现 MarketProfile、IndustryProfile、PromptQuestion、GeoSample、AnswerRun、RawAnswer、AnswerCitation、AnswerAnalysis、SourceGraph、CompetitorBenchmark、VisibilityScoreSnapshot、BrandEntity/CompetitorEntity/EntityAlias、CollectionCost、AuditEvent、ReportExport、ScoreContribution、EvidenceLink 关联表；P1/P2 表可延后 — `§8`
+- `[x]` (P0a/P0b/P0c) 数据契约：优先实现 MarketProfile、IndustryProfile、PromptQuestion、GeoSample、AnswerRun、RawAnswer、AnswerCitation、AnswerAnalysis、SourceGraph、CompetitorBenchmark、VisibilityScoreSnapshot、BrandEntity/CompetitorEntity/EntityAlias、CollectionCost、AuditEvent、ReportExport、ScoreContribution、EvidenceLink、TraceabilityBundle 关联表；P1/P2 表可延后 — `§8`
 - `[x]` (P0a) 接口契约 stub（先定义不实现）：CollectorBackend、LLMGateway、ParserEngine、VectorStore、GraphStore、GeoProvider、ScoringFormula、ReportExporter — `Step3.2`
 - `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web；LiteLLM 与 worker runtime 待接）
 - `[x]` (P0c/P1) 重组件接入点：ClickHouse、Temporal、Langfuse、promptfoo、SearXNG、Metabase 写 ADR 和接口适配计划，但不阻塞 P0a — `§6`
@@ -119,7 +119,7 @@ DoD：
 
 - `[~]` 一键起核心依赖；P0a/P0b/P0c 相关表可建可回滚；8 接口 stub + CI 绿（本地配置和 contract tests 待验证，真实起服待补）
 - `[x]` 三个可插拔点（向量库/图库/LLM）已留好接口，替换演示排入 P0c/P1
-- `[x]` AuditEvent / ReportExport / ScoreContribution / EvidenceLink 相关表可建可回滚
+- `[x]` AuditEvent / ReportExport / ScoreContribution / EvidenceLink / TraceabilityBundle 相关表可建可回滚
 
 ### M1 · Phase 1：AU MarketProfile + 行业模板 + Prompt Pack（P0a）
 
@@ -294,7 +294,7 @@ DoD：
 | 架构可插拔是否为真 | M0 起持续 | 接口先行；P0a 先完成接口级可插拔，深度切换演示排到 P0c/P1 | Collector/Parser/Scoring/Report 可插拔；向量库/图库/LLM 后续演示 |
 | 城市级地理定位实现成本 | M2a/M2b | GeoProvider 抽象（uule/代理池/供应商可换）；P0a 四地理样本可降级但保留字段 | 地理样本可区分且成本可控 |
 | 单位经济不透明 | M2a 起 | CollectionCost 从首个采集器记录；P0a planned_runs 默认 2400，Google spike 默认 240 | 每份报告成本、耗时、成功率可估算 |
-| 审计链/解释链断裂 | M0 起，M5 验收 | AuditEvent、ReportExport、ScoreContribution、EvidenceLink 从 P0 建表并写入关键事件 | 任意报告数字可追到原始证据，并能解释子指标贡献 |
+| 审计链/解释链断裂 | M0 起，M5 验收 | AuditEvent、ReportExport、ScoreContribution、EvidenceLink 从 P0 建表并写入关键事件 | TraceabilityBundle fixture 已证明报告可追到原始证据；持久化查询 UI 待接 |
 | 打不过 Semrush/Ahrefs 数据规模 | 全程定位 | 押证据链/本地信源/代理商工作流，不拼分数广度 | design partner 认可证据价值 |
 | 评分构念效度未验证 | M6 后 | 复测展示变化；拿到客户转化数据再做相关性 | 报告标注 MVP 阶段不声称强因果 |
 
