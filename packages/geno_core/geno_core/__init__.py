@@ -42,6 +42,7 @@ from geno_core.knowledge import (
 from geno_core.market import build_au_market_profile
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.report import MarkdownCsvReportExporter
+from geno_core.repository import PostgresEvidenceRepository
 from geno_core.scoring import AU_VISIBILITY_V1, score_answer_analyses, score_answer_analysis
 from geno_core.traceability import build_traceability_bundle
 
@@ -78,6 +79,7 @@ __all__ = [
     "PerplexitySonarCollector",
     "PlaywrightAIModeCollector",
     "PlaywrightGoogleAIOCollector",
+    "PostgresEvidenceRepository",
     "run_collection_slice",
     "run_fixture_collection_slice",
     "score_answer_analyses",

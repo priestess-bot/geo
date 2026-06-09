@@ -10,6 +10,7 @@ const modules = [
   "Action Plan + Retest",
   "Knowledge Facts + Content Draft",
   "Traceability Bundle",
+  "Runtime Persistence",
   "Audit / Provenance",
   "AUVisibilityScore",
   "Evidence Report"

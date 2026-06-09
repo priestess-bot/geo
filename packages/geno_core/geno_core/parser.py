@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from uuid import NAMESPACE_URL, uuid5
 
 from geno_core.models import AnswerAnalysis, BrandEntity, CompetitorEntity, RawEvidenceRecord
 
@@ -82,7 +83,7 @@ class RuleBasedAnswerParser:
         if not record.citations:
             uncertainty_flags.append("no_citations")
         return AnswerAnalysis(
-            id=f"analysis-{record.answer_run.id}",
+            id=str(uuid5(NAMESPACE_URL, f"geno:answer-analysis:{record.answer_run.id}")),
             answer_run_id=record.answer_run.id,
             parser_engine_id=self.parser_engine_id,
             analysis_version=self.analysis_version,

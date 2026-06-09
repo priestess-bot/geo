@@ -48,8 +48,35 @@ from geno_core.models import AnswerAnalysis, CollectionFailureRecord, ReportExpo
 from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.parser import RuleBasedAnswerParser
 from geno_core.report import MarkdownCsvReportExporter
+from geno_core.repository import PostgresEvidenceRepository
 from geno_core.scoring import AU_VISIBILITY_V1, score_answer_analysis
 from geno_core.traceability import build_traceability_bundle
+
+
+class RecordingCursor:
+    def __init__(self, calls: list[tuple[str, tuple[object, ...]]]) -> None:
+        self.calls = calls
+
+    def __enter__(self) -> "RecordingCursor":
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        return None
+
+    def execute(self, sql: str, params: tuple[object, ...] = ()) -> None:
+        self.calls.append((" ".join(sql.split()), params))
+
+
+class RecordingConnection:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[object, ...]]] = []
+        self.commit_count = 0
+
+    def cursor(self) -> RecordingCursor:
+        return RecordingCursor(self.calls)
+
+    def commit(self) -> None:
+        self.commit_count += 1
 
 
 class CoreContractsTest(unittest.TestCase):
@@ -744,6 +771,159 @@ class CoreContractsTest(unittest.TestCase):
         self.assertTrue(any(link.relation_type == "explained_by" for link in bundle.evidence_links))
         self.assertTrue(any(link.relation_type == "supports_draft" for link in bundle.evidence_links))
         self.assertIn("answer runs", bundle.explanation_summary)
+
+    def test_postgres_repository_maps_fixture_chain_to_runtime_tables(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(),),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=1,
+        )
+        analysis_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+        )
+        graph = build_citation_graph(
+            project_id=bootstrap.project.id,
+            records=records,
+            analyses=analysis_result.analyses,
+            competitors=bootstrap.competitors,
+            industry_profile=bootstrap.industry_profile,
+        )
+        report = MarkdownCsvReportExporter().export(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            report_version="repository-fixture-v1",
+            report_type="repository_fixture",
+            prompt_version=bootstrap.project.prompt_version,
+            snapshot=analysis_result.snapshot,
+            contributions=analysis_result.contributions,
+            records=records,
+            graph=graph,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+        )
+        actions = build_action_recommendations(
+            project_id=bootstrap.project.id,
+            graph=graph,
+            snapshot=analysis_result.snapshot,
+        )
+        schedule = build_retest_schedule(
+            project_id=bootstrap.project.id,
+            prompt_version=bootstrap.project.prompt_version,
+            sample_size=1,
+            answer_run_ids=tuple(record.answer_run.id for record in records),
+        )
+        action_audit = build_action_plan_audit_event(
+            project_id=bootstrap.project.id,
+            actions=actions,
+            schedule=schedule,
+        )
+        facts = build_localized_knowledge_facts(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            brand=bootstrap.brand,
+            category=bootstrap.project.category,
+            answer_run_ids=tuple(record.answer_run.id for record in records),
+        )
+        search_results = search_knowledge_facts(
+            facts=facts,
+            query="ExampleBrand Australia shipping",
+            market_code="AU",
+            limit=3,
+        )
+        drafts = build_content_drafts(
+            project_id=bootstrap.project.id,
+            target_brand=bootstrap.project.target_brand,
+            category=bootstrap.project.category,
+            actions=actions,
+            prompts=bootstrap.prompt_questions,
+            knowledge_results=search_results,
+        )
+        connectors = build_integration_connectors(project_id=bootstrap.project.id)
+        distribution_records = build_manual_distribution_records(project_id=bootstrap.project.id, drafts=drafts)
+        content_audit = build_content_engine_audit_event(
+            project_id=bootstrap.project.id,
+            facts=facts,
+            drafts=drafts,
+            connectors=connectors,
+            distribution_records=distribution_records,
+        )
+        bundle = build_traceability_bundle(
+            project_id=bootstrap.project.id,
+            report_export=report.report_export,
+            snapshot=analysis_result.snapshot,
+            contributions=analysis_result.contributions,
+            records=records,
+            graph=graph,
+            actions=actions,
+            content_drafts=drafts,
+            audit_events=tuple(record.audit_events[0] for record in records)
+            + (analysis_result.audit_event, report.audit_event, action_audit, content_audit),
+        )
+        connection = RecordingConnection()
+        repository = PostgresEvidenceRepository(connection)
+        repository.save_raw_evidence_records(records)
+        repository.save_answer_analyses(analysis_result.analyses)
+        repository.save_score_snapshot(
+            analysis_result.snapshot,
+            analysis_result.contributions,
+            analysis_result.audit_event,
+        )
+        repository.save_citation_graph(bootstrap.project.id, graph)
+        repository.save_report_export(report.report_export, report.audit_event)
+        repository.save_action_plan(
+            actions=actions,
+            schedule=schedule,
+            comparison=None,
+            audit_events=(action_audit,),
+        )
+        repository.save_content_engine(
+            facts=facts,
+            drafts=drafts,
+            connectors=connectors,
+            distribution_records=distribution_records,
+            audit_event=content_audit,
+        )
+        repository.save_traceability_bundle(bundle)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        expected_tables = (
+            "answer_runs",
+            "raw_answers",
+            "answer_citations",
+            "evidence_assets",
+            "collector_logs",
+            "collection_costs",
+            "answer_analyses",
+            "visibility_score_snapshots",
+            "score_contributions",
+            "source_graphs",
+            "competitor_benchmarks",
+            "report_exports",
+            "action_recommendations",
+            "retest_schedules",
+            "localized_knowledge_facts",
+            "content_drafts",
+            "integration_connectors",
+            "manual_distribution_records",
+            "evidence_links",
+            "traceability_bundles",
+            "audit_events",
+        )
+        for table in expected_tables:
+            self.assertIn(f"INSERT INTO {table}", executed_sql)
+        self.assertGreaterEqual(connection.commit_count, 8)
+        first_answer_run_insert = next(params for sql, params in connection.calls if "INSERT INTO answer_runs" in sql)
+        self.assertEqual(first_answer_run_insert[0], records[0].answer_run.id)
+        first_analysis_insert = next(params for sql, params in connection.calls if "INSERT INTO answer_analyses" in sql)
+        self.assertEqual(first_analysis_insert[0], analysis_result.analyses[0].id)
+        self.assertEqual(len(str(first_analysis_insert[0])), 36)
 
 
 if __name__ == "__main__":

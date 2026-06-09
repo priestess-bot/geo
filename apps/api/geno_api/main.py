@@ -564,4 +564,11 @@ def contracts() -> dict[str, list[str]]:
             "TraceabilityBundle",
             "build_traceability_bundle",
         ],
+        "persistence": [
+            "PostgresEvidenceRepository",
+            "RawEvidenceRecord",
+            "VisibilityScoreSnapshot",
+            "ReportExport",
+            "TraceabilityBundle",
+        ],
     }
