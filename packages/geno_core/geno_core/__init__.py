@@ -1,5 +1,12 @@
 """Core contracts and data models for the GENO AU evidence platform."""
 
+from geno_core.action_plan import (
+    build_action_plan_audit_event,
+    build_action_recommendations,
+    build_retest_schedule,
+    build_retest_comparison_audit_event,
+    compare_retest_windows,
+)
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
@@ -32,12 +39,17 @@ from geno_core.scoring import AU_VISIBILITY_V1, score_answer_analyses, score_ans
 __all__ = [
     "AU_VISIBILITY_V1",
     "analyze_and_score_records",
+    "build_action_plan_audit_event",
+    "build_action_recommendations",
     "build_au_dtc_ecommerce_profile",
     "build_au_dtc_prompt_pack",
     "build_au_market_profile",
     "build_au_project_bootstrap",
     "build_p0a_collection_plan",
+    "build_retest_schedule",
+    "build_retest_comparison_audit_event",
     "collect_prompt_with_failure_record",
+    "compare_retest_windows",
     "build_google_spike_plan",
     "build_citation_graph",
     "evaluate_google_spike_gate",

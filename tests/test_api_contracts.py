@@ -105,6 +105,16 @@ class ApiContractsTest(unittest.TestCase):
             payload["report_export"]["answer_run_ids"],
         )
 
+    def test_m6_action_plan_fixture_endpoint(self) -> None:
+        response = self.client.get("/v1/action-plans/au/p0a-fixture")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertGreater(payload["action_count"], 0)
+        self.assertEqual(payload["retest_schedule"]["offsets_days"], [0, 7, 14, 30])
+        self.assertEqual(payload["retest_comparison"]["trend"], "improved")
+        self.assertEqual(payload["audit_event"]["event_type"], "action_plan_created")
+        self.assertEqual(payload["comparison_audit_event"]["event_type"], "retest_comparison_created")
+
 
 if __name__ == "__main__":
     unittest.main()

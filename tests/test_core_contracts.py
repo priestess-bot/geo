@@ -4,6 +4,13 @@ import unittest
 from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
 
+from geno_core.action_plan import (
+    build_action_plan_audit_event,
+    build_action_recommendations,
+    build_retest_schedule,
+    build_retest_comparison_audit_event,
+    compare_retest_windows,
+)
 from geno_core.audit import build_audit_event, hash_payload
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.bootstrap import build_au_project_bootstrap
@@ -464,6 +471,105 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(report.audit_event.event_type, "report_export_created")
         self.assertEqual(report.audit_event.output_refs["report_export_ids"], [report.report_export.id])
         self.assertEqual(report.report_evidence_answer_run_ids, report.report_export.answer_run_ids)
+
+    def test_m6_action_plan_and_retest_schedule_trace_evidence(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia", "Sydney"),
+            sample_size=1,
+            prompt_limit=10,
+        )
+        analysis_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+        )
+        graph = build_citation_graph(
+            project_id=bootstrap.project.id,
+            records=records,
+            analyses=analysis_result.analyses,
+            competitors=bootstrap.competitors,
+            industry_profile=bootstrap.industry_profile,
+        )
+        actions = build_action_recommendations(
+            project_id=bootstrap.project.id,
+            graph=graph,
+            snapshot=analysis_result.snapshot,
+            owner_id="owner-1",
+            now=datetime(2026, 6, 10, tzinfo=UTC),
+        )
+        schedule = build_retest_schedule(
+            project_id=bootstrap.project.id,
+            prompt_version=bootstrap.project.prompt_version,
+            sample_size=1,
+            answer_run_ids=tuple(record.answer_run.id for record in records),
+            start_at=datetime(2026, 6, 10, tzinfo=UTC),
+        )
+        audit_event = build_action_plan_audit_event(
+            project_id=bootstrap.project.id,
+            actions=actions,
+            schedule=schedule,
+        )
+        self.assertTrue(actions)
+        self.assertTrue(all(action.status == "open" for action in actions))
+        self.assertTrue(all(action.next_check_date for action in actions))
+        self.assertTrue(all(action.evidence_answer_run_ids for action in actions))
+        self.assertEqual(schedule.offsets_days, (0, 7, 14, 30))
+        self.assertEqual(len(schedule.scheduled_dates), 4)
+        self.assertEqual(schedule.answer_run_ids, tuple(record.answer_run.id for record in records))
+        self.assertEqual(audit_event.event_type, "action_plan_created")
+        self.assertEqual(audit_event.output_refs["retest_schedule_ids"], [schedule.id])
+
+    def test_m6_retest_comparison_classifies_trend(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(),),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=2,
+        )
+        baseline = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+        ).snapshot
+        retest = baseline.__class__(
+            **{
+                **baseline.__dict__,
+                "id": "retest-snapshot",
+                "final_score": baseline.final_score + 3,
+            }
+        )
+        comparison = compare_retest_windows(
+            project_id=bootstrap.project.id,
+            baseline=baseline,
+            retest=retest,
+            now=datetime(2026, 6, 17, tzinfo=UTC),
+        )
+        self.assertEqual(comparison.trend, "improved")
+        self.assertEqual(comparison.score_delta, 3)
+        self.assertEqual(comparison.baseline_answer_run_ids, tuple(baseline.answer_run_ids))
+        audit_event = build_retest_comparison_audit_event(
+            project_id=bootstrap.project.id,
+            comparison=comparison,
+        )
+        self.assertEqual(audit_event.event_type, "retest_comparison_created")
+        self.assertEqual(audit_event.output_refs["retest_comparison_ids"], [comparison.id])
 
 
 if __name__ == "__main__":

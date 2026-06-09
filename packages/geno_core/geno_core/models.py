@@ -342,6 +342,47 @@ class CitationGraphResult:
 
 
 @dataclass(frozen=True)
+class ActionRecommendation:
+    id: str
+    project_id: str
+    title: str
+    description: str
+    priority: str
+    status: str
+    owner_id: str
+    source_gap_type: str | None
+    evidence_answer_run_ids: tuple[str, ...]
+    related_source_types: tuple[str, ...]
+    next_check_date: datetime
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class RetestSchedule:
+    id: str
+    project_id: str
+    prompt_version: str
+    sample_size: int
+    offsets_days: tuple[int, ...]
+    scheduled_dates: tuple[datetime, ...]
+    answer_run_ids: tuple[str, ...]
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class RetestComparison:
+    id: str
+    project_id: str
+    baseline_score: float
+    retest_score: float
+    score_delta: float
+    baseline_answer_run_ids: tuple[str, ...]
+    retest_answer_run_ids: tuple[str, ...]
+    trend: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class AnswerAnalysis:
     id: str
     answer_run_id: str

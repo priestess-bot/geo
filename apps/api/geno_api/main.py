@@ -4,6 +4,13 @@ from dataclasses import asdict
 
 from fastapi import FastAPI
 
+from geno_core.action_plan import (
+    build_action_plan_audit_event,
+    build_action_recommendations,
+    build_retest_schedule,
+    build_retest_comparison_audit_event,
+    compare_retest_windows,
+)
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
@@ -234,6 +241,74 @@ def au_p0a_fixture_report() -> dict[str, object]:
     }
 
 
+@app.get("/v1/action-plans/au/p0a-fixture")
+def au_p0a_fixture_action_plan() -> dict[str, object]:
+    bootstrap = build_au_project_bootstrap()
+    records = run_fixture_collection_slice(
+        project_id=bootstrap.project.id,
+        prompts=bootstrap.prompt_questions,
+        market_profile=bootstrap.market_profile,
+        collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+        cities=("Australia", "Sydney"),
+        sample_size=1,
+        prompt_limit=10,
+    )
+    analysis_result = analyze_and_score_records(
+        project_id=bootstrap.project.id,
+        records=records,
+        brand=bootstrap.brand,
+        competitors=bootstrap.competitors,
+        platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
+    )
+    graph = build_citation_graph(
+        project_id=bootstrap.project.id,
+        records=records,
+        analyses=analysis_result.analyses,
+        competitors=bootstrap.competitors,
+        industry_profile=bootstrap.industry_profile,
+    )
+    actions = build_action_recommendations(
+        project_id=bootstrap.project.id,
+        graph=graph,
+        snapshot=analysis_result.snapshot,
+    )
+    schedule = build_retest_schedule(
+        project_id=bootstrap.project.id,
+        prompt_version=bootstrap.project.prompt_version,
+        sample_size=1,
+        answer_run_ids=tuple(record.answer_run.id for record in records),
+    )
+    audit_event = build_action_plan_audit_event(
+        project_id=bootstrap.project.id,
+        actions=actions,
+        schedule=schedule,
+    )
+    retest_snapshot = analysis_result.snapshot.__class__(
+        **{
+            **asdict(analysis_result.snapshot),
+            "id": f"retest-{analysis_result.snapshot.id}",
+            "final_score": round(analysis_result.snapshot.final_score + 2.5, 4),
+        }
+    )
+    comparison = compare_retest_windows(
+        project_id=bootstrap.project.id,
+        baseline=analysis_result.snapshot,
+        retest=retest_snapshot,
+    )
+    comparison_audit_event = build_retest_comparison_audit_event(
+        project_id=bootstrap.project.id,
+        comparison=comparison,
+    )
+    return {
+        "action_count": len(actions),
+        "actions": [asdict(action) for action in actions],
+        "retest_schedule": asdict(schedule),
+        "retest_comparison": asdict(comparison),
+        "audit_event": asdict(audit_event),
+        "comparison_audit_event": asdict(comparison_audit_event),
+    }
+
+
 @app.get("/v1/contracts")
 def contracts() -> dict[str, list[str]]:
     return {
@@ -302,5 +377,10 @@ def contracts() -> dict[str, list[str]]:
             "ReportExport",
             "MarkdownCsvReportExporter",
             "EvidenceReport",
+        ],
+        "m6_action_retest": [
+            "ActionRecommendation",
+            "RetestSchedule",
+            "RetestComparison",
         ],
     }

@@ -46,7 +46,7 @@
 | **M3** | Answer Parser + AUVisibilityScore | E4 | 自动解析 + 可拆解可版本化评分 + 双分母 | P0a | `[~]` |
 | **M4** | Citation Graph + Competitor Benchmark | E5 | 信源图谱 + source gap + 3–5 竞品对标 | P0c | `[~]` |
 | **M5** | Evidence Report Export | E9（部分） | 导出含方法说明、Google spike 结论与证据附录的 PDF/CSV | P0c | `[~]` |
-| **M6** | Action Plan + 复测 | E9（部分） | 缺口转任务 + T+7/14/30 复测前后对比 | P1 | `[ ]` |
+| **M6** | Action Plan + 复测 | E9（部分） | 缺口转任务 + T+7/14/30 复测前后对比 | P1 | `[~]` |
 | **M7** | Knowledge Facts + Content Engine + Integrations | E6、E7、E8 | 本地事实库 + 证据驱动内容 + 集成 | P2 | `[ ]` |
 
 **P0a design partner 试点 = M0 + M1 + M2a + M3**。
@@ -254,16 +254,16 @@ DoD：
 
 任务：
 
-- `[ ]` (P1) ActionRecommendation：缺口转任务，绑 evidence/source_gap/related_runs/owner/next_check — `Step11 / §8.11`
-- `[ ]` (P1) 复测调度 T0/T+7/T+14/T+30（Temporal 可重放，同 prompt_version、同 k）— `Step14`
-- `[ ]` (P1) 前后窗口对比 + 趋势聚合，保留全部 raw runs — `Step14`
-- `[ ]` (P1) 预警：负面/品牌缺失/竞品压制 — `E9-04/05/06`
+- `[x]` (P1) ActionRecommendation：缺口转任务，绑 evidence/source_gap/related_runs/owner/next_check — `Step11 / §8.11`
+- `[~]` (P1) 复测调度 T0/T+7/T+14/T+30（Temporal 可重放，同 prompt_version、同 k）— `Step14`（同口径 RetestSchedule 已落；Temporal 可重放调度待接）
+- `[x]` (P1) 前后窗口对比 + 趋势聚合，保留全部 raw runs — `Step14`
+- `[~]` (P1) 预警：负面/品牌缺失/竞品压制 — `E9-04/05/06`（source gap、低 mention rate、低 recommendation rate 已转 action；实时预警/竞品压制规则待接）
 
 DoD：
 
-- `[ ]` 基于 source gap 生成 Action Plan
-- `[ ]` 任务有 owner/status/next_check_date
-- `[ ]` 按 T+7/14/30 复测，报告展示前后变化
+- `[x]` 基于 source gap 生成 Action Plan
+- `[x]` 任务有 owner/status/next_check_date
+- `[~]` 按 T+7/14/30 复测，报告展示前后变化（API 已返回 RetestComparison；报告模板/UI 展示待接）
 
 ### M7 · Phase 7：Knowledge Facts + Content Engine + Integrations（P2）
 

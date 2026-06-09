@@ -167,6 +167,44 @@ CREATE TABLE competitor_benchmarks (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE action_recommendations (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL,
+  title text NOT NULL,
+  description text NOT NULL,
+  priority text NOT NULL,
+  status text NOT NULL DEFAULT 'open',
+  owner_id text NOT NULL,
+  source_gap_type text,
+  evidence_answer_run_ids uuid[] NOT NULL DEFAULT '{}',
+  related_source_types text[] NOT NULL DEFAULT '{}',
+  next_check_date timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE retest_schedules (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL,
+  prompt_version text NOT NULL,
+  sample_size integer NOT NULL,
+  offsets_days integer[] NOT NULL,
+  scheduled_dates timestamptz[] NOT NULL,
+  answer_run_ids uuid[] NOT NULL DEFAULT '{}',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE retest_comparisons (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL,
+  baseline_score numeric(8,4) NOT NULL,
+  retest_score numeric(8,4) NOT NULL,
+  score_delta numeric(8,4) NOT NULL,
+  baseline_answer_run_ids uuid[] NOT NULL DEFAULT '{}',
+  retest_answer_run_ids uuid[] NOT NULL DEFAULT '{}',
+  trend text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE visibility_score_snapshots (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id uuid NOT NULL,
@@ -313,3 +351,4 @@ CREATE INDEX idx_answer_runs_prompt ON answer_runs(prompt_question_id);
 CREATE INDEX idx_audit_events_project ON audit_events(project_id, created_at);
 CREATE INDEX idx_report_exports_project ON report_exports(project_id, exported_at);
 CREATE INDEX idx_projects_tenant ON projects(tenant_id);
+CREATE INDEX idx_action_recommendations_project ON action_recommendations(project_id, status);
