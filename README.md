@@ -46,9 +46,9 @@
 
 | 文档 | 内容 |
 | --- | --- |
-| [MVP 技术设计文档](docs/GENO-SaaS-MVP-技术设计文档.md) | 总体架构、核心模块、数据模型、评分引擎、技术选型 |
-| [MVP 一期需求拆解表](docs/GENO-SaaS-MVP-一期需求拆解表.md) | Epic / 需求 / 优先级 / 验收标准 / 里程碑 / 排期 |
-| [澳大利亚首发技术落地路径](docs/GENO-SaaS-AU-首发技术落地路径.md) | Evidence-first MVP，15 步实施方案与数据模型增量 |
+| [MVP 技术设计文档](docs/GENO-SaaS-MVP-技术设计文档.md) | 通用 GENO SaaS 技术参考；已标注 AU 首发覆盖规则 |
+| [MVP 一期需求拆解表](docs/GENO-SaaS-MVP-一期需求拆解表.md) | 通用 Epic/需求参考；AU 首发优先级以 P0a/P0b/P0c 覆盖 |
+| [澳大利亚首发技术落地路径](docs/GENO-SaaS-AU-首发技术落地路径.md) | AU 首发规格真源：Evidence-first MVP、15 步实施方案与数据模型增量 |
 
 ## 证据目录 `research_sources/`
 

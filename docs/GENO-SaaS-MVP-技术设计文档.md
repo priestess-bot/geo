@@ -1,5 +1,9 @@
 # GENO SaaS MVP 技术设计文档
 
+> **状态说明（2026-06-09）**：本文保留为通用 GENO SaaS MVP 技术参考。当前工程交付以 [GENO-SaaS-AU-首发技术落地路径](GENO-SaaS-AU-首发技术落地路径.md)、[PROJECT-PLAN](../PROJECT-PLAN.md) 和 [ARCHITECTURE](../ARCHITECTURE.md) 为准。
+>
+> **AU 首发覆盖规则**：澳大利亚首发不是先做完整“知识库 -> 内容生成 -> 分发”闭环，而是先做 **Evidence-first AI Search Visibility MVP**：`AU MarketProfile -> Prompt Pack -> AI Answer Runner -> Raw Evidence Store -> Answer Parser -> Citation Graph -> AUVisibilityScore -> Competitor Benchmark -> Evidence Report -> 复测`。知识库、内容生成、自动分发和复杂集成整体后移到 P2，避免旧通用方案误导首发排期。
+
 ## 1. 背景与目标
 
 GENO SaaS MVP 面向品牌方和 GEO 交付团队，目标是把 GEO 服务从人工调研型交付升级为可配置、可监测、可复盘的 SaaS 工作台。
@@ -13,17 +17,35 @@ MVP 不承诺直接训练第三方大模型，也不承诺全平台实时可控�
 - 记录内容分发动作，并追踪后续 AI 回答变化。
 - 形成周报、月报和优化任务闭环。
 
+澳大利亚首发的可落地目标收敛为：
+
+- 生成 100 条澳洲英文 prompt（上限 200），绑定 intent、city、prompt_version。
+- 先跑通 Perplexity Sonar 与 OpenAI web search 两条稳定 API 证据链。
+- 独立做 Google AIO / AI Mode spike，输出 pass/fail gate；未过闸时只进入 limited coverage 附录。
+- 保存原始回答、引用、截图/HTML、`answer_present`、`surface_triggered`、`sample_index`、`raw_payload_hash`。
+- 生成 `AUVisibilityScore`、`Citation Graph`、`Competitor Benchmark` 和可审计 Evidence Report。
+- 从 P0 开始建立 `AuditEvent / EvidenceLink / ScoreContribution / ReportExport`，保证任意报告数字可追溯、可解释、可复盘。
+
 ## 2. MVP 范围
 
 ### 2.1 一期覆盖平台
 
-建议一期优先覆盖 3 类平台：
+通用方案建议一期优先覆盖 3 类平台：
 
 - 国内 AI 问答平台：DeepSeek、豆包、Kimi、腾讯元宝、百度文小言，先以人工账号加浏览器自动化/半自动采集为主。
 - 海外 AI 问答平台：ChatGPT、Perplexity、Gemini，优先使用官方 API 或合规检索能力。
 - 搜索与信源平台：官网、新闻稿、百科/媒体页面、Reddit/Quora/YouTube/小红书/知乎等作为信源记录，不在一期做全自动发布。
 
-一期重点是“监测 + 分析 + 知识库 + 内容工作台 + 分发记录”，不是全渠道自动营销系统。
+通用方案一期重点是“监测 + 分析 + 知识库 + 内容工作台 + 分发记录”，不是全渠道自动营销系统。
+
+AU 首发覆盖以 `MarketProfile=AU` 为准：
+
+| 层级 | 平台 / surface | 工程处理 |
+| --- | --- | --- |
+| P0a stable | Perplexity Sonar、OpenAI web search / ChatGPT Search | 先打通稳定 answer/citation/evidence 全链路，进入主报告分母 |
+| P0b spike | Google AI Overviews、Google AI Mode | 独立验证浏览器、第三方 SERP API、人工补录路径，过健康闸门后再进入主评分 |
+| P1/P2 | Gemini、Bing Copilot、Claude、YouTube、Reddit、ProductReview 等 | 市场验证后扩展，不阻塞 AU 首发 |
+| 不在 AU 首发 | DeepSeek、豆包、Kimi、腾讯元宝、百度文小言等国内平台 | 仅作为通用 GENO 能力参考，不进入 AU P0 |
 
 ### 2.2 一期不做
 
@@ -35,9 +57,11 @@ MVP 不承诺直接训练第三方大模型，也不承诺全平台实时可控�
 
 ## 3. 可行技术落地路径
 
-### 阶段 0：基础配置和样本体系
+### 阶段 0：基础配置和样本体系（AU 首发 = M1）
 
 建立租户、品牌、竞品、平台、关键词、问题集、目标信源等基础配置。交付团队先用行业模板初始化 50-200 个问题，覆盖品牌词、品类词、场景词、对比词、负面词和转化词。
+
+AU 首发固定为：1 个行业模板、100 条澳洲英文 prompt（上限 200）、3-5 个竞品、Australia/Sydney/Melbourne/Brisbane 城市样本，所有平台、城市、语言、权重从 `MarketProfile` 读取。
 
 输出物：
 
@@ -46,7 +70,7 @@ MVP 不承诺直接训练第三方大模型，也不承诺全平台实时可控�
 - 信源清单。
 - 基线采集计划。
 
-### 阶段 1：AI 回答采集和基线评估
+### 阶段 1：AI 回答采集和基线评估（AU 首发 = M2a/M2b）
 
 按平台和问题集定时采集 AI 回答。每次采集保存原始问题、回答文本、引用链接、截图或 HTML 证据、模型/平台版本、采集时间、地区和语言。
 
@@ -67,7 +91,25 @@ MVP 不承诺直接训练第三方大模型，也不承诺全平台实时可控�
 - 风险问题清单。
 - 信源缺口清单。
 
-### 阶段 2：品牌知识库和内容资产整理
+AU 首发采集拆成两条路线：
+
+- **P0a Stable Evidence Chain**：Perplexity Sonar + OpenAI web search，默认每 prompt/platform/geo 重复采样 k=3。
+- **P0b Google Spike**：Google AIO / AI Mode 用 30 条高意图 prompt、Australia + Sydney、k=2 验证浏览器/第三方/人工路径；不通过健康闸门则不进入主评分分母。
+
+采集结果必须原生记录 `answer_present` 与 `surface_triggered`，用于区分“界面没触发”和“触发后没提品牌”。
+
+### 阶段 2：信源图谱、竞品差距和证据报告（AU 首发 = M3/M4/M5）
+
+AU 首发不先做内容生成，而是先把证据转成可审计报告：
+
+- Answer Parser：解析品牌提及、推荐、排名、竞品、引用、情绪和澳洲本地相关性。
+- AUVisibilityScore：使用 `au_visibility_v1`，公式版本化，展示 Trigger/Mention/Recommendation 双分母。
+- ScoreContribution：每个总分、平台分、城市分、intent 分都保留子指标贡献、权重、分母、正负证据和局限。
+- Citation Graph：统计 AI 引用源、竞品独占信源、source gap、澳洲本地信源缺失。
+- Competitor Benchmark：对比 3-5 个竞品的 mention/recommend/position/citation overlap/local relevance。
+- Evidence Report Export：导出方法说明、Google spike 结论、审计摘要、分数解释包、原始证据附录。
+
+### 阶段 3：品牌知识库和内容资产整理（AU 首发 = P2）
 
 导入客户官网、FAQ、产品资料、案例、新闻稿、资质、白皮书、报告、社媒素材和音视频脚本。系统自动抽取实体、事实、卖点、证明材料和适用场景，人工审核后进入知识库。
 
@@ -86,7 +128,7 @@ MVP 不承诺直接训练第三方大模型，也不承诺全平台实时可控�
 - 证据链和引用源映射。
 - 禁用口径库。
 
-### 阶段 3：GEO 内容生成和审核
+### 阶段 4：GEO 内容生成和审核（AU 首发 = P2）
 
 系统基于问题缺口、信源缺口和知识库生成内容建议，包括 FAQ、对比稿、行业白皮书段落、新闻稿、长图文、短视频脚本、问答内容、社区帖子草稿等。
 
@@ -104,7 +146,7 @@ MVP 不承诺直接训练第三方大模型，也不承诺全平台实时可控�
 - 已审核内容。
 - 发布任务。
 
-### 阶段 4：分发记录和效果追踪
+### 阶段 5：分发记录和效果追踪（AU 首发 = P2/P1 复测）
 
 一期以“分发任务管理 + 人工发布回填”为主。每个分发任务记录目标信源、内容版本、发布时间、发布 URL、负责人和审核状态。后续监测任务自动关联发布时间前后的 AI 回答变化。
 
@@ -115,7 +157,7 @@ MVP 不承诺直接训练第三方大模型，也不承诺全平台实时可控�
 - AI 回答变化趋势。
 - 周报/月报。
 
-### 阶段 5：闭环优化
+### 阶段 6：闭环优化（AU 首发 = P1 复测）
 
 系统基于监测结果自动生成下一轮优化建议：
 
@@ -138,13 +180,15 @@ MVP 不承诺直接训练第三方大模型，也不承诺全平台实时可控�
   品牌客户门户 / 交付运营后台 / 管理后台
 
 应用层
-  项目管理 / 问题集管理 / AI监测 / 可见性分析 / 知识库 / 内容工作台 / 分发任务 / 报表预警
+  项目管理 / 问题集管理 / AI监测 / 可见性分析 / Citation Graph / Evidence Report / 复测
+  P2: 知识库 / 内容工作台 / 分发任务 / 报表预警
 
 智能服务层
-  LLM网关 / 回答解析器 / 意图分类器 / 事实抽取器 / 内容生成器 / 风险审核器 / 评分引擎
+  LLM网关 / 回答解析器 / 意图分类器 / 信源图谱 / 竞品对标 / 评分引擎 / 分数解释包
+  P2: 事实抽取器 / 内容生成器 / 风险审核器
 
 数据层
-  PostgreSQL / 对象存储 / 向量库 / 搜索索引 / 任务队列 / 审计日志
+  PostgreSQL / 对象存储 / 向量库 / 图存储 / 任务队列 / 审计日志 / ReportExport 快照
 
 采集与集成层
   AI平台API / 浏览器自动化采集 / 搜索抓取 / 网站导入 / 文件导入 / 第三方指标导入
@@ -192,6 +236,10 @@ MVP 不承诺直接训练第三方大模型，也不承诺全平台实时可控�
 - 地区、语言、账号类型。
 - 截图或 HTML 快照。
 - 采集状态和错误信息。
+- `answer_present` 与 `surface_triggered`。
+- `sample_index / sample_size`。
+- `collector_backend_id / collector_version / access_method`。
+- `raw_payload_hash`。
 
 对于没有稳定 API 的平台，一期采用半自动采集或受控浏览器自动化，并设置频率限制和人工复核。
 
@@ -241,6 +289,27 @@ ProjectVisibilityScore =
 ```
 
 权重需要在后台可配置，并在报表中展示，避免客户无法理解分数来源。
+
+AU 首发使用 `au_visibility_v1`，替代上述通用公式作为 P0 公式：
+
+```text
+AUVisibilityScore =
+  MentionScore * 0.18 +
+  RecommendationScore * 0.22 +
+  PositionScore * 0.12 +
+  CitationScore * 0.16 +
+  LocalRelevanceScore * 0.14 +
+  SentimentScore * 0.08 +
+  FreshnessScore * 0.05 +
+  CompetitorShareScore * 0.05
+```
+
+AU 评分必须额外满足：
+
+- 平台权重 P0 口径：Google 45 / ChatGPT 30 / Perplexity 25，但 Google 进入主分母必须通过 P0b 健康闸门。
+- 区分 Trigger Rate、Mention Rate、Recommendation Rate，不能把 Google AIO 未触发误算为品牌缺失。
+- 每个 `VisibilityScoreSnapshot` 必须有关联的 `ScoreContribution` 解释包。
+- 历史分数必须按旧公式版本可复算。
 
 ### 5.6 知识库
 
@@ -502,6 +571,35 @@ status
 notes
 ```
 
+### 6.13 AU 首发新增/优先数据模型
+
+以下模型在 AU 首发 P0a/P0b/P0c 中优先级高于通用知识库/内容/分发模型，详见 [GENO-SaaS-AU-首发技术落地路径](GENO-SaaS-AU-首发技术落地路径.md) 第 8 章：
+
+```text
+MarketProfile
+IndustryProfile
+GeoSample
+AnswerRun
+RawAnswer
+AnswerCitation
+EvidenceAsset
+CollectorLog
+CollectionCost
+SourceGraph
+CompetitorBenchmark
+VisibilityScoreSnapshot
+BrandEntity / CompetitorEntity / EntityAlias
+AuditEvent
+ReportExport
+ScoreContribution
+EvidenceLink:
+  SourceGraphEvidence
+  ScoreSnapshotRun
+  ReportEvidence
+```
+
+AU 首发命名约束：通用 `AnswerSnapshot` 可作为旧名参考，实现时应使用 `AnswerRun + RawAnswer + AnswerCitation + EvidenceAsset` 组合，避免把截图、HTML、raw payload、引用和触发状态混在一个不可追溯快照里。
+
 ## 7. 技术选型建议
 
 ### 7.1 后端
@@ -518,7 +616,7 @@ notes
 
 - React + TypeScript。
 - 管理后台优先，不做营销页。
-- 核心页面：项目看板、问题集、监测结果、知识库、内容工作台、分发任务、报表。
+- 核心页面：项目看板、问题集、采集运行、原始证据、解析结果、Citation Graph、竞品对标、分数解释包、Evidence Report。知识库、内容工作台、分发任务在 AU 首发中属于 P2 页面。
 
 ### 7.3 LLM 网关
 
@@ -646,6 +744,16 @@ notes
 - 队列积压。
 - 内容审核积压。
 
+AU 首发还必须监控：
+
+- planned_runs / completed_runs / failed_runs。
+- collector_backend 成功率、平均耗时、单位成本。
+- `answer_present` / `surface_triggered` 覆盖率。
+- Google spike 触发率、失败分类、pass/fail gate。
+- `AuditEvent` 写入成功率。
+- `ReportExport` 导出版本数和导出失败率。
+- 证据链断裂数：有报告数字但无法追溯到 `AnswerRun` 的数量必须为 0。
+
 告警：
 
 - 采集连续失败。
@@ -656,7 +764,7 @@ notes
 
 ## 12. MVP 成功标准
 
-一期上线后，应能完成以下验收：
+通用一期上线后，应能完成以下验收：
 
 - 一个项目可配置至少 5 个平台、100 个问题、5 个竞品。
 - 能按计划采集 AI 回答并保存证据。
@@ -666,6 +774,18 @@ notes
 - 能创建分发任务并回填发布 URL。
 - 能生成周报/月报。
 - 能对重点负面和品牌未出现问题发出预警。
+
+AU 首发上线验收以以下口径覆盖上面的通用清单：
+
+- 可创建 `market=AU` 项目，配置 1 个行业、100 条 AU prompt、3-5 个竞品。
+- P0a 完成 Perplexity Sonar + OpenAI web search 采集，每条有 answer、citation、截图/HTML、`answer_present`、`surface_triggered`、`sample_index`、`raw_payload_hash`。
+- P0b 完成 Google AIO / AI Mode spike，并输出 pass/fail gate；未通过时 Google 只进 limited coverage 附录。
+- 自动解析提及、推荐、排名、竞品、引用、本地相关性，并生成 `AUVisibilityScore`。
+- 任意总分、平台分、城市分、intent 分都有 `ScoreContribution` 解释包。
+- 生成 Citation Graph、source gap 和 3-5 个竞品 Benchmark。
+- Evidence Report 导出为不可覆盖 `ReportExport` 版本快照，包含方法说明、审计摘要、分数解释包和原始证据附录。
+- 任意报告数字可沿 `ReportExport -> VisibilityScoreSnapshot -> ScoreContribution -> AnswerAnalysis -> AnswerRun -> RawAnswer/AnswerCitation/EvidenceAsset` 追溯。
+- 采集、解析、评分、人工补录、实体确认、报告导出都写入 `AuditEvent`。
 
 ## 13. 主要风险与应对
 
@@ -677,4 +797,5 @@ notes
 | 内容合规 | 生成内容可能夸大或错误 | 知识库约束、事实校验、人工审核、禁用口径 |
 | 归因不清 | GEO 优化与转化之间难强因果 | 一期只做相关性和前后对比，不承诺广告级归因 |
 | 成本失控 | 大量采集和 LLM 分析成本高 | 任务频率限制、缓存、批处理、模型路由 |
-
+| Google AIO / AI Mode 采集不稳定 | 澳洲首发 Google 权重最高，但 AIO 选择性触发且界面易变 | P0b 独立 spike；未过闸只进 limited coverage 附录，不阻塞 P0a/P0c |
+| 审计链/解释链断裂 | 报告数字若不能追溯，会削弱客户信任 | P0 起建 `AuditEvent / EvidenceLink / ScoreContribution / ReportExport`，M5 验收任意数字可追溯 |
