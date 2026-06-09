@@ -36,6 +36,7 @@ from geno_core.models import (
     RuntimeScoreSnapshot,
     RuntimeScoreSnapshotPage,
     RuntimeScoreSnapshotRun,
+    RuntimeTraceabilityDetail,
     ScoreContribution,
     TraceabilityBundle,
     VisibilityScoreSnapshot,
@@ -385,6 +386,35 @@ AUDIT_EVENT_COLUMNS = (
     "reason",
     "created_at",
 )
+EVIDENCE_LINK_COLUMNS = (
+    "id",
+    "project_id",
+    "source_type",
+    "source_id",
+    "target_type",
+    "target_id",
+    "relation_type",
+    "answer_run_ids",
+)
+TRACEABILITY_BUNDLE_COLUMNS = (
+    "id",
+    "project_id",
+    "subject_type",
+    "subject_id",
+    "report_export_ids",
+    "score_snapshot_ids",
+    "score_contribution_ids",
+    "answer_run_ids",
+    "raw_answer_ids",
+    "answer_citation_ids",
+    "evidence_asset_ids",
+    "source_graph_ids",
+    "source_gap_types",
+    "action_recommendation_ids",
+    "content_draft_ids",
+    "audit_event_ids",
+    "explanation_summary",
+)
 
 
 class PostgresEvidenceRepository:
@@ -586,6 +616,269 @@ class PostgresEvidenceRepository:
             offset=offset,
             records=records,
         )
+
+    def get_runtime_traceability_detail(
+        self,
+        *,
+        project_id: str | None = None,
+        report_export_id: str | None = None,
+    ) -> RuntimeTraceabilityDetail | None:
+        filters: list[str] = []
+        params: list[object] = []
+        if report_export_id:
+            filters.append("subject_type = %s")
+            params.append("report_export")
+            filters.append("subject_id = %s")
+            params.append(_uuid(report_export_id))
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id))
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(TRACEABILITY_BUNDLE_COLUMNS)}
+                FROM traceability_bundles
+                {where_clause}
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                tuple(params),
+            )
+            bundle_row = cursor.fetchone()
+            if not bundle_row:
+                return None
+            bundle = _row_dict(bundle_row, TRACEABILITY_BUNDLE_COLUMNS)
+
+            report_exports = tuple(
+                self._load_report_export_by_id(cursor=cursor, report_export_id=str(value))
+                for value in bundle["report_export_ids"]
+            )
+            report_exports = tuple(report for report in report_exports if report)
+            score_snapshots = tuple(
+                runtime_snapshot
+                for score_snapshot_id in tuple(str(value) for value in bundle["score_snapshot_ids"])
+                if (
+                    runtime_snapshot := self._load_score_snapshot_by_id(
+                        cursor=cursor,
+                        score_snapshot_id=score_snapshot_id,
+                    )
+                )
+                is not None
+            )
+            evidence_runs = tuple(
+                runtime_evidence
+                for answer_run_id in tuple(str(value) for value in bundle["answer_run_ids"])
+                if (
+                    runtime_evidence := self._load_evidence_run_by_id(
+                        cursor=cursor,
+                        answer_run_id=answer_run_id,
+                    )
+                )
+                is not None
+            )
+            cursor.execute("SELECT count(*) FROM source_graphs WHERE project_id = %s", (_uuid(str(bundle["project_id"])),))
+            graph_count_row = cursor.fetchone()
+            graph_count = int(graph_count_row[0] if not isinstance(graph_count_row, dict) else graph_count_row["count"])
+            citation_graph = (
+                self._load_runtime_citation_graph(cursor=cursor, project_id=str(bundle["project_id"]))
+                if graph_count > 0
+                else None
+            )
+            action_recommendations = tuple(
+                action
+                for action_id in tuple(str(value) for value in bundle["action_recommendation_ids"])
+                if (action := self._load_action_recommendation_by_id(cursor=cursor, action_id=action_id)) is not None
+            )
+            content_drafts = tuple(
+                draft
+                for content_draft_id in tuple(str(value) for value in bundle["content_draft_ids"])
+                if (
+                    draft := self._load_runtime_content_draft_by_id(
+                        cursor=cursor,
+                        content_draft_id=content_draft_id,
+                    )
+                )
+                is not None
+            )
+            audit_events = tuple(
+                event
+                for audit_event_id in tuple(str(value) for value in bundle["audit_event_ids"])
+                if (event := self._load_audit_event_by_id(cursor=cursor, audit_event_id=audit_event_id)) is not None
+            )
+            cursor.execute(
+                f"""
+                SELECT {", ".join(EVIDENCE_LINK_COLUMNS)}
+                FROM evidence_links
+                WHERE project_id = %s AND (
+                    source_id = ANY(%s::uuid[]) OR target_id = ANY(%s::uuid[])
+                )
+                ORDER BY relation_type ASC, id ASC
+                """,
+                (
+                    _uuid(str(bundle["project_id"])),
+                    _uuid_array(
+                        (
+                            str(bundle["subject_id"]),
+                            *tuple(str(value) for value in bundle["report_export_ids"]),
+                        )
+                    ),
+                    _uuid_array(
+                        (
+                            *tuple(str(value) for value in bundle["score_snapshot_ids"]),
+                            *tuple(str(value) for value in bundle["score_contribution_ids"]),
+                            *tuple(str(value) for value in bundle["source_graph_ids"]),
+                            *tuple(str(value) for value in bundle["action_recommendation_ids"]),
+                            *tuple(str(value) for value in bundle["content_draft_ids"]),
+                        )
+                    ),
+                ),
+            )
+            evidence_links = _rows_dict(cursor.fetchall(), EVIDENCE_LINK_COLUMNS)
+        return RuntimeTraceabilityDetail(
+            traceability_bundle=bundle,
+            report_exports=report_exports,
+            score_snapshots=score_snapshots,
+            evidence_runs=evidence_runs,
+            citation_graph=citation_graph,
+            action_recommendations=action_recommendations,
+            content_drafts=content_drafts,
+            audit_events=audit_events,
+            evidence_links=evidence_links,
+        )
+
+    def _load_report_export_by_id(
+        self,
+        *,
+        cursor: DbCursor,
+        report_export_id: str,
+    ) -> dict[str, Any] | None:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(REPORT_EXPORT_COLUMNS)}
+            FROM report_exports
+            WHERE id = %s
+            LIMIT 1
+            """,
+            (_uuid(report_export_id),),
+        )
+        report_row = cursor.fetchone()
+        return _row_dict(report_row, REPORT_EXPORT_COLUMNS) if report_row else None
+
+    def _load_score_snapshot_by_id(
+        self,
+        *,
+        cursor: DbCursor,
+        score_snapshot_id: str,
+    ) -> RuntimeScoreSnapshot | None:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(VISIBILITY_SCORE_SNAPSHOT_COLUMNS)}
+            FROM visibility_score_snapshots
+            WHERE id = %s
+            LIMIT 1
+            """,
+            (_uuid(score_snapshot_id),),
+        )
+        snapshot_row = cursor.fetchone()
+        if not snapshot_row:
+            return None
+        snapshot = _row_dict(snapshot_row, VISIBILITY_SCORE_SNAPSHOT_COLUMNS)
+        return self._load_runtime_score_snapshot(
+            cursor=cursor,
+            snapshot=snapshot,
+            snapshot_id=str(snapshot["id"]),
+        )
+
+    def _load_evidence_run_by_id(
+        self,
+        *,
+        cursor: DbCursor,
+        answer_run_id: str,
+    ) -> RuntimeEvidenceRun | None:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(f"ar.{column}" for column in ANSWER_RUN_COLUMNS)},
+                   pq.text AS prompt_text,
+                   pq.intent_type AS prompt_intent_type,
+                   pq.priority AS prompt_priority,
+                   pq.prompt_version AS prompt_version
+            FROM answer_runs ar
+            LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id
+            WHERE ar.id = %s
+            LIMIT 1
+            """,
+            (_uuid(answer_run_id),),
+        )
+        answer_run_row = cursor.fetchone()
+        if not answer_run_row:
+            return None
+        answer_run = _row_dict(answer_run_row, ANSWER_RUN_READ_COLUMNS)
+        return self._load_runtime_evidence_run(
+            cursor=cursor,
+            answer_run=answer_run,
+            answer_run_id=str(answer_run["id"]),
+        )
+
+    def _load_action_recommendation_by_id(
+        self,
+        *,
+        cursor: DbCursor,
+        action_id: str,
+    ) -> dict[str, Any] | None:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(ACTION_RECOMMENDATION_COLUMNS)}
+            FROM action_recommendations
+            WHERE id = %s
+            LIMIT 1
+            """,
+            (_uuid(action_id),),
+        )
+        action_row = cursor.fetchone()
+        return _row_dict(action_row, ACTION_RECOMMENDATION_COLUMNS) if action_row else None
+
+    def _load_runtime_content_draft_by_id(
+        self,
+        *,
+        cursor: DbCursor,
+        content_draft_id: str,
+    ) -> RuntimeContentDraft | None:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(CONTENT_DRAFT_COLUMNS)}
+            FROM content_drafts
+            WHERE id = %s
+            LIMIT 1
+            """,
+            (_uuid(content_draft_id),),
+        )
+        draft_row = cursor.fetchone()
+        if not draft_row:
+            return None
+        return self._load_runtime_content_draft(
+            cursor=cursor,
+            draft=_row_dict(draft_row, CONTENT_DRAFT_COLUMNS),
+        )
+
+    def _load_audit_event_by_id(
+        self,
+        *,
+        cursor: DbCursor,
+        audit_event_id: str,
+    ) -> dict[str, Any] | None:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE id = %s
+            LIMIT 1
+            """,
+            (_uuid(audit_event_id),),
+        )
+        event_row = cursor.fetchone()
+        return _row_dict(event_row, AUDIT_EVENT_COLUMNS) if event_row else None
 
     def list_runtime_action_plans(
         self,

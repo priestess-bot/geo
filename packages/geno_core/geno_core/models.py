@@ -664,6 +664,19 @@ class RuntimeContentEnginePage:
 
 
 @dataclass(frozen=True)
+class RuntimeTraceabilityDetail:
+    traceability_bundle: dict[str, Any]
+    report_exports: tuple[dict[str, Any], ...]
+    score_snapshots: tuple[RuntimeScoreSnapshot, ...]
+    evidence_runs: tuple[RuntimeEvidenceRun, ...]
+    citation_graph: RuntimeCitationGraph | None
+    action_recommendations: tuple[dict[str, Any], ...]
+    content_drafts: tuple[RuntimeContentDraft, ...]
+    audit_events: tuple[dict[str, Any], ...]
+    evidence_links: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class AuditEvent:
     id: str
     event_type: str

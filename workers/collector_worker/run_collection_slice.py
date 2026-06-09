@@ -41,6 +41,7 @@ from geno_core.knowledge import (
 )
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.runtime import RuntimePersistenceError, build_repository_from_env
+from geno_core.traceability import build_traceability_bundle
 
 
 def _collectors(mode: str) -> tuple[CollectorBackend, ...]:
@@ -185,6 +186,25 @@ def _persist_records(
             distribution_records=distribution_records,
             audit_event=content_audit,
         )
+        traceability_bundle = build_traceability_bundle(
+            project_id=bootstrap.project.id,
+            report_export=report.report_export,
+            snapshot=analysis_result.snapshot,
+            contributions=analysis_result.contributions,
+            records=successes,
+            graph=graph,
+            actions=actions,
+            content_drafts=drafts,
+            audit_events=tuple(record.audit_events[0] for record in successes)
+            + (
+                analysis_result.audit_event,
+                report.audit_event,
+                action_audit,
+                comparison_audit,
+                content_audit,
+            ),
+        )
+        repository.save_traceability_bundle(traceability_bundle)
         analysis_summary = {
             "enabled": True,
             "analysis_count": len(analysis_result.analyses),
@@ -205,6 +225,8 @@ def _persist_records(
             "content_drafts": len(drafts),
             "integration_connectors": len(connectors),
             "manual_distribution_records": len(distribution_records),
+            "traceability_bundle_id": traceability_bundle.id,
+            "evidence_links": len(traceability_bundle.evidence_links),
         }
     elif persist_analysis:
         analysis_summary = {

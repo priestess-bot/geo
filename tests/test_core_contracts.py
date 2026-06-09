@@ -54,6 +54,7 @@ from geno_core.models import (
     RuntimeContentEnginePage,
     RuntimeScoreSnapshotPage,
     RuntimeReportExportPage,
+    RuntimeTraceabilityDetail,
 )
 from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.parser import RuleBasedAnswerParser
@@ -1826,6 +1827,311 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM localized_knowledge_facts", executed_sql)
         self.assertIn("FROM prompt_questions WHERE id = %s", executed_sql)
         self.assertIn("FROM action_recommendations WHERE id = %s", executed_sql)
+
+    def test_postgres_repository_reads_runtime_traceability_detail(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        snapshot_id = "a7f7f8aa-5d40-4fdf-a2b3-b8729a9a5e2f"
+        contribution_id = "df03794b-e8fc-4b69-aa62-2304a55ff3a9"
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        raw_answer_id = "5d714ed1-25aa-5651-b8b3-5e4b275d278a"
+        citation_id = "6e5c424e-1674-58ce-b075-6c52259bbbe5"
+        asset_id = "29a279b8-3313-5306-a959-4f0f0de9c950"
+        source_graph_id = "41c2fd71-a32f-51a7-92e4-3d4c0f7ab1c2"
+        action_id = "4cfd7cd0-a0cc-580f-b448-7b52f3b2937e"
+        draft_id = "51dcc4cb-c798-5eac-a08d-86f596c78f0f"
+        fact_id = "06975d61-853b-5a25-ae0e-b62bbfe82c15"
+        prompt_id = "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0"
+        audit_event_id = "495d24da-90cf-4073-bd9c-16afeb5b3169"
+        answer_run_row = {
+            "id": answer_run_id,
+            "project_id": project_id,
+            "prompt_question_id": prompt_id,
+            "platform": "perplexity",
+            "surface": "sonar",
+            "access_method": "official_api",
+            "market_code": "AU",
+            "city": "Australia",
+            "language": "en-AU",
+            "device": "desktop",
+            "answer_present": True,
+            "surface_triggered": True,
+            "sample_index": 1,
+            "sample_size": 1,
+            "model_or_surface": "sonar",
+            "account_state": "api_key",
+            "collector_backend_id": "fixture_perplexity_sonar",
+            "collector_version": "fixture-v1",
+            "collected_at": now,
+            "status": "completed",
+            "prompt_text": "Is ExampleBrand good in Australia?",
+            "prompt_intent_type": "brand_awareness",
+            "prompt_priority": 1,
+            "prompt_version": "au_dtc_ecommerce_v1",
+        }
+        report_row = {
+            "id": report_export_id,
+            "project_id": project_id,
+            "market_code": "AU",
+            "report_version": "worker-runtime-v1",
+            "report_type": "worker_runtime",
+            "score_snapshot_ids": [snapshot_id],
+            "answer_run_ids": [answer_run_id],
+            "prompt_version": "au_dtc_ecommerce_v1",
+            "scoring_formula_version": "au_visibility_v1",
+            "platform_weights_snapshot": {"chatgpt": 0.30, "perplexity": 0.25},
+            "sample_size": 1,
+            "window_start": now,
+            "window_end": now,
+            "methodology_hash": "methodology-hash",
+            "markdown_url": "s3://geno-reports/report.md",
+            "pdf_url": None,
+            "csv_url": "s3://geno-reports/report.csv",
+            "exported_by": "system",
+            "exported_at": now,
+        }
+        snapshot_row = {
+            "id": snapshot_id,
+            "project_id": project_id,
+            "scope_type": "collection_slice",
+            "scope_value": "worker_runtime",
+            "formula_version": "au_visibility_v1",
+            "platform_weights_snapshot": {"chatgpt": 0.30, "perplexity": 0.25},
+            "final_score": 87.35,
+            "trigger_rate": 1.0,
+            "mention_rate": 1.0,
+            "recommendation_rate": 1.0,
+            "answer_run_ids": [answer_run_id],
+            "created_at": now,
+            "dispersion": 0.0,
+        }
+        action_row = {
+            "id": action_id,
+            "project_id": project_id,
+            "title": "Improve brand mention coverage",
+            "description": "Create citation-ready pages.",
+            "priority": "high",
+            "status": "open",
+            "owner_id": "system",
+            "source_gap_type": "low_mention_rate",
+            "evidence_answer_run_ids": [answer_run_id],
+            "related_source_types": [],
+            "next_check_date": now,
+            "created_at": now,
+        }
+        draft_row = {
+            "id": draft_id,
+            "project_id": project_id,
+            "title": "ExampleBrand FAQ for Australian customers",
+            "content_type": "evidence_backed_outline",
+            "content_template_id": "faq_for_australian_customers",
+            "target_question_ids": [prompt_id],
+            "target_city": "Sydney",
+            "target_platform": "chatgpt/perplexity",
+            "target_source_type": "official_site",
+            "used_knowledge_fact_ids": [fact_id],
+            "source_gap_types": ["low_mention_rate"],
+            "source_action_id": action_id,
+            "evidence_answer_run_ids": [answer_run_id],
+            "draft_markdown": "# ExampleBrand FAQ",
+            "review_status": "pending_human_review",
+            "created_by": "geno-core.knowledge",
+            "created_at": now,
+        }
+        fact_row = {
+            "id": fact_id,
+            "project_id": project_id,
+            "market_code": "AU",
+            "fact_type": "australian_shipping_policy",
+            "subject": "ExampleBrand",
+            "predicate": "supports_market",
+            "object_value": "AU",
+            "city": None,
+            "evidence_source_id": answer_run_id,
+            "confidence": 0.72,
+            "status": "active",
+            "valid_from": now,
+            "valid_until": None,
+        }
+        audit_row = {
+            "id": audit_event_id,
+            "event_type": "answer_run_collected",
+            "project_id": project_id,
+            "actor_type": "worker",
+            "actor_id": "fixture_perplexity_sonar",
+            "target_type": "answer_run",
+            "target_id": answer_run_id,
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"prompt_question_ids": [prompt_id]},
+            "output_refs": {"answer_run_ids": [answer_run_id]},
+            "method_version": "fixture-v1",
+            "reason": "test",
+            "created_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                {
+                    "id": "b11a8445-6d8f-58f8-b1b5-50c45e22d384",
+                    "project_id": project_id,
+                    "subject_type": "report_export",
+                    "subject_id": report_export_id,
+                    "report_export_ids": [report_export_id],
+                    "score_snapshot_ids": [snapshot_id],
+                    "score_contribution_ids": [contribution_id],
+                    "answer_run_ids": [answer_run_id],
+                    "raw_answer_ids": [raw_answer_id],
+                    "answer_citation_ids": [citation_id],
+                    "evidence_asset_ids": [asset_id],
+                    "source_graph_ids": [source_graph_id],
+                    "source_gap_types": ["official_site:missing_high_weight_source_type"],
+                    "action_recommendation_ids": [action_id],
+                    "content_draft_ids": [draft_id],
+                    "audit_event_ids": [audit_event_id],
+                    "explanation_summary": "Report worker-runtime-v1 traces 1 answer runs.",
+                },
+                report_row,
+                snapshot_row,
+                [
+                    {
+                        "id": contribution_id,
+                        "score_snapshot_id": snapshot_id,
+                        "component_name": "MentionScore",
+                        "component_score": 100.0,
+                        "weight": 0.18,
+                        "weighted_contribution": 18.0,
+                        "denominator": "surface_triggered",
+                        "evidence_answer_run_ids": [answer_run_id],
+                        "positive_evidence_summary": "brand mentioned",
+                        "negative_evidence_summary": "",
+                        "confidence_note": "avg_parser_confidence=0.9",
+                        "created_at": now,
+                    }
+                ],
+                [answer_run_row],
+                {
+                    "id": "d1466dad-237b-5f5f-b7cc-44e67d628d15",
+                    "answer_run_id": answer_run_id,
+                    "parser_engine_id": "rule_based_v1",
+                    "analysis_version": "v1",
+                    "payload": {"brand_mentioned": True},
+                    "confidence": 0.9,
+                    "created_at": now,
+                },
+                [],
+                answer_run_row,
+                {
+                    "id": raw_answer_id,
+                    "answer_run_id": answer_run_id,
+                    "answer_text": "answer",
+                    "raw_payload": {"citations": 1},
+                    "raw_payload_hash": "hash",
+                    "created_at": now,
+                },
+                [
+                    {
+                        "id": citation_id,
+                        "answer_run_id": answer_run_id,
+                        "url": "https://reviews.example/koala",
+                        "domain": "reviews.example",
+                        "position": 1,
+                        "source_type": "review_site",
+                        "created_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": asset_id,
+                        "answer_run_id": answer_run_id,
+                        "asset_type": "html_snapshot",
+                        "url": "s3://asset.html",
+                        "content_hash": "asset-hash",
+                        "created_at": now,
+                    }
+                ],
+                [],
+                None,
+                [audit_row],
+                {"count": 1},
+                [
+                    {
+                        "id": source_graph_id,
+                        "project_id": project_id,
+                        "source_url": "https://reviews.example/koala",
+                        "source_domain": "reviews.example",
+                        "source_type": "review_site",
+                        "topic": "reviews",
+                        "source_gap_type": None,
+                        "answer_run_ids": [answer_run_id],
+                        "citation_count": 1,
+                        "created_at": now,
+                    }
+                ],
+                answer_run_row,
+                [],
+                [],
+                [],
+                action_row,
+                draft_row,
+                {
+                    "id": prompt_id,
+                    "project_id": project_id,
+                    "market_code": "AU",
+                    "industry_code": "dtc_ecommerce",
+                    "text": "Is ExampleBrand good in Australia?",
+                    "intent_type": "brand_awareness",
+                    "city": "Australia",
+                    "language": "en-AU",
+                    "target_brand": "ExampleBrand",
+                    "competitors": ["CompetitorA"],
+                    "priority": 1,
+                    "intent_weight": 1.0,
+                    "prompt_version": "au_dtc_ecommerce_v1",
+                    "status": "active",
+                },
+                fact_row,
+                answer_run_row,
+                action_row,
+                [],
+                audit_row,
+                [
+                    {
+                        "id": "53ce3658-f908-56bf-b6de-585bcb7900d1",
+                        "project_id": project_id,
+                        "source_type": "report_export",
+                        "source_id": report_export_id,
+                        "target_type": "visibility_score_snapshot",
+                        "target_id": snapshot_id,
+                        "relation_type": "contains_score_snapshot",
+                        "answer_run_ids": [answer_run_id],
+                    }
+                ],
+            ]
+        )
+        detail = PostgresEvidenceRepository(connection).get_runtime_traceability_detail(
+            project_id=project_id,
+            report_export_id=report_export_id,
+        )
+        self.assertIsInstance(detail, RuntimeTraceabilityDetail)
+        assert detail is not None
+        self.assertEqual(detail.traceability_bundle["subject_id"], report_export_id)
+        self.assertEqual(detail.report_exports[0]["report_version"], "worker-runtime-v1")
+        self.assertEqual(detail.score_snapshots[0].snapshot["final_score"], 87.35)
+        self.assertEqual(detail.evidence_runs[0].raw_answer["id"], raw_answer_id)
+        self.assertEqual(detail.evidence_runs[0].citations[0]["id"], citation_id)
+        self.assertIsNotNone(detail.citation_graph)
+        assert detail.citation_graph is not None
+        self.assertEqual(detail.citation_graph.nodes[0].node["source_domain"], "reviews.example")
+        self.assertEqual(detail.action_recommendations[0]["id"], action_id)
+        self.assertEqual(detail.content_drafts[0].draft["review_status"], "pending_human_review")
+        self.assertEqual(detail.audit_events[0]["event_type"], "answer_run_collected")
+        self.assertEqual(detail.evidence_links[0]["relation_type"], "contains_score_snapshot")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM traceability_bundles WHERE subject_type = %s", executed_sql)
+        self.assertIn("FROM evidence_links WHERE project_id = %s", executed_sql)
+        self.assertIn("FROM report_exports WHERE id = %s", executed_sql)
+        self.assertIn("FROM content_drafts WHERE id = %s", executed_sql)
 
 
 if __name__ == "__main__":

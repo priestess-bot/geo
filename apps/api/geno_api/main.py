@@ -248,6 +248,27 @@ def runtime_content_engines(
         close_repository_connection(repository)
 
 
+@app.get("/v1/traceability/runtime")
+def runtime_traceability(
+    project_id: str | None = None,
+    report_export_id: str | None = None,
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        detail = repository.get_runtime_traceability_detail(
+            project_id=project_id,
+            report_export_id=report_export_id,
+        )
+        if detail is None:
+            raise HTTPException(status_code=404, detail="Runtime traceability bundle not found")
+        return asdict(detail)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/google-spikes/au/plan")
 def au_google_spike_plan() -> dict[str, object]:
     bootstrap = build_au_project_bootstrap()
@@ -723,6 +744,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeContentDraft",
             "RuntimeContentEngine",
             "RuntimeContentEnginePage",
+            "RuntimeTraceabilityDetail",
             "ProjectBootstrap",
             "PromptQuestion",
             "RawEvidenceRecord",
@@ -738,5 +760,6 @@ def contracts() -> dict[str, list[str]]:
             "/v1/reports/runtime",
             "/v1/action-plans/runtime",
             "/v1/content-engines/runtime",
+            "/v1/traceability/runtime",
         ],
     }
