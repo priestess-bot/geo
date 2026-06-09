@@ -49,6 +49,7 @@ from geno_core.models import (
     CollectionFailureRecord,
     ReportExport,
     RuntimeEvidencePage,
+    RuntimeCitationGraphPage,
     RuntimeScoreSnapshotPage,
 )
 from geno_core.prompt_pack import INTENT_WEIGHTS
@@ -927,6 +928,7 @@ class CoreContractsTest(unittest.TestCase):
             "visibility_score_snapshots",
             "score_contributions",
             "source_graphs",
+            "source_gaps",
             "competitor_benchmarks",
             "report_exports",
             "action_recommendations",
@@ -1270,6 +1272,110 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM visibility_score_snapshots WHERE project_id = %s AND scope_type = %s", executed_sql)
         self.assertIn("FROM score_snapshot_runs ssr JOIN answer_runs ar ON ar.id = ssr.answer_run_id", executed_sql)
         self.assertIn("LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id", executed_sql)
+
+    def test_postgres_repository_reads_runtime_citation_graph_page(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        source_graph_id = "41c2fd71-a32f-51a7-92e4-3d4c0f7ab1c2"
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [{"project_id": project_id}],
+                [
+                    {
+                        "id": source_graph_id,
+                        "project_id": project_id,
+                        "source_url": "https://reviews.example/koala",
+                        "source_domain": "reviews.example",
+                        "source_type": "review_site",
+                        "topic": "reviews",
+                        "source_gap_type": None,
+                        "answer_run_ids": [answer_run_id],
+                        "citation_count": 4,
+                        "created_at": now,
+                    }
+                ],
+                {
+                    "id": answer_run_id,
+                    "project_id": project_id,
+                    "prompt_question_id": "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0",
+                    "platform": "perplexity",
+                    "surface": "sonar",
+                    "access_method": "official_api",
+                    "market_code": "AU",
+                    "city": "Australia",
+                    "language": "en-AU",
+                    "device": "desktop",
+                    "answer_present": True,
+                    "surface_triggered": True,
+                    "sample_index": 1,
+                    "sample_size": 1,
+                    "model_or_surface": "sonar",
+                    "account_state": "api_key",
+                    "collector_backend_id": "fixture_perplexity_sonar",
+                    "collector_version": "fixture-v1",
+                    "collected_at": now,
+                    "status": "completed",
+                    "prompt_text": "Is ExampleBrand good in Australia?",
+                    "prompt_intent_type": "brand_awareness",
+                    "prompt_priority": 1,
+                    "prompt_version": "au_dtc_ecommerce_v1",
+                },
+                [
+                    {
+                        "id": "36bf7c88-0d03-52a9-87f5-7f2a0e35e72a",
+                        "source_graph_id": source_graph_id,
+                        "answer_run_id": answer_run_id,
+                        "answer_citation_id": "6e5c424e-1674-58ce-b075-6c52259bbbe5",
+                        "relation_type": "cited_by_answer",
+                        "created_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": "7cc36d44-0f20-5681-8613-3998050e3267",
+                        "project_id": project_id,
+                        "source_type": "official_site",
+                        "gap_type": "missing_high_weight_source_type",
+                        "observed_count": 0,
+                        "expected_weight": 0.95,
+                        "recommendation": "Add official AU evidence",
+                        "created_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": "8c6e21aa-5df2-558e-ad5d-220b0de78a98",
+                        "project_id": project_id,
+                        "competitor_name": "Emma Sleep",
+                        "metric_scope": "project",
+                        "payload": {"mention_count": 2},
+                        "answer_run_ids": [answer_run_id],
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+        page = PostgresEvidenceRepository(connection).list_runtime_citation_graphs(
+            project_id=project_id,
+            limit=10,
+            offset=0,
+        )
+        self.assertIsInstance(page, RuntimeCitationGraphPage)
+        self.assertEqual(page.total_count, 1)
+        record = page.records[0]
+        self.assertEqual(record.project_id, project_id)
+        self.assertEqual(record.nodes[0].node["source_domain"], "reviews.example")
+        self.assertEqual(record.nodes[0].answer_runs[0]["prompt_text"], "Is ExampleBrand good in Australia?")
+        self.assertEqual(record.evidence_links[0]["relation_type"], "cited_by_answer")
+        self.assertEqual(record.source_gaps[0]["source_type"], "official_site")
+        self.assertEqual(record.competitor_benchmarks[0]["competitor_name"], "Emma Sleep")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM source_graphs WHERE project_id = %s", executed_sql)
+        self.assertIn("FROM source_graph_evidence sge JOIN source_graphs sg ON sg.id = sge.source_graph_id", executed_sql)
+        self.assertIn("FROM source_gaps", executed_sql)
+        self.assertIn("FROM competitor_benchmarks", executed_sql)
 
 
 if __name__ == "__main__":

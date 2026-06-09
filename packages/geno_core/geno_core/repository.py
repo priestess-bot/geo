@@ -21,6 +21,9 @@ from geno_core.models import (
     ReportExport,
     RetestComparison,
     RetestSchedule,
+    RuntimeCitationGraph,
+    RuntimeCitationGraphNode,
+    RuntimeCitationGraphPage,
     RuntimeEvidencePage,
     RuntimeEvidenceRun,
     RuntimeScoreSnapshot,
@@ -194,6 +197,45 @@ ANSWER_ANALYSIS_READ_COLUMNS = (
     "confidence",
     "created_at",
 )
+SOURCE_GRAPH_COLUMNS = (
+    "id",
+    "project_id",
+    "source_url",
+    "source_domain",
+    "source_type",
+    "topic",
+    "source_gap_type",
+    "answer_run_ids",
+    "citation_count",
+    "created_at",
+)
+SOURCE_GRAPH_EVIDENCE_COLUMNS = (
+    "id",
+    "source_graph_id",
+    "answer_run_id",
+    "answer_citation_id",
+    "relation_type",
+    "created_at",
+)
+SOURCE_GAP_COLUMNS = (
+    "id",
+    "project_id",
+    "source_type",
+    "gap_type",
+    "observed_count",
+    "expected_weight",
+    "recommendation",
+    "created_at",
+)
+COMPETITOR_BENCHMARK_COLUMNS = (
+    "id",
+    "project_id",
+    "competitor_name",
+    "metric_scope",
+    "payload",
+    "answer_run_ids",
+    "created_at",
+)
 AUDIT_EVENT_COLUMNS = (
     "id",
     "event_type",
@@ -321,6 +363,132 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=records,
+        )
+
+    def list_runtime_citation_graphs(
+        self,
+        *,
+        project_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeCitationGraphPage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        params: list[object] = []
+        where_clause = ""
+        if project_id:
+            where_clause = "WHERE project_id = %s"
+            params.append(_uuid(project_id))
+
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(DISTINCT project_id) FROM source_graphs {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT project_id
+                FROM source_graphs
+                {where_clause}
+                GROUP BY project_id
+                ORDER BY max(created_at) DESC, project_id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            project_rows = cursor.fetchall()
+            project_ids = tuple(str(row["project_id"] if isinstance(row, dict) else row[0]) for row in project_rows)
+            records = tuple(
+                self._load_runtime_citation_graph(cursor=cursor, project_id=graph_project_id)
+                for graph_project_id in project_ids
+            )
+        return RuntimeCitationGraphPage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=records,
+        )
+
+    def _load_runtime_citation_graph(self, *, cursor: DbCursor, project_id: str) -> RuntimeCitationGraph:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(SOURCE_GRAPH_COLUMNS)}
+            FROM source_graphs
+            WHERE project_id = %s
+            ORDER BY citation_count DESC, source_domain ASC, source_type ASC
+            """,
+            (_uuid(project_id),),
+        )
+        nodes = _rows_dict(cursor.fetchall(), SOURCE_GRAPH_COLUMNS)
+        runtime_nodes: list[RuntimeCitationGraphNode] = []
+        for node in nodes:
+            answer_run_ids = tuple(str(answer_run_id) for answer_run_id in node["answer_run_ids"])
+            answer_runs: list[dict[str, Any]] = []
+            for answer_run_id in answer_run_ids:
+                cursor.execute(
+                    f"""
+                    SELECT {", ".join(f"ar.{column}" for column in ANSWER_RUN_COLUMNS)},
+                           pq.text AS prompt_text,
+                           pq.intent_type AS prompt_intent_type,
+                           pq.priority AS prompt_priority,
+                           pq.prompt_version AS prompt_version
+                    FROM answer_runs ar
+                    LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id
+                    WHERE ar.id = %s
+                    LIMIT 1
+                    """,
+                    (_uuid(answer_run_id),),
+                )
+                answer_run_row = cursor.fetchone()
+                if answer_run_row:
+                    answer_runs.append(_row_dict(answer_run_row, ANSWER_RUN_READ_COLUMNS))
+            runtime_nodes.append(
+                RuntimeCitationGraphNode(
+                    node=node,
+                    answer_runs=tuple(answer_runs),
+                )
+            )
+        cursor.execute(
+            f"""
+            SELECT sge.id AS id,
+                   sge.source_graph_id AS source_graph_id,
+                   sge.answer_run_id AS answer_run_id,
+                   sge.answer_citation_id AS answer_citation_id,
+                   sge.relation_type AS relation_type,
+                   sge.created_at AS created_at
+            FROM source_graph_evidence sge
+            JOIN source_graphs sg ON sg.id = sge.source_graph_id
+            WHERE sg.project_id = %s
+            ORDER BY sge.created_at ASC, sge.id ASC
+            """,
+            (_uuid(project_id),),
+        )
+        evidence_links = _rows_dict(cursor.fetchall(), SOURCE_GRAPH_EVIDENCE_COLUMNS)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(SOURCE_GAP_COLUMNS)}
+            FROM source_gaps
+            WHERE project_id = %s
+            ORDER BY expected_weight DESC, source_type ASC, gap_type ASC
+            """,
+            (_uuid(project_id),),
+        )
+        source_gaps = _rows_dict(cursor.fetchall(), SOURCE_GAP_COLUMNS)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(COMPETITOR_BENCHMARK_COLUMNS)}
+            FROM competitor_benchmarks
+            WHERE project_id = %s
+            ORDER BY competitor_name ASC
+            """,
+            (_uuid(project_id),),
+        )
+        competitor_benchmarks = _rows_dict(cursor.fetchall(), COMPETITOR_BENCHMARK_COLUMNS)
+        return RuntimeCitationGraph(
+            project_id=project_id,
+            nodes=tuple(runtime_nodes),
+            evidence_links=evidence_links,
+            source_gaps=source_gaps,
+            competitor_benchmarks=competitor_benchmarks,
         )
 
     def _load_runtime_score_snapshot(
@@ -982,6 +1150,28 @@ class PostgresEvidenceRepository:
                         _uuid(evidence.answer_run_id),
                         _uuid(evidence.answer_citation_id),
                         evidence.relation_type,
+                    ),
+                )
+            for gap in graph.source_gaps:
+                cursor.execute(
+                    """
+                    INSERT INTO source_gaps (
+                      id, project_id, source_type, gap_type, observed_count,
+                      expected_weight, recommendation
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (project_id, source_type, gap_type) DO UPDATE SET
+                      observed_count = EXCLUDED.observed_count,
+                      expected_weight = EXCLUDED.expected_weight,
+                      recommendation = EXCLUDED.recommendation
+                    """,
+                    (
+                        _uuid(_stable_id("source-gap", project_id, gap.source_type, gap.gap_type)),
+                        _uuid(project_id),
+                        gap.source_type,
+                        gap.gap_type,
+                        gap.observed_count,
+                        gap.expected_weight,
+                        gap.recommendation,
                     ),
                 )
             for benchmark in graph.competitor_benchmarks:

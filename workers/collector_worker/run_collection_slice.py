@@ -17,6 +17,7 @@ from geno_core.collectors import (
     PerplexitySonarCollector,
 )
 from geno_core.contracts import CollectorBackend
+from geno_core.graph import build_citation_graph
 from geno_core.google_spike import (
     build_google_spike_plan,
     evaluate_google_spike_gate,
@@ -71,12 +72,24 @@ def _persist_records(
             analysis_result.contributions,
             analysis_result.audit_event,
         )
+        graph = build_citation_graph(
+            project_id=bootstrap.project.id,
+            records=successes,
+            analyses=analysis_result.analyses,
+            competitors=bootstrap.competitors,
+            industry_profile=bootstrap.industry_profile,
+        )
+        repository.save_citation_graph(bootstrap.project.id, graph)
         analysis_summary = {
             "enabled": True,
             "analysis_count": len(analysis_result.analyses),
             "score_snapshot_id": analysis_result.snapshot.id,
             "score_contributions": len(analysis_result.contributions),
             "final_score": analysis_result.snapshot.final_score,
+            "source_graph_nodes": len(graph.nodes),
+            "source_graph_evidence": len(graph.evidence_links),
+            "source_gaps": len(graph.source_gaps),
+            "competitor_benchmarks": len(graph.competitor_benchmarks),
         }
     elif persist_analysis:
         analysis_summary = {

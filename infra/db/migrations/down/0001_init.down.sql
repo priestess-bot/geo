@@ -22,6 +22,7 @@ DROP TABLE IF EXISTS localized_knowledge_facts;
 DROP TABLE IF EXISTS traceability_bundles;
 DROP TABLE IF EXISTS evidence_links;
 DROP TABLE IF EXISTS competitor_benchmarks;
+DROP TABLE IF EXISTS source_gaps;
 DROP TABLE IF EXISTS source_graphs;
 DROP TABLE IF EXISTS answer_analyses;
 DROP TABLE IF EXISTS collector_logs;

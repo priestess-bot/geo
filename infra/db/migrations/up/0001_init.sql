@@ -157,6 +157,18 @@ CREATE TABLE source_graphs (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE source_gaps (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL,
+  source_type text NOT NULL,
+  gap_type text NOT NULL,
+  observed_count integer NOT NULL DEFAULT 0,
+  expected_weight numeric(8,4) NOT NULL,
+  recommendation text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(project_id, source_type, gap_type)
+);
+
 CREATE TABLE competitor_benchmarks (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id uuid NOT NULL,

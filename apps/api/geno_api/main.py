@@ -158,6 +158,27 @@ def runtime_visibility_scores(
         close_repository_connection(repository)
 
 
+@app.get("/v1/citation-graphs/runtime")
+def runtime_citation_graphs(
+    project_id: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.list_runtime_citation_graphs(
+            project_id=project_id,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/google-spikes/au/plan")
 def au_google_spike_plan() -> dict[str, object]:
     bootstrap = build_au_project_bootstrap()
@@ -624,6 +645,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEvidencePage",
             "RuntimeScoreSnapshot",
             "RuntimeScoreSnapshotPage",
+            "RuntimeCitationGraph",
+            "RuntimeCitationGraphPage",
             "ProjectBootstrap",
             "PromptQuestion",
             "RawEvidenceRecord",
@@ -635,5 +658,6 @@ def contracts() -> dict[str, list[str]]:
             "worker --persist",
             "worker --persist-analysis",
             "/v1/visibility-scores/runtime",
+            "/v1/citation-graphs/runtime",
         ],
     }

@@ -579,6 +579,29 @@ class RuntimeScoreSnapshotPage:
 
 
 @dataclass(frozen=True)
+class RuntimeCitationGraphNode:
+    node: dict[str, Any]
+    answer_runs: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeCitationGraph:
+    project_id: str
+    nodes: tuple[RuntimeCitationGraphNode, ...]
+    evidence_links: tuple[dict[str, Any], ...]
+    source_gaps: tuple[dict[str, Any], ...]
+    competitor_benchmarks: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeCitationGraphPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeCitationGraph, ...]
+
+
+@dataclass(frozen=True)
 class AuditEvent:
     id: str
     event_type: str

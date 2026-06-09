@@ -40,7 +40,9 @@ python3 workers/collector_worker/run_collection_slice.py --mode fixture --prompt
 
 `--persist-analysis` requires `--persist`; it parses successful records with the rule parser and
 stores `AnswerAnalysis`, `VisibilityScoreSnapshot`, `ScoreContribution`, `ScoreSnapshotRun`, and
-the score audit event. Failed records remain auditable through `CollectionFailureRecord`.
+the score audit event. It also builds and stores the M4 citation graph, source graph evidence,
+source gaps, and competitor benchmarks. Failed records remain auditable through
+`CollectionFailureRecord`.
 
 API adapter slice:
 

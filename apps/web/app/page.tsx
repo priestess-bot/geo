@@ -16,6 +16,7 @@ const modules = [
   "Worker --persist-analysis",
   "Prompt-linked Runtime Evidence API",
   "Runtime Score API",
+  "Runtime Citation Graph API",
   "Audit / Provenance",
   "AUVisibilityScore",
   "Evidence Report"
