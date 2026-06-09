@@ -10,6 +10,7 @@ from geno_core.geo import StaticAUGeoProvider
 from geno_core.models import (
     AnswerCitation,
     AnswerRun,
+    CollectionFailureRecord,
     CollectionCost,
     CollectionPlan,
     CollectorLog,
@@ -246,6 +247,123 @@ def collect_prompt_once(
     )
 
 
+def collect_prompt_with_failure_record(
+    *,
+    project_id: str,
+    prompt: PromptQuestion,
+    market_profile: MarketProfile,
+    collector: CollectorBackend,
+    city: str,
+    sample_index: int,
+    sample_size: int,
+    device: str = DEFAULT_DEVICE,
+) -> RawEvidenceRecord | CollectionFailureRecord:
+    try:
+        return collect_prompt_once(
+            project_id=project_id,
+            prompt=prompt,
+            market_profile=market_profile,
+            collector=collector,
+            city=city,
+            sample_index=sample_index,
+            sample_size=sample_size,
+            device=device,
+        )
+    except Exception as exc:  # noqa: BLE001 - failures must be converted into audit records.
+        capabilities = collector.capabilities()
+        collected_at = datetime.now(UTC)
+        answer_run_id = _stable_id(
+            "answer-run",
+            project_id,
+            prompt.id,
+            collector.id(),
+            city,
+            sample_index,
+            sample_size,
+        )
+        answer_run = AnswerRun(
+            id=answer_run_id,
+            project_id=project_id,
+            prompt_question_id=prompt.id,
+            platform=str(capabilities["platform"]),
+            surface=str(capabilities["surface"]),
+            access_method=capabilities["access_method"],  # type: ignore[arg-type]
+            market_code=market_profile.market_code,
+            city=city,
+            language=prompt.language,
+            device=device,
+            answer_present=False,
+            surface_triggered=False,
+            sample_index=sample_index,
+            sample_size=sample_size,
+            model_or_surface=None,
+            account_state=None,
+            collector_backend_id=collector.id(),
+            collector_version="unavailable",
+            collected_at=collected_at,
+            status="failed",
+        )
+        error_type = exc.__class__.__name__
+        error_message = str(exc)
+        collector_logs = (
+            CollectorLog(
+                id=_stable_id("collector-log", answer_run_id, "failed"),
+                answer_run_id=answer_run_id,
+                collector_backend_id=collector.id(),
+                event_type="collection_failed",
+                payload={"error_type": error_type, "error_message": error_message},
+                created_at=collected_at,
+            ),
+        )
+        collection_cost = CollectionCost(
+            id=_stable_id("collection-cost", answer_run_id),
+            answer_run_id=answer_run_id,
+            project_id=project_id,
+            collector_backend_id=collector.id(),
+            llm_provider=str(capabilities["platform"]),
+            llm_tokens=0,
+            llm_cost=0.0,
+            proxy_or_vendor_cost=0.0,
+            compute_cost=0.0001,
+            total_cost=0.0001,
+            created_at=collected_at,
+        )
+        audit_events = (
+            build_audit_event(
+                event_type="answer_run_failed",
+                project_id=project_id,
+                actor_type="worker",
+                actor_id=collector.id(),
+                target_type="answer_run",
+                target_id=answer_run_id,
+                before=None,
+                after={
+                    "answer_run_id": answer_run_id,
+                    "prompt_question_id": prompt.id,
+                    "platform": answer_run.platform,
+                    "surface": answer_run.surface,
+                    "city": city,
+                    "sample_index": sample_index,
+                    "sample_size": sample_size,
+                    "error_type": error_type,
+                    "error_message": error_message,
+                },
+                input_refs={"prompt_question_ids": [prompt.id]},
+                output_refs={"answer_run_ids": [answer_run_id]},
+                method_version="collector_failure_v1",
+                reason="M2a collection failure converted into auditable evidence record",
+            ),
+        )
+        return CollectionFailureRecord(
+            answer_run=answer_run,
+            collector_logs=collector_logs,
+            collection_cost=collection_cost,
+            audit_events=audit_events,
+            error_type=error_type,
+            error_message=error_message,
+        )
+
+
 def run_fixture_collection_slice(
     *,
     project_id: str,
@@ -256,21 +374,42 @@ def run_fixture_collection_slice(
     sample_size: int = 1,
     prompt_limit: int = 2,
 ) -> tuple[RawEvidenceRecord, ...]:
+    records = run_collection_slice(
+        project_id=project_id,
+        prompts=prompts,
+        market_profile=market_profile,
+        collectors=collectors,
+        cities=cities,
+        sample_size=sample_size,
+        prompt_limit=prompt_limit,
+    )
+    return tuple(record for record in records if isinstance(record, RawEvidenceRecord))
+
+
+def run_collection_slice(
+    *,
+    project_id: str,
+    prompts: tuple[PromptQuestion, ...],
+    market_profile: MarketProfile,
+    collectors: Iterable[CollectorBackend],
+    cities: tuple[str, ...] = ("Australia", "Sydney"),
+    sample_size: int = 1,
+    prompt_limit: int = 2,
+) -> tuple[RawEvidenceRecord | CollectionFailureRecord, ...]:
     selected_prompts = prompts[:prompt_limit]
-    records: list[RawEvidenceRecord] = []
+    records: list[RawEvidenceRecord | CollectionFailureRecord] = []
     for prompt in selected_prompts:
         for collector in collectors:
             for city in cities:
                 for sample_index in range(1, sample_size + 1):
-                    records.append(
-                        collect_prompt_once(
-                            project_id=project_id,
-                            prompt=prompt,
-                            market_profile=market_profile,
-                            collector=collector,
-                            city=city,
-                            sample_index=sample_index,
-                            sample_size=sample_size,
-                        )
+                    result = collect_prompt_with_failure_record(
+                        project_id=project_id,
+                        prompt=prompt,
+                        market_profile=market_profile,
+                        collector=collector,
+                        city=city,
+                        sample_index=sample_index,
+                        sample_size=sample_size,
                     )
+                    records.append(result)
     return tuple(records)

@@ -232,6 +232,16 @@ class RawEvidenceRecord:
 
 
 @dataclass(frozen=True)
+class CollectionFailureRecord:
+    answer_run: AnswerRun
+    collector_logs: tuple[CollectorLog, ...]
+    collection_cost: CollectionCost
+    audit_events: tuple["AuditEvent", ...]
+    error_type: str
+    error_message: str
+
+
+@dataclass(frozen=True)
 class CollectionPlan:
     project_id: str
     prompt_count: int

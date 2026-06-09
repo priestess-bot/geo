@@ -114,5 +114,8 @@ def contracts() -> dict[str, list[str]]:
             "CollectorLog",
             "CollectionCost",
             "RawEvidenceRecord",
+            "CollectionFailureRecord",
+            "PerplexitySonarCollector",
+            "OpenAIWebSearchCollector",
         ],
     }

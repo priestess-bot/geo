@@ -8,7 +8,23 @@ AuditEvent without external API credentials.
 P0a adapters:
 
 - Implemented for contract testing: `FixturePerplexitySonarCollector`, `FixtureOpenAIWebSearchCollector`
-- Planned real adapters: `PerplexitySonarCollector`, `OpenAIWebSearchCollector`
+- Implemented real API adapter shells: `PerplexitySonarCollector`, `OpenAIWebSearchCollector`
+
+Local fixture slice:
+
+```bash
+PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode fixture
+```
+
+API adapter slice:
+
+```bash
+PERPLEXITY_API_KEY=... OPENAI_API_KEY=... \
+PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api
+```
+
+If API keys are missing, the worker returns `CollectionFailureRecord` items and writes
+`answer_run_failed` audit events instead of pretending collection succeeded.
 
 P0b planned adapters:
 

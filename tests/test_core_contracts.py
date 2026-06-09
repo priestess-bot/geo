@@ -6,11 +6,20 @@ from datetime import UTC, datetime
 
 from geno_core.audit import build_audit_event, hash_payload
 from geno_core.bootstrap import build_au_project_bootstrap
-from geno_core.collection import build_p0a_collection_plan, run_fixture_collection_slice
-from geno_core.collectors import FixtureOpenAIWebSearchCollector, FixturePerplexitySonarCollector
+from geno_core.collection import (
+    build_p0a_collection_plan,
+    collect_prompt_with_failure_record,
+    run_fixture_collection_slice,
+)
+from geno_core.collectors import (
+    FixtureOpenAIWebSearchCollector,
+    FixturePerplexitySonarCollector,
+    OpenAIWebSearchCollector,
+    PerplexitySonarCollector,
+)
 from geno_core.geo import StaticAUGeoProvider
 from geno_core.market import build_au_market_profile
-from geno_core.models import AnswerAnalysis, ReportExport
+from geno_core.models import AnswerAnalysis, CollectionFailureRecord, ReportExport
 from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.scoring import AU_VISIBILITY_V1, score_answer_analysis
 
@@ -184,6 +193,73 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(params["gl"], "au")
         self.assertEqual(params["near"], "Sydney, New South Wales")
         self.assertEqual(params["device"], "desktop")
+
+    def test_m2a_real_collectors_build_expected_payloads(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        prompt = bootstrap.prompt_questions[0]
+        perplexity = PerplexitySonarCollector(api_key="test-key")
+        openai = OpenAIWebSearchCollector(api_key="test-key")
+        perplexity_payload = perplexity.build_payload(
+            prompt=prompt.text,
+            market=bootstrap.market_profile,
+            city="Sydney",
+            language=prompt.language,
+        )
+        openai_payload = openai.build_payload(
+            prompt=prompt.text,
+            market=bootstrap.market_profile,
+            city="Sydney",
+            language=prompt.language,
+        )
+        self.assertEqual(perplexity_payload["model"], "sonar")
+        self.assertIn("messages", perplexity_payload)
+        self.assertEqual(openai_payload["tools"], [{"type": "web_search_preview"}])
+        self.assertIn("input", openai_payload)
+
+    def test_m2a_real_collectors_parse_citations(self) -> None:
+        perplexity = PerplexitySonarCollector(api_key="test-key")
+        openai = OpenAIWebSearchCollector(api_key="test-key")
+        perplexity_result = perplexity.parse_response(
+            {
+                "choices": [{"message": {"content": "Perplexity answer"}}],
+                "citations": ["https://source.example/a"],
+            }
+        )
+        openai_result = openai.parse_response(
+            {
+                "output": [
+                    {
+                        "content": [
+                            {
+                                "text": "OpenAI answer",
+                                "annotations": [{"url": "https://source.example/b"}],
+                            }
+                        ]
+                    }
+                ]
+            }
+        )
+        self.assertEqual(perplexity_result.answer_text, "Perplexity answer")
+        self.assertEqual(perplexity_result.citations[0]["domain"], "source.example")
+        self.assertEqual(openai_result.answer_text, "OpenAI answer")
+        self.assertEqual(openai_result.citations[0]["url"], "https://source.example/b")
+
+    def test_m2a_unconfigured_real_collector_returns_failure_record(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        result = collect_prompt_with_failure_record(
+            project_id=bootstrap.project.id,
+            prompt=bootstrap.prompt_questions[0],
+            market_profile=bootstrap.market_profile,
+            collector=PerplexitySonarCollector(api_key=""),
+            city="Australia",
+            sample_index=1,
+            sample_size=1,
+        )
+        self.assertIsInstance(result, CollectionFailureRecord)
+        assert isinstance(result, CollectionFailureRecord)
+        self.assertEqual(result.answer_run.status, "failed")
+        self.assertEqual(result.audit_events[0].event_type, "answer_run_failed")
+        self.assertIn("PERPLEXITY_API_KEY", result.error_message)
 
 
 if __name__ == "__main__":
