@@ -31,6 +31,14 @@ from geno_core.google_spike import (
     select_google_spike_prompts,
 )
 from geno_core.models import CollectionFailureRecord, ProjectBootstrap, RawEvidenceRecord
+from geno_core.knowledge import (
+    build_content_drafts,
+    build_content_engine_audit_event,
+    build_integration_connectors,
+    build_localized_knowledge_facts,
+    build_manual_distribution_records,
+    search_knowledge_facts,
+)
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.runtime import RuntimePersistenceError, build_repository_from_env
 
@@ -139,6 +147,44 @@ def _persist_records(
             comparison=comparison,
             audit_events=(action_audit, comparison_audit),
         )
+        facts = build_localized_knowledge_facts(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            brand=bootstrap.brand,
+            category=bootstrap.project.category,
+            answer_run_ids=tuple(record.answer_run.id for record in successes),
+        )
+        knowledge_results = search_knowledge_facts(
+            facts=facts,
+            query=f"{bootstrap.project.target_brand} {bootstrap.project.category} Australia shipping reviews",
+            market_code=bootstrap.project.market_code,
+            city="Sydney",
+            limit=5,
+        )
+        drafts = build_content_drafts(
+            project_id=bootstrap.project.id,
+            target_brand=bootstrap.project.target_brand,
+            category=bootstrap.project.category,
+            actions=actions,
+            prompts=bootstrap.prompt_questions,
+            knowledge_results=knowledge_results,
+        )
+        connectors = build_integration_connectors(project_id=bootstrap.project.id)
+        distribution_records = build_manual_distribution_records(project_id=bootstrap.project.id, drafts=drafts)
+        content_audit = build_content_engine_audit_event(
+            project_id=bootstrap.project.id,
+            facts=facts,
+            drafts=drafts,
+            connectors=connectors,
+            distribution_records=distribution_records,
+        )
+        repository.save_content_engine(
+            facts=facts,
+            drafts=drafts,
+            connectors=connectors,
+            distribution_records=distribution_records,
+            audit_event=content_audit,
+        )
         analysis_summary = {
             "enabled": True,
             "analysis_count": len(analysis_result.analyses),
@@ -155,6 +201,10 @@ def _persist_records(
             "retest_schedule_id": schedule.id,
             "retest_comparison_id": comparison.id,
             "retest_trend": comparison.trend,
+            "knowledge_facts": len(facts),
+            "content_drafts": len(drafts),
+            "integration_connectors": len(connectors),
+            "manual_distribution_records": len(distribution_records),
         }
     elif persist_analysis:
         analysis_summary = {

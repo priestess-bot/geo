@@ -59,7 +59,7 @@ DATABASE_URL=postgresql://geno:geno@localhost:5432/geno make worker-fixture-pers
 
 缺少 `DATABASE_URL` 时，`--persist` 会直接失败并提示配置缺失，避免误以为证据已经落库。
 
-如需把同一批成功采集记录继续解析、评分，并保存 `AnswerAnalysis`、`VisibilityScoreSnapshot`、`ScoreContribution`、Citation Graph、ReportExport、ActionRecommendation、RetestSchedule 与 RetestComparison：
+如需把同一批成功采集记录继续解析、评分，并保存 `AnswerAnalysis`、`VisibilityScoreSnapshot`、`ScoreContribution`、Citation Graph、ReportExport、ActionRecommendation、RetestSchedule、RetestComparison、Knowledge Facts、Content Drafts、Integration Connectors 与 Manual Distribution Records：
 
 ```bash
 DATABASE_URL=postgresql://geno:geno@localhost:5432/geno \
@@ -81,9 +81,10 @@ curl "http://localhost:8000/v1/visibility-scores/runtime?limit=20"
 curl "http://localhost:8000/v1/citation-graphs/runtime?limit=20"
 curl "http://localhost:8000/v1/reports/runtime?limit=20"
 curl "http://localhost:8000/v1/action-plans/runtime?limit=20"
+curl "http://localhost:8000/v1/content-engines/runtime?limit=20"
 ```
 
-这些接口从 PostgreSQL 读取 `AnswerRun -> PromptQuestion -> RawAnswer -> Citation/Asset/Log/Cost/Audit` 聚合页、`VisibilityScoreSnapshot -> ScoreContribution -> ScoreSnapshotRun -> AnswerRun/PromptQuestion -> AnswerAnalysis/AuditEvent` 评分解释页、`SourceGraph -> SourceGraphEvidence -> SourceGap -> CompetitorBenchmark` 图谱/竞品页、`ReportExport -> ReportEvidence -> ScoreSnapshot -> CitationGraph` 报告快照页，以及 `RetestSchedule -> ActionRecommendation -> RetestComparison -> AnswerRun/PromptQuestion -> AuditEvent` 行动与复测页；未配置 `DATABASE_URL` 时返回 503。
+这些接口从 PostgreSQL 读取 `AnswerRun -> PromptQuestion -> RawAnswer -> Citation/Asset/Log/Cost/Audit` 聚合页、`VisibilityScoreSnapshot -> ScoreContribution -> ScoreSnapshotRun -> AnswerRun/PromptQuestion -> AnswerAnalysis/AuditEvent` 评分解释页、`SourceGraph -> SourceGraphEvidence -> SourceGap -> CompetitorBenchmark` 图谱/竞品页、`ReportExport -> ReportEvidence -> ScoreSnapshot -> CitationGraph` 报告快照页、`RetestSchedule -> ActionRecommendation -> RetestComparison -> AnswerRun/PromptQuestion -> AuditEvent` 行动与复测页，以及 `ContentDraft -> LocalizedKnowledgeFact -> ActionRecommendation -> AnswerRun/PromptQuestion -> ManualDistributionRecord/IntegrationConnector/AuditEvent` 内容引擎页；未配置 `DATABASE_URL` 时返回 503。
 
 ## 核心文档
 

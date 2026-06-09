@@ -110,7 +110,7 @@
 - `[x]` (P0a) 仓库骨架：`apps/`、`packages/`、`workers/`、`infra/`、`tests/`、`decisions/`
 - `[x]` (P0a/P0b/P0c) 数据契约：优先实现 MarketProfile、IndustryProfile、PromptQuestion、GeoSample、AnswerRun、RawAnswer、AnswerCitation、AnswerAnalysis、SourceGraph、CompetitorBenchmark、VisibilityScoreSnapshot、BrandEntity/CompetitorEntity/EntityAlias、CollectionCost、AuditEvent、ReportExport、ScoreContribution、EvidenceLink、TraceabilityBundle 关联表；P1/P2 表可延后 — `§8`
 - `[x]` (P0a) 接口契约 stub（先定义不实现）：CollectorBackend、LLMGateway、ParserEngine、VectorStore、GraphStore、GeoProvider、ScoringFormula、ReportExporter — `Step3.2`
-- `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web、repository 映射、`DATABASE_URL` connection factory、AU 启动包/prompt 元数据持久化、worker `--persist` / `--persist-analysis`、prompt-linked runtime evidence API、runtime score API、runtime citation graph API、runtime report API 与 runtime action plan API；LiteLLM、连接池与完整 runtime 查询 UI 待接）
+- `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web、repository 映射、`DATABASE_URL` connection factory、AU 启动包/prompt 元数据持久化、worker `--persist` / `--persist-analysis`、prompt-linked runtime evidence API、runtime score API、runtime citation graph API、runtime report API、runtime action plan API 与 runtime content engine API；LiteLLM、连接池与完整 runtime 查询 UI 待接）
 - `[x]` (P0c/P1) 重组件接入点：ClickHouse、Temporal、Langfuse、promptfoo、SearXNG、Metabase 写 ADR 和接口适配计划，但不阻塞 P0a — `§6`
 - `[~]` (P0a) 空 CI：lint + 测试 + 迁移起服（已落 contract tests、Compose config、repository mapping/runtime tests；lint 与真实迁移起服待补）
 - `[~]` (P0a) LLM 网关配置 + 调用日志 + 对象存储配置 — `E10-01 / E10-03 / E10-05`（已落 LLMGateway 接口与对象存储配置；运行时调用日志待接）
@@ -271,16 +271,16 @@ DoD：
 
 任务：
 
-- `[~]` (P2) LocalizedKnowledgeFact 本地事实库 + VectorStore 检索（AU 优先，回退 global 标记）— `Step12 / §8.12 / E6`（内存检索 fixture 已落；pgvector 持久化检索待接）
-- `[~]` (P2) Content Engine：基于 source/prompt gap 生成 FAQ/comparison/schema/landing outline，绑 evidence 并过人工审核 — `Step15 / E7`（证据绑定草稿已落；LLMGateway 生成与审核工作台待接）
-- `[~]` (P2) Integrations：GSC/GA4/Shopify/WordPress/Webflow/HubSpot/Cloudflare — `Step15`（connector 计划对象已落；真实 OAuth/API 接入待接）
+- `[~]` (P2) LocalizedKnowledgeFact 本地事实库 + VectorStore 检索（AU 优先，回退 global 标记）— `Step12 / §8.12 / E6`（内存检索 fixture 已落；worker `--persist-analysis` 已写入 PostgreSQL，runtime content engine API 可读回 facts；pgvector 检索待接）
+- `[~]` (P2) Content Engine：基于 source/prompt gap 生成 FAQ/comparison/schema/landing outline，绑 evidence 并过人工审核 — `Step15 / E7`（证据绑定草稿已落，worker 可持久化并通过 runtime content engine API 读回 draft -> fact/action/prompt/answer_run；LLMGateway 生成与审核工作台待接）
+- `[~]` (P2) Integrations：GSC/GA4/Shopify/WordPress/Webflow/HubSpot/Cloudflare — `Step15`（connector 计划对象已落，worker 可写入并通过 runtime content engine API 读回；真实 OAuth/API 接入待接）
 - `[ ]` (P2) 更广平台：Gemini/Copilot/Claude/YouTube/Reddit/ProductReview — `§4.3`
 - `[x]` (P2) Manual Distribution Record（仅记录 URL/状态，不自动发布）— `E8`
 
 DoD：
 
-- `[~]` 内容生成绑 evidence/source_gap/knowledge_fact，过人工审核（草稿默认 `pending_human_review`；人工审核 UI 待接）
-- `[~]` 本地事实库可检索、可回退标记（内存检索和 global fallback 标记已落；VectorStore/pgvector 运行时待接）
+- `[~]` 内容生成绑 evidence/source_gap/knowledge_fact，过人工审核（runtime content engine API 已读回 evidence/fact/action/prompt 关联，草稿默认 `pending_human_review`；人工审核 UI 待接）
+- `[~]` 本地事实库可检索、可回退标记（内存检索和 global fallback 标记已落，facts 可持久化读回；VectorStore/pgvector 运行时检索待接）
 
 ## 4. 风险登记册
 

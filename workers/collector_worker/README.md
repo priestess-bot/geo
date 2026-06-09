@@ -43,7 +43,9 @@ stores `AnswerAnalysis`, `VisibilityScoreSnapshot`, `ScoreContribution`, `ScoreS
 the score audit event. It also builds and stores the M4 citation graph, source graph evidence,
 source gaps, competitor benchmarks, the M5 `ReportExport` snapshot, and the M6
 `ActionRecommendation`, `RetestSchedule`, `RetestComparison`, action plan audit event, and retest
-comparison audit event. Failed records remain auditable through `CollectionFailureRecord`.
+comparison audit event. It then persists the M7 `LocalizedKnowledgeFact`, `ContentDraft`,
+`IntegrationConnector`, `ManualDistributionRecord`, and content engine audit event. Failed records
+remain auditable through `CollectionFailureRecord`.
 
 API adapter slice:
 

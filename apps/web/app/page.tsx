@@ -19,6 +19,7 @@ const modules = [
   "Runtime Citation Graph API",
   "Runtime Report API",
   "Runtime Action Plan API",
+  "Runtime Content Engine API",
   "Audit / Provenance",
   "AUVisibilityScore",
   "Evidence Report"

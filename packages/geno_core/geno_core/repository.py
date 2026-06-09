@@ -26,6 +26,9 @@ from geno_core.models import (
     RuntimeCitationGraph,
     RuntimeCitationGraphNode,
     RuntimeCitationGraphPage,
+    RuntimeContentDraft,
+    RuntimeContentEngine,
+    RuntimeContentEnginePage,
     RuntimeEvidencePage,
     RuntimeEvidenceRun,
     RuntimeReportExport,
@@ -295,6 +298,76 @@ RETEST_COMPARISON_COLUMNS = (
     "retest_answer_run_ids",
     "trend",
     "created_at",
+)
+LOCALIZED_KNOWLEDGE_FACT_COLUMNS = (
+    "id",
+    "project_id",
+    "market_code",
+    "fact_type",
+    "subject",
+    "predicate",
+    "object_value",
+    "city",
+    "evidence_source_id",
+    "confidence",
+    "status",
+    "valid_from",
+    "valid_until",
+)
+CONTENT_DRAFT_COLUMNS = (
+    "id",
+    "project_id",
+    "title",
+    "content_type",
+    "content_template_id",
+    "target_question_ids",
+    "target_city",
+    "target_platform",
+    "target_source_type",
+    "used_knowledge_fact_ids",
+    "source_gap_types",
+    "source_action_id",
+    "evidence_answer_run_ids",
+    "draft_markdown",
+    "review_status",
+    "created_by",
+    "created_at",
+)
+INTEGRATION_CONNECTOR_COLUMNS = (
+    "id",
+    "project_id",
+    "provider",
+    "connection_status",
+    "capabilities",
+    "auth_mode",
+    "created_at",
+)
+MANUAL_DISTRIBUTION_RECORD_COLUMNS = (
+    "id",
+    "project_id",
+    "content_draft_id",
+    "platform",
+    "target_url",
+    "status",
+    "submitted_at",
+    "checked_at",
+    "notes",
+)
+PROMPT_QUESTION_READ_COLUMNS = (
+    "id",
+    "project_id",
+    "market_code",
+    "industry_code",
+    "text",
+    "intent_type",
+    "city",
+    "language",
+    "target_brand",
+    "competitors",
+    "priority",
+    "intent_weight",
+    "prompt_version",
+    "status",
 )
 AUDIT_EVENT_COLUMNS = (
     "id",
@@ -640,6 +713,214 @@ class PostgresEvidenceRepository:
             retest_comparisons=comparisons,
             answer_runs=tuple(answer_runs),
             audit_events=tuple(audit_events),
+        )
+
+    def list_runtime_content_engines(
+        self,
+        *,
+        project_id: str | None = None,
+        review_status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeContentEnginePage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("cd.project_id = %s")
+            params.append(_uuid(project_id))
+        if review_status:
+            filters.append("cd.review_status = %s")
+            params.append(review_status)
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(DISTINCT cd.project_id) FROM content_drafts cd {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT cd.project_id
+                FROM content_drafts cd
+                {where_clause}
+                GROUP BY cd.project_id
+                ORDER BY max(cd.created_at) DESC, cd.project_id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            project_rows = cursor.fetchall()
+            project_ids = tuple(str(row["project_id"] if isinstance(row, dict) else row[0]) for row in project_rows)
+            records = tuple(
+                self._load_runtime_content_engine(
+                    cursor=cursor,
+                    project_id=content_project_id,
+                    review_status=review_status,
+                )
+                for content_project_id in project_ids
+            )
+        return RuntimeContentEnginePage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=records,
+        )
+
+    def _load_runtime_content_engine(
+        self,
+        *,
+        cursor: DbCursor,
+        project_id: str,
+        review_status: str | None,
+    ) -> RuntimeContentEngine:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(LOCALIZED_KNOWLEDGE_FACT_COLUMNS)}
+            FROM localized_knowledge_facts
+            WHERE project_id = %s
+            ORDER BY market_code ASC, fact_type ASC, subject ASC, id ASC
+            """,
+            (_uuid(project_id),),
+        )
+        knowledge_facts = _rows_dict(cursor.fetchall(), LOCALIZED_KNOWLEDGE_FACT_COLUMNS)
+        draft_filters = ["project_id = %s"]
+        draft_params: list[object] = [_uuid(project_id)]
+        if review_status:
+            draft_filters.append("review_status = %s")
+            draft_params.append(review_status)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(CONTENT_DRAFT_COLUMNS)}
+            FROM content_drafts
+            WHERE {" AND ".join(draft_filters)}
+            ORDER BY created_at DESC, id DESC
+            """,
+            tuple(draft_params),
+        )
+        drafts = _rows_dict(cursor.fetchall(), CONTENT_DRAFT_COLUMNS)
+        runtime_drafts = tuple(
+            self._load_runtime_content_draft(cursor=cursor, draft=draft)
+            for draft in drafts
+        )
+        cursor.execute(
+            f"""
+            SELECT {", ".join(INTEGRATION_CONNECTOR_COLUMNS)}
+            FROM integration_connectors
+            WHERE project_id = %s
+            ORDER BY provider ASC
+            """,
+            (_uuid(project_id),),
+        )
+        connectors = _rows_dict(cursor.fetchall(), INTEGRATION_CONNECTOR_COLUMNS)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(MANUAL_DISTRIBUTION_RECORD_COLUMNS)}
+            FROM manual_distribution_records
+            WHERE project_id = %s
+            ORDER BY content_draft_id ASC, id ASC
+            """,
+            (_uuid(project_id),),
+        )
+        distribution_records = _rows_dict(cursor.fetchall(), MANUAL_DISTRIBUTION_RECORD_COLUMNS)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE target_type = %s AND target_id = %s
+            ORDER BY created_at ASC
+            """,
+            ("content_engine_fixture", project_id),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeContentEngine(
+            project_id=project_id,
+            knowledge_facts=knowledge_facts,
+            content_drafts=runtime_drafts,
+            integration_connectors=connectors,
+            manual_distribution_records=distribution_records,
+            audit_events=audit_events,
+        )
+
+    def _load_runtime_content_draft(self, *, cursor: DbCursor, draft: dict[str, Any]) -> RuntimeContentDraft:
+        target_questions: list[dict[str, Any]] = []
+        for prompt_id in tuple(str(value) for value in draft["target_question_ids"]):
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROMPT_QUESTION_READ_COLUMNS)}
+                FROM prompt_questions
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(prompt_id),),
+            )
+            prompt_row = cursor.fetchone()
+            if prompt_row:
+                target_questions.append(_row_dict(prompt_row, PROMPT_QUESTION_READ_COLUMNS))
+        knowledge_facts: list[dict[str, Any]] = []
+        for fact_id in tuple(str(value) for value in draft["used_knowledge_fact_ids"]):
+            cursor.execute(
+                f"""
+                SELECT {", ".join(LOCALIZED_KNOWLEDGE_FACT_COLUMNS)}
+                FROM localized_knowledge_facts
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(fact_id),),
+            )
+            fact_row = cursor.fetchone()
+            if fact_row:
+                knowledge_facts.append(_row_dict(fact_row, LOCALIZED_KNOWLEDGE_FACT_COLUMNS))
+        answer_runs: list[dict[str, Any]] = []
+        for answer_run_id in tuple(str(value) for value in draft["evidence_answer_run_ids"]):
+            cursor.execute(
+                f"""
+                SELECT {", ".join(f"ar.{column}" for column in ANSWER_RUN_COLUMNS)},
+                       pq.text AS prompt_text,
+                       pq.intent_type AS prompt_intent_type,
+                       pq.priority AS prompt_priority,
+                       pq.prompt_version AS prompt_version
+                FROM answer_runs ar
+                LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id
+                WHERE ar.id = %s
+                LIMIT 1
+                """,
+                (_uuid(answer_run_id),),
+            )
+            answer_run_row = cursor.fetchone()
+            if answer_run_row:
+                answer_runs.append(_row_dict(answer_run_row, ANSWER_RUN_READ_COLUMNS))
+        action_recommendation = None
+        if draft["source_action_id"]:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ACTION_RECOMMENDATION_COLUMNS)}
+                FROM action_recommendations
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(str(draft["source_action_id"])),),
+            )
+            action_row = cursor.fetchone()
+            if action_row:
+                action_recommendation = _row_dict(action_row, ACTION_RECOMMENDATION_COLUMNS)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(MANUAL_DISTRIBUTION_RECORD_COLUMNS)}
+            FROM manual_distribution_records
+            WHERE content_draft_id = %s
+            ORDER BY id ASC
+            """,
+            (_uuid(str(draft["id"])),),
+        )
+        distribution_records = _rows_dict(cursor.fetchall(), MANUAL_DISTRIBUTION_RECORD_COLUMNS)
+        return RuntimeContentDraft(
+            draft=draft,
+            target_questions=tuple(target_questions),
+            knowledge_facts=tuple(knowledge_facts),
+            answer_runs=tuple(answer_runs),
+            action_recommendation=action_recommendation,
+            manual_distribution_records=distribution_records,
         )
 
     def _load_runtime_report_export(

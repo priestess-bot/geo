@@ -51,6 +51,7 @@ from geno_core.models import (
     RuntimeEvidencePage,
     RuntimeCitationGraphPage,
     RuntimeActionPlanPage,
+    RuntimeContentEnginePage,
     RuntimeScoreSnapshotPage,
     RuntimeReportExportPage,
 )
@@ -1648,6 +1649,183 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM action_recommendations WHERE project_id = %s AND status = %s", executed_sql)
         self.assertIn("FROM retest_comparisons", executed_sql)
         self.assertIn("WHERE target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_reads_runtime_content_engine_page(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        draft_id = "51dcc4cb-c798-5eac-a08d-86f596c78f0f"
+        fact_id = "06975d61-853b-5a25-ae0e-b62bbfe82c15"
+        prompt_id = "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0"
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        action_id = "4cfd7cd0-a0cc-580f-b448-7b52f3b2937e"
+        distribution_id = "042f3450-77b4-5cb3-8a61-8057db7c11bd"
+        connector_id = "70655f5b-4b7e-56cc-9974-84d6d5f08020"
+        fact_row = {
+            "id": fact_id,
+            "project_id": project_id,
+            "market_code": "AU",
+            "fact_type": "australian_shipping_policy",
+            "subject": "ExampleBrand",
+            "predicate": "supports_market",
+            "object_value": "AU",
+            "city": None,
+            "evidence_source_id": answer_run_id,
+            "confidence": 0.72,
+            "status": "active",
+            "valid_from": now,
+            "valid_until": None,
+        }
+        draft_row = {
+            "id": draft_id,
+            "project_id": project_id,
+            "title": "ExampleBrand FAQ for Australian customers",
+            "content_type": "evidence_backed_outline",
+            "content_template_id": "faq_for_australian_customers",
+            "target_question_ids": [prompt_id],
+            "target_city": "Sydney",
+            "target_platform": "chatgpt/perplexity",
+            "target_source_type": "official_site",
+            "used_knowledge_fact_ids": [fact_id],
+            "source_gap_types": ["low_mention_rate"],
+            "source_action_id": action_id,
+            "evidence_answer_run_ids": [answer_run_id],
+            "draft_markdown": "# ExampleBrand FAQ",
+            "review_status": "pending_human_review",
+            "created_by": "geno-core.knowledge",
+            "created_at": now,
+        }
+        distribution_row = {
+            "id": distribution_id,
+            "project_id": project_id,
+            "content_draft_id": draft_id,
+            "platform": "manual",
+            "target_url": "",
+            "status": "draft_created",
+            "submitted_at": None,
+            "checked_at": None,
+            "notes": "Manual distribution only.",
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [{"project_id": project_id}],
+                [fact_row],
+                [draft_row],
+                {
+                    "id": prompt_id,
+                    "project_id": project_id,
+                    "market_code": "AU",
+                    "industry_code": "dtc_ecommerce",
+                    "text": "Is ExampleBrand good in Australia?",
+                    "intent_type": "brand_awareness",
+                    "city": "Australia",
+                    "language": "en-AU",
+                    "target_brand": "ExampleBrand",
+                    "competitors": ["CompetitorA"],
+                    "priority": 1,
+                    "intent_weight": 1.0,
+                    "prompt_version": "au_dtc_ecommerce_v1",
+                    "status": "active",
+                },
+                fact_row,
+                {
+                    "id": answer_run_id,
+                    "project_id": project_id,
+                    "prompt_question_id": prompt_id,
+                    "platform": "perplexity",
+                    "surface": "sonar",
+                    "access_method": "official_api",
+                    "market_code": "AU",
+                    "city": "Australia",
+                    "language": "en-AU",
+                    "device": "desktop",
+                    "answer_present": True,
+                    "surface_triggered": True,
+                    "sample_index": 1,
+                    "sample_size": 1,
+                    "model_or_surface": "sonar",
+                    "account_state": "api_key",
+                    "collector_backend_id": "fixture_perplexity_sonar",
+                    "collector_version": "fixture-v1",
+                    "collected_at": now,
+                    "status": "completed",
+                    "prompt_text": "Is ExampleBrand good in Australia?",
+                    "prompt_intent_type": "brand_awareness",
+                    "prompt_priority": 1,
+                    "prompt_version": "au_dtc_ecommerce_v1",
+                },
+                {
+                    "id": action_id,
+                    "project_id": project_id,
+                    "title": "Improve brand mention coverage",
+                    "description": "Create citation-ready pages.",
+                    "priority": "high",
+                    "status": "open",
+                    "owner_id": "system",
+                    "source_gap_type": "low_mention_rate",
+                    "evidence_answer_run_ids": [answer_run_id],
+                    "related_source_types": [],
+                    "next_check_date": now,
+                    "created_at": now,
+                },
+                [distribution_row],
+                [
+                    {
+                        "id": connector_id,
+                        "project_id": project_id,
+                        "provider": "google_search_console",
+                        "connection_status": "planned",
+                        "capabilities": ["read_search_queries"],
+                        "auth_mode": "oauth",
+                        "created_at": now,
+                    }
+                ],
+                [distribution_row],
+                [
+                    {
+                        "id": "425f980b-138f-4afa-8784-79d6f16f92ce",
+                        "event_type": "content_engine_fixture_created",
+                        "project_id": project_id,
+                        "actor_type": "system",
+                        "actor_id": "geno-core.knowledge",
+                        "target_type": "content_engine_fixture",
+                        "target_id": project_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"knowledge_fact_ids": [fact_id]},
+                        "output_refs": {"content_draft_ids": [draft_id]},
+                        "method_version": "content_engine_fixture_v1",
+                        "reason": "test",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+        page = PostgresEvidenceRepository(connection).list_runtime_content_engines(
+            project_id=project_id,
+            review_status="pending_human_review",
+            limit=10,
+            offset=0,
+        )
+        self.assertIsInstance(page, RuntimeContentEnginePage)
+        self.assertEqual(page.total_count, 1)
+        record = page.records[0]
+        self.assertEqual(record.project_id, project_id)
+        self.assertEqual(record.knowledge_facts[0]["fact_type"], "australian_shipping_policy")
+        draft = record.content_drafts[0]
+        self.assertEqual(draft.draft["review_status"], "pending_human_review")
+        self.assertEqual(draft.target_questions[0]["text"], "Is ExampleBrand good in Australia?")
+        self.assertEqual(draft.knowledge_facts[0]["id"], fact_id)
+        self.assertEqual(draft.answer_runs[0]["prompt_text"], "Is ExampleBrand good in Australia?")
+        self.assertEqual(draft.action_recommendation["source_gap_type"], "low_mention_rate")
+        self.assertEqual(draft.manual_distribution_records[0]["status"], "draft_created")
+        self.assertEqual(record.integration_connectors[0]["provider"], "google_search_console")
+        self.assertEqual(record.audit_events[0]["event_type"], "content_engine_fixture_created")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM content_drafts cd WHERE cd.project_id = %s AND cd.review_status = %s", executed_sql)
+        self.assertIn("FROM localized_knowledge_facts", executed_sql)
+        self.assertIn("FROM prompt_questions WHERE id = %s", executed_sql)
+        self.assertIn("FROM action_recommendations WHERE id = %s", executed_sql)
 
 
 if __name__ == "__main__":

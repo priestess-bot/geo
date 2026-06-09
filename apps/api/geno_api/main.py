@@ -225,6 +225,29 @@ def runtime_action_plans(
         close_repository_connection(repository)
 
 
+@app.get("/v1/content-engines/runtime")
+def runtime_content_engines(
+    project_id: str | None = None,
+    review_status: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.list_runtime_content_engines(
+            project_id=project_id,
+            review_status=review_status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/google-spikes/au/plan")
 def au_google_spike_plan() -> dict[str, object]:
     bootstrap = build_au_project_bootstrap()
@@ -697,6 +720,9 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeReportExportPage",
             "RuntimeActionPlan",
             "RuntimeActionPlanPage",
+            "RuntimeContentDraft",
+            "RuntimeContentEngine",
+            "RuntimeContentEnginePage",
             "ProjectBootstrap",
             "PromptQuestion",
             "RawEvidenceRecord",
@@ -711,5 +737,6 @@ def contracts() -> dict[str, list[str]]:
             "/v1/citation-graphs/runtime",
             "/v1/reports/runtime",
             "/v1/action-plans/runtime",
+            "/v1/content-engines/runtime",
         ],
     }

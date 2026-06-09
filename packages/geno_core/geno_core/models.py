@@ -636,6 +636,34 @@ class RuntimeActionPlanPage:
 
 
 @dataclass(frozen=True)
+class RuntimeContentDraft:
+    draft: dict[str, Any]
+    target_questions: tuple[dict[str, Any], ...]
+    knowledge_facts: tuple[dict[str, Any], ...]
+    answer_runs: tuple[dict[str, Any], ...]
+    action_recommendation: dict[str, Any] | None
+    manual_distribution_records: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeContentEngine:
+    project_id: str
+    knowledge_facts: tuple[dict[str, Any], ...]
+    content_drafts: tuple[RuntimeContentDraft, ...]
+    integration_connectors: tuple[dict[str, Any], ...]
+    manual_distribution_records: tuple[dict[str, Any], ...]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeContentEnginePage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeContentEngine, ...]
+
+
+@dataclass(frozen=True)
 class AuditEvent:
     id: str
     event_type: str
