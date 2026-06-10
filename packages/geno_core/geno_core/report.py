@@ -78,6 +78,7 @@ class MarkdownCsvReportExporter:
         platform_weights_snapshot: dict[str, float],
         exported_by: str = "system",
         google_spike_gate: GoogleSpikeGateResult | Mapping[str, object] | None = None,
+        score_input_policy: Mapping[str, object] | None = None,
     ) -> EvidenceReport:
         if not records:
             raise ValueError("Evidence report requires at least one raw evidence record")
@@ -88,6 +89,7 @@ class MarkdownCsvReportExporter:
             rows=_methodology_rows_from_records(records),
             platform_weights_snapshot=platform_weights_snapshot,
             google_spike_gate=google_spike_gate,
+            score_input_policy=score_input_policy,
         )
         methodology = {
             "market_code": market_code,
@@ -372,14 +374,18 @@ def build_report_methodology_disclosure(
     rows: tuple[dict[str, Any], ...],
     platform_weights_snapshot: dict[str, float],
     google_spike_gate: GoogleSpikeGateResult | Mapping[str, object] | None = None,
+    score_input_policy: Mapping[str, object] | None = None,
 ) -> dict[str, Any]:
     access_distribution = dict(sorted(Counter(str(row.get("access_method") or "unknown") for row in rows).items()))
     platform_distribution = dict(sorted(Counter(str(row.get("platform") or "unknown") for row in rows).items()))
     gate_payload = _gate_payload(google_spike_gate, rows)
+    score_policy = dict(score_input_policy or {})
     fidelity_payload = build_api_browser_fidelity_payload(rows)
+    score_policy_allows_google = bool(score_policy.get("google_main_scoring_allowed", False))
     google_coverage = (
         "main_scoring_allowed"
         if gate_payload["gate_status"] == "pass" and not gate_payload["limited_coverage"]
+        and score_policy_allows_google
         else "limited_coverage_appendix_only"
     )
     return {
@@ -390,6 +396,7 @@ def build_report_methodology_disclosure(
         "access_method_distribution": access_distribution,
         "platform_distribution": platform_distribution,
         "platform_weights_snapshot": dict(sorted(platform_weights_snapshot.items())),
+        "score_input_policy": score_policy,
         "evidence_asset_coverage": {
             "screenshot_records": sum(1 for row in rows if int(row.get("screenshot_count") or 0) > 0),
             "html_snapshot_records": sum(1 for row in rows if int(row.get("html_snapshot_count") or 0) > 0),
@@ -406,12 +413,16 @@ def render_methodology_disclosure_lines(disclosure: Mapping[str, Any]) -> list[s
     assets = dict(disclosure.get("evidence_asset_coverage") or {})
     access_distribution = dict(disclosure.get("access_method_distribution") or {})
     platform_distribution = dict(disclosure.get("platform_distribution") or {})
+    score_input_policy = dict(disclosure.get("score_input_policy") or {})
     return [
         f"- Google spike gate: {gate.get('gate_status', 'unknown')}",
         f"- Google limited coverage: {'yes' if gate.get('limited_coverage', True) else 'no'}",
         f"- Google AIO completed runs: {gate.get('google_aio_completed_runs', 0)} / planned {gate.get('planned_runs', 0)}",
         f"- Google trigger rate: {gate.get('trigger_rate', 0.0)}",
         f"- Google recommendation: {gate.get('recommendation', 'No recommendation recorded')}",
+        f"- Main scoring Google allowed: {score_input_policy.get('google_main_scoring_allowed', False)}",
+        f"- Main scoring records: {score_input_policy.get('score_input_record_count', 'n/a')}",
+        f"- Excluded Google records from main scoring: {score_input_policy.get('excluded_google_record_count', 0)}",
         f"- API-vs-browser fidelity: {fidelity.get('status', 'unknown')}",
         f"- Official API records: {fidelity.get('official_api_records', 0)}",
         f"- Browser records: {fidelity.get('browser_records', 0)}",

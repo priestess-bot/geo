@@ -14,7 +14,7 @@ from geno_core.action_plan import (
     build_retest_schedule,
     compare_retest_windows,
 )
-from geno_core.analysis_pipeline import analyze_and_score_records
+from geno_core.analysis_pipeline import analyze_and_score_records, build_score_input_policy
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
     build_collection_run_audit_event,
@@ -103,6 +103,54 @@ def _persist_records(
             project_id=bootstrap.project.id,
             formula_version=score_formula_version,
         )
+        google_plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
+        google_gate = evaluate_google_spike_gate(
+            project_id=bootstrap.project.id,
+            plan=google_plan,
+            records=records if run_type == "google_spike" else (),
+        )
+        google_readiness_gate = evaluate_google_spike_readiness_gate(
+            project_id=bootstrap.project.id,
+            plan=google_plan,
+            records=records if run_type == "google_spike" else (),
+        )
+        google_allowed_for_scoring = (
+            google_gate.gate_status == "pass"
+            and not google_gate.limited_coverage
+            and google_readiness_gate.gate_status == "pass"
+        )
+        score_input_successes = tuple(
+            record
+            for record in successes
+            if record.answer_run.platform != "google" or google_allowed_for_scoring
+        )
+        score_input_policy = build_score_input_policy(
+            records=successes,
+            score_input_records=score_input_successes,
+            google_spike_gate=google_gate,
+            google_spike_readiness_gate=google_readiness_gate,
+        )
+        if not score_input_successes:
+            return {
+                "enabled": True,
+                "project_bootstrap": True,
+                "tenant_id": bootstrap.tenant.id,
+                "project_id": bootstrap.project.id,
+                "prompt_questions": len(bootstrap.prompt_questions),
+                "competitors": len(bootstrap.competitors),
+                "raw_evidence_records": len(successes),
+                "collection_failure_records": len(failures),
+                "collection_run_summary": asdict(collection_summary),
+                "collection_run_audit_event_id": collection_summary_audit.id,
+                "analysis": {
+                    "enabled": True,
+                    "analysis_count": 0,
+                    "score_input_record_count": 0,
+                    "score_input_policy": score_input_policy,
+                    "score_contributions": 0,
+                    "reason": "no_score_input_records",
+                },
+            }
         analysis_result = analyze_and_score_records(
             project_id=bootstrap.project.id,
             records=successes,
@@ -114,6 +162,8 @@ def _persist_records(
             entity_aliases=entity_aliases,
             scope_type="collection_slice",
             scope_value="worker_runtime",
+            google_spike_gate=google_gate,
+            google_spike_readiness_gate=google_readiness_gate,
         )
         repository.save_answer_analyses(analysis_result.analyses)
         repository.save_score_snapshot(
@@ -124,13 +174,11 @@ def _persist_records(
         graph = build_citation_graph(
             project_id=bootstrap.project.id,
             records=successes,
-            analyses=analysis_result.analyses,
+            analyses=analysis_result.score_input_analyses,
             competitors=bootstrap.competitors,
             industry_profile=bootstrap.industry_profile,
         )
         repository.save_citation_graph(bootstrap.project.id, graph)
-        google_plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
-        google_gate = evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=google_plan, records=())
         report = MarkdownCsvReportExporter().export(
             project_id=bootstrap.project.id,
             market_code=bootstrap.project.market_code,
@@ -143,6 +191,7 @@ def _persist_records(
             graph=graph,
             platform_weights_snapshot=platform_weights_snapshot,
             google_spike_gate=google_gate,
+            score_input_policy=analysis_result.score_input_policy,
         )
         repository.save_report_export(report.report_export, report.audit_event)
         fidelity_check, fidelity_audit = build_runtime_fidelity_check_from_records(
@@ -279,6 +328,8 @@ def _persist_records(
         analysis_summary = {
             "enabled": True,
             "analysis_count": len(analysis_result.analyses),
+            "score_input_record_count": len(analysis_result.score_input_records),
+            "score_input_policy": analysis_result.score_input_policy,
             "entity_alias_entity_count": len(entity_aliases),
             "entity_alias_term_count": sum(len(aliases) for aliases in entity_aliases.values()),
             "score_snapshot_id": analysis_result.snapshot.id,

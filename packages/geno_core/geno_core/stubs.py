@@ -123,5 +123,6 @@ class NotConfiguredReportExporter:
         platform_weights_snapshot: dict[str, float],
         exported_by: str = "system",
         google_spike_gate: GoogleSpikeGateResult | Mapping[str, object] | None = None,
+        score_input_policy: Mapping[str, object] | None = None,
     ) -> EvidenceReport:
         raise NotImplementedError("ReportExporter is not configured; choose a report exporter implementation.")

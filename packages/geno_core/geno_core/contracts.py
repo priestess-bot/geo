@@ -130,4 +130,5 @@ class ReportExporter(Protocol):
         platform_weights_snapshot: dict[str, float],
         exported_by: str = "system",
         google_spike_gate: GoogleSpikeGateResult | Mapping[str, object] | None = None,
+        score_input_policy: Mapping[str, object] | None = None,
     ) -> EvidenceReport: ...

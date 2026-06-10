@@ -1134,6 +1134,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RegistryScoringFormula", payload["m3_analysis_scoring"])
         self.assertIn("SCORE_FORMULA_REGISTRY", payload["m3_analysis_scoring"])
         self.assertIn("list_score_formulas", payload["m3_analysis_scoring"])
+        self.assertIn("build_score_input_policy", payload["m3_analysis_scoring"])
         self.assertIn("rescore_snapshot_with_formula", payload["m3_analysis_scoring"])
         self.assertIn("RuntimeHumanReviewRecord", payload["m3_analysis_scoring"])
         self.assertIn("RuntimeHumanReviewInput", payload["m3_analysis_scoring"])

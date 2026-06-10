@@ -302,6 +302,7 @@ def score_answer_analyses(
     formula_version: str = "au_visibility_v1",
     scope_type: str,
     scope_value: str,
+    score_input_policy: dict[str, Any] | None = None,
 ) -> AggregateScoreResult:
     if not analyses:
         raise ValueError("At least one AnswerAnalysis is required")
@@ -329,6 +330,12 @@ def score_answer_analyses(
     confidence_note = f"avg_parser_confidence={avg_parser_confidence}"
     if avg_parser_agreement is not None:
         confidence_note = f"{confidence_note}; parser_ab_agreement={avg_parser_agreement}"
+    if score_input_policy:
+        excluded_count = len(score_input_policy.get("excluded_answer_run_ids", []))
+        confidence_note = (
+            f"{confidence_note}; score_input_policy={score_input_policy.get('policy_version', 'unknown')}; "
+            f"excluded_answer_runs={excluded_count}"
+        )
     snapshot = VisibilityScoreSnapshot(
         id=snapshot_id,
         project_id=project_id,
@@ -382,8 +389,16 @@ def score_answer_analyses(
             "recommendation_rate": snapshot.recommendation_rate,
             "dispersion": snapshot.dispersion,
             "component_weights_snapshot": component_weights,
+            "score_input_policy": score_input_policy or {},
         },
-        input_refs={"answer_run_ids": answer_run_ids},
+        input_refs={
+            "answer_run_ids": answer_run_ids,
+            **{
+                key: [str(value) for value in values]
+                for key, values in (score_input_policy or {}).items()
+                if key.endswith("_answer_run_ids") and isinstance(values, list)
+            },
+        },
         output_refs={
             "score_snapshot_ids": [snapshot_id],
             "score_contribution_ids": [contribution.id for contribution in contributions],

@@ -7,7 +7,7 @@ from geno_core.action_plan import (
     build_retest_comparison_audit_event,
     compare_retest_windows,
 )
-from geno_core.analysis_pipeline import analyze_and_score_records
+from geno_core.analysis_pipeline import analyze_and_score_records, build_score_input_policy
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
     build_collection_run_audit_event,
@@ -86,6 +86,7 @@ __all__ = [
     "SCORE_FORMULA_REGISTRY",
     "ScoreFormulaDefinition",
     "analyze_and_score_records",
+    "build_score_input_policy",
     "build_action_plan_audit_event",
     "build_action_recommendations",
     "build_au_dtc_ecommerce_profile",

@@ -429,7 +429,7 @@ fail_gate:
   - 客户交付主报告使用 Perplexity + OpenAI 稳定链路，Google section 明确标注为 limited coverage
 ```
 
-工程落地要求：`GoogleSpikeGateResult` 负责判断 Google AIO 是否可进入主评分分母，`GoogleSpikeReadinessGate` 负责判断 P0b spike 是否满足“两路径对照”验收。browser-only fixture 可以通过 AIO 成功率 gate，但必须 fail readiness gate；browser + third_party_api 或 browser + manual 等两路径组合才可通过 readiness gate。
+工程落地要求：`GoogleSpikeGateResult` 负责判断 Google AIO 成功率是否达标，`GoogleSpikeReadinessGate` 负责判断 P0b spike 是否满足“两路径对照”验收；真正进入 `VisibilityScoreSnapshot.answer_run_ids` 前还必须经过 `score_input_policy`。该策略要求两个 gate 同时通过，才允许 Google answer runs 进入主评分分母；否则 Google 记录只保留在证据附录、报告方法说明和溯源链里。browser-only fixture 可以通过 AIO 成功率 gate，但必须 fail readiness gate，因此也必须被 `score_input_policy` 排除出主分母；browser + third_party_api 或 browser + manual 等两路径组合才可通过 readiness gate。
 
 两个采集保真度问题必须在后端处理：
 
@@ -1646,6 +1646,7 @@ ReportEvidence
 - **P0a 稳定链路**：可完成 Perplexity Sonar 与 OpenAI web search 两个平台采集，每条有 answer、citation、screenshot 或 HTML 快照。
 - **P0b Google spike**：可完成 Google AIO / AI Mode 的限时采集验证，输出 pass/fail gate、触发率、失败原因、成本/耗时估算和样本证据。
 - `GoogleSpikeReadinessGate` 必须在 worker/API 合同中可见，明确区分“Google 是否可进主评分分母”和“P0b 是否完成两路径对照”。
+- `score_input_policy` 必须冻结在评分审计和 Report Method Disclosure 中，列出 all/score-input/excluded answer_run_ids，证明未过双 gate 的 Google 证据没有进入主评分分母。
 - **每个平台的采集后端可插拔**：P0a 至少两个官方 API 后端可工作；P0b 至少对比自建浏览器、第三方 SERP API、人工补录中的两条路径；新增后端不改业务代码。
 - 每条采集结果有 answer、citation、screenshot 或 HTML 快照。
 - 每条采集结果记录平台、surface、access_method、城市、语言、设备、采集时间、collector_version 和 collector_backend_id。

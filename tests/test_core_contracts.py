@@ -1021,6 +1021,97 @@ class CoreContractsTest(unittest.TestCase):
             [result.snapshot.id],
         )
 
+    def test_m3_score_input_policy_excludes_google_until_both_spike_gates_pass(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        stable_records = run_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=1,
+        )
+        plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
+        google_records = run_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=select_google_spike_prompts(bootstrap.prompt_questions),
+            market_profile=bootstrap.market_profile,
+            collectors=(FixtureGoogleAIOCollector(), FixtureGoogleAIModeCollector()),
+            cities=plan.geo_cities,
+            sample_size=plan.sample_size,
+            prompt_limit=plan.prompt_count,
+        )
+        google_gate = evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=plan, records=google_records)
+        browser_only_readiness_gate = evaluate_google_spike_readiness_gate(
+            project_id=bootstrap.project.id,
+            plan=plan,
+            records=google_records,
+        )
+        limited_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=stable_records + google_records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+            google_spike_gate=google_gate,
+            google_spike_readiness_gate=browser_only_readiness_gate,
+        )
+        self.assertEqual(len(limited_result.analyses), len(stable_records) + len(google_records))
+        self.assertEqual(len(limited_result.score_input_analyses), len(stable_records))
+        self.assertEqual(set(limited_result.snapshot.answer_run_ids), {record.answer_run.id for record in stable_records})
+        self.assertEqual(limited_result.score_input_policy["google_gate_status"], "pass")
+        self.assertEqual(limited_result.score_input_policy["google_readiness_gate_status"], "fail")
+        self.assertFalse(limited_result.score_input_policy["google_main_scoring_allowed"])
+        self.assertEqual(limited_result.score_input_policy["excluded_google_record_count"], len(google_records))
+        self.assertEqual(
+            limited_result.audit_event.input_refs["score_input_answer_run_ids"],
+            [record.answer_run.id for record in stable_records],
+        )
+        self.assertEqual(
+            set(limited_result.audit_event.input_refs["excluded_google_answer_run_ids"]),
+            {record.answer_run.id for record in google_records},
+        )
+        self.assertTrue(
+            all("excluded_answer_runs=240" in contribution.confidence_note for contribution in limited_result.contributions)
+        )
+
+        multi_path_google_records = run_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=select_google_spike_prompts(bootstrap.prompt_questions),
+            market_profile=bootstrap.market_profile,
+            collectors=(FixtureGoogleAIOCollector(), FixtureThirdPartySerpCollector()),
+            cities=plan.geo_cities,
+            sample_size=plan.sample_size,
+            prompt_limit=plan.prompt_count,
+        )
+        multi_path_gate = evaluate_google_spike_gate(
+            project_id=bootstrap.project.id,
+            plan=plan,
+            records=multi_path_google_records,
+        )
+        multi_path_readiness_gate = evaluate_google_spike_readiness_gate(
+            project_id=bootstrap.project.id,
+            plan=plan,
+            records=multi_path_google_records,
+        )
+        allowed_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=stable_records + multi_path_google_records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+            google_spike_gate=multi_path_gate,
+            google_spike_readiness_gate=multi_path_readiness_gate,
+        )
+        self.assertTrue(allowed_result.score_input_policy["google_main_scoring_allowed"])
+        self.assertEqual(allowed_result.score_input_policy["excluded_google_record_count"], 0)
+        self.assertEqual(len(allowed_result.score_input_analyses), len(stable_records) + len(multi_path_google_records))
+
     def test_m3_analysis_pipeline_scores_alias_only_mentions(self) -> None:
         bootstrap = build_au_project_bootstrap(
             target_brand="Koala",
@@ -1036,8 +1127,8 @@ class CoreContractsTest(unittest.TestCase):
                 market_code=prompt.market_code,
                 city=prompt.city,
                 language=prompt.language,
-                platform="google",
-                surface="google_ai_mode",
+                platform="perplexity",
+                surface="sonar",
                 answer_text="K-Brand AU is recommended for Australian mattress shoppers.",
                 citation_urls=("https://example.com/k-brand",),
             )
@@ -1139,6 +1230,7 @@ class CoreContractsTest(unittest.TestCase):
             records=records,
             graph=graph,
             platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+            score_input_policy=analysis_result.score_input_policy,
         )
         self.assertEqual(report.report_export.score_snapshot_ids, (analysis_result.snapshot.id,))
         self.assertEqual(report.report_export.answer_run_ids, tuple(record.answer_run.id for record in records))
@@ -1150,6 +1242,9 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("### Method Disclosure", report.markdown)
         self.assertIn("Google spike gate: not_run", report.markdown)
         self.assertIn("Google limited coverage: yes", report.markdown)
+        self.assertIn("Main scoring Google allowed: False", report.markdown)
+        self.assertIn("Main scoring records: 40", report.markdown)
+        self.assertIn("Excluded Google records from main scoring: 0", report.markdown)
         self.assertIn("API-vs-browser fidelity: not_run", report.markdown)
         self.assertIn("Trigger rate denominator: all attempted evidence records in this report window", report.markdown)
         self.assertIn("Mention rate denominator: surface_triggered evidence records, not all attempted records", report.markdown)
@@ -1171,6 +1266,7 @@ class CoreContractsTest(unittest.TestCase):
         )
         self.assertEqual(score_rate_disclosure["evidence_denominators"]["attempted_records"], len(records))
         self.assertEqual(score_rate_disclosure["evidence_denominators"]["surface_triggered_records"], len(records))
+        self.assertEqual(report.report_export.method_disclosure["score_input_policy"], analysis_result.score_input_policy)
         self.assertIn("answer_run_id", report.csv_content)
         self.assertTrue(report.pdf_content.startswith(b"%PDF-1.4"))
         self.assertIn(b"%%EOF", report.pdf_content)

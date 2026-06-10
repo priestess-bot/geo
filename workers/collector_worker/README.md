@@ -113,11 +113,14 @@ PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_coll
 ```
 
 This runs the 30 prompt × 2 surfaces × 2 geo × k=2 spike matrix with fixture Google adapters and
-prints `google_spike_gate` plus `google_spike_readiness_gate`. The first gate checks whether AIO
-coverage can enter the main scoring denominator; the readiness gate checks whether at least two
-collection paths are present across browser, third-party API, and manual backfill. The default
-`google-fixture` uses browser fixtures only, so it can pass the AIO success gate while still failing
-the two-path readiness gate. Real Google paths still require browser/API/manual runtime
+prints `google_spike_gate` plus `google_spike_readiness_gate`. The first gate checks Google AIO
+coverage; the readiness gate checks whether at least two collection paths are present across
+browser, third-party API, and manual backfill. `--persist-analysis` applies `score_input_policy`
+before creating a `VisibilityScoreSnapshot`: Google answer runs enter the main scoring denominator
+only when both gates pass. The default `google-fixture` uses browser fixtures only, so it can pass
+the AIO success gate while still failing the two-path readiness gate; in that case raw evidence and
+the collection summary persist, but main scoring/report generation is skipped with
+`reason=no_score_input_records`. Real Google paths still require browser/API/manual runtime
 implementations.
 When `--persist-analysis` creates a report from the stable fixture path, the report Method Disclosure
 is frozen into `report_exports.method_disclosure`, records Google as limited coverage until a Google

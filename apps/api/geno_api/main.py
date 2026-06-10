@@ -1098,7 +1098,7 @@ def au_p0a_fixture_citation_graph() -> dict[str, object]:
     graph = build_citation_graph(
         project_id=bootstrap.project.id,
         records=records,
-        analyses=analysis_result.analyses,
+        analyses=analysis_result.score_input_analyses,
         competitors=bootstrap.competitors,
         industry_profile=bootstrap.industry_profile,
     )
@@ -1135,7 +1135,7 @@ def au_p0a_fixture_report() -> dict[str, object]:
     graph = build_citation_graph(
         project_id=bootstrap.project.id,
         records=records,
-        analyses=analysis_result.analyses,
+        analyses=analysis_result.score_input_analyses,
         competitors=bootstrap.competitors,
         industry_profile=bootstrap.industry_profile,
     )
@@ -1153,6 +1153,7 @@ def au_p0a_fixture_report() -> dict[str, object]:
         graph=graph,
         platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
         google_spike_gate=google_gate,
+        score_input_policy=analysis_result.score_input_policy,
     )
     return {
         "report_export": asdict(report.report_export),
@@ -1187,7 +1188,7 @@ def au_p0a_fixture_action_plan() -> dict[str, object]:
     graph = build_citation_graph(
         project_id=bootstrap.project.id,
         records=records,
-        analyses=analysis_result.analyses,
+        analyses=analysis_result.score_input_analyses,
         competitors=bootstrap.competitors,
         industry_profile=bootstrap.industry_profile,
     )
@@ -1255,7 +1256,7 @@ def au_p0a_fixture_content_engine() -> dict[str, object]:
     graph = build_citation_graph(
         project_id=bootstrap.project.id,
         records=records,
-        analyses=analysis_result.analyses,
+        analyses=analysis_result.score_input_analyses,
         competitors=bootstrap.competitors,
         industry_profile=bootstrap.industry_profile,
     )
@@ -1329,7 +1330,7 @@ def au_p0a_fixture_traceability() -> dict[str, object]:
     graph = build_citation_graph(
         project_id=bootstrap.project.id,
         records=records,
-        analyses=analysis_result.analyses,
+        analyses=analysis_result.score_input_analyses,
         competitors=bootstrap.competitors,
         industry_profile=bootstrap.industry_profile,
     )
@@ -1344,6 +1345,7 @@ def au_p0a_fixture_traceability() -> dict[str, object]:
         records=records,
         graph=graph,
         platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
+        score_input_policy=analysis_result.score_input_policy,
     )
     actions = build_action_recommendations(
         project_id=bootstrap.project.id,
@@ -1483,6 +1485,7 @@ def contracts() -> dict[str, list[str]]:
             "RegistryScoringFormula",
             "SCORE_FORMULA_REGISTRY",
             "list_score_formulas",
+            "build_score_input_policy",
             "rescore_snapshot_with_formula",
             "RuntimeHumanReviewRecord",
             "RuntimeHumanReviewPage",
