@@ -644,7 +644,8 @@ function runtimePath(path: string, params: Record<string, string | number | unde
 function reportArtifactPath(
   reportArtifactBase: string | null,
   artifactType: "markdown" | "csv" | "pdf",
-  filters: RuntimeFilters
+  filters: RuntimeFilters,
+  extras: Record<string, string | number | undefined> = {}
 ): string | null {
   if (!reportArtifactBase) return null;
   return runtimePath(reportArtifactBase, {
@@ -652,7 +653,8 @@ function reportArtifactPath(
     platform: filters.platform,
     city: filters.city,
     intent_type: filters.intent_type,
-    sort: filters.sort
+    sort: filters.sort,
+    ...extras
   });
 }
 
@@ -923,6 +925,18 @@ export default async function Home({
   const reportMarkdownUrl = reportArtifactPath(reportArtifactBase, "markdown", { ...filters, sort: evidenceSort });
   const reportCsvUrl = reportArtifactPath(reportArtifactBase, "csv", { ...filters, sort: evidenceSort });
   const reportPdfUrl = reportArtifactPath(reportArtifactBase, "pdf", { ...filters, sort: evidenceSort });
+  const whiteLabelClientName =
+    latestProject?.brand?.canonical_name || latestProject?.project.target_brand || "Client";
+  const reportWhiteLabelPdfUrl = reportArtifactPath(
+    reportArtifactBase,
+    "pdf",
+    { ...filters, sort: evidenceSort },
+    {
+      template: "white_label",
+      client_name: whiteLabelClientName,
+      prepared_by: "GENO SaaS AU"
+    }
+  );
   const reportArtifactFilters = { ...filters, sort: evidenceSort };
 
   return (
@@ -1364,9 +1378,14 @@ export default async function Home({
                 {reportMarkdownUrl ? <a href={reportMarkdownUrl}>Download Markdown</a> : null}
                 {reportCsvUrl ? <a href={reportCsvUrl}>Download CSV</a> : null}
                 {reportPdfUrl ? <a href={reportPdfUrl}>Download PDF</a> : null}
+                {reportWhiteLabelPdfUrl ? <a href={reportWhiteLabelPdfUrl}>White-label PDF</a> : null}
               </div>
               <dl className="facts">
                 <Fact label="Artifact filters" value={reportCsvUrl?.replace(displayUrl, "") || "No report artifact"} />
+                <Fact
+                  label="White-label template"
+                  value={reportWhiteLabelPdfUrl?.replace(displayUrl, "") || "No white-label artifact"}
+                />
               </dl>
             </div>
           ) : (
@@ -1382,6 +1401,11 @@ export default async function Home({
                 const markdownUrl = reportArtifactPath(artifactBase, "markdown", reportArtifactFilters);
                 const csvUrl = reportArtifactPath(artifactBase, "csv", reportArtifactFilters);
                 const pdfUrl = reportArtifactPath(artifactBase, "pdf", reportArtifactFilters);
+                const whiteLabelPdfUrl = reportArtifactPath(artifactBase, "pdf", reportArtifactFilters, {
+                  template: "white_label",
+                  client_name: whiteLabelClientName,
+                  prepared_by: "GENO SaaS AU"
+                });
                 const scoreSnapshot = report.score_snapshots[0];
                 return (
                   <article className="reportHistoryItem" key={report.report_export.id}>
@@ -1406,6 +1430,7 @@ export default async function Home({
                       {markdownUrl ? <a href={markdownUrl}>Markdown</a> : null}
                       {csvUrl ? <a href={csvUrl}>CSV</a> : null}
                       {pdfUrl ? <a href={pdfUrl}>PDF</a> : null}
+                      {whiteLabelPdfUrl ? <a href={whiteLabelPdfUrl}>White-label PDF</a> : null}
                     </div>
                     <ul className="plainList">
                       <li>
@@ -1422,6 +1447,11 @@ export default async function Home({
                           {filters.platform || "all platforms"} · {filters.city || "all cities"} ·{" "}
                           {filters.intent_type || "all intents"} · {evidenceSort}
                         </small>
+                      </li>
+                      <li>
+                        <strong>White-label template</strong>
+                        <span>{whiteLabelPdfUrl?.replace(displayUrl, "") || "No white-label artifact path"}</span>
+                        <small>{whiteLabelClientName} · GENO SaaS AU · template white_label</small>
                       </li>
                       <li>
                         <strong>{report.audit_events[0]?.event_type || "no report audit"}</strong>

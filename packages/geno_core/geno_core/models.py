@@ -765,6 +765,9 @@ class RuntimeReportExportPage:
 class RuntimeReportArtifact:
     report_export: dict[str, Any]
     artifact_type: str
+    template: str
+    template_payload: dict[str, Any]
+    template_hash: str
     filename: str
     media_type: str
     content: str | bytes

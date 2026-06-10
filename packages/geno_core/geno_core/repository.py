@@ -254,6 +254,88 @@ def _render_runtime_report_markdown(report: RuntimeReportExport) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _render_white_label_report_markdown(
+    report: RuntimeReportExport,
+    *,
+    client_name: str,
+    prepared_by: str,
+) -> str:
+    report_export = report.report_export
+    snapshot = report.score_snapshots[0] if report.score_snapshots else {}
+    graph = report.citation_graph
+    platform_values = sorted(
+        {
+            str(answer_run.get("platform"))
+            for answer_run in report.answer_runs
+            if answer_run.get("platform")
+        }
+    )
+    city_values = sorted(
+        {
+            str(answer_run.get("city"))
+            for answer_run in report.answer_runs
+            if answer_run.get("city")
+        }
+    )
+    lines = [
+        f"# {client_name} GEO Evidence Report",
+        "",
+        f"Prepared by: {prepared_by}",
+        f"Market: {report_export.get('market_code', 'unknown')}",
+        f"Report version: {report_export.get('report_version', 'unknown')}",
+        f"Exported at: {report_export.get('exported_at', 'unknown')}",
+        f"Methodology hash: {report_export.get('methodology_hash', 'unknown')}",
+        "",
+        "## Executive Snapshot",
+        "",
+        f"- Final score: {snapshot.get('final_score', 'n/a')}",
+        f"- Trigger rate: {snapshot.get('trigger_rate', 'n/a')}",
+        f"- Mention rate: {snapshot.get('mention_rate', 'n/a')}",
+        f"- Recommendation rate: {snapshot.get('recommendation_rate', 'n/a')}",
+        f"- Evidence rows in this artifact: {len(report.answer_runs)}",
+        f"- Platforms: {', '.join(platform_values) if platform_values else 'unknown'}",
+        f"- Cities: {', '.join(city_values) if city_values else 'unknown'}",
+        "",
+        "## Client-Ready Method Notes",
+        "",
+        "- This white-label PDF is regenerated from the frozen runtime ReportExport snapshot.",
+        "- Active appendix filters affect only this downloadable artifact, not stored score snapshots or evidence ids.",
+        "- Every displayed score remains traceable to answer runs, citations, score contributions, and audit events.",
+        "",
+        "## Evidence Highlights",
+        "",
+    ]
+    for answer_run in report.answer_runs[:12]:
+        lines.append(
+            f"- {answer_run.get('platform', 'platform')} / {answer_run.get('city', 'city')}: "
+            f"{answer_run.get('prompt_text') or answer_run.get('prompt_question_id') or answer_run.get('id')} "
+            f"(run={answer_run.get('id')})"
+        )
+    if not report.answer_runs:
+        lines.append("- No evidence rows match the selected filters.")
+    lines.extend(["", "## Source & Audit Summary", ""])
+    if graph:
+        lines.append(f"- Source nodes: {len(graph.nodes)}")
+        lines.append(f"- Evidence links: {len(graph.evidence_links)}")
+        lines.append(f"- Source gaps: {len(graph.source_gaps)}")
+        lines.append(f"- Competitor benchmarks: {len(graph.competitor_benchmarks)}")
+    else:
+        lines.append("- No citation graph stored for this report.")
+    lines.append(f"- Report audit events: {len(report.audit_events)}")
+    for event in report.audit_events[:5]:
+        lines.append(
+            f"- Audit: {event.get('event_type', 'audit_event')} "
+            f"target={event.get('target_type', 'target')} "
+            f"method={event.get('method_version') or 'n/a'}"
+        )
+    lines.extend(["", "## Footer", ""])
+    lines.append(
+        f"{prepared_by} white-label template `white_label_v1`; "
+        f"ReportExport {report_export.get('id', 'unknown')} remains the source of truth."
+    )
+    return "\n".join(lines) + "\n"
+
+
 def _render_runtime_report_csv(report: RuntimeReportExport) -> str:
     output = StringIO()
     writer = csv.DictWriter(
@@ -1698,10 +1780,20 @@ class PostgresEvidenceRepository:
         intent_type: str | None = None,
         status: str | None = None,
         sort: str | None = None,
+        template: str | None = None,
+        client_name: str | None = None,
+        prepared_by: str | None = None,
     ) -> RuntimeReportArtifact | None:
         artifact_type = artifact_type.lower()
         if artifact_type not in {"markdown", "csv", "pdf"}:
             raise ValueError("artifact_type must be markdown, csv, or pdf")
+        template_name = (template or "standard").strip().lower() or "standard"
+        if template_name not in {"standard", "white_label"}:
+            raise ValueError("template must be standard or white_label")
+        if template_name == "white_label" and artifact_type != "pdf":
+            raise ValueError("white_label template is only supported for pdf artifacts")
+        white_label_client = (client_name or "Client").strip() or "Client"
+        white_label_prepared_by = (prepared_by or "GENO SaaS").strip() or "GENO SaaS"
         with self.connection.cursor() as cursor:
             report_export = self._load_report_export_by_id(
                 cursor=cursor,
@@ -1737,9 +1829,27 @@ class PostgresEvidenceRepository:
             extension = "csv"
             media_type = "text/csv; charset=utf-8"
         else:
-            content = render_markdown_pdf(_render_runtime_report_markdown(filtered_report))
+            markdown = (
+                _render_white_label_report_markdown(
+                    filtered_report,
+                    client_name=white_label_client,
+                    prepared_by=white_label_prepared_by,
+                )
+                if template_name == "white_label"
+                else _render_runtime_report_markdown(filtered_report)
+            )
+            content = render_markdown_pdf(markdown)
             extension = "pdf"
             media_type = "application/pdf"
+        template_payload = (
+            {
+                "template": template_name,
+                "client_name": white_label_client,
+                "prepared_by": white_label_prepared_by,
+            }
+            if template_name == "white_label"
+            else {"template": template_name}
+        )
         filters = {
             "platform": platform,
             "city": city,
@@ -1747,10 +1857,16 @@ class PostgresEvidenceRepository:
             "status": status,
         }
         active_filters = {key: value for key, value in filters.items() if value is not None}
-        filename = f"{report_export['report_version']}.{extension}"
+        filename_stem = report_export["report_version"]
+        if template_name == "white_label":
+            filename_stem = f"{filename_stem}-white-label"
+        filename = f"{filename_stem}.{extension}"
         return RuntimeReportArtifact(
             report_export=report_export,
             artifact_type=artifact_type,
+            template=template_name,
+            template_payload=template_payload,
+            template_hash=_artifact_hash(json.dumps(template_payload, ensure_ascii=False, sort_keys=True)),
             filename=filename,
             media_type=media_type,
             content=content,

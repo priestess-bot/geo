@@ -534,6 +534,9 @@ def runtime_reports(
 def runtime_report_artifact(
     report_export_id: str,
     artifact_type: str = Query(default="markdown", alias="type", pattern="^(markdown|csv|pdf)$"),
+    template: str = Query(default="standard", pattern="^(standard|white_label)$"),
+    client_name: str | None = None,
+    prepared_by: str | None = None,
     platform: str | None = None,
     city: str | None = None,
     intent_type: str | None = None,
@@ -553,6 +556,9 @@ def runtime_report_artifact(
             intent_type=intent_type,
             status=status,
             sort=sort,
+            template=template,
+            client_name=client_name,
+            prepared_by=prepared_by,
         )
         if artifact is None:
             raise HTTPException(status_code=404, detail="Runtime report artifact not found")
@@ -563,6 +569,8 @@ def runtime_report_artifact(
                 "Content-Disposition": f'attachment; filename="{artifact.filename}"',
                 "X-GENO-Report-Artifact-Hash": artifact.content_hash,
                 "X-GENO-Report-Artifact-Filter-Hash": artifact.filter_hash,
+                "X-GENO-Report-Artifact-Template": artifact.template,
+                "X-GENO-Report-Artifact-Template-Hash": artifact.template_hash,
                 "X-GENO-Report-Artifact-Sort": artifact.sort,
                 "X-GENO-Report-Artifact-Row-Count": str(artifact.row_count),
                 "X-GENO-Report-Artifact-Total-Count": str(artifact.total_count),

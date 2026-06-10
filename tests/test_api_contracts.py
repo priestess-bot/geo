@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from geno_api.main import app
+from geno_core.models import RuntimeReportArtifact
 
 
 class ApiContractsTest(unittest.TestCase):
@@ -177,6 +179,54 @@ class ApiContractsTest(unittest.TestCase):
         response = self.client.get("/v1/reports/runtime/report-1/artifact?type=pdf")
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_report_white_label_pdf_artifact_endpoint_returns_template_headers(self) -> None:
+        class FakeRepository:
+            def get_runtime_report_artifact(self, **kwargs: object) -> RuntimeReportArtifact:
+                self.kwargs = kwargs
+                return RuntimeReportArtifact(
+                    report_export={"id": kwargs["report_export_id"], "report_version": "worker-runtime-v1"},
+                    artifact_type="pdf",
+                    template="white_label",
+                    template_payload={
+                        "template": "white_label",
+                        "client_name": kwargs["client_name"],
+                        "prepared_by": kwargs["prepared_by"],
+                    },
+                    template_hash="template-hash",
+                    filename="worker-runtime-v1-white-label.pdf",
+                    media_type="application/pdf",
+                    content=b"%PDF-1.4\nwhite-label\n%%EOF\n",
+                    content_hash="artifact-hash",
+                    filters={"platform": kwargs["platform"]},
+                    filter_hash="filter-hash",
+                    sort="cost_desc",
+                    total_count=4,
+                    row_count=2,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/reports/runtime/report-1/artifact"
+                "?type=pdf&template=white_label&client_name=ExampleBrand%20AU"
+                "&prepared_by=Partner%20Agency&platform=perplexity&sort=cost_desc"
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "application/pdf")
+        self.assertEqual(
+            response.headers["content-disposition"],
+            'attachment; filename="worker-runtime-v1-white-label.pdf"',
+        )
+        self.assertEqual(response.headers["x-geno-report-artifact-template"], "white_label")
+        self.assertEqual(response.headers["x-geno-report-artifact-template-hash"], "template-hash")
+        self.assertEqual(response.headers["x-geno-report-artifact-row-count"], "2")
+        self.assertEqual(response.headers["x-geno-report-artifact-total-count"], "4")
+        self.assertEqual(fake_repository.kwargs["template"], "white_label")
+        self.assertEqual(fake_repository.kwargs["client_name"], "ExampleBrand AU")
+        self.assertEqual(fake_repository.kwargs["prepared_by"], "Partner Agency")
 
     def test_runtime_action_plans_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/action-plans/runtime")
