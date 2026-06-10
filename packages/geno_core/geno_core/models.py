@@ -108,6 +108,18 @@ class CompetitorEntity:
 
 
 @dataclass(frozen=True)
+class EntityAlias:
+    id: str
+    entity_id: str
+    entity_kind: str
+    alias: str
+    alias_type: str
+    confidence: float
+    confirmed_by: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class PromptQuestion:
     id: str
     project_id: str
@@ -618,6 +630,32 @@ class RuntimeSavedViewInput:
     query_path: str
     export_path: str
     created_by: str
+
+
+@dataclass(frozen=True)
+class EntityAliasInput:
+    entity_id: str
+    entity_kind: str
+    alias: str
+    alias_type: str
+    confidence: float = 1.0
+    confirmed_by: str = "runtime-console"
+    notes: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeEntityAlias:
+    entity_alias: dict[str, Any]
+    entity: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeEntityAliasPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeEntityAlias, ...]
 
 
 @dataclass(frozen=True)

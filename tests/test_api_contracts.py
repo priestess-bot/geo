@@ -103,6 +103,25 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_entity_aliases_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get("/v1/entity-aliases/runtime?entity_kind=brand")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_entity_alias_confirm_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.post(
+            "/v1/entity-aliases/runtime/confirm",
+            json={
+                "entity_id": "3ba88c1e-3ddc-5075-9ac9-29687d539830",
+                "entity_kind": "brand",
+                "alias": "ExampleBrand Australia",
+                "alias_type": "alias",
+                "confirmed_by": "runtime-console",
+            },
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_runtime_saved_views_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/runtime-saved-views?view_type=runtime_evidence")
         self.assertEqual(response.status_code, 503)
@@ -265,11 +284,18 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("LocalizedKnowledgeFact", payload["m7_content_integrations"])
         self.assertIn("ContentDraft", payload["m7_content_integrations"])
         self.assertIn("ManualDistributionRecord", payload["m7_content_integrations"])
+        self.assertIn("EntityAlias", payload["m1_bootstrap"])
+        self.assertIn("EntityAliasInput", payload["m1_bootstrap"])
+        self.assertIn("RuntimeEntityAlias", payload["m1_bootstrap"])
+        self.assertIn("RuntimeEntityAliasPage", payload["m1_bootstrap"])
         self.assertIn("TraceabilityBundle", payload["auditability"])
         self.assertIn("build_traceability_bundle", payload["traceability"])
         self.assertIn("RuntimeEvidenceRun", payload["persistence"])
         self.assertIn("RuntimeEvidenceExport", payload["persistence"])
         self.assertIn("ManualBackfillInput", payload["persistence"])
+        self.assertIn("EntityAliasInput", payload["persistence"])
+        self.assertIn("RuntimeEntityAlias", payload["persistence"])
+        self.assertIn("RuntimeEntityAliasPage", payload["persistence"])
         self.assertIn("RuntimeSavedView", payload["persistence"])
         self.assertIn("RuntimeSavedViewInput", payload["persistence"])
         self.assertIn("RuntimeSavedViewPage", payload["persistence"])
@@ -286,6 +312,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("build_object_store_from_env", payload["persistence"])
         self.assertIn("/v1/projects/runtime", payload["persistence"])
         self.assertIn("/v1/projects/runtime/au/dtc-ecommerce", payload["persistence"])
+        self.assertIn("/v1/entity-aliases/runtime", payload["persistence"])
+        self.assertIn("/v1/entity-aliases/runtime/confirm", payload["persistence"])
         self.assertIn("/v1/prompts/runtime", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime/export.csv", payload["persistence"])

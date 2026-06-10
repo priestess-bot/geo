@@ -48,10 +48,13 @@ from geno_core.market import build_au_market_profile
 from geno_core.models import (
     AnswerAnalysis,
     CollectionFailureRecord,
+    EntityAliasInput,
     ManualBackfillInput,
     ReportExport,
     RuntimeEvidencePage,
     RuntimeEvidenceExport,
+    RuntimeEntityAlias,
+    RuntimeEntityAliasPage,
     RuntimeCitationGraphPage,
     RuntimeActionPlanPage,
     RuntimeContentEnginePage,
@@ -2985,6 +2988,141 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(page.records[0].audit_events[0]["event_type"], "runtime_saved_view_saved")
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FROM runtime_saved_views WHERE project_id = %s AND view_type = %s", executed_sql)
+        self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_confirms_entity_alias_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        brand_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+        alias_row = {
+            "id": "b7f7a2fb-9191-50f0-aa33-a56fed6b0ac5",
+            "entity_id": brand_id,
+            "entity_kind": "brand",
+            "alias": "examplebrand.com.au",
+            "alias_type": "domain",
+            "confidence": 1.0,
+            "confirmed_by": "runtime-console",
+            "created_at": now,
+            "project_id": project_id,
+            "canonical_name": "ExampleBrand",
+            "official_domains": ["https://examplebrand.com.au"],
+            "parent_company": None,
+            "product_lines": ["mattresses"],
+            "status": "active",
+        }
+        audit_row = {
+            "id": "725067ce-00b5-49a5-a3ec-8b8e74c85f4f",
+            "event_type": "entity_alias_confirmed",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "entity_alias",
+            "target_id": alias_row["id"],
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"entity_ids": [brand_id]},
+            "output_refs": {"entity_alias_ids": [alias_row["id"]]},
+            "method_version": "entity_alias_confirm_v1",
+            "reason": "Runtime entity alias confirmation for parser disambiguation",
+            "created_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                {
+                    "id": brand_id,
+                    "project_id": project_id,
+                    "canonical_name": "ExampleBrand",
+                    "official_domains": ["https://examplebrand.com.au"],
+                    "parent_company": None,
+                    "product_lines": ["mattresses"],
+                    "status": "active",
+                },
+                None,
+                alias_row,
+                [audit_row],
+            ]
+        )
+        record = PostgresEvidenceRepository(connection).confirm_entity_alias(
+            EntityAliasInput(
+                entity_id=brand_id,
+                entity_kind="brand",
+                alias="examplebrand.com.au",
+                alias_type="domain",
+                confirmed_by="runtime-console",
+                notes="Runtime entity alias confirmation for parser disambiguation",
+            )
+        )
+        self.assertIsInstance(record, RuntimeEntityAlias)
+        self.assertEqual(record.entity_alias["alias"], "examplebrand.com.au")
+        self.assertEqual(record.entity["canonical_name"], "ExampleBrand")
+        self.assertEqual(record.audit_events[0]["event_type"], "entity_alias_confirmed")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM brand_entities WHERE id = %s", executed_sql)
+        self.assertIn("INSERT INTO entity_aliases", executed_sql)
+        self.assertIn("ON CONFLICT (id) DO UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_lists_runtime_entity_aliases_with_audit_events(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        alias_id = "b7f7a2fb-9191-50f0-aa33-a56fed6b0ac5"
+        brand_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [
+                    {
+                        "id": alias_id,
+                        "entity_id": brand_id,
+                        "entity_kind": "brand",
+                        "alias": "ExampleBrand Australia",
+                        "alias_type": "alias",
+                        "confidence": 0.98,
+                        "confirmed_by": "runtime-console",
+                        "created_at": now,
+                        "project_id": project_id,
+                        "canonical_name": "ExampleBrand",
+                        "official_domains": ["https://examplebrand.com.au"],
+                        "parent_company": None,
+                        "product_lines": ["mattresses"],
+                        "status": "active",
+                    }
+                ],
+                [
+                    {
+                        "id": "725067ce-00b5-49a5-a3ec-8b8e74c85f4f",
+                        "event_type": "entity_alias_confirmed",
+                        "project_id": project_id,
+                        "actor_type": "user",
+                        "actor_id": "runtime-console",
+                        "target_type": "entity_alias",
+                        "target_id": alias_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"entity_ids": [brand_id]},
+                        "output_refs": {"entity_alias_ids": [alias_id]},
+                        "method_version": "entity_alias_confirm_v1",
+                        "reason": "confirm entity alias for parser disambiguation",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+        page = PostgresEvidenceRepository(connection).list_runtime_entity_aliases(
+            project_id=project_id,
+            entity_kind="brand",
+            limit=5,
+            offset=0,
+        )
+        self.assertIsInstance(page, RuntimeEntityAliasPage)
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.records[0].entity_alias["alias"], "ExampleBrand Australia")
+        self.assertEqual(page.records[0].audit_events[0]["event_type"], "entity_alias_confirmed")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM entity_aliases ea JOIN", executed_sql)
+        self.assertIn("entity.entity_kind = ea.entity_kind", executed_sql)
+        self.assertIn("WHERE entity.project_id = %s AND ea.entity_kind = %s", executed_sql)
         self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
 
 

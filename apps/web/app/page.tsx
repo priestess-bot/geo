@@ -19,8 +19,8 @@ type RuntimeProject = {
     status: string;
   };
   tenant: { id: string; name: string };
-  brand: { canonical_name: string; official_domains?: string[]; status?: string } | null;
-  competitors: Array<{ canonical_name: string; official_domains?: string[]; status?: string }>;
+  brand: { id?: string; canonical_name: string; official_domains?: string[]; status?: string } | null;
+  competitors: Array<{ id?: string; canonical_name: string; official_domains?: string[]; status?: string }>;
   prompt_count: number;
   audit_events: Array<{ event_type: string; method_version?: string | null }>;
 };
@@ -375,6 +375,7 @@ type RuntimeData = {
   projects: PageResponse<RuntimeProject>;
   prompts: PageResponse<RuntimePrompt>;
   evidence: PageResponse<EvidenceRun>;
+  entityAliases: PageResponse<RuntimeEntityAlias>;
   savedViews: PageResponse<RuntimeSavedView>;
   scores: PageResponse<ScoreSnapshot>;
   graphs: PageResponse<CitationGraph>;
@@ -382,6 +383,28 @@ type RuntimeData = {
   actions: PageResponse<ActionPlan>;
   content: PageResponse<ContentEngine>;
   traceability: TraceabilityDetail | null;
+};
+
+type RuntimeEntityAlias = {
+  entity_alias: {
+    id: string;
+    entity_id: string;
+    entity_kind: string;
+    alias: string;
+    alias_type: string;
+    confidence?: number;
+    confirmed_by?: string | null;
+    created_at?: string;
+  };
+  entity: {
+    id: string;
+    project_id: string;
+    entity_kind: string;
+    canonical_name: string;
+    official_domains?: string[];
+    status?: string;
+  };
+  audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
 };
 
 type RuntimeFilters = {
@@ -413,6 +436,7 @@ const endpoints = {
   prompts: "/v1/prompts/runtime",
   evidence: "/v1/evidence-runs/runtime",
   evidenceExport: "/v1/evidence-runs/runtime/export.csv",
+  entityAliases: "/v1/entity-aliases/runtime",
   savedViews: "/v1/runtime-saved-views",
   scores: "/v1/visibility-scores/runtime",
   graphs: "/v1/citation-graphs/runtime",
@@ -517,6 +541,39 @@ async function submitManualBackfill(formData: FormData) {
   revalidatePath("/");
 }
 
+async function confirmEntityAlias(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const entityRef = String(formData.get("entity_ref") || "").trim();
+  const alias = String(formData.get("alias") || "").trim();
+  const [entityKind, entityId] = entityRef.split(":");
+  if (!entityKind || !entityId || !alias) {
+    throw new Error("entity_ref and alias are required for entity alias confirmation");
+  }
+  const payload = {
+    entity_id: entityId,
+    entity_kind: entityKind,
+    alias,
+    alias_type: String(formData.get("alias_type") || "alias").trim(),
+    confidence: Number(String(formData.get("confidence") || "1")),
+    confirmed_by: String(formData.get("confirmed_by") || "runtime-console").trim(),
+    notes: String(formData.get("notes") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/entity-aliases/runtime/confirm`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/entity-aliases/runtime/confirm returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
 async function fetchRuntimeEndpoint<T>(
   baseUrl: string,
   path: string,
@@ -610,6 +667,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       sort: filters.sort,
       limit: 200
     }),
+    entityAliases: runtimePath(endpoints.entityAliases, {
+      limit: 5
+    }),
     savedViews: runtimePath(endpoints.savedViews, {
       view_type: "runtime_evidence",
       limit: 5
@@ -622,10 +682,27 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     traceability: endpoints.traceability
   };
 
-  const [projects, prompts, evidence, savedViews, scores, graphs, reports, actions, content, traceability] = await Promise.all([
+  const [
+    projects,
+    prompts,
+    evidence,
+    entityAliases,
+    savedViews,
+    scores,
+    graphs,
+    reports,
+    actions,
+    content,
+    traceability
+  ] = await Promise.all([
     fetchRuntimeEndpoint<PageResponse<RuntimeProject>>(baseUrl, paths.projects, emptyPage<RuntimeProject>()),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     fetchRuntimeEndpoint<PageResponse<EvidenceRun>>(baseUrl, paths.evidence, emptyPage<EvidenceRun>()),
+    fetchRuntimeEndpoint<PageResponse<RuntimeEntityAlias>>(
+      baseUrl,
+      paths.entityAliases,
+      emptyPage<RuntimeEntityAlias>()
+    ),
     fetchRuntimeEndpoint<PageResponse<RuntimeSavedView>>(baseUrl, paths.savedViews, emptyPage<RuntimeSavedView>()),
     fetchRuntimeEndpoint<PageResponse<ScoreSnapshot>>(baseUrl, paths.scores, emptyPage<ScoreSnapshot>()),
     fetchRuntimeEndpoint<PageResponse<CitationGraph>>(baseUrl, paths.graphs, emptyPage<CitationGraph>()),
@@ -634,7 +711,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<PageResponse<ContentEngine>>(baseUrl, paths.content, emptyPage<ContentEngine>()),
     fetchRuntimeEndpoint<TraceabilityDetail | null>(baseUrl, paths.traceability, null, { optionalNotFound: true })
   ]);
-  const errors = [projects, prompts, evidence, savedViews, scores, graphs, reports, actions, content, traceability]
+  const errors = [projects, prompts, evidence, entityAliases, savedViews, scores, graphs, reports, actions, content, traceability]
     .map((result) => result.error)
     .filter((item): item is string => Boolean(item));
   return {
@@ -642,6 +719,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       projects: projects.payload,
       prompts: prompts.payload,
       evidence: evidence.payload,
+      entityAliases: entityAliases.payload,
       savedViews: savedViews.payload,
       scores: scores.payload,
       graphs: graphs.payload,
@@ -717,6 +795,30 @@ export default async function Home({
   };
   const { data, error, displayUrl, paths } = await fetchRuntimeData(filters);
   const latestProject = data.projects.records[0];
+  const entityAliasOptions = latestProject
+    ? [
+        ...(latestProject.brand?.id
+          ? [
+              {
+                ref: `brand:${latestProject.brand.id}`,
+                label: `${latestProject.brand.canonical_name} · brand`,
+                defaultAlias:
+                  latestProject.brand.official_domains?.[0] ||
+                  latestProject.brand.canonical_name ||
+                  latestProject.project.target_brand
+              }
+            ]
+          : []),
+        ...latestProject.competitors
+          .filter((competitor) => competitor.id)
+          .map((competitor) => ({
+            ref: `competitor:${competitor.id}`,
+            label: `${competitor.canonical_name} · competitor`,
+            defaultAlias: competitor.official_domains?.[0] || competitor.canonical_name
+          }))
+      ]
+    : [];
+  const defaultEntityAlias = entityAliasOptions[0]?.defaultAlias || latestProject?.project.target_brand || "";
   const latestPrompt = data.prompts.records[0];
   const latestEvidence = data.evidence.records[0];
   const latestScore = data.scores.records[0];
@@ -730,6 +832,7 @@ export default async function Home({
     : null;
   const totalAuditEvents =
     (latestEvidence?.audit_events.length || 0) +
+    data.entityAliases.records.reduce((total, item) => total + item.audit_events.length, 0) +
     (latestScore?.audit_events.length || 0) +
     (latestReport?.audit_events.length || 0) +
     (latestAction?.audit_events.length || 0) +
@@ -926,6 +1029,64 @@ export default async function Home({
                   {latestProject.audit_events[0]?.event_type || "no bootstrap audit"} ·{" "}
                   {latestProject.audit_events[0]?.method_version || "no method version"}
                 </small>
+                <form action={confirmEntityAlias} className="entityAliasForm">
+                  <div className="formHeader">
+                    <h3>Entity Alias</h3>
+                    <small>{data.entityAliases.total_count} confirmed</small>
+                  </div>
+                  <label className="wideField">
+                    <span>Entity</span>
+                    <select name="entity_ref" defaultValue={entityAliasOptions[0]?.ref || ""}>
+                      {entityAliasOptions.map((option) => (
+                        <option key={option.ref} value={option.ref}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Alias type</span>
+                    <select name="alias_type" defaultValue="alias">
+                      <option value="alias">alias</option>
+                      <option value="domain">domain</option>
+                      <option value="product">product</option>
+                      <option value="parent_company">parent_company</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Confidence</span>
+                    <input name="confidence" type="number" min="0" max="1" step="0.01" defaultValue="1" />
+                  </label>
+                  <label className="wideField">
+                    <span>Alias</span>
+                    <input name="alias" defaultValue={defaultEntityAlias} />
+                  </label>
+                  <label className="wideField">
+                    <span>Notes</span>
+                    <input name="notes" defaultValue="Runtime entity alias confirmation for parser disambiguation" />
+                  </label>
+                  <input type="hidden" name="confirmed_by" value="runtime-console" />
+                  <button className="actionButton" type="submit" disabled={!entityAliasOptions.length}>
+                    Confirm alias
+                  </button>
+                </form>
+                {data.entityAliases.records.length ? (
+                  <ul className="plainList">
+                    {data.entityAliases.records.slice(0, 4).map((record) => (
+                      <li key={record.entity_alias.id}>
+                        <strong>
+                          {record.entity_alias.alias_type} · {record.entity.entity_kind}
+                        </strong>
+                        <span>{record.entity_alias.alias}</span>
+                        <small>
+                          {record.entity.canonical_name} ·{" "}
+                          {record.audit_events[0]?.event_type || "no alias audit"} ·{" "}
+                          {record.audit_events[0]?.after_hash || "no hash"}
+                        </small>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </>
             ) : (
               <EmptyState />

@@ -44,7 +44,7 @@ from geno_core.knowledge import (
     search_knowledge_facts,
 )
 from geno_core.market import build_au_market_profile
-from geno_core.models import ManualBackfillInput, RuntimeSavedViewInput
+from geno_core.models import EntityAliasInput, ManualBackfillInput, RuntimeSavedViewInput
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.runtime import RuntimePersistenceError, build_repository_from_env, close_repository_connection
@@ -79,6 +79,16 @@ class ManualBackfillRequest(BaseModel):
     device: str = Field(default="desktop", min_length=1, max_length=80)
     account_state: str | None = Field(default=None, max_length=120)
     submitted_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class EntityAliasConfirmRequest(BaseModel):
+    entity_id: str = Field(min_length=1)
+    entity_kind: str = Field(min_length=1, max_length=40)
+    alias: str = Field(min_length=1, max_length=240)
+    alias_type: str = Field(default="alias", min_length=1, max_length=80)
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    confirmed_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     notes: str | None = Field(default=None, max_length=2000)
 
 
@@ -152,6 +162,56 @@ def runtime_projects(
     try:
         page = repository.list_runtime_projects(market_code=market_code, limit=limit, offset=offset)
         return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/entity-aliases/runtime")
+def runtime_entity_aliases(
+    project_id: str | None = None,
+    entity_kind: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.list_runtime_entity_aliases(
+            project_id=project_id,
+            entity_kind=entity_kind,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/entity-aliases/runtime/confirm")
+def confirm_runtime_entity_alias(payload: EntityAliasConfirmRequest) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        try:
+            record = repository.confirm_entity_alias(
+                EntityAliasInput(
+                    entity_id=payload.entity_id.strip(),
+                    entity_kind=payload.entity_kind.strip(),
+                    alias=payload.alias.strip(),
+                    alias_type=payload.alias_type.strip(),
+                    confidence=payload.confidence,
+                    confirmed_by=payload.confirmed_by.strip(),
+                    notes=payload.notes.strip() if payload.notes else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "entity not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
     finally:
         close_repository_connection(repository)
 
@@ -952,6 +1012,10 @@ def contracts() -> dict[str, list[str]]:
             "ProjectMember",
             "BrandEntity",
             "CompetitorEntity",
+            "EntityAlias",
+            "EntityAliasInput",
+            "RuntimeEntityAlias",
+            "RuntimeEntityAliasPage",
             "IndustryProfile",
             "PromptQuestion",
             "ProjectBootstrap",
@@ -1025,6 +1089,9 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeProject",
             "RuntimeProjectPage",
             "RuntimePromptPage",
+            "EntityAliasInput",
+            "RuntimeEntityAlias",
+            "RuntimeEntityAliasPage",
             "RuntimeEvidenceRun",
             "RuntimeEvidencePage",
             "RuntimeEvidenceExport",
@@ -1054,6 +1121,8 @@ def contracts() -> dict[str, list[str]]:
             "TraceabilityBundle",
             "/v1/projects/runtime",
             "/v1/projects/runtime/au/dtc-ecommerce",
+            "/v1/entity-aliases/runtime",
+            "/v1/entity-aliases/runtime/confirm",
             "/v1/prompts/runtime",
             "/v1/evidence-runs/runtime",
             "/v1/evidence-runs/runtime/export.csv",

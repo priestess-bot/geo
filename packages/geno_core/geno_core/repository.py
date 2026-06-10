@@ -17,6 +17,7 @@ from geno_core.models import (
     CitationGraphResult,
     CollectionFailureRecord,
     ContentDraft,
+    EntityAliasInput,
     IntegrationConnector,
     LocalizedKnowledgeFact,
     ManualDistributionRecord,
@@ -36,6 +37,8 @@ from geno_core.models import (
     RuntimeEvidenceExport,
     RuntimeEvidencePage,
     RuntimeEvidenceRun,
+    RuntimeEntityAlias,
+    RuntimeEntityAliasPage,
     RuntimeProject,
     RuntimeProjectPage,
     RuntimePromptPage,
@@ -419,6 +422,24 @@ BRAND_ENTITY_COLUMNS = (
 )
 COMPETITOR_ENTITY_COLUMNS = (
     "id",
+    "project_id",
+    "canonical_name",
+    "official_domains",
+    "parent_company",
+    "product_lines",
+    "status",
+)
+ENTITY_ALIAS_COLUMNS = (
+    "id",
+    "entity_id",
+    "entity_kind",
+    "alias",
+    "alias_type",
+    "confidence",
+    "confirmed_by",
+    "created_at",
+)
+ENTITY_ALIAS_JOIN_COLUMNS = ENTITY_ALIAS_COLUMNS + (
     "project_id",
     "canonical_name",
     "official_domains",
@@ -820,6 +841,199 @@ class PostgresEvidenceRepository:
             prompt_count=prompt_count,
             audit_events=audit_events,
         )
+
+    def list_runtime_entity_aliases(
+        self,
+        *,
+        project_id: str | None = None,
+        entity_kind: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeEntityAliasPage:
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("entity.project_id = %s")
+            params.append(_uuid(project_id))
+        if entity_kind:
+            filters.append("ea.entity_kind = %s")
+            params.append(entity_kind)
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT count(*)
+                FROM entity_aliases ea
+                JOIN (
+                  SELECT id, project_id, 'brand' AS entity_kind FROM brand_entities
+                  UNION ALL
+                  SELECT id, project_id, 'competitor' AS entity_kind FROM competitor_entities
+                ) entity ON entity.id = ea.entity_id AND entity.entity_kind = ea.entity_kind
+                {where_clause}
+                """,
+                tuple(params),
+            )
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT
+                  {", ".join(f"ea.{column}" for column in ENTITY_ALIAS_COLUMNS)},
+                  entity.project_id,
+                  entity.canonical_name,
+                  entity.official_domains,
+                  entity.parent_company,
+                  entity.product_lines,
+                  entity.status
+                FROM entity_aliases ea
+                JOIN (
+                  SELECT id, project_id, 'brand' AS entity_kind, canonical_name, official_domains, parent_company, product_lines, status
+                  FROM brand_entities
+                  UNION ALL
+                  SELECT id, project_id, 'competitor' AS entity_kind, canonical_name, official_domains, parent_company, product_lines, status
+                  FROM competitor_entities
+                ) entity ON entity.id = ea.entity_id AND entity.entity_kind = ea.entity_kind
+                {where_clause}
+                ORDER BY ea.created_at DESC, ea.id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            rows = _rows_dict(cursor.fetchall(), ENTITY_ALIAS_JOIN_COLUMNS)
+            records = tuple(self._load_runtime_entity_alias(cursor=cursor, row=row) for row in rows)
+        return RuntimeEntityAliasPage(total_count=total_count, limit=limit, offset=offset, records=records)
+
+    def confirm_entity_alias(self, alias: EntityAliasInput) -> RuntimeEntityAlias:
+        normalized_kind = alias.entity_kind.strip().lower()
+        if normalized_kind not in {"brand", "competitor"}:
+            raise ValueError("entity_kind must be brand or competitor")
+        normalized_alias = alias.alias.strip()
+        normalized_alias_type = alias.alias_type.strip().lower()
+        if not normalized_alias:
+            raise ValueError("alias is required")
+        if not normalized_alias_type:
+            raise ValueError("alias_type is required")
+        confidence = max(0.0, min(1.0, float(alias.confidence)))
+        table_name = "brand_entities" if normalized_kind == "brand" else "competitor_entities"
+        alias_id = _stable_id("entity-alias", normalized_kind, alias.entity_id, normalized_alias, normalized_alias_type)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(BRAND_ENTITY_COLUMNS)}
+                FROM {table_name}
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(alias.entity_id),),
+            )
+            entity = _row_dict(cursor.fetchone(), BRAND_ENTITY_COLUMNS)
+            if not entity:
+                raise ValueError("entity not found")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ENTITY_ALIAS_COLUMNS)}
+                FROM entity_aliases
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(alias_id),),
+            )
+            existing = cursor.fetchone()
+            before = _row_dict(existing, ENTITY_ALIAS_COLUMNS) if existing else None
+            after = {
+                "id": alias_id,
+                "entity_id": alias.entity_id,
+                "entity_kind": normalized_kind,
+                "alias": normalized_alias,
+                "alias_type": normalized_alias_type,
+                "confidence": confidence,
+                "confirmed_by": alias.confirmed_by.strip() or "runtime-console",
+                "notes": alias.notes,
+            }
+            cursor.execute(
+                """
+                INSERT INTO entity_aliases (
+                  id, entity_id, entity_kind, alias, alias_type, confidence, confirmed_by
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                  alias = EXCLUDED.alias,
+                  alias_type = EXCLUDED.alias_type,
+                  confidence = EXCLUDED.confidence,
+                  confirmed_by = EXCLUDED.confirmed_by
+                """,
+                (
+                    _uuid(alias_id),
+                    _uuid(alias.entity_id),
+                    normalized_kind,
+                    normalized_alias,
+                    normalized_alias_type,
+                    confidence,
+                    after["confirmed_by"],
+                ),
+            )
+            audit_event = build_audit_event(
+                event_type="entity_alias_confirmed",
+                project_id=str(entity["project_id"]),
+                actor_type="user",
+                actor_id=str(after["confirmed_by"]),
+                target_type="entity_alias",
+                target_id=alias_id,
+                before=before,
+                after=after,
+                input_refs={"entity_ids": [alias.entity_id]},
+                output_refs={"entity_alias_ids": [alias_id]},
+                method_version="entity_alias_confirm_v1",
+                reason=alias.notes or "confirm entity alias for parser disambiguation",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            cursor.execute(
+                f"""
+                SELECT
+                  {", ".join(f"ea.{column}" for column in ENTITY_ALIAS_COLUMNS)},
+                  entity.project_id,
+                  entity.canonical_name,
+                  entity.official_domains,
+                  entity.parent_company,
+                  entity.product_lines,
+                  entity.status
+                FROM entity_aliases ea
+                JOIN (
+                  SELECT id, project_id, canonical_name, official_domains, parent_company, product_lines, status
+                  FROM {table_name}
+                ) entity ON entity.id = ea.entity_id
+                WHERE ea.id = %s
+                LIMIT 1
+                """,
+                (_uuid(alias_id),),
+            )
+            row = _row_dict(cursor.fetchone(), ENTITY_ALIAS_JOIN_COLUMNS)
+            record = self._load_runtime_entity_alias(cursor=cursor, row=row)
+        self.connection.commit()
+        return record
+
+    def _load_runtime_entity_alias(self, *, cursor: DbCursor, row: dict[str, Any]) -> RuntimeEntityAlias:
+        entity_alias = {column: row[column] for column in ENTITY_ALIAS_COLUMNS if column in row}
+        entity = {
+            "id": row["entity_id"],
+            "project_id": row["project_id"],
+            "entity_kind": row["entity_kind"],
+            "canonical_name": row["canonical_name"],
+            "official_domains": row["official_domains"],
+            "parent_company": row["parent_company"],
+            "product_lines": row["product_lines"],
+            "status": row["status"],
+        }
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            """,
+            (_uuid(entity["project_id"]), "entity_alias", str(entity_alias["id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeEntityAlias(entity_alias=entity_alias, entity=entity, audit_events=audit_events)
 
     def list_runtime_prompts(
         self,
