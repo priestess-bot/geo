@@ -544,7 +544,7 @@ def collect_prompt_once(
                 answer_run_id=answer_run_id,
                 asset_type="screenshot",
                 url=result.screenshot_url or "",
-                content_hash=_asset_hash(result.screenshot_url),
+                content_hash=(result.evidence_asset_hashes or {}).get("screenshot") or _asset_hash(result.screenshot_url),
             )
             if result.screenshot_url
             else None,
@@ -553,7 +553,7 @@ def collect_prompt_once(
                 answer_run_id=answer_run_id,
                 asset_type="html_snapshot",
                 url=result.html_snapshot_url or "",
-                content_hash=_asset_hash(result.html_snapshot_url),
+                content_hash=(result.evidence_asset_hashes or {}).get("html_snapshot") or _asset_hash(result.html_snapshot_url),
             )
             if result.html_snapshot_url
             else None,
@@ -571,6 +571,7 @@ def collect_prompt_once(
                 "surface_triggered": result.surface_triggered,
                 "citation_count": len(citations),
                 "asset_count": len(evidence_assets),
+                "asset_types": [asset.asset_type for asset in evidence_assets],
                 "geo_params": geo_params,
                 "duration_ms": duration_ms,
             },

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+from geno_core.audit import hash_payload
 from geno_core.models import MarketProfile, RawCollectResult
 
 
@@ -53,6 +54,29 @@ def _citation_dicts(urls: list[str]) -> list[dict[str, object]]:
         }
         for index, url in enumerate(urls, start=1)
     ]
+
+
+def _api_snapshot_payload(
+    *,
+    collector_backend_id: str,
+    payload: dict[str, object],
+    answer_text: str,
+    citation_count: int,
+) -> tuple[dict[str, object], str, str]:
+    payload_hash = hash_payload(payload)
+    snapshot = {
+        "_geno_api_snapshot": {
+            "collector_backend_id": collector_backend_id,
+            "snapshot_type": "api_response_html",
+            "payload_hash": payload_hash,
+            "answer_text_length": len(answer_text),
+            "citation_count": citation_count,
+        },
+        **payload,
+    }
+    snapshot_hash = hash_payload(snapshot)
+    snapshot_url = f"geno-api-snapshot://{collector_backend_id}/{payload_hash}.html"
+    return snapshot, snapshot_url, snapshot_hash
 
 
 class FixtureAICollector:
@@ -348,7 +372,7 @@ class PerplexitySonarCollector:
             "supports_geo": True,
             "supports_citation": True,
             "supports_screenshot": False,
-            "supports_html_snapshot": False,
+            "supports_html_snapshot": True,
             "access_method": "official_api",
         }
 
@@ -387,17 +411,25 @@ class PerplexitySonarCollector:
                     citation_urls.append(item)
                 elif isinstance(item, dict) and isinstance(item.get("url"), str):
                     citation_urls.append(str(item["url"]))
+        citations = _citation_dicts(citation_urls)
+        snapshot_payload, snapshot_url, snapshot_hash = _api_snapshot_payload(
+            collector_backend_id=self.id(),
+            payload=payload,
+            answer_text=content,
+            citation_count=len(citations),
+        )
         return RawCollectResult(
             answer_present=bool(content),
             surface_triggered=True,
             answer_text=content,
-            citations=_citation_dicts(citation_urls),
+            citations=citations,
             screenshot_url=None,
-            html_snapshot_url=None,
-            raw_payload=payload,
+            html_snapshot_url=snapshot_url,
+            raw_payload=snapshot_payload,
             model_or_surface=self._model,
             account_state=None,
             collector_version="perplexity-sonar-api-v1",
+            evidence_asset_hashes={"html_snapshot": snapshot_hash},
         )
 
     def collect(
@@ -446,7 +478,7 @@ class OpenAIWebSearchCollector:
             "supports_geo": True,
             "supports_citation": True,
             "supports_screenshot": False,
-            "supports_html_snapshot": False,
+            "supports_html_snapshot": True,
             "access_method": "official_api",
         }
 
@@ -487,17 +519,25 @@ class OpenAIWebSearchCollector:
         if not text_parts and isinstance(fallback_text, str):
             text_parts.append(fallback_text)
         answer_text = "\n".join(text_parts).strip()
+        citations = _citation_dicts(citation_urls)
+        snapshot_payload, snapshot_url, snapshot_hash = _api_snapshot_payload(
+            collector_backend_id=self.id(),
+            payload=payload,
+            answer_text=answer_text,
+            citation_count=len(citations),
+        )
         return RawCollectResult(
             answer_present=bool(answer_text),
             surface_triggered=True,
             answer_text=answer_text,
-            citations=_citation_dicts(citation_urls),
+            citations=citations,
             screenshot_url=None,
-            html_snapshot_url=None,
-            raw_payload=payload,
+            html_snapshot_url=snapshot_url,
+            raw_payload=snapshot_payload,
             model_or_surface=self._model,
             account_state=None,
             collector_version="openai-web-search-api-v1",
+            evidence_asset_hashes={"html_snapshot": snapshot_hash},
         )
 
     def collect(

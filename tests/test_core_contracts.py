@@ -20,6 +20,7 @@ from geno_core.collection import (
     build_collection_run_summary,
     build_manual_backfill_record,
     build_p0a_collection_plan,
+    collect_prompt_once,
     collect_prompt_with_failure_record,
     evaluate_p0a_collection_readiness,
     run_collection_slice,
@@ -35,6 +36,7 @@ from geno_core.collectors import (
     FixtureThirdPartySerpCollector,
     OpenAIWebSearchCollector,
     PerplexitySonarCollector,
+    JsonHttpResponse,
 )
 from geno_core.geo import StaticAUGeoProvider
 from geno_core.fidelity import build_runtime_fidelity_check
@@ -711,8 +713,85 @@ class CoreContractsTest(unittest.TestCase):
         )
         self.assertEqual(perplexity_result.answer_text, "Perplexity answer")
         self.assertEqual(perplexity_result.citations[0]["domain"], "source.example")
+        self.assertTrue(perplexity_result.html_snapshot_url.startswith("geno-api-snapshot://perplexity.sonar.api/"))
+        self.assertIn("_geno_api_snapshot", perplexity_result.raw_payload)
+        self.assertEqual(
+            perplexity_result.raw_payload["_geno_api_snapshot"]["snapshot_type"],
+            "api_response_html",
+        )
+        self.assertIsNotNone(perplexity_result.evidence_asset_hashes)
+        self.assertEqual(len(perplexity_result.evidence_asset_hashes["html_snapshot"]), 64)
         self.assertEqual(openai_result.answer_text, "OpenAI answer")
         self.assertEqual(openai_result.citations[0]["url"], "https://source.example/b")
+        self.assertTrue(openai_result.html_snapshot_url.startswith("geno-api-snapshot://openai.web_search.api/"))
+        self.assertIn("_geno_api_snapshot", openai_result.raw_payload)
+        self.assertEqual(openai_result.raw_payload["_geno_api_snapshot"]["citation_count"], 1)
+        self.assertIsNotNone(openai_result.evidence_asset_hashes)
+        self.assertEqual(len(openai_result.evidence_asset_hashes["html_snapshot"]), 64)
+
+    def test_m2a_real_api_collectors_create_html_snapshot_evidence_assets(self) -> None:
+        class FakeApiHttpClient:
+            def __init__(self, payload: dict[str, object]) -> None:
+                self.payload = payload
+
+            def post_json(self, **kwargs: object) -> JsonHttpResponse:
+                return JsonHttpResponse(status_code=200, payload=self.payload)
+
+        bootstrap = build_au_project_bootstrap()
+        prompt = bootstrap.prompt_questions[0]
+        perplexity_record = collect_prompt_once(
+            project_id=bootstrap.project.id,
+            prompt=prompt,
+            market_profile=bootstrap.market_profile,
+            collector=PerplexitySonarCollector(
+                api_key="test-key",
+                http_client=FakeApiHttpClient(
+                    {
+                        "choices": [{"message": {"content": "Perplexity answer"}}],
+                        "citations": ["https://source.example/a"],
+                    }
+                ),
+            ),
+            city="Sydney",
+            sample_index=1,
+            sample_size=3,
+        )
+        openai_record = collect_prompt_once(
+            project_id=bootstrap.project.id,
+            prompt=prompt,
+            market_profile=bootstrap.market_profile,
+            collector=OpenAIWebSearchCollector(
+                api_key="test-key",
+                http_client=FakeApiHttpClient(
+                    {
+                        "output": [
+                            {
+                                "content": [
+                                    {
+                                        "text": "OpenAI answer",
+                                        "annotations": [{"url": "https://source.example/b"}],
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ),
+            ),
+            city="Sydney",
+            sample_index=1,
+            sample_size=3,
+        )
+
+        for record in (perplexity_record, openai_record):
+            self.assertEqual({asset.asset_type for asset in record.evidence_assets}, {"html_snapshot"})
+            html_asset = record.evidence_assets[0]
+            self.assertTrue(html_asset.url.startswith("geno-api-snapshot://"))
+            self.assertEqual(len(html_asset.content_hash), 64)
+            self.assertEqual(record.collector_logs[0].payload["asset_types"], ["html_snapshot"])
+
+        gate = evaluate_p0a_collection_readiness(records=(perplexity_record, openai_record))
+        self.assertNotIn("records_without_evidence_assets=2", gate.failure_reasons)
+        self.assertEqual(gate.records_without_evidence_assets, ())
 
     def test_m2a_unconfigured_real_collector_returns_failure_record(self) -> None:
         bootstrap = build_au_project_bootstrap()

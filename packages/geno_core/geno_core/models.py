@@ -162,6 +162,7 @@ class RawCollectResult:
     model_or_surface: str
     account_state: str | None
     collector_version: str
+    evidence_asset_hashes: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)

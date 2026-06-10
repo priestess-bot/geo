@@ -433,7 +433,7 @@ fail_gate:
 
 两个采集保真度问题必须在后端处理：
 
-- **API ≠ 消费者界面**：官方 API（如 ChatGPT web search、Perplexity Sonar）便于稳定采集，但其答案组装、模型版本、引用与个性化不保证与消费者界面一致。默认走 API 是"用稳定性换保真度"的有意取舍，必须配一个**抽检环节**：定期对同一批 prompt 用官方 API 后端与浏览器后端各采一次，量化差异率并在报告方法说明里披露。`access_method` 字段全程记录，便于区分。工程上已经把该环节落为独立 `ApiBrowserFidelityCheck`：对同一 `prompt_question_id + city` 的 `official_api` 与 `browser` run 做可比较配对，冻结 status、样本数、mismatch count、difference rate、payload hash，并写入 `api_browser_fidelity_checked` 审计事件；worker 的 `--include-browser-fidelity-fixture` 可先用 `chatgpt_search.browser.fixture` 生成 paired sampled 数据，且这些 browser fidelity samples 通过 `score_input_policy.excluded_fidelity_sample_answer_run_ids` 排除出主评分分母。真实浏览器 collector 未接入前，未启用 paired fixture 的批次必须如实显示 `not_run/no_overlap`，不能用 API 结果冒充消费者界面。
+- **API ≠ 消费者界面**：官方 API（如 ChatGPT web search、Perplexity Sonar）便于稳定采集，但其答案组装、模型版本、引用与个性化不保证与消费者界面一致。默认走 API 是"用稳定性换保真度"的有意取舍，必须配一个**抽检环节**：定期对同一批 prompt 用官方 API 后端与浏览器后端各采一次，量化差异率并在报告方法说明里披露。`access_method` 字段全程记录，便于区分。工程上已经把该环节落为独立 `ApiBrowserFidelityCheck`：对同一 `prompt_question_id + city` 的 `official_api` 与 `browser` run 做可比较配对，冻结 status、样本数、mismatch count、difference rate、payload hash，并写入 `api_browser_fidelity_checked` 审计事件；worker 的 `--include-browser-fidelity-fixture` 可先用 `chatgpt_search.browser.fixture` 生成 paired sampled 数据，且这些 browser fidelity samples 通过 `score_input_policy.excluded_fidelity_sample_answer_run_ids` 排除出主评分分母。真实 API adapter 会为官方 API response 生成 `geno-api-snapshot://...` HTML snapshot 资产和 payload hash，证明原始响应可复盘，但该资产不能冒充消费者界面截图；真实浏览器 collector 未接入前，未启用 paired fixture 的批次必须如实显示 `not_run/no_overlap`。
 - **AIO 选择性触发**：Google AI Overviews 不是每个 query 都出现。后端必须如实返回 `answer_present / surface_triggered`，把"AIO 没触发"与"触发了但没提品牌"区分开（影响 Step 9 的分母口径）。
 
 采集服务要求：

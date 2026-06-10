@@ -28,7 +28,9 @@ PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_coll
 `P0ACollectionReadinessGate` checks required platforms (`chatgpt`, `perplexity`), required metadata,
 `answer_present` / `surface_triggered`, citation presence, screenshot or HTML evidence assets, and
 sample size k=3. Real API mode must pass the same gate before P0a design partner data is considered
-ready.
+ready. Official API adapters generate `geno-api-snapshot://...` HTML snapshot evidence assets from
+the raw provider response, with the snapshot hash stored on `EvidenceAsset.content_hash`; these
+prove API-response provenance but do not replace browser fidelity samples.
 
 Persisted fixture slice:
 
