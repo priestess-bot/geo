@@ -60,7 +60,7 @@
 - `[~]` 代码有单测；关键路径有集成测试（fixture/API/core 已覆盖；真实外部采集 E2E 待接）
 - `[~]` 通过 CI（lint + 测试 + 迁移可起）（本地 `make test` / `make docker-config` 通过；完整 lint/真实迁移起服待接）
 - `[x]` 若改了行为/口径，同 PR 更新对应 `docs/`，必要时加 `decisions/` ADR
-- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `PromptQuestion -> AnswerRun` / `answer_run_ids`（runtime project create/read API、runtime project `project_id` 过滤、可配置 AU/DTC 客户项目创建、runtime prompt API、runtime prompt CSV import API、fixture TraceabilityBundle、worker `--persist` 写 AU 启动包/prompt 元数据、evidence 与 `CollectionRunSummary`，runtime project/prompt/evidence/collection run/manual backfill/entity alias API 已读回项目、竞品、prompt 计数、prompt 文本、prompt metadata、采集批次成功率/触发率/回答率/成本/耗时/失败摘要与别名确认审计；worker `--persist-analysis` 已读取确认后的 `entity_aliases` 并保存 alias-aware `AnswerAnalysis`、TraceabilityBundle，runtime traceability API 可按 `project_id` 读回报告/评分/证据/图谱/action/content/audit/evidence link 聚合详情；Runtime Console 已展示 Project Bootstrap 客户配置表单、项目下拉、Entity Alias、Runtime Filters、Evidence Sort、Saved Views、筛选后 Evidence CSV 导出、筛选/排序后的报告 artifact 下载、Report History、Prompt Pack、Prompt CSV Import、Manual Backfill、Latest Evidence、Collection Run Quality、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Citation Graph Map、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail、Traceability Map、节点级 details 钻取和页面内锚点深链路；独立详情页与完整交互式图谱仍待接）
+- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `PromptQuestion -> AnswerRun` / `answer_run_ids`（runtime project create/read API、runtime project `project_id` 过滤、可配置 AU/DTC 客户项目创建、runtime prompt API、runtime prompt CSV import API、fixture TraceabilityBundle、worker `--persist` 写 AU 启动包/prompt 元数据、evidence 与 `CollectionRunSummary`，runtime project/prompt/evidence/collection run/manual backfill/entity alias API 已读回项目、竞品、prompt 计数、prompt 文本、prompt metadata、采集批次成功率/触发率/回答率/成本/耗时/失败摘要与别名确认审计；worker `--persist-analysis` 已读取确认后的 `entity_aliases` 并保存 alias-aware `AnswerAnalysis`、parser A/B comparison、TraceabilityBundle，runtime traceability API 可按 `project_id` 读回报告/评分/证据/图谱/action/content/audit/evidence link 聚合详情；Runtime Console 已展示 Project Bootstrap 客户配置表单、项目下拉、Entity Alias、Runtime Filters、Evidence Sort、Saved Views、筛选后 Evidence CSV 导出、筛选/排序后的报告 artifact 下载、Report History、Prompt Pack、Prompt CSV Import、Manual Backfill、Latest Evidence、Collection Run Quality、Evidence Runs 明细、Score Contributions 完整解释包、parser A/B agreement、Citation Graph & Competitors 明细、Citation Graph Map、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail、Traceability Map、节点级 details 钻取和页面内锚点深链路；独立详情页与完整交互式图谱仍待接）
 - `[~]` 关键动作写入 `AuditEvent`；关键输出能生成 provenance 链路和解释包（采集/采集批次摘要/评分/报告/action/content fixture、人工补录最小路径、实体别名确认最小路径与计算型 alias candidates 已落；批量实体消歧审核队列待接）
 - `[~]` 有一次可演示（API fixture endpoints 与 Runtime Console MVP 已可演示；真实 design partner 数据演示待接）
 
@@ -72,7 +72,7 @@
 - `[ ]` 每条采集记录 `answer_present`/`surface_triggered`；P0a 每 prompt 重复采样 k=3
 - `[~]` 采集、采集批次摘要、解析、评分、人工补录、实体确认、报告导出均写入 `AuditEvent`（runtime `collection_run_summarized`、`manual_backfill_recorded` 与 `entity_alias_confirmed` 已落；真实外部解析/采集链路仍需凭证联调）
 - `[~]` 每个 collector_backend 写入 CollectionCost；可估算 planned_runs、成功率、触发率、回答率、失败摘要、单位成本和平均耗时（真实外部采集凭证联调待接）
-- `[~]` 自动解析品牌提及/推荐/排名/竞品/引用/本地相关性（rule parser 与 confirmed alias-aware parser 已落；LLM-as-judge A/B 与人工复核待接）
+- `[~]` 自动解析品牌提及/推荐/排名/竞品/引用/本地相关性（rule parser、confirmed alias-aware parser 与本地 judge fixture A/B 已落；真实 LLMGateway judge 与人工复核待接）
 - `[ ]` 生成可拆解、公式版本化的 `AUVisibilityScore`，能点回原始 answer run
 - `[ ]` 生成 `ScoreContribution` 分数解释包，展示子指标贡献、权重、分母、正负证据和局限
 - `[ ]` 报告区分 Trigger Rate 与 Mention/Recommendation Rate
@@ -96,7 +96,7 @@
 - `[ ]` 向量库 pgvector ↔ Qdrant 切换后业务不变（P0c/P1 前完成，不阻塞 P0a）
 - `[ ]` 图库 PG 邻接表 ↔ Neo4j 切换后 citation graph 查询不变（P0c/P1 前完成，不阻塞 P0a）
 - `[ ]` LLM 供应商经 LiteLLM 切换，解析与生成不改（P0c/P1 前完成，不阻塞 P0a）
-- `[ ]` 解析器规则实现与 LLM-as-judge 实现可对同一答案并行对比并保留版本
+- `[~]` 解析器规则实现与 LLM-as-judge 实现可对同一答案并行对比并保留版本（本地 judge fixture 已写入 `parser_comparison`；真实 LLMGateway judge 待接）
 - `[ ]` 评分公式可升级到新版本，历史分数仍可按旧版本重算
 
 ## 3. 里程碑与任务拆解
@@ -200,8 +200,8 @@ DoD：
 - `[x]` (P0a) 双分母：Trigger Rate vs Mention/Recommendation Rate — `Step9.2`
 - `[x]` (P0a) k 次聚合 + 均值/离散度；P0a k=3，Google spike k=2 且单独标注 — `Step9.3`
 - `[x]` (P0a) VisibilityScoreSnapshot 聚合表（project/platform/city/intent/prompt），并支持 worker `--persist-analysis` 写库与 runtime score API 查询 — `§8.13`
-- `[x]` (P0a) ScoreContribution 分数解释包：子指标贡献、权重、分母、正负证据、局限说明；runtime score API 可读回贡献项、关联 prompt/answer run/analysis/audit，Runtime Console 已展示完整评分解释包 — `Step5.1 / §8.18`
-- `[ ]` (P1) LLM-as-judge 解析实现（与规则 A/B）— `Step7`
+- `[x]` (P0a) ScoreContribution 分数解释包：子指标贡献、权重、分母、正负证据、局限说明；runtime score API 可读回贡献项、关联 prompt/answer run/analysis/audit，Runtime Console 已展示完整评分解释包和 parser A/B agreement — `Step5.1 / §8.18`
+- `[~]` (P1) LLM-as-judge 解析实现（与规则 A/B）— `Step7`（`llm_judge_fixture_v1` 本地 judge、`ComparativeAnswerParser` 和 `parser_ab_compare_v1` payload 已落；真实 LLMGateway judge 调用、prompt 版本和成本日志待接）
 - `[ ]` (P1) 评分权重可配置 + 审计；人工复核留痕 — `E4-10/11`
 
 DoD：
@@ -211,6 +211,7 @@ DoD：
 - `[x]` 任意总分/平台分/城市分/intent 分都有 ScoreContribution 解释包
 - `[x]` 报告能区分 Trigger Rate 与 Mention/Recommendation Rate
 - `[x]` 评分公式可升级，历史分数按旧版本可重算
+- `[~]` 规则解析与 judge 解析可对同一答案并行对比并保留版本（fixture judge 已落；真实 LLMGateway judge 与人工复核待接）
 
 ### M4 · Phase 4：Citation Graph + Competitor Benchmark（P0c）
 
@@ -290,8 +291,8 @@ DoD：
 | --- | --- | --- | --- |
 | 采集保真度：API ≠ 消费者界面 | M2a 起，M5 披露 | 接口化采集；官方 API 默认交付，浏览器抽检放入 P0c/P1 | 报告 Method Disclosure 已冻结入库并披露 fidelity 状态、official_api/browser 记录数和差异率字段；真实抽检数据待接 |
 | Google AIO / AI Mode 选择性触发与采集脆弱 | M2b（spike） | 拆 AIO/AI Mode 两后端；建模 answer_present；自建/第三方/人工补录限时对比 | pass/fail gate 与 limited coverage 字段已进入并冻结在报告 Method Disclosure；真实 Google gate 待跑 |
-| AI 非确定性导致评分噪声 | M2a–M3 | P0a k=3；Google spike k=2 单独标注；报告展示离散度 | 同 prompt 多次采样 + 置信展示 |
-| 架构可插拔是否为真 | M0 起持续 | 接口先行；P0a 先完成接口级可插拔，深度切换演示排到 P0c/P1 | Collector/Parser/Scoring/Report 可插拔；向量库/图库/LLM 后续演示 |
+| AI 非确定性导致评分噪声 | M2a–M3 | P0a k=3；Google spike k=2 单独标注；报告展示离散度；parser A/B agreement 进入评分解释 | 同 prompt 多次采样 + 置信展示 + parser agreement |
+| 架构可插拔是否为真 | M0 起持续 | 接口先行；P0a 先完成接口级可插拔，深度切换演示排到 P0c/P1 | Collector/Parser/Scoring/Report 可插拔；parser rule + judge fixture 已可并行；向量库/图库/LLM 后续演示 |
 | 城市级地理定位实现成本 | M2a/M2b | GeoProvider 抽象（uule/代理池/供应商可换）；P0a 四地理样本可降级但保留字段 | 地理样本可区分且成本可控 |
 | 单位经济不透明 | M2a 起 | CollectionCost 从首个采集器记录；CollectionRunSummary 汇总批次 planned/attempted/success/failure、触发率、回答率、失败摘要、总成本、单位成本、总耗时和平均耗时；P0a planned_runs 默认 2400，Google spike 默认 240 | 每份采集批次的成本、成功率、触发率、回答率、失败摘要、单位成本和平均耗时可估算；真实外部采集凭证联调待接 |
 | 审计链/解释链断裂 | M0 起，M5/M6 验收 | AuditEvent、CollectionRunSummary、ReportExport、ScoreContribution、EvidenceLink 从 P0 建表并写入关键事件 | TraceabilityBundle fixture 已证明报告可追到原始证据；runtime project API 已支持 `project_id` 过滤；project brand kit API 已保存项目级白标默认值并写入 `project_brand_kit_saved` 审计事件；runtime prompt import API 已写入项目级 prompt 并生成 `runtime_prompts_imported` 审计事件；runtime evidence API 已读回 prompt 文本并支持 `project_id`、platform/evidence city/intent_type 过滤、受控排序和即时 CSV 导出；runtime collection run API 已读回采集批次 planned/attempted/success/failure、成功率、触发率、回答率、失败摘要、总成本、单位成本、总耗时、平均耗时和 `collection_run_summarized` 审计事件；runtime manual backfill API 已把人工答案写入标准 RawEvidence 表并生成 `manual_backfill_recorded`；runtime entity alias API 已把品牌/竞品别名确认写入 `entity_aliases` 并生成 `entity_alias_confirmed`，runtime alias candidate API 已生成可确认候选，confirmed aliases 已进入 `rule_based_v2_aliases` parser 与重跑后的 `AnswerAnalysis`；runtime saved views API 已保存项目级筛选/排序/query/export path 并写入 `runtime_saved_view_saved` 审计事件；runtime score API 已读回评分解释包；runtime graph API 已读回 source gap/竞品对标；runtime report API 已读回报告快照和项目内报告历史；runtime report artifact API 已支持附录级筛选/排序与项目级白标 PDF 下载并返回 filter hash、template hash、sort、row/total count；runtime action plan API 已读回 action/retest audit events；runtime content engine API 已读回 fact/draft/connector/manual distribution/audit；runtime traceability API 已按 `project_id` 聚合报告/评分/证据/图谱/action/content/audit/evidence link；Runtime Console 已展示 Project Bootstrap、项目下拉、Brand Kit、Prompt CSV Import、Entity Alias Candidates、Runtime Filters、Evidence Sort、Saved Views、Manual Backfill、筛选后 Evidence CSV 导出、Collection Run Quality、筛选/排序后报告 artifact 下载、Report History、White-label PDF 下载、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Citation Graph Map、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail、Traceability Map、节点级 details 钻取和页面内锚点深链路；独立详情页/完整交互式图谱待接 |

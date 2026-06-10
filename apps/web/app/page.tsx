@@ -146,7 +146,20 @@ type ScoreSnapshot = {
       prompt_text?: string;
       prompt_intent_type?: string;
     };
-    analysis?: { confidence?: number; payload?: Record<string, unknown> } | null;
+    analysis?: {
+      confidence?: number;
+      parser_engine_id?: string;
+      analysis_version?: string;
+      payload?: {
+        parser_comparison?: {
+          secondary_parser_engine_id?: string;
+          secondary_analysis_version?: string;
+          comparison_method_version?: string;
+          agreement_rate?: number;
+          mismatched_fields?: Record<string, unknown>;
+        };
+      } & Record<string, unknown>;
+    } | null;
   }>;
   audit_events: Array<{ event_type?: string; method_version?: string | null }>;
 };
@@ -1060,6 +1073,24 @@ function pct(value: number | undefined): string {
 
 function num(value: number | undefined): string {
   return Number(value || 0).toFixed(2);
+}
+
+function parserAgreement(run: ScoreSnapshot["answer_runs"][number] | undefined): string {
+  return num(run?.analysis?.payload?.parser_comparison?.agreement_rate);
+}
+
+function parserMismatchCount(run: ScoreSnapshot["answer_runs"][number]): number {
+  return Object.keys(run.analysis?.payload?.parser_comparison?.mismatched_fields || {}).length;
+}
+
+function parserComparisonText(run: ScoreSnapshot["answer_runs"][number]): string {
+  const comparison = run.analysis?.payload?.parser_comparison;
+  if (!comparison) return "No parser comparison";
+  return `${comparison.comparison_method_version || "parser_ab_compare_v1"} · ${
+    comparison.secondary_parser_engine_id || "judge"
+  } · agreement ${num(
+    comparison.agreement_rate,
+  )} · mismatches ${parserMismatchCount(run)}`;
 }
 
 function shortId(value: string | undefined): string {
@@ -2477,6 +2508,7 @@ export default async function Home({
                   <Fact label="Recommend" value={pct(latestScore.snapshot.recommendation_rate)} />
                   <Fact label="Dispersion" value={num(latestScore.snapshot.dispersion)} />
                   <Fact label="Answer runs" value={latestScore.answer_runs.length} />
+                  <Fact label="Parser agreement" value={parserAgreement(latestScore.answer_runs[0])} />
                   <Fact label="Audit events" value={latestScore.audit_events.length} />
                 </dl>
               </div>
@@ -2529,8 +2561,10 @@ export default async function Home({
                       </strong>
                       <span>{run.answer_run.prompt_text || "No prompt text"}</span>
                       <small>
-                        {run.answer_run.prompt_intent_type || "unknown intent"} · parser confidence{" "}
-                        {num(run.analysis?.confidence)}
+                        {run.answer_run.prompt_intent_type || "unknown intent"} · parser{" "}
+                        {run.analysis?.analysis_version || "unknown"} · confidence {num(run.analysis?.confidence)}
+                        {" · "}
+                        {parserComparisonText(run)}
                       </small>
                     </li>
                   ))}

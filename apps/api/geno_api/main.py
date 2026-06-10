@@ -1230,6 +1230,9 @@ def contracts() -> dict[str, list[str]]:
         ],
         "m3_analysis_scoring": [
             "RuleBasedAnswerParser",
+            "LLMJudgeAnswerParser",
+            "ComparativeAnswerParser",
+            "parser_ab_compare_v1",
             "AnswerAnalysis",
             "VisibilityScoreSnapshot",
             "ScoreContribution",

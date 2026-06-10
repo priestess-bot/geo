@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
+from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from geno_core.models import AnswerAnalysis, BrandEntity, CompetitorEntity, RawEvidenceRecord
@@ -18,6 +20,15 @@ LOCAL_TERMS = (
     "shipping",
     "aud",
     "local",
+)
+COMPARISON_FIELDS = (
+    "brand_mentioned",
+    "brand_recommended",
+    "brand_position",
+    "competitors_mentioned",
+    "citation_count",
+    "local_relevance_score",
+    "sentiment_score",
 )
 
 
@@ -140,4 +151,158 @@ class RuleBasedAnswerParser:
             competitor_share_score=round(competitor_share_score, 4),
             confidence=confidence,
             uncertainty_flags=uncertainty_flags,
+        )
+
+
+class LLMJudgeAnswerParser:
+    parser_engine_id = "llm_judge_fixture_v1"
+    analysis_version = "llm_judge_fixture_v1"
+
+    def __init__(self, *, model: str = "local-fixture-judge") -> None:
+        self.model = model
+
+    def parse_record(
+        self,
+        *,
+        record: RawEvidenceRecord,
+        brand: BrandEntity,
+        competitors: tuple[CompetitorEntity, ...],
+        entity_aliases: dict[str, tuple[str, ...]] | None = None,
+    ) -> AnswerAnalysis:
+        answer_text = record.raw_answer.answer_text
+        alias_map = entity_aliases or {}
+        brand_terms = _entity_terms(brand.canonical_name, alias_map.get(brand.id, ()))
+        competitor_terms_by_name = {
+            competitor.canonical_name: _entity_terms(
+                competitor.canonical_name,
+                alias_map.get(competitor.id, ()),
+            )
+            for competitor in competitors
+        }
+        brand_mentioned = _contains_any_term(answer_text, brand_terms)
+        competitors_mentioned = [
+            competitor.canonical_name
+            for competitor in competitors
+            if _contains_any_term(answer_text, competitor_terms_by_name[competitor.canonical_name])
+        ]
+        recommendation_context = any(term in answer_text.lower() for term in RECOMMENDATION_TERMS)
+        negative_context = any(term in answer_text.lower() for term in ("avoid", "poor", "bad"))
+        brand_recommended = brand_mentioned and recommendation_context and not negative_context
+        brand_position = _position_from_text(answer_text, brand_terms, competitor_terms_by_name)
+        local_hits = sum(1 for term in LOCAL_TERMS if term in answer_text.lower())
+        local_relevance_score = min(100.0, 40.0 + local_hits * 15.0)
+        sentiment_score = _score_from_terms(answer_text, POSITIVE_TERMS, NEGATIVE_TERMS)
+        competitor_share_score = max(0.0, 100.0 - len(competitors_mentioned) * 18.0)
+        freshness_score = 70.0 if record.citations else 40.0
+        confidence = 0.78 if brand_mentioned or competitors_mentioned else 0.58
+        uncertainty_flags = [f"judge_model:{self.model}"]
+        if not brand_mentioned:
+            uncertainty_flags.append("brand_not_mentioned")
+        if negative_context and recommendation_context:
+            uncertainty_flags.append("mixed_recommendation_context")
+        if not record.citations:
+            uncertainty_flags.append("no_citations")
+        return AnswerAnalysis(
+            id=str(uuid5(NAMESPACE_URL, f"geno:answer-analysis-judge:{record.answer_run.id}")),
+            answer_run_id=record.answer_run.id,
+            parser_engine_id=self.parser_engine_id,
+            analysis_version=self.analysis_version,
+            brand_mentioned=brand_mentioned,
+            brand_recommended=brand_recommended,
+            brand_position=brand_position,
+            competitors_mentioned=competitors_mentioned,
+            citation_count=len(record.citations),
+            local_relevance_score=round(local_relevance_score, 4),
+            sentiment_score=round(sentiment_score, 4),
+            freshness_score=freshness_score,
+            competitor_share_score=round(competitor_share_score, 4),
+            confidence=confidence,
+            uncertainty_flags=uncertainty_flags,
+        )
+
+
+def _comparison_value(analysis: AnswerAnalysis, field: str) -> Any:
+    value = getattr(analysis, field)
+    if field == "competitors_mentioned":
+        return sorted(value)
+    return value
+
+
+def build_parser_comparison(primary: AnswerAnalysis, secondary: AnswerAnalysis) -> dict[str, Any]:
+    mismatched_fields = {
+        field: {
+            "primary": _comparison_value(primary, field),
+            "secondary": _comparison_value(secondary, field),
+        }
+        for field in COMPARISON_FIELDS
+        if _comparison_value(primary, field) != _comparison_value(secondary, field)
+    }
+    matched_fields = [field for field in COMPARISON_FIELDS if field not in mismatched_fields]
+    return {
+        "primary_parser_engine_id": primary.parser_engine_id,
+        "primary_analysis_version": primary.analysis_version,
+        "secondary_parser_engine_id": secondary.parser_engine_id,
+        "secondary_analysis_version": secondary.analysis_version,
+        "comparison_method_version": "parser_ab_compare_v1",
+        "agreement_rate": round(len(matched_fields) / len(COMPARISON_FIELDS), 4),
+        "matched_fields": matched_fields,
+        "mismatched_fields": mismatched_fields,
+        "secondary_result": {
+            "brand_mentioned": secondary.brand_mentioned,
+            "brand_recommended": secondary.brand_recommended,
+            "brand_position": secondary.brand_position,
+            "competitors_mentioned": sorted(secondary.competitors_mentioned),
+            "citation_count": secondary.citation_count,
+            "local_relevance_score": secondary.local_relevance_score,
+            "sentiment_score": secondary.sentiment_score,
+            "freshness_score": secondary.freshness_score,
+            "competitor_share_score": secondary.competitor_share_score,
+            "confidence": secondary.confidence,
+            "uncertainty_flags": secondary.uncertainty_flags,
+        },
+    }
+
+
+class ComparativeAnswerParser:
+    parser_engine_id = "rule_based_v2_aliases"
+    analysis_version = "rule_based_v2_aliases+llm_judge_fixture_v1"
+
+    def __init__(
+        self,
+        *,
+        primary_parser: RuleBasedAnswerParser | None = None,
+        judge_parser: LLMJudgeAnswerParser | None = None,
+    ) -> None:
+        self.primary_parser = primary_parser or RuleBasedAnswerParser()
+        self.judge_parser = judge_parser or LLMJudgeAnswerParser()
+
+    def parse_record(
+        self,
+        *,
+        record: RawEvidenceRecord,
+        brand: BrandEntity,
+        competitors: tuple[CompetitorEntity, ...],
+        entity_aliases: dict[str, tuple[str, ...]] | None = None,
+    ) -> AnswerAnalysis:
+        primary = self.primary_parser.parse_record(
+            record=record,
+            brand=brand,
+            competitors=competitors,
+            entity_aliases=entity_aliases,
+        )
+        secondary = self.judge_parser.parse_record(
+            record=record,
+            brand=brand,
+            competitors=competitors,
+            entity_aliases=entity_aliases,
+        )
+        comparison = build_parser_comparison(primary, secondary)
+        uncertainty_flags = list(primary.uncertainty_flags)
+        if comparison["mismatched_fields"]:
+            uncertainty_flags.append("parser_judge_disagreement")
+        return replace(
+            primary,
+            analysis_version=self.analysis_version,
+            uncertainty_flags=uncertainty_flags,
+            parser_comparison=comparison,
         )

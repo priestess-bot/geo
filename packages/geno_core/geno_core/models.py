@@ -534,6 +534,7 @@ class AnswerAnalysis:
     competitor_share_score: float
     confidence: float
     uncertainty_flags: list[str] = field(default_factory=list)
+    parser_comparison: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

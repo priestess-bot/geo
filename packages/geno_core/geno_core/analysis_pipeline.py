@@ -11,7 +11,7 @@ from geno_core.models import (
     ScoreContribution,
     VisibilityScoreSnapshot,
 )
-from geno_core.parser import RuleBasedAnswerParser
+from geno_core.parser import ComparativeAnswerParser
 from geno_core.scoring import score_answer_analyses
 
 
@@ -34,7 +34,7 @@ def analyze_and_score_records(
     scope_type: str = "project",
     scope_value: str = "p0a_fixture",
 ) -> VisibilityAnalysisResult:
-    parser = RuleBasedAnswerParser()
+    parser = ComparativeAnswerParser()
     analyses = tuple(
         parser.parse_record(
             record=record,

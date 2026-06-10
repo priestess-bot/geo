@@ -128,6 +128,17 @@ def _final_score_from_components(component_scores: dict[str, float]) -> float:
     return round(sum(component_scores[name] * weight for name, weight in AU_VISIBILITY_V1.items()), 4)
 
 
+def _avg_parser_agreement(analyses: tuple[AnswerAnalysis, ...]) -> float | None:
+    rates = [
+        float(analysis.parser_comparison["agreement_rate"])
+        for analysis in analyses
+        if analysis.parser_comparison and analysis.parser_comparison.get("agreement_rate") is not None
+    ]
+    if not rates:
+        return None
+    return round(sum(rates) / len(rates), 4)
+
+
 @dataclass(frozen=True)
 class AggregateScoreResult:
     snapshot: VisibilityScoreSnapshot
@@ -162,6 +173,11 @@ def score_answer_analyses(
     mentioned_count = sum(1 for analysis in analyses if analysis.brand_mentioned)
     recommended_count = sum(1 for analysis in analyses if analysis.brand_recommended)
     answer_run_ids = [analysis.answer_run_id for analysis in analyses]
+    avg_parser_confidence = round(sum(analysis.confidence for analysis in analyses) / len(analyses), 4)
+    avg_parser_agreement = _avg_parser_agreement(analyses)
+    confidence_note = f"avg_parser_confidence={avg_parser_confidence}"
+    if avg_parser_agreement is not None:
+        confidence_note = f"{confidence_note}; parser_ab_agreement={avg_parser_agreement}"
     snapshot = VisibilityScoreSnapshot(
         id=snapshot_id,
         project_id=project_id,
@@ -191,10 +207,7 @@ def score_answer_analyses(
             negative_evidence_summary=""
             if component_scores[name] > 0
             else f"No supporting evidence for {name}",
-            confidence_note=(
-                f"avg_parser_confidence="
-                f"{round(sum(analysis.confidence for analysis in analyses) / len(analyses), 4)}"
-            ),
+            confidence_note=confidence_note,
             created_at=now,
         )
         for name, weight in AU_VISIBILITY_V1.items()

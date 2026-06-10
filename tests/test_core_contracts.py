@@ -77,7 +77,7 @@ from geno_core.models import (
 )
 from geno_core.object_store import S3CompatibleObjectStore, archive_report_artifacts
 from geno_core.prompt_pack import INTENT_WEIGHTS
-from geno_core.parser import RuleBasedAnswerParser
+from geno_core.parser import ComparativeAnswerParser, LLMJudgeAnswerParser, RuleBasedAnswerParser
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.repository import PostgresEvidenceRepository
 from geno_core.runtime import RuntimePersistenceError, build_repository_from_env
@@ -559,6 +559,43 @@ class CoreContractsTest(unittest.TestCase):
         self.assertGreaterEqual(analysis.local_relevance_score, 40)
         self.assertEqual(analysis.parser_engine_id, "rule_based_v2_aliases")
 
+    def test_m3_comparative_parser_records_judge_result_and_agreement(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(),),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=1,
+        )
+        judge_analysis = LLMJudgeAnswerParser().parse_record(
+            record=records[0],
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+        )
+        analysis = ComparativeAnswerParser().parse_record(
+            record=records[0],
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+        )
+        self.assertEqual(judge_analysis.parser_engine_id, "llm_judge_fixture_v1")
+        self.assertEqual(analysis.parser_engine_id, "rule_based_v2_aliases")
+        self.assertEqual(analysis.analysis_version, "rule_based_v2_aliases+llm_judge_fixture_v1")
+        self.assertIsNotNone(analysis.parser_comparison)
+        comparison = analysis.parser_comparison or {}
+        self.assertEqual(comparison["secondary_parser_engine_id"], "llm_judge_fixture_v1")
+        self.assertEqual(comparison["comparison_method_version"], "parser_ab_compare_v1")
+        self.assertIn("agreement_rate", comparison)
+        self.assertGreaterEqual(comparison["agreement_rate"], 0)
+        self.assertLessEqual(comparison["agreement_rate"], 1)
+        self.assertIn("secondary_result", comparison)
+
     def test_m3_rule_parser_uses_confirmed_entity_aliases(self) -> None:
         bootstrap = build_au_project_bootstrap(
             target_brand="Koala",
@@ -625,6 +662,8 @@ class CoreContractsTest(unittest.TestCase):
         contribution_total = round(sum(item.weighted_contribution for item in result.contributions), 4)
         self.assertEqual(len(result.analyses), 40)
         self.assertEqual(len(result.contributions), len(AU_VISIBILITY_V1))
+        self.assertTrue(all(analysis.parser_comparison for analysis in result.analyses))
+        self.assertTrue(all("parser_ab_agreement=" in item.confidence_note for item in result.contributions))
         self.assertEqual(contribution_total, result.snapshot.final_score)
         self.assertGreater(result.snapshot.mention_rate, 0)
         self.assertLessEqual(result.snapshot.mention_rate, 1)

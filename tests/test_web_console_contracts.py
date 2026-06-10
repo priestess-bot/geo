@@ -53,6 +53,15 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("average_duration_ms", page_source)
         self.assertIn("failure_summary", page_source)
 
+    def test_runtime_console_surfaces_parser_comparison(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("Parser agreement", page_source)
+        self.assertIn("parser_comparison", page_source)
+        self.assertIn("parser_ab_compare_v1", page_source)
+        self.assertIn("parserComparisonText", page_source)
+        self.assertIn("mismatches", page_source)
+
 
 if __name__ == "__main__":
     unittest.main()
