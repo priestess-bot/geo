@@ -590,6 +590,81 @@ code {
   overflow-wrap: anywhere;
 }
 
+.contentDetail {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.contentSection {
+  align-content: start;
+  background: #f7fafc;
+  border: 1px solid #e1e7ee;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.contentDrafts {
+  grid-column: 1 / -1;
+}
+
+.connectorGrid,
+.contentDraftGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.connectorItem,
+.contentDraftCard {
+  background: #ffffff;
+  border: 1px solid #e0e7ef;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.connectorItem header,
+.contentDraftCard header {
+  align-items: flex-start;
+  border-bottom: 1px solid #edf1f5;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding-bottom: 8px;
+}
+
+.connectorItem header h3,
+.contentDraftCard header h3 {
+  color: #245d61;
+  overflow-wrap: anywhere;
+}
+
+.connectorItem header span,
+.contentDraftCard header span {
+  color: #667585;
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  text-transform: uppercase;
+  text-align: right;
+}
+
+.contentBinding {
+  background: #f7fafc;
+  border: 1px solid #e1e7ee;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+}
+
 .traceGrid {
   display: grid;
   gap: 14px;
@@ -701,6 +776,9 @@ summary {
   .benchmarkGrid,
   .reportDetail,
   .actionDetail,
+  .contentDetail,
+  .connectorGrid,
+  .contentDraftGrid,
   .traceGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -736,6 +814,9 @@ summary {
   .benchmarkGrid,
   .reportDetail,
   .actionDetail,
+  .contentDetail,
+  .connectorGrid,
+  .contentDraftGrid,
   .traceGrid,
   .detailGrid {
     grid-template-columns: 1fr;

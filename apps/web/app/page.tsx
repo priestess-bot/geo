@@ -262,15 +262,73 @@ type ActionPlan = {
 };
 
 type ContentEngine = {
-  knowledge_facts: unknown[];
-  content_drafts: Array<{
-    draft: { title: string; review_status: string; target_city: string };
-    target_questions: Array<{ text: string }>;
-    answer_runs: unknown[];
+  project_id?: string;
+  knowledge_facts: Array<{
+    id: string;
+    market_code?: string;
+    fact_type?: string;
+    subject?: string;
+    predicate?: string;
+    object_value?: string;
+    city?: string | null;
+    evidence_source_id?: string | null;
+    confidence?: number;
+    status?: string;
   }>;
-  integration_connectors: Array<{ provider: string; connection_status: string }>;
-  manual_distribution_records: unknown[];
-  audit_events: unknown[];
+  content_drafts: Array<{
+    draft: {
+      id?: string;
+      title: string;
+      content_type?: string;
+      content_template_id?: string;
+      target_city: string;
+      target_platform?: string;
+      target_source_type?: string;
+      source_gap_types?: string[];
+      evidence_answer_run_ids?: string[];
+      draft_markdown?: string;
+      review_status: string;
+      created_by?: string;
+      created_at?: string;
+    };
+    target_questions: Array<{ text: string; intent_type?: string; city?: string }>;
+    knowledge_facts: Array<{
+      id: string;
+      market_code?: string;
+      fact_type?: string;
+      object_value?: string;
+      confidence?: number;
+    }>;
+    answer_runs: Array<{
+      id: string;
+      platform?: string;
+      city?: string;
+      prompt_text?: string;
+      prompt_intent_type?: string;
+    }>;
+    action_recommendation?: {
+      title?: string;
+      priority?: string;
+      status?: string;
+      source_gap_type?: string | null;
+    } | null;
+    manual_distribution_records: Array<{
+      platform?: string;
+      target_url?: string;
+      status?: string;
+      submitted_at?: string | null;
+      checked_at?: string | null;
+      notes?: string;
+    }>;
+  }>;
+  integration_connectors: Array<{
+    provider: string;
+    connection_status: string;
+    capabilities?: string[];
+    auth_mode?: string;
+  }>;
+  manual_distribution_records: Array<{ platform?: string; status?: string; target_url?: string; notes?: string }>;
+  audit_events: Array<{ event_type?: string; target_type?: string; method_version?: string | null }>;
 };
 
 type TraceabilityDetail = {
@@ -894,6 +952,139 @@ export default async function Home() {
                   </li>
                 ))}
               </ul>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </Panel>
+
+        <Panel
+          title="Content Engine Detail"
+          subtitle={`${latestContent?.content_drafts.length || 0} evidence-backed drafts`}
+          wide
+        >
+          {latestContent ? (
+            <div className="contentDetail">
+              <section className="contentSection">
+                <h3>Localized Knowledge Facts</h3>
+                <ul className="plainList">
+                  {latestContent.knowledge_facts.slice(0, 8).map((fact) => (
+                    <li key={fact.id}>
+                      <strong>
+                        {fact.market_code || "market"} · {fact.fact_type || "fact"}
+                      </strong>
+                      <span>
+                        {fact.subject || "subject"} {fact.predicate || "predicate"} {fact.object_value || "value"}
+                      </span>
+                      <small>
+                        city {fact.city || "global"} · confidence {num(fact.confidence)} · status {fact.status || "unknown"} ·
+                        evidence {shortId(fact.evidence_source_id || undefined)}
+                      </small>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              <section className="contentSection">
+                <h3>Integration Connectors</h3>
+                <div className="connectorGrid">
+                  {latestContent.integration_connectors.map((connector) => (
+                    <article className="connectorItem" key={connector.provider}>
+                      <header>
+                        <h3>{connector.provider}</h3>
+                        <span>{connector.connection_status}</span>
+                      </header>
+                      <dl className="facts contributionFacts">
+                        <Fact label="Auth" value={connector.auth_mode || "unknown"} />
+                        <Fact label="Capabilities" value={(connector.capabilities || []).join(", ") || "none"} />
+                      </dl>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section className="contentSection contentDrafts">
+                <h3>Content Drafts</h3>
+                <div className="contentDraftGrid">
+                  {latestContent.content_drafts.map((item) => (
+                    <article className="contentDraftCard" key={item.draft.id || item.draft.title}>
+                      <header>
+                        <h3>{item.draft.title}</h3>
+                        <span>{item.draft.review_status}</span>
+                      </header>
+                      <dl className="facts contributionFacts">
+                        <Fact label="Template" value={item.draft.content_template_id || "unknown"} />
+                        <Fact label="Type" value={item.draft.content_type || "unknown"} />
+                        <Fact label="City" value={item.draft.target_city || "unknown"} />
+                        <Fact label="Platform" value={item.draft.target_platform || "unknown"} />
+                        <Fact label="Source type" value={item.draft.target_source_type || "unknown"} />
+                        <Fact label="Source gaps" value={(item.draft.source_gap_types || []).join(", ") || "none"} />
+                        <Fact label="Facts used" value={item.knowledge_facts.length} />
+                        <Fact label="Evidence runs" value={item.answer_runs.length} />
+                        <Fact label="Manual records" value={item.manual_distribution_records.length} />
+                      </dl>
+                      <div className="contentBinding">
+                        <h3>Target Questions</h3>
+                        <ul className="plainList">
+                          {item.target_questions.slice(0, 3).map((question, index) => (
+                            <li key={`${item.draft.id}-question-${index}`}>
+                              <strong>{question.intent_type || "intent"}</strong>
+                              <span>{question.text}</span>
+                              <small>{question.city || "unknown city"}</small>
+                            </li>
+                          ))}
+                        </ul>
+                        <h3>Evidence Runs</h3>
+                        <ul className="plainList">
+                          {item.answer_runs.slice(0, 3).map((run) => (
+                            <li key={run.id}>
+                              <strong>
+                                {run.platform || "platform"} · {run.city || "city"}
+                              </strong>
+                              <span>{run.prompt_text || run.id}</span>
+                              <small>
+                                intent {run.prompt_intent_type || "unknown"} · run {shortId(run.id)}
+                              </small>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      {item.action_recommendation ? (
+                        <small className="auditLine">
+                          Source action: {item.action_recommendation.priority || "priority"} ·{" "}
+                          {item.action_recommendation.status || "status"} ·{" "}
+                          {item.action_recommendation.source_gap_type || "no source gap"} ·{" "}
+                          {item.action_recommendation.title || "untitled"}
+                        </small>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section className="contentSection">
+                <h3>Manual Distribution & Audit</h3>
+                <ul className="plainList">
+                  {latestContent.manual_distribution_records.map((record, index) => (
+                    <li key={`${record.platform}-${index}`}>
+                      <strong>
+                        {record.platform || "manual"} · {record.status || "unknown"}
+                      </strong>
+                      <span>{record.target_url || "URL pending human review"}</span>
+                      <small>{record.notes || "No notes"}</small>
+                    </li>
+                  ))}
+                </ul>
+                <h3>Audit Trail</h3>
+                <ul className="plainList">
+                  {latestContent.audit_events.map((event, index) => (
+                    <li key={`${event.event_type}-${index}`}>
+                      <strong>{event.event_type || "audit_event"}</strong>
+                      <span>{event.target_type || "target"} · {event.method_version || "no method version"}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             </div>
           ) : (
             <EmptyState />
