@@ -1457,6 +1457,7 @@ def contracts() -> dict[str, list[str]]:
             "PerplexitySonarCollector",
             "OpenAIWebSearchCollector",
             "FixtureChatGPTSearchBrowserCollector",
+            "PlaywrightChatGPTSearchCollector",
         ],
         "m2b_google_spike": [
             "GoogleSpikePlan",

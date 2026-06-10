@@ -9,6 +9,7 @@ P0a adapters:
 
 - Implemented for contract testing: `FixturePerplexitySonarCollector`, `FixtureOpenAIWebSearchCollector`
 - Implemented real API adapter shells: `PerplexitySonarCollector`, `OpenAIWebSearchCollector`
+- Implemented real browser fidelity adapter entrypoint: `PlaywrightChatGPTSearchCollector`
 
 Local fixture slice:
 
@@ -142,6 +143,32 @@ python3 workers/collector_worker/run_collection_slice.py \
   --mode fixture --prompt-limit 1 --cities Sydney \
   --include-browser-fidelity-fixture --persist --persist-analysis
 ```
+
+Real API-vs-browser browser fidelity preflight:
+
+```bash
+PERPLEXITY_API_KEY=... OPENAI_API_KEY=... \
+GENO_BROWSER_COLLECTOR_ENABLED=1 \
+GENO_BROWSER_PROMPT_SELECTOR='textarea' \
+GENO_BROWSER_ANSWER_SELECTOR='[data-message-author-role="assistant"]' \
+GENO_BROWSER_STORAGE_STATE=/path/to/chatgpt-storage-state.json \
+GENO_BROWSER_ARTIFACT_DIR=/tmp/geno-browser-artifacts \
+make api-browser-fidelity-preflight
+```
+
+`--include-browser-fidelity-playwright` is only available in `--mode api`. It adds
+`chatgpt_search.browser.playwright` next to the official API collectors so the same prompt/city can
+be sampled through the consumer browser surface. The collector is deliberately strict: health is
+`not_configured` until `GENO_BROWSER_COLLECTOR_ENABLED=1`; `selector_missing` until prompt and
+answer selectors are configured; `session_state_missing` if the optional storage-state file is
+configured but absent; and `playwright_missing` if the Python Playwright package is not installed.
+`--require-ready-collectors` turns those states into worker exit code `3` before any external
+collection starts. `make api-browser-fidelity-preflight` also passes
+`--require-no-collection-failures`, so it exits with worker code `5` if browser launch, login,
+selector matching, page interaction, or an official API call fails after health has passed.
+Successful browser collection writes both screenshot and HTML snapshot evidence hashes into the
+standard `RawEvidenceRecord` path. Local `GENO_BROWSER_ARTIFACT_DIR` files are a pre-object-store
+capture path; durable browser artifact archival to S3-compatible storage is still a follow-up.
 
 API adapter slice:
 

@@ -30,6 +30,7 @@ from geno_core.collectors import (
     FixturePerplexitySonarCollector,
     OpenAIWebSearchCollector,
     PerplexitySonarCollector,
+    PlaywrightChatGPTSearchCollector,
 )
 from geno_core.contracts import CollectorBackend
 from geno_core.graph import build_citation_graph
@@ -70,6 +71,12 @@ def _collectors(mode: str) -> tuple[CollectorBackend, ...]:
 def _fidelity_fixture_collectors(mode: str) -> tuple[CollectorBackend, ...]:
     if mode == "fixture":
         return (FixtureChatGPTSearchBrowserCollector(),)
+    return ()
+
+
+def _fidelity_playwright_collectors(mode: str) -> tuple[CollectorBackend, ...]:
+    if mode == "api":
+        return (PlaywrightChatGPTSearchCollector(),)
     return ()
 
 
@@ -478,6 +485,11 @@ def main() -> None:
         help="In fixture mode, add paired browser answer runs for API-vs-browser fidelity sampling only.",
     )
     parser.add_argument(
+        "--include-browser-fidelity-playwright",
+        action="store_true",
+        help="In api mode, add the Playwright browser collector for real API-vs-browser fidelity sampling.",
+    )
+    parser.add_argument(
         "--require-ready-collectors",
         action="store_true",
         help="Exit before collection if any selected collector health is not ready.",
@@ -486,6 +498,11 @@ def main() -> None:
         "--require-p0a-readiness",
         action="store_true",
         help="Exit non-zero when the P0a readiness gate fails after collection.",
+    )
+    parser.add_argument(
+        "--require-no-collection-failures",
+        action="store_true",
+        help="Exit non-zero after collection if any selected collector produced a failure record.",
     )
     parser.add_argument(
         "--persist",
@@ -532,6 +549,8 @@ def main() -> None:
         plan = None
     base_collectors = _collectors(args.mode)
     fidelity_collectors = _fidelity_fixture_collectors(args.mode) if args.include_browser_fidelity_fixture else ()
+    if args.include_browser_fidelity_playwright:
+        fidelity_collectors = fidelity_collectors + _fidelity_playwright_collectors(args.mode)
     collectors = base_collectors + fidelity_collectors
     collector_health = _collector_health_report(collectors)
     collector_health_failure_reasons = _collector_health_failure_reasons(collector_health)
@@ -611,6 +630,12 @@ def main() -> None:
             evaluate_google_spike_readiness_gate(project_id=bootstrap.project.id, plan=plan, records=records)
         )
     print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
+    if args.require_no_collection_failures and failures:
+        print(
+            f"collection_failures_found: {len(failures)}",
+            file=sys.stderr,
+        )
+        raise SystemExit(5)
     if args.require_p0a_readiness and p0a_readiness_gate is not None and p0a_readiness_gate.gate_status != "pass":
         print(
             f"p0a_readiness_failed: {', '.join(p0a_readiness_gate.failure_reasons)}",

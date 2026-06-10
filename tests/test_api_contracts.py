@@ -1122,6 +1122,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeFidelityCheck", payload["m2a_evidence"])
         self.assertIn("RuntimeFidelityCheckPage", payload["m2a_evidence"])
         self.assertIn("FixtureChatGPTSearchBrowserCollector", payload["m2a_evidence"])
+        self.assertIn("PlaywrightChatGPTSearchCollector", payload["m2a_evidence"])
         self.assertIn("GoogleSpikeReadinessGate", payload["m2b_google_spike"])
         self.assertIn("evaluate_google_spike_readiness_gate", payload["m2b_google_spike"])
         self.assertIn("LLMJudgeAnswerParser", payload["m3_analysis_scoring"])

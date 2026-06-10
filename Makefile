@@ -1,4 +1,4 @@
-.PHONY: install-api-deps test docker-config docker-config-llm runtime-e2e api-preflight worker-fixture worker-fixture-persist worker-google-fixture
+.PHONY: install-api-deps test docker-config docker-config-llm runtime-e2e api-preflight api-browser-fidelity-preflight worker-fixture worker-fixture-persist worker-google-fixture
 
 install-api-deps:
 	python3 -m pip install -r apps/api/requirements.txt
@@ -20,6 +20,9 @@ runtime-e2e:
 
 api-preflight:
 	PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 1 --cities Sydney --sample-size 3 --require-ready-collectors --require-p0a-readiness
+
+api-browser-fidelity-preflight:
+	PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 1 --cities Sydney --sample-size 1 --include-browser-fidelity-playwright --require-ready-collectors --require-no-collection-failures
 
 worker-fixture:
 	PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode fixture

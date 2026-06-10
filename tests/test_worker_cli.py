@@ -189,6 +189,43 @@ class WorkerCliTest(unittest.TestCase):
             ["perplexity.sonar.api:not_configured", "openai.web_search.api:not_configured"],
         )
 
+    def test_api_preflight_with_browser_fidelity_requires_browser_collector_ready(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "PERPLEXITY_API_KEY": "test-perplexity-key",
+                "OPENAI_API_KEY": "test-openai-key",
+            },
+            clear=False,
+        ):
+            result = self._run_worker_result(
+                "--mode",
+                "api",
+                "--prompt-limit",
+                "1",
+                "--cities",
+                "Sydney",
+                "--sample-size",
+                "3",
+                "--include-browser-fidelity-playwright",
+                "--require-ready-collectors",
+                unset_env=(
+                    "GENO_BROWSER_COLLECTOR_ENABLED",
+                    "GENO_BROWSER_PROMPT_SELECTOR",
+                    "GENO_BROWSER_ANSWER_SELECTOR",
+                ),
+            )
+        self.assertEqual(result.returncode, 3)
+        self.assertIn("collector_preflight_failed", result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["record_count"], 0)
+        self.assertEqual(payload["planned_runs"], 9)
+        self.assertEqual(payload["collector_health_gate"]["gate_status"], "fail")
+        self.assertEqual(
+            payload["collector_health_gate"]["failure_reasons"],
+            ["chatgpt_search.browser.playwright:not_configured"],
+        )
+
     def test_require_p0a_readiness_fails_nonzero_when_gate_fails(self) -> None:
         result = self._run_worker_result(
             "--mode",
@@ -202,6 +239,23 @@ class WorkerCliTest(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["p0a_readiness_gate"]["gate_status"], "fail")
         self.assertIn("below_required_sample_size=4", payload["p0a_readiness_gate"]["failure_reasons"])
+
+    def test_require_no_collection_failures_fails_nonzero_after_collection(self) -> None:
+        result = self._run_worker_result(
+            "--mode",
+            "api",
+            "--prompt-limit",
+            "1",
+            "--cities",
+            "Sydney",
+            "--require-no-collection-failures",
+            unset_env=("PERPLEXITY_API_KEY", "OPENAI_API_KEY"),
+        )
+        self.assertEqual(result.returncode, 5)
+        self.assertIn("collection_failures_found: 2", result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["failure_count"], 2)
+        self.assertEqual(payload["record_count"], 2)
 
     def test_google_fixture_worker_slice_returns_gate(self) -> None:
         payload = self._run_worker("--mode", "google-fixture")

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import hashlib
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
@@ -77,6 +80,19 @@ def _api_snapshot_payload(
     snapshot_hash = hash_payload(snapshot)
     snapshot_url = f"geno-api-snapshot://{collector_backend_id}/{payload_hash}.html"
     return snapshot, snapshot_url, snapshot_hash
+
+
+def _env_truthy(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _optional_env(value: str | None) -> str | None:
+    stripped = str(value or "").strip()
+    return stripped or None
+
+
+def _sha256_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
 
 
 class FixtureAICollector:
@@ -206,6 +222,256 @@ class FixtureChatGPTSearchBrowserCollector(FixtureAICollector):
             access_method="browser",
             model_or_surface="chatgpt-search-browser-fixture",
             vendor_cost=0.004,
+        )
+
+
+class PlaywrightChatGPTSearchCollector:
+    def __init__(
+        self,
+        *,
+        enabled: bool | None = None,
+        start_url: str | None = None,
+        browser_name: str | None = None,
+        prompt_selector: str | None = None,
+        submit_selector: str | None = None,
+        answer_selector: str | None = None,
+        citation_selector: str | None = None,
+        storage_state_path: str | None = None,
+        artifact_dir: str | None = None,
+        headless: bool | None = None,
+        timeout_seconds: float | None = None,
+        playwright_factory: Callable[[], object] | None = None,
+    ) -> None:
+        self._enabled = _env_truthy(os.getenv("GENO_BROWSER_COLLECTOR_ENABLED")) if enabled is None else enabled
+        self._start_url = (
+            _optional_env(start_url)
+            or _optional_env(os.getenv("GENO_BROWSER_START_URL"))
+            or _optional_env(os.getenv("CHATGPT_BROWSER_URL"))
+            or "https://chatgpt.com/"
+        )
+        self._browser_name = (
+            _optional_env(browser_name)
+            or _optional_env(os.getenv("GENO_BROWSER_NAME"))
+            or "chromium"
+        )
+        self._prompt_selector = _optional_env(prompt_selector) or _optional_env(
+            os.getenv("GENO_BROWSER_PROMPT_SELECTOR")
+        )
+        self._submit_selector = _optional_env(submit_selector) or _optional_env(
+            os.getenv("GENO_BROWSER_SUBMIT_SELECTOR")
+        )
+        self._answer_selector = _optional_env(answer_selector) or _optional_env(
+            os.getenv("GENO_BROWSER_ANSWER_SELECTOR")
+        )
+        self._citation_selector = _optional_env(citation_selector) or _optional_env(
+            os.getenv("GENO_BROWSER_CITATION_SELECTOR")
+        )
+        self._storage_state_path = _optional_env(storage_state_path) or _optional_env(
+            os.getenv("GENO_BROWSER_STORAGE_STATE")
+        )
+        self._artifact_dir = _optional_env(artifact_dir) or _optional_env(os.getenv("GENO_BROWSER_ARTIFACT_DIR"))
+        self._headless = (
+            not _env_truthy(os.getenv("GENO_BROWSER_HEADFUL"))
+            if headless is None
+            else headless
+        )
+        self._timeout_seconds = timeout_seconds or float(os.getenv("GENO_BROWSER_TIMEOUT_SECONDS") or "45")
+        self._playwright_factory = playwright_factory
+        self.vendor_cost = 0.004
+
+    def id(self) -> str:
+        return "chatgpt_search.browser.playwright"
+
+    def capabilities(self) -> dict[str, object]:
+        return {
+            "platform": "chatgpt",
+            "surface": "chatgpt_search",
+            "supports_geo": True,
+            "supports_citation": True,
+            "supports_screenshot": True,
+            "supports_html_snapshot": True,
+            "access_method": "browser",
+            "requires_enable_env": "GENO_BROWSER_COLLECTOR_ENABLED",
+            "required_selectors": ["GENO_BROWSER_PROMPT_SELECTOR", "GENO_BROWSER_ANSWER_SELECTOR"],
+            "optional_selectors": ["GENO_BROWSER_SUBMIT_SELECTOR", "GENO_BROWSER_CITATION_SELECTOR"],
+            "artifact_dir_env": "GENO_BROWSER_ARTIFACT_DIR",
+        }
+
+    def health(self) -> str:
+        if not self._enabled:
+            return "not_configured"
+        if not self._prompt_selector or not self._answer_selector:
+            return "selector_missing"
+        if self._storage_state_path and not Path(self._storage_state_path).exists():
+            return "session_state_missing"
+        if self._playwright_factory is None:
+            try:
+                import playwright.sync_api  # noqa: F401
+            except ModuleNotFoundError:
+                return "playwright_missing"
+        return "ready"
+
+    def _sync_playwright_factory(self) -> Callable[[], object]:
+        if self._playwright_factory is not None:
+            return self._playwright_factory
+        try:
+            from playwright.sync_api import sync_playwright
+        except ModuleNotFoundError as exc:
+            raise CollectorConfigurationError(
+                "Python package playwright is required for chatgpt_search.browser.playwright"
+            ) from exc
+        return sync_playwright
+
+    def _ensure_ready(self) -> None:
+        health = self.health()
+        if health == "ready":
+            return
+        raise CollectorConfigurationError(
+            "chatgpt_search.browser.playwright is not ready: "
+            f"{health}. Set GENO_BROWSER_COLLECTOR_ENABLED=1, install Playwright, "
+            "and configure GENO_BROWSER_PROMPT_SELECTOR / GENO_BROWSER_ANSWER_SELECTOR."
+        )
+
+    def _extract_citations(self, page: object) -> list[dict[str, object]]:
+        if not self._citation_selector:
+            return []
+        try:
+            locator = page.locator(self._citation_selector)  # type: ignore[attr-defined]
+            raw_values = locator.evaluate_all(
+                """
+                nodes => nodes.map(node => {
+                  if (node.href) return node.href;
+                  if (node.getAttribute && node.getAttribute('href')) return node.getAttribute('href');
+                  return node.textContent || '';
+                }).filter(Boolean)
+                """
+            )
+        except Exception:
+            return []
+        urls: list[str] = []
+        if isinstance(raw_values, list):
+            for value in raw_values:
+                text = str(value).strip()
+                if text.startswith("http") and text not in urls:
+                    urls.append(text)
+        return _citation_dicts(urls)
+
+    def _artifact_urls(
+        self,
+        *,
+        snapshot_id: str,
+        html: str,
+        screenshot_bytes: bytes,
+    ) -> tuple[str, str]:
+        if not self._artifact_dir:
+            return (
+                f"geno-browser-snapshot://{self.id()}/{snapshot_id}.html",
+                f"geno-browser-screenshot://{self.id()}/{snapshot_id}.png",
+            )
+        artifact_dir = Path(self._artifact_dir)
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        html_path = artifact_dir / f"{snapshot_id}.html"
+        screenshot_path = artifact_dir / f"{snapshot_id}.png"
+        html_path.write_text(html, encoding="utf-8")
+        screenshot_path.write_bytes(screenshot_bytes)
+        return (html_path.resolve().as_uri(), screenshot_path.resolve().as_uri())
+
+    def collect(
+        self,
+        *,
+        prompt: str,
+        market: MarketProfile,
+        city: str,
+        language: str,
+        device: str,
+    ) -> RawCollectResult:
+        self._ensure_ready()
+        timeout_ms = int(self._timeout_seconds * 1000)
+        factory = self._sync_playwright_factory()
+        with factory() as playwright:
+            browser_type = getattr(playwright, self._browser_name, None)
+            if browser_type is None:
+                raise CollectorConfigurationError(f"Unsupported Playwright browser: {self._browser_name}")
+            browser = browser_type.launch(headless=self._headless)
+            try:
+                context_kwargs: dict[str, object] = {"locale": language}
+                if self._storage_state_path:
+                    context_kwargs["storage_state"] = self._storage_state_path
+                context = browser.new_context(**context_kwargs)
+                try:
+                    page = context.new_page()
+                    page.goto(self._start_url, wait_until="domcontentloaded", timeout=timeout_ms)
+                    page.fill(self._prompt_selector, prompt, timeout=timeout_ms)
+                    if self._submit_selector:
+                        page.click(self._submit_selector, timeout=timeout_ms)
+                    else:
+                        page.keyboard.press("Enter")
+                    page.wait_for_selector(self._answer_selector, timeout=timeout_ms)
+                    answer_text = page.locator(self._answer_selector).last.inner_text(timeout=timeout_ms).strip()
+                    final_url = str(page.url)
+                    title = str(page.title())
+                    html = str(page.content())
+                    screenshot_bytes = page.screenshot(full_page=True)
+                    citations = self._extract_citations(page)
+                finally:
+                    context.close()
+            finally:
+                browser.close()
+        html_hash = hash_payload({"html": html})
+        screenshot_hash = _sha256_bytes(screenshot_bytes)
+        snapshot_id = hash_payload(
+            {
+                "collector_backend_id": self.id(),
+                "start_url": self._start_url,
+                "final_url": final_url,
+                "prompt": prompt,
+                "city": city,
+                "html_hash": html_hash,
+                "screenshot_hash": screenshot_hash,
+            }
+        )
+        html_snapshot_url, screenshot_url = self._artifact_urls(
+            snapshot_id=snapshot_id,
+            html=html,
+            screenshot_bytes=screenshot_bytes,
+        )
+        return RawCollectResult(
+            answer_present=bool(answer_text),
+            surface_triggered=bool(answer_text),
+            answer_text=answer_text,
+            citations=citations,
+            screenshot_url=screenshot_url,
+            html_snapshot_url=html_snapshot_url,
+            raw_payload={
+                "prompt": prompt,
+                "market_code": market.market_code,
+                "city": city,
+                "language": language,
+                "device": device,
+                "platform": "chatgpt",
+                "surface": "chatgpt_search",
+                "collector_backend_id": self.id(),
+                "_geno_browser_capture": {
+                    "capture_type": "browser_ui",
+                    "start_url": self._start_url,
+                    "final_url": final_url,
+                    "page_title": title,
+                    "browser_name": self._browser_name,
+                    "headless": self._headless,
+                    "prompt_selector": self._prompt_selector,
+                    "answer_selector": self._answer_selector,
+                    "submit_selector_configured": bool(self._submit_selector),
+                    "citation_selector_configured": bool(self._citation_selector),
+                    "storage_state_configured": bool(self._storage_state_path),
+                    "html_snapshot_hash": html_hash,
+                    "screenshot_hash": screenshot_hash,
+                    "citation_count": len(citations),
+                },
+            },
+            model_or_surface="chatgpt-search-browser",
+            account_state="storage_state" if self._storage_state_path else "browser_default",
+            collector_version="chatgpt-search-browser-playwright-v1",
+            evidence_asset_hashes={"html_snapshot": html_hash, "screenshot": screenshot_hash},
         )
 
 

@@ -36,6 +36,7 @@ from geno_core.collectors import (
     FixtureThirdPartySerpCollector,
     OpenAIWebSearchCollector,
     PerplexitySonarCollector,
+    PlaywrightChatGPTSearchCollector,
     JsonHttpResponse,
 )
 from geno_core.geo import StaticAUGeoProvider
@@ -728,6 +729,123 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(openai_result.raw_payload["_geno_api_snapshot"]["citation_count"], 1)
         self.assertIsNotNone(openai_result.evidence_asset_hashes)
         self.assertEqual(len(openai_result.evidence_asset_hashes["html_snapshot"]), 64)
+
+    def test_m2a_playwright_browser_collector_health_explains_setup_gaps(self) -> None:
+        disabled = PlaywrightChatGPTSearchCollector(enabled=False)
+        self.assertEqual(disabled.id(), "chatgpt_search.browser.playwright")
+        self.assertEqual(disabled.health(), "not_configured")
+        self.assertEqual(disabled.capabilities()["access_method"], "browser")
+        self.assertTrue(disabled.capabilities()["supports_screenshot"])
+
+        missing_selectors = PlaywrightChatGPTSearchCollector(enabled=True)
+        self.assertEqual(missing_selectors.health(), "selector_missing")
+
+        missing_session = PlaywrightChatGPTSearchCollector(
+            enabled=True,
+            prompt_selector="textarea",
+            answer_selector="[data-message-author-role='assistant']",
+            storage_state_path="/tmp/geno-missing-browser-state.json",
+        )
+        self.assertEqual(missing_session.health(), "session_state_missing")
+
+    def test_m2a_playwright_browser_collector_collects_auditable_snapshot(self) -> None:
+        class FakeLocator:
+            @property
+            def last(self) -> "FakeLocator":
+                return self
+
+            def inner_text(self, **kwargs: object) -> str:
+                return "Browser answer mentioning ExampleBrand with current AU sources."
+
+            def evaluate_all(self, script: str) -> list[str]:
+                return ["https://examplebrand.example/au/source", "https://reviews.example/browser"]
+
+        class FakeKeyboard:
+            def press(self, key: str) -> None:
+                self.key = key
+
+        class FakePage:
+            url = "https://chatgpt.com/c/fake"
+
+            def __init__(self) -> None:
+                self.keyboard = FakeKeyboard()
+
+            def goto(self, *args: object, **kwargs: object) -> None:
+                self.goto_args = args
+
+            def fill(self, *args: object, **kwargs: object) -> None:
+                self.fill_args = args
+
+            def wait_for_selector(self, *args: object, **kwargs: object) -> None:
+                self.wait_args = args
+
+            def locator(self, selector: str) -> FakeLocator:
+                return FakeLocator()
+
+            def title(self) -> str:
+                return "Fake ChatGPT"
+
+            def content(self) -> str:
+                return "<html><body>Browser answer mentioning ExampleBrand</body></html>"
+
+            def screenshot(self, **kwargs: object) -> bytes:
+                return b"fake-png"
+
+        class FakeContext:
+            def new_page(self) -> FakePage:
+                return FakePage()
+
+            def close(self) -> None:
+                self.closed = True
+
+        class FakeBrowser:
+            def launch(self, **kwargs: object) -> "FakeBrowser":
+                self.launch_kwargs = kwargs
+                return self
+
+            def new_context(self, **kwargs: object) -> FakeContext:
+                self.context_kwargs = kwargs
+                return FakeContext()
+
+            def close(self) -> None:
+                self.closed = True
+
+        class FakePlaywright:
+            def __init__(self) -> None:
+                self.chromium = FakeBrowser()
+
+        class FakePlaywrightManager:
+            def __enter__(self) -> FakePlaywright:
+                return FakePlaywright()
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+        bootstrap = build_au_project_bootstrap()
+        collector = PlaywrightChatGPTSearchCollector(
+            enabled=True,
+            prompt_selector="#prompt",
+            answer_selector=".answer",
+            citation_selector=".citation",
+            playwright_factory=FakePlaywrightManager,
+        )
+        self.assertEqual(collector.health(), "ready")
+        result = collector.collect(
+            prompt=bootstrap.prompt_questions[0].text,
+            market=bootstrap.market_profile,
+            city="Sydney",
+            language="en-AU",
+            device="desktop",
+        )
+
+        self.assertTrue(result.answer_present)
+        self.assertEqual(result.citations[0]["domain"], "examplebrand.example")
+        self.assertTrue(result.html_snapshot_url.startswith("geno-browser-snapshot://"))
+        self.assertTrue(result.screenshot_url.startswith("geno-browser-screenshot://"))
+        self.assertEqual(result.raw_payload["_geno_browser_capture"]["capture_type"], "browser_ui")
+        self.assertIsNotNone(result.evidence_asset_hashes)
+        self.assertEqual(len(result.evidence_asset_hashes["html_snapshot"]), 64)
+        self.assertEqual(len(result.evidence_asset_hashes["screenshot"]), 64)
 
     def test_m2a_real_api_collectors_create_html_snapshot_evidence_assets(self) -> None:
         class FakeApiHttpClient:
