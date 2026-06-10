@@ -227,6 +227,49 @@ class WorkerCliTest(unittest.TestCase):
             ["chatgpt_search.browser.playwright:not_configured"],
         )
 
+    def test_browser_fidelity_sampling_plan_outputs_replayable_worker_args(self) -> None:
+        payload = self._run_worker(
+            "--plan-browser-fidelity-sampling",
+            "--fidelity-run-date",
+            "2026-06-11",
+            "--fidelity-prompt-count",
+            "3",
+            "--fidelity-city-count",
+            "2",
+            "--sample-size",
+            "1",
+            "--fidelity-selection-seed",
+            "worker-fixed-seed",
+        )
+        plan = payload["browser_fidelity_sampling_plan"]
+        self.assertEqual(payload["mode"], "browser_fidelity_sampling_plan")
+        self.assertEqual(payload["record_count"], 0)
+        self.assertEqual(plan["prompt_count"], 3)
+        self.assertEqual(plan["city_count"], 2)
+        self.assertEqual(plan["planned_runs"], 18)
+        self.assertEqual(payload["planned_runs"], 18)
+        self.assertEqual(payload["audit_event"]["event_type"], "browser_fidelity_sampling_planned")
+        self.assertIn("--prompt-ids", payload["recommended_worker_args"])
+        self.assertIn("--include-browser-fidelity-playwright", payload["recommended_worker_args"])
+
+    def test_prompt_ids_limit_collection_to_scheduled_sample(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        prompt_ids = ",".join(prompt.id for prompt in bootstrap.prompt_questions[:3])
+        payload = self._run_worker(
+            "--mode",
+            "fixture",
+            "--prompt-ids",
+            prompt_ids,
+            "--cities",
+            "Sydney",
+            "--sample-size",
+            "1",
+        )
+        self.assertEqual(payload["record_count"], 6)
+        self.assertEqual(payload["planned_runs"], 6)
+        self.assertEqual(payload["success_count"], 6)
+        self.assertEqual(payload["collector_health_gate"]["gate_status"], "pass")
+
     def test_require_p0a_readiness_fails_nonzero_when_gate_fails(self) -> None:
         result = self._run_worker_result(
             "--mode",

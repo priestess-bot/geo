@@ -86,6 +86,15 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("COPY scripts ./scripts", dockerfile)
         self.assertIn("ENV PYTHONPATH=/app:/app/packages/geno_core:/app/apps/api", dockerfile)
 
+    def test_browser_fidelity_plan_make_target_outputs_machine_readable_json(self) -> None:
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+
+        self.assertIn("browser-fidelity-plan:", makefile)
+        self.assertIn(
+            "\t@PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --plan-browser-fidelity-sampling",
+            makefile,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

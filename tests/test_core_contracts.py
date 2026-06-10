@@ -42,6 +42,7 @@ from geno_core.collectors import (
 )
 from geno_core.geo import StaticAUGeoProvider
 from geno_core.fidelity import build_runtime_fidelity_check
+from geno_core.fidelity_schedule import build_browser_fidelity_sampling_plan
 from geno_core.google_spike import (
     build_google_spike_plan,
     evaluate_google_spike_gate,
@@ -3260,6 +3261,45 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(audit_event.target_type, "api_browser_fidelity_check")
         self.assertEqual(audit_event.method_version, "api_browser_fidelity_check_v1")
         self.assertEqual(audit_event.input_refs["report_export_ids"], [report_export_id])
+
+    def test_browser_fidelity_sampling_plan_is_deterministic_and_auditable(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        run_date = datetime(2026, 6, 11, tzinfo=UTC).date()
+        plan, audit_event = build_browser_fidelity_sampling_plan(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            available_cities=tuple(bootstrap.market_profile.cities),
+            run_date=run_date,
+            prompt_count=4,
+            city_count=2,
+            sample_size=1,
+            selection_seed="fixed-seed",
+        )
+        plan_again, _ = build_browser_fidelity_sampling_plan(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            available_cities=tuple(bootstrap.market_profile.cities),
+            run_date=run_date,
+            prompt_count=4,
+            city_count=2,
+            sample_size=1,
+            selection_seed="fixed-seed",
+        )
+
+        self.assertEqual(plan.prompt_question_ids, plan_again.prompt_question_ids)
+        self.assertEqual(plan.cities, plan_again.cities)
+        self.assertEqual(plan.prompt_count, 4)
+        self.assertEqual(plan.city_count, 2)
+        self.assertEqual(plan.planned_runs, 24)
+        self.assertEqual(plan.official_api_backend_ids, ("perplexity.sonar.api", "openai.web_search.api"))
+        self.assertEqual(plan.browser_backend_ids, ("chatgpt_search.browser.playwright",))
+        self.assertIn("--prompt-ids", plan.recommended_worker_args)
+        self.assertIn("--prompt-limit", plan.recommended_worker_args)
+        self.assertIn("--include-browser-fidelity-playwright", plan.recommended_worker_args)
+        self.assertEqual(audit_event.event_type, "browser_fidelity_sampling_planned")
+        self.assertEqual(audit_event.target_id, plan.id)
+        self.assertEqual(audit_event.method_version, "browser_fidelity_sampling_plan_v1")
+        self.assertEqual(audit_event.input_refs["prompt_question_ids"], list(plan.prompt_question_ids))
 
     def test_postgres_repository_creates_runtime_fidelity_check_with_audit_event(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

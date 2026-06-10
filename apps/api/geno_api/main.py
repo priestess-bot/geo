@@ -1440,6 +1440,7 @@ def contracts() -> dict[str, list[str]]:
         ],
         "m2a_evidence": [
             "CollectionPlan",
+            "BrowserFidelitySamplingPlan",
             "AnswerRun",
             "RawAnswer",
             "AnswerCitation",
@@ -1449,6 +1450,7 @@ def contracts() -> dict[str, list[str]]:
             "CollectionRunSummary",
             "P0ACollectionReadinessGate",
             "evaluate_p0a_collection_readiness",
+            "build_browser_fidelity_sampling_plan",
             "RuntimeFidelityCheck",
             "RuntimeFidelityCheckPage",
             "RawEvidenceRecord",

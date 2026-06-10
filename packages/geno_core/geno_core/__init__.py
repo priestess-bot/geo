@@ -39,6 +39,7 @@ from geno_core.google_spike import (
     evaluate_google_spike_gate,
     evaluate_google_spike_readiness_gate,
 )
+from geno_core.fidelity_schedule import build_browser_fidelity_sampling_plan
 from geno_core.graph import build_citation_graph
 from geno_core.industry import build_au_dtc_ecommerce_profile
 from geno_core.knowledge import (
@@ -107,6 +108,7 @@ __all__ = [
     "collect_prompt_with_failure_record",
     "compare_retest_windows",
     "build_google_spike_plan",
+    "build_browser_fidelity_sampling_plan",
     "build_object_store_from_env",
     "archive_api_snapshot_assets",
     "archive_browser_capture_assets",

@@ -323,6 +323,28 @@ class CollectionPlan:
 
 
 @dataclass(frozen=True)
+class BrowserFidelitySamplingPlan:
+    id: str
+    project_id: str
+    cadence: str
+    run_date: str
+    selection_seed: str
+    source_prompt_count: int
+    source_city_count: int
+    prompt_count: int
+    city_count: int
+    sample_size: int
+    prompt_question_ids: tuple[str, ...]
+    prompt_texts: tuple[str, ...]
+    cities: tuple[str, ...]
+    official_api_backend_ids: tuple[str, ...]
+    browser_backend_ids: tuple[str, ...]
+    planned_runs: int
+    recommended_worker_args: tuple[str, ...]
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class CollectionRunSummary:
     id: str
     project_id: str

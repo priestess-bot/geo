@@ -5,6 +5,8 @@ import json
 import os
 import sys
 from dataclasses import asdict
+from datetime import date, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from geno_core.audit import build_audit_event
 from geno_core.action_plan import (
@@ -35,6 +37,7 @@ from geno_core.collectors import (
 from geno_core.contracts import CollectorBackend
 from geno_core.graph import build_citation_graph
 from geno_core.fidelity import build_runtime_fidelity_check_from_records
+from geno_core.fidelity_schedule import build_browser_fidelity_sampling_plan
 from geno_core.google_spike import (
     build_google_spike_plan,
     evaluate_google_spike_gate,
@@ -42,7 +45,7 @@ from geno_core.google_spike import (
     select_google_spike_prompts,
 )
 from geno_core.llm_gateway import LiteLLMGateway
-from geno_core.models import CollectionFailureRecord, ProjectBootstrap, RawEvidenceRecord
+from geno_core.models import CollectionFailureRecord, ProjectBootstrap, PromptQuestion, RawEvidenceRecord
 from geno_core.object_store import (
     archive_api_snapshot_assets,
     archive_browser_capture_assets,
@@ -115,6 +118,29 @@ def _analysis_parser(*, judge_gateway: str, judge_model: str) -> ComparativeAnsw
             )
         )
     raise ValueError(f"Unsupported judge gateway: {judge_gateway}")
+
+
+def _filter_prompts_by_ids(
+    prompts: tuple[PromptQuestion, ...],
+    prompt_ids_csv: str | None,
+) -> tuple[PromptQuestion, ...]:
+    if not prompt_ids_csv:
+        return prompts
+    requested_ids = tuple(item.strip() for item in prompt_ids_csv.split(",") if item.strip())
+    if not requested_ids:
+        return prompts
+    prompt_by_id = {str(getattr(prompt, "id")): prompt for prompt in prompts}
+    missing = tuple(prompt_id for prompt_id in requested_ids if prompt_id not in prompt_by_id)
+    if missing:
+        raise ValueError(f"Unknown prompt ids: {', '.join(missing)}")
+    return tuple(prompt_by_id[prompt_id] for prompt_id in requested_ids)
+
+
+def _default_market_run_date(bootstrap: ProjectBootstrap) -> date:
+    try:
+        return datetime.now(ZoneInfo(bootstrap.market_profile.timezone)).date()
+    except ZoneInfoNotFoundError:
+        return datetime.now().date()
 
 
 def _persist_records(
@@ -534,8 +560,27 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run a small AU P0a collection slice")
     parser.add_argument("--mode", choices=["fixture", "api", "google-fixture"], default="fixture")
     parser.add_argument("--prompt-limit", type=int, default=2)
+    parser.add_argument(
+        "--prompt-ids",
+        default=None,
+        help="Comma-separated PromptQuestion ids to run; used by scheduled fidelity sampling plans.",
+    )
     parser.add_argument("--sample-size", type=int, default=1)
     parser.add_argument("--cities", default="Australia,Sydney")
+    parser.add_argument(
+        "--plan-browser-fidelity-sampling",
+        action="store_true",
+        help="Only build a deterministic API-vs-browser sampling plan; do not collect.",
+    )
+    parser.add_argument(
+        "--fidelity-run-date",
+        default=None,
+        help="YYYY-MM-DD date used to seed browser fidelity sampling; defaults to today.",
+    )
+    parser.add_argument("--fidelity-cadence", default="weekly")
+    parser.add_argument("--fidelity-prompt-count", type=int, default=10)
+    parser.add_argument("--fidelity-city-count", type=int, default=2)
+    parser.add_argument("--fidelity-selection-seed", default=None)
     parser.add_argument(
         "--include-browser-fidelity-fixture",
         action="store_true",
@@ -592,8 +637,56 @@ def main() -> None:
         parser.error("--persist-analysis requires --persist")
     if args.require_p0a_readiness and args.mode == "google-fixture":
         parser.error("--require-p0a-readiness is only valid for fixture/api P0a modes")
+    if args.prompt_ids and args.mode == "google-fixture":
+        parser.error("--prompt-ids is only valid for fixture/api modes")
 
     bootstrap = build_au_project_bootstrap()
+    if args.plan_browser_fidelity_sampling:
+        try:
+            run_date = (
+                date.fromisoformat(args.fidelity_run_date)
+                if args.fidelity_run_date
+                else _default_market_run_date(bootstrap)
+            )
+            sampling_plan, sampling_audit = build_browser_fidelity_sampling_plan(
+                project_id=bootstrap.project.id,
+                prompts=bootstrap.prompt_questions,
+                available_cities=tuple(bootstrap.market_profile.cities),
+                run_date=run_date,
+                cadence=args.fidelity_cadence,
+                prompt_count=args.fidelity_prompt_count,
+                city_count=args.fidelity_city_count,
+                sample_size=args.sample_size,
+                selection_seed=args.fidelity_selection_seed,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+        persistence: dict[str, object] = {"enabled": False}
+        if args.persist:
+            try:
+                repository = build_repository_from_env()
+                repository.save_project_bootstrap(bootstrap)
+                repository.save_audit_events((sampling_audit,))
+                persistence = {
+                    "enabled": True,
+                    "project_bootstrap": True,
+                    "audit_event_id": sampling_audit.id,
+                }
+            except RuntimePersistenceError as exc:
+                print(f"persistence_error: {exc}", file=sys.stderr)
+                raise SystemExit(2) from exc
+        output = {
+            "mode": "browser_fidelity_sampling_plan",
+            "record_count": 0,
+            "planned_runs": sampling_plan.planned_runs,
+            "browser_fidelity_sampling_plan": asdict(sampling_plan),
+            "audit_event": asdict(sampling_audit),
+            "recommended_worker_args": list(sampling_plan.recommended_worker_args),
+            "persistence": persistence,
+        }
+        print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
+        return
+
     prompts = bootstrap.prompt_questions
     cities = tuple(city.strip() for city in args.cities.split(",") if city.strip())
     if args.mode == "google-fixture":
@@ -604,6 +697,12 @@ def main() -> None:
         args.prompt_limit = plan.prompt_count
     else:
         plan = None
+        try:
+            prompts = _filter_prompts_by_ids(prompts, args.prompt_ids)
+        except ValueError as exc:
+            parser.error(str(exc))
+        if args.prompt_ids:
+            args.prompt_limit = max(args.prompt_limit, len(prompts))
     base_collectors = _collectors(args.mode)
     fidelity_collectors = _fidelity_fixture_collectors(args.mode) if args.include_browser_fidelity_fixture else ()
     if args.include_browser_fidelity_playwright:

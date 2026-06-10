@@ -144,6 +144,26 @@ python3 workers/collector_worker/run_collection_slice.py \
   --include-browser-fidelity-fixture --persist --persist-analysis
 ```
 
+Scheduled browser fidelity sampling plan:
+
+```bash
+PYTHONPATH=packages/geno_core:apps/api \
+python3 workers/collector_worker/run_collection_slice.py \
+  --plan-browser-fidelity-sampling \
+  --fidelity-run-date 2026-06-11 \
+  --fidelity-prompt-count 10 \
+  --fidelity-city-count 2 \
+  --sample-size 1
+```
+
+This is a cron-friendly scheduling primitive. It does not collect answers; it deterministically
+selects active prompt ids and AU cities from the run date/cadence/seed, prints a
+`BrowserFidelitySamplingPlan`, emits a `browser_fidelity_sampling_planned` audit event, and returns
+`recommended_worker_args` that can be passed back to this worker for the actual API-vs-browser run.
+Use `--persist` with the planning command to write the project bootstrap and sampling audit event to
+PostgreSQL. The execution path accepts `--prompt-ids`, so the exact planned prompt set can be
+replayed instead of relying on `--prompt-limit` ordering.
+
 Real API-vs-browser browser fidelity preflight:
 
 ```bash
