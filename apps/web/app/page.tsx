@@ -115,9 +115,51 @@ type ScoreSnapshot = {
 };
 
 type CitationGraph = {
-  nodes: unknown[];
-  source_gaps: Array<{ source_type: string; gap_type: string; recommendation: string }>;
-  competitor_benchmarks: Array<{ competitor_name: string }>;
+  project_id: string;
+  nodes: Array<{
+    node: {
+      id: string;
+      source_url?: string;
+      source_domain?: string;
+      source_type?: string;
+      topic?: string | null;
+      source_gap_type?: string | null;
+      answer_run_ids?: string[];
+      citation_count?: number;
+    };
+    answer_runs: Array<{
+      id: string;
+      platform?: string;
+      city?: string;
+      prompt_text?: string;
+      prompt_intent_type?: string;
+    }>;
+  }>;
+  evidence_links: Array<{
+    source_graph_id?: string;
+    answer_run_id?: string;
+    answer_citation_id?: string | null;
+    relation_type?: string;
+  }>;
+  source_gaps: Array<{
+    source_type: string;
+    gap_type: string;
+    observed_count?: number;
+    expected_weight?: number;
+    recommendation: string;
+  }>;
+  competitor_benchmarks: Array<{
+    competitor_name: string;
+    metric_scope?: string;
+    payload?: {
+      mention_count?: number;
+      mention_rate?: number;
+      recommendation_count?: number;
+      citation_overlap_count?: number;
+      local_relevance_average?: number;
+    };
+    answer_run_ids?: string[];
+  }>;
 };
 
 type ReportExport = {
@@ -716,6 +758,91 @@ export default async function Home() {
                     </li>
                   ))}
                 </ul>
+              </div>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </Panel>
+
+        <Panel
+          title="Citation Graph & Competitors"
+          subtitle={`${latestGraph?.nodes.length || 0} sources · ${latestGraph?.competitor_benchmarks.length || 0} competitors`}
+          wide
+        >
+          {latestGraph ? (
+            <div className="graphDetail">
+              <div className="graphColumns">
+                <section className="graphSection">
+                  <h3>Source Nodes</h3>
+                  <ul className="plainList">
+                    {latestGraph.nodes.slice(0, 8).map((item) => (
+                      <li key={item.node.id}>
+                        <strong>
+                          {item.node.source_domain || "source"} · {item.node.source_type || "unknown"}
+                        </strong>
+                        <span>{item.node.source_url || "No source URL"}</span>
+                        <small>
+                          topic {item.node.topic || "unknown"} · citations {item.node.citation_count || 0} · runs{" "}
+                          {item.answer_runs.length}
+                        </small>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+                <section className="graphSection">
+                  <h3>Source Gaps</h3>
+                  <ul className="plainList">
+                    {latestGraph.source_gaps.map((gap) => (
+                      <li key={`${gap.source_type}-${gap.gap_type}`}>
+                        <strong>
+                          {gap.source_type} · {gap.gap_type}
+                        </strong>
+                        <span>{gap.recommendation}</span>
+                        <small>
+                          observed {gap.observed_count || 0} · expected weight {num(gap.expected_weight)}
+                        </small>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              </div>
+              <div className="graphColumns">
+                <section className="graphSection">
+                  <h3>Competitor Benchmarks</h3>
+                  <div className="benchmarkGrid">
+                    {latestGraph.competitor_benchmarks.map((benchmark) => (
+                      <article className="benchmarkItem" key={benchmark.competitor_name}>
+                        <header>
+                          <h3>{benchmark.competitor_name}</h3>
+                          <span>{benchmark.metric_scope || "project"}</span>
+                        </header>
+                        <dl className="facts contributionFacts">
+                          <Fact label="Mentions" value={benchmark.payload?.mention_count || 0} />
+                          <Fact label="Mention rate" value={pct(benchmark.payload?.mention_rate)} />
+                          <Fact label="Recs" value={benchmark.payload?.recommendation_count || 0} />
+                          <Fact label="Overlap" value={benchmark.payload?.citation_overlap_count || 0} />
+                          <Fact label="Local avg" value={num(benchmark.payload?.local_relevance_average)} />
+                          <Fact label="Runs" value={benchmark.answer_run_ids?.length || 0} />
+                        </dl>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+                <section className="graphSection">
+                  <h3>Graph Evidence Links</h3>
+                  <ul className="plainList">
+                    {latestGraph.evidence_links.slice(0, 8).map((link, index) => (
+                      <li key={`${link.source_graph_id}-${link.answer_run_id}-${index}`}>
+                        <strong>{link.relation_type || "graph_evidence"}</strong>
+                        <span>
+                          source {shortId(link.source_graph_id)} · run {shortId(link.answer_run_id)}
+                        </span>
+                        <small>citation {shortId(link.answer_citation_id || undefined)}</small>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
               </div>
             </div>
           ) : (

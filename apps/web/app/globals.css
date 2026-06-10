@@ -458,6 +458,58 @@ code {
   padding: 12px;
 }
 
+.graphDetail {
+  display: grid;
+  gap: 14px;
+}
+
+.graphColumns {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.graphSection {
+  background: #f7fafc;
+  border: 1px solid #e1e7ee;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.benchmarkGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.benchmarkItem {
+  background: #ffffff;
+  border: 1px solid #e0e7ef;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.benchmarkItem header {
+  align-items: flex-start;
+  border-bottom: 1px solid #edf1f5;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding-bottom: 8px;
+}
+
+.benchmarkItem header span {
+  color: #667585;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
 .traceGrid {
   display: grid;
   gap: 14px;
@@ -566,6 +618,7 @@ summary {
   .dashboard,
   .evidenceGrid,
   .contributionGrid,
+  .benchmarkGrid,
   .traceGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -597,6 +650,8 @@ summary {
   .evidenceGrid,
   .evidenceColumns,
   .contributionGrid,
+  .graphColumns,
+  .benchmarkGrid,
   .traceGrid,
   .detailGrid {
     grid-template-columns: 1fr;
