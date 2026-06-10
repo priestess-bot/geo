@@ -460,6 +460,7 @@ type RuntimeData = {
   projects: PageResponse<RuntimeProject>;
   brandKit: RuntimeProjectBrandKit | null;
   scoreWeights: RuntimeScoreWeightConfig | null;
+  scoreFormulas: RuntimeScoreFormulaCatalog;
   humanReviews: PageResponse<RuntimeHumanReview>;
   knowledgeSearch: RuntimeKnowledgeSearch | null;
   prompts: PageResponse<RuntimePrompt>;
@@ -506,6 +507,16 @@ type RuntimeScoreWeightConfig = {
     updated_at?: string;
   };
   audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
+};
+
+type RuntimeScoreFormulaCatalog = {
+  formulas: Array<{
+    formula_version: string;
+    weights: Record<string, number>;
+    description: string;
+    status: string;
+    supersedes?: string | null;
+  }>;
 };
 
 type RuntimeHumanReview = {
@@ -660,6 +671,7 @@ const endpoints = {
   savedViews: "/v1/runtime-saved-views",
   brandKit: "/v1/project-brand-kits/runtime",
   scoreWeights: "/v1/score-weight-configs/runtime",
+  scoreFormulas: "/v1/score-formulas/runtime",
   humanReviews: "/v1/human-reviews/runtime",
   knowledgeSearch: "/v1/knowledge-facts/runtime/search",
   scores: "/v1/visibility-scores/runtime",
@@ -819,7 +831,7 @@ async function saveScoreWeightConfig(formData: FormData) {
   );
   const payload = {
     project_id: projectId,
-    formula_version: "au_visibility_v1",
+    formula_version: String(formData.get("formula_version") || "au_visibility_v1").trim(),
     weights,
     updated_by: "runtime-console",
     notes: String(formData.get("notes") || "").trim() || undefined
@@ -1086,6 +1098,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     }),
     brandKit: endpoints.brandKit,
     scoreWeights: endpoints.scoreWeights,
+    scoreFormulas: endpoints.scoreFormulas,
     humanReviews: runtimePath(endpoints.humanReviews, {
       limit: 5
     }),
@@ -1178,6 +1191,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.scoreWeights = selectedProjectId
     ? runtimePath(endpoints.scoreWeights, { project_id: selectedProjectId })
     : endpoints.scoreWeights;
+  paths.scoreFormulas = endpoints.scoreFormulas;
   paths.humanReviews = runtimePath(endpoints.humanReviews, {
     ...selectedProjectParams,
     limit: 5
@@ -1223,6 +1237,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     savedViews,
     brandKit,
     scoreWeights,
+    scoreFormulas,
     humanReviews,
     knowledgeSearch,
     scores,
@@ -1259,6 +1274,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     selectedProjectId
       ? fetchRuntimeEndpoint<RuntimeScoreWeightConfig | null>(baseUrl, paths.scoreWeights, null)
       : Promise.resolve({ payload: null, error: null }),
+    fetchRuntimeEndpoint<RuntimeScoreFormulaCatalog>(baseUrl, paths.scoreFormulas, { formulas: [] }),
     fetchRuntimeEndpoint<PageResponse<RuntimeHumanReview>>(
       baseUrl,
       paths.humanReviews,
@@ -1287,6 +1303,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     savedViews,
     brandKit,
     scoreWeights,
+    scoreFormulas,
     humanReviews,
     knowledgeSearch,
     scores,
@@ -1303,6 +1320,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       projects: projects.payload,
       brandKit: brandKit.payload,
       scoreWeights: scoreWeights.payload,
+      scoreFormulas: scoreFormulas.payload,
       humanReviews: humanReviews.payload,
       knowledgeSearch: knowledgeSearch.payload,
       prompts: prompts.payload,
@@ -1480,8 +1498,32 @@ export default async function Home({
   const latestContent = data.content.records[0];
   const traceability = data.traceability;
   const scoreWeightConfig = data.scoreWeights?.score_weight_config || null;
+  const savedScoreWeightConfig = scoreWeightConfig?.id ? scoreWeightConfig : null;
   const scoreWeightAuditEvent = data.scoreWeights?.audit_events[0]?.event_type || "default weights";
-  const configuredScoreWeights = scoreWeightConfig?.weights || latestScore?.snapshot.component_weights_snapshot || defaultScoreWeights;
+  const scoreFormulaOptions = data.scoreFormulas.formulas.length
+    ? data.scoreFormulas.formulas
+    : [
+        {
+          formula_version: "au_visibility_v1",
+          weights: defaultScoreWeights,
+          description: "Default AU visibility score weights",
+          status: "active",
+          supersedes: null
+        }
+      ];
+  const selectedFormulaVersion =
+    savedScoreWeightConfig?.formula_version ||
+    latestScore?.snapshot.formula_version ||
+    scoreWeightConfig?.formula_version ||
+    scoreFormulaOptions[0].formula_version;
+  const selectedFormula =
+    scoreFormulaOptions.find((formula) => formula.formula_version === selectedFormulaVersion) || scoreFormulaOptions[0];
+  const configuredScoreWeights =
+    savedScoreWeightConfig?.weights ||
+    latestScore?.snapshot.component_weights_snapshot ||
+    scoreWeightConfig?.weights ||
+    selectedFormula.weights ||
+    defaultScoreWeights;
   const scoreWeightTotal = scoreComponentNames.reduce(
     (total, component) => total + Number(configuredScoreWeights[component] || 0),
     0
@@ -1990,11 +2032,29 @@ export default async function Home({
               <div className="formHeader">
                 <h3>Score Weights</h3>
                 <small>
-                  {scoreWeightConfig?.updated_by || "system-default"} · {scoreWeightAuditEvent} · total{" "}
-                  {num(scoreWeightTotal)}
+                  {scoreWeightConfig?.updated_by || "system-default"} · {scoreWeightAuditEvent} ·{" "}
+                  {selectedFormulaVersion} · total {num(scoreWeightTotal)}
                 </small>
               </div>
               <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+              <label className="wideField">
+                <span>Formula version</span>
+                <select name="formula_version" defaultValue={selectedFormulaVersion}>
+                  {scoreFormulaOptions.map((formula) => (
+                    <option key={formula.formula_version} value={formula.formula_version}>
+                      {formula.formula_version} · {formula.status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <dl className="facts contributionFacts">
+                <Fact label="Formula catalog" value={paths.scoreFormulas} />
+                <Fact label="Selected formula" value={selectedFormula.formula_version} />
+                <Fact label="Snapshot formula" value={latestScore?.snapshot.formula_version || "no snapshot"} />
+                <Fact label="Formula status" value={selectedFormula.status} />
+                <Fact label="Supersedes" value={selectedFormula.supersedes || "none"} />
+                <Fact label="Formula note" value={selectedFormula.description} />
+              </dl>
               {scoreComponentNames.map((component) => (
                 <label key={component}>
                   <span>{component}</span>

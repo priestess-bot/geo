@@ -80,6 +80,13 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Score Weights", page_source)
         self.assertIn("saveScoreWeightConfig", page_source)
         self.assertIn("/v1/score-weight-configs/runtime", page_source)
+        self.assertIn("/v1/score-formulas/runtime", page_source)
+        self.assertIn("Formula catalog", page_source)
+        self.assertIn("Formula version", page_source)
+        self.assertIn("Selected formula", page_source)
+        self.assertIn("Formula status", page_source)
+        self.assertIn("Formula note", page_source)
+        self.assertIn("Supersedes", page_source)
         self.assertIn("component_weights_snapshot", page_source)
         self.assertIn("Weight snapshot", page_source)
 

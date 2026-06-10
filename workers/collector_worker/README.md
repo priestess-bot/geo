@@ -48,7 +48,8 @@ judge comparison. The `AnswerAnalysis` payload stores `parser_ab_compare_v1` agr
 fields, the secondary judge result, and a `FixtureLLMGateway` `llm_call_log`; the same call log is
 upserted into `llm_call_logs` with provider/model/prompt version, request/response hashes, token
 counts, estimated cost, latency, and status. It also reads any project-level `score_weight_configs`
-and freezes the active component weights into `VisibilityScoreSnapshot.component_weights_snapshot`.
+for the selected score formula and freezes both the formula version and active component weights into
+`VisibilityScoreSnapshot.formula_version` and `VisibilityScoreSnapshot.component_weights_snapshot`.
 The worker then stores `VisibilityScoreSnapshot`, `ScoreContribution`,
 `ScoreSnapshotRun`, and the score audit event. It also builds and stores the M4 citation graph, source graph evidence,
 source gaps, competitor benchmarks, and the M5 `ReportExport` snapshot. After the report is saved,
@@ -67,6 +68,17 @@ Human review is intentionally not created by the worker. Review decisions are ap
 `POST /v1/human-reviews/runtime` or the Runtime Console Human Review Trail, which writes
 `human_review_records` and a `human_review_recorded` audit event against the reviewed score snapshot,
 content draft, answer analysis/run, score weight config, or project.
+
+The default formula is `au_visibility_v1`. To exercise a candidate formula without changing old
+snapshots, pass a registered version:
+
+```bash
+DATABASE_URL=postgresql://geno:geno@localhost:5432/geno \
+PYTHONPATH=packages/geno_core:apps/api \
+python3 workers/collector_worker/run_collection_slice.py \
+  --mode fixture --prompt-limit 1 --persist --persist-analysis \
+  --score-formula-version au_visibility_v1_1_local_boost
+```
 
 API adapter slice:
 

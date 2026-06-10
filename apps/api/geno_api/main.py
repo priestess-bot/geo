@@ -56,7 +56,7 @@ from geno_core.models import (
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.runtime import RuntimePersistenceError, build_repository_from_env, close_repository_connection
-from geno_core.scoring import AU_VISIBILITY_V1, normalize_score_weights
+from geno_core.scoring import get_score_formula, list_score_formulas, normalize_score_weights
 from geno_core.traceability import build_traceability_bundle
 
 app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
@@ -650,20 +650,23 @@ def runtime_score_weight_config(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        config = repository.get_score_weight_config(project_id=project_id, formula_version=formula_version)
+        formula = get_score_formula(formula_version)
+        config = repository.get_score_weight_config(project_id=project_id, formula_version=formula.formula_version)
         if config is None:
             return {
                 "score_weight_config": {
                     "id": None,
                     "project_id": project_id,
-                    "formula_version": formula_version,
-                    "weights": AU_VISIBILITY_V1,
+                    "formula_version": formula.formula_version,
+                    "weights": formula.weights,
                     "updated_by": "system-default",
-                    "notes": "Default AU visibility score weights",
+                    "notes": f"Default {formula.formula_version} score weights",
                 },
                 "audit_events": [],
             }
         return asdict(config)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         close_repository_connection(repository)
 
@@ -671,7 +674,7 @@ def runtime_score_weight_config(
 @app.post("/v1/score-weight-configs/runtime")
 def save_runtime_score_weight_config(payload: ScoreWeightConfigRequest) -> dict[str, object]:
     try:
-        weights = normalize_score_weights(payload.weights)
+        weights = normalize_score_weights(payload.weights, formula_version=payload.formula_version.strip())
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
@@ -694,6 +697,11 @@ def save_runtime_score_weight_config(payload: ScoreWeightConfigRequest) -> dict[
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     finally:
         close_repository_connection(repository)
+
+
+@app.get("/v1/score-formulas/runtime")
+def runtime_score_formulas() -> dict[str, object]:
+    return {"formulas": list_score_formulas()}
 
 
 @app.get("/v1/human-reviews/runtime")
@@ -1459,6 +1467,10 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeScoreWeightConfig",
             "RuntimeScoreWeightConfigInput",
             "ScoreWeightConfigRequest",
+            "ScoreFormulaDefinition",
+            "SCORE_FORMULA_REGISTRY",
+            "list_score_formulas",
+            "rescore_snapshot_with_formula",
             "RuntimeHumanReviewRecord",
             "RuntimeHumanReviewPage",
             "RuntimeHumanReviewInput",
@@ -1514,6 +1526,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeScoreWeightConfig",
             "RuntimeScoreWeightConfigInput",
             "ScoreWeightConfigRequest",
+            "ScoreFormulaDefinition",
             "RuntimeHumanReviewRecord",
             "RuntimeHumanReviewPage",
             "RuntimeHumanReviewInput",
@@ -1576,6 +1589,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/runtime-saved-views",
             "/v1/project-brand-kits/runtime",
             "/v1/score-weight-configs/runtime",
+            "/v1/score-formulas/runtime",
             "/v1/human-reviews/runtime",
             "worker --persist",
             "worker --persist-analysis",

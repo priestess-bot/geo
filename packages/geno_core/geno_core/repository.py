@@ -83,7 +83,7 @@ from geno_core.report import (
     render_methodology_disclosure_lines,
 )
 from geno_core.fidelity import build_runtime_fidelity_check
-from geno_core.scoring import AU_VISIBILITY_V1, normalize_score_weights
+from geno_core.scoring import get_score_formula, normalize_score_weights
 from geno_core.knowledge import (
     KNOWLEDGE_EMBEDDING_MODEL,
     embed_knowledge_text,
@@ -2270,6 +2270,7 @@ class PostgresEvidenceRepository:
         project_id: str,
         formula_version: str = "au_visibility_v1",
     ) -> RuntimeScoreWeightConfig | None:
+        formula = get_score_formula(formula_version)
         with self.connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -2278,7 +2279,7 @@ class PostgresEvidenceRepository:
                 WHERE project_id = %s AND formula_version = %s
                 LIMIT 1
                 """,
-                (_uuid(project_id), formula_version),
+                (_uuid(project_id), formula.formula_version),
             )
             row = cursor.fetchone()
             if not row:
@@ -2292,16 +2293,15 @@ class PostgresEvidenceRepository:
         project_id = config.project_id.strip()
         formula_version = config.formula_version.strip() or "au_visibility_v1"
         updated_by = config.updated_by.strip() or "runtime-console"
-        if formula_version != "au_visibility_v1":
-            raise ValueError("formula_version must be au_visibility_v1")
+        formula = get_score_formula(formula_version)
         if not project_id:
             raise ValueError("project_id is required")
-        weights = normalize_score_weights(config.weights)
-        config_id = _stable_id("score-weight-config", project_id, formula_version)
+        weights = normalize_score_weights(config.weights, formula_version=formula.formula_version)
+        config_id = _stable_id("score-weight-config", project_id, formula.formula_version)
         after = {
             "id": config_id,
             "project_id": project_id,
-            "formula_version": formula_version,
+            "formula_version": formula.formula_version,
             "weights": weights,
             "updated_by": updated_by,
             "notes": config.notes.strip() if config.notes else None,
@@ -2325,7 +2325,7 @@ class PostgresEvidenceRepository:
                 WHERE project_id = %s AND formula_version = %s
                 LIMIT 1
                 """,
-                (_uuid(project_id), formula_version),
+                (_uuid(project_id), formula.formula_version),
             )
             existing = cursor.fetchone()
             before = _row_dict(existing, SCORE_WEIGHT_CONFIG_COLUMNS) if existing else None
@@ -2343,7 +2343,7 @@ class PostgresEvidenceRepository:
                 (
                     _uuid(config_id),
                     _uuid(project_id),
-                    formula_version,
+                    formula.formula_version,
                     _json_payload(weights),
                     updated_by,
                     after["notes"],
@@ -2371,7 +2371,7 @@ class PostgresEvidenceRepository:
                 WHERE project_id = %s AND formula_version = %s
                 LIMIT 1
                 """,
-                (_uuid(project_id), formula_version),
+                (_uuid(project_id), formula.formula_version),
             )
             saved_row = cursor.fetchone()
             record = self._load_score_weight_config(
@@ -2389,8 +2389,11 @@ class PostgresEvidenceRepository:
     ) -> dict[str, float]:
         record = self.get_score_weight_config(project_id=project_id, formula_version=formula_version)
         if record is None:
-            return dict(AU_VISIBILITY_V1)
-        return normalize_score_weights(dict(record.score_weight_config.get("weights") or {}))
+            return dict(get_score_formula(formula_version).weights)
+        return normalize_score_weights(
+            dict(record.score_weight_config.get("weights") or {}),
+            formula_version=formula_version,
+        )
 
     def _load_score_weight_config(
         self,

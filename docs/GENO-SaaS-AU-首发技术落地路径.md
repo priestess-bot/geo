@@ -553,7 +553,7 @@ SourceGap / ActionRecommendation
 - `VisibilityScoreSnapshot.answer_run_ids` 在 P0 可先用数组保存，但必须同时预留 `ScoreSnapshotRun` 关联表，避免后续大样本查询困难。
 - `SourceGraph.answer_run_ids` 在 P0 可先用数组保存，但必须同时预留 `SourceGraphEvidence` 关联表，用于追踪某个 source gap 来自哪些引用。
 - `raw_payload_hash`、`html_snapshot_url`、`screenshot_url` 不可覆盖；同一采集重跑必须生成新的 `AnswerRun`。
-- 人工补录、实体别名确认、评分权重修改都必须写 `AuditEvent`，并在报告方法说明中披露是否存在人工介入。
+- 人工补录、实体别名确认、评分权重修改、评分公式重放都必须写 `AuditEvent`，并在报告方法说明中披露是否存在人工介入或重算口径。
 
 分数解释包（Explanation Bundle）：
 
@@ -563,6 +563,7 @@ scope_type / scope_value
 final_score
 formula_version
 platform_weights_snapshot
+component_weights_snapshot
 component_contributions:
   - component_name
   - component_score
@@ -766,6 +767,27 @@ AUVisibilityScore =
   CompetitorShareScore * 0.05
 ```
 
+评分公式 registry：
+
+```text
+SCORE_FORMULA_REGISTRY
+  au_visibility_v1
+    status: active
+    weights: 默认 P0a 证据报告公式
+  au_visibility_v1_1_local_boost
+    status: candidate
+    supersedes: au_visibility_v1
+    weights: 提高 LocalRelevanceScore 与 FreshnessScore 权重，用于 AU 本地化敏感行业试算
+```
+
+实现约束：
+
+- `formula_version` 必须来自 registry，未知版本直接拒绝，避免报告中出现不可复盘公式。
+- runtime API 通过 `/v1/score-formulas/runtime` 暴露公式目录，控制台 Score Weights 表单使用该目录选择版本。
+- worker `--persist-analysis` 默认使用 `au_visibility_v1`；如需候选公式，可传 `--score-formula-version au_visibility_v1_1_local_boost`。
+- 历史重算必须从冻结的 `AnswerAnalysis`、`platform_weights_snapshot` 和指定 `formula_version` 重放，生成新的 `VisibilityScoreSnapshot`、`ScoreContribution` 与 `visibility_score_snapshot_rescored` 审计事件，不覆盖旧快照。
+- `ReportExport` 只引用某次已冻结的 `score_snapshot_ids` 和 `scoring_formula_version`；重算后若要出新报告，必须生成新的 `ReportExport` 版本。
+
 P0 平台权重（固定默认值，可在 MarketProfile 调整）：
 
 ```text
@@ -774,7 +796,7 @@ ChatGPT Search / browsing: 30%
 Perplexity: 25%
 ```
 
-项目级评分权重可通过 `score_weight_configs` 覆盖默认 8 项组件权重；保存时必须校验组件完整、非负、总和为 1.00，并写入 `score_weight_config_saved` 审计事件。每次生成 `VisibilityScoreSnapshot` 时都把实际使用的 `component_weights_snapshot` 冻结到快照，后续即使项目权重调整，历史分数和 `ScoreContribution.weight` 仍能按当时口径复盘。人工复核采用追加型 `human_review_records`，不覆盖原始评分、内容草稿或解析结果；每条记录保存 `project_id / target_type / target_id / review_status / decision / reviewer_id / notes / payload / created_at`，并写入 `human_review_recorded` 审计事件。MVP 可先覆盖 `visibility_score_snapshot`、`content_draft`、`answer_analysis`、`answer_run`、`score_weight_config` 和 `project` 六类对象，后续再接复核队列、审批流和抽样校准。
+项目级评分权重可通过 `score_weight_configs` 按 `project_id + formula_version` 覆盖默认 8 项组件权重；保存时必须校验组件完整、非负、总和为 1.00，并写入 `score_weight_config_saved` 审计事件。每次生成 `VisibilityScoreSnapshot` 时都把实际使用的 `formula_version` 与 `component_weights_snapshot` 冻结到快照，后续即使项目权重调整或默认公式升级，历史分数和 `ScoreContribution.weight` 仍能按当时口径复盘。人工复核采用追加型 `human_review_records`，不覆盖原始评分、内容草稿或解析结果；每条记录保存 `project_id / target_type / target_id / review_status / decision / reviewer_id / notes / payload / created_at`，并写入 `human_review_recorded` 审计事件。MVP 可先覆盖 `visibility_score_snapshot`、`content_draft`、`answer_analysis`、`answer_run`、`score_weight_config` 和 `project` 六类对象，后续再接复核队列、审批流和抽样校准。
 
 P1/P2 平台扩展权重（默认值，可在 MarketProfile 调整）：
 
@@ -1425,6 +1447,7 @@ scope_type            # project / platform / city / intent / prompt
 scope_value
 scoring_formula_version
 platform_weights_snapshot
+component_weights_snapshot
 sample_size           # 该范围聚合用到的采样总数
 trigger_rate
 mention_rate

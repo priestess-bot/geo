@@ -574,6 +574,38 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(round(sum(payload["score_weight_config"]["weights"].values()), 6), 1.0)
         self.assertEqual(fake_repository.kwargs["formula_version"], "au_visibility_v1")
 
+    def test_runtime_score_formula_catalog_endpoint_lists_registered_versions(self) -> None:
+        response = self.client.get("/v1/score-formulas/runtime")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        versions = {item["formula_version"] for item in payload["formulas"]}
+        self.assertIn("au_visibility_v1", versions)
+        self.assertIn("au_visibility_v1_1_local_boost", versions)
+        local_boost = next(item for item in payload["formulas"] if item["formula_version"] == "au_visibility_v1_1_local_boost")
+        self.assertEqual(local_boost["status"], "candidate")
+        self.assertEqual(round(sum(local_boost["weights"].values()), 6), 1.0)
+
+    def test_runtime_score_weight_config_endpoint_returns_formula_default_when_missing(self) -> None:
+        class FakeRepository:
+            def get_score_weight_config(self, **kwargs: object) -> None:
+                self.kwargs = kwargs
+                return None
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/score-weight-configs/runtime"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
+                "&formula_version=au_visibility_v1_1_local_boost"
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["score_weight_config"]["formula_version"], "au_visibility_v1_1_local_boost")
+        self.assertEqual(payload["score_weight_config"]["weights"]["LocalRelevanceScore"], 0.18)
+        self.assertEqual(fake_repository.kwargs["formula_version"], "au_visibility_v1_1_local_boost")
+
     def test_runtime_score_weight_config_save_endpoint_passes_payload(self) -> None:
         weights = {
             "MentionScore": 0.20,
@@ -624,6 +656,57 @@ class ApiContractsTest(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["score_weight_config"]["weights"]["MentionScore"], 0.20)
         self.assertEqual(fake_repository.config.notes, "prioritize mention")
+
+    def test_runtime_score_weight_config_save_endpoint_passes_formula_version(self) -> None:
+        weights = {
+            "MentionScore": 0.17,
+            "RecommendationScore": 0.21,
+            "PositionScore": 0.11,
+            "CitationScore": 0.15,
+            "LocalRelevanceScore": 0.18,
+            "SentimentScore": 0.07,
+            "FreshnessScore": 0.06,
+            "CompetitorShareScore": 0.05,
+        }
+
+        class FakeRepository:
+            def save_score_weight_config(self, config: object) -> RuntimeScoreWeightConfig:
+                self.config = config
+                return RuntimeScoreWeightConfig(
+                    score_weight_config={
+                        "id": "74ef8cfb-06e4-5659-a178-d1e3ee7dc7cb",
+                        "project_id": config.project_id,
+                        "formula_version": config.formula_version,
+                        "weights": config.weights,
+                        "updated_by": config.updated_by,
+                        "notes": config.notes,
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "score_weight_config_saved",
+                            "target_type": "score_weight_config",
+                            "method_version": "score_weight_config_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/score-weight-configs/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "formula_version": "au_visibility_v1_1_local_boost",
+                    "weights": weights,
+                    "updated_by": "runtime-console",
+                    "notes": "test local boost formula",
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["score_weight_config"]["formula_version"], "au_visibility_v1_1_local_boost")
+        self.assertEqual(fake_repository.config.formula_version, "au_visibility_v1_1_local_boost")
 
     def test_runtime_human_reviews_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get(
@@ -1023,6 +1106,10 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("LLMCallLog", payload["m3_analysis_scoring"])
         self.assertIn("RuntimeScoreWeightConfig", payload["m3_analysis_scoring"])
         self.assertIn("ScoreWeightConfigRequest", payload["m3_analysis_scoring"])
+        self.assertIn("ScoreFormulaDefinition", payload["m3_analysis_scoring"])
+        self.assertIn("SCORE_FORMULA_REGISTRY", payload["m3_analysis_scoring"])
+        self.assertIn("list_score_formulas", payload["m3_analysis_scoring"])
+        self.assertIn("rescore_snapshot_with_formula", payload["m3_analysis_scoring"])
         self.assertIn("RuntimeHumanReviewRecord", payload["m3_analysis_scoring"])
         self.assertIn("RuntimeHumanReviewInput", payload["m3_analysis_scoring"])
         self.assertIn("HumanReviewRequest", payload["m3_analysis_scoring"])
@@ -1052,6 +1139,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeScoreWeightConfig", payload["persistence"])
         self.assertIn("RuntimeScoreWeightConfigInput", payload["persistence"])
         self.assertIn("ScoreWeightConfigRequest", payload["persistence"])
+        self.assertIn("ScoreFormulaDefinition", payload["persistence"])
         self.assertIn("RuntimeHumanReviewRecord", payload["persistence"])
         self.assertIn("RuntimeHumanReviewPage", payload["persistence"])
         self.assertIn("RuntimeHumanReviewInput", payload["persistence"])
@@ -1085,6 +1173,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/runtime-saved-views", payload["persistence"])
         self.assertIn("/v1/project-brand-kits/runtime", payload["persistence"])
         self.assertIn("/v1/score-weight-configs/runtime", payload["persistence"])
+        self.assertIn("/v1/score-formulas/runtime", payload["persistence"])
         self.assertIn("/v1/human-reviews/runtime", payload["persistence"])
         self.assertIn("/v1/visibility-scores/runtime", payload["persistence"])
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])

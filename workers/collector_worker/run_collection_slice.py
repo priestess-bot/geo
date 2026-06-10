@@ -72,6 +72,7 @@ def _persist_records(
     successes: tuple[RawEvidenceRecord, ...],
     failures: tuple[CollectionFailureRecord, ...],
     persist_analysis: bool,
+    score_formula_version: str,
 ) -> dict[str, object]:
     repository = build_repository_from_env()
     repository.save_project_bootstrap(bootstrap)
@@ -96,7 +97,10 @@ def _persist_records(
             for item in bootstrap.market_profile.platforms
             if item.enabled and item.platform in {"chatgpt", "perplexity"}
         }
-        score_weights = repository.get_score_weights_snapshot(project_id=bootstrap.project.id)
+        score_weights = repository.get_score_weights_snapshot(
+            project_id=bootstrap.project.id,
+            formula_version=score_formula_version,
+        )
         analysis_result = analyze_and_score_records(
             project_id=bootstrap.project.id,
             records=successes,
@@ -104,6 +108,7 @@ def _persist_records(
             competitors=bootstrap.competitors,
             platform_weights_snapshot=platform_weights_snapshot,
             score_weights=score_weights,
+            formula_version=score_formula_version,
             entity_aliases=entity_aliases,
             scope_type="collection_slice",
             scope_value="worker_runtime",
@@ -275,6 +280,7 @@ def _persist_records(
             "entity_alias_entity_count": len(entity_aliases),
             "entity_alias_term_count": sum(len(aliases) for aliases in entity_aliases.values()),
             "score_snapshot_id": analysis_result.snapshot.id,
+            "score_formula_version": analysis_result.snapshot.formula_version,
             "score_contributions": len(analysis_result.contributions),
             "final_score": analysis_result.snapshot.final_score,
             "source_graph_nodes": len(graph.nodes),
@@ -336,6 +342,11 @@ def main() -> None:
         action="store_true",
         help="After --persist, parse successful records and persist score snapshot/contributions",
     )
+    parser.add_argument(
+        "--score-formula-version",
+        default="au_visibility_v1",
+        help="Registered score formula version to use with --persist-analysis",
+    )
     args = parser.parse_args()
     if args.persist_analysis and not args.persist:
         parser.error("--persist-analysis requires --persist")
@@ -380,6 +391,7 @@ def main() -> None:
                 successes=successes,
                 failures=failures,
                 persist_analysis=args.persist_analysis,
+                score_formula_version=args.score_formula_version,
             )
         except RuntimePersistenceError as exc:
             print(f"persistence_error: {exc}", file=sys.stderr)

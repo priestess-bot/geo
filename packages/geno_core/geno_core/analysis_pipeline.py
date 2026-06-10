@@ -31,6 +31,7 @@ def analyze_and_score_records(
     competitors: tuple[CompetitorEntity, ...],
     platform_weights_snapshot: dict[str, float],
     score_weights: dict[str, float] | None = None,
+    formula_version: str = "au_visibility_v1",
     entity_aliases: dict[str, tuple[str, ...]] | None = None,
     scope_type: str = "project",
     scope_value: str = "p0a_fixture",
@@ -50,6 +51,7 @@ def analyze_and_score_records(
         analyses=analyses,
         platform_weights_snapshot=platform_weights_snapshot,
         score_weights=score_weights,
+        formula_version=formula_version,
         scope_type=scope_type,
         scope_value=scope_value,
     )

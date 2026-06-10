@@ -54,11 +54,25 @@ from geno_core.runtime import (
     close_repository_connection,
     connect_postgres_from_env,
 )
-from geno_core.scoring import AU_VISIBILITY_V1, score_answer_analyses, score_answer_analysis
+from geno_core.scoring import (
+    AU_VISIBILITY_V1,
+    AU_VISIBILITY_V1_1_LOCAL_BOOST,
+    SCORE_FORMULA_REGISTRY,
+    ScoreFormulaDefinition,
+    get_score_formula,
+    list_score_formulas,
+    normalize_score_weights,
+    rescore_snapshot_with_formula,
+    score_answer_analyses,
+    score_answer_analysis,
+)
 from geno_core.traceability import build_traceability_bundle
 
 __all__ = [
     "AU_VISIBILITY_V1",
+    "AU_VISIBILITY_V1_1_LOCAL_BOOST",
+    "SCORE_FORMULA_REGISTRY",
+    "ScoreFormulaDefinition",
     "analyze_and_score_records",
     "build_action_plan_audit_event",
     "build_action_recommendations",
@@ -84,6 +98,7 @@ __all__ = [
     "build_localized_knowledge_facts",
     "build_manual_distribution_records",
     "evaluate_google_spike_gate",
+    "get_score_formula",
     "build_repository_from_env",
     "close_repository_connection",
     "connect_postgres_from_env",
@@ -100,6 +115,9 @@ __all__ = [
     "PlaywrightGoogleAIOCollector",
     "PostgresEvidenceRepository",
     "RuntimePersistenceError",
+    "list_score_formulas",
+    "normalize_score_weights",
+    "rescore_snapshot_with_formula",
     "run_collection_slice",
     "run_fixture_collection_slice",
     "score_answer_analyses",

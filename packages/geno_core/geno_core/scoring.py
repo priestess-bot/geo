@@ -3,11 +3,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from statistics import pstdev
+from typing import Any
 from uuid import uuid4
 
 from geno_core.audit import build_audit_event
 from geno_core.models import AnswerAnalysis, AuditEvent, ScoreContribution, VisibilityScoreSnapshot
 
+
+SCORE_COMPONENTS: tuple[str, ...] = (
+    "MentionScore",
+    "RecommendationScore",
+    "PositionScore",
+    "CitationScore",
+    "LocalRelevanceScore",
+    "SentimentScore",
+    "FreshnessScore",
+    "CompetitorShareScore",
+)
 
 AU_VISIBILITY_V1: dict[str, float] = {
     "MentionScore": 0.18,
@@ -20,11 +32,75 @@ AU_VISIBILITY_V1: dict[str, float] = {
     "CompetitorShareScore": 0.05,
 }
 
+AU_VISIBILITY_V1_1_LOCAL_BOOST: dict[str, float] = {
+    "MentionScore": 0.17,
+    "RecommendationScore": 0.21,
+    "PositionScore": 0.11,
+    "CitationScore": 0.15,
+    "LocalRelevanceScore": 0.18,
+    "SentimentScore": 0.07,
+    "FreshnessScore": 0.06,
+    "CompetitorShareScore": 0.05,
+}
 
-def normalize_score_weights(score_weights: dict[str, float] | None = None) -> dict[str, float]:
+
+@dataclass(frozen=True)
+class ScoreFormulaDefinition:
+    formula_version: str
+    weights: dict[str, float]
+    description: str
+    status: str
+    supersedes: str | None = None
+
+
+SCORE_FORMULA_REGISTRY: dict[str, ScoreFormulaDefinition] = {
+    "au_visibility_v1": ScoreFormulaDefinition(
+        formula_version="au_visibility_v1",
+        weights=AU_VISIBILITY_V1,
+        description="Default AU visibility score formula used for P0a customer evidence reports.",
+        status="active",
+    ),
+    "au_visibility_v1_1_local_boost": ScoreFormulaDefinition(
+        formula_version="au_visibility_v1_1_local_boost",
+        weights=AU_VISIBILITY_V1_1_LOCAL_BOOST,
+        description="AU visibility score variant that increases local relevance and freshness emphasis.",
+        status="candidate",
+        supersedes="au_visibility_v1",
+    ),
+}
+
+
+def list_score_formulas() -> tuple[dict[str, Any], ...]:
+    return tuple(
+        {
+            "formula_version": formula.formula_version,
+            "weights": dict(formula.weights),
+            "description": formula.description,
+            "status": formula.status,
+            "supersedes": formula.supersedes,
+        }
+        for formula in SCORE_FORMULA_REGISTRY.values()
+    )
+
+
+def get_score_formula(formula_version: str = "au_visibility_v1") -> ScoreFormulaDefinition:
+    version = formula_version.strip() or "au_visibility_v1"
+    try:
+        return SCORE_FORMULA_REGISTRY[version]
+    except KeyError as exc:
+        known_versions = ", ".join(sorted(SCORE_FORMULA_REGISTRY))
+        raise ValueError(f"Unknown score formula version: {version}. Known versions: {known_versions}") from exc
+
+
+def normalize_score_weights(
+    score_weights: dict[str, float] | None = None,
+    *,
+    formula_version: str = "au_visibility_v1",
+) -> dict[str, float]:
+    formula = get_score_formula(formula_version)
     if score_weights is None:
-        return dict(AU_VISIBILITY_V1)
-    expected = set(AU_VISIBILITY_V1)
+        return dict(formula.weights)
+    expected = set(SCORE_COMPONENTS)
     provided = set(score_weights)
     missing = sorted(expected - provided)
     unknown = sorted(provided - expected)
@@ -32,7 +108,7 @@ def normalize_score_weights(score_weights: dict[str, float] | None = None) -> di
         raise ValueError(f"Missing score weight components: {', '.join(missing)}")
     if unknown:
         raise ValueError(f"Unknown score weight components: {', '.join(unknown)}")
-    normalized = {name: round(float(score_weights[name]), 6) for name in AU_VISIBILITY_V1}
+    normalized = {name: round(float(score_weights[name]), 6) for name in SCORE_COMPONENTS}
     if any(weight < 0 for weight in normalized.values()):
         raise ValueError("Score weights must be non-negative")
     total_weight = round(sum(normalized.values()), 6)
@@ -75,10 +151,12 @@ def score_answer_analysis(
     analysis: AnswerAnalysis,
     platform_weights_snapshot: dict[str, float],
     score_weights: dict[str, float] | None = None,
+    formula_version: str = "au_visibility_v1",
     scope_type: str = "answer",
     scope_value: str = "single",
 ) -> ScoreResult:
-    component_weights = normalize_score_weights(score_weights)
+    formula = get_score_formula(formula_version)
+    component_weights = normalize_score_weights(score_weights, formula_version=formula.formula_version)
     component_scores = {
         "MentionScore": 100.0 if analysis.brand_mentioned else 0.0,
         "RecommendationScore": 100.0 if analysis.brand_recommended else 0.0,
@@ -100,7 +178,7 @@ def score_answer_analysis(
         project_id=project_id,
         scope_type=scope_type,
         scope_value=scope_value,
-        formula_version="au_visibility_v1",
+        formula_version=formula.formula_version,
         platform_weights_snapshot=platform_weights_snapshot,
         final_score=final_score,
         trigger_rate=1.0,
@@ -175,12 +253,14 @@ def score_answer_analyses(
     analyses: tuple[AnswerAnalysis, ...],
     platform_weights_snapshot: dict[str, float],
     score_weights: dict[str, float] | None = None,
+    formula_version: str = "au_visibility_v1",
     scope_type: str,
     scope_value: str,
 ) -> AggregateScoreResult:
     if not analyses:
         raise ValueError("At least one AnswerAnalysis is required")
-    component_weights = normalize_score_weights(score_weights)
+    formula = get_score_formula(formula_version)
+    component_weights = normalize_score_weights(score_weights, formula_version=formula.formula_version)
     per_answer_components = [_component_scores(analysis) for analysis in analyses]
     component_scores = {
         name: round(
@@ -208,7 +288,7 @@ def score_answer_analyses(
         project_id=project_id,
         scope_type=scope_type,
         scope_value=scope_value,
-        formula_version="au_visibility_v1",
+        formula_version=formula.formula_version,
         platform_weights_snapshot=platform_weights_snapshot,
         final_score=final_score,
         trigger_rate=1.0,
@@ -249,6 +329,7 @@ def score_answer_analyses(
         after={
             "snapshot_id": snapshot_id,
             "formula_version": snapshot.formula_version,
+            "formula_status": formula.status,
             "final_score": snapshot.final_score,
             "trigger_rate": snapshot.trigger_rate,
             "mention_rate": snapshot.mention_rate,
@@ -261,11 +342,59 @@ def score_answer_analyses(
             "score_snapshot_ids": [snapshot_id],
             "score_contribution_ids": [contribution.id for contribution in contributions],
         },
-        method_version="au_visibility_v1",
+        method_version=formula.formula_version,
         reason="M3 aggregate visibility score snapshot",
     )
     return AggregateScoreResult(
         snapshot=snapshot,
         contributions=contributions,
         audit_event=audit_event,
+    )
+
+
+def rescore_snapshot_with_formula(
+    *,
+    project_id: str,
+    analyses: tuple[AnswerAnalysis, ...],
+    platform_weights_snapshot: dict[str, float],
+    target_formula_version: str,
+    score_weights: dict[str, float] | None = None,
+    scope_type: str = "formula_replay",
+    scope_value: str = "runtime_replay",
+) -> AggregateScoreResult:
+    result = score_answer_analyses(
+        project_id=project_id,
+        analyses=analyses,
+        platform_weights_snapshot=platform_weights_snapshot,
+        score_weights=score_weights,
+        formula_version=target_formula_version,
+        scope_type=scope_type,
+        scope_value=scope_value,
+    )
+    replay_audit = build_audit_event(
+        event_type="visibility_score_snapshot_rescored",
+        project_id=project_id,
+        actor_type="system",
+        actor_id="geno-core.scoring",
+        target_type="visibility_score_snapshot",
+        target_id=result.snapshot.id,
+        before=None,
+        after={
+            "snapshot_id": result.snapshot.id,
+            "formula_version": result.snapshot.formula_version,
+            "final_score": result.snapshot.final_score,
+            "component_weights_snapshot": result.snapshot.component_weights_snapshot,
+        },
+        input_refs={"answer_run_ids": result.snapshot.answer_run_ids},
+        output_refs={
+            "score_snapshot_ids": [result.snapshot.id],
+            "score_contribution_ids": [contribution.id for contribution in result.contributions],
+        },
+        method_version=result.snapshot.formula_version,
+        reason="Replay historical answer analyses with a selected score formula version",
+    )
+    return AggregateScoreResult(
+        snapshot=result.snapshot,
+        contributions=result.contributions,
+        audit_event=replay_audit,
     )
