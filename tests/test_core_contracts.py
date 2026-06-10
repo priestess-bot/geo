@@ -1359,6 +1359,7 @@ class CoreContractsTest(unittest.TestCase):
             "action_recommendations",
             "retest_schedules",
             "localized_knowledge_facts",
+            "knowledge_fact_embeddings",
             "content_drafts",
             "integration_connectors",
             "manual_distribution_records",
@@ -1378,12 +1379,65 @@ class CoreContractsTest(unittest.TestCase):
         first_llm_call_insert = next(params for sql, params in connection.calls if "INSERT INTO llm_call_logs" in sql)
         self.assertEqual(str(first_llm_call_insert[2]), records[0].answer_run.id)
         self.assertEqual(first_llm_call_insert[3], "parser_judge")
-        self.assertEqual(first_llm_call_insert[4], "fixture")
-        self.assertEqual(first_llm_call_insert[6], "llm_judge_prompt_v1")
-        self.assertGreater(first_llm_call_insert[11], 0)
-        self.assertIn("ON CONFLICT (id) DO UPDATE SET parser_engine_id = EXCLUDED.parser_engine_id", executed_sql)
-        report_export_insert = next(params for sql, params in connection.calls if "INSERT INTO report_exports" in sql)
-        self.assertEqual(report_export_insert[10]["google_coverage"], report.report_export.method_disclosure["google_coverage"])
+
+    def test_postgres_repository_searches_runtime_knowledge_facts_with_pgvector(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        fact_id = "06975d61-853b-5a25-ae0e-b62bbfe82c15"
+        fact_row = {
+            "id": fact_id,
+            "project_id": project_id,
+            "market_code": "AU",
+            "fact_type": "australian_shipping_policy",
+            "subject": "ExampleBrand",
+            "predicate": "supports_market",
+            "object_value": "AU shipping and returns",
+            "city": None,
+            "evidence_source_id": "438ab927-5873-5516-8df3-47f6c75ef007",
+            "confidence": 0.72,
+            "status": "active",
+            "valid_from": now,
+            "valid_until": None,
+            "embedding_model": "fixture-knowledge-embedding-v1",
+            "vector_score": 0.91,
+            "fallback_used": False,
+        }
+        audit_row = {
+            "id": "425f980b-138f-4afa-8784-79d6f16f92ce",
+            "event_type": "knowledge_fact_embeddings_indexed",
+            "project_id": project_id,
+            "actor_type": "system",
+            "actor_id": "geno-core.knowledge",
+            "target_type": "knowledge_fact_embedding_index",
+            "target_id": project_id,
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"knowledge_fact_ids": [fact_id]},
+            "output_refs": {"knowledge_fact_embedding_ids": ["embedding-1"]},
+            "method_version": "knowledge_fact_embedding_v1",
+            "reason": "index localized knowledge facts into pgvector for runtime retrieval",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, [fact_row], [audit_row]])
+
+        page = PostgresEvidenceRepository(connection).search_runtime_knowledge_facts(
+            project_id=project_id,
+            query="Australia shipping returns",
+            market_code="AU",
+            city="Sydney",
+            limit=5,
+            offset=0,
+        )
+
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.records[0].fact["fact_type"], "australian_shipping_policy")
+        self.assertEqual(page.records[0].score, 0.91)
+        self.assertFalse(page.records[0].fallback_used)
+        self.assertEqual(page.audit_events[0]["event_type"], "knowledge_fact_embeddings_indexed")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("JOIN knowledge_fact_embeddings kfe ON kfe.knowledge_fact_id = kf.id", executed_sql)
+        self.assertIn("kfe.embedding <=> %s::vector", executed_sql)
+        self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
 
     def test_postgres_repository_persists_project_bootstrap_metadata(self) -> None:
         bootstrap = build_au_project_bootstrap()

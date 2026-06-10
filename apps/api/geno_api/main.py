@@ -905,6 +905,37 @@ def runtime_content_engines(
         close_repository_connection(repository)
 
 
+@app.get("/v1/knowledge-facts/runtime/search")
+def runtime_knowledge_fact_search(
+    project_id: str = Query(min_length=1),
+    query: str = Query(min_length=1),
+    market_code: str = Query(default="AU", min_length=1, max_length=20),
+    city: str | None = None,
+    embedding_model: str = Query(default="fixture-knowledge-embedding-v1", min_length=1, max_length=120),
+    limit: int = Query(default=10, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.search_runtime_knowledge_facts(
+            project_id=project_id,
+            query=query,
+            market_code=market_code,
+            city=city,
+            embedding_model=embedding_model,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/traceability/runtime")
 def runtime_traceability(
     project_id: str | None = None,
@@ -1400,6 +1431,9 @@ def contracts() -> dict[str, list[str]]:
         "m7_content_integrations": [
             "LocalizedKnowledgeFact",
             "KnowledgeSearchResult",
+            "KnowledgeFactEmbedding",
+            "RuntimeKnowledgeSearchResult",
+            "RuntimeKnowledgeSearchPage",
             "ContentDraft",
             "IntegrationConnector",
             "ManualDistributionRecord",
@@ -1460,6 +1494,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeContentDraft",
             "RuntimeContentEngine",
             "RuntimeContentEnginePage",
+            "RuntimeKnowledgeSearchResult",
+            "RuntimeKnowledgeSearchPage",
             "RuntimeTraceabilityDetail",
             "ProjectBootstrap",
             "PromptQuestion",
@@ -1491,6 +1527,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/reports/runtime/{report_export_id}/artifact",
             "/v1/action-plans/runtime",
             "/v1/content-engines/runtime",
+            "/v1/knowledge-facts/runtime/search",
             "/v1/traceability/runtime",
         ],
     }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, uuid5
 
@@ -16,9 +17,33 @@ from geno_core.models import (
     PromptQuestion,
 )
 
+KNOWLEDGE_EMBEDDING_MODEL = "fixture-knowledge-embedding-v1"
+
 
 def _stable_id(kind: str, *parts: object) -> str:
     return str(uuid5(NAMESPACE_URL, ":".join(("geno", kind, *(str(part) for part in parts)))))
+
+
+def knowledge_fact_text(fact: LocalizedKnowledgeFact) -> str:
+    return " | ".join(
+        (
+            fact.market_code,
+            fact.fact_type,
+            fact.subject,
+            fact.predicate,
+            fact.object_value,
+            fact.city or "global",
+        )
+    )
+
+
+def knowledge_fact_content_hash(fact: LocalizedKnowledgeFact) -> str:
+    return hashlib.sha256(knowledge_fact_text(fact).encode("utf-8")).hexdigest()
+
+
+def embed_knowledge_text(text: str, *, dimensions: int = 8) -> tuple[float, ...]:
+    digest = hashlib.sha256(text.encode("utf-8")).digest()
+    return tuple(round(digest[index] / 255, 6) for index in range(dimensions))
 
 
 def build_localized_knowledge_facts(

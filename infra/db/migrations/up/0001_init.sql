@@ -253,6 +253,18 @@ CREATE TABLE localized_knowledge_facts (
   valid_until timestamptz
 );
 
+CREATE TABLE knowledge_fact_embeddings (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL,
+  knowledge_fact_id uuid NOT NULL REFERENCES localized_knowledge_facts(id) ON DELETE CASCADE,
+  embedding_model text NOT NULL,
+  embedding vector(8) NOT NULL,
+  content_hash text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(knowledge_fact_id, embedding_model)
+);
+
 CREATE TABLE content_drafts (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id uuid NOT NULL,
@@ -531,6 +543,7 @@ CREATE INDEX idx_report_exports_project ON report_exports(project_id, exported_a
 CREATE INDEX idx_projects_tenant ON projects(tenant_id);
 CREATE INDEX idx_action_recommendations_project ON action_recommendations(project_id, status);
 CREATE INDEX idx_localized_knowledge_facts_project ON localized_knowledge_facts(project_id, market_code, status);
+CREATE INDEX idx_knowledge_fact_embeddings_project ON knowledge_fact_embeddings(project_id, embedding_model, updated_at);
 CREATE INDEX idx_content_drafts_project ON content_drafts(project_id, review_status);
 CREATE INDEX idx_evidence_links_project ON evidence_links(project_id, source_type, target_type);
 CREATE INDEX idx_runtime_saved_views_project ON runtime_saved_views(project_id, view_type, updated_at);

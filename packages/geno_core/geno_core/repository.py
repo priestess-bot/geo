@@ -48,6 +48,8 @@ from geno_core.models import (
     RuntimeHumanReviewInput,
     RuntimeHumanReviewPage,
     RuntimeHumanReviewRecord,
+    RuntimeKnowledgeSearchPage,
+    RuntimeKnowledgeSearchResult,
     RuntimeProjectBrandKit,
     RuntimeProjectBrandKitInput,
     RuntimeProject,
@@ -78,6 +80,12 @@ from geno_core.report import (
     render_methodology_disclosure_lines,
 )
 from geno_core.scoring import AU_VISIBILITY_V1, normalize_score_weights
+from geno_core.knowledge import (
+    KNOWLEDGE_EMBEDDING_MODEL,
+    embed_knowledge_text,
+    knowledge_fact_content_hash,
+    knowledge_fact_text,
+)
 
 
 class DbCursor(Protocol):
@@ -130,6 +138,10 @@ def _uuid(value: str | None) -> object | None:
         return UUID(str(value))
     except (TypeError, ValueError):
         return str(value)
+
+
+def _vector_literal(values: tuple[float, ...] | list[float]) -> str:
+    return "[" + ",".join(str(round(float(value), 6)) for value in values) + "]"
 
 
 def _datetime(value: datetime | None) -> datetime | None:
@@ -966,6 +978,15 @@ LOCALIZED_KNOWLEDGE_FACT_COLUMNS = (
     "status",
     "valid_from",
     "valid_until",
+)
+KNOWLEDGE_FACT_EMBEDDING_COLUMNS = (
+    "id",
+    "project_id",
+    "knowledge_fact_id",
+    "embedding_model",
+    "content_hash",
+    "created_at",
+    "updated_at",
 )
 CONTENT_DRAFT_COLUMNS = (
     "id",
@@ -3245,6 +3266,103 @@ class PostgresEvidenceRepository:
             records=records,
         )
 
+    def search_runtime_knowledge_facts(
+        self,
+        *,
+        project_id: str,
+        query: str,
+        market_code: str = "AU",
+        city: str | None = None,
+        embedding_model: str = KNOWLEDGE_EMBEDDING_MODEL,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> RuntimeKnowledgeSearchPage:
+        project_id = project_id.strip()
+        query = query.strip()
+        market_code = market_code.strip() or "AU"
+        embedding_model = embedding_model.strip() or KNOWLEDGE_EMBEDDING_MODEL
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not query:
+            raise ValueError("query is required")
+        limit = max(1, min(limit, 50))
+        offset = max(0, offset)
+        query_vector = _vector_literal(embed_knowledge_text(query))
+        filters = [
+            "kf.project_id = %s",
+            "kf.status = %s",
+            "kfe.embedding_model = %s",
+            "(kf.market_code = %s OR kf.market_code = %s)",
+        ]
+        params: list[object] = [_uuid(project_id), "active", embedding_model, market_code, "GLOBAL"]
+        if city:
+            filters.append("(kf.city IS NULL OR kf.city = %s)")
+            params.append(city)
+        where_clause = f"WHERE {' AND '.join(filters)}"
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT count(*)
+                FROM localized_knowledge_facts kf
+                JOIN knowledge_fact_embeddings kfe ON kfe.knowledge_fact_id = kf.id
+                {where_clause}
+                """,
+                tuple(params),
+            )
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(f"kf.{column}" for column in LOCALIZED_KNOWLEDGE_FACT_COLUMNS)},
+                       kfe.embedding_model AS embedding_model,
+                       (1 - (kfe.embedding <=> %s::vector)) AS vector_score,
+                       CASE WHEN kf.market_code = %s THEN false ELSE true END AS fallback_used
+                FROM localized_knowledge_facts kf
+                JOIN knowledge_fact_embeddings kfe ON kfe.knowledge_fact_id = kf.id
+                {where_clause}
+                ORDER BY
+                  CASE WHEN kf.market_code = %s THEN 0 ELSE 1 END,
+                  kfe.embedding <=> %s::vector,
+                  kf.confidence DESC,
+                  kf.id ASC
+                LIMIT %s OFFSET %s
+                """,
+                (query_vector, market_code, *params, market_code, query_vector, limit, offset),
+            )
+            search_columns = (*LOCALIZED_KNOWLEDGE_FACT_COLUMNS, "embedding_model", "vector_score", "fallback_used")
+            rows = _rows_dict(cursor.fetchall(), search_columns)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE project_id = %s AND target_type = %s AND target_id = %s
+                ORDER BY created_at DESC
+                LIMIT 5
+                """,
+                (_uuid(project_id), "knowledge_fact_embedding_index", project_id),
+            )
+            audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        records = tuple(
+            RuntimeKnowledgeSearchResult(
+                fact={column: row[column] for column in LOCALIZED_KNOWLEDGE_FACT_COLUMNS},
+                score=round(float(row.get("vector_score") or 0.0), 6),
+                fallback_used=bool(row.get("fallback_used")),
+                embedding_model=str(row.get("embedding_model") or embedding_model),
+            )
+            for row in rows
+        )
+        return RuntimeKnowledgeSearchPage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            query=query,
+            market_code=market_code,
+            city=city,
+            embedding_model=embedding_model,
+            records=records,
+            audit_events=audit_events,
+        )
+
     def _load_runtime_content_engine(
         self,
         *,
@@ -4566,6 +4684,11 @@ class PostgresEvidenceRepository:
                         _datetime(draft.created_at),
                     ),
                 )
+            embedding_audit = self._index_knowledge_fact_embeddings(
+                cursor=cursor,
+                facts=facts,
+                actor_id=audit_event.actor_id,
+            )
             for connector in connectors:
                 cursor.execute(
                     """
@@ -4605,8 +4728,65 @@ class PostgresEvidenceRepository:
                         record.notes,
                     ),
                 )
-            self.save_audit_events((audit_event,), cursor=cursor)
+            audit_events = (embedding_audit, audit_event) if embedding_audit else (audit_event,)
+            self.save_audit_events(audit_events, cursor=cursor)
         self.connection.commit()
+
+    def _index_knowledge_fact_embeddings(
+        self,
+        *,
+        cursor: DbCursor,
+        facts: tuple[LocalizedKnowledgeFact, ...],
+        actor_id: str = "geno-core.knowledge",
+        embedding_model: str = KNOWLEDGE_EMBEDDING_MODEL,
+    ) -> AuditEvent | None:
+        if not facts:
+            return None
+        indexed_ids: list[str] = []
+        project_id = facts[0].project_id
+        for fact in facts:
+            fact_text = knowledge_fact_text(fact)
+            embedding = embed_knowledge_text(fact_text)
+            embedding_id = _stable_id("knowledge-fact-embedding", fact.id, embedding_model)
+            cursor.execute(
+                """
+                INSERT INTO knowledge_fact_embeddings (
+                  id, project_id, knowledge_fact_id, embedding_model, embedding, content_hash
+                ) VALUES (%s, %s, %s, %s, %s::vector, %s)
+                ON CONFLICT (knowledge_fact_id, embedding_model) DO UPDATE SET
+                  embedding = EXCLUDED.embedding,
+                  content_hash = EXCLUDED.content_hash,
+                  updated_at = now()
+                """,
+                (
+                    _uuid(embedding_id),
+                    _uuid(fact.project_id),
+                    _uuid(fact.id),
+                    embedding_model,
+                    _vector_literal(embedding),
+                    knowledge_fact_content_hash(fact),
+                ),
+            )
+            indexed_ids.append(embedding_id)
+        return build_audit_event(
+            event_type="knowledge_fact_embeddings_indexed",
+            project_id=project_id,
+            actor_type="system",
+            actor_id=actor_id,
+            target_type="knowledge_fact_embedding_index",
+            target_id=project_id,
+            before=None,
+            after={
+                "embedding_model": embedding_model,
+                "knowledge_fact_count": len(facts),
+                "knowledge_fact_ids": [fact.id for fact in facts],
+                "embedding_ids": indexed_ids,
+            },
+            input_refs={"knowledge_fact_ids": [fact.id for fact in facts]},
+            output_refs={"knowledge_fact_embedding_ids": indexed_ids},
+            method_version="knowledge_fact_embedding_v1",
+            reason="index localized knowledge facts into pgvector for runtime retrieval",
+        )
 
     def save_traceability_bundle(self, bundle: TraceabilityBundle) -> None:
         with self.connection.cursor() as cursor:

@@ -494,6 +494,38 @@ class KnowledgeSearchResult:
 
 
 @dataclass(frozen=True)
+class KnowledgeFactEmbedding:
+    id: str
+    project_id: str
+    knowledge_fact_id: str
+    embedding_model: str
+    embedding: tuple[float, ...]
+    content_hash: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class RuntimeKnowledgeSearchResult:
+    fact: dict[str, Any]
+    score: float
+    fallback_used: bool
+    embedding_model: str
+
+
+@dataclass(frozen=True)
+class RuntimeKnowledgeSearchPage:
+    total_count: int
+    limit: int
+    offset: int
+    query: str
+    market_code: str
+    city: str | None
+    embedding_model: str
+    records: tuple[RuntimeKnowledgeSearchResult, ...]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class ContentDraft:
     id: str
     project_id: str

@@ -86,6 +86,15 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".humanReviewGrid", css_source)
         self.assertIn(".humanReviewForm", css_source)
 
+    def test_runtime_console_surfaces_pgvector_knowledge_search(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("pgvector Knowledge Search", page_source)
+        self.assertIn("/v1/knowledge-facts/runtime/search", page_source)
+        self.assertIn("RuntimeKnowledgeSearch", page_source)
+        self.assertIn("knowledge_fact_embeddings_indexed", page_source)
+        self.assertIn("fixture-knowledge-embedding-v1", page_source)
+
 
 if __name__ == "__main__":
     unittest.main()

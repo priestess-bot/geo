@@ -460,6 +460,7 @@ type RuntimeData = {
   brandKit: RuntimeProjectBrandKit | null;
   scoreWeights: RuntimeScoreWeightConfig | null;
   humanReviews: PageResponse<RuntimeHumanReview>;
+  knowledgeSearch: RuntimeKnowledgeSearch | null;
   prompts: PageResponse<RuntimePrompt>;
   evidence: PageResponse<EvidenceRun>;
   collectionRuns: PageResponse<CollectionRun>;
@@ -518,6 +519,34 @@ type RuntimeHumanReview = {
     payload?: Record<string, unknown>;
     created_at?: string;
   };
+  audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
+};
+
+type RuntimeKnowledgeSearch = {
+  total_count: number;
+  limit: number;
+  offset: number;
+  query: string;
+  market_code: string;
+  city?: string | null;
+  embedding_model: string;
+  records: Array<{
+    fact: {
+      id: string;
+      market_code?: string;
+      fact_type?: string;
+      subject?: string;
+      predicate?: string;
+      object_value?: string;
+      city?: string | null;
+      evidence_source_id?: string | null;
+      confidence?: number;
+      status?: string;
+    };
+    score: number;
+    fallback_used: boolean;
+    embedding_model: string;
+  }>;
   audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
 };
 
@@ -601,6 +630,7 @@ const endpoints = {
   brandKit: "/v1/project-brand-kits/runtime",
   scoreWeights: "/v1/score-weight-configs/runtime",
   humanReviews: "/v1/human-reviews/runtime",
+  knowledgeSearch: "/v1/knowledge-facts/runtime/search",
   scores: "/v1/visibility-scores/runtime",
   graphs: "/v1/citation-graphs/runtime",
   reports: "/v1/reports/runtime",
@@ -1025,6 +1055,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     humanReviews: runtimePath(endpoints.humanReviews, {
       limit: 5
     }),
+    knowledgeSearch: endpoints.knowledgeSearch,
     scores: runtimePath(endpoints.scores, { limit: 1 }),
     graphs: runtimePath(endpoints.graphs, { limit: 1 }),
     reports: runtimePath(endpoints.reports, { limit: 5 }),
@@ -1113,6 +1144,15 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     ...selectedProjectParams,
     limit: 5
   });
+  paths.knowledgeSearch = selectedProjectId
+    ? runtimePath(endpoints.knowledgeSearch, {
+        project_id: selectedProjectId,
+        query: "Australia shipping returns local reviews",
+        market_code: "AU",
+        city: filters.city,
+        limit: 5
+      })
+    : endpoints.knowledgeSearch;
   paths.scores = runtimePath(endpoints.scores, {
     ...selectedProjectParams,
     limit: 1
@@ -1145,6 +1185,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     brandKit,
     scoreWeights,
     humanReviews,
+    knowledgeSearch,
     scores,
     graphs,
     reports,
@@ -1179,6 +1220,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       paths.humanReviews,
       emptyPage<RuntimeHumanReview>()
     ),
+    selectedProjectId
+      ? fetchRuntimeEndpoint<RuntimeKnowledgeSearch | null>(baseUrl, paths.knowledgeSearch, null, {
+          optionalNotFound: true
+        })
+      : Promise.resolve({ payload: null, error: null }),
     fetchRuntimeEndpoint<PageResponse<ScoreSnapshot>>(baseUrl, paths.scores, emptyPage<ScoreSnapshot>()),
     fetchRuntimeEndpoint<PageResponse<CitationGraph>>(baseUrl, paths.graphs, emptyPage<CitationGraph>()),
     fetchRuntimeEndpoint<PageResponse<ReportExport>>(baseUrl, paths.reports, emptyPage<ReportExport>()),
@@ -1197,6 +1243,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     brandKit,
     scoreWeights,
     humanReviews,
+    knowledgeSearch,
     scores,
     graphs,
     reports,
@@ -1212,6 +1259,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       brandKit: brandKit.payload,
       scoreWeights: scoreWeights.payload,
       humanReviews: humanReviews.payload,
+      knowledgeSearch: knowledgeSearch.payload,
       prompts: prompts.payload,
       evidence: evidence.payload,
       collectionRuns: collectionRuns.payload,
@@ -2610,6 +2658,49 @@ export default async function Home({
                     </li>
                   ))}
                 </ul>
+              </section>
+
+              <section className="contentSection">
+                <h3>pgvector Knowledge Search</h3>
+                {data.knowledgeSearch ? (
+                  <div className="knowledgeSearch">
+                    <dl className="facts contributionFacts">
+                      <Fact label="Query" value={data.knowledgeSearch.query} />
+                      <Fact label="Model" value={data.knowledgeSearch.embedding_model} />
+                      <Fact label="Market" value={data.knowledgeSearch.market_code} />
+                      <Fact label="City" value={data.knowledgeSearch.city || "global"} />
+                      <Fact label="Matches" value={data.knowledgeSearch.total_count} />
+                      <Fact label="Search API" value={paths.knowledgeSearch} />
+                      <Fact
+                        label="Index audit"
+                        value={data.knowledgeSearch.audit_events[0]?.event_type || "no index audit"}
+                      />
+                    </dl>
+                    <ul className="plainList">
+                      {data.knowledgeSearch.records.map((item) => (
+                        <li key={item.fact.id}>
+                          <strong>
+                            {item.fact.market_code || "market"} · {item.fact.fact_type || "fact"} · score{" "}
+                            {num(item.score)}
+                          </strong>
+                          <span>
+                            {item.fact.subject || "subject"} {item.fact.predicate || "predicate"}{" "}
+                            {item.fact.object_value || "value"}
+                          </span>
+                          <small>
+                            fallback {item.fallback_used ? "yes" : "no"} · confidence {num(item.fact.confidence)} ·
+                            model {item.embedding_model}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <small>
+                    No pgvector knowledge search results yet. Expected audit: knowledge_fact_embeddings_indexed · model
+                    fixture-knowledge-embedding-v1.
+                  </small>
+                )}
               </section>
 
               <section className="contentSection">

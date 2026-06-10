@@ -937,6 +937,20 @@ AU 事实不足时，允许回退到 global 事实
 内容和建议需要提示本地化缺口
 ```
 
+当前工程落地路径：
+
+```text
+LocalizedKnowledgeFact
+  -> knowledge_fact_text()
+  -> fixture-knowledge-embedding-v1 8 维 deterministic embedding
+  -> knowledge_fact_embeddings.embedding vector(8)
+  -> /v1/knowledge-facts/runtime/search
+  -> Runtime Console pgvector Knowledge Search
+  -> knowledge_fact_embeddings_indexed AuditEvent
+```
+
+这一路径先使用 PostgreSQL + pgvector 跑通 runtime 检索、AU 优先排序、global fallback 标记和索引审计。真实 embedding provider、embedding 维度升级、Qdrant/Milvus 适配器、内容生成时的在线 RAG 策略，放在 P1/P2 产品化切片中替换，不改变 `VectorStore`/runtime search 的业务语义。
+
 ### Step 13：报告导出和代理商工作流
 
 报告导出是 P0/P1 的关键能力，通过 `ReportExporter` 接口实现。
@@ -1377,6 +1391,27 @@ status
 valid_from
 valid_until
 ```
+
+### 8.12.1 KnowledgeFactEmbedding
+
+```text
+id
+project_id
+knowledge_fact_id
+embedding_model
+embedding
+content_hash
+created_at
+updated_at
+```
+
+实现约束：
+
+- `knowledge_fact_id + embedding_model` 幂等 upsert，避免同一 fact 重复索引。
+- `embedding_model = fixture-knowledge-embedding-v1` 是当前本地可复盘实现；后续可新增真实 provider 版本，不覆盖旧模型。
+- `content_hash` 来自规范化 fact 文本，用于判断 fact 内容与向量索引是否一致。
+- 每次内容引擎保存 facts 后追加 `knowledge_fact_embeddings_indexed` 审计事件，记录输入 fact id、输出 embedding id、方法版本和索引原因。
+- runtime search 使用 pgvector `<=>` 排序，并保留 AU/global fallback 标记，便于报告和内容建议解释“为什么用了这条事实”。
 
 ### 8.13 VisibilityScoreSnapshot（聚合分数，新增）
 

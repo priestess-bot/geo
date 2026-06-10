@@ -21,6 +21,7 @@ DROP TABLE IF EXISTS action_recommendations;
 DROP TABLE IF EXISTS manual_distribution_records;
 DROP TABLE IF EXISTS integration_connectors;
 DROP TABLE IF EXISTS content_drafts;
+DROP TABLE IF EXISTS knowledge_fact_embeddings;
 DROP TABLE IF EXISTS localized_knowledge_facts;
 DROP TABLE IF EXISTS traceability_bundles;
 DROP TABLE IF EXISTS runtime_saved_views;

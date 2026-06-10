@@ -10,6 +10,8 @@ from geno_core.models import (
     RuntimeCollectionRunPage,
     RuntimeHumanReviewPage,
     RuntimeHumanReviewRecord,
+    RuntimeKnowledgeSearchPage,
+    RuntimeKnowledgeSearchResult,
     RuntimeProjectBrandKit,
     RuntimePromptImportResult,
     RuntimeProjectPage,
@@ -708,6 +710,70 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_knowledge_fact_search_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get(
+            "/v1/knowledge-facts/runtime/search"
+            "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c&query=Australia%20shipping"
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_knowledge_fact_search_endpoint_passes_query(self) -> None:
+        class FakeRepository:
+            def search_runtime_knowledge_facts(self, **kwargs: object) -> RuntimeKnowledgeSearchPage:
+                self.kwargs = kwargs
+                return RuntimeKnowledgeSearchPage(
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    query=str(kwargs["query"]),
+                    market_code=str(kwargs["market_code"]),
+                    city=str(kwargs["city"]) if kwargs["city"] else None,
+                    embedding_model=str(kwargs["embedding_model"]),
+                    records=(
+                        RuntimeKnowledgeSearchResult(
+                            fact={
+                                "id": "06975d61-853b-5a25-ae0e-b62bbfe82c15",
+                                "market_code": "AU",
+                                "fact_type": "australian_shipping_policy",
+                                "subject": "ExampleBrand",
+                                "predicate": "supports_market",
+                                "object_value": "AU shipping",
+                            },
+                            score=0.91,
+                            fallback_used=False,
+                            embedding_model=str(kwargs["embedding_model"]),
+                        ),
+                    ),
+                    audit_events=(
+                        {
+                            "event_type": "knowledge_fact_embeddings_indexed",
+                            "target_type": "knowledge_fact_embedding_index",
+                            "method_version": "knowledge_fact_embedding_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/knowledge-facts/runtime/search"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
+                "&query=Australia%20shipping&market_code=AU&city=Sydney&limit=5&offset=1"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_count"], 1)
+        self.assertEqual(payload["records"][0]["fact"]["fact_type"], "australian_shipping_policy")
+        self.assertEqual(payload["audit_events"][0]["event_type"], "knowledge_fact_embeddings_indexed")
+        self.assertEqual(fake_repository.kwargs["query"], "Australia shipping")
+        self.assertEqual(fake_repository.kwargs["city"], "Sydney")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+        self.assertEqual(fake_repository.kwargs["offset"], 1)
+
     def test_runtime_traceability_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/traceability/runtime")
         self.assertEqual(response.status_code, 503)
@@ -815,6 +881,9 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("LocalizedKnowledgeFact", payload["m7_content_integrations"])
         self.assertIn("ContentDraft", payload["m7_content_integrations"])
         self.assertIn("ManualDistributionRecord", payload["m7_content_integrations"])
+        self.assertIn("KnowledgeFactEmbedding", payload["m7_content_integrations"])
+        self.assertIn("RuntimeKnowledgeSearchResult", payload["m7_content_integrations"])
+        self.assertIn("RuntimeKnowledgeSearchPage", payload["m7_content_integrations"])
         self.assertIn("EntityAlias", payload["m1_bootstrap"])
         self.assertIn("EntityAliasInput", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAlias", payload["m1_bootstrap"])
@@ -871,6 +940,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeReportExport", payload["persistence"])
         self.assertIn("RuntimeActionPlan", payload["persistence"])
         self.assertIn("RuntimeContentEngine", payload["persistence"])
+        self.assertIn("RuntimeKnowledgeSearchResult", payload["persistence"])
+        self.assertIn("RuntimeKnowledgeSearchPage", payload["persistence"])
         self.assertIn("RuntimeTraceabilityDetail", payload["persistence"])
         self.assertIn("build_object_store_from_env", payload["persistence"])
         self.assertIn("/v1/projects/runtime", payload["persistence"])
@@ -894,6 +965,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/reports/runtime/{report_export_id}/artifact", payload["persistence"])
         self.assertIn("/v1/action-plans/runtime", payload["persistence"])
         self.assertIn("/v1/content-engines/runtime", payload["persistence"])
+        self.assertIn("/v1/knowledge-facts/runtime/search", payload["persistence"])
         self.assertIn("/v1/traceability/runtime", payload["persistence"])
 
 

@@ -53,9 +53,11 @@ The worker then stores `VisibilityScoreSnapshot`, `ScoreContribution`,
 `ScoreSnapshotRun`, and the score audit event. It also builds and stores the M4 citation graph, source graph evidence,
 source gaps, competitor benchmarks, the M5 `ReportExport` snapshot, and the M6
 `ActionRecommendation`, `RetestSchedule`, `RetestComparison`, action plan audit event, and retest
-comparison audit event. It then persists the M7 `LocalizedKnowledgeFact`, `ContentDraft`,
-`IntegrationConnector`, `ManualDistributionRecord`, and content engine audit event. Failed records
-remain auditable through `CollectionFailureRecord`.
+comparison audit event. It then persists the M7 `LocalizedKnowledgeFact`, upserts
+`KnowledgeFactEmbedding` rows into pgvector through `knowledge_fact_embeddings`, persists
+`ContentDraft`, `IntegrationConnector`, `ManualDistributionRecord`, and writes both the
+`knowledge_fact_embeddings_indexed` and content engine audit events. Failed records remain auditable
+through `CollectionFailureRecord`.
 
 Human review is intentionally not created by the worker. Review decisions are appended later through
 `POST /v1/human-reviews/runtime` or the Runtime Console Human Review Trail, which writes
