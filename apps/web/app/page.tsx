@@ -75,7 +75,12 @@ type EvidenceRun = {
   citations: Array<{ domain?: string; url?: string; source_type?: string; position?: number }>;
   evidence_assets: Array<{ asset_type?: string; url?: string; content_hash?: string | null }>;
   collector_logs: Array<{ event_type?: string; collector_backend_id?: string; payload?: Record<string, unknown> }>;
-  collection_cost?: { total_cost?: number; llm_provider?: string; llm_tokens?: number } | null;
+  collection_cost?: {
+    total_cost?: number;
+    llm_provider?: string;
+    llm_tokens?: number;
+    duration_ms?: number;
+  } | null;
   audit_events: Array<{ event_type?: string; method_version?: string | null; target_type?: string }>;
 };
 
@@ -94,6 +99,8 @@ type CollectionRun = {
     answer_present_rate?: number;
     total_cost?: number;
     average_cost_per_run?: number;
+    total_duration_ms?: number;
+    average_duration_ms?: number;
     collector_backend_ids?: string[];
     platform_distribution?: Record<string, number>;
     city_distribution?: Record<string, number>;
@@ -1774,6 +1781,7 @@ export default async function Home({
                 <Fact label="Answer rate" value={pct(latestCollectionRun.collection_run.answer_present_rate)} />
                 <Fact label="Total cost" value={num(latestCollectionRun.collection_run.total_cost)} />
                 <Fact label="Avg cost/run" value={num(latestCollectionRun.collection_run.average_cost_per_run)} />
+                <Fact label="Avg duration" value={`${latestCollectionRun.collection_run.average_duration_ms || 0} ms`} />
                 <Fact label="Mode" value={latestCollectionRun.collection_run.mode || "unknown"} />
                 <Fact
                   label="Platforms"
@@ -1788,7 +1796,8 @@ export default async function Home({
               <small className="auditLine">
                 Collection run {shortId(latestCollectionRun.collection_run.id)} ·{" "}
                 {dateText(latestCollectionRun.collection_run.started_at)} to{" "}
-                {dateText(latestCollectionRun.collection_run.completed_at)} · failures{" "}
+                {dateText(latestCollectionRun.collection_run.completed_at)} · total duration{" "}
+                {latestCollectionRun.collection_run.total_duration_ms || 0} ms · failures{" "}
                 {formatCounts(latestCollectionRun.collection_run.failure_summary || {})}
               </small>
             </div>
@@ -2393,6 +2402,7 @@ export default async function Home({
                       <Fact label="Collector" value={run.answer_run.collector_backend_id || "unknown"} />
                       <Fact label="Version" value={run.answer_run.collector_version || "unknown"} />
                       <Fact label="Cost" value={num(run.collection_cost?.total_cost)} />
+                      <Fact label="Duration" value={`${run.collection_cost?.duration_ms || 0} ms`} />
                       <Fact label="Citations" value={run.citations.length} />
                       <Fact label="Assets" value={run.evidence_assets.length} />
                       <Fact label="Raw hash" value={run.raw_answer?.raw_payload_hash || "missing"} />

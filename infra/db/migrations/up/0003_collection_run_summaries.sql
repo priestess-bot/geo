@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS collection_run_summaries (
   answer_present_rate numeric(8,4) NOT NULL DEFAULT 0,
   total_cost numeric(12,6) NOT NULL DEFAULT 0,
   average_cost_per_run numeric(12,6) NOT NULL DEFAULT 0,
+  total_duration_ms integer NOT NULL DEFAULT 0,
+  average_duration_ms integer NOT NULL DEFAULT 0,
   collector_backend_ids text[] NOT NULL DEFAULT '{}',
   platform_distribution jsonb NOT NULL DEFAULT '{}'::jsonb,
   city_distribution jsonb NOT NULL DEFAULT '{}'::jsonb,

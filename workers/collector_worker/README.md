@@ -27,10 +27,11 @@ python3 workers/collector_worker/run_collection_slice.py --mode fixture --persis
 `--persist` first writes the AU `ProjectBootstrap` metadata (`Tenant`, `Project`,
 `BrandEntity`, `CompetitorEntity`, and 100 `PromptQuestion` rows), then writes successful
 `RawEvidenceRecord` rows, failed `CollectionFailureRecord` rows, and a batch-level
-`CollectionRunSummary` through `PostgresEvidenceRepository`. The summary records planned runs,
-attempted runs, success/failure counts, success rate, trigger rate, answer-present rate, total cost,
-average cost per run, platform/city/access-method distributions, failure summary, and linked
-`answer_run_ids`, then writes a `collection_run_summarized` audit event. If `DATABASE_URL` is missing, the worker exits with code `2` and
+`CollectionRunSummary` through `PostgresEvidenceRepository`. Each `CollectionCost` records
+`duration_ms` for the collector call. The summary records planned runs, attempted runs,
+success/failure counts, success rate, trigger rate, answer-present rate, total cost, average cost
+per run, total duration, average duration, platform/city/access-method distributions, failure
+summary, and linked `answer_run_ids`, then writes a `collection_run_summarized` audit event. If `DATABASE_URL` is missing, the worker exits with code `2` and
 prints a persistence error instead of silently dropping evidence.
 
 Persisted fixture slice with analysis/scoring:

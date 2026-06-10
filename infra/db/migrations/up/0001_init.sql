@@ -363,6 +363,7 @@ CREATE TABLE collection_costs (
   proxy_or_vendor_cost numeric(12,6) NOT NULL DEFAULT 0,
   compute_cost numeric(12,6) NOT NULL DEFAULT 0,
   total_cost numeric(12,6) NOT NULL DEFAULT 0,
+  duration_ms integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 

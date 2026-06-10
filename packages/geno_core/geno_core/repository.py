@@ -143,7 +143,14 @@ def _rows_dict(rows: Any, columns: tuple[str, ...]) -> tuple[dict[str, Any], ...
 
 
 def _runtime_collection_run_row(row: dict[str, Any]) -> dict[str, Any]:
-    int_fields = ("planned_runs", "attempted_runs", "success_count", "failure_count")
+    int_fields = (
+        "planned_runs",
+        "attempted_runs",
+        "success_count",
+        "failure_count",
+        "total_duration_ms",
+        "average_duration_ms",
+    )
     float_fields = (
         "success_rate",
         "trigger_rate",
@@ -752,6 +759,7 @@ COLLECTION_COST_COLUMNS = (
     "proxy_or_vendor_cost",
     "compute_cost",
     "total_cost",
+    "duration_ms",
     "created_at",
 )
 COLLECTION_RUN_SUMMARY_COLUMNS = (
@@ -768,6 +776,8 @@ COLLECTION_RUN_SUMMARY_COLUMNS = (
     "answer_present_rate",
     "total_cost",
     "average_cost_per_run",
+    "total_duration_ms",
+    "average_duration_ms",
     "collector_backend_ids",
     "platform_distribution",
     "city_distribution",
@@ -3638,8 +3648,8 @@ class PostgresEvidenceRepository:
                     """
                     INSERT INTO collection_costs (
                       id, answer_run_id, project_id, collector_backend_id, llm_provider, llm_tokens,
-                      llm_cost, proxy_or_vendor_cost, compute_cost, total_cost, created_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                      llm_cost, proxy_or_vendor_cost, compute_cost, total_cost, duration_ms, created_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
@@ -3653,6 +3663,7 @@ class PostgresEvidenceRepository:
                         record.collection_cost.proxy_or_vendor_cost,
                         record.collection_cost.compute_cost,
                         record.collection_cost.total_cost,
+                        record.collection_cost.duration_ms,
                         _datetime(record.collection_cost.created_at),
                     ),
                 )
@@ -3716,8 +3727,8 @@ class PostgresEvidenceRepository:
                     """
                     INSERT INTO collection_costs (
                       id, answer_run_id, project_id, collector_backend_id, llm_provider, llm_tokens,
-                      llm_cost, proxy_or_vendor_cost, compute_cost, total_cost, created_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                      llm_cost, proxy_or_vendor_cost, compute_cost, total_cost, duration_ms, created_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
@@ -3731,6 +3742,7 @@ class PostgresEvidenceRepository:
                         record.collection_cost.proxy_or_vendor_cost,
                         record.collection_cost.compute_cost,
                         record.collection_cost.total_cost,
+                        record.collection_cost.duration_ms,
                         _datetime(record.collection_cost.created_at),
                     ),
                 )
@@ -3744,10 +3756,11 @@ class PostgresEvidenceRepository:
                 INSERT INTO collection_run_summaries (
                   id, project_id, run_type, mode, planned_runs, attempted_runs, success_count,
                   failure_count, success_rate, trigger_rate, answer_present_rate, total_cost,
-                  average_cost_per_run, collector_backend_ids, platform_distribution,
+                  average_cost_per_run, total_duration_ms, average_duration_ms,
+                  collector_backend_ids, platform_distribution,
                   city_distribution, access_method_distribution, failure_summary, answer_run_ids,
                   started_at, completed_at, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO NOTHING
                 """,
                 (
@@ -3764,6 +3777,8 @@ class PostgresEvidenceRepository:
                     summary.answer_present_rate,
                     summary.total_cost,
                     summary.average_cost_per_run,
+                    summary.total_duration_ms,
+                    summary.average_duration_ms,
                     list(summary.collector_backend_ids),
                     _json_payload(summary.platform_distribution),
                     _json_payload(summary.city_distribution),

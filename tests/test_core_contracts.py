@@ -360,6 +360,8 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(summary.answer_present_rate, 0.5)
         self.assertAlmostEqual(summary.total_cost, 0.0026)
         self.assertAlmostEqual(summary.average_cost_per_run, 0.0013)
+        self.assertGreaterEqual(summary.total_duration_ms, 0)
+        self.assertGreaterEqual(summary.average_duration_ms, 0)
         self.assertEqual(summary.platform_distribution, {"chatgpt": 1, "perplexity": 1})
         self.assertEqual(summary.city_distribution, {"Australia": 2})
         self.assertEqual(summary.access_method_distribution, {"official_api": 2})
@@ -369,6 +371,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(audit_event.target_type, "collection_run")
         self.assertEqual(audit_event.target_id, summary.id)
         self.assertEqual(audit_event.method_version, "collection_run_summary_v1")
+        self.assertIsNotNone(audit_event.after_hash)
         self.assertEqual(audit_event.input_refs["answer_run_ids"], list(summary.answer_run_ids))
         self.assertEqual(audit_event.output_refs["collection_run_ids"], [summary.id])
 
@@ -1637,6 +1640,8 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(collection_run_insert[3], "fixture")
         self.assertEqual(collection_run_insert[4], 1)
         self.assertEqual(collection_run_insert[5], 1)
+        self.assertEqual(collection_run_insert[13], summary.total_duration_ms)
+        self.assertEqual(collection_run_insert[14], summary.average_duration_ms)
         audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
         self.assertEqual(audit_insert[1], "collection_run_summarized")
         self.assertEqual(audit_insert[5], "collection_run")
@@ -1728,6 +1733,7 @@ class CoreContractsTest(unittest.TestCase):
                     "proxy_or_vendor_cost": 0.001,
                     "compute_cost": 0.0005,
                     "total_cost": 0.0015,
+                    "duration_ms": 123,
                     "created_at": now,
                 },
                 [
@@ -1773,6 +1779,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(record.evidence_assets[0]["asset_type"], "html_snapshot")
         self.assertEqual(record.collector_logs[0]["event_type"], "collection_completed")
         self.assertEqual(record.collection_cost["total_cost"], 0.0015)
+        self.assertEqual(record.collection_cost["duration_ms"], 123)
         self.assertEqual(record.audit_events[0]["event_type"], "answer_run_collected")
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FROM answer_runs ar LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id", executed_sql)
@@ -1808,6 +1815,8 @@ class CoreContractsTest(unittest.TestCase):
                         "answer_present_rate": 0.75,
                         "total_cost": 0.0076,
                         "average_cost_per_run": 0.0019,
+                        "total_duration_ms": 400,
+                        "average_duration_ms": 100,
                         "collector_backend_ids": ["perplexity.sonar.fixture", "openai.web_search.api"],
                         "platform_distribution": {"perplexity": 3, "chatgpt": 1},
                         "city_distribution": {"Australia": 4},
@@ -1855,6 +1864,9 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(record.collection_run["success_rate"], 0.75)
         self.assertIsInstance(record.collection_run["success_rate"], float)
         self.assertIsInstance(record.collection_run["planned_runs"], int)
+        self.assertEqual(record.collection_run["total_duration_ms"], 400)
+        self.assertEqual(record.collection_run["average_duration_ms"], 100)
+        self.assertIsInstance(record.collection_run["average_duration_ms"], int)
         self.assertEqual(record.collection_run["failure_summary"], {"OPENAI_API_KEY is required": 1})
         self.assertEqual(record.audit_events[0]["event_type"], "collection_run_summarized")
         executed_sql = "\n".join(sql for sql, _ in connection.calls)

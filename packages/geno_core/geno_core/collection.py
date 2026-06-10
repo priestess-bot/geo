@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime
+from time import perf_counter
 from typing import Iterable
 from uuid import uuid5, NAMESPACE_URL
 from urllib.parse import urlparse
@@ -115,6 +116,8 @@ def build_collection_run_summary(
             answer_present_rate=0.0,
             total_cost=0.0,
             average_cost_per_run=0.0,
+            total_duration_ms=0,
+            average_duration_ms=0,
             collector_backend_ids=(),
             platform_distribution={},
             city_distribution={},
@@ -132,6 +135,7 @@ def build_collection_run_summary(
     started_at = min(record.answer_run.collected_at for record in records)
     completed_at = max(record.answer_run.collected_at for record in records)
     total_cost = round(sum(float(record.collection_cost.total_cost) for record in records), 6)
+    total_duration_ms = sum(int(record.collection_cost.duration_ms) for record in records)
     trigger_rate = sum(1 for record in records if record.answer_run.surface_triggered) / attempted_runs
     answer_present_rate = sum(1 for record in records if record.answer_run.answer_present) / attempted_runs
     failure_summary = Counter(
@@ -152,6 +156,8 @@ def build_collection_run_summary(
         answer_present_rate=round(answer_present_rate, 4),
         total_cost=total_cost,
         average_cost_per_run=round(total_cost / attempted_runs, 6),
+        total_duration_ms=total_duration_ms,
+        average_duration_ms=round(total_duration_ms / attempted_runs),
         collector_backend_ids=tuple(sorted({_run_value(record, "collector_backend_id") for record in records})),
         platform_distribution=dict(sorted(Counter(_run_value(record, "platform") for record in records).items())),
         city_distribution=dict(sorted(Counter(_run_value(record, "city") for record in records).items())),
@@ -186,6 +192,8 @@ def build_collection_run_audit_event(summary: CollectionRunSummary) -> "AuditEve
             "answer_present_rate": summary.answer_present_rate,
             "total_cost": summary.total_cost,
             "average_cost_per_run": summary.average_cost_per_run,
+            "total_duration_ms": summary.total_duration_ms,
+            "average_duration_ms": summary.average_duration_ms,
             "failure_summary": summary.failure_summary,
         },
         input_refs={"answer_run_ids": list(summary.answer_run_ids)},
@@ -319,6 +327,7 @@ def build_manual_backfill_record(backfill: ManualBackfillInput) -> RawEvidenceRe
         proxy_or_vendor_cost=0.0,
         compute_cost=0.0,
         total_cost=0.0,
+        duration_ms=0,
         created_at=collected_at,
     )
     audit_events = (
@@ -385,7 +394,7 @@ def collect_prompt_once(
         language=prompt.language,
         device=device,
     )
-    collected_at = datetime.now(UTC)
+    started_counter = perf_counter()
     result = collector.collect(
         prompt=prompt.text,
         market=market_profile,
@@ -393,6 +402,8 @@ def collect_prompt_once(
         language=prompt.language,
         device=device,
     )
+    duration_ms = max(0, round((perf_counter() - started_counter) * 1000))
+    collected_at = datetime.now(UTC)
     answer_run_id = _stable_id(
         "answer-run",
         project_id,
@@ -478,6 +489,7 @@ def collect_prompt_once(
                 "citation_count": len(citations),
                 "asset_count": len(evidence_assets),
                 "geo_params": geo_params,
+                "duration_ms": duration_ms,
             },
             created_at=collected_at,
         ),
@@ -494,6 +506,7 @@ def collect_prompt_once(
         proxy_or_vendor_cost=vendor_cost,
         compute_cost=0.0005,
         total_cost=round(vendor_cost + 0.0005, 6),
+        duration_ms=duration_ms,
         created_at=collected_at,
     )
     audit_events = (
@@ -517,6 +530,7 @@ def collect_prompt_once(
                 "surface_triggered": result.surface_triggered,
                 "raw_payload_hash": raw_answer.raw_payload_hash,
                 "geo_params": geo_params,
+                "duration_ms": duration_ms,
             },
             input_refs={"prompt_question_ids": [prompt.id]},
             output_refs={
@@ -551,6 +565,7 @@ def collect_prompt_with_failure_record(
     sample_size: int,
     device: str = DEFAULT_DEVICE,
 ) -> RawEvidenceRecord | CollectionFailureRecord:
+    started_counter = perf_counter()
     try:
         return collect_prompt_once(
             project_id=project_id,
@@ -563,6 +578,7 @@ def collect_prompt_with_failure_record(
             device=device,
         )
     except Exception as exc:  # noqa: BLE001 - failures must be converted into audit records.
+        duration_ms = max(0, round((perf_counter() - started_counter) * 1000))
         capabilities = collector.capabilities()
         collected_at = datetime.now(UTC)
         answer_run_id = _stable_id(
@@ -604,7 +620,7 @@ def collect_prompt_with_failure_record(
                 answer_run_id=answer_run_id,
                 collector_backend_id=collector.id(),
                 event_type="collection_failed",
-                payload={"error_type": error_type, "error_message": error_message},
+                payload={"error_type": error_type, "error_message": error_message, "duration_ms": duration_ms},
                 created_at=collected_at,
             ),
         )
@@ -619,6 +635,7 @@ def collect_prompt_with_failure_record(
             proxy_or_vendor_cost=0.0,
             compute_cost=0.0001,
             total_cost=0.0001,
+            duration_ms=duration_ms,
             created_at=collected_at,
         )
         audit_events = (
@@ -640,6 +657,7 @@ def collect_prompt_with_failure_record(
                     "sample_size": sample_size,
                     "error_type": error_type,
                     "error_message": error_message,
+                    "duration_ms": duration_ms,
                 },
                 input_refs={"prompt_question_ids": [prompt.id]},
                 output_refs={"answer_run_ids": [answer_run_id]},

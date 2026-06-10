@@ -238,6 +238,7 @@ class CollectionCost:
     proxy_or_vendor_cost: float
     compute_cost: float
     total_cost: float
+    duration_ms: int
     created_at: datetime
 
 
@@ -314,6 +315,8 @@ class CollectionRunSummary:
     answer_present_rate: float
     total_cost: float
     average_cost_per_run: float
+    total_duration_ms: int
+    average_duration_ms: int
     collector_backend_ids: tuple[str, ...]
     platform_distribution: dict[str, int]
     city_distribution: dict[str, int]

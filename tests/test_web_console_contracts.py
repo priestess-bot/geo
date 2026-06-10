@@ -46,6 +46,11 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Answer rate", page_source)
         self.assertIn("Total cost", page_source)
         self.assertIn("Avg cost/run", page_source)
+        self.assertIn("Avg duration", page_source)
+        self.assertIn("Duration", page_source)
+        self.assertIn("duration_ms", page_source)
+        self.assertIn("total_duration_ms", page_source)
+        self.assertIn("average_duration_ms", page_source)
         self.assertIn("failure_summary", page_source)
 
 
