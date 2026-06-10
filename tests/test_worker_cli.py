@@ -6,9 +6,15 @@ import runpy
 import subprocess
 import sys
 import unittest
+from dataclasses import asdict
 from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
 from unittest.mock import patch
+
+from geno_core.bootstrap import build_au_project_bootstrap
+from geno_core.collection import collect_prompt_once
+from geno_core.collectors import JsonHttpResponse, PerplexitySonarCollector
+from geno_core.object_store import StoredObject
 
 
 class FakeWorkerRepository:
@@ -23,6 +29,7 @@ class FakeWorkerRepository:
 
     def save_raw_evidence_records(self, records: tuple[object, ...]) -> None:
         self.saved_raw_evidence_records += len(records)
+        self.raw_evidence_records = records
 
     def save_collection_failure_records(self, records: tuple[object, ...]) -> None:
         self.saved_collection_failures = len(records)
@@ -53,6 +60,7 @@ class FakeWorkerRepository:
 
     def save_audit_events(self, events: tuple[object, ...]) -> None:
         self.saved_audit_events = len(events)
+        self.audit_events = events
 
     def save_action_plan(
         self,
@@ -205,6 +213,72 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(repository.saved_fidelity_check["status"], "sampled")
         self.assertEqual(repository.saved_fidelity_check["official_api_records"], 2)
         self.assertEqual(repository.saved_fidelity_check["browser_records"], 1)
+
+    def test_persist_records_archives_api_snapshot_assets_before_saving_evidence(self) -> None:
+        class FakeApiHttpClient:
+            def post_json(self, **kwargs: object) -> JsonHttpResponse:
+                return JsonHttpResponse(
+                    status_code=200,
+                    payload={
+                        "choices": [{"message": {"content": "Perplexity answer"}}],
+                        "citations": ["https://source.example/a"],
+                    },
+                )
+
+        class FakeObjectStore:
+            def put_object(self, *, key: str, content: str | bytes, content_type: str) -> StoredObject:
+                payload = content.encode("utf-8") if isinstance(content, str) else content
+                return StoredObject(
+                    uri=f"s3://geno-reports/{key}",
+                    bucket="geno-reports",
+                    key=key,
+                    content_type=content_type,
+                    content_hash=__import__("hashlib").sha256(payload).hexdigest(),
+                    etag='"snapshot-etag"',
+                )
+
+        from workers.collector_worker import run_collection_slice as worker_module
+
+        bootstrap = build_au_project_bootstrap()
+        record = collect_prompt_once(
+            project_id=bootstrap.project.id,
+            prompt=bootstrap.prompt_questions[0],
+            market_profile=bootstrap.market_profile,
+            collector=PerplexitySonarCollector(api_key="test-key", http_client=FakeApiHttpClient()),
+            city="Sydney",
+            sample_index=1,
+            sample_size=3,
+        )
+        repository = FakeWorkerRepository()
+        env = {"OBJECT_STORE_ENDPOINT": "http://minio:9000"}
+        with patch.dict(os.environ, env, clear=False), patch(
+            "workers.collector_worker.run_collection_slice.build_repository_from_env",
+            return_value=repository,
+        ), patch(
+            "workers.collector_worker.run_collection_slice.build_object_store_from_env",
+            return_value=FakeObjectStore(),
+        ):
+            payload = worker_module._persist_records(
+                bootstrap=bootstrap,
+                mode="api",
+                run_type="p0a_slice",
+                planned_runs=1,
+                records=(record,),
+                successes=(record,),
+                failures=(),
+                persist_analysis=False,
+                score_formula_version="au_visibility_v1",
+                judge_gateway="fixture",
+                judge_model="local-fixture-judge",
+            )
+
+        saved_asset = repository.raw_evidence_records[0].evidence_assets[0]
+        self.assertTrue(saved_asset.url.startswith("s3://geno-reports/evidence/"))
+        self.assertEqual(len(saved_asset.content_hash), 64)
+        self.assertEqual(payload["api_snapshot_artifacts"]["enabled"], True)
+        self.assertEqual(len(payload["api_snapshot_artifacts"]["stored_snapshot_assets"]), 1)
+        self.assertEqual(repository.audit_events[0].event_type, "api_snapshot_assets_archived")
+        self.assertEqual(asdict(repository.audit_events[0])["output_refs"]["artifact_uris"], [saved_asset.url])
 
     def test_persist_without_database_url_fails_loudly(self) -> None:
         result = self._run_worker_result(

@@ -433,7 +433,7 @@ fail_gate:
 
 两个采集保真度问题必须在后端处理：
 
-- **API ≠ 消费者界面**：官方 API（如 ChatGPT web search、Perplexity Sonar）便于稳定采集，但其答案组装、模型版本、引用与个性化不保证与消费者界面一致。默认走 API 是"用稳定性换保真度"的有意取舍，必须配一个**抽检环节**：定期对同一批 prompt 用官方 API 后端与浏览器后端各采一次，量化差异率并在报告方法说明里披露。`access_method` 字段全程记录，便于区分。工程上已经把该环节落为独立 `ApiBrowserFidelityCheck`：对同一 `prompt_question_id + city` 的 `official_api` 与 `browser` run 做可比较配对，冻结 status、样本数、mismatch count、difference rate、payload hash，并写入 `api_browser_fidelity_checked` 审计事件；worker 的 `--include-browser-fidelity-fixture` 可先用 `chatgpt_search.browser.fixture` 生成 paired sampled 数据，且这些 browser fidelity samples 通过 `score_input_policy.excluded_fidelity_sample_answer_run_ids` 排除出主评分分母。真实 API adapter 会为官方 API response 生成 `geno-api-snapshot://...` HTML snapshot 资产和 payload hash，证明原始响应可复盘，但该资产不能冒充消费者界面截图；真实浏览器 collector 未接入前，未启用 paired fixture 的批次必须如实显示 `not_run/no_overlap`。
+- **API ≠ 消费者界面**：官方 API（如 ChatGPT web search、Perplexity Sonar）便于稳定采集，但其答案组装、模型版本、引用与个性化不保证与消费者界面一致。默认走 API 是"用稳定性换保真度"的有意取舍，必须配一个**抽检环节**：定期对同一批 prompt 用官方 API 后端与浏览器后端各采一次，量化差异率并在报告方法说明里披露。`access_method` 字段全程记录，便于区分。工程上已经把该环节落为独立 `ApiBrowserFidelityCheck`：对同一 `prompt_question_id + city` 的 `official_api` 与 `browser` run 做可比较配对，冻结 status、样本数、mismatch count、difference rate、payload hash，并写入 `api_browser_fidelity_checked` 审计事件；worker 的 `--include-browser-fidelity-fixture` 可先用 `chatgpt_search.browser.fixture` 生成 paired sampled 数据，且这些 browser fidelity samples 通过 `score_input_policy.excluded_fidelity_sample_answer_run_ids` 排除出主评分分母。真实 API adapter 会为官方 API response 生成 `geno-api-snapshot://...` HTML snapshot 资产和 payload hash；当 worker `--persist` 且存在 `OBJECT_STORE_ENDPOINT` 时，会在保存原始证据前把 snapshot 渲染为静态 HTML 并归档到对象存储 `evidence/<project_id>/<answer_run_id>/<asset_id>.html`，再用 `s3://...` URL 与对象 content hash 更新 `EvidenceAsset`，并写入 `api_snapshot_assets_archived` 审计事件。该资产证明原始 API 响应可复盘，但不能冒充消费者界面截图；真实浏览器 collector 未接入前，未启用 paired fixture 的批次必须如实显示 `not_run/no_overlap`。
 - **AIO 选择性触发**：Google AI Overviews 不是每个 query 都出现。后端必须如实返回 `answer_present / surface_triggered`，把"AIO 没触发"与"触发了但没提品牌"区分开（影响 Step 9 的分母口径）。
 
 采集服务要求：
@@ -1649,7 +1649,7 @@ ReportEvidence
 - `score_input_policy` 必须冻结在评分审计和 Report Method Disclosure 中，列出 all/score-input/excluded answer_run_ids，证明未过双 gate 的 Google 证据没有进入主评分分母。
 - API-vs-browser fidelity samples 必须同样经过 `score_input_policy` 排除出主评分分母，只作为保真度抽检、方法披露和审计证据；报告分母不能因 browser 抽检样本膨胀。
 - **每个平台的采集后端可插拔**：P0a 至少两个官方 API 后端可工作；P0b 至少对比自建浏览器、第三方 SERP API、人工补录中的两条路径；新增后端不改业务代码。
-- 每条采集结果有 answer、citation、screenshot 或 HTML 快照。
+- 每条采集结果有 answer、citation、screenshot 或 HTML 快照；官方 API 的 HTML snapshot 在对象存储可用时必须归档为可追溯 `s3://...` EvidenceAsset，未配置对象存储时保留 `geno-api-snapshot://...` 与 content hash。
 - 每条采集结果记录平台、surface、access_method、城市、语言、设备、采集时间、collector_version 和 collector_backend_id。
 - **每条采集结果记录 `answer_present` / `surface_triggered`**，报告能区分 Trigger Rate 与 Mention/Recommendation Rate，并在 `method_disclosure.score_rate_denominators` 中冻结分母定义。
 - **审计链路可用**：采集、解析、评分、人工补录、实体确认、报告导出都写入 `AuditEvent`。

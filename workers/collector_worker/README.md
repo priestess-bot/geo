@@ -30,7 +30,11 @@ PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_coll
 sample size k=3. Real API mode must pass the same gate before P0a design partner data is considered
 ready. Official API adapters generate `geno-api-snapshot://...` HTML snapshot evidence assets from
 the raw provider response, with the snapshot hash stored on `EvidenceAsset.content_hash`; these
-prove API-response provenance but do not replace browser fidelity samples.
+prove API-response provenance but do not replace browser fidelity samples. During `--persist`, if
+`OBJECT_STORE_ENDPOINT` is configured, the worker archives those API snapshots to
+`evidence/<project_id>/<answer_run_id>/<asset_id>.html`, replaces the asset URL/hash with the
+stored `s3://...` object, and writes an `api_snapshot_assets_archived` audit event before saving
+raw evidence rows.
 
 Persisted fixture slice:
 
@@ -44,10 +48,13 @@ python3 workers/collector_worker/run_collection_slice.py --mode fixture --persis
 `BrandEntity`, `CompetitorEntity`, and 100 `PromptQuestion` rows), then writes successful
 `RawEvidenceRecord` rows, failed `CollectionFailureRecord` rows, and a batch-level
 `CollectionRunSummary` through `PostgresEvidenceRepository`. Each `CollectionCost` records
-`duration_ms` for the collector call. The summary records planned runs, attempted runs,
-success/failure counts, success rate, trigger rate, answer-present rate, total cost, average cost
-per run, total duration, average duration, platform/city/access-method distributions, failure
-summary, and linked `answer_run_ids`, then writes a `collection_run_summarized` audit event. If `DATABASE_URL` is missing, the worker exits with code `2` and
+`duration_ms` for the collector call. If object storage is configured, API snapshot evidence assets
+are archived before the evidence rows are saved, so downstream report/traceability reads see the
+durable `s3://...` URI rather than the temporary `geno-api-snapshot://...` reference. The summary
+records planned runs, attempted runs, success/failure counts, success rate, trigger rate,
+answer-present rate, total cost, average cost per run, total duration, average duration,
+platform/city/access-method distributions, failure summary, and linked `answer_run_ids`, then
+writes a `collection_run_summarized` audit event. If `DATABASE_URL` is missing, the worker exits with code `2` and
 prints a persistence error instead of silently dropping evidence.
 
 Persisted fixture slice with analysis/scoring:

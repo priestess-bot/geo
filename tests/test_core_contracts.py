@@ -91,7 +91,7 @@ from geno_core.models import (
     RuntimeScoreWeightConfigInput,
     RuntimeTraceabilityDetail,
 )
-from geno_core.object_store import S3CompatibleObjectStore, archive_report_artifacts
+from geno_core.object_store import S3CompatibleObjectStore, archive_api_snapshot_assets, archive_report_artifacts
 from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.parser import ComparativeAnswerParser, LLMJudgeAnswerParser, RuleBasedAnswerParser
 from geno_core.report import MarkdownCsvReportExporter
@@ -1802,6 +1802,59 @@ class CoreContractsTest(unittest.TestCase):
         object_puts = [item for item in requests if item[0] == "PUT" and item[1].count("/") > 3]
         self.assertEqual(len(object_puts), 3)
         self.assertTrue(any(item[1].endswith(".pdf") and item[3].startswith(b"%PDF-1.4") for item in object_puts))
+
+    def test_api_snapshot_assets_archive_to_s3_compatible_store(self) -> None:
+        class FakeApiHttpClient:
+            def post_json(self, **kwargs: object) -> JsonHttpResponse:
+                return JsonHttpResponse(
+                    status_code=200,
+                    payload={
+                        "choices": [{"message": {"content": "Perplexity answer"}}],
+                        "citations": ["https://source.example/a"],
+                    },
+                )
+
+        bootstrap = build_au_project_bootstrap()
+        record = collect_prompt_once(
+            project_id=bootstrap.project.id,
+            prompt=bootstrap.prompt_questions[0],
+            market_profile=bootstrap.market_profile,
+            collector=PerplexitySonarCollector(api_key="test-key", http_client=FakeApiHttpClient()),
+            city="Sydney",
+            sample_index=1,
+            sample_size=3,
+        )
+        self.assertTrue(record.evidence_assets[0].url.startswith("geno-api-snapshot://"))
+        requests: list[tuple[str, str, dict[str, str], bytes]] = []
+
+        def requester(
+            method: str,
+            url: str,
+            headers: object,
+            body: bytes,
+        ) -> tuple[int, dict[str, str], bytes]:
+            requests.append((method, url, dict(headers), body))
+            return 200, {"ETag": '"snapshot-etag"'}, b""
+
+        store = S3CompatibleObjectStore(
+            endpoint="http://minio:9000",
+            bucket="geno-reports",
+            access_key="minio",
+            secret_key="minio123",
+            requester=requester,
+        )
+        archived_records, stored = archive_api_snapshot_assets(records=(record,), store=store)
+
+        self.assertEqual(len(stored), 1)
+        self.assertTrue(stored[0].uri.startswith(f"s3://geno-reports/evidence/{bootstrap.project.id}/"))
+        self.assertEqual(stored[0].content_type, "text/html; charset=utf-8")
+        archived_asset = archived_records[0].evidence_assets[0]
+        self.assertEqual(archived_asset.url, stored[0].uri)
+        self.assertEqual(archived_asset.content_hash, stored[0].content_hash)
+        object_puts = [item for item in requests if item[0] == "PUT" and item[1].count("/") > 3]
+        self.assertEqual(len(object_puts), 1)
+        self.assertIn(b"GENO Official API Response Snapshot", object_puts[0][3])
+        self.assertIn(b"Perplexity answer", object_puts[0][3])
 
     def test_m6_action_plan_and_retest_schedule_trace_evidence(self) -> None:
         bootstrap = build_au_project_bootstrap(

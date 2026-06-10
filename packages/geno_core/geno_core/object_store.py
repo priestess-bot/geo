@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import html
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
+
+from geno_core.models import EvidenceAsset, RawEvidenceRecord
 
 
 RequestFn = Callable[[str, str, Mapping[str, str], bytes], tuple[int, Mapping[str, str], bytes]]
@@ -228,3 +231,72 @@ def archive_report_artifacts(report: Any, store: S3CompatibleObjectStore) -> tup
         if uri:
             stored.append(store.put_s3_uri(uri=uri, content=content, content_type=content_type))
     return tuple(stored)
+
+
+def archive_api_snapshot_assets(
+    *,
+    records: tuple[RawEvidenceRecord, ...],
+    store: S3CompatibleObjectStore,
+) -> tuple[tuple[RawEvidenceRecord, ...], tuple[StoredObject, ...]]:
+    archived_records: list[RawEvidenceRecord] = []
+    stored_objects: list[StoredObject] = []
+    for record in records:
+        updated_assets: list[EvidenceAsset] = []
+        for asset in record.evidence_assets:
+            if asset.asset_type != "html_snapshot" or not asset.url.startswith("geno-api-snapshot://"):
+                updated_assets.append(asset)
+                continue
+            content = _render_api_snapshot_html(record=record, asset=asset)
+            key = f"evidence/{record.answer_run.project_id}/{record.answer_run.id}/{asset.id}.html"
+            stored = store.put_object(key=key, content=content, content_type="text/html; charset=utf-8")
+            stored_objects.append(stored)
+            updated_assets.append(replace(asset, url=stored.uri, content_hash=stored.content_hash))
+        archived_records.append(replace(record, evidence_assets=tuple(updated_assets)))
+    return tuple(archived_records), tuple(stored_objects)
+
+
+def _render_api_snapshot_html(*, record: RawEvidenceRecord, asset: EvidenceAsset) -> str:
+    snapshot = record.raw_answer.raw_payload.get("_geno_api_snapshot")
+    snapshot_meta = snapshot if isinstance(snapshot, dict) else {}
+    citations = "\n".join(
+        f"<li><a href=\"{html.escape(citation.url, quote=True)}\">{html.escape(citation.url)}</a></li>"
+        for citation in record.citations
+    )
+    payload_json = html.escape(_stable_json(record.raw_answer.raw_payload))
+    return "\n".join(
+        [
+            "<!doctype html>",
+            "<html lang=\"en\">",
+            "<head>",
+            "  <meta charset=\"utf-8\">",
+            f"  <title>GENO API Snapshot {html.escape(record.answer_run.id)}</title>",
+            "</head>",
+            "<body>",
+            "  <h1>GENO Official API Response Snapshot</h1>",
+            "  <dl>",
+            f"    <dt>Answer run</dt><dd>{html.escape(record.answer_run.id)}</dd>",
+            f"    <dt>Collector</dt><dd>{html.escape(record.answer_run.collector_backend_id)}</dd>",
+            f"    <dt>Platform</dt><dd>{html.escape(record.answer_run.platform)}</dd>",
+            f"    <dt>Surface</dt><dd>{html.escape(record.answer_run.surface)}</dd>",
+            f"    <dt>Access method</dt><dd>{html.escape(record.answer_run.access_method)}</dd>",
+            f"    <dt>City</dt><dd>{html.escape(record.answer_run.city)}</dd>",
+            f"    <dt>Raw payload hash</dt><dd>{html.escape(record.raw_answer.raw_payload_hash)}</dd>",
+            f"    <dt>Snapshot payload hash</dt><dd>{html.escape(str(snapshot_meta.get('payload_hash', '')))}</dd>",
+            f"    <dt>Source URI before archive</dt><dd>{html.escape(asset.url)}</dd>",
+            "  </dl>",
+            "  <h2>Answer</h2>",
+            f"  <pre>{html.escape(record.raw_answer.answer_text)}</pre>",
+            "  <h2>Citations</h2>",
+            f"  <ol>{citations}</ol>",
+            "  <h2>Raw API Payload</h2>",
+            f"  <pre>{payload_json}</pre>",
+            "</body>",
+            "</html>",
+        ]
+    )
+
+
+def _stable_json(payload: Any) -> str:
+    import json
+
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2, default=str)
