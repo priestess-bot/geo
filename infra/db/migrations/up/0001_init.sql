@@ -301,6 +301,21 @@ CREATE TABLE runtime_saved_views (
   UNIQUE(project_id, name)
 );
 
+CREATE TABLE project_brand_kits (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  client_name text NOT NULL,
+  prepared_by text NOT NULL,
+  logo_url text,
+  primary_color text,
+  secondary_color text,
+  footer_text text,
+  updated_by text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(project_id)
+);
+
 CREATE TABLE traceability_bundles (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id uuid NOT NULL,
@@ -472,4 +487,5 @@ CREATE INDEX idx_localized_knowledge_facts_project ON localized_knowledge_facts(
 CREATE INDEX idx_content_drafts_project ON content_drafts(project_id, review_status);
 CREATE INDEX idx_evidence_links_project ON evidence_links(project_id, source_type, target_type);
 CREATE INDEX idx_runtime_saved_views_project ON runtime_saved_views(project_id, view_type, updated_at);
+CREATE INDEX idx_project_brand_kits_project ON project_brand_kits(project_id, updated_at);
 CREATE INDEX idx_traceability_bundles_project ON traceability_bundles(project_id, subject_type);

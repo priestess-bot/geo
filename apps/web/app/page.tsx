@@ -373,6 +373,7 @@ type TraceabilityDetail = {
 
 type RuntimeData = {
   projects: PageResponse<RuntimeProject>;
+  brandKit: RuntimeProjectBrandKit | null;
   prompts: PageResponse<RuntimePrompt>;
   evidence: PageResponse<EvidenceRun>;
   entityAliases: PageResponse<RuntimeEntityAlias>;
@@ -384,6 +385,23 @@ type RuntimeData = {
   actions: PageResponse<ActionPlan>;
   content: PageResponse<ContentEngine>;
   traceability: TraceabilityDetail | null;
+};
+
+type RuntimeProjectBrandKit = {
+  brand_kit: {
+    id: string;
+    project_id: string;
+    client_name: string;
+    prepared_by: string;
+    logo_url?: string | null;
+    primary_color?: string | null;
+    secondary_color?: string | null;
+    footer_text?: string | null;
+    updated_by: string;
+    created_at?: string;
+    updated_at?: string;
+  };
+  audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
 };
 
 type RuntimeEntityAlias = {
@@ -462,6 +480,7 @@ const endpoints = {
   entityAliases: "/v1/entity-aliases/runtime",
   entityAliasCandidates: "/v1/entity-aliases/runtime/candidates",
   savedViews: "/v1/runtime-saved-views",
+  brandKit: "/v1/project-brand-kits/runtime",
   scores: "/v1/visibility-scores/runtime",
   graphs: "/v1/citation-graphs/runtime",
   reports: "/v1/reports/runtime",
@@ -543,6 +562,41 @@ async function saveCurrentRuntimeView(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/runtime-saved-views returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function saveProjectBrandKit(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const clientName = String(formData.get("client_name") || "").trim();
+  if (!projectId || !clientName) {
+    throw new Error("project_id and client_name are required to save a project brand kit");
+  }
+  const optionalText = (field: string): string | undefined =>
+    String(formData.get(field) || "").trim() || undefined;
+  const payload = {
+    project_id: projectId,
+    client_name: clientName,
+    prepared_by: String(formData.get("prepared_by") || "GENO SaaS AU").trim(),
+    logo_url: optionalText("logo_url"),
+    primary_color: optionalText("primary_color"),
+    secondary_color: optionalText("secondary_color"),
+    footer_text: optionalText("footer_text"),
+    updated_by: "runtime-console"
+  };
+  const response = await fetch(`${baseUrl}/v1/project-brand-kits/runtime`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/project-brand-kits/runtime returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -723,6 +777,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       view_type: "runtime_evidence",
       limit: 5
     }),
+    brandKit: endpoints.brandKit,
     scores: runtimePath(endpoints.scores, { limit: 1 }),
     graphs: runtimePath(endpoints.graphs, { limit: 1 }),
     reports: runtimePath(endpoints.reports, { limit: 5 }),
@@ -797,6 +852,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     view_type: "runtime_evidence",
     limit: 5
   });
+  paths.brandKit = selectedProjectId
+    ? runtimePath(endpoints.brandKit, { project_id: selectedProjectId })
+    : endpoints.brandKit;
   paths.scores = runtimePath(endpoints.scores, {
     ...selectedProjectParams,
     limit: 1
@@ -825,6 +883,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliases,
     entityAliasCandidates,
     savedViews,
+    brandKit,
     scores,
     graphs,
     reports,
@@ -847,6 +906,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
         )
       : Promise.resolve({ payload: emptyPage<RuntimeEntityAliasCandidate>(), error: null }),
     fetchRuntimeEndpoint<PageResponse<RuntimeSavedView>>(baseUrl, paths.savedViews, emptyPage<RuntimeSavedView>()),
+    selectedProjectId
+      ? fetchRuntimeEndpoint<RuntimeProjectBrandKit | null>(baseUrl, paths.brandKit, null, { optionalNotFound: true })
+      : Promise.resolve({ payload: null, error: null }),
     fetchRuntimeEndpoint<PageResponse<ScoreSnapshot>>(baseUrl, paths.scores, emptyPage<ScoreSnapshot>()),
     fetchRuntimeEndpoint<PageResponse<CitationGraph>>(baseUrl, paths.graphs, emptyPage<CitationGraph>()),
     fetchRuntimeEndpoint<PageResponse<ReportExport>>(baseUrl, paths.reports, emptyPage<ReportExport>()),
@@ -861,6 +923,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliases,
     entityAliasCandidates,
     savedViews,
+    brandKit,
     scores,
     graphs,
     reports,
@@ -873,6 +936,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   return {
     data: {
       projects: projects.payload,
+      brandKit: brandKit.payload,
       prompts: prompts.payload,
       evidence: evidence.payload,
       entityAliases: entityAliases.payload,
@@ -960,6 +1024,7 @@ export default async function Home({
     data.projects.records[0];
   const selectedProjectId = selectedProject?.project.id;
   const latestProject = selectedProject;
+  const projectBrandKit = data.brandKit?.brand_kit || null;
   const entityAliasOptions = latestProject
     ? [
         ...(latestProject.brand?.id
@@ -1030,7 +1095,8 @@ export default async function Home({
   const reportCsvUrl = reportArtifactPath(reportArtifactBase, "csv", { ...filters, sort: evidenceSort });
   const reportPdfUrl = reportArtifactPath(reportArtifactBase, "pdf", { ...filters, sort: evidenceSort });
   const whiteLabelClientName =
-    latestProject?.brand?.canonical_name || latestProject?.project.target_brand || "Client";
+    projectBrandKit?.client_name || latestProject?.brand?.canonical_name || latestProject?.project.target_brand || "Client";
+  const whiteLabelPreparedBy = projectBrandKit?.prepared_by || "GENO SaaS AU";
   const reportWhiteLabelPdfUrl = reportArtifactPath(
     reportArtifactBase,
     "pdf",
@@ -1038,7 +1104,7 @@ export default async function Home({
     {
       template: "white_label",
       client_name: whiteLabelClientName,
-      prepared_by: "GENO SaaS AU"
+      prepared_by: whiteLabelPreparedBy
     }
   );
   const reportArtifactFilters = { ...filters, sort: evidenceSort };
@@ -1149,6 +1215,7 @@ export default async function Home({
           <Fact label="Evidence query" value={paths.evidence} />
           <Fact label="Export query" value={paths.evidenceExport} />
           <Fact label="Saved views query" value={paths.savedViews} />
+          <Fact label="Brand kit query" value={paths.brandKit} />
           <Fact label="Report query" value={paths.reports} />
           <Fact label="Evidence sort" value={evidenceSort} />
         </dl>
@@ -1372,6 +1439,56 @@ export default async function Home({
                 Create client project
               </button>
             </form>
+            <form action={saveProjectBrandKit} className="brandKitForm">
+              <div className="formHeader">
+                <h3>Brand Kit</h3>
+                <small>
+                  {projectBrandKit
+                    ? `${projectBrandKit.updated_by} · ${data.brandKit?.audit_events[0]?.event_type || "saved"}`
+                    : "project-level white-label defaults"}
+                </small>
+              </div>
+              <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+              <label>
+                <span>Client name</span>
+                <input
+                  name="client_name"
+                  defaultValue={
+                    projectBrandKit?.client_name ||
+                    latestProject?.brand?.canonical_name ||
+                    latestProject?.project.target_brand ||
+                    "ExampleBrand AU"
+                  }
+                />
+              </label>
+              <label>
+                <span>Prepared by</span>
+                <input name="prepared_by" defaultValue={projectBrandKit?.prepared_by || "GENO SaaS AU"} />
+              </label>
+              <label className="wideField">
+                <span>Logo URL</span>
+                <input name="logo_url" defaultValue={projectBrandKit?.logo_url || "https://examplebrand.example/logo.png"} />
+              </label>
+              <label>
+                <span>Primary color</span>
+                <input name="primary_color" defaultValue={projectBrandKit?.primary_color || "#0f766e"} />
+              </label>
+              <label>
+                <span>Secondary color</span>
+                <input name="secondary_color" defaultValue={projectBrandKit?.secondary_color || "#111827"} />
+              </label>
+              <label className="wideField">
+                <span>Footer text</span>
+                <textarea
+                  name="footer_text"
+                  defaultValue={projectBrandKit?.footer_text || "Prepared for AU GEO visibility review"}
+                  rows={2}
+                />
+              </label>
+              <button className="actionButton" type="submit" disabled={!selectedProjectId}>
+                Save brand kit
+              </button>
+            </form>
           </div>
         </Panel>
 
@@ -1563,7 +1680,7 @@ export default async function Home({
                 const whiteLabelPdfUrl = reportArtifactPath(artifactBase, "pdf", reportArtifactFilters, {
                   template: "white_label",
                   client_name: whiteLabelClientName,
-                  prepared_by: "GENO SaaS AU"
+                  prepared_by: whiteLabelPreparedBy
                 });
                 const scoreSnapshot = report.score_snapshots[0];
                 return (
@@ -1610,7 +1727,7 @@ export default async function Home({
                       <li>
                         <strong>White-label template</strong>
                         <span>{whiteLabelPdfUrl?.replace(displayUrl, "") || "No white-label artifact path"}</span>
-                        <small>{whiteLabelClientName} · GENO SaaS AU · template white_label</small>
+                        <small>{whiteLabelClientName} · {whiteLabelPreparedBy} · template white_label</small>
                       </li>
                       <li>
                         <strong>{report.audit_events[0]?.event_type || "no report audit"}</strong>

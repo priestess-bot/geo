@@ -58,6 +58,8 @@ from geno_core.models import (
     RuntimeEntityAliasCandidatePage,
     RuntimeEntityAliasPage,
     RuntimeCitationGraphPage,
+    RuntimeProjectBrandKit,
+    RuntimeProjectBrandKitInput,
     RuntimeActionPlanPage,
     RuntimeContentEnginePage,
     RuntimeScoreSnapshotPage,
@@ -2489,6 +2491,114 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn(b"%%EOF", artifact.content)
         self.assertTrue(artifact.content_hash)
 
+    def test_postgres_repository_renders_runtime_report_white_label_pdf_from_project_brand_kit(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        snapshot_id = "a7f7f8aa-5d40-4fdf-a2b3-b8729a9a5e2f"
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_row = {
+            "id": report_export_id,
+            "project_id": project_id,
+            "market_code": "AU",
+            "report_version": "worker-runtime-v1",
+            "report_type": "worker_runtime",
+            "score_snapshot_ids": [snapshot_id],
+            "answer_run_ids": [answer_run_id],
+            "prompt_version": "au_dtc_ecommerce_v1",
+            "scoring_formula_version": "au_visibility_v1",
+            "platform_weights_snapshot": {"chatgpt": 0.30, "perplexity": 0.25},
+            "sample_size": 1,
+            "window_start": now,
+            "window_end": now,
+            "methodology_hash": "methodology-hash",
+            "markdown_url": "s3://geno-reports/report.md",
+            "pdf_url": None,
+            "csv_url": "s3://geno-reports/report.csv",
+            "exported_by": "system",
+            "exported_at": now,
+        }
+        answer_run_row = {
+            "id": answer_run_id,
+            "project_id": project_id,
+            "prompt_question_id": "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0",
+            "platform": "perplexity",
+            "surface": "sonar",
+            "access_method": "official_api",
+            "market_code": "AU",
+            "city": "Australia",
+            "language": "en-AU",
+            "device": "desktop",
+            "answer_present": True,
+            "surface_triggered": True,
+            "sample_index": 1,
+            "sample_size": 1,
+            "model_or_surface": "sonar",
+            "account_state": "api_key",
+            "collector_backend_id": "fixture_perplexity_sonar",
+            "collector_version": "fixture-v1",
+            "collected_at": now,
+            "status": "completed",
+            "prompt_text": "Is ExampleBrand good in Australia?",
+            "prompt_intent_type": "brand_awareness",
+            "prompt_priority": 1,
+            "prompt_version": "au_dtc_ecommerce_v1",
+        }
+        brand_kit_row = {
+            "id": "0ada83ad-b669-507e-b3c8-9d8574569a62",
+            "project_id": project_id,
+            "client_name": "Koala AU",
+            "prepared_by": "Partner Agency",
+            "logo_url": "https://koala.example/logo.png",
+            "primary_color": "#0f766e",
+            "secondary_color": "#111827",
+            "footer_text": "Prepared for Koala AU board review",
+            "updated_by": "runtime-console",
+            "created_at": now,
+            "updated_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                report_row,
+                {
+                    "id": snapshot_id,
+                    "project_id": project_id,
+                    "scope_type": "collection_slice",
+                    "scope_value": "worker_runtime",
+                    "formula_version": "au_visibility_v1",
+                    "platform_weights_snapshot": {"chatgpt": 0.30, "perplexity": 0.25},
+                    "final_score": 87.35,
+                    "trigger_rate": 1.0,
+                    "mention_rate": 1.0,
+                    "recommendation_rate": 1.0,
+                    "answer_run_ids": [answer_run_id],
+                    "created_at": now,
+                    "dispersion": 0.0,
+                },
+                answer_run_row,
+                [],
+                {"count": 0},
+                brand_kit_row,
+            ]
+        )
+        artifact = PostgresEvidenceRepository(connection).get_runtime_report_artifact(
+            report_export_id=report_export_id,
+            artifact_type="pdf",
+            template="white_label",
+        )
+        self.assertIsInstance(artifact, RuntimeReportArtifact)
+        assert artifact is not None
+        self.assertEqual(artifact.template_payload["client_name"], "Koala AU")
+        self.assertEqual(artifact.template_payload["prepared_by"], "Partner Agency")
+        self.assertEqual(artifact.template_payload["logo_url"], "https://koala.example/logo.png")
+        self.assertEqual(artifact.template_payload["primary_color"], "#0f766e")
+        self.assertEqual(artifact.template_payload["source"], "project_brand_kit")
+        self.assertIn(b"Koala AU GEO Evidence Report", artifact.content)
+        self.assertIn(b"Partner Agency", artifact.content)
+        self.assertIn(b"Prepared for Koala AU board review", artifact.content)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM project_brand_kits WHERE project_id = %s", executed_sql)
+
     def test_postgres_repository_reads_runtime_action_plan_page(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
         answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
@@ -3217,6 +3327,110 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(page.records[0].audit_events[0]["event_type"], "runtime_saved_view_saved")
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FROM runtime_saved_views WHERE project_id = %s AND view_type = %s", executed_sql)
+        self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_saves_project_brand_kit_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        brand_kit_id = "0ada83ad-b669-507e-b3c8-9d8574569a62"
+        brand_kit_row = {
+            "id": brand_kit_id,
+            "project_id": project_id,
+            "client_name": "Koala AU",
+            "prepared_by": "Partner Agency",
+            "logo_url": "https://koala.example/logo.png",
+            "primary_color": "#0f766e",
+            "secondary_color": "#111827",
+            "footer_text": "Prepared for Koala AU board review",
+            "updated_by": "runtime-console",
+            "created_at": now,
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "2782a901-8cdf-47e7-bbdb-345d9ca66efe",
+            "event_type": "project_brand_kit_saved",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "project_brand_kit",
+            "target_id": brand_kit_id,
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"project_ids": [project_id]},
+            "output_refs": {"project_brand_kit_ids": [brand_kit_id]},
+            "method_version": "project_brand_kit_v1",
+            "reason": "save project white-label brand configuration",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"id": project_id}, None, brand_kit_row, [audit_row]])
+        record = PostgresEvidenceRepository(connection).save_project_brand_kit(
+            RuntimeProjectBrandKitInput(
+                project_id=project_id,
+                client_name="Koala AU",
+                prepared_by="Partner Agency",
+                logo_url="https://koala.example/logo.png",
+                primary_color="#0f766e",
+                secondary_color="#111827",
+                footer_text="Prepared for Koala AU board review",
+                updated_by="runtime-console",
+            )
+        )
+        self.assertIsInstance(record, RuntimeProjectBrandKit)
+        self.assertEqual(record.brand_kit["client_name"], "Koala AU")
+        self.assertEqual(record.brand_kit["prepared_by"], "Partner Agency")
+        self.assertEqual(record.audit_events[0]["event_type"], "project_brand_kit_saved")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO project_brand_kits", executed_sql)
+        self.assertIn("ON CONFLICT (project_id) DO UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_reads_project_brand_kit_with_audit_events(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        brand_kit_id = "0ada83ad-b669-507e-b3c8-9d8574569a62"
+        connection = RecordingConnection(
+            result_sets=[
+                {
+                    "id": brand_kit_id,
+                    "project_id": project_id,
+                    "client_name": "Koala AU",
+                    "prepared_by": "Partner Agency",
+                    "logo_url": "https://koala.example/logo.png",
+                    "primary_color": "#0f766e",
+                    "secondary_color": "#111827",
+                    "footer_text": "Prepared for Koala AU board review",
+                    "updated_by": "runtime-console",
+                    "created_at": now,
+                    "updated_at": now,
+                },
+                [
+                    {
+                        "id": "2782a901-8cdf-47e7-bbdb-345d9ca66efe",
+                        "event_type": "project_brand_kit_saved",
+                        "project_id": project_id,
+                        "actor_type": "user",
+                        "actor_id": "runtime-console",
+                        "target_type": "project_brand_kit",
+                        "target_id": brand_kit_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"project_ids": [project_id]},
+                        "output_refs": {"project_brand_kit_ids": [brand_kit_id]},
+                        "method_version": "project_brand_kit_v1",
+                        "reason": "save project white-label brand configuration",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+        record = PostgresEvidenceRepository(connection).get_project_brand_kit(project_id=project_id)
+        self.assertIsInstance(record, RuntimeProjectBrandKit)
+        assert record is not None
+        self.assertEqual(record.brand_kit["client_name"], "Koala AU")
+        self.assertEqual(record.audit_events[0]["target_type"], "project_brand_kit")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM project_brand_kits WHERE project_id = %s", executed_sql)
         self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
 
     def test_postgres_repository_confirms_entity_alias_with_audit_event(self) -> None:

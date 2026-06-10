@@ -42,6 +42,8 @@ from geno_core.models import (
     RuntimeEntityAliasCandidate,
     RuntimeEntityAliasCandidatePage,
     RuntimeEntityAliasPage,
+    RuntimeProjectBrandKit,
+    RuntimeProjectBrandKitInput,
     RuntimeProject,
     RuntimeProjectPage,
     RuntimePromptPage,
@@ -259,6 +261,10 @@ def _render_white_label_report_markdown(
     *,
     client_name: str,
     prepared_by: str,
+    logo_url: str | None = None,
+    primary_color: str | None = None,
+    secondary_color: str | None = None,
+    footer_text: str | None = None,
 ) -> str:
     report_export = report.report_export
     snapshot = report.score_snapshots[0] if report.score_snapshots else {}
@@ -285,6 +291,8 @@ def _render_white_label_report_markdown(
         f"Report version: {report_export.get('report_version', 'unknown')}",
         f"Exported at: {report_export.get('exported_at', 'unknown')}",
         f"Methodology hash: {report_export.get('methodology_hash', 'unknown')}",
+        f"Logo URL: {logo_url or 'not configured'}",
+        f"Theme colors: {primary_color or 'default'} / {secondary_color or 'default'}",
         "",
         "## Executive Snapshot",
         "",
@@ -329,6 +337,9 @@ def _render_white_label_report_markdown(
             f"method={event.get('method_version') or 'n/a'}"
         )
     lines.extend(["", "## Footer", ""])
+    if footer_text:
+        lines.append(footer_text)
+        lines.append("")
     lines.append(
         f"{prepared_by} white-label template `white_label_v1`; "
         f"ReportExport {report_export.get('id', 'unknown')} remains the source of truth."
@@ -855,6 +866,19 @@ RUNTIME_SAVED_VIEW_COLUMNS = (
     "query_path",
     "export_path",
     "created_by",
+    "created_at",
+    "updated_at",
+)
+PROJECT_BRAND_KIT_COLUMNS = (
+    "id",
+    "project_id",
+    "client_name",
+    "prepared_by",
+    "logo_url",
+    "primary_color",
+    "secondary_color",
+    "footer_text",
+    "updated_by",
     "created_at",
     "updated_at",
 )
@@ -1635,6 +1659,143 @@ class PostgresEvidenceRepository:
         audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
         return RuntimeSavedView(saved_view=saved_view, audit_events=audit_events)
 
+    def get_project_brand_kit(self, *, project_id: str) -> RuntimeProjectBrandKit | None:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_BRAND_KIT_COLUMNS)}
+                FROM project_brand_kits
+                WHERE project_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return self._load_project_brand_kit(
+                cursor=cursor,
+                brand_kit=_row_dict(row, PROJECT_BRAND_KIT_COLUMNS),
+            )
+
+    def save_project_brand_kit(self, brand_kit: RuntimeProjectBrandKitInput) -> RuntimeProjectBrandKit:
+        project_id = brand_kit.project_id.strip()
+        client_name = brand_kit.client_name.strip()
+        prepared_by = brand_kit.prepared_by.strip() or "GENO SaaS AU"
+        updated_by = brand_kit.updated_by.strip() or "runtime-console"
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not client_name:
+            raise ValueError("client_name is required")
+        kit_id = _stable_id("project-brand-kit", project_id)
+        after = {
+            "id": kit_id,
+            "project_id": project_id,
+            "client_name": client_name,
+            "prepared_by": prepared_by,
+            "logo_url": brand_kit.logo_url.strip() if brand_kit.logo_url else None,
+            "primary_color": brand_kit.primary_color.strip() if brand_kit.primary_color else None,
+            "secondary_color": brand_kit.secondary_color.strip() if brand_kit.secondary_color else None,
+            "footer_text": brand_kit.footer_text.strip() if brand_kit.footer_text else None,
+            "updated_by": updated_by,
+        }
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_BRAND_KIT_COLUMNS)}
+                FROM project_brand_kits
+                WHERE project_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            existing = cursor.fetchone()
+            before = _row_dict(existing, PROJECT_BRAND_KIT_COLUMNS) if existing else None
+            cursor.execute(
+                """
+                INSERT INTO project_brand_kits (
+                  id, project_id, client_name, prepared_by, logo_url, primary_color,
+                  secondary_color, footer_text, updated_by
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (project_id) DO UPDATE SET
+                  client_name = EXCLUDED.client_name,
+                  prepared_by = EXCLUDED.prepared_by,
+                  logo_url = EXCLUDED.logo_url,
+                  primary_color = EXCLUDED.primary_color,
+                  secondary_color = EXCLUDED.secondary_color,
+                  footer_text = EXCLUDED.footer_text,
+                  updated_by = EXCLUDED.updated_by,
+                  updated_at = now()
+                """,
+                (
+                    _uuid(kit_id),
+                    _uuid(project_id),
+                    after["client_name"],
+                    after["prepared_by"],
+                    after["logo_url"],
+                    after["primary_color"],
+                    after["secondary_color"],
+                    after["footer_text"],
+                    after["updated_by"],
+                ),
+            )
+            audit_event = build_audit_event(
+                event_type="project_brand_kit_saved",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="project_brand_kit",
+                target_id=kit_id,
+                before=before,
+                after=after,
+                input_refs={"project_ids": [project_id]},
+                output_refs={"project_brand_kit_ids": [kit_id]},
+                method_version="project_brand_kit_v1",
+                reason="save project white-label brand configuration",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_BRAND_KIT_COLUMNS)}
+                FROM project_brand_kits
+                WHERE project_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            saved_row = cursor.fetchone()
+            record = self._load_project_brand_kit(
+                cursor=cursor,
+                brand_kit=_row_dict(saved_row, PROJECT_BRAND_KIT_COLUMNS),
+            )
+        self.connection.commit()
+        return record
+
+    def _load_project_brand_kit(self, *, cursor: DbCursor, brand_kit: dict[str, Any]) -> RuntimeProjectBrandKit:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            LIMIT 5
+            """,
+            (_uuid(brand_kit["project_id"]), "project_brand_kit", str(brand_kit["id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeProjectBrandKit(brand_kit=brand_kit, audit_events=audit_events)
+
     def list_runtime_score_snapshots(
         self,
         *,
@@ -1796,8 +1957,7 @@ class PostgresEvidenceRepository:
             raise ValueError("template must be standard or white_label")
         if template_name == "white_label" and artifact_type != "pdf":
             raise ValueError("white_label template is only supported for pdf artifacts")
-        white_label_client = (client_name or "Client").strip() or "Client"
-        white_label_prepared_by = (prepared_by or "GENO SaaS").strip() or "GENO SaaS"
+        brand_kit: dict[str, Any] | None = None
         with self.connection.cursor() as cursor:
             report_export = self._load_report_export_by_id(
                 cursor=cursor,
@@ -1809,6 +1969,32 @@ class PostgresEvidenceRepository:
                 cursor=cursor,
                 report_export=report_export,
             )
+            if template_name == "white_label" and (not client_name or not prepared_by):
+                cursor.execute(
+                    f"""
+                    SELECT {", ".join(PROJECT_BRAND_KIT_COLUMNS)}
+                    FROM project_brand_kits
+                    WHERE project_id = %s
+                    LIMIT 1
+                    """,
+                    (_uuid(str(runtime_report.report_export["project_id"])),),
+                )
+                brand_kit_row = cursor.fetchone()
+                brand_kit = _row_dict(brand_kit_row, PROJECT_BRAND_KIT_COLUMNS) if brand_kit_row else None
+        white_label_client = (
+            client_name
+            or (brand_kit.get("client_name") if brand_kit else None)
+            or "Client"
+        ).strip() or "Client"
+        white_label_prepared_by = (
+            prepared_by
+            or (brand_kit.get("prepared_by") if brand_kit else None)
+            or "GENO SaaS"
+        ).strip() or "GENO SaaS"
+        white_label_logo_url = (brand_kit.get("logo_url") if brand_kit else None) or None
+        white_label_primary_color = (brand_kit.get("primary_color") if brand_kit else None) or None
+        white_label_secondary_color = (brand_kit.get("secondary_color") if brand_kit else None) or None
+        white_label_footer_text = (brand_kit.get("footer_text") if brand_kit else None) or None
         filtered_answer_runs, sort_key = _filter_runtime_report_answer_runs(
             runtime_report.answer_runs,
             platform=platform,
@@ -1838,6 +2024,10 @@ class PostgresEvidenceRepository:
                     filtered_report,
                     client_name=white_label_client,
                     prepared_by=white_label_prepared_by,
+                    logo_url=white_label_logo_url,
+                    primary_color=white_label_primary_color,
+                    secondary_color=white_label_secondary_color,
+                    footer_text=white_label_footer_text,
                 )
                 if template_name == "white_label"
                 else _render_runtime_report_markdown(filtered_report)
@@ -1850,6 +2040,11 @@ class PostgresEvidenceRepository:
                 "template": template_name,
                 "client_name": white_label_client,
                 "prepared_by": white_label_prepared_by,
+                "logo_url": white_label_logo_url,
+                "primary_color": white_label_primary_color,
+                "secondary_color": white_label_secondary_color,
+                "footer_text": white_label_footer_text,
+                "source": "project_brand_kit" if brand_kit else "query_or_default",
             }
             if template_name == "white_label"
             else {"template": template_name}

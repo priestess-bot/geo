@@ -142,6 +142,7 @@ code {
 .filterForm label,
 .saveViewForm label,
 .projectCreateForm label,
+.brandKitForm label,
 .manualBackfillForm label,
 .entityAliasForm label {
   display: grid;
@@ -152,6 +153,7 @@ code {
 .filterForm label span,
 .saveViewForm label span,
 .projectCreateForm label span,
+.brandKitForm label span,
 .manualBackfillForm label span,
 .entityAliasForm label span {
   color: #667585;
@@ -162,6 +164,8 @@ code {
 .saveViewForm input,
 .projectCreateForm input,
 .projectCreateForm textarea,
+.brandKitForm input,
+.brandKitForm textarea,
 .manualBackfillForm input,
 .manualBackfillForm select,
 .manualBackfillForm textarea,
@@ -183,7 +187,8 @@ code {
   resize: vertical;
 }
 
-.projectCreateForm {
+.projectCreateForm,
+.brandKitForm {
   background: #f7fafc;
   border: 1px solid #d9e2ec;
   border-radius: 6px;
@@ -193,7 +198,8 @@ code {
   padding: 12px;
 }
 
-.projectCreateForm textarea {
+.projectCreateForm textarea,
+.brandKitForm textarea {
   line-height: 1.45;
   resize: vertical;
 }
@@ -1015,6 +1021,7 @@ summary {
   .filterForm,
   .savedViews,
   .projectCreateForm,
+  .brandKitForm,
   .manualBackfillForm,
   .entityAliasForm,
   .evidenceGrid,
@@ -1064,6 +1071,7 @@ summary {
   .savedViews,
   .saveViewForm,
   .projectCreateForm,
+  .brandKitForm,
   .manualBackfillForm,
   .entityAliasForm,
   .scoreRow,

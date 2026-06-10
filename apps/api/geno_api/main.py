@@ -44,7 +44,7 @@ from geno_core.knowledge import (
     search_knowledge_facts,
 )
 from geno_core.market import build_au_market_profile
-from geno_core.models import EntityAliasInput, ManualBackfillInput, RuntimeSavedViewInput
+from geno_core.models import EntityAliasInput, ManualBackfillInput, RuntimeProjectBrandKitInput, RuntimeSavedViewInput
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.runtime import RuntimePersistenceError, build_repository_from_env, close_repository_connection
@@ -62,6 +62,17 @@ class RuntimeSavedViewRequest(BaseModel):
     query_path: str = Field(min_length=1, max_length=1000)
     export_path: str = Field(min_length=1, max_length=1000)
     created_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+
+
+class ProjectBrandKitRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    client_name: str = Field(min_length=1, max_length=160)
+    prepared_by: str = Field(default="GENO SaaS AU", min_length=1, max_length=160)
+    logo_url: str | None = Field(default=None, max_length=1000)
+    primary_color: str | None = Field(default=None, max_length=40)
+    secondary_color: str | None = Field(default=None, max_length=40)
+    footer_text: str | None = Field(default=None, max_length=500)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
 
 
 class ManualBackfillRequest(BaseModel):
@@ -496,6 +507,48 @@ def save_runtime_saved_view(payload: RuntimeSavedViewRequest) -> dict[str, objec
             )
         )
         return asdict(saved_view)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/project-brand-kits/runtime")
+def runtime_project_brand_kit(project_id: str = Query(min_length=1)) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        brand_kit = repository.get_project_brand_kit(project_id=project_id)
+        if brand_kit is None:
+            raise HTTPException(status_code=404, detail="Project brand kit not found")
+        return asdict(brand_kit)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-brand-kits/runtime")
+def save_runtime_project_brand_kit(payload: ProjectBrandKitRequest) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        brand_kit = repository.save_project_brand_kit(
+            RuntimeProjectBrandKitInput(
+                project_id=payload.project_id.strip(),
+                client_name=payload.client_name.strip(),
+                prepared_by=payload.prepared_by.strip(),
+                logo_url=payload.logo_url.strip() if payload.logo_url else None,
+                primary_color=payload.primary_color.strip() if payload.primary_color else None,
+                secondary_color=payload.secondary_color.strip() if payload.secondary_color else None,
+                footer_text=payload.footer_text.strip() if payload.footer_text else None,
+                updated_by=payload.updated_by.strip(),
+            )
+        )
+        return asdict(brand_kit)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     finally:
         close_repository_connection(repository)
 
@@ -1159,6 +1212,9 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeProject",
             "RuntimeProjectPage",
             "RuntimeProjectCreateRequest",
+            "RuntimeProjectBrandKit",
+            "RuntimeProjectBrandKitInput",
+            "ProjectBrandKitRequest",
             "RuntimePromptPage",
             "EntityAliasInput",
             "RuntimeEntityAlias",
@@ -1202,6 +1258,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/evidence-runs/runtime/export.csv",
             "/v1/evidence-runs/runtime/manual-backfill",
             "/v1/runtime-saved-views",
+            "/v1/project-brand-kits/runtime",
             "worker --persist",
             "worker --persist-analysis",
             "/v1/visibility-scores/runtime",

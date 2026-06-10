@@ -6,7 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from geno_api.main import app
-from geno_core.models import RuntimeProjectPage, RuntimeReportArtifact
+from geno_core.models import RuntimeProjectBrandKit, RuntimeProjectPage, RuntimeReportArtifact
 
 
 class ApiContractsTest(unittest.TestCase):
@@ -224,6 +224,115 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_project_brand_kit_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get("/v1/project-brand-kits/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_project_brand_kit_save_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.post(
+            "/v1/project-brand-kits/runtime",
+            json={
+                "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                "client_name": "Koala AU",
+                "prepared_by": "Partner Agency",
+                "logo_url": "https://koala.example/logo.png",
+                "primary_color": "#0f766e",
+                "secondary_color": "#111827",
+                "footer_text": "Prepared for Koala AU board review",
+                "updated_by": "runtime-console",
+            },
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_project_brand_kit_endpoint_returns_saved_configuration(self) -> None:
+        class FakeRepository:
+            def get_project_brand_kit(self, **kwargs: object) -> RuntimeProjectBrandKit:
+                self.kwargs = kwargs
+                return RuntimeProjectBrandKit(
+                    brand_kit={
+                        "id": "0ada83ad-b669-507e-b3c8-9d8574569a62",
+                        "project_id": kwargs["project_id"],
+                        "client_name": "Koala AU",
+                        "prepared_by": "Partner Agency",
+                        "logo_url": "https://koala.example/logo.png",
+                        "primary_color": "#0f766e",
+                        "secondary_color": "#111827",
+                        "footer_text": "Prepared for Koala AU board review",
+                        "updated_by": "runtime-console",
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "project_brand_kit_saved",
+                            "target_type": "project_brand_kit",
+                            "method_version": "project_brand_kit_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/project-brand-kits/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["brand_kit"]["client_name"], "Koala AU")
+        self.assertEqual(payload["brand_kit"]["primary_color"], "#0f766e")
+        self.assertEqual(payload["audit_events"][0]["event_type"], "project_brand_kit_saved")
+        self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+
+    def test_runtime_project_brand_kit_save_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def save_project_brand_kit(self, brand_kit: object) -> RuntimeProjectBrandKit:
+                self.brand_kit = brand_kit
+                return RuntimeProjectBrandKit(
+                    brand_kit={
+                        "id": "0ada83ad-b669-507e-b3c8-9d8574569a62",
+                        "project_id": brand_kit.project_id,
+                        "client_name": brand_kit.client_name,
+                        "prepared_by": brand_kit.prepared_by,
+                        "logo_url": brand_kit.logo_url,
+                        "primary_color": brand_kit.primary_color,
+                        "secondary_color": brand_kit.secondary_color,
+                        "footer_text": brand_kit.footer_text,
+                        "updated_by": brand_kit.updated_by,
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "project_brand_kit_saved",
+                            "target_type": "project_brand_kit",
+                            "method_version": "project_brand_kit_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/project-brand-kits/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "client_name": "Koala AU",
+                    "prepared_by": "Partner Agency",
+                    "logo_url": "https://koala.example/logo.png",
+                    "primary_color": "#0f766e",
+                    "secondary_color": "#111827",
+                    "footer_text": "Prepared for Koala AU board review",
+                    "updated_by": "runtime-console",
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["brand_kit"]["prepared_by"], "Partner Agency")
+        self.assertEqual(fake_repository.brand_kit.client_name, "Koala AU")
+        self.assertEqual(fake_repository.brand_kit.logo_url, "https://koala.example/logo.png")
+
     def test_runtime_visibility_scores_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/visibility-scores/runtime")
         self.assertEqual(response.status_code, 503)
@@ -433,6 +542,9 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeSavedViewPage", payload["persistence"])
         self.assertIn("RuntimeProject", payload["persistence"])
         self.assertIn("RuntimeProjectPage", payload["persistence"])
+        self.assertIn("RuntimeProjectBrandKit", payload["persistence"])
+        self.assertIn("RuntimeProjectBrandKitInput", payload["persistence"])
+        self.assertIn("ProjectBrandKitRequest", payload["persistence"])
         self.assertIn("RuntimePromptPage", payload["persistence"])
         self.assertIn("RuntimeScoreSnapshot", payload["persistence"])
         self.assertIn("RuntimeCitationGraph", payload["persistence"])
@@ -452,6 +564,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/evidence-runs/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime/manual-backfill", payload["persistence"])
         self.assertIn("/v1/runtime-saved-views", payload["persistence"])
+        self.assertIn("/v1/project-brand-kits/runtime", payload["persistence"])
         self.assertIn("/v1/visibility-scores/runtime", payload["persistence"])
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])
         self.assertIn("/v1/reports/runtime", payload["persistence"])

@@ -737,6 +737,24 @@ class RuntimeProjectPage:
 
 
 @dataclass(frozen=True)
+class RuntimeProjectBrandKit:
+    brand_kit: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeProjectBrandKitInput:
+    project_id: str
+    client_name: str
+    prepared_by: str
+    logo_url: str | None = None
+    primary_color: str | None = None
+    secondary_color: str | None = None
+    footer_text: str | None = None
+    updated_by: str = "runtime-console"
+
+
+@dataclass(frozen=True)
 class RuntimePromptPage:
     total_count: int
     limit: int

@@ -2,6 +2,7 @@ DROP TABLE IF EXISTS entity_aliases;
 DROP TABLE IF EXISTS competitor_entities;
 DROP TABLE IF EXISTS brand_entities;
 DROP TABLE IF EXISTS project_members;
+DROP TABLE IF EXISTS project_brand_kits;
 DROP TABLE IF EXISTS projects;
 DROP TABLE IF EXISTS tenants;
 DROP TABLE IF EXISTS report_evidence;
