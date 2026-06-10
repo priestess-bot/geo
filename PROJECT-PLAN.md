@@ -110,7 +110,7 @@
 - `[x]` (P0a) 仓库骨架：`apps/`、`packages/`、`workers/`、`infra/`、`tests/`、`decisions/`
 - `[x]` (P0a/P0b/P0c) 数据契约：优先实现 MarketProfile、IndustryProfile、PromptQuestion、GeoSample、AnswerRun、RawAnswer、AnswerCitation、AnswerAnalysis、SourceGraph、CompetitorBenchmark、VisibilityScoreSnapshot、BrandEntity/CompetitorEntity/EntityAlias、CollectionCost、AuditEvent、ReportExport、ScoreContribution、EvidenceLink、TraceabilityBundle 关联表；P1/P2 表可延后 — `§8`
 - `[x]` (P0a) 接口契约 stub（先定义不实现）：CollectorBackend、LLMGateway、ParserEngine、VectorStore、GraphStore、GeoProvider、ScoringFormula、ReportExporter — `Step3.2`
-- `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web、repository 映射、`DATABASE_URL` connection factory、S3-compatible object store client、AU 启动包/prompt 元数据持久化、worker `--persist` / `--persist-analysis`、runtime project/prompt/evidence/score API、runtime citation graph API、runtime report API、runtime action plan API、runtime content engine API、runtime traceability API 与 Runtime Console Project Bootstrap/Prompt Pack/Evidence Runs/Score Contributions/Citation Graph & Competitors/MVP；LiteLLM、连接池与完整详情查询 UI 待接）
+- `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web、repository 映射、`DATABASE_URL` connection factory、S3-compatible object store client、AU 启动包/prompt 元数据持久化、worker `--persist` / `--persist-analysis`、runtime project/prompt/evidence/score API、runtime citation graph API、runtime report API、runtime action plan API、runtime content engine API、runtime traceability API 与 Runtime Console Project Bootstrap/Prompt Pack/Evidence Runs/Score Contributions/Citation Graph & Competitors/Report Method & Evidence Appendix/MVP；LiteLLM、连接池与完整详情查询 UI 待接）
 - `[x]` (P0c/P1) 重组件接入点：ClickHouse、Temporal、Langfuse、promptfoo、SearXNG、Metabase 写 ADR 和接口适配计划，但不阻塞 P0a — `§6`
 - `[~]` (P0a) 空 CI：lint + 测试 + 迁移起服（已落 contract tests、Compose config、repository mapping/runtime tests；lint 与真实迁移起服待补）
 - `[~]` (P0a) LLM 网关配置 + 调用日志 + 对象存储配置 — `E10-01 / E10-03 / E10-05`（已落 LLMGateway 接口与对象存储配置；运行时调用日志待接）
@@ -239,12 +239,12 @@ DoD：
 
 - `[~]` (P0c) ReportExporter 接口 + Markdown/CSV/PDF 导出（方法说明 + 证据附录）、runtime report API、Markdown/CSV/PDF artifact 下载与 MinIO/S3-compatible artifact 归档；白标 PDF 模板 renderer 待接 — `Step13`
 - `[x]` (P0c) ReportExport 快照：冻结 score_snapshot_ids、answer_run_ids、prompt_version、公式版本、平台权重、采样窗口；worker `--persist-analysis` 已写入不可覆盖版本，runtime report API 可读回 — `Step5.1 / §8.17`
-- `[~]` (P0c) 报告展示：采集窗口/平台覆盖/access_method/样本量(k)/离散度/双分母/公式版本/API-界面差异抽检结论/Google spike pass/fail/limited coverage/审计摘要/分数解释包/非确定性说明 — `Step13`（核心方法/分数/证据/source gap/competitor/report snapshot 与基础 PDF artifact 已落；白标 PDF 模板、API-界面差异抽检与真实 Google 结论待接）
+- `[~]` (P0c) 报告展示：采集窗口/平台覆盖/access_method/样本量(k)/离散度/双分母/公式版本/API-界面差异抽检结论/Google spike pass/fail/limited coverage/审计摘要/分数解释包/非确定性说明 — `Step13`（Runtime Console 已展示 Report Method & Evidence Appendix：冻结 methodology hash、采样窗口、平台/access method/city 覆盖、样本量、双分母评分、离散度、公式版本、平台权重、证据附录、citation/audit 摘要；核心方法/分数/证据/source gap/competitor/report snapshot 与基础 PDF artifact 已落；白标 PDF 模板、API-界面差异抽检与真实 Google 结论待接）
 - `[ ]` (P1) 代理商工作流：多客户/多项目/白标/导出历史 — `Step13`
 
 DoD：
 
-- `[~]` 可导出含方法说明和证据附录的 Markdown/CSV/PDF，并通过 runtime report API 读取冻结快照、通过 artifact API 下载 Markdown/CSV/PDF；worker 可把 Markdown/CSV/PDF 归档到 MinIO/S3-compatible bucket；白标 PDF 模板待接
+- `[~]` 可导出含方法说明和证据附录的 Markdown/CSV/PDF，并通过 runtime report API 读取冻结快照、通过 artifact API 下载 Markdown/CSV/PDF；worker 可把 Markdown/CSV/PDF 归档到 MinIO/S3-compatible bucket；Runtime Console 已展示报告方法说明和证据附录详情；白标 PDF 模板待接
 - `[x]` 报告每个数字可追溯 answer_run_ids、prompt metadata、score snapshot 和 citation graph
 - `[x]` 报告导出写 AuditEvent；重复导出生成新 ReportExport 版本，不覆盖旧报告
 

@@ -165,14 +165,49 @@ type CitationGraph = {
 type ReportExport = {
   report_export: {
     id: string;
+    market_code?: string;
     report_version: string;
+    report_type?: string;
     sample_size: number;
+    prompt_version?: string;
+    scoring_formula_version?: string;
+    platform_weights_snapshot?: Record<string, number>;
+    window_start?: string;
+    window_end?: string;
+    methodology_hash?: string;
     exported_at: string;
     markdown_url?: string | null;
+    pdf_url?: string | null;
     csv_url?: string | null;
   };
-  answer_runs: unknown[];
-  audit_events: unknown[];
+  score_snapshots: Array<{
+    final_score?: number;
+    trigger_rate?: number;
+    mention_rate?: number;
+    recommendation_rate?: number;
+    dispersion?: number;
+    formula_version?: string;
+  }>;
+  answer_runs: Array<{
+    id: string;
+    prompt_text?: string;
+    prompt_intent_type?: string;
+    prompt_version?: string;
+    platform?: string;
+    surface?: string;
+    access_method?: string;
+    market_code?: string;
+    city?: string;
+    language?: string;
+    device?: string;
+    sample_index?: number;
+    sample_size?: number;
+    answer_present?: boolean;
+    surface_triggered?: boolean;
+    status?: string;
+  }>;
+  citation_graph?: CitationGraph | null;
+  audit_events: Array<{ event_type?: string; target_type?: string; method_version?: string | null }>;
 };
 
 type ActionPlan = {
@@ -362,6 +397,18 @@ function boolText(value: boolean | undefined): string {
   return "unknown";
 }
 
+function dateText(value: string | undefined): string {
+  if (!value) return "unknown";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toISOString();
+}
+
+function uniqueText(values: Array<string | undefined>): string {
+  const items = Array.from(new Set(values.filter((item): item is string => Boolean(item))));
+  return items.length ? items.join(", ") : "unknown";
+}
+
 export default async function Home() {
   const { data, error, displayUrl } = await fetchRuntimeData();
   const latestProject = data.projects.records[0];
@@ -385,6 +432,14 @@ export default async function Home() {
     (traceability?.audit_events.length || 0);
   const promptIntentCount = new Set(data.prompts.records.map((prompt) => prompt.intent_type)).size;
   const promptCityCount = new Set(data.prompts.records.map((prompt) => prompt.city)).size;
+  const latestReportScore = latestReport?.score_snapshots[0];
+  const latestReportGraph = latestReport?.citation_graph;
+  const reportPlatformWeights = latestReport?.report_export.platform_weights_snapshot || {};
+  const reportPlatforms = latestReport ? uniqueText(latestReport.answer_runs.map((run) => run.platform)) : "unknown";
+  const reportAccessMethods = latestReport
+    ? uniqueText(latestReport.answer_runs.map((run) => run.access_method))
+    : "unknown";
+  const reportCities = latestReport ? uniqueText(latestReport.answer_runs.map((run) => run.city)) : "unknown";
 
   return (
     <main className="shell">
@@ -556,7 +611,9 @@ export default async function Home() {
               <dl className="facts">
                 <Fact label="Sample size" value={latestReport.report_export.sample_size} />
                 <Fact label="Evidence links" value={latestReport.answer_runs.length} />
+                <Fact label="Formula" value={latestReport.report_export.scoring_formula_version || "unknown"} />
                 <Fact label="Frozen MD URL" value={latestReport.report_export.markdown_url || "pending object store"} />
+                <Fact label="Frozen PDF URL" value={latestReport.report_export.pdf_url || "pending object store"} />
                 <Fact label="Frozen CSV URL" value={latestReport.report_export.csv_url || "pending object store"} />
               </dl>
               <div className="downloadRow">
@@ -564,6 +621,93 @@ export default async function Home() {
                 <a href={`${reportArtifactBase}?type=csv`}>Download CSV</a>
                 <a href={`${reportArtifactBase}?type=pdf`}>Download PDF</a>
               </div>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </Panel>
+
+        <Panel
+          title="Report Method & Evidence Appendix"
+          subtitle={latestReport?.report_export.methodology_hash || "No frozen methodology"}
+          wide
+        >
+          {latestReport ? (
+            <div className="reportDetail">
+              <section className="reportSection reportMethod">
+                <h3>Frozen Methodology</h3>
+                <dl className="facts">
+                  <Fact label="Report type" value={latestReport.report_export.report_type || "unknown"} />
+                  <Fact label="Market" value={latestReport.report_export.market_code || "unknown"} />
+                  <Fact label="Prompt version" value={latestReport.report_export.prompt_version || "unknown"} />
+                  <Fact label="Formula version" value={latestReport.report_export.scoring_formula_version || "unknown"} />
+                  <Fact label="Window start" value={dateText(latestReport.report_export.window_start)} />
+                  <Fact label="Window end" value={dateText(latestReport.report_export.window_end)} />
+                  <Fact label="Platforms" value={reportPlatforms} />
+                  <Fact label="Access methods" value={reportAccessMethods} />
+                  <Fact label="Cities" value={reportCities} />
+                  <Fact label="Method hash" value={latestReport.report_export.methodology_hash || "unknown"} />
+                </dl>
+              </section>
+
+              <section className="reportSection">
+                <h3>Score Snapshot</h3>
+                <dl className="facts">
+                  <Fact label="Final score" value={num(latestReportScore?.final_score)} />
+                  <Fact label="Trigger rate" value={pct(latestReportScore?.trigger_rate)} />
+                  <Fact label="Mention rate" value={pct(latestReportScore?.mention_rate)} />
+                  <Fact label="Recommendation" value={pct(latestReportScore?.recommendation_rate)} />
+                  <Fact label="Dispersion" value={num(latestReportScore?.dispersion)} />
+                  <Fact label="Snapshot formula" value={latestReportScore?.formula_version || "unknown"} />
+                </dl>
+                <h3>Platform Weights</h3>
+                <ul className="plainList">
+                  {Object.entries(reportPlatformWeights).map(([platform, weight]) => (
+                    <li key={platform}>
+                      <strong>{platform}</strong>
+                      <span>{num(weight)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              <section className="reportSection">
+                <h3>Evidence Appendix</h3>
+                <ul className="plainList">
+                  {latestReport.answer_runs.slice(0, 8).map((run) => (
+                    <li key={run.id}>
+                      <strong>
+                        {run.platform || "platform"} / {run.surface || "surface"} / {run.city || "city"}
+                      </strong>
+                      <span>{run.prompt_text || run.id}</span>
+                      <small>
+                        intent {run.prompt_intent_type || "unknown"} · access {run.access_method || "unknown"} · sample{" "}
+                        {run.sample_index || 0}/{run.sample_size || 0} · answer {boolText(run.answer_present)} ·
+                        surface {boolText(run.surface_triggered)} · run {shortId(run.id)}
+                      </small>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              <section className="reportSection">
+                <h3>Citation & Audit Summary</h3>
+                <dl className="facts">
+                  <Fact label="Graph nodes" value={latestReportGraph?.nodes.length || 0} />
+                  <Fact label="Graph links" value={latestReportGraph?.evidence_links.length || 0} />
+                  <Fact label="Source gaps" value={latestReportGraph?.source_gaps.length || 0} />
+                  <Fact label="Benchmarks" value={latestReportGraph?.competitor_benchmarks.length || 0} />
+                  <Fact label="Audit events" value={latestReport.audit_events.length} />
+                </dl>
+                <ul className="plainList">
+                  {latestReport.audit_events.slice(0, 5).map((event, index) => (
+                    <li key={`${event.event_type}-${index}`}>
+                      <strong>{event.event_type || "audit_event"}</strong>
+                      <span>{event.target_type || "target"} · {event.method_version || "no method version"}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             </div>
           ) : (
             <EmptyState />

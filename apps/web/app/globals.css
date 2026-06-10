@@ -510,6 +510,27 @@ code {
   text-transform: uppercase;
 }
 
+.reportDetail {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.reportSection {
+  align-content: start;
+  background: #f7fafc;
+  border: 1px solid #e1e7ee;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.reportMethod {
+  grid-column: 1 / -1;
+}
+
 .traceGrid {
   display: grid;
   gap: 14px;
@@ -619,6 +640,7 @@ summary {
   .evidenceGrid,
   .contributionGrid,
   .benchmarkGrid,
+  .reportDetail,
   .traceGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -652,6 +674,7 @@ summary {
   .contributionGrid,
   .graphColumns,
   .benchmarkGrid,
+  .reportDetail,
   .traceGrid,
   .detailGrid {
     grid-template-columns: 1fr;
