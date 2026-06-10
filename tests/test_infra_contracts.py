@@ -54,6 +54,22 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("geno-gpt-4.1-mini", worker["command"])
         self.assertIn("litellm", worker["depends_on"])
 
+    def test_runtime_e2e_profile_wires_verifier_to_postgres_and_minio(self) -> None:
+        config = self._compose_config("e2e")
+        services = config["services"]
+        verifier = services["runtime-e2e"]
+
+        self.assertEqual(verifier["build"]["dockerfile"], "apps/api/Dockerfile")
+        self.assertIn("python", verifier["command"])
+        self.assertIn("scripts/verify_runtime_e2e.py", verifier["command"])
+        self.assertEqual(verifier["environment"]["DATABASE_URL"], "postgresql://geno:geno@postgres:5432/geno")
+        self.assertEqual(verifier["environment"]["OBJECT_STORE_ENDPOINT"], "http://minio:9000")
+        self.assertEqual(verifier["environment"]["OBJECT_STORE_BUCKET"], "geno-reports")
+        self.assertEqual(verifier["environment"]["OBJECT_STORE_ACCESS_KEY"], "minio")
+        self.assertEqual(verifier["environment"]["OBJECT_STORE_SECRET_KEY"], "minio123")
+        self.assertIn("postgres", verifier["depends_on"])
+        self.assertIn("minio", verifier["depends_on"])
+
     def test_litellm_config_uses_env_secrets_and_geno_model_aliases(self) -> None:
         config = yaml.safe_load((ROOT / "infra/litellm_config.yaml").read_text(encoding="utf-8"))
         model_list = {item["model_name"]: item["litellm_params"] for item in config["model_list"]}
@@ -63,6 +79,12 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(model_list["geno-text-embedding-3-small"]["model"], "openai/text-embedding-3-small")
         self.assertEqual(model_list["geno-text-embedding-3-small"]["api_key"], "os.environ/OPENAI_API_KEY")
         self.assertEqual(config["general_settings"]["master_key"], "os.environ/LITELLM_MASTER_KEY")
+
+    def test_api_image_includes_runtime_e2e_verifier(self) -> None:
+        dockerfile = (ROOT / "apps/api/Dockerfile").read_text(encoding="utf-8")
+
+        self.assertIn("COPY scripts ./scripts", dockerfile)
+        self.assertIn("ENV PYTHONPATH=/app:/app/packages/geno_core:/app/apps/api", dockerfile)
 
 
 if __name__ == "__main__":

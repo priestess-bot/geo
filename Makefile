@@ -1,4 +1,4 @@
-.PHONY: install-api-deps test docker-config docker-config-llm worker-fixture worker-fixture-persist worker-google-fixture
+.PHONY: install-api-deps test docker-config docker-config-llm runtime-e2e worker-fixture worker-fixture-persist worker-google-fixture
 
 install-api-deps:
 	python3 -m pip install -r apps/api/requirements.txt
@@ -11,6 +11,12 @@ docker-config:
 
 docker-config-llm:
 	docker compose -f infra/docker-compose.yml --profile llm-gateway config
+
+runtime-e2e:
+	set -e; \
+	trap 'docker compose -p geno-runtime-e2e -f infra/docker-compose.yml --profile e2e down -v' EXIT; \
+	docker compose -p geno-runtime-e2e -f infra/docker-compose.yml --profile e2e build runtime-e2e; \
+	docker compose -p geno-runtime-e2e -f infra/docker-compose.yml --profile e2e run --rm runtime-e2e
 
 worker-fixture:
 	PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode fixture

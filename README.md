@@ -44,7 +44,10 @@
 make test
 make docker-config
 make docker-config-llm
+make runtime-e2e
 ```
+
+`make runtime-e2e` 会用独立 Compose project 启动临时 PostgreSQL+pgvector 与 MinIO，构建 `runtime-e2e` 容器，跑 fixture worker `--persist --persist-analysis`，验证 Postgres 中的 answer/score/report/traceability 行、MinIO 中的 Markdown/PDF/CSV report artifact，并用 fake official API response 验证 `geno-api-snapshot://...` 会归档为 `s3://...` EvidenceAsset 和 `api_snapshot_assets_archived` 审计事件；结束时自动 `down -v` 清理容器和卷。
 
 核心服务一键启动入口：
 
@@ -86,6 +89,7 @@ Docker worker profile：
 
 ```bash
 docker compose -f infra/docker-compose.yml --profile worker run --rm collector-worker
+docker compose -f infra/docker-compose.yml --profile e2e run --rm runtime-e2e
 OPENAI_API_KEY=... LITELLM_MASTER_KEY=... docker compose -f infra/docker-compose.yml --profile llm-gateway run --rm collector-worker-litellm
 ```
 

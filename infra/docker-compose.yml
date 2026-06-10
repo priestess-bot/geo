@@ -132,6 +132,28 @@ services:
       litellm:
         condition: service_started
 
+  runtime-e2e:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    profiles:
+      - e2e
+    environment:
+      DATABASE_URL: postgresql://geno:geno@postgres:5432/geno
+      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_ACCESS_KEY: minio
+      OBJECT_STORE_SECRET_KEY: minio123
+      OBJECT_STORE_REGION: us-east-1
+    command:
+      - python
+      - scripts/verify_runtime_e2e.py
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
   web:
     build:
       context: ..
