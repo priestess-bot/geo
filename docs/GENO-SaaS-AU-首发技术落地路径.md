@@ -828,6 +828,8 @@ Recommendation Rate = 明确推荐次数 / surface_triggered 次数
 
 报告中两个分母都要展示：既看"AI 答案出现的概率"（Trigger Rate），也看"出现时品牌的表现"（Mention/Recommendation Rate）。
 
+工程落地要求：`ReportExport.method_disclosure.score_rate_denominators` 必须冻结三类 rate 的 `numerator / denominator / formula` 与本报告窗口的 `attempted_records / surface_triggered_records / evidence_trigger_rate`。Markdown、PDF、白标 PDF 和 Runtime Console 只能复用这个冻结口径；若旧报告缺少该字段，runtime artifact 可用已绑定的 answer runs 兼容补算展示，但不改写历史 `ReportExport`。
+
 #### 9.3 非确定性与重复采样
 
 AI 答案非确定性强，单次采样（N=1）评分噪声大。要求：
@@ -1643,7 +1645,7 @@ ReportEvidence
 - **每个平台的采集后端可插拔**：P0a 至少两个官方 API 后端可工作；P0b 至少对比自建浏览器、第三方 SERP API、人工补录中的两条路径；新增后端不改业务代码。
 - 每条采集结果有 answer、citation、screenshot 或 HTML 快照。
 - 每条采集结果记录平台、surface、access_method、城市、语言、设备、采集时间、collector_version 和 collector_backend_id。
-- **每条采集结果记录 `answer_present` / `surface_triggered`**，报告能区分 Trigger Rate 与 Mention/Recommendation Rate。
+- **每条采集结果记录 `answer_present` / `surface_triggered`**，报告能区分 Trigger Rate 与 Mention/Recommendation Rate，并在 `method_disclosure.score_rate_denominators` 中冻结分母定义。
 - **审计链路可用**：采集、解析、评分、人工补录、实体确认、报告导出都写入 `AuditEvent`。
 - **溯源链路可用**：任意报告数值都能从 `ReportExport -> VisibilityScoreSnapshot -> ScoreContribution -> AnswerAnalysis -> AnswerRun -> RawAnswer/AnswerCitation/EvidenceAsset` 追溯。
 - **解释包可用**：任意总分/平台分/城市分/intent 分都能展示子指标贡献、权重、分母、正负证据和局限说明。

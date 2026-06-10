@@ -32,6 +32,13 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Google coverage", page_source)
         self.assertIn("Google gate", page_source)
         self.assertIn("API/browser fidelity", page_source)
+        self.assertIn("Trigger denominator", page_source)
+        self.assertIn("Mention denominator", page_source)
+        self.assertIn("Recommendation denominator", page_source)
+        self.assertIn("Attempted records", page_source)
+        self.assertIn("Surface-triggered records", page_source)
+        self.assertIn("Evidence trigger rate", page_source)
+        self.assertIn("score_rate_denominators", page_source)
         self.assertIn("Access distribution", page_source)
         self.assertIn("Google remains outside the main scoring denominator", page_source)
 

@@ -1017,7 +1017,26 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("Google spike gate: not_run", report.markdown)
         self.assertIn("Google limited coverage: yes", report.markdown)
         self.assertIn("API-vs-browser fidelity: not_run", report.markdown)
+        self.assertIn("Trigger rate denominator: all attempted evidence records in this report window", report.markdown)
+        self.assertIn("Mention rate denominator: surface_triggered evidence records, not all attempted records", report.markdown)
+        self.assertIn(
+            "Recommendation rate denominator: surface_triggered evidence records, not all attempted records",
+            report.markdown,
+        )
+        self.assertIn("Report evidence attempted records: 40", report.markdown)
+        self.assertIn("Report evidence surface-triggered records: 40", report.markdown)
         self.assertIn("Access method distribution", report.markdown)
+        score_rate_disclosure = report.report_export.method_disclosure["score_rate_denominators"]
+        self.assertEqual(
+            score_rate_disclosure["definitions"]["trigger_rate"]["formula"],
+            "surface_triggered_records / attempted_records",
+        )
+        self.assertEqual(
+            score_rate_disclosure["definitions"]["mention_rate"]["denominator"],
+            "surface_triggered evidence records, not all attempted records",
+        )
+        self.assertEqual(score_rate_disclosure["evidence_denominators"]["attempted_records"], len(records))
+        self.assertEqual(score_rate_disclosure["evidence_denominators"]["surface_triggered_records"], len(records))
         self.assertIn("answer_run_id", report.csv_content)
         self.assertTrue(report.pdf_content.startswith(b"%PDF-1.4"))
         self.assertIn(b"%%EOF", report.pdf_content)
@@ -3036,6 +3055,10 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("Google limited coverage: yes", artifact.content)
         self.assertIn("Google AIO completed runs: 0 / planned 240", artifact.content)
         self.assertIn("API-vs-browser fidelity: not_run", artifact.content)
+        self.assertIn("Trigger rate denominator: all attempted evidence records in this report window", artifact.content)
+        self.assertIn("Mention rate denominator: surface_triggered evidence records, not all attempted records", artifact.content)
+        self.assertIn("Report evidence attempted records: 1", artifact.content)
+        self.assertIn("Report evidence surface-triggered records: 1", artifact.content)
         self.assertIn("Screenshot records: 1", artifact.content)
         self.assertIn("HTML snapshot records: 1", artifact.content)
         self.assertIn("ReportExport -> VisibilityScoreSnapshot", artifact.content)

@@ -250,6 +250,23 @@ type ReportExport = {
         mismatch_count?: number;
         difference_rate?: number | null;
       };
+      score_rate_denominators?: {
+        definitions?: Record<
+          string,
+          {
+            label?: string;
+            numerator?: string;
+            denominator?: string;
+            formula?: string;
+            note?: string;
+          }
+        >;
+        evidence_denominators?: {
+          attempted_records?: number;
+          surface_triggered_records?: number;
+        };
+        evidence_trigger_rate?: number;
+      };
       access_method_distribution?: Record<string, number>;
       platform_distribution?: Record<string, number>;
       evidence_asset_coverage?: {
@@ -1565,6 +1582,9 @@ export default async function Home({
   const reportFrozenAccessMethodCounts = reportMethodDisclosure?.access_method_distribution || reportAccessMethodCounts;
   const reportFrozenPlatformCounts = reportMethodDisclosure?.platform_distribution || reportPlatformCounts;
   const reportFidelity = reportMethodDisclosure?.api_browser_fidelity;
+  const reportScoreRateDisclosure = reportMethodDisclosure?.score_rate_denominators;
+  const reportRateDefinitions = reportScoreRateDisclosure?.definitions || {};
+  const reportRateEvidenceDenominators = reportScoreRateDisclosure?.evidence_denominators || {};
   const runtimeFidelity = latestFidelityCheck?.fidelity_check;
   const reportGate = reportMethodDisclosure?.google_spike_gate;
   const reportOfficialApiCount =
@@ -1589,6 +1609,21 @@ export default async function Home({
     reportMethodDisclosure?.evidence_asset_coverage?.screenshot_records ??
     (latestReport?.answer_runs.filter((run) => run.access_method === "browser" || run.access_method === "manual").length || 0);
   const reportHtmlSnapshotCount = reportMethodDisclosure?.evidence_asset_coverage?.html_snapshot_records ?? 0;
+  const reportTriggerDenominator =
+    reportRateDefinitions.trigger_rate?.denominator || "all attempted evidence records in this report window";
+  const reportMentionDenominator =
+    reportRateDefinitions.mention_rate?.denominator || "surface_triggered evidence records, not all attempted records";
+  const reportRecommendationDenominator =
+    reportRateDefinitions.recommendation_rate?.denominator ||
+    "surface_triggered evidence records, not all attempted records";
+  const reportEvidenceAttemptedRecords = reportRateEvidenceDenominators.attempted_records ?? latestReport?.answer_runs.length ?? 0;
+  const reportEvidenceTriggeredRecords =
+    reportRateEvidenceDenominators.surface_triggered_records ??
+    latestReport?.answer_runs.filter((run) => run.surface_triggered).length ??
+    0;
+  const reportEvidenceTriggerRate =
+    reportScoreRateDisclosure?.evidence_trigger_rate ??
+    (reportEvidenceAttemptedRecords ? reportEvidenceTriggeredRecords / reportEvidenceAttemptedRecords : 0);
   const latestRetestComparison = latestAction?.retest_comparisons[0];
   const activeFilterCount = [filters.platform, filters.city, filters.intent_type].filter(Boolean).length;
   const filterLabel = activeFilterCount
@@ -2520,6 +2555,12 @@ export default async function Home({
                   <Fact label="Google gate" value={reportGoogleGateStatus} />
                   <Fact label="Limited coverage" value={reportLimitedCoverage ? "yes" : "no"} />
                   <Fact label="API/browser fidelity" value={reportFidelityStatus} />
+                  <Fact label="Trigger denominator" value={reportTriggerDenominator} />
+                  <Fact label="Mention denominator" value={reportMentionDenominator} />
+                  <Fact label="Recommendation denominator" value={reportRecommendationDenominator} />
+                  <Fact label="Attempted records" value={reportEvidenceAttemptedRecords} />
+                  <Fact label="Surface-triggered records" value={reportEvidenceTriggeredRecords} />
+                  <Fact label="Evidence trigger rate" value={pct(reportEvidenceTriggerRate)} />
                   <Fact label="Official API rows" value={reportOfficialApiCount} />
                   <Fact label="Browser rows" value={reportBrowserCount} />
                   <Fact label="Comparable pairs" value={reportComparablePairs} />

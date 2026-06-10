@@ -1030,6 +1030,15 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("Google spike gate: fail", payload["markdown"])
         self.assertIn("Google limited coverage: yes", payload["markdown"])
         self.assertIn("API-vs-browser fidelity: not_run", payload["markdown"])
+        self.assertIn("Trigger rate denominator: all attempted evidence records in this report window", payload["markdown"])
+        self.assertIn("Mention rate denominator: surface_triggered evidence records, not all attempted records", payload["markdown"])
+        self.assertIn("Report evidence attempted records:", payload["markdown"])
+        score_rate_disclosure = payload["report_export"]["method_disclosure"]["score_rate_denominators"]
+        self.assertEqual(
+            score_rate_disclosure["definitions"]["recommendation_rate"]["formula"],
+            "brand_recommended_records / surface_triggered_records",
+        )
+        self.assertGreater(score_rate_disclosure["evidence_denominators"]["attempted_records"], 0)
         self.assertIn("answer_run_id", payload["csv_content"])
         self.assertGreater(payload["pdf_size_bytes"], 0)
         self.assertEqual(len(payload["pdf_content_hash"]), 64)

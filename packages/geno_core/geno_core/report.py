@@ -21,6 +21,31 @@ from geno_core.models import (
 )
 
 
+SCORE_RATE_DENOMINATORS: dict[str, dict[str, str]] = {
+    "trigger_rate": {
+        "label": "Trigger rate",
+        "numerator": "surface_triggered evidence records",
+        "denominator": "all attempted evidence records in this report window",
+        "formula": "surface_triggered_records / attempted_records",
+        "note": "Measures how often the AI surface produced a surfaced answer event.",
+    },
+    "mention_rate": {
+        "label": "Mention rate",
+        "numerator": "brand_mentioned answer analyses",
+        "denominator": "surface_triggered evidence records, not all attempted records",
+        "formula": "brand_mentioned_records / surface_triggered_records",
+        "note": "Measures brand visibility after an AI answer is surfaced.",
+    },
+    "recommendation_rate": {
+        "label": "Recommendation rate",
+        "numerator": "brand_recommended answer analyses",
+        "denominator": "surface_triggered evidence records, not all attempted records",
+        "formula": "brand_recommended_records / surface_triggered_records",
+        "note": "Measures explicit recommendation share after an AI answer is surfaced.",
+    },
+}
+
+
 def _stable_id(kind: str, *parts: object) -> str:
     return str(uuid5(NAMESPACE_URL, ":".join(("geno", kind, *(str(part) for part in parts)))))
 
@@ -251,6 +276,21 @@ def methodology_rows_from_runtime_answer_runs(answer_runs: tuple[dict[str, Any],
     )
 
 
+def build_score_rate_methodology(rows: tuple[dict[str, Any], ...]) -> dict[str, Any]:
+    attempted_records = len(rows)
+    surface_triggered_records = sum(1 for row in rows if bool(row.get("surface_triggered")))
+    return {
+        "definitions": {name: dict(definition) for name, definition in SCORE_RATE_DENOMINATORS.items()},
+        "evidence_denominators": {
+            "attempted_records": attempted_records,
+            "surface_triggered_records": surface_triggered_records,
+        },
+        "evidence_trigger_rate": round(surface_triggered_records / attempted_records, 4)
+        if attempted_records
+        else 0.0,
+    }
+
+
 def _gate_payload(gate: GoogleSpikeGateResult | Mapping[str, object] | None, rows: tuple[dict[str, Any], ...]) -> dict[str, Any]:
     google_rows = [row for row in rows if row.get("platform") == "google"]
     if gate is None:
@@ -346,6 +386,7 @@ def build_report_methodology_disclosure(
         "google_coverage": google_coverage,
         "google_spike_gate": gate_payload,
         "api_browser_fidelity": fidelity_payload,
+        "score_rate_denominators": build_score_rate_methodology(rows),
         "access_method_distribution": access_distribution,
         "platform_distribution": platform_distribution,
         "platform_weights_snapshot": dict(sorted(platform_weights_snapshot.items())),
@@ -359,6 +400,9 @@ def build_report_methodology_disclosure(
 def render_methodology_disclosure_lines(disclosure: Mapping[str, Any]) -> list[str]:
     gate = dict(disclosure.get("google_spike_gate") or {})
     fidelity = dict(disclosure.get("api_browser_fidelity") or {})
+    score_rates = dict(disclosure.get("score_rate_denominators") or {})
+    rate_definitions = dict(score_rates.get("definitions") or {})
+    rate_denominators = dict(score_rates.get("evidence_denominators") or {})
     assets = dict(disclosure.get("evidence_asset_coverage") or {})
     access_distribution = dict(disclosure.get("access_method_distribution") or {})
     platform_distribution = dict(disclosure.get("platform_distribution") or {})
@@ -373,6 +417,12 @@ def render_methodology_disclosure_lines(disclosure: Mapping[str, Any]) -> list[s
         f"- Browser records: {fidelity.get('browser_records', 0)}",
         f"- Comparable prompt/city pairs: {fidelity.get('comparable_prompt_city_pairs', 0)}",
         f"- API/browser difference rate: {fidelity.get('difference_rate') if fidelity.get('difference_rate') is not None else 'n/a'}",
+        f"- Trigger rate denominator: {dict(rate_definitions.get('trigger_rate') or {}).get('denominator', SCORE_RATE_DENOMINATORS['trigger_rate']['denominator'])}",
+        f"- Mention rate denominator: {dict(rate_definitions.get('mention_rate') or {}).get('denominator', SCORE_RATE_DENOMINATORS['mention_rate']['denominator'])}",
+        f"- Recommendation rate denominator: {dict(rate_definitions.get('recommendation_rate') or {}).get('denominator', SCORE_RATE_DENOMINATORS['recommendation_rate']['denominator'])}",
+        f"- Report evidence attempted records: {rate_denominators.get('attempted_records', 0)}",
+        f"- Report evidence surface-triggered records: {rate_denominators.get('surface_triggered_records', 0)}",
+        f"- Report evidence trigger rate: {score_rates.get('evidence_trigger_rate', 0.0)}",
         f"- Access method distribution: {access_distribution}",
         f"- Platform distribution: {platform_distribution}",
         f"- Screenshot records: {assets.get('screenshot_records', 0)}",

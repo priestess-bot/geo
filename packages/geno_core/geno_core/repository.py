@@ -78,6 +78,7 @@ from geno_core.models import (
 )
 from geno_core.report import (
     build_report_methodology_disclosure,
+    build_score_rate_methodology,
     methodology_rows_from_runtime_answer_runs,
     render_markdown_pdf,
     render_methodology_disclosure_lines,
@@ -214,6 +215,19 @@ def _runtime_collection_run_row(row: dict[str, Any]) -> dict[str, Any]:
 def _frozen_method_disclosure(report_export: dict[str, Any]) -> dict[str, Any] | None:
     disclosure = report_export.get("method_disclosure")
     return dict(disclosure) if isinstance(disclosure, dict) else None
+
+
+def _runtime_method_disclosure(report: RuntimeReportExport) -> dict[str, Any]:
+    rows = methodology_rows_from_runtime_answer_runs(report.answer_runs)
+    disclosure = _frozen_method_disclosure(report.report_export)
+    if disclosure is None:
+        return build_report_methodology_disclosure(
+            rows=rows,
+            platform_weights_snapshot=dict(report.report_export.get("platform_weights_snapshot") or {}),
+        )
+    if "score_rate_denominators" not in disclosure:
+        disclosure["score_rate_denominators"] = build_score_rate_methodology(rows)
+    return disclosure
 
 
 RUNTIME_EVIDENCE_SORTS = {
@@ -387,10 +401,7 @@ def _render_runtime_report_markdown(report: RuntimeReportExport) -> str:
     report_export = report.report_export
     snapshot = report.score_snapshots[0] if report.score_snapshots else {}
     graph = report.citation_graph
-    method_disclosure = _frozen_method_disclosure(report_export) or build_report_methodology_disclosure(
-        rows=methodology_rows_from_runtime_answer_runs(report.answer_runs),
-        platform_weights_snapshot=dict(report_export.get("platform_weights_snapshot") or {}),
-    )
+    method_disclosure = _runtime_method_disclosure(report)
     lines = [
         "# GENO AU Evidence Report",
         "",
@@ -461,10 +472,7 @@ def _render_white_label_report_markdown(
     report_export = report.report_export
     snapshot = report.score_snapshots[0] if report.score_snapshots else {}
     graph = report.citation_graph
-    method_disclosure = _frozen_method_disclosure(report_export) or build_report_methodology_disclosure(
-        rows=methodology_rows_from_runtime_answer_runs(report.answer_runs),
-        platform_weights_snapshot=dict(report_export.get("platform_weights_snapshot") or {}),
-    )
+    method_disclosure = _runtime_method_disclosure(report)
     platform_values = sorted(
         {
             str(answer_run.get("platform"))
@@ -507,6 +515,7 @@ def _render_white_label_report_markdown(
         "- Every displayed score remains traceable to answer runs, citations, score contributions, and audit events.",
         f"- Google coverage: {method_disclosure['google_coverage']}",
         f"- API-vs-browser fidelity: {method_disclosure['api_browser_fidelity']['status']}",
+        *render_methodology_disclosure_lines(method_disclosure),
         "",
         "## Evidence Highlights",
         "",
