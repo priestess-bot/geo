@@ -47,6 +47,7 @@ from geno_core.knowledge import (
     build_manual_distribution_records,
     search_knowledge_facts,
 )
+from geno_core.llm_gateway import FixtureLLMGateway
 from geno_core.market import build_au_market_profile
 from geno_core.models import (
     AnswerAnalysis,
@@ -595,6 +596,35 @@ class CoreContractsTest(unittest.TestCase):
         self.assertGreaterEqual(comparison["agreement_rate"], 0)
         self.assertLessEqual(comparison["agreement_rate"], 1)
         self.assertIn("secondary_result", comparison)
+        self.assertEqual(comparison["secondary_prompt_version"], "llm_judge_prompt_v1")
+        call_log = comparison["secondary_result"]["llm_call_log"]
+        self.assertEqual(call_log["purpose"], "parser_judge")
+        self.assertEqual(call_log["provider"], "fixture")
+        self.assertEqual(call_log["model"], "local-fixture-judge")
+        self.assertEqual(call_log["prompt_version"], "llm_judge_prompt_v1")
+        self.assertEqual(call_log["status"], "succeeded")
+        self.assertGreater(call_log["total_tokens"], 0)
+        self.assertEqual(len(call_log["request_hash"]), 64)
+        self.assertEqual(len(call_log["response_hash"]), 64)
+
+    def test_m0_fixture_llm_gateway_records_auditable_chat_log(self) -> None:
+        gateway = FixtureLLMGateway()
+
+        response = gateway.chat(
+            messages=[{"role": "user", "content": "Judge Koala in Australia."}],
+            model="local-fixture-judge",
+            metadata={"project_id": "project-1", "answer_run_id": "run-1", "purpose": "parser_judge"},
+        )
+
+        call_log = response["call_log"]
+        self.assertEqual(call_log["project_id"], "project-1")
+        self.assertEqual(call_log["answer_run_id"], "run-1")
+        self.assertEqual(call_log["purpose"], "parser_judge")
+        self.assertEqual(call_log["provider"], "fixture")
+        self.assertEqual(call_log["status"], "succeeded")
+        self.assertGreater(call_log["prompt_tokens"], 0)
+        self.assertGreater(call_log["completion_tokens"], 0)
+        self.assertEqual(call_log["total_tokens"], call_log["prompt_tokens"] + call_log["completion_tokens"])
 
     def test_m3_rule_parser_uses_confirmed_entity_aliases(self) -> None:
         bootstrap = build_au_project_bootstrap(
@@ -1277,6 +1307,7 @@ class CoreContractsTest(unittest.TestCase):
             "collector_logs",
             "collection_costs",
             "answer_analyses",
+            "llm_call_logs",
             "visibility_score_snapshots",
             "score_contributions",
             "source_graphs",
@@ -1302,6 +1333,12 @@ class CoreContractsTest(unittest.TestCase):
         first_analysis_insert = next(params for sql, params in connection.calls if "INSERT INTO answer_analyses" in sql)
         self.assertEqual(str(first_analysis_insert[0]), analysis_result.analyses[0].id)
         self.assertEqual(len(str(first_analysis_insert[0])), 36)
+        first_llm_call_insert = next(params for sql, params in connection.calls if "INSERT INTO llm_call_logs" in sql)
+        self.assertEqual(str(first_llm_call_insert[2]), records[0].answer_run.id)
+        self.assertEqual(first_llm_call_insert[3], "parser_judge")
+        self.assertEqual(first_llm_call_insert[4], "fixture")
+        self.assertEqual(first_llm_call_insert[6], "llm_judge_prompt_v1")
+        self.assertGreater(first_llm_call_insert[11], 0)
         self.assertIn("ON CONFLICT (id) DO UPDATE SET parser_engine_id = EXCLUDED.parser_engine_id", executed_sql)
         report_export_insert = next(params for sql, params in connection.calls if "INSERT INTO report_exports" in sql)
         self.assertEqual(report_export_insert[10]["google_coverage"], report.report_export.method_disclosure["google_coverage"])

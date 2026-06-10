@@ -45,7 +45,9 @@ python3 workers/collector_worker/run_collection_slice.py --mode fixture --prompt
 `--persist-analysis` requires `--persist`; it parses successful records with the comparative
 parser, using `rule_based_v2_aliases` as the primary result and `llm_judge_fixture_v1` as the local
 judge comparison. The `AnswerAnalysis` payload stores `parser_ab_compare_v1` agreement, mismatch
-fields, and the secondary judge result, then stores `VisibilityScoreSnapshot`, `ScoreContribution`,
+fields, the secondary judge result, and a `FixtureLLMGateway` `llm_call_log`; the same call log is
+upserted into `llm_call_logs` with provider/model/prompt version, request/response hashes, token
+counts, estimated cost, latency, and status. The worker then stores `VisibilityScoreSnapshot`, `ScoreContribution`,
 `ScoreSnapshotRun`, and the score audit event. It also builds and stores the M4 citation graph, source graph evidence,
 source gaps, competitor benchmarks, the M5 `ReportExport` snapshot, and the M6
 `ActionRecommendation`, `RetestSchedule`, `RetestComparison`, action plan audit event, and retest

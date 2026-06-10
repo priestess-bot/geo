@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import replace
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+from geno_core.contracts import LLMGateway
+from geno_core.llm_gateway import FixtureLLMGateway
 from geno_core.models import AnswerAnalysis, BrandEntity, CompetitorEntity, RawEvidenceRecord
 
 
@@ -157,9 +160,11 @@ class RuleBasedAnswerParser:
 class LLMJudgeAnswerParser:
     parser_engine_id = "llm_judge_fixture_v1"
     analysis_version = "llm_judge_fixture_v1"
+    prompt_version = "llm_judge_prompt_v1"
 
-    def __init__(self, *, model: str = "local-fixture-judge") -> None:
+    def __init__(self, *, model: str = "local-fixture-judge", gateway: LLMGateway | None = None) -> None:
         self.model = model
+        self.gateway = gateway or FixtureLLMGateway(prompt_version=self.prompt_version)
 
     def parse_record(
         self,
@@ -171,6 +176,40 @@ class LLMJudgeAnswerParser:
     ) -> AnswerAnalysis:
         answer_text = record.raw_answer.answer_text
         alias_map = entity_aliases or {}
+        gateway_result = self.gateway.chat(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Judge brand visibility for a GENO answer. Return structured labels for "
+                        "brand mention, recommendation, rank, competitors, citations, local relevance, and sentiment."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "answer_run_id": record.answer_run.id,
+                            "brand": brand.canonical_name,
+                            "competitors": [competitor.canonical_name for competitor in competitors],
+                            "entity_aliases": alias_map,
+                            "answer_text": answer_text,
+                            "citation_urls": [citation.url for citation in record.citations],
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
+                },
+            ],
+            model=self.model,
+            metadata={
+                "project_id": record.answer_run.project_id,
+                "answer_run_id": record.answer_run.id,
+                "purpose": "parser_judge",
+                "prompt_version": self.prompt_version,
+                "parser_engine_id": self.parser_engine_id,
+            },
+        )
         brand_terms = _entity_terms(brand.canonical_name, alias_map.get(brand.id, ()))
         competitor_terms_by_name = {
             competitor.canonical_name: _entity_terms(
@@ -218,6 +257,13 @@ class LLMJudgeAnswerParser:
             competitor_share_score=round(competitor_share_score, 4),
             confidence=confidence,
             uncertainty_flags=uncertainty_flags,
+            parser_comparison={
+                "llm_call_log": gateway_result.get("call_log"),
+                "llm_gateway_provider": gateway_result.get("provider"),
+                "llm_gateway_model": gateway_result.get("model"),
+                "llm_gateway_usage": gateway_result.get("usage"),
+                "prompt_version": self.prompt_version,
+            },
         )
 
 
@@ -238,28 +284,35 @@ def build_parser_comparison(primary: AnswerAnalysis, secondary: AnswerAnalysis) 
         if _comparison_value(primary, field) != _comparison_value(secondary, field)
     }
     matched_fields = [field for field in COMPARISON_FIELDS if field not in mismatched_fields]
+    secondary_result: dict[str, Any] = {
+        "brand_mentioned": secondary.brand_mentioned,
+        "brand_recommended": secondary.brand_recommended,
+        "brand_position": secondary.brand_position,
+        "competitors_mentioned": sorted(secondary.competitors_mentioned),
+        "citation_count": secondary.citation_count,
+        "local_relevance_score": secondary.local_relevance_score,
+        "sentiment_score": secondary.sentiment_score,
+        "freshness_score": secondary.freshness_score,
+        "competitor_share_score": secondary.competitor_share_score,
+        "confidence": secondary.confidence,
+        "uncertainty_flags": secondary.uncertainty_flags,
+    }
+    secondary_metadata = secondary.parser_comparison or {}
+    if secondary_metadata.get("llm_call_log"):
+        secondary_result["llm_call_log"] = secondary_metadata["llm_call_log"]
+    if secondary_metadata.get("llm_gateway_usage"):
+        secondary_result["llm_gateway_usage"] = secondary_metadata["llm_gateway_usage"]
     return {
         "primary_parser_engine_id": primary.parser_engine_id,
         "primary_analysis_version": primary.analysis_version,
         "secondary_parser_engine_id": secondary.parser_engine_id,
         "secondary_analysis_version": secondary.analysis_version,
+        "secondary_prompt_version": secondary_metadata.get("prompt_version"),
         "comparison_method_version": "parser_ab_compare_v1",
         "agreement_rate": round(len(matched_fields) / len(COMPARISON_FIELDS), 4),
         "matched_fields": matched_fields,
         "mismatched_fields": mismatched_fields,
-        "secondary_result": {
-            "brand_mentioned": secondary.brand_mentioned,
-            "brand_recommended": secondary.brand_recommended,
-            "brand_position": secondary.brand_position,
-            "competitors_mentioned": sorted(secondary.competitors_mentioned),
-            "citation_count": secondary.citation_count,
-            "local_relevance_score": secondary.local_relevance_score,
-            "sentiment_score": secondary.sentiment_score,
-            "freshness_score": secondary.freshness_score,
-            "competitor_share_score": secondary.competitor_share_score,
-            "confidence": secondary.confidence,
-            "uncertainty_flags": secondary.uncertainty_flags,
-        },
+        "secondary_result": secondary_result,
     }
 
 

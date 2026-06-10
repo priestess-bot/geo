@@ -61,6 +61,8 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("parser_ab_compare_v1", page_source)
         self.assertIn("parserComparisonText", page_source)
         self.assertIn("mismatches", page_source)
+        self.assertIn("llm_call_log", page_source)
+        self.assertIn("LLM call", page_source)
 
 
 if __name__ == "__main__":

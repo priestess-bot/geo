@@ -154,9 +154,22 @@ type ScoreSnapshot = {
         parser_comparison?: {
           secondary_parser_engine_id?: string;
           secondary_analysis_version?: string;
+          secondary_prompt_version?: string;
           comparison_method_version?: string;
           agreement_rate?: number;
           mismatched_fields?: Record<string, unknown>;
+          secondary_result?: {
+            llm_call_log?: {
+              provider?: string;
+              model?: string;
+              prompt_version?: string;
+              total_tokens?: number;
+              estimated_cost?: number;
+              latency_ms?: number;
+              status?: string;
+              request_hash?: string;
+            };
+          };
         };
       } & Record<string, unknown>;
     } | null;
@@ -1086,11 +1099,17 @@ function parserMismatchCount(run: ScoreSnapshot["answer_runs"][number]): number 
 function parserComparisonText(run: ScoreSnapshot["answer_runs"][number]): string {
   const comparison = run.analysis?.payload?.parser_comparison;
   if (!comparison) return "No parser comparison";
+  const callLog = comparison.secondary_result?.llm_call_log;
+  const llmText = callLog
+    ? ` · LLM call ${callLog.status || "unknown"}/${callLog.model || comparison.secondary_parser_engine_id || "model"} · tokens ${
+        callLog.total_tokens || 0
+      }`
+    : "";
   return `${comparison.comparison_method_version || "parser_ab_compare_v1"} · ${
     comparison.secondary_parser_engine_id || "judge"
   } · agreement ${num(
     comparison.agreement_rate,
-  )} · mismatches ${parserMismatchCount(run)}`;
+  )} · mismatches ${parserMismatchCount(run)}${llmText}`;
 }
 
 function shortId(value: string | undefined): string {

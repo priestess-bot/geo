@@ -243,6 +243,27 @@ class CollectionCost:
 
 
 @dataclass(frozen=True)
+class LLMCallLog:
+    id: str
+    project_id: str | None
+    answer_run_id: str | None
+    purpose: str
+    provider: str
+    model: str
+    prompt_version: str
+    request_hash: str
+    response_hash: str | None
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    estimated_cost: float
+    latency_ms: int
+    status: str
+    error_message: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class RawEvidenceRecord:
     answer_run: AnswerRun
     raw_answer: RawAnswer

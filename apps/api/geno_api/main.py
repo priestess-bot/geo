@@ -1185,6 +1185,7 @@ def contracts() -> dict[str, list[str]]:
         "auditability": [
             "AuditEvent",
             "EvidenceLink",
+            "LLMCallLog",
             "ScoreContribution",
             "ReportExport",
             "TraceabilityBundle",
@@ -1233,6 +1234,9 @@ def contracts() -> dict[str, list[str]]:
             "LLMJudgeAnswerParser",
             "ComparativeAnswerParser",
             "parser_ab_compare_v1",
+            "llm_judge_prompt_v1",
+            "FixtureLLMGateway",
+            "LLMCallLog",
             "AnswerAnalysis",
             "VisibilityScoreSnapshot",
             "ScoreContribution",

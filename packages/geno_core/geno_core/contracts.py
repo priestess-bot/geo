@@ -32,7 +32,13 @@ class CollectorBackend(Protocol):
 
 
 class LLMGateway(Protocol):
-    def chat(self, *, messages: list[dict[str, str]], model: str) -> dict[str, Any]: ...
+    def chat(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        model: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
 
     def embed(self, *, texts: list[str], model: str) -> list[list[float]]: ...
 

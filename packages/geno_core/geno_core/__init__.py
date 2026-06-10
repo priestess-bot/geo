@@ -42,6 +42,7 @@ from geno_core.knowledge import (
     build_manual_distribution_records,
     search_knowledge_facts,
 )
+from geno_core.llm_gateway import FixtureLLMGateway
 from geno_core.market import build_au_market_profile
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.report import MarkdownCsvReportExporter
@@ -88,6 +89,7 @@ __all__ = [
     "connect_postgres_from_env",
     "FixtureGoogleAIModeCollector",
     "FixtureGoogleAIOCollector",
+    "FixtureLLMGateway",
     "FixtureManualBackfillCollector",
     "FixtureThirdPartySerpCollector",
     "ManualBackfillCollector",

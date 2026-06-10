@@ -130,6 +130,29 @@ def _datetime(value: datetime | None) -> datetime | None:
     return value
 
 
+def _llm_call_logs_from_analysis(analysis: AnswerAnalysis) -> tuple[dict[str, Any], ...]:
+    comparison = analysis.parser_comparison or {}
+    if not isinstance(comparison, dict):
+        return ()
+    candidates: list[object] = [comparison.get("llm_call_log")]
+    secondary_result = comparison.get("secondary_result")
+    if isinstance(secondary_result, dict):
+        candidates.append(secondary_result.get("llm_call_log"))
+    logs: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for candidate in candidates:
+        if is_dataclass(candidate):
+            candidate = asdict(candidate)
+        if not isinstance(candidate, dict):
+            continue
+        log_id = str(candidate.get("id") or "")
+        if not log_id or log_id in seen_ids:
+            continue
+        seen_ids.add(log_id)
+        logs.append(candidate)
+    return tuple(logs)
+
+
 def _row_dict(row: Any, columns: tuple[str, ...]) -> dict[str, Any]:
     if row is None:
         return {}
@@ -3817,6 +3840,52 @@ class PostgresEvidenceRepository:
                         analysis.confidence,
                     ),
                 )
+                for call_log in _llm_call_logs_from_analysis(analysis):
+                    cursor.execute(
+                        """
+                        INSERT INTO llm_call_logs (
+                          id, project_id, answer_run_id, purpose, provider, model, prompt_version,
+                          request_hash, response_hash, prompt_tokens, completion_tokens, total_tokens,
+                          estimated_cost, latency_ms, status, error_message, created_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (id) DO UPDATE SET
+                          project_id = EXCLUDED.project_id,
+                          answer_run_id = EXCLUDED.answer_run_id,
+                          purpose = EXCLUDED.purpose,
+                          provider = EXCLUDED.provider,
+                          model = EXCLUDED.model,
+                          prompt_version = EXCLUDED.prompt_version,
+                          request_hash = EXCLUDED.request_hash,
+                          response_hash = EXCLUDED.response_hash,
+                          prompt_tokens = EXCLUDED.prompt_tokens,
+                          completion_tokens = EXCLUDED.completion_tokens,
+                          total_tokens = EXCLUDED.total_tokens,
+                          estimated_cost = EXCLUDED.estimated_cost,
+                          latency_ms = EXCLUDED.latency_ms,
+                          status = EXCLUDED.status,
+                          error_message = EXCLUDED.error_message,
+                          created_at = EXCLUDED.created_at
+                        """,
+                        (
+                            _uuid(str(call_log.get("id"))),
+                            _uuid(str(call_log["project_id"])) if call_log.get("project_id") else None,
+                            _uuid(str(call_log["answer_run_id"])) if call_log.get("answer_run_id") else None,
+                            str(call_log.get("purpose") or "unknown"),
+                            str(call_log.get("provider") or "unknown"),
+                            str(call_log.get("model") or "unknown"),
+                            str(call_log.get("prompt_version") or "unknown"),
+                            str(call_log.get("request_hash") or ""),
+                            str(call_log["response_hash"]) if call_log.get("response_hash") else None,
+                            int(call_log.get("prompt_tokens") or 0),
+                            int(call_log.get("completion_tokens") or 0),
+                            int(call_log.get("total_tokens") or 0),
+                            float(call_log.get("estimated_cost") or 0.0),
+                            int(call_log.get("latency_ms") or 0),
+                            str(call_log.get("status") or "unknown"),
+                            str(call_log["error_message"]) if call_log.get("error_message") else None,
+                            call_log.get("created_at"),
+                        ),
+                    )
         self.connection.commit()
 
     def save_score_snapshot(

@@ -139,7 +139,7 @@ RawCollectResult（数据契约）
 其他需要先定义接口、后填实现的可插拔点：
 
 ```text
-LLMGateway       chat()/embed()，统一多模型，路由/重试/成本/日志（实现：LiteLLM）
+LLMGateway       chat()/embed()，统一多模型，路由/重试/成本/日志；P0a 先用 FixtureLLMGateway 写 llm_call_logs，后续替换为 LiteLLM
 ParserEngine     parse(RawAnswer) -> AnswerAnalysis（实现：规则 + LLM-as-judge，二者可切换/并存）
 VectorStore      upsert()/search()（实现：pgvector / Qdrant / Milvus）
 GraphStore       upsert_node()/query()（实现：Neo4j / Apache Jena / 纯 SQL 邻接表）

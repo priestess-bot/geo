@@ -144,6 +144,26 @@ CREATE TABLE answer_analyses (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE llm_call_logs (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid,
+  answer_run_id uuid REFERENCES answer_runs(id) ON DELETE SET NULL,
+  purpose text NOT NULL,
+  provider text NOT NULL,
+  model text NOT NULL,
+  prompt_version text NOT NULL,
+  request_hash text NOT NULL,
+  response_hash text,
+  prompt_tokens integer NOT NULL DEFAULT 0,
+  completion_tokens integer NOT NULL DEFAULT 0,
+  total_tokens integer NOT NULL DEFAULT 0,
+  estimated_cost numeric(12,6) NOT NULL DEFAULT 0,
+  latency_ms integer NOT NULL DEFAULT 0,
+  status text NOT NULL DEFAULT 'succeeded',
+  error_message text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE source_graphs (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id uuid NOT NULL,

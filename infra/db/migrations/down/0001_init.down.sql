@@ -26,6 +26,7 @@ DROP TABLE IF EXISTS evidence_links;
 DROP TABLE IF EXISTS competitor_benchmarks;
 DROP TABLE IF EXISTS source_gaps;
 DROP TABLE IF EXISTS source_graphs;
+DROP TABLE IF EXISTS llm_call_logs;
 DROP TABLE IF EXISTS answer_analyses;
 DROP TABLE IF EXISTS collector_logs;
 DROP TABLE IF EXISTS evidence_assets;
