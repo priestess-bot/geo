@@ -436,6 +436,34 @@ code {
   color: #245d61;
 }
 
+.traceLinkRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+}
+
+.nodeLink {
+  background: #eef4f5;
+  border: 1px solid #cfe0e2;
+  border-radius: 4px;
+  color: #245d61;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 7px 8px;
+  text-decoration: none;
+}
+
+.inlineLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .actionButton {
   background: #245d61;
   border: 1px solid #245d61;
@@ -661,6 +689,22 @@ code {
   gap: 14px;
 }
 
+.sectionHeader {
+  align-items: flex-start;
+  border-bottom: 1px solid #e1e7ee;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding-bottom: 8px;
+}
+
+.sectionHeader span {
+  color: #667585;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
 .graphColumns {
   display: grid;
   gap: 14px;
@@ -675,6 +719,83 @@ code {
   gap: 10px;
   min-width: 0;
   padding: 12px;
+}
+
+.graphMapPanel {
+  grid-column: 1 / -1;
+}
+
+.graphCanvas,
+.traceMapCanvas {
+  background: #ffffff;
+  border: 1px solid #e0e7ef;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.graphCanvas svg,
+.traceMapCanvas svg {
+  display: block;
+  min-width: 760px;
+  width: 100%;
+}
+
+.graphRail {
+  stroke: #d7e2e5;
+  stroke-width: 2;
+}
+
+.graphEdge,
+.traceEdge {
+  fill: none;
+  stroke: #8aa4aa;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+.graphSourceNode {
+  fill: #245d61;
+}
+
+.graphRunNode,
+.traceNode {
+  fill: #f7fafc;
+  stroke: #245d61;
+  stroke-width: 1.5;
+}
+
+.graphLabel,
+.graphNodeText,
+.graphNodeMeta,
+.graphRunText,
+.traceNodeLabel,
+.traceNodeMeta {
+  letter-spacing: 0;
+}
+
+.graphLabel,
+.traceNodeMeta {
+  fill: #667585;
+  font-size: 12px;
+}
+
+.graphNodeText {
+  fill: #31414f;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.graphNodeMeta {
+  fill: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.graphRunText,
+.traceNodeLabel {
+  fill: #245d61;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .benchmarkGrid {
@@ -939,6 +1060,18 @@ code {
   padding: 12px;
 }
 
+.traceMap {
+  align-content: start;
+  background: #f7fafc;
+  border: 1px solid #e1e7ee;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 12px;
+}
+
 .traceDrilldown {
   grid-column: 1 / -1;
 }
@@ -1008,6 +1141,12 @@ summary {
   color: #667585;
   font-size: 12px;
   line-height: 1.35;
+}
+
+:target {
+  outline: 3px solid #88c5c1;
+  outline-offset: 3px;
+  scroll-margin-top: 18px;
 }
 
 .empty {

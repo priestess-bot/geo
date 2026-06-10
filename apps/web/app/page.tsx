@@ -81,6 +81,7 @@ type EvidenceRun = {
 
 type ScoreSnapshot = {
   snapshot: {
+    id?: string;
     final_score: number;
     trigger_rate: number;
     mention_rate: number;
@@ -348,17 +349,18 @@ type TraceabilityDetail = {
     content_draft_ids: string[];
     audit_event_ids: string[];
   };
-  report_exports: Array<{ report_version: string }>;
+  report_exports: Array<{ id?: string; report_version: string }>;
   score_snapshots: ScoreSnapshot[];
   evidence_runs: EvidenceRun[];
   action_recommendations: Array<{
+    id?: string;
     title: string;
     priority: string;
     status: string;
     source_gap_type?: string | null;
   }>;
   content_drafts: Array<{
-    draft: { title: string; review_status: string; target_city?: string; target_platform?: string };
+    draft: { id?: string; title: string; review_status: string; target_city?: string; target_platform?: string };
     target_questions?: Array<{ text: string }>;
     answer_runs?: Array<{ prompt_text?: string; platform?: string; city?: string }>;
   }>;
@@ -1033,6 +1035,20 @@ function savedViewHref(savedView: RuntimeSavedView["saved_view"]): string {
   return query ? `/?${query}` : "/";
 }
 
+function anchorId(kind: string, value: string | undefined): string {
+  const raw = value || "unknown";
+  return `${kind}-${raw.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
+function anchorHref(kind: string, value: string | undefined): string {
+  return `#${anchorId(kind, value)}`;
+}
+
+function clipText(value: string | undefined, maxLength: number): string {
+  const text = value || "unknown";
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
+}
+
 export default async function Home({
   searchParams
 }: {
@@ -1691,7 +1707,7 @@ export default async function Home({
 
         <Panel title="Report Snapshot" subtitle={latestReport?.report_export.report_version || "No report"}>
           {latestReport ? (
-            <div className="stack">
+            <div className="stack" id={anchorId("report-export", latestReport.report_export.id)}>
               <dl className="facts">
                 <Fact label="Sample size" value={latestReport.report_export.sample_size} />
                 <Fact label="Evidence links" value={latestReport.answer_runs.length} />
@@ -1705,6 +1721,16 @@ export default async function Home({
                 {reportCsvUrl ? <a href={reportCsvUrl}>Download CSV</a> : null}
                 {reportPdfUrl ? <a href={reportPdfUrl}>Download PDF</a> : null}
                 {reportWhiteLabelPdfUrl ? <a href={reportWhiteLabelPdfUrl}>White-label PDF</a> : null}
+              </div>
+              <div className="traceLinkRow" aria-label="report trace links">
+                <NodeLink label="Trace bundle" kind="traceability-map" value="runtime" />
+                <NodeLink label="Score package" kind="score-snapshot" value={latestScore?.snapshot.id || "latest"} />
+                {latestReport.answer_runs[0] ? (
+                  <NodeLink label="First evidence" kind="answer-run" value={latestReport.answer_runs[0].id} />
+                ) : null}
+                {latestReportGraph?.nodes[0] ? (
+                  <NodeLink label="First source" kind="source-node" value={latestReportGraph.nodes[0].node.id} />
+                ) : null}
               </div>
               <dl className="facts">
                 <Fact label="Artifact filters" value={reportCsvUrl?.replace(displayUrl, "") || "No report artifact"} />
@@ -1935,7 +1961,15 @@ export default async function Home({
                 <h3>Action Recommendations</h3>
                 <div className="actionCards">
                   {latestAction.action_recommendations.map((action) => (
-                    <article className="actionCard" key={action.id || action.title}>
+                    <article
+                      className="actionCard"
+                      id={
+                        traceability?.traceability_bundle.action_recommendation_ids.includes(action.id || "")
+                          ? undefined
+                          : anchorId("action", action.id || action.title)
+                      }
+                      key={action.id || action.title}
+                    >
                       <header>
                         <h3>{action.title}</h3>
                         <span>{action.priority}</span>
@@ -2005,11 +2039,11 @@ export default async function Home({
             <div className="stack">
               <dl className="facts">
                 <Fact label="Facts" value={latestContent.knowledge_facts.length} />
-                <Fact label="Drafts" value={latestContent.content_drafts.length} />
-                <Fact label="Manual records" value={latestContent.manual_distribution_records.length} />
-              </dl>
-              <ul className="plainList">
-                {latestContent.content_drafts.slice(0, 3).map((item) => (
+                  <Fact label="Drafts" value={latestContent.content_drafts.length} />
+                  <Fact label="Manual records" value={latestContent.manual_distribution_records.length} />
+                </dl>
+                <ul className="plainList">
+                  {latestContent.content_drafts.slice(0, 3).map((item) => (
                   <li key={item.draft.title}>
                     <strong>{item.draft.review_status}</strong>
                     <span>{item.draft.title}</span>
@@ -2033,7 +2067,7 @@ export default async function Home({
                 <h3>Localized Knowledge Facts</h3>
                 <ul className="plainList">
                   {latestContent.knowledge_facts.slice(0, 8).map((fact) => (
-                    <li key={fact.id}>
+                    <li key={fact.id} id={anchorId("knowledge-fact", fact.id)}>
                       <strong>
                         {fact.market_code || "market"} · {fact.fact_type || "fact"}
                       </strong>
@@ -2071,7 +2105,15 @@ export default async function Home({
                 <h3>Content Drafts</h3>
                 <div className="contentDraftGrid">
                   {latestContent.content_drafts.map((item) => (
-                    <article className="contentDraftCard" key={item.draft.id || item.draft.title}>
+                    <article
+                      className="contentDraftCard"
+                      id={
+                        traceability?.traceability_bundle.content_draft_ids.includes(item.draft.id || "")
+                          ? undefined
+                          : anchorId("content-draft", item.draft.id || item.draft.title)
+                      }
+                      key={item.draft.id || item.draft.title}
+                    >
                       <header>
                         <h3>{item.draft.title}</h3>
                         <span>{item.draft.review_status}</span>
@@ -2103,7 +2145,9 @@ export default async function Home({
                           {item.answer_runs.slice(0, 3).map((run) => (
                             <li key={run.id}>
                               <strong>
-                                {run.platform || "platform"} · {run.city || "city"}
+                                <a href={anchorHref("answer-run", run.id)}>
+                                  {run.platform || "platform"} · {run.city || "city"}
+                                </a>
                               </strong>
                               <span>{run.prompt_text || run.id}</span>
                               <small>
@@ -2159,7 +2203,16 @@ export default async function Home({
           {data.evidence.records.length ? (
             <div className="evidenceGrid">
               {data.evidence.records.map((run) => (
-                <details className="evidenceItem" key={run.answer_run.id} open>
+                <details
+                  className="evidenceItem"
+                  id={
+                    traceability?.traceability_bundle.answer_run_ids.includes(run.answer_run.id)
+                      ? undefined
+                      : anchorId("answer-run", run.answer_run.id)
+                  }
+                  key={run.answer_run.id}
+                  open
+                >
                   <summary>
                     {run.answer_run.platform} · {run.answer_run.city} · {shortId(run.answer_run.id)}
                   </summary>
@@ -2241,7 +2294,7 @@ export default async function Home({
           wide
         >
           {latestScore ? (
-            <div className="scoreDetail">
+            <div className="scoreDetail" id={anchorId("score-snapshot", latestScore.snapshot.id || "latest")}>
               <div className="scoreSummary">
                 <div className="scoreTotal">
                   <span>Final score</span>
@@ -2260,7 +2313,11 @@ export default async function Home({
               </div>
               <div className="contributionGrid">
                 {latestScore.contributions.map((item) => (
-                  <article className="contributionItem" key={item.id || item.component_name}>
+                  <article
+                    className="contributionItem"
+                    id={anchorId("score-contribution", item.id || item.component_name)}
+                    key={item.id || item.component_name}
+                  >
                     <header>
                       <h3>{item.component_name}</h3>
                       <strong>{num(item.weighted_contribution)}</strong>
@@ -2279,6 +2336,13 @@ export default async function Home({
                       <strong>Negative evidence</strong>
                       <span>{item.negative_evidence_summary || "No negative evidence summary"}</span>
                     </div>
+                    {(item.evidence_answer_run_ids || []).length ? (
+                      <div className="traceLinkRow">
+                        {(item.evidence_answer_run_ids || []).slice(0, 3).map((runId) => (
+                          <NodeLink key={runId} label="Evidence" kind="answer-run" value={runId} />
+                        ))}
+                      </div>
+                    ) : null}
                     <small>{item.confidence_note || "No confidence note"}</small>
                   </article>
                 ))}
@@ -2289,8 +2353,10 @@ export default async function Home({
                   {latestScore.answer_runs.slice(0, 6).map((run) => (
                     <li key={run.answer_run.id}>
                       <strong>
-                        {run.answer_run.platform || "platform"} · {run.answer_run.city || "city"} ·{" "}
-                        {shortId(run.answer_run.id)}
+                        <a href={anchorHref("answer-run", run.answer_run.id)}>
+                          {run.answer_run.platform || "platform"} · {run.answer_run.city || "city"} ·{" "}
+                          {shortId(run.answer_run.id)}
+                        </a>
                       </strong>
                       <span>{run.answer_run.prompt_text || "No prompt text"}</span>
                       <small>
@@ -2314,12 +2380,13 @@ export default async function Home({
         >
           {latestGraph ? (
             <div className="graphDetail">
+              <CitationGraphMap graph={latestGraph} />
               <div className="graphColumns">
                 <section className="graphSection">
                   <h3>Source Nodes</h3>
                   <ul className="plainList">
                     {latestGraph.nodes.slice(0, 8).map((item) => (
-                      <li key={item.node.id}>
+                      <li id={anchorId("source-node", item.node.id)} key={item.node.id}>
                         <strong>
                           {item.node.source_domain || "source"} · {item.node.source_type || "unknown"}
                         </strong>
@@ -2328,6 +2395,13 @@ export default async function Home({
                           topic {item.node.topic || "unknown"} · citations {item.node.citation_count || 0} · runs{" "}
                           {item.answer_runs.length}
                         </small>
+                        {item.answer_runs.length ? (
+                          <div className="traceLinkRow">
+                            {item.answer_runs.slice(0, 3).map((run) => (
+                              <NodeLink key={run.id} label="Run" kind="answer-run" value={run.id} />
+                            ))}
+                          </div>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
@@ -2377,8 +2451,9 @@ export default async function Home({
                     {latestGraph.evidence_links.slice(0, 8).map((link, index) => (
                       <li key={`${link.source_graph_id}-${link.answer_run_id}-${index}`}>
                         <strong>{link.relation_type || "graph_evidence"}</strong>
-                        <span>
-                          source {shortId(link.source_graph_id)} · run {shortId(link.answer_run_id)}
+                        <span className="inlineLinks">
+                          <NodeLink label="Source" kind="source-node" value={link.source_graph_id} />
+                          <NodeLink label="Run" kind="answer-run" value={link.answer_run_id} />
                         </span>
                         <small>citation {shortId(link.answer_citation_id || undefined)}</small>
                       </li>
@@ -2414,6 +2489,12 @@ export default async function Home({
                   <Fact label="Drafts" value={traceability.traceability_bundle.content_draft_ids.length} />
                 </dl>
               </div>
+              <TraceabilityMap
+                graph={latestGraph}
+                report={latestReport}
+                score={latestScore}
+                traceability={traceability}
+              />
               <div className="traceColumn">
                 <h3>Evidence Links</h3>
                 <ul className="plainList">
@@ -2423,6 +2504,11 @@ export default async function Home({
                       <span>
                         {link.source_type} to {link.target_type} · {link.answer_run_ids.length} answer runs
                       </span>
+                      <div className="traceLinkRow">
+                        {link.answer_run_ids.slice(0, 3).map((runId) => (
+                          <NodeLink key={runId} label="Run" kind="answer-run" value={runId} />
+                        ))}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -2461,7 +2547,7 @@ export default async function Home({
                     <summary>Answer Evidence</summary>
                     <ul className="nodeList">
                       {traceability.evidence_runs.slice(0, 4).map((run) => (
-                        <li key={run.answer_run.id}>
+                        <li id={anchorId("answer-run", run.answer_run.id)} key={run.answer_run.id}>
                           <strong>
                             {run.answer_run.platform} · {run.answer_run.city} · {shortId(run.answer_run.id)}
                           </strong>
@@ -2505,7 +2591,7 @@ export default async function Home({
                     <summary>Actions & Content Drafts</summary>
                     <ul className="nodeList">
                       {traceability.action_recommendations.slice(0, 4).map((action) => (
-                        <li key={action.title}>
+                        <li id={anchorId("action", action.id || action.title)} key={action.id || action.title}>
                           <strong>{action.priority}</strong>
                           <span>{action.title}</span>
                           <small>
@@ -2514,7 +2600,7 @@ export default async function Home({
                         </li>
                       ))}
                       {traceability.content_drafts.slice(0, 4).map((item) => (
-                        <li key={item.draft.title}>
+                        <li id={anchorId("content-draft", item.draft.id || item.draft.title)} key={item.draft.id || item.draft.title}>
                           <strong>{item.draft.review_status}</strong>
                           <span>{item.draft.title}</span>
                           <small>
@@ -2576,6 +2662,165 @@ function Panel({
       </header>
       {children}
     </article>
+  );
+}
+
+function NodeLink({ label, kind, value }: { label: string; kind: string; value: string | undefined }) {
+  return (
+    <a className="nodeLink" href={anchorHref(kind, value)} title={`${label}: ${value || "unknown"}`}>
+      {label} {shortId(value)}
+    </a>
+  );
+}
+
+function CitationGraphMap({ graph }: { graph: CitationGraph }) {
+  const nodes = graph.nodes.slice(0, 5);
+  const runIds = Array.from(
+    new Set(
+      nodes
+        .flatMap((item) => item.answer_runs.map((run) => run.id))
+        .concat(graph.evidence_links.map((link) => link.answer_run_id || ""))
+        .filter(Boolean)
+    )
+  ).slice(0, 5);
+  const nodePositions = nodes.map((item, index) => ({
+    item,
+    x: 140 + index * 150,
+    y: index % 2 === 0 ? 88 : 158
+  }));
+  const runPositions = runIds.map((runId, index) => ({
+    runId,
+    x: 120 + index * 150,
+    y: 280
+  }));
+  return (
+    <section className="graphSection graphMapPanel" aria-label="citation graph map">
+      <div className="sectionHeader">
+        <h3>Citation Graph Map</h3>
+        <span>
+          {nodes.length} sources · {runIds.length} runs · {graph.evidence_links.length} links
+        </span>
+      </div>
+      <div className="graphCanvas">
+        <svg viewBox="0 0 820 360" role="img" aria-label="Source nodes linked to answer runs">
+          <line x1="50" y1="34" x2="770" y2="34" className="graphRail" />
+          <text x="50" y="22" className="graphLabel">
+            Source nodes
+          </text>
+          <text x="50" y="340" className="graphLabel">
+            Answer runs
+          </text>
+          {graph.evidence_links.slice(0, 12).map((link, index) => {
+            const sourceIndex = nodePositions.findIndex((node) => node.item.node.id === link.source_graph_id);
+            const runIndex = runPositions.findIndex((run) => run.runId === link.answer_run_id);
+            if (sourceIndex < 0 || runIndex < 0) return null;
+            const source = nodePositions[sourceIndex];
+            const run = runPositions[runIndex];
+            return (
+              <line
+                className="graphEdge"
+                key={`${link.source_graph_id}-${link.answer_run_id}-${index}`}
+                x1={source.x}
+                y1={source.y + 24}
+                x2={run.x}
+                y2={run.y - 24}
+              />
+            );
+          })}
+          {nodePositions.map(({ item, x, y }) => (
+            <a href={anchorHref("source-node", item.node.id)} key={item.node.id}>
+              <circle className="graphSourceNode" cx={x} cy={y} r="24" />
+              <text className="graphNodeText" x={x} y={y - 34} textAnchor="middle">
+                {clipText(item.node.source_domain || item.node.source_type || "source", 18)}
+              </text>
+              <text className="graphNodeMeta" x={x} y={y + 5} textAnchor="middle">
+                {item.node.citation_count || 0}
+              </text>
+            </a>
+          ))}
+          {runPositions.map(({ runId, x, y }) => (
+            <a href={anchorHref("answer-run", runId)} key={runId}>
+              <rect className="graphRunNode" height="42" rx="6" width="104" x={x - 52} y={y - 21} />
+              <text className="graphRunText" x={x} y={y + 4} textAnchor="middle">
+                {shortId(runId)}
+              </text>
+            </a>
+          ))}
+        </svg>
+      </div>
+    </section>
+  );
+}
+
+function TraceabilityMap({
+  graph,
+  report,
+  score,
+  traceability
+}: {
+  graph: CitationGraph | undefined;
+  report: ReportExport | undefined;
+  score: ScoreSnapshot | undefined;
+  traceability: TraceabilityDetail;
+}) {
+  const firstRunId = traceability.traceability_bundle.answer_run_ids[0] || report?.answer_runs[0]?.id;
+  const firstSourceId = graph?.nodes[0]?.node.id || traceability.traceability_bundle.source_graph_ids[0];
+  const firstActionId =
+    traceability.traceability_bundle.action_recommendation_ids[0] || traceability.action_recommendations[0]?.id;
+  const firstDraftId = traceability.traceability_bundle.content_draft_ids[0] || traceability.content_drafts[0]?.draft.id;
+  const nodes = [
+    {
+      label: "Report",
+      kind: "report-export",
+      value: report?.report_export.id || traceability.traceability_bundle.report_export_ids[0],
+      x: 80,
+      y: 58
+    },
+    {
+      label: "Score",
+      kind: "score-snapshot",
+      value: score?.snapshot.id || traceability.traceability_bundle.score_snapshot_ids[0] || "latest",
+      x: 250,
+      y: 58
+    },
+    { label: "Evidence", kind: "answer-run", value: firstRunId, x: 420, y: 58 },
+    { label: "Source", kind: "source-node", value: firstSourceId, x: 590, y: 58 },
+    { label: "Action", kind: "action", value: firstActionId, x: 250, y: 166 },
+    { label: "Draft", kind: "content-draft", value: firstDraftId, x: 420, y: 166 }
+  ];
+  return (
+    <section className="traceMap" id={anchorId("traceability-map", "runtime")}>
+      <div className="sectionHeader">
+        <h3>Traceability Map</h3>
+        <span>report to score to evidence to source</span>
+      </div>
+      <div className="traceMapCanvas">
+        <svg viewBox="0 0 700 230" role="img" aria-label="Runtime traceability map">
+          <path className="traceEdge" d="M128 58 H202" />
+          <path className="traceEdge" d="M298 58 H372" />
+          <path className="traceEdge" d="M468 58 H542" />
+          <path className="traceEdge" d="M420 90 C420 128 330 128 250 142" />
+          <path className="traceEdge" d="M420 90 V136" />
+          {nodes.map((node) => (
+            <a href={anchorHref(node.kind, node.value)} key={`${node.kind}-${node.value}`}>
+              <rect className="traceNode" height="52" rx="7" width="96" x={node.x - 48} y={node.y - 26} />
+              <text className="traceNodeLabel" x={node.x} y={node.y - 4} textAnchor="middle">
+                {node.label}
+              </text>
+              <text className="traceNodeMeta" x={node.x} y={node.y + 15} textAnchor="middle">
+                {shortId(node.value)}
+              </text>
+            </a>
+          ))}
+        </svg>
+      </div>
+      <div className="traceLinkRow">
+        <NodeLink label="Report" kind="report-export" value={report?.report_export.id} />
+        <NodeLink label="Score" kind="score-snapshot" value={score?.snapshot.id || "latest"} />
+        <NodeLink label="Evidence" kind="answer-run" value={firstRunId} />
+        <NodeLink label="Source" kind="source-node" value={firstSourceId} />
+      </div>
+    </section>
   );
 }
 
