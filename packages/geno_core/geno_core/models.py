@@ -395,6 +395,23 @@ class GoogleSpikeGateResult:
 
 
 @dataclass(frozen=True)
+class GoogleSpikeReadinessGate:
+    project_id: str
+    gate_status: Literal["pass", "fail"]
+    required_path_count: int
+    observed_access_methods: tuple[str, ...]
+    observed_backend_ids: tuple[str, ...]
+    planned_runs: int
+    attempted_runs: int
+    completed_runs: int
+    surface_triggered_runs: int
+    answer_present_runs: int
+    screenshot_or_html_runs: int
+    failure_summary: dict[str, int]
+    failure_reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class SourceGraphNode:
     id: str
     project_id: str

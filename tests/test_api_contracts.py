@@ -997,6 +997,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["record_count"], 240)
         self.assertEqual(payload["gate"]["gate_status"], "pass")
         self.assertFalse(payload["gate"]["limited_coverage"])
+        self.assertEqual(payload["readiness_gate"]["gate_status"], "fail")
+        self.assertIn("insufficient_collection_paths=1/2", payload["readiness_gate"]["failure_reasons"])
 
     def test_m3_visibility_score_fixture_endpoint(self) -> None:
         response = self.client.get("/v1/visibility-scores/au/p0a-fixture")
@@ -1119,6 +1121,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("evaluate_p0a_collection_readiness", payload["m2a_evidence"])
         self.assertIn("RuntimeFidelityCheck", payload["m2a_evidence"])
         self.assertIn("RuntimeFidelityCheckPage", payload["m2a_evidence"])
+        self.assertIn("GoogleSpikeReadinessGate", payload["m2b_google_spike"])
+        self.assertIn("evaluate_google_spike_readiness_gate", payload["m2b_google_spike"])
         self.assertIn("LLMJudgeAnswerParser", payload["m3_analysis_scoring"])
         self.assertIn("ComparativeAnswerParser", payload["m3_analysis_scoring"])
         self.assertIn("parser_ab_compare_v1", payload["m3_analysis_scoring"])

@@ -68,6 +68,9 @@ class WorkerCliTest(unittest.TestCase):
         gate = payload["google_spike_gate"]
         self.assertEqual(gate["gate_status"], "pass")
         self.assertFalse(gate["limited_coverage"])
+        readiness_gate = payload["google_spike_readiness_gate"]
+        self.assertEqual(readiness_gate["gate_status"], "fail")
+        self.assertIn("insufficient_collection_paths=1/2", readiness_gate["failure_reasons"])
 
     def test_persist_without_database_url_fails_loudly(self) -> None:
         result = self._run_worker_result(

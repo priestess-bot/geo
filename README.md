@@ -59,7 +59,7 @@ docker compose -f infra/docker-compose.yml up --build
 DATABASE_URL=postgresql://geno:geno@localhost:5432/geno make worker-fixture-persist
 ```
 
-worker 输出会包含 `p0a_readiness_gate`。默认 fixture slice 的 `--sample-size 1` 只用于 smoke test，会因 P0a k=3 要求 fail；`--mode fixture --prompt-limit 1 --sample-size 3` 会通过本地 gate。真实 `--mode api` 必须同样通过 required platforms、必备元数据、`answer_present/surface_triggered`、citation、screenshot/HTML 和 k=3 检查后，才可把该批次视为 design partner 试点证据。
+worker 输出会包含 `p0a_readiness_gate`。默认 fixture slice 的 `--sample-size 1` 只用于 smoke test，会因 P0a k=3 要求 fail；`--mode fixture --prompt-limit 1 --sample-size 3` 会通过本地 gate。真实 `--mode api` 必须同样通过 required platforms、必备元数据、`answer_present/surface_triggered`、citation、screenshot/HTML 和 k=3 检查后，才可把该批次视为 design partner 试点证据。Google spike worker 会同时输出 `google_spike_gate` 与 `google_spike_readiness_gate`：前者决定 Google AIO 是否可进入主评分分母，后者检查 browser / third_party_api / manual 中是否至少有两条采集路径；默认 browser-only fixture 会通过成功率 gate 但失败两路径 readiness gate。
 
 缺少 `DATABASE_URL` 时，`--persist` 会直接失败并提示配置缺失，避免误以为证据已经落库。若设置了 `OBJECT_STORE_ENDPOINT`，但 `OBJECT_STORE_ACCESS_KEY` / `OBJECT_STORE_SECRET_KEY` 或 bucket 配置错误，报告 artifact 归档会失败并让 worker 退出，避免 `s3://...` URL 与真实对象不一致。
 

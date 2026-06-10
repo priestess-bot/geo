@@ -31,6 +31,7 @@ from geno_core.collectors import (
 from geno_core.google_spike import (
     build_google_spike_plan,
     evaluate_google_spike_gate,
+    evaluate_google_spike_readiness_gate,
     select_google_spike_prompts,
 )
 from geno_core.graph import build_citation_graph
@@ -1037,9 +1038,11 @@ def au_google_spike_fixture_gate() -> dict[str, object]:
         prompt_limit=plan.prompt_count,
     )
     gate = evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=plan, records=records)
+    readiness_gate = evaluate_google_spike_readiness_gate(project_id=bootstrap.project.id, plan=plan, records=records)
     return {
         "plan": asdict(plan),
         "gate": asdict(gate),
+        "readiness_gate": asdict(readiness_gate),
         "record_count": len(records),
     }
 
@@ -1455,6 +1458,8 @@ def contracts() -> dict[str, list[str]]:
         "m2b_google_spike": [
             "GoogleSpikePlan",
             "GoogleSpikeGateResult",
+            "GoogleSpikeReadinessGate",
+            "evaluate_google_spike_readiness_gate",
             "PlaywrightGoogleAIOCollector",
             "PlaywrightAIModeCollector",
             "ThirdPartySerpCollector",

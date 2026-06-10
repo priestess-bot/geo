@@ -6,6 +6,7 @@ from geno_core.models import (
     CollectionFailureRecord,
     GoogleSpikeGateResult,
     GoogleSpikePlan,
+    GoogleSpikeReadinessGate,
     PromptQuestion,
     RawEvidenceRecord,
 )
@@ -30,6 +31,7 @@ GOOGLE_SPIKE_CANDIDATE_BACKENDS = (
     "google.third_party_serp.fixture",
     "google.manual_backfill.fixture",
 )
+GOOGLE_SPIKE_REQUIRED_PATH_COUNT = 2
 
 
 def select_google_spike_prompts(prompts: tuple[PromptQuestion, ...]) -> tuple[PromptQuestion, ...]:
@@ -109,4 +111,69 @@ def evaluate_google_spike_gate(
             if gate_status == "pass"
             else "Keep Google in limited coverage appendix until a google_aio backend reaches 80% completion"
         ),
+    )
+
+
+def evaluate_google_spike_readiness_gate(
+    *,
+    project_id: str,
+    plan: GoogleSpikePlan,
+    records: tuple[RawEvidenceRecord | CollectionFailureRecord, ...],
+    required_path_count: int = GOOGLE_SPIKE_REQUIRED_PATH_COUNT,
+) -> GoogleSpikeReadinessGate:
+    completed_records = tuple(record for record in records if isinstance(record, RawEvidenceRecord))
+    failure_counter: Counter[str] = Counter()
+    for record in records:
+        if isinstance(record, CollectionFailureRecord):
+            failure_counter[record.error_message or record.error_type] += 1
+    observed_access_methods = tuple(
+        sorted(
+            {
+                str(record.answer_run.access_method)
+                for record in records
+                if record.answer_run.platform == "google"
+            }
+        )
+    )
+    observed_backend_ids = tuple(
+        sorted(
+            {
+                str(record.answer_run.collector_backend_id)
+                for record in records
+                if record.answer_run.platform == "google"
+            }
+        )
+    )
+    screenshot_or_html_runs = sum(
+        1
+        for record in completed_records
+        if any(asset.asset_type in {"screenshot", "html_snapshot"} for asset in record.evidence_assets)
+    )
+    failure_reasons: list[str] = []
+    if len(observed_access_methods) < required_path_count:
+        failure_reasons.append(f"insufficient_collection_paths={len(observed_access_methods)}/{required_path_count}")
+    if not records:
+        failure_reasons.append("no_records")
+    if len(records) < plan.planned_runs:
+        failure_reasons.append(f"planned_runs_incomplete={len(records)}/{plan.planned_runs}")
+    if failure_counter:
+        failure_reasons.append(f"collection_failures={sum(failure_counter.values())}")
+    if screenshot_or_html_runs < len(completed_records):
+        failure_reasons.append(f"records_without_screenshot_or_html={len(completed_records) - screenshot_or_html_runs}")
+    surface_triggered_runs = sum(1 for record in completed_records if record.answer_run.surface_triggered)
+    answer_present_runs = sum(1 for record in completed_records if record.answer_run.answer_present)
+    return GoogleSpikeReadinessGate(
+        project_id=project_id,
+        gate_status="pass" if not failure_reasons else "fail",
+        required_path_count=required_path_count,
+        observed_access_methods=observed_access_methods,
+        observed_backend_ids=observed_backend_ids,
+        planned_runs=plan.planned_runs,
+        attempted_runs=len(records),
+        completed_runs=len(completed_records),
+        surface_triggered_runs=surface_triggered_runs,
+        answer_present_runs=answer_present_runs,
+        screenshot_or_html_runs=screenshot_or_html_runs,
+        failure_summary=dict(failure_counter),
+        failure_reasons=tuple(failure_reasons),
     )

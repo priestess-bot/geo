@@ -36,6 +36,7 @@ from geno_core.fidelity import build_runtime_fidelity_check_from_records
 from geno_core.google_spike import (
     build_google_spike_plan,
     evaluate_google_spike_gate,
+    evaluate_google_spike_readiness_gate,
     select_google_spike_prompts,
 )
 from geno_core.models import CollectionFailureRecord, ProjectBootstrap, RawEvidenceRecord
@@ -412,6 +413,9 @@ def main() -> None:
     if plan is not None:
         output["google_spike_gate"] = asdict(
             evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=plan, records=records)
+        )
+        output["google_spike_readiness_gate"] = asdict(
+            evaluate_google_spike_readiness_gate(project_id=bootstrap.project.id, plan=plan, records=records)
         )
     print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
 

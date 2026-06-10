@@ -80,8 +80,8 @@
 **P0b Google spike 验收门槛**：
 
 - `[ ]` 对 30 条高意图 prompt 跑 Google AIO / AI Mode，地理范围 Australia + Sydney，k=2
-- `[ ]` 至少对比自建浏览器、第三方 SERP API、人工补录中的两条路径
-- `[ ]` 输出 pass/fail gate：成功率、触发率、失败原因、截图/HTML 证据、成本/耗时估算
+- `[~]` 至少对比自建浏览器、第三方 SERP API、人工补录中的两条路径（`GoogleSpikeReadinessGate` 已自动检查 access method 路径数；browser-only fixture 会 fail，browser+third_party fixture 可 pass；真实路径待跑）
+- `[~]` 输出 pass/fail gate：成功率、触发率、失败原因、截图/HTML 证据、成本/耗时估算（`GoogleSpikeGateResult` + `GoogleSpikeReadinessGate` 已落；真实 spike 待跑）
 - `[ ]` 未通过健康闸门时，Google 只进入 limited coverage 附录，不进入主评分分母
 
 **P0c 可售报告验收门槛**：
@@ -179,11 +179,11 @@ DoD：
 - `[~]` (P0b·spike) `ManualBackfillCollector`：人工补录最小路径，保证样本可审计 — `Step4`（shell + candidate + runtime manual backfill API + 控制台最小表单已落；批量文件流待接）
 - `[x]` (P0b·spike) Google spike 采样：30 prompts × 2 surfaces × 2 geo（Australia + Sydney）× k=2 = 240 planned_runs — `Step4 / Step9.3`
 - `[x]` (P0b·spike) 失败分类：not_triggered / layout_changed / blocked / timeout / geo_mismatch / account_state — `Step4`
-- `[~]` (P0b·spike) pass/fail gate 报告：成功率、触发率、截图/HTML 样本、成本/耗时、推荐路径 — `Step4 / Step13`（fixture gate 已落；真实 spike 报告待跑）
+- `[~]` (P0b·spike) pass/fail gate 报告：成功率、触发率、截图/HTML 样本、成本/耗时、推荐路径 — `Step4 / Step13`（`GoogleSpikeGateResult` 与 `GoogleSpikeReadinessGate` 已落；browser-only fixture 会通过 AIO 成功率 gate 但 fail 两路径 readiness gate，真实 spike 报告待跑）
 
 DoD：
 
-- `[~]` 至少两条 Google 采集路径完成对照（自建浏览器、第三方 API、人工补录三选二）（fixture 路径可对照；真实路径待跑）
+- `[~]` 至少两条 Google 采集路径完成对照（自建浏览器、第三方 API、人工补录三选二）（readiness gate 已可执行；browser+third_party fixture 可 pass，真实路径待跑）
 - `[x]` 每条结果可靠记录 surface_triggered / answer_present
 - `[x]` 至少一个 google_aio 后端在同一窗口完成 >= 80% 计划样本，才允许进入主评分
 - `[x]` 未达标时，Google 只进 limited coverage 附录，报告明确标注不进入主评分分母

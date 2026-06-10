@@ -113,7 +113,12 @@ PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_coll
 ```
 
 This runs the 30 prompt × 2 surfaces × 2 geo × k=2 spike matrix with fixture Google adapters and
-prints the gate result. Real Google paths still require browser/API/manual runtime implementations.
+prints `google_spike_gate` plus `google_spike_readiness_gate`. The first gate checks whether AIO
+coverage can enter the main scoring denominator; the readiness gate checks whether at least two
+collection paths are present across browser, third-party API, and manual backfill. The default
+`google-fixture` uses browser fixtures only, so it can pass the AIO success gate while still failing
+the two-path readiness gate. Real Google paths still require browser/API/manual runtime
+implementations.
 When `--persist-analysis` creates a report from the stable fixture path, the report Method Disclosure
 is frozen into `report_exports.method_disclosure`, records Google as limited coverage until a Google
 spike gate is available, and records the current API-vs-browser fidelity status plus access-method

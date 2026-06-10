@@ -31,6 +31,7 @@ from geno_core.collectors import (
     FixtureGoogleAIOCollector,
     FixtureOpenAIWebSearchCollector,
     FixturePerplexitySonarCollector,
+    FixtureThirdPartySerpCollector,
     OpenAIWebSearchCollector,
     PerplexitySonarCollector,
 )
@@ -39,6 +40,7 @@ from geno_core.fidelity import build_runtime_fidelity_check
 from geno_core.google_spike import (
     build_google_spike_plan,
     evaluate_google_spike_gate,
+    evaluate_google_spike_readiness_gate,
     select_google_spike_prompts,
 )
 from geno_core.graph import build_citation_graph
@@ -791,6 +793,47 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(gate.gate_status, "pass")
         self.assertFalse(gate.limited_coverage)
         self.assertGreaterEqual(gate.google_aio_completed_runs, 120)
+
+    def test_m2b_google_spike_readiness_requires_two_collection_paths(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
+        browser_only_records = run_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=select_google_spike_prompts(bootstrap.prompt_questions),
+            market_profile=bootstrap.market_profile,
+            collectors=(FixtureGoogleAIOCollector(), FixtureGoogleAIModeCollector()),
+            cities=plan.geo_cities,
+            sample_size=plan.sample_size,
+            prompt_limit=plan.prompt_count,
+        )
+        browser_only_gate = evaluate_google_spike_readiness_gate(
+            project_id=bootstrap.project.id,
+            plan=plan,
+            records=browser_only_records,
+        )
+        self.assertEqual(browser_only_gate.gate_status, "fail")
+        self.assertEqual(browser_only_gate.observed_access_methods, ("browser",))
+        self.assertIn("insufficient_collection_paths=1/2", browser_only_gate.failure_reasons)
+
+        multi_path_records = run_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=select_google_spike_prompts(bootstrap.prompt_questions),
+            market_profile=bootstrap.market_profile,
+            collectors=(FixtureGoogleAIOCollector(), FixtureThirdPartySerpCollector()),
+            cities=plan.geo_cities,
+            sample_size=plan.sample_size,
+            prompt_limit=plan.prompt_count,
+        )
+        multi_path_gate = evaluate_google_spike_readiness_gate(
+            project_id=bootstrap.project.id,
+            plan=plan,
+            records=multi_path_records,
+        )
+        self.assertEqual(multi_path_gate.gate_status, "pass")
+        self.assertEqual(set(multi_path_gate.observed_access_methods), {"browser", "third_party_api"})
+        self.assertEqual(multi_path_gate.completed_runs, 240)
+        self.assertEqual(multi_path_gate.screenshot_or_html_runs, 240)
+        self.assertEqual(multi_path_gate.failure_reasons, ())
 
     def test_m2b_google_spike_gate_fails_without_google_aio_coverage(self) -> None:
         bootstrap = build_au_project_bootstrap()

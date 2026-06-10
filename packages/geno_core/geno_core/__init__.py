@@ -32,7 +32,11 @@ from geno_core.collectors import (
     ThirdPartySerpCollector,
 )
 from geno_core.geo import StaticAUGeoProvider
-from geno_core.google_spike import build_google_spike_plan, evaluate_google_spike_gate
+from geno_core.google_spike import (
+    build_google_spike_plan,
+    evaluate_google_spike_gate,
+    evaluate_google_spike_readiness_gate,
+)
 from geno_core.graph import build_citation_graph
 from geno_core.industry import build_au_dtc_ecommerce_profile
 from geno_core.knowledge import (
@@ -106,6 +110,7 @@ __all__ = [
     "build_localized_knowledge_facts",
     "build_manual_distribution_records",
     "evaluate_google_spike_gate",
+    "evaluate_google_spike_readiness_gate",
     "evaluate_p0a_collection_readiness",
     "get_score_formula",
     "build_repository_from_env",
