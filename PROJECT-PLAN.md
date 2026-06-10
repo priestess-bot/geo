@@ -60,13 +60,13 @@
 - `[~]` 代码有单测；关键路径有集成测试（fixture/API/core 已覆盖；真实外部采集 E2E 待接）
 - `[~]` 通过 CI（lint + 测试 + 迁移可起）（本地 `make test` / `make docker-config` 通过；完整 lint/真实迁移起服待接）
 - `[x]` 若改了行为/口径，同 PR 更新对应 `docs/`，必要时加 `decisions/` ADR
-- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `PromptQuestion -> AnswerRun` / `answer_run_ids`（runtime project create/read API、runtime project `project_id` 过滤、runtime prompt API、fixture TraceabilityBundle、worker `--persist` 写 AU 启动包/prompt 元数据与 evidence、runtime project/prompt/evidence/manual backfill/entity alias API 已读回项目、竞品、prompt 计数、prompt 文本、prompt metadata 与别名确认审计；worker `--persist-analysis` 已读取确认后的 `entity_aliases` 并保存 alias-aware `AnswerAnalysis`、TraceabilityBundle，runtime traceability API 可按 `project_id` 读回报告/评分/证据/图谱/action/content/audit/evidence link 聚合详情；Runtime Console 已展示 Project Bootstrap、项目下拉、Entity Alias、Runtime Filters、Evidence Sort、Saved Views、筛选后 Evidence CSV 导出、筛选/排序后的报告 artifact 下载、Report History、Prompt Pack、Manual Backfill、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail 和节点级 details 钻取；跨页面深链路和图谱可视化仍待接）
+- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `PromptQuestion -> AnswerRun` / `answer_run_ids`（runtime project create/read API、runtime project `project_id` 过滤、可配置 AU/DTC 客户项目创建、runtime prompt API、fixture TraceabilityBundle、worker `--persist` 写 AU 启动包/prompt 元数据与 evidence、runtime project/prompt/evidence/manual backfill/entity alias API 已读回项目、竞品、prompt 计数、prompt 文本、prompt metadata 与别名确认审计；worker `--persist-analysis` 已读取确认后的 `entity_aliases` 并保存 alias-aware `AnswerAnalysis`、TraceabilityBundle，runtime traceability API 可按 `project_id` 读回报告/评分/证据/图谱/action/content/audit/evidence link 聚合详情；Runtime Console 已展示 Project Bootstrap 客户配置表单、项目下拉、Entity Alias、Runtime Filters、Evidence Sort、Saved Views、筛选后 Evidence CSV 导出、筛选/排序后的报告 artifact 下载、Report History、Prompt Pack、Manual Backfill、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail 和节点级 details 钻取；跨页面深链路和图谱可视化仍待接）
 - `[~]` 关键动作写入 `AuditEvent`；关键输出能生成 provenance 链路和解释包（采集/评分/报告/action/content fixture、人工补录最小路径、实体别名确认最小路径与计算型 alias candidates 已落；批量实体消歧审核队列待接）
 - `[~]` 有一次可演示（API fixture endpoints 与 Runtime Console MVP 已可演示；真实 design partner 数据演示待接）
 
 **P0a 稳定链路验收门槛**（M0 + M1 + M2a + M3 全绿才算可进入 design partner 试点）：
 
-- `[ ]` 可创建 `market=AU` 项目，配 1 行业模板 + 100 条澳洲问题集 + 3–5 竞品
+- `[~]` 可创建 `market=AU` 项目，配 1 行业模板 + 100 条澳洲问题集 + 3–5 竞品（可配置客户项目 API/控制台已落；权限/RLS、真实客户数据验收待接）
 - `[ ]` 完成 Perplexity Sonar + OpenAI web search 两个平台采集，每条有 answer + citation + 截图/HTML
 - `[ ]` 每条采集记录 platform/surface/access_method/city/language/device/collected_at/collector_version/collector_backend_id
 - `[ ]` 每条采集记录 `answer_present`/`surface_triggered`；P0a 每 prompt 重复采样 k=3
@@ -127,7 +127,7 @@ DoD：
 
 任务：
 
-- `[~]` (P0a) 租户/项目/品牌/竞品/角色权限 — `E1-01..05`（已落契约、启动包、PostgreSQL 幂等持久化、runtime AU/DTC 项目创建 API 与项目聚合读取 API；控制台固定 AU/DTC 启动包创建与只读项目摘要已接入，通用项目 CRUD、RLS/鉴权待接）
+- `[~]` (P0a) 租户/项目/品牌/竞品/角色权限 — `E1-01..05`（已落契约、启动包、PostgreSQL 幂等持久化、runtime AU/DTC 项目创建 API 与项目聚合读取 API；API/控制台已支持 tenant/project/brand/category/brand domains/product lines/3-5 competitors 客户配置创建，通用项目编辑/删除、RLS/鉴权待接）
 - `[x]` (P0a) AU MarketProfile 固定值（locale/timezone/currency/cities/平台权重/信源分类）— `Step1`
 - `[x]` (P0a) 1 个 IndustryProfile 行业模板 — `Step2`
 - `[x]` (P0a) Prompt Pack：100 条 AU 英文问题集（上限 200），每条绑 intent_type/city/prompt_version，并可通过 runtime prompt API 分页/过滤读回 — `Step3 / E2-03..05`
@@ -137,7 +137,7 @@ DoD：
 
 DoD：
 
-- `[~]` 可创建 market=AU 项目，配 3–5 竞品（启动包/API 已可生成，worker `--persist` 已可写入 tenant/project/brand/competitor/prompt；控制台固定 AU/DTC 创建流已接入，通用配置表单待接）
+- `[~]` 可创建 market=AU 项目，配 3–5 竞品（启动包/API 已可生成，worker `--persist` 已可写入 tenant/project/brand/competitor/prompt；控制台客户配置创建流已接入，完整 CRUD、权限和批量导入待接）
 - `[x]` 可选 1 行业模板并生成 100 条澳洲问题集
 - `[x]` 平台、城市、语言、货币、权重无写死，全部来自 MarketProfile
 
@@ -240,7 +240,7 @@ DoD：
 - `[~]` (P0c) ReportExporter 接口 + Markdown/CSV/PDF 导出（方法说明 + 证据附录）、runtime report API、Markdown/CSV/PDF artifact 下载、附录级筛选/排序下载、最小白标 PDF 模板 renderer 与 MinIO/S3-compatible artifact 归档；完整白标配置/品牌资产管理待接 — `Step13`
 - `[x]` (P0c) ReportExport 快照：冻结 score_snapshot_ids、answer_run_ids、prompt_version、公式版本、平台权重、采样窗口；worker `--persist-analysis` 已写入不可覆盖版本，runtime report API 可读回 — `Step5.1 / §8.17`
 - `[~]` (P0c) 报告展示：采集窗口/平台覆盖/access_method/样本量(k)/离散度/双分母/公式版本/API-界面差异抽检结论/Google spike pass/fail/limited coverage/审计摘要/分数解释包/非确定性说明 — `Step13`（Runtime Console 已展示 Report Snapshot、Report History 与 Report Method & Evidence Appendix：冻结 methodology hash、采样窗口、平台/access method/city 覆盖、样本量、双分母评分、离散度、公式版本、平台权重、证据附录、citation/audit 摘要、历史 report version/exported_at/object store URL/artifact path、白标 PDF template path；核心方法/分数/证据/source gap/competitor/report snapshot、基础 PDF artifact 与最小白标 PDF artifact 已落；API-界面差异抽检与真实 Google 结论待接）
-- `[~]` (P1) 代理商工作流：多客户/多项目/白标/导出历史 — `Step13`（当前已接入 Runtime Console 项目下拉/URL `project_id` 选择，并把 prompt/evidence/export/alias/saved view/score/graph/report/action/content/traceability read path 收敛到选中项目；已接入 Report History/导出历史只读面板和 `template=white_label` PDF 下载，按 `project_id` 读取最近 5 个 `ReportExport` 并展示冻结 URL、artifact 下载、白标 artifact path 和报告审计摘要；品牌资产配置、导出历史管理、权限/账单隔离与客户级授权流转待接）
+- `[~]` (P1) 代理商工作流：多客户/多项目/白标/导出历史 — `Step13`（当前已接入 Runtime Console 项目下拉/URL `project_id` 选择，并把 prompt/evidence/export/alias/saved view/score/graph/report/action/content/traceability read path 收敛到选中项目；已接入客户项目创建表单、Report History/导出历史只读面板和 `template=white_label` PDF 下载，按 `project_id` 读取最近 5 个 `ReportExport` 并展示冻结 URL、artifact 下载、白标 artifact path 和报告审计摘要；品牌资产主题配置、导出历史管理、权限/账单隔离与客户级授权流转待接）
 
 DoD：
 

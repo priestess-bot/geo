@@ -62,6 +62,55 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_project_create_endpoint_accepts_client_configuration(self) -> None:
+        class FakeRepository:
+            def save_project_bootstrap(self, bootstrap: object) -> None:
+                self.bootstrap = bootstrap
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/projects/runtime/au/dtc-ecommerce",
+                json={
+                    "tenant_name": "Agency Client AU",
+                    "project_name": "Koala Mattress GEO Pilot",
+                    "target_brand": "Koala",
+                    "category": "mattresses",
+                    "competitors": ["Emma Sleep", "Sleeping Duck", "Ecosa"],
+                    "brand_official_domains": ["koala.com"],
+                    "brand_parent_company": "Koala",
+                    "brand_product_lines": ["Mattress", "Sofa Bed"],
+                    "owner_user_id": "agency-owner",
+                },
+            )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["market_code"], "AU")
+        self.assertEqual(payload["prompt_count"], 100)
+        self.assertEqual(payload["competitor_count"], 3)
+        self.assertEqual(payload["bootstrap"]["tenant"]["name"], "Agency Client AU")
+        self.assertEqual(payload["bootstrap"]["project"]["name"], "Koala Mattress GEO Pilot")
+        self.assertEqual(payload["bootstrap"]["project"]["target_brand"], "Koala")
+        self.assertEqual(payload["bootstrap"]["brand"]["official_domains"], ["koala.com"])
+        self.assertEqual(payload["bootstrap"]["brand"]["product_lines"], ["Mattress", "Sofa Bed"])
+        self.assertEqual(payload["bootstrap"]["members"][0]["user_id"], "agency-owner")
+
+    def test_runtime_project_create_endpoint_rejects_invalid_competitor_count(self) -> None:
+        response = self.client.post(
+            "/v1/projects/runtime/au/dtc-ecommerce",
+            json={
+                "target_brand": "Koala",
+                "category": "mattresses",
+                "competitors": ["Only One"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("3-5 competitors", response.json()["detail"])
+
     def test_runtime_projects_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/projects/runtime")
         self.assertEqual(response.status_code, 503)

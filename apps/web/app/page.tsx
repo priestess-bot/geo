@@ -474,14 +474,34 @@ const emptyPage = <T,>(): PageResponse<T> => ({ total_count: 0, records: [] });
 
 export const dynamic = "force-dynamic";
 
-async function createAuRuntimeProject() {
+async function createAuRuntimeProject(formData?: FormData) {
   "use server";
   const baseUrl =
     process.env.API_INTERNAL_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     "http://localhost:8000";
+  const itemList = (field: string): string[] =>
+    String(formData?.get(field) || "")
+      .split(/\r?\n|,/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  const payload = formData
+    ? {
+        tenant_name: String(formData.get("tenant_name") || "Design Partner AU").trim(),
+        project_name: String(formData.get("project_name") || "AU DTC Evidence Pilot").trim(),
+        target_brand: String(formData.get("target_brand") || "ExampleBrand").trim(),
+        category: String(formData.get("category") || "DTC ecommerce products").trim(),
+        competitors: itemList("competitors"),
+        brand_official_domains: itemList("brand_official_domains"),
+        brand_parent_company: String(formData.get("brand_parent_company") || "").trim() || undefined,
+        brand_product_lines: itemList("brand_product_lines"),
+        owner_user_id: String(formData.get("owner_user_id") || "runtime-console").trim()
+      }
+    : undefined;
   const response = await fetch(`${baseUrl}/v1/projects/runtime/au/dtc-ecommerce`, {
     method: "POST",
+    headers: payload ? { "content-type": "application/json" } : undefined,
+    body: payload ? JSON.stringify(payload) : undefined,
     cache: "no-store"
   });
   if (!response.ok) {
@@ -1310,9 +1330,46 @@ export default async function Home({
             ) : (
               <EmptyState />
             )}
-            <form action={createAuRuntimeProject}>
+            <form action={createAuRuntimeProject} className="projectCreateForm">
+              <div className="formHeader">
+                <h3>Client Project</h3>
+                <small>AU / DTC ecommerce / 100 prompts</small>
+              </div>
+              <label>
+                <span>Tenant</span>
+                <input name="tenant_name" defaultValue="Design Partner AU" />
+              </label>
+              <label>
+                <span>Project</span>
+                <input name="project_name" defaultValue="AU DTC Evidence Pilot" />
+              </label>
+              <label>
+                <span>Brand</span>
+                <input name="target_brand" defaultValue="ExampleBrand" />
+              </label>
+              <label>
+                <span>Category</span>
+                <input name="category" defaultValue="DTC ecommerce products" />
+              </label>
+              <label className="wideField">
+                <span>Brand domains</span>
+                <input name="brand_official_domains" defaultValue="examplebrand.example" />
+              </label>
+              <label className="wideField">
+                <span>Product lines</span>
+                <input name="brand_product_lines" defaultValue="Flagship product, Premium bundle" />
+              </label>
+              <label className="wideField">
+                <span>Competitors</span>
+                <textarea
+                  name="competitors"
+                  defaultValue={"Emma Sleep\nSleeping Duck\nEcosa\nIKEA Australia"}
+                  rows={4}
+                />
+              </label>
+              <input type="hidden" name="owner_user_id" value="runtime-console" />
               <button className="actionButton" type="submit">
-                Create AU project
+                Create client project
               </button>
             </form>
           </div>

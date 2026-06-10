@@ -15,7 +15,7 @@ from geno_core.action_plan import (
     compare_retest_windows,
 )
 from geno_core.analysis_pipeline import analyze_and_score_records
-from geno_core.bootstrap import build_au_project_bootstrap
+from geno_core.bootstrap import DEFAULT_AU_COMPETITORS, build_au_project_bootstrap
 from geno_core.collection import (
     build_manual_backfill_record,
     build_p0a_collection_plan,
@@ -92,6 +92,18 @@ class EntityAliasConfirmRequest(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
 
 
+class RuntimeProjectCreateRequest(BaseModel):
+    tenant_name: str = Field(default="Design Partner AU", min_length=1, max_length=160)
+    project_name: str = Field(default="AU DTC Evidence Pilot", min_length=1, max_length=160)
+    target_brand: str = Field(default="ExampleBrand", min_length=1, max_length=160)
+    category: str = Field(default="DTC ecommerce products", min_length=1, max_length=200)
+    competitors: list[str] = Field(default_factory=list, max_length=5)
+    brand_official_domains: list[str] = Field(default_factory=list, max_length=5)
+    brand_parent_company: str | None = Field(default=None, max_length=160)
+    brand_product_lines: list[str] = Field(default_factory=list, max_length=10)
+    owner_user_id: str = Field(default="runtime-console", min_length=1, max_length=120)
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "geno-saas-au-api"}
@@ -127,8 +139,27 @@ def au_dtc_project_bootstrap() -> dict[str, object]:
 
 
 @app.post("/v1/projects/runtime/au/dtc-ecommerce")
-def create_runtime_au_dtc_project() -> dict[str, object]:
-    bootstrap = build_au_project_bootstrap()
+def create_runtime_au_dtc_project(payload: RuntimeProjectCreateRequest | None = None) -> dict[str, object]:
+    request = payload or RuntimeProjectCreateRequest()
+    competitors = tuple(item.strip() for item in request.competitors if item.strip())
+    if not competitors:
+        competitors = DEFAULT_AU_COMPETITORS
+    brand_official_domains = tuple(item.strip() for item in request.brand_official_domains if item.strip())
+    brand_product_lines = tuple(item.strip() for item in request.brand_product_lines if item.strip())
+    try:
+        bootstrap = build_au_project_bootstrap(
+            tenant_name=request.tenant_name.strip(),
+            project_name=request.project_name.strip(),
+            target_brand=request.target_brand.strip(),
+            category=request.category.strip(),
+            competitors=competitors,
+            brand_official_domains=brand_official_domains,
+            brand_parent_company=request.brand_parent_company.strip() if request.brand_parent_company else None,
+            brand_product_lines=brand_product_lines,
+            owner_user_id=request.owner_user_id.strip(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
@@ -1127,6 +1158,7 @@ def contracts() -> dict[str, list[str]]:
             "save_project_bootstrap",
             "RuntimeProject",
             "RuntimeProjectPage",
+            "RuntimeProjectCreateRequest",
             "RuntimePromptPage",
             "EntityAliasInput",
             "RuntimeEntityAlias",

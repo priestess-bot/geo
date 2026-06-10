@@ -31,6 +31,10 @@ def build_au_project_bootstrap(
     target_brand: str = "ExampleBrand",
     category: str = "DTC ecommerce products",
     competitors: tuple[str, ...] = DEFAULT_AU_COMPETITORS,
+    brand_official_domains: tuple[str, ...] = (),
+    brand_parent_company: str | None = None,
+    brand_product_lines: tuple[str, ...] = (),
+    competitor_official_domains: dict[str, tuple[str, ...]] | None = None,
     owner_user_id: str = "user-owner",
 ) -> ProjectBootstrap:
     if len(competitors) < 3 or len(competitors) > 5:
@@ -71,17 +75,18 @@ def build_au_project_bootstrap(
         id=_stable_id("brand", project.id, target_brand),
         project_id=project.id,
         canonical_name=target_brand,
-        official_domains=(),
-        parent_company=None,
-        product_lines=(),
+        official_domains=brand_official_domains,
+        parent_company=brand_parent_company,
+        product_lines=brand_product_lines,
         status="active",
     )
+    competitor_domains = competitor_official_domains or {}
     competitor_entities = tuple(
         CompetitorEntity(
             id=_stable_id("competitor", project.id, competitor),
             project_id=project.id,
             canonical_name=competitor,
-            official_domains=(),
+            official_domains=competitor_domains.get(competitor, ()),
             parent_company=None,
             product_lines=(),
             status="active",
@@ -109,9 +114,13 @@ def build_au_project_bootstrap(
             "tenant_id": tenant.id,
             "market_code": project.market_code,
             "industry_code": project.industry_code,
+            "target_brand": project.target_brand,
+            "category": project.category,
             "prompt_version": project.prompt_version,
             "prompt_count": len(prompt_questions),
             "competitor_count": len(competitor_entities),
+            "brand_official_domains": list(brand.official_domains),
+            "brand_product_lines": list(brand.product_lines),
         },
         output_refs={
             "prompt_question_ids": [prompt.id for prompt in prompt_questions],

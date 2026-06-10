@@ -226,6 +226,32 @@ class CoreContractsTest(unittest.TestCase):
             [prompt.id for prompt in prompts],
         )
 
+    def test_m1_project_bootstrap_accepts_client_project_configuration(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            tenant_name="Agency Client AU",
+            project_name="Koala Mattress GEO Pilot",
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+            brand_official_domains=("koala.com",),
+            brand_parent_company="Koala",
+            brand_product_lines=("Mattress", "Sofa Bed"),
+            owner_user_id="agency-owner",
+        )
+
+        self.assertEqual(bootstrap.tenant.name, "Agency Client AU")
+        self.assertEqual(bootstrap.project.name, "Koala Mattress GEO Pilot")
+        self.assertEqual(bootstrap.project.target_brand, "Koala")
+        self.assertEqual(bootstrap.brand.official_domains, ("koala.com",))
+        self.assertEqual(bootstrap.brand.parent_company, "Koala")
+        self.assertEqual(bootstrap.brand.product_lines, ("Mattress", "Sofa Bed"))
+        self.assertEqual([competitor.canonical_name for competitor in bootstrap.competitors], ["Emma Sleep", "Sleeping Duck", "Ecosa"])
+        self.assertEqual(bootstrap.members[0].user_id, "agency-owner")
+        self.assertEqual(len(bootstrap.prompt_questions), 100)
+        self.assertTrue(all(prompt.project_id == bootstrap.project.id for prompt in bootstrap.prompt_questions))
+        self.assertTrue(any("Koala" in prompt.text for prompt in bootstrap.prompt_questions))
+        self.assertEqual(bootstrap.audit_events[0].after_hash is not None, True)
+
     def test_m1_project_bootstrap_audit_event_id_is_stable(self) -> None:
         first = build_au_project_bootstrap()
         second = build_au_project_bootstrap()
