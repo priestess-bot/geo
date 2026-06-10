@@ -46,6 +46,7 @@ from geno_core.knowledge import (
 from geno_core.market import build_au_market_profile
 from geno_core.models import (
     EntityAliasInput,
+    RuntimeHumanReviewInput,
     ManualBackfillInput,
     RuntimeProjectBrandKitInput,
     RuntimePromptImportInput,
@@ -89,6 +90,17 @@ class ScoreWeightConfigRequest(BaseModel):
     weights: dict[str, float]
     updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     notes: str | None = Field(default=None, max_length=500)
+
+
+class HumanReviewRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    target_type: str = Field(min_length=1, max_length=120)
+    target_id: str = Field(min_length=1, max_length=240)
+    review_status: str = Field(default="approved", min_length=1, max_length=80)
+    decision: str = Field(min_length=1, max_length=240)
+    reviewer_id: str = Field(default="runtime-console", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=2000)
+    payload: dict[str, object] = Field(default_factory=dict)
 
 
 class RuntimePromptImportRequest(BaseModel):
@@ -678,6 +690,58 @@ def save_runtime_score_weight_config(payload: ScoreWeightConfigRequest) -> dict[
         close_repository_connection(repository)
 
 
+@app.get("/v1/human-reviews/runtime")
+def runtime_human_reviews(
+    project_id: str | None = None,
+    target_type: str | None = None,
+    review_status: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.list_runtime_human_reviews(
+            project_id=project_id,
+            target_type=target_type,
+            review_status=review_status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/human-reviews/runtime")
+def record_runtime_human_review(payload: HumanReviewRequest) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        record = repository.save_human_review(
+            RuntimeHumanReviewInput(
+                project_id=payload.project_id.strip(),
+                target_type=payload.target_type.strip(),
+                target_id=payload.target_id.strip(),
+                review_status=payload.review_status.strip(),
+                decision=payload.decision.strip(),
+                reviewer_id=payload.reviewer_id.strip(),
+                notes=payload.notes.strip() if payload.notes else None,
+                payload=payload.payload,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/visibility-scores/runtime")
 def runtime_visibility_scores(
     project_id: str | None = None,
@@ -1254,6 +1318,7 @@ def contracts() -> dict[str, list[str]]:
             "LLMCallLog",
             "ScoreContribution",
             "ReportExport",
+            "RuntimeHumanReviewRecord",
             "TraceabilityBundle",
         ],
         "m1_bootstrap": [
@@ -1309,6 +1374,10 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeScoreWeightConfig",
             "RuntimeScoreWeightConfigInput",
             "ScoreWeightConfigRequest",
+            "RuntimeHumanReviewRecord",
+            "RuntimeHumanReviewPage",
+            "RuntimeHumanReviewInput",
+            "HumanReviewRequest",
             "au_visibility_v1",
         ],
         "m4_graph_benchmark": [
@@ -1357,6 +1426,10 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeScoreWeightConfig",
             "RuntimeScoreWeightConfigInput",
             "ScoreWeightConfigRequest",
+            "RuntimeHumanReviewRecord",
+            "RuntimeHumanReviewPage",
+            "RuntimeHumanReviewInput",
+            "HumanReviewRequest",
             "RuntimePromptPage",
             "RuntimePromptImportInput",
             "RuntimePromptImportResult",
@@ -1409,6 +1482,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/runtime-saved-views",
             "/v1/project-brand-kits/runtime",
             "/v1/score-weight-configs/runtime",
+            "/v1/human-reviews/runtime",
             "worker --persist",
             "worker --persist-analysis",
             "/v1/visibility-scores/runtime",

@@ -145,7 +145,8 @@ code {
 .brandKitForm label,
 .promptImportForm label,
 .manualBackfillForm label,
-.entityAliasForm label {
+.entityAliasForm label,
+.humanReviewForm label {
   display: grid;
   gap: 5px;
   min-width: 0;
@@ -157,7 +158,8 @@ code {
 .brandKitForm label span,
 .promptImportForm label span,
 .manualBackfillForm label span,
-.entityAliasForm label span {
+.entityAliasForm label span,
+.humanReviewForm label span {
   color: #667585;
   font-size: 12px;
 }
@@ -173,7 +175,10 @@ code {
 .manualBackfillForm select,
 .manualBackfillForm textarea,
 .entityAliasForm input,
-.entityAliasForm select {
+.entityAliasForm select,
+.humanReviewForm input,
+.humanReviewForm select,
+.humanReviewForm textarea {
   appearance: none;
   background: #f7fafc;
   border: 1px solid #cfd7e1;
@@ -186,7 +191,8 @@ code {
 }
 
 .manualBackfillForm textarea,
-.promptImportForm textarea {
+.promptImportForm textarea,
+.humanReviewForm textarea {
   line-height: 1.45;
   resize: vertical;
 }
@@ -210,7 +216,8 @@ code {
 
 .manualBackfillForm,
 .promptImportForm,
-.entityAliasForm {
+.entityAliasForm,
+.humanReviewForm {
   background: #fbfcfd;
   border: 1px solid #e1e7ee;
   border-radius: 6px;
@@ -268,6 +275,29 @@ code {
   padding: 10px;
 }
 
+.humanReviewGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(260px, 0.55fr) minmax(0, 1fr);
+}
+
+.humanReviewList {
+  align-content: start;
+  background: #f7fafc;
+  border: 1px solid #e1e7ee;
+  border-radius: 6px;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.humanReviewList h3 {
+  color: #334453;
+  font-size: 13px;
+  margin: 0;
+}
+
 .savedViewList h3 {
   color: #334453;
   font-size: 13px;
@@ -300,7 +330,7 @@ code {
 .metrics {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(10, minmax(0, 1fr));
   margin-top: 18px;
 }
 
@@ -1169,6 +1199,8 @@ summary {
   .promptImportForm,
   .manualBackfillForm,
   .entityAliasForm,
+  .humanReviewGrid,
+  .humanReviewForm,
   .evidenceGrid,
   .contributionGrid,
   .benchmarkGrid,
@@ -1220,6 +1252,8 @@ summary {
   .promptImportForm,
   .manualBackfillForm,
   .entityAliasForm,
+  .humanReviewGrid,
+  .humanReviewForm,
   .scoreRow,
   .scoreSummary,
   .evidenceGrid,

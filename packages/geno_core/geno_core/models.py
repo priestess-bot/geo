@@ -714,6 +714,32 @@ class RuntimeScoreWeightConfigInput:
 
 
 @dataclass(frozen=True)
+class RuntimeHumanReviewRecord:
+    human_review: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeHumanReviewPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeHumanReviewRecord, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeHumanReviewInput:
+    project_id: str
+    target_type: str
+    target_id: str
+    review_status: str
+    decision: str
+    reviewer_id: str = "runtime-console"
+    notes: str | None = None
+    payload: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class EntityAliasInput:
     entity_id: str
     entity_kind: str

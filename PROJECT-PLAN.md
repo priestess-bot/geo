@@ -72,7 +72,7 @@
 - `[ ]` 每条采集记录 `answer_present`/`surface_triggered`；P0a 每 prompt 重复采样 k=3
 - `[~]` 采集、采集批次摘要、解析、评分、人工补录、实体确认、报告导出均写入 `AuditEvent`（runtime `collection_run_summarized`、`manual_backfill_recorded` 与 `entity_alias_confirmed` 已落；真实外部解析/采集链路仍需凭证联调）
 - `[~]` 每个 collector_backend 写入 CollectionCost；可估算 planned_runs、成功率、触发率、回答率、失败摘要、单位成本和平均耗时（真实外部采集凭证联调待接）
-- `[~]` 自动解析品牌提及/推荐/排名/竞品/引用/本地相关性（rule parser、confirmed alias-aware parser、本地 judge fixture A/B 与 `llm_call_logs` 调用日志已落；真实 LiteLLM provider judge 与人工复核待接）
+- `[~]` 自动解析品牌提及/推荐/排名/竞品/引用/本地相关性（rule parser、confirmed alias-aware parser、本地 judge fixture A/B、`llm_call_logs` 调用日志与 `human_review_records` 复核留痕已落；真实 LiteLLM provider judge、抽样复核队列和校准流程待接）
 - `[x]` 生成可拆解、公式版本化的 `AUVisibilityScore`，能点回原始 answer run
 - `[x]` 生成 `ScoreContribution` 分数解释包，展示子指标贡献、权重、分母、正负证据和局限
 - `[ ]` 报告区分 Trigger Rate 与 Mention/Recommendation Rate
@@ -202,7 +202,7 @@ DoD：
 - `[x]` (P0a) VisibilityScoreSnapshot 聚合表（project/platform/city/intent/prompt），并支持 worker `--persist-analysis` 写库与 runtime score API 查询 — `§8.13`
 - `[x]` (P0a) ScoreContribution 分数解释包：子指标贡献、权重、分母、正负证据、局限说明；runtime score API 可读回贡献项、关联 prompt/answer run/analysis/audit，Runtime Console 已展示完整评分解释包、parser A/B agreement 和权重快照 — `Step5.1 / §8.18`
 - `[~]` (P1) LLM-as-judge 解析实现（与规则 A/B）— `Step7`（`llm_judge_fixture_v1` 本地 judge、`ComparativeAnswerParser`、`parser_ab_compare_v1` payload、`llm_judge_prompt_v1` 和 `llm_call_logs` 调用日志已落；真实 LiteLLM provider judge、重试、真实成本账单和人工抽检待接）
-- `[~]` (P1) 评分权重可配置 + 审计；人工复核留痕 — `E4-10/11`（项目级 `score_weight_configs`、runtime GET/POST API、`score_weight_config_saved` 审计、worker `--persist-analysis` 读取配置和 `VisibilityScoreSnapshot.component_weights_snapshot` 冻结已落；人工复核队列/复核意见留痕待接）
+- `[~]` (P1) 评分权重可配置 + 审计；人工复核留痕 — `E4-10/11`（项目级 `score_weight_configs`、runtime GET/POST API、`score_weight_config_saved` 审计、worker `--persist-analysis` 读取配置和 `VisibilityScoreSnapshot.component_weights_snapshot` 冻结已落；通用 `human_review_records`、runtime GET/POST API、`human_review_recorded` 审计和 Runtime Console Human Review Trail 已落；复核队列、审批流和抽样校准待接）
 
 DoD：
 
@@ -211,7 +211,7 @@ DoD：
 - `[x]` 任意总分/平台分/城市分/intent 分都有 ScoreContribution 解释包
 - `[x]` 报告能区分 Trigger Rate 与 Mention/Recommendation Rate
 - `[x]` 评分公式可升级，历史分数按旧版本可重算
-- `[~]` 规则解析与 judge 解析可对同一答案并行对比并保留版本（fixture judge + gateway 调用日志已落；真实 LiteLLM provider judge 与人工复核待接）
+- `[~]` 规则解析与 judge 解析可对同一答案并行对比并保留版本（fixture judge + gateway 调用日志 + 人工复核记录已落；真实 LiteLLM provider judge、抽样复核队列与解析器校准待接）
 
 ### M4 · Phase 4：Citation Graph + Competitor Benchmark（P0c）
 
@@ -273,14 +273,14 @@ DoD：
 任务：
 
 - `[~]` (P2) LocalizedKnowledgeFact 本地事实库 + VectorStore 检索（AU 优先，回退 global 标记）— `Step12 / §8.12 / E6`（内存检索 fixture 已落；worker `--persist-analysis` 已写入 PostgreSQL，runtime content engine API 可读回 facts，Runtime Console Content Engine Detail 已展示 fact type/subject/predicate/object/confidence/status/evidence；pgvector 检索待接）
-- `[~]` (P2) Content Engine：基于 source/prompt gap 生成 FAQ/comparison/schema/landing outline，绑 evidence 并过人工审核 — `Step15 / E7`（证据绑定草稿已落，worker 可持久化并通过 runtime content engine API 读回 draft -> fact/action/prompt/answer_run/manual distribution，Runtime Console 已展示草稿、target questions、evidence runs、source action 与人工分发记录；LLMGateway 生成与审核工作台待接）
+- `[~]` (P2) Content Engine：基于 source/prompt gap 生成 FAQ/comparison/schema/landing outline，绑 evidence 并过人工审核 — `Step15 / E7`（证据绑定草稿已落，worker 可持久化并通过 runtime content engine API 读回 draft -> fact/action/prompt/answer_run/manual distribution，Runtime Console 已展示草稿、target questions、evidence runs、source action 与人工分发记录；Human Review Trail 已可对 content draft 记录审核状态、decision 和审计事件；LLMGateway 真实生成、专用审核工作台和发布审批流待接）
 - `[~]` (P2) Integrations：GSC/GA4/Shopify/WordPress/Webflow/HubSpot/Cloudflare — `Step15`（connector 计划对象已落，worker 可写入并通过 runtime content engine API 读回，Runtime Console 已展示 provider/status/auth/capabilities；真实 OAuth/API 接入待接）
 - `[ ]` (P2) 更广平台：Gemini/Copilot/Claude/YouTube/Reddit/ProductReview — `§4.3`
 - `[x]` (P2) Manual Distribution Record（仅记录 URL/状态，不自动发布）— `E8`
 
 DoD：
 
-- `[~]` 内容生成绑 evidence/source_gap/knowledge_fact，过人工审核（runtime content engine API 已读回 evidence/fact/action/prompt/manual distribution 关联，Runtime Console 已只读展示证据绑定细节，草稿默认 `pending_human_review`；人工审核 UI 待接）
+- `[~]` 内容生成绑 evidence/source_gap/knowledge_fact，过人工审核（runtime content engine API 已读回 evidence/fact/action/prompt/manual distribution 关联，Runtime Console 已展示证据绑定细节，草稿默认 `pending_human_review`；Human Review Trail 已可记录 content draft 的人工审核留痕；专用审核工作台、状态回写和审批流待接）
 - `[~]` 本地事实库可检索、可回退标记（内存检索和 global fallback 标记已落，facts 可持久化读回并在 Runtime Console 展示；VectorStore/pgvector 运行时检索待接）
 
 ## 4. 风险登记册
@@ -295,7 +295,7 @@ DoD：
 | 架构可插拔是否为真 | M0 起持续 | 接口先行；P0a 先完成接口级可插拔，深度切换演示排到 P0c/P1 | Collector/Parser/Scoring/Report 可插拔；parser rule + judge fixture 已可并行；向量库/图库/LLM 后续演示 |
 | 城市级地理定位实现成本 | M2a/M2b | GeoProvider 抽象（uule/代理池/供应商可换）；P0a 四地理样本可降级但保留字段 | 地理样本可区分且成本可控 |
 | 单位经济不透明 | M2a 起 | CollectionCost 从首个采集器记录；CollectionRunSummary 汇总批次 planned/attempted/success/failure、触发率、回答率、失败摘要、总成本、单位成本、总耗时和平均耗时；P0a planned_runs 默认 2400，Google spike 默认 240 | 每份采集批次的成本、成功率、触发率、回答率、失败摘要、单位成本和平均耗时可估算；真实外部采集凭证联调待接 |
-| 审计链/解释链断裂 | M0 起，M5/M6 验收 | AuditEvent、CollectionRunSummary、ReportExport、ScoreContribution、EvidenceLink 从 P0 建表并写入关键事件 | TraceabilityBundle fixture 已证明报告可追到原始证据；runtime project API 已支持 `project_id` 过滤；project brand kit API 已保存项目级白标默认值并写入 `project_brand_kit_saved` 审计事件；runtime prompt import API 已写入项目级 prompt 并生成 `runtime_prompts_imported` 审计事件；runtime evidence API 已读回 prompt 文本并支持 `project_id`、platform/evidence city/intent_type 过滤、受控排序和即时 CSV 导出；runtime collection run API 已读回采集批次 planned/attempted/success/failure、成功率、触发率、回答率、失败摘要、总成本、单位成本、总耗时、平均耗时和 `collection_run_summarized` 审计事件；runtime manual backfill API 已把人工答案写入标准 RawEvidence 表并生成 `manual_backfill_recorded`；runtime entity alias API 已把品牌/竞品别名确认写入 `entity_aliases` 并生成 `entity_alias_confirmed`，runtime alias candidate API 已生成可确认候选，confirmed aliases 已进入 `rule_based_v2_aliases` parser 与重跑后的 `AnswerAnalysis`；runtime saved views API 已保存项目级筛选/排序/query/export path 并写入 `runtime_saved_view_saved` 审计事件；runtime score API 已读回评分解释包；runtime graph API 已读回 source gap/竞品对标；runtime report API 已读回报告快照和项目内报告历史；runtime report artifact API 已支持附录级筛选/排序与项目级白标 PDF 下载并返回 filter hash、template hash、sort、row/total count；runtime action plan API 已读回 action/retest audit events；runtime content engine API 已读回 fact/draft/connector/manual distribution/audit；runtime traceability API 已按 `project_id` 聚合报告/评分/证据/图谱/action/content/audit/evidence link；Runtime Console 已展示 Project Bootstrap、项目下拉、Brand Kit、Prompt CSV Import、Entity Alias Candidates、Runtime Filters、Evidence Sort、Saved Views、Manual Backfill、筛选后 Evidence CSV 导出、Collection Run Quality、筛选/排序后报告 artifact 下载、Report History、White-label PDF 下载、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Citation Graph Map、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail、Traceability Map、节点级 details 钻取和页面内锚点深链路；独立详情页/完整交互式图谱待接 |
+| 审计链/解释链断裂 | M0 起，M5/M6 验收 | AuditEvent、CollectionRunSummary、ReportExport、ScoreContribution、EvidenceLink 从 P0 建表并写入关键事件 | TraceabilityBundle fixture 已证明报告可追到原始证据；runtime project API 已支持 `project_id` 过滤；project brand kit API 已保存项目级白标默认值并写入 `project_brand_kit_saved` 审计事件；runtime prompt import API 已写入项目级 prompt 并生成 `runtime_prompts_imported` 审计事件；runtime evidence API 已读回 prompt 文本并支持 `project_id`、platform/evidence city/intent_type 过滤、受控排序和即时 CSV 导出；runtime collection run API 已读回采集批次 planned/attempted/success/failure、成功率、触发率、回答率、失败摘要、总成本、单位成本、总耗时、平均耗时和 `collection_run_summarized` 审计事件；runtime manual backfill API 已把人工答案写入标准 RawEvidence 表并生成 `manual_backfill_recorded`；runtime entity alias API 已把品牌/竞品别名确认写入 `entity_aliases` 并生成 `entity_alias_confirmed`，runtime alias candidate API 已生成可确认候选，confirmed aliases 已进入 `rule_based_v2_aliases` parser 与重跑后的 `AnswerAnalysis`；runtime saved views API 已保存项目级筛选/排序/query/export path 并写入 `runtime_saved_view_saved` 审计事件；runtime score weight config API 已保存项目级评分权重并生成 `score_weight_config_saved`，评分历史快照冻结 `component_weights_snapshot`；runtime human reviews API 已追加 `human_review_records` 并生成 `human_review_recorded`；runtime score API 已读回评分解释包；runtime graph API 已读回 source gap/竞品对标；runtime report API 已读回报告快照和项目内报告历史；runtime report artifact API 已支持附录级筛选/排序与项目级白标 PDF 下载并返回 filter hash、template hash、sort、row/total count；runtime action plan API 已读回 action/retest audit events；runtime content engine API 已读回 fact/draft/connector/manual distribution/audit；runtime traceability API 已按 `project_id` 聚合报告/评分/证据/图谱/action/content/audit/evidence link；Runtime Console 已展示 Project Bootstrap、项目下拉、Brand Kit、Score Weights、Human Review Trail、Prompt CSV Import、Entity Alias Candidates、Runtime Filters、Evidence Sort、Saved Views、Manual Backfill、筛选后 Evidence CSV 导出、Collection Run Quality、筛选/排序后报告 artifact 下载、Report History、White-label PDF 下载、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Citation Graph Map、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail、Traceability Map、节点级 details 钻取和页面内锚点深链路；独立详情页/完整交互式图谱、复核队列和审批流待接 |
 | 打不过 Semrush/Ahrefs 数据规模 | 全程定位 | 押证据链/本地信源/代理商工作流，不拼分数广度 | design partner 认可证据价值 |
 | 评分构念效度未验证 | M6 后 | 复测展示变化；拿到客户转化数据再做相关性 | 报告标注 MVP 阶段不声称强因果 |
 

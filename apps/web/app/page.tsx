@@ -459,6 +459,7 @@ type RuntimeData = {
   projects: PageResponse<RuntimeProject>;
   brandKit: RuntimeProjectBrandKit | null;
   scoreWeights: RuntimeScoreWeightConfig | null;
+  humanReviews: PageResponse<RuntimeHumanReview>;
   prompts: PageResponse<RuntimePrompt>;
   evidence: PageResponse<EvidenceRun>;
   collectionRuns: PageResponse<CollectionRun>;
@@ -500,6 +501,22 @@ type RuntimeScoreWeightConfig = {
     notes?: string | null;
     created_at?: string;
     updated_at?: string;
+  };
+  audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
+};
+
+type RuntimeHumanReview = {
+  human_review: {
+    id: string;
+    project_id: string;
+    target_type: string;
+    target_id: string;
+    review_status: string;
+    decision: string;
+    reviewer_id: string;
+    notes?: string | null;
+    payload?: Record<string, unknown>;
+    created_at?: string;
   };
   audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
 };
@@ -583,6 +600,7 @@ const endpoints = {
   savedViews: "/v1/runtime-saved-views",
   brandKit: "/v1/project-brand-kits/runtime",
   scoreWeights: "/v1/score-weight-configs/runtime",
+  humanReviews: "/v1/human-reviews/runtime",
   scores: "/v1/visibility-scores/runtime",
   graphs: "/v1/citation-graphs/runtime",
   reports: "/v1/reports/runtime",
@@ -753,6 +771,44 @@ async function saveScoreWeightConfig(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/score-weight-configs/runtime returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function submitHumanReview(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const targetType = String(formData.get("target_type") || "").trim();
+  const targetId = String(formData.get("target_id") || "").trim();
+  const decision = String(formData.get("decision") || "").trim();
+  if (!projectId || !targetType || !targetId || !decision) {
+    throw new Error("project_id, target_type, target_id and decision are required for human review");
+  }
+  const payload = {
+    project_id: projectId,
+    target_type: targetType,
+    target_id: targetId,
+    review_status: String(formData.get("review_status") || "approved").trim(),
+    decision,
+    reviewer_id: String(formData.get("reviewer_id") || "runtime-console").trim(),
+    notes: String(formData.get("notes") || "").trim() || undefined,
+    payload: {
+      source: "runtime-console",
+      target_label: String(formData.get("target_label") || "").trim() || undefined
+    }
+  };
+  const response = await fetch(`${baseUrl}/v1/human-reviews/runtime`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/human-reviews/runtime returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -966,6 +1022,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     }),
     brandKit: endpoints.brandKit,
     scoreWeights: endpoints.scoreWeights,
+    humanReviews: runtimePath(endpoints.humanReviews, {
+      limit: 5
+    }),
     scores: runtimePath(endpoints.scores, { limit: 1 }),
     graphs: runtimePath(endpoints.graphs, { limit: 1 }),
     reports: runtimePath(endpoints.reports, { limit: 5 }),
@@ -1050,6 +1109,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.scoreWeights = selectedProjectId
     ? runtimePath(endpoints.scoreWeights, { project_id: selectedProjectId })
     : endpoints.scoreWeights;
+  paths.humanReviews = runtimePath(endpoints.humanReviews, {
+    ...selectedProjectParams,
+    limit: 5
+  });
   paths.scores = runtimePath(endpoints.scores, {
     ...selectedProjectParams,
     limit: 1
@@ -1081,6 +1144,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     savedViews,
     brandKit,
     scoreWeights,
+    humanReviews,
     scores,
     graphs,
     reports,
@@ -1110,6 +1174,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     selectedProjectId
       ? fetchRuntimeEndpoint<RuntimeScoreWeightConfig | null>(baseUrl, paths.scoreWeights, null)
       : Promise.resolve({ payload: null, error: null }),
+    fetchRuntimeEndpoint<PageResponse<RuntimeHumanReview>>(
+      baseUrl,
+      paths.humanReviews,
+      emptyPage<RuntimeHumanReview>()
+    ),
     fetchRuntimeEndpoint<PageResponse<ScoreSnapshot>>(baseUrl, paths.scores, emptyPage<ScoreSnapshot>()),
     fetchRuntimeEndpoint<PageResponse<CitationGraph>>(baseUrl, paths.graphs, emptyPage<CitationGraph>()),
     fetchRuntimeEndpoint<PageResponse<ReportExport>>(baseUrl, paths.reports, emptyPage<ReportExport>()),
@@ -1127,6 +1196,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     savedViews,
     brandKit,
     scoreWeights,
+    humanReviews,
     scores,
     graphs,
     reports,
@@ -1141,6 +1211,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       projects: projects.payload,
       brandKit: brandKit.payload,
       scoreWeights: scoreWeights.payload,
+      humanReviews: humanReviews.payload,
       prompts: prompts.payload,
       evidence: evidence.payload,
       collectionRuns: collectionRuns.payload,
@@ -1332,6 +1403,7 @@ export default async function Home({
     (latestEvidence?.audit_events.length || 0) +
     data.collectionRuns.records.reduce((total, item) => total + item.audit_events.length, 0) +
     data.entityAliases.records.reduce((total, item) => total + item.audit_events.length, 0) +
+    data.humanReviews.records.reduce((total, item) => total + item.audit_events.length, 0) +
     (latestScore?.audit_events.length || 0) +
     (latestReport?.audit_events.length || 0) +
     (latestAction?.audit_events.length || 0) +
@@ -1401,6 +1473,33 @@ export default async function Home({
     }
   );
   const reportArtifactFilters = { ...filters, sort: evidenceSort };
+  const latestContentDraft = latestContent?.content_drafts[0];
+  const reviewTarget =
+    latestScore?.snapshot.id
+      ? {
+          targetType: "visibility_score_snapshot",
+          targetId: latestScore.snapshot.id,
+          label: `score ${num(latestScore.snapshot.final_score)}`
+        }
+      : latestContentDraft?.draft.id
+        ? {
+            targetType: "content_draft",
+            targetId: latestContentDraft.draft.id,
+            label: latestContentDraft.draft.title
+          }
+        : latestEvidence?.answer_run.id
+          ? {
+              targetType: "answer_run",
+              targetId: latestEvidence.answer_run.id,
+              label: latestEvidence.answer_run.prompt_text || latestEvidence.answer_run.id
+            }
+          : latestProject?.project.id
+            ? {
+                targetType: "project",
+                targetId: latestProject.project.id,
+                label: latestProject.project.name
+              }
+            : null;
 
   return (
     <main className="shell">
@@ -1559,6 +1658,7 @@ export default async function Home({
         <Metric label="Source gaps" value={latestGraph?.source_gaps.length || 0} />
         <Metric label="Open actions" value={latestAction?.action_recommendations.length || 0} />
         <Metric label="Content drafts" value={latestContent?.content_drafts.length || 0} />
+        <Metric label="Human reviews" value={data.humanReviews.total_count} />
         <Metric label="Audit events" value={totalAuditEvents} />
         <Metric label="Trace links" value={traceability?.evidence_links.length || 0} />
       </section>
@@ -1942,6 +2042,91 @@ export default async function Home({
           ) : (
             <EmptyState />
           )}
+        </Panel>
+
+        <Panel title="Human Review Trail" subtitle={`${data.humanReviews.total_count} review records`} wide>
+          <div className="humanReviewGrid">
+            <form action={submitHumanReview} className="humanReviewForm">
+              <div className="formHeader">
+                <h3>Record Review</h3>
+                <small>{reviewTarget ? `${reviewTarget.targetType} · ${shortId(reviewTarget.targetId)}` : "No target"}</small>
+              </div>
+              <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+              <input type="hidden" name="target_label" value={reviewTarget?.label || ""} />
+              <label>
+                <span>Target type</span>
+                <select name="target_type" defaultValue={reviewTarget?.targetType || "project"}>
+                  <option value="visibility_score_snapshot">visibility_score_snapshot</option>
+                  <option value="content_draft">content_draft</option>
+                  <option value="answer_analysis">answer_analysis</option>
+                  <option value="answer_run">answer_run</option>
+                  <option value="score_weight_config">score_weight_config</option>
+                  <option value="project">project</option>
+                </select>
+              </label>
+              <label>
+                <span>Target ID</span>
+                <input name="target_id" defaultValue={reviewTarget?.targetId || selectedProjectId || ""} />
+              </label>
+              <label>
+                <span>Status</span>
+                <select name="review_status" defaultValue="approved">
+                  <option value="approved">approved</option>
+                  <option value="needs_changes">needs_changes</option>
+                  <option value="rejected">rejected</option>
+                  <option value="acknowledged">acknowledged</option>
+                </select>
+              </label>
+              <label>
+                <span>Reviewer</span>
+                <input name="reviewer_id" defaultValue="runtime-console" />
+              </label>
+              <label className="wideField">
+                <span>Decision</span>
+                <input name="decision" defaultValue="approved_for_report" />
+              </label>
+              <label className="wideField">
+                <span>Notes</span>
+                <textarea
+                  name="notes"
+                  defaultValue={`Reviewed ${reviewTarget?.label || "runtime object"} against evidence and traceability bundle`}
+                  rows={3}
+                />
+              </label>
+              <button className="actionButton" type="submit" disabled={!selectedProjectId || !reviewTarget}>
+                Record review
+              </button>
+            </form>
+            <div className="humanReviewList">
+              <h3>Recent Reviews</h3>
+              {data.humanReviews.records.length ? (
+                <ul className="plainList">
+                  {data.humanReviews.records.map((item) => (
+                    <li key={item.human_review.id}>
+                      <strong>
+                        {item.human_review.review_status} · {item.human_review.target_type}
+                      </strong>
+                      <span>
+                        {item.human_review.decision} · {shortId(item.human_review.target_id)}
+                      </span>
+                      <small>
+                        {item.human_review.reviewer_id} · {dateText(item.human_review.created_at)} ·{" "}
+                        {item.audit_events[0]?.event_type || "no review audit"} ·{" "}
+                        {item.audit_events[0]?.after_hash || "no hash"}
+                      </small>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <small>No human review records yet.</small>
+              )}
+              <dl className="facts">
+                <Fact label="Review query" value={paths.humanReviews} />
+                <Fact label="Method" value="human_review_v1" />
+                <Fact label="Audit event" value="human_review_recorded" />
+              </dl>
+            </div>
+          </div>
         </Panel>
 
         <Panel title="Collection Run Quality" subtitle={latestCollectionRun?.collection_run.run_type || "No collection run"}>

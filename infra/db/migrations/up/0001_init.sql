@@ -348,6 +348,19 @@ CREATE TABLE score_weight_configs (
   UNIQUE(project_id, formula_version)
 );
 
+CREATE TABLE human_review_records (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  target_type text NOT NULL,
+  target_id text NOT NULL,
+  review_status text NOT NULL,
+  decision text NOT NULL,
+  reviewer_id text NOT NULL,
+  notes text,
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE traceability_bundles (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id uuid NOT NULL,
@@ -522,4 +535,7 @@ CREATE INDEX idx_content_drafts_project ON content_drafts(project_id, review_sta
 CREATE INDEX idx_evidence_links_project ON evidence_links(project_id, source_type, target_type);
 CREATE INDEX idx_runtime_saved_views_project ON runtime_saved_views(project_id, view_type, updated_at);
 CREATE INDEX idx_project_brand_kits_project ON project_brand_kits(project_id, updated_at);
+CREATE INDEX idx_score_weight_configs_project ON score_weight_configs(project_id, formula_version);
+CREATE INDEX idx_human_review_records_project ON human_review_records(project_id, target_type, review_status, created_at);
+CREATE INDEX idx_human_review_records_target ON human_review_records(target_type, target_id, created_at);
 CREATE INDEX idx_traceability_bundles_project ON traceability_bundles(project_id, subject_type);

@@ -8,7 +8,7 @@ from datetime import datetime
 from io import StringIO
 from typing import Any, Protocol
 from urllib.parse import urlparse
-from uuid import NAMESPACE_URL, UUID, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from geno_core.audit import build_audit_event
 from geno_core.models import (
@@ -45,6 +45,9 @@ from geno_core.models import (
     RuntimeEntityAliasCandidate,
     RuntimeEntityAliasCandidatePage,
     RuntimeEntityAliasPage,
+    RuntimeHumanReviewInput,
+    RuntimeHumanReviewPage,
+    RuntimeHumanReviewRecord,
     RuntimeProjectBrandKit,
     RuntimeProjectBrandKitInput,
     RuntimeProject,
@@ -1099,6 +1102,18 @@ SCORE_WEIGHT_CONFIG_COLUMNS = (
     "notes",
     "created_at",
     "updated_at",
+)
+HUMAN_REVIEW_COLUMNS = (
+    "id",
+    "project_id",
+    "target_type",
+    "target_id",
+    "review_status",
+    "decision",
+    "reviewer_id",
+    "notes",
+    "payload",
+    "created_at",
 )
 
 
@@ -2354,6 +2369,157 @@ class PostgresEvidenceRepository:
         )
         audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
         return RuntimeScoreWeightConfig(score_weight_config=config, audit_events=audit_events)
+
+    def list_runtime_human_reviews(
+        self,
+        *,
+        project_id: str | None = None,
+        target_type: str | None = None,
+        review_status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeHumanReviewPage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id))
+        if target_type:
+            filters.append("target_type = %s")
+            params.append(target_type)
+        if review_status:
+            filters.append("review_status = %s")
+            params.append(review_status)
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM human_review_records {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(HUMAN_REVIEW_COLUMNS)}
+                FROM human_review_records
+                {where_clause}
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            reviews = _rows_dict(cursor.fetchall(), HUMAN_REVIEW_COLUMNS)
+            records = tuple(self._load_runtime_human_review(cursor=cursor, human_review=review) for review in reviews)
+        return RuntimeHumanReviewPage(total_count=total_count, limit=limit, offset=offset, records=records)
+
+    def save_human_review(self, review: RuntimeHumanReviewInput) -> RuntimeHumanReviewRecord:
+        project_id = review.project_id.strip()
+        target_type = review.target_type.strip()
+        target_id = review.target_id.strip()
+        review_status = review.review_status.strip()
+        decision = review.decision.strip()
+        reviewer_id = review.reviewer_id.strip() or "runtime-console"
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not target_type:
+            raise ValueError("target_type is required")
+        if not target_id:
+            raise ValueError("target_id is required")
+        if not review_status:
+            raise ValueError("review_status is required")
+        if not decision:
+            raise ValueError("decision is required")
+        review_id = str(uuid4())
+        after = {
+            "id": review_id,
+            "project_id": project_id,
+            "target_type": target_type,
+            "target_id": target_id,
+            "review_status": review_status,
+            "decision": decision,
+            "reviewer_id": reviewer_id,
+            "notes": review.notes.strip() if review.notes else None,
+            "payload": review.payload or {},
+        }
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            cursor.execute(
+                """
+                INSERT INTO human_review_records (
+                  id, project_id, target_type, target_id, review_status,
+                  decision, reviewer_id, notes, payload
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    _uuid(review_id),
+                    _uuid(project_id),
+                    target_type,
+                    target_id,
+                    review_status,
+                    decision,
+                    reviewer_id,
+                    after["notes"],
+                    _json_payload(after["payload"]),
+                ),
+            )
+            audit_event = build_audit_event(
+                event_type="human_review_recorded",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=reviewer_id,
+                target_type="human_review_record",
+                target_id=review_id,
+                before=None,
+                after=after,
+                input_refs={"review_target": [{"target_type": target_type, "target_id": target_id}]},
+                output_refs={"human_review_record_ids": [review_id]},
+                method_version="human_review_v1",
+                reason="record human review decision for an auditable runtime object",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(HUMAN_REVIEW_COLUMNS)}
+                FROM human_review_records
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(review_id),),
+            )
+            record = self._load_runtime_human_review(
+                cursor=cursor,
+                human_review=_row_dict(cursor.fetchone(), HUMAN_REVIEW_COLUMNS),
+            )
+        self.connection.commit()
+        return record
+
+    def _load_runtime_human_review(
+        self,
+        *,
+        cursor: DbCursor,
+        human_review: dict[str, Any],
+    ) -> RuntimeHumanReviewRecord:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            LIMIT 5
+            """,
+            (_uuid(human_review["project_id"]), "human_review_record", str(human_review["id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeHumanReviewRecord(human_review=human_review, audit_events=audit_events)
 
     def list_runtime_score_snapshots(
         self,

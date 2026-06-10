@@ -73,6 +73,19 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("component_weights_snapshot", page_source)
         self.assertIn("Weight snapshot", page_source)
 
+    def test_runtime_console_surfaces_human_review_trail(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
+
+        self.assertIn("Human Review Trail", page_source)
+        self.assertIn("submitHumanReview", page_source)
+        self.assertIn("/v1/human-reviews/runtime", page_source)
+        self.assertIn("human_review_recorded", page_source)
+        self.assertIn("human_review_v1", page_source)
+        self.assertIn("approved_for_report", page_source)
+        self.assertIn(".humanReviewGrid", css_source)
+        self.assertIn(".humanReviewForm", css_source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -57,6 +57,11 @@ comparison audit event. It then persists the M7 `LocalizedKnowledgeFact`, `Conte
 `IntegrationConnector`, `ManualDistributionRecord`, and content engine audit event. Failed records
 remain auditable through `CollectionFailureRecord`.
 
+Human review is intentionally not created by the worker. Review decisions are appended later through
+`POST /v1/human-reviews/runtime` or the Runtime Console Human Review Trail, which writes
+`human_review_records` and a `human_review_recorded` audit event against the reviewed score snapshot,
+content draft, answer analysis/run, score weight config, or project.
+
 API adapter slice:
 
 ```bash
