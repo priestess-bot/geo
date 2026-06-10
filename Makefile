@@ -1,4 +1,4 @@
-.PHONY: install-api-deps test docker-config docker-config-llm runtime-e2e api-preflight browser-fidelity-plan api-browser-fidelity-preflight worker-fixture worker-fixture-persist worker-google-fixture
+.PHONY: install-api-deps test docker-config docker-config-llm docker-config-scheduler runtime-e2e api-preflight browser-fidelity-plan browser-fidelity-scheduler-plan browser-fidelity-scheduler-run api-browser-fidelity-preflight worker-fixture worker-fixture-persist worker-google-fixture
 
 install-api-deps:
 	python3 -m pip install -r apps/api/requirements.txt
@@ -12,6 +12,9 @@ docker-config:
 docker-config-llm:
 	docker compose -f infra/docker-compose.yml --profile llm-gateway config
 
+docker-config-scheduler:
+	docker compose -f infra/docker-compose.yml --profile scheduler config
+
 runtime-e2e:
 	set -e; \
 	trap 'docker compose -p geno-runtime-e2e -f infra/docker-compose.yml --profile e2e down -v' EXIT; \
@@ -23,6 +26,12 @@ api-preflight:
 
 browser-fidelity-plan:
 	@PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --plan-browser-fidelity-sampling
+
+browser-fidelity-scheduler-plan:
+	@PYTHONPATH=packages/geno_core:apps/api python3 scripts/run_browser_fidelity_scheduler.py
+
+browser-fidelity-scheduler-run:
+	@PYTHONPATH=packages/geno_core:apps/api python3 scripts/run_browser_fidelity_scheduler.py --execute
 
 api-browser-fidelity-preflight:
 	PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 1 --cities Sydney --sample-size 1 --include-browser-fidelity-playwright --require-ready-collectors --require-no-collection-failures

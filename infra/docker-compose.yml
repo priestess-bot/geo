@@ -132,6 +132,43 @@ services:
       litellm:
         condition: service_started
 
+  browser-fidelity-scheduler:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    profiles:
+      - scheduler
+    environment:
+      DATABASE_URL: postgresql://geno:geno@postgres:5432/geno
+      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_ACCESS_KEY: minio
+      OBJECT_STORE_SECRET_KEY: minio123
+      OBJECT_STORE_REGION: us-east-1
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GENO_BROWSER_COLLECTOR_ENABLED: ${GENO_BROWSER_COLLECTOR_ENABLED:-0}
+      GENO_BROWSER_START_URL: ${GENO_BROWSER_START_URL:-https://chatgpt.com/}
+      GENO_BROWSER_PROMPT_SELECTOR: ${GENO_BROWSER_PROMPT_SELECTOR:-}
+      GENO_BROWSER_ANSWER_SELECTOR: ${GENO_BROWSER_ANSWER_SELECTOR:-}
+      GENO_BROWSER_SUBMIT_SELECTOR: ${GENO_BROWSER_SUBMIT_SELECTOR:-}
+      GENO_BROWSER_CITATION_SELECTOR: ${GENO_BROWSER_CITATION_SELECTOR:-}
+      GENO_BROWSER_STORAGE_STATE: ${GENO_BROWSER_STORAGE_STATE:-}
+      GENO_BROWSER_ARTIFACT_DIR: ${GENO_BROWSER_ARTIFACT_DIR:-/tmp/geno-browser-artifacts}
+      GENO_BROWSER_FIDELITY_EXECUTE: ${GENO_BROWSER_FIDELITY_EXECUTE:-0}
+      GENO_BROWSER_FIDELITY_PERSIST_PLAN: ${GENO_BROWSER_FIDELITY_PERSIST_PLAN:-1}
+      GENO_BROWSER_FIDELITY_PROMPT_COUNT: ${GENO_BROWSER_FIDELITY_PROMPT_COUNT:-10}
+      GENO_BROWSER_FIDELITY_CITY_COUNT: ${GENO_BROWSER_FIDELITY_CITY_COUNT:-2}
+      GENO_BROWSER_FIDELITY_SAMPLE_SIZE: ${GENO_BROWSER_FIDELITY_SAMPLE_SIZE:-1}
+    command:
+      - python
+      - scripts/run_browser_fidelity_scheduler.py
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
   runtime-e2e:
     build:
       context: ..

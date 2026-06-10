@@ -70,6 +70,20 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("postgres", verifier["depends_on"])
         self.assertIn("minio", verifier["depends_on"])
 
+    def test_scheduler_profile_wires_browser_fidelity_scheduler(self) -> None:
+        config = self._compose_config("scheduler")
+        services = config["services"]
+        scheduler = services["browser-fidelity-scheduler"]
+
+        self.assertEqual(scheduler["build"]["dockerfile"], "apps/api/Dockerfile")
+        self.assertEqual(scheduler["command"], ["python", "scripts/run_browser_fidelity_scheduler.py"])
+        self.assertEqual(scheduler["environment"]["DATABASE_URL"], "postgresql://geno:geno@postgres:5432/geno")
+        self.assertEqual(scheduler["environment"]["OBJECT_STORE_ENDPOINT"], "http://minio:9000")
+        self.assertEqual(scheduler["environment"]["GENO_BROWSER_FIDELITY_EXECUTE"], "0")
+        self.assertEqual(scheduler["environment"]["GENO_BROWSER_FIDELITY_PERSIST_PLAN"], "1")
+        self.assertIn("postgres", scheduler["depends_on"])
+        self.assertIn("minio", scheduler["depends_on"])
+
     def test_litellm_config_uses_env_secrets_and_geno_model_aliases(self) -> None:
         config = yaml.safe_load((ROOT / "infra/litellm_config.yaml").read_text(encoding="utf-8"))
         model_list = {item["model_name"]: item["litellm_params"] for item in config["model_list"]}
@@ -94,6 +108,9 @@ class InfraContractsTest(unittest.TestCase):
             "\t@PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --plan-browser-fidelity-sampling",
             makefile,
         )
+        self.assertIn("browser-fidelity-scheduler-plan:", makefile)
+        self.assertIn("browser-fidelity-scheduler-run:", makefile)
+        self.assertIn("docker-config-scheduler:", makefile)
 
 
 if __name__ == "__main__":

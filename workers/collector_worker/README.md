@@ -164,6 +164,21 @@ Use `--persist` with the planning command to write the project bootstrap and sam
 PostgreSQL. The execution path accepts `--prompt-ids`, so the exact planned prompt set can be
 replayed instead of relying on `--prompt-limit` ordering.
 
+Lightweight browser fidelity scheduler:
+
+```bash
+PYTHONPATH=packages/geno_core:apps/api python3 scripts/run_browser_fidelity_scheduler.py
+GENO_BROWSER_FIDELITY_EXECUTE=1 PYTHONPATH=packages/geno_core:apps/api python3 scripts/run_browser_fidelity_scheduler.py
+docker compose -f infra/docker-compose.yml --profile scheduler run --rm browser-fidelity-scheduler
+```
+
+The scheduler is a JSON wrapper for cron or Kubernetes CronJob. It runs the planning command,
+returns the plan payload and the exact worker command, and only executes the worker when
+`--execute` or `GENO_BROWSER_FIDELITY_EXECUTE=1` is set. Compose `scheduler` defaults to
+`GENO_BROWSER_FIDELITY_PERSIST_PLAN=1` and `GENO_BROWSER_FIDELITY_EXECUTE=0`, so a scheduled job can
+record the `browser_fidelity_sampling_planned` audit event without accidentally calling external
+providers or launching a browser before credentials/selectors are ready.
+
 Real API-vs-browser browser fidelity preflight:
 
 ```bash
