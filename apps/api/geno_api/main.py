@@ -151,6 +151,7 @@ def create_runtime_au_dtc_project() -> dict[str, object]:
 
 @app.get("/v1/projects/runtime")
 def runtime_projects(
+    project_id: str | None = None,
     market_code: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -160,7 +161,12 @@ def runtime_projects(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        page = repository.list_runtime_projects(market_code=market_code, limit=limit, offset=offset)
+        page = repository.list_runtime_projects(
+            project_id=project_id,
+            market_code=market_code,
+            limit=limit,
+            offset=offset,
+        )
         return asdict(page)
     finally:
         close_repository_connection(repository)

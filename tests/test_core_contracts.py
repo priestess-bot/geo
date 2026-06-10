@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
+from uuid import UUID
 
 from geno_core.action_plan import (
     build_action_plan_audit_event,
@@ -1289,6 +1290,23 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM projects p WHERE p.market_code = %s", executed_sql)
         self.assertIn("FROM tenants WHERE id = %s", executed_sql)
         self.assertIn("FROM prompt_questions WHERE project_id = %s", executed_sql)
+
+    def test_postgres_repository_filters_runtime_project_page_by_id(self) -> None:
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        connection = RecordingConnection(result_sets=[{"count": 0}, []])
+
+        page = PostgresEvidenceRepository(connection).list_runtime_projects(
+            project_id=project_id,
+            market_code="AU",
+            limit=10,
+            offset=0,
+        )
+
+        self.assertEqual(page.total_count, 0)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM projects p WHERE p.id = %s AND p.market_code = %s", executed_sql)
+        self.assertEqual(connection.calls[0][1], (UUID(project_id), "AU"))
+        self.assertEqual(connection.calls[1][1], (UUID(project_id), "AU", 10, 0))
 
     def test_postgres_repository_reads_runtime_prompt_page(self) -> None:
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"

@@ -869,6 +869,7 @@ class PostgresEvidenceRepository:
     def list_runtime_projects(
         self,
         *,
+        project_id: str | None = None,
         market_code: str | None = None,
         limit: int = 50,
         offset: int = 0,
@@ -877,6 +878,9 @@ class PostgresEvidenceRepository:
         offset = max(0, offset)
         filters: list[str] = []
         params: list[object] = []
+        if project_id:
+            filters.append("p.id = %s")
+            params.append(_uuid(project_id))
         if market_code:
             filters.append("p.market_code = %s")
             params.append(market_code)

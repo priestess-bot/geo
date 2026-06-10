@@ -430,6 +430,7 @@ type RuntimeEntityAliasCandidate = {
 };
 
 type RuntimeFilters = {
+  project_id?: string;
   platform?: string;
   city?: string;
   intent_type?: string;
@@ -670,9 +671,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     "http://localhost:8000";
   const displayUrl = process.env.NEXT_PUBLIC_API_BASE_URL || baseUrl;
-  const sharedProjectParams = { market_code: "AU", limit: 1 };
-  const paths = {
-    projects: runtimePath(endpoints.projects, sharedProjectParams),
+  const projectListParams = { market_code: "AU", limit: 20 };
+  const paths: Record<keyof typeof endpoints, string> = {
+    projects: runtimePath(endpoints.projects, projectListParams),
     prompts: runtimePath(endpoints.prompts, {
       market_code: "AU",
       intent_type: filters.intent_type,
@@ -714,19 +715,89 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     paths.projects,
     emptyPage<RuntimeProject>()
   );
-  const latestProjectId = projects.payload.records[0]?.project.id;
-  paths.entityAliasCandidates = latestProjectId
+  let projectRecords = projects.payload.records;
+  if (filters.project_id && !projectRecords.some((record) => record.project.id === filters.project_id)) {
+    const selectedProject = await fetchRuntimeEndpoint<PageResponse<RuntimeProject>>(
+      baseUrl,
+      runtimePath(endpoints.projects, {
+        project_id: filters.project_id,
+        market_code: "AU",
+        limit: 1
+      }),
+      emptyPage<RuntimeProject>()
+    );
+    if (selectedProject.payload.records.length) {
+      projectRecords = [...selectedProject.payload.records, ...projectRecords];
+      projects.payload = {
+        ...projects.payload,
+        records: projectRecords,
+        total_count: Math.max(projects.payload.total_count, projectRecords.length)
+      };
+    }
+  }
+  const selectedProjectId =
+    (filters.project_id && projectRecords.some((record) => record.project.id === filters.project_id)
+      ? filters.project_id
+      : undefined) || projectRecords[0]?.project.id;
+  const selectedProjectParams = selectedProjectId ? { project_id: selectedProjectId } : {};
+  paths.prompts = runtimePath(endpoints.prompts, {
+    ...selectedProjectParams,
+    market_code: "AU",
+    intent_type: filters.intent_type,
+    limit: 20
+  });
+  paths.evidence = runtimePath(endpoints.evidence, {
+    ...selectedProjectParams,
+    platform: filters.platform,
+    city: filters.city,
+    intent_type: filters.intent_type,
+    sort: filters.sort,
+    limit: 5
+  });
+  paths.evidenceExport = runtimePath(endpoints.evidenceExport, {
+    ...selectedProjectParams,
+    platform: filters.platform,
+    city: filters.city,
+    intent_type: filters.intent_type,
+    sort: filters.sort,
+    limit: 200
+  });
+  paths.entityAliases = runtimePath(endpoints.entityAliases, {
+    ...selectedProjectParams,
+    limit: 5
+  });
+  paths.entityAliasCandidates = selectedProjectId
     ? runtimePath(endpoints.entityAliasCandidates, {
-        project_id: latestProjectId,
+        project_id: selectedProjectId,
         limit: 5
       })
     : paths.entityAliasCandidates;
-  paths.reports = latestProjectId
-    ? runtimePath(endpoints.reports, {
-        project_id: latestProjectId,
-        limit: 5
-      })
-    : paths.reports;
+  paths.savedViews = runtimePath(endpoints.savedViews, {
+    ...selectedProjectParams,
+    view_type: "runtime_evidence",
+    limit: 5
+  });
+  paths.scores = runtimePath(endpoints.scores, {
+    ...selectedProjectParams,
+    limit: 1
+  });
+  paths.graphs = runtimePath(endpoints.graphs, {
+    ...selectedProjectParams,
+    limit: 1
+  });
+  paths.reports = runtimePath(endpoints.reports, {
+    ...selectedProjectParams,
+    limit: 5
+  });
+  paths.actions = runtimePath(endpoints.actions, {
+    ...selectedProjectParams,
+    limit: 1
+  });
+  paths.content = runtimePath(endpoints.content, {
+    ...selectedProjectParams,
+    limit: 1
+  });
+  paths.traceability = runtimePath(endpoints.traceability, selectedProjectParams);
 
   const [
     prompts,
@@ -748,7 +819,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       paths.entityAliases,
       emptyPage<RuntimeEntityAlias>()
     ),
-    latestProjectId
+    selectedProjectId
       ? fetchRuntimeEndpoint<PageResponse<RuntimeEntityAliasCandidate>>(
           baseUrl,
           paths.entityAliasCandidates,
@@ -834,6 +905,9 @@ function uniqueText(values: Array<string | undefined>): string {
 function savedViewHref(savedView: RuntimeSavedView["saved_view"]): string {
   const params = new URLSearchParams();
   const filters = savedView.filters || {};
+  if (savedView.project_id) {
+    params.set("project_id", savedView.project_id);
+  }
   ["platform", "city", "intent_type"].forEach((key) => {
     const value = filters[key];
     if (typeof value === "string" && value) {
@@ -854,13 +928,18 @@ export default async function Home({
 }) {
   const resolvedSearchParams = (await searchParams) || {};
   const filters: RuntimeFilters = {
+    project_id: cleanFilter(resolvedSearchParams.project_id),
     platform: cleanFilter(resolvedSearchParams.platform),
     city: cleanFilter(resolvedSearchParams.city),
     intent_type: cleanFilter(resolvedSearchParams.intent_type),
     sort: cleanFilter(resolvedSearchParams.sort)
   };
   const { data, error, displayUrl, paths } = await fetchRuntimeData(filters);
-  const latestProject = data.projects.records[0];
+  const selectedProject =
+    (filters.project_id && data.projects.records.find((record) => record.project.id === filters.project_id)) ||
+    data.projects.records[0];
+  const selectedProjectId = selectedProject?.project.id;
+  const latestProject = selectedProject;
   const entityAliasOptions = latestProject
     ? [
         ...(latestProject.brand?.id
@@ -919,9 +998,14 @@ export default async function Home({
   const filterLabel = activeFilterCount
     ? [filters.platform, filters.city, filters.intent_type].filter(Boolean).join(" / ")
     : "All runtime evidence";
+  const selectedProjectLabel = selectedProject
+    ? `${selectedProject.tenant.name} / ${selectedProject.project.name}`
+    : "No runtime project";
   const evidenceExportUrl = `${displayUrl}${paths.evidenceExport}`;
   const evidenceSort = data.evidence.sort || filters.sort || "collected_at_desc";
-  const runtimeViewName = activeFilterCount ? `${filterLabel} · ${evidenceSort}` : `All runtime evidence · ${evidenceSort}`;
+  const runtimeViewName = activeFilterCount
+    ? `${selectedProject?.project.name || "Runtime project"} · ${filterLabel} · ${evidenceSort}`
+    : `${selectedProject?.project.name || "Runtime project"} · All runtime evidence · ${evidenceSort}`;
   const reportMarkdownUrl = reportArtifactPath(reportArtifactBase, "markdown", { ...filters, sort: evidenceSort });
   const reportCsvUrl = reportArtifactPath(reportArtifactBase, "csv", { ...filters, sort: evidenceSort });
   const reportPdfUrl = reportArtifactPath(reportArtifactBase, "pdf", { ...filters, sort: evidenceSort });
@@ -963,9 +1047,25 @@ export default async function Home({
       <section className="filterBar" aria-label="runtime filters">
         <div>
           <h2>Runtime Filters</h2>
-          <span>{filterLabel}</span>
+          <span>
+            {selectedProjectLabel} · {filterLabel}
+          </span>
         </div>
         <form className="filterForm">
+          <label>
+            <span>Project</span>
+            <select name="project_id" defaultValue={selectedProjectId || ""}>
+              {data.projects.records.length ? (
+                data.projects.records.map((record) => (
+                  <option key={record.project.id} value={record.project.id}>
+                    {record.tenant.name} / {record.project.name}
+                  </option>
+                ))
+              ) : (
+                <option value="">No runtime project</option>
+              )}
+            </select>
+          </label>
           <label>
             <span>Platform</span>
             <select name="platform" defaultValue={filters.platform || ""}>
@@ -1023,6 +1123,8 @@ export default async function Home({
           </a>
         </form>
         <dl className="facts filterFacts">
+          <Fact label="Project query" value={paths.projects} />
+          <Fact label="Selected project" value={selectedProjectId || "No project selected"} />
           <Fact label="Prompts query" value={paths.prompts} />
           <Fact label="Evidence query" value={paths.evidence} />
           <Fact label="Export query" value={paths.evidenceExport} />
@@ -1032,7 +1134,7 @@ export default async function Home({
         </dl>
         <div className="savedViews">
           <form action={saveCurrentRuntimeView} className="saveViewForm">
-            <input type="hidden" name="project_id" value={latestProject?.project.id || ""} />
+            <input type="hidden" name="project_id" value={selectedProjectId || ""} />
             <input type="hidden" name="platform" value={filters.platform || ""} />
             <input type="hidden" name="city" value={filters.city || ""} />
             <input type="hidden" name="intent_type" value={filters.intent_type || ""} />

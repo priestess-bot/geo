@@ -4,6 +4,8 @@
 
 本库已从文档与规划进入工程实现：除调研文档外，当前已包含 FastAPI API、Next.js Runtime Console、Python 核心契约、AU 项目启动包、DTC 电商行业模板、100 条 Prompt Pack、M2a evidence chain、M2b Google spike gate fixture、M3 alias-aware rule parser + AUVisibilityScore、M4 Citation Graph + Competitor Benchmark、M5 Markdown/CSV/PDF Evidence Report Export 与 MinIO/S3-compatible artifact 归档、M6 Action Plan + Retest comparison、M7 Knowledge Facts + Content Draft + Integrations fixture、Traceability Bundle、PostgreSQL repository 映射、`DATABASE_URL` runtime connection、AU 项目启动包 runtime 创建/读取 API、AU 启动包/prompt 元数据持久化、worker `--persist` / `--persist-analysis` 写库开关、runtime project / prompt / evidence / manual backfill / entity alias confirmation / entity alias candidates / evidence CSV export / saved views / score / citation graph / report / report artifact / action plan / content engine / traceability 查询 API、Runtime Console Project Bootstrap / Entity Alias Candidates / Runtime Filters / Evidence Sort / Saved Views / Prompt Pack / Manual Backfill / Evidence Runs / Score Contributions / Citation Graph & Competitors / Report Snapshot / Report History / Report Method & Evidence Appendix / Action Plan & Retest Detail / Content Engine Detail / Traceability Detail 与节点级 details 钻取面板、SQL 迁移、Docker Compose、CI、ADR 与工程实施审计日志。报告 artifact 下载已可继承当前 Runtime Filters/Sort，只过滤导出的证据附录，不改写冻结 `ReportExport` 与评分快照；PDF artifact 支持 `template=white_label` 最小白标模板，响应头会返回 template 与 template hash；Report History 会按当前 AU runtime project 读取最近 5 个冻结 `ReportExport`，展示版本、导出时间、方法 hash、对象存储 URL、即时 artifact 下载入口、白标 PDF 下载入口和报告审计摘要。核心原则仍是**可审计**：每一个调研结论尽量回指原始来源（PDF、网页快照、行业报告），每一个工程输出逐步建立 `AuditEvent / EvidenceLink / ScoreContribution / ReportExport / ActionRecommendation / RetestComparison / ContentDraft / TraceabilityBundle` 溯源链。
 
+当前代理商工作流已推进到项目级 read path：Runtime Console 可通过 URL/下拉选择 `project_id`，并让 prompt、evidence、alias、saved view、score、graph、report、action、content、traceability 查询收敛到同一个 runtime project。该能力用于可审计复盘和多项目操作演示，不等同于权限隔离、账单隔离或完整多租户授权。
+
 > 🛠 **开发与管理入口**：[PROJECT-PLAN.md](PROJECT-PLAN.md) —— 把澳大利亚首发规格拆成 8 个里程碑、任务清单与验收标准（DoD），是从 `docs/` 规格走向工程交付的待办层。
 >
 > 🗺 **架构图**：[ARCHITECTURE.md](ARCHITECTURE.md) —— GENO SaaS 澳洲首发系统的分层结构、可插拔点、证据优先数据流水线，以及 `AuditEvent / EvidenceLink / ScoreContribution / ReportExport` 审计、溯源、解释链（Mermaid）；出版级图注与设计规范见 [docs/figure-specs.md](docs/figure-specs.md)。
@@ -73,29 +75,32 @@ Docker worker profile：
 docker compose -f infra/docker-compose.yml --profile worker run --rm collector-worker
 ```
 
+Runtime Console 默认读取最近 20 个 AU runtime project 作为项目下拉选项；如果 URL 带 `?project_id=...` 且该项目不在第一页，控制台会额外按 `project_id + market_code=AU` 读取一次选中项目，再用同一个 `project_id` 构造 prompts/evidence/export/alias/saved views/scores/graphs/reports/actions/content/traceability 查询路径。Saved Views 链接也会保留 `project_id`，避免跨客户或跨项目复盘时误读最新项目。
+
 运行时证据查询 API：
 
 ```bash
 curl -X POST "http://localhost:8000/v1/projects/runtime/au/dtc-ecommerce"
 curl "http://localhost:8000/v1/projects/runtime?market_code=AU&limit=20"
-curl "http://localhost:8000/v1/entity-aliases/runtime?entity_kind=brand&limit=20"
+curl "http://localhost:8000/v1/projects/runtime?project_id={project_id}&market_code=AU&limit=1"
+curl "http://localhost:8000/v1/entity-aliases/runtime?project_id={project_id}&entity_kind=brand&limit=20"
 curl "http://localhost:8000/v1/entity-aliases/runtime/candidates?project_id={project_id}&entity_kind=brand&limit=20"
 curl -X POST "http://localhost:8000/v1/entity-aliases/runtime/confirm" -H "content-type: application/json" -d '{"entity_id":"{brand_or_competitor_entity_id}","entity_kind":"brand","alias":"ExampleBrand Australia","alias_type":"alias","confidence":1.0,"confirmed_by":"runtime-console","notes":"Runtime entity alias confirmation"}'
-curl "http://localhost:8000/v1/prompts/runtime?market_code=AU&intent_type=brand_awareness&limit=20"
-curl "http://localhost:8000/v1/evidence-runs/runtime?platform=perplexity&city=Sydney&intent_type=brand_awareness&sort=cost_desc&limit=20"
+curl "http://localhost:8000/v1/prompts/runtime?project_id={project_id}&market_code=AU&intent_type=brand_awareness&limit=20"
+curl "http://localhost:8000/v1/evidence-runs/runtime?project_id={project_id}&platform=perplexity&city=Sydney&intent_type=brand_awareness&sort=cost_desc&limit=20"
 curl -X POST "http://localhost:8000/v1/evidence-runs/runtime/manual-backfill" -H "content-type: application/json" -d '{"prompt_question_id":"{prompt_question_id}","platform":"google","surface":"google_ai_mode","answer_text":"Manual Google AI Mode answer for audit backfill.","citation_urls":["https://examplebrand.example/au/manual-backfill"],"screenshot_url":"s3://manual-backfill/examplebrand-google-ai-mode.png","html_snapshot_url":"s3://manual-backfill/examplebrand-google-ai-mode.html","submitted_by":"runtime-console","notes":"Google spike manual backfill"}'
-curl -D - "http://localhost:8000/v1/evidence-runs/runtime/export.csv?platform=perplexity&city=Sydney&intent_type=brand_awareness&sort=cost_desc&limit=200"
-curl "http://localhost:8000/v1/runtime-saved-views?view_type=runtime_evidence&limit=20"
-curl "http://localhost:8000/v1/visibility-scores/runtime?limit=20"
-curl "http://localhost:8000/v1/citation-graphs/runtime?limit=20"
+curl -D - "http://localhost:8000/v1/evidence-runs/runtime/export.csv?project_id={project_id}&platform=perplexity&city=Sydney&intent_type=brand_awareness&sort=cost_desc&limit=200"
+curl "http://localhost:8000/v1/runtime-saved-views?project_id={project_id}&view_type=runtime_evidence&limit=20"
+curl "http://localhost:8000/v1/visibility-scores/runtime?project_id={project_id}&limit=20"
+curl "http://localhost:8000/v1/citation-graphs/runtime?project_id={project_id}&limit=20"
 curl "http://localhost:8000/v1/reports/runtime?project_id={project_id}&limit=20"
 curl -D - "http://localhost:8000/v1/reports/runtime/{report_export_id}/artifact?type=markdown&platform=perplexity&city=Sydney&intent_type=brand_awareness&sort=cost_desc"
 curl -D - "http://localhost:8000/v1/reports/runtime/{report_export_id}/artifact?type=csv&platform=perplexity&city=Sydney&intent_type=brand_awareness&sort=cost_desc"
 curl -D - "http://localhost:8000/v1/reports/runtime/{report_export_id}/artifact?type=pdf&platform=perplexity&city=Sydney&intent_type=brand_awareness&sort=cost_desc"
 curl -D - "http://localhost:8000/v1/reports/runtime/{report_export_id}/artifact?type=pdf&template=white_label&client_name=ExampleBrand%20AU&prepared_by=Partner%20Agency&platform=perplexity&sort=cost_desc"
-curl "http://localhost:8000/v1/action-plans/runtime?limit=20"
-curl "http://localhost:8000/v1/content-engines/runtime?limit=20"
-curl "http://localhost:8000/v1/traceability/runtime"
+curl "http://localhost:8000/v1/action-plans/runtime?project_id={project_id}&limit=20"
+curl "http://localhost:8000/v1/content-engines/runtime?project_id={project_id}&limit=20"
+curl "http://localhost:8000/v1/traceability/runtime?project_id={project_id}"
 ```
 
 这些接口从 PostgreSQL 读取 `Project -> Tenant/Brand/Competitor/PromptQuestion/AuditEvent` 项目启动页、`EntityAlias -> BrandEntity/CompetitorEntity -> AuditEvent` 别名确认页、`PromptQuestion` 分页、`AnswerRun -> PromptQuestion -> RawAnswer -> Citation/Asset/Log/Cost/Audit` 聚合页、`VisibilityScoreSnapshot -> ScoreContribution -> ScoreSnapshotRun -> AnswerRun/PromptQuestion -> AnswerAnalysis/AuditEvent` 评分解释页、`SourceGraph -> SourceGraphEvidence -> SourceGap -> CompetitorBenchmark` 图谱/竞品页、`ReportExport -> ReportEvidence -> ScoreSnapshot -> CitationGraph` 报告快照与历史列表、`RetestSchedule -> ActionRecommendation -> RetestComparison -> AnswerRun/PromptQuestion -> AuditEvent` 行动与复测页、`ContentDraft -> LocalizedKnowledgeFact -> ActionRecommendation -> AnswerRun/PromptQuestion -> ManualDistributionRecord/IntegrationConnector/AuditEvent` 内容引擎页，以及 `TraceabilityBundle -> ReportExport -> VisibilityScoreSnapshot -> RuntimeEvidenceRun -> CitationGraph -> ActionRecommendation -> ContentDraft -> AuditEvent/EvidenceLink` 溯源详情页；未配置 `DATABASE_URL` 时返回 503。实体别名候选是计算型 read model，不新增表，会从 canonical name、官方域名、产品线和母公司字段生成待确认项并排除已确认 alias；实体别名确认只接收已有 `BrandEntity` 或 `CompetitorEntity`，后端会使用稳定 alias id 幂等写入 `entity_aliases`，追加 `entity_alias_confirmed` 审计事件，并在后续 `--persist-analysis` 中参与 alias-aware parser 识别。人工补录只接收已有 `PromptQuestion` 的答案证据，后端会用 prompt 元数据生成 `AnswerRun.access_method=manual`、`RawAnswer.raw_payload_hash`、citation/asset/cost/log 和 `manual_backfill_recorded` 审计事件。报告历史读取使用 `project_id` 约束当前项目；报告 artifact 的筛选下载只作用于即时渲染的 Markdown/CSV/PDF 证据附录，白标 PDF 使用 `template=white_label`、`client_name`、`prepared_by` 生成客户版标题页/执行摘要/页脚说明，并返回独立 `template_hash`；冻结 `ReportExport.answer_run_ids`、`score_snapshot_ids`、methodology hash 与对象存储 URL 不会被改写。

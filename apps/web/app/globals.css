@@ -136,7 +136,7 @@ code {
   align-items: end;
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(4, minmax(145px, 1fr)) repeat(3, auto);
+  grid-template-columns: repeat(5, minmax(145px, 1fr)) repeat(3, auto);
 }
 
 .filterForm label,

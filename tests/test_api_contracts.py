@@ -6,7 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from geno_api.main import app
-from geno_core.models import RuntimeReportArtifact
+from geno_core.models import RuntimeProjectPage, RuntimeReportArtifact
 
 
 class ApiContractsTest(unittest.TestCase):
@@ -66,6 +66,28 @@ class ApiContractsTest(unittest.TestCase):
         response = self.client.get("/v1/projects/runtime")
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_projects_endpoint_passes_project_id_filter(self) -> None:
+        class FakeRepository:
+            def list_runtime_projects(self, **kwargs: object) -> RuntimeProjectPage:
+                self.kwargs = kwargs
+                return RuntimeProjectPage(total_count=0, limit=int(kwargs["limit"]), offset=int(kwargs["offset"]), records=())
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/projects/runtime"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c&market_code=AU&limit=2&offset=1"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["total_count"], 0)
+        self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.kwargs["market_code"], "AU")
+        self.assertEqual(fake_repository.kwargs["limit"], 2)
+        self.assertEqual(fake_repository.kwargs["offset"], 1)
 
     def test_runtime_prompts_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/prompts/runtime")
