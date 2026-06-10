@@ -84,18 +84,34 @@ type ScoreSnapshot = {
     trigger_rate: number;
     mention_rate: number;
     recommendation_rate: number;
+    dispersion?: number;
+    scope_type?: string;
+    scope_value?: string;
     formula_version: string;
   };
   contributions: Array<{
+    id?: string;
     component_name: string;
     component_score: number;
+    weight?: number;
     weighted_contribution: number;
     denominator?: string;
+    evidence_answer_run_ids?: string[];
     positive_evidence_summary?: string;
     negative_evidence_summary?: string;
+    confidence_note?: string;
   }>;
-  answer_runs: unknown[];
-  audit_events: unknown[];
+  answer_runs: Array<{
+    answer_run: {
+      id: string;
+      platform?: string;
+      city?: string;
+      prompt_text?: string;
+      prompt_intent_type?: string;
+    };
+    analysis?: { confidence?: number; payload?: Record<string, unknown> } | null;
+  }>;
+  audit_events: Array<{ event_type?: string; method_version?: string | null }>;
 };
 
 type CitationGraph = {
@@ -629,6 +645,78 @@ export default async function Home() {
                   </div>
                 </details>
               ))}
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </Panel>
+
+        <Panel
+          title="Score Contributions"
+          subtitle={latestScore?.snapshot.formula_version || "No score contribution package"}
+          wide
+        >
+          {latestScore ? (
+            <div className="scoreDetail">
+              <div className="scoreSummary">
+                <div className="scoreTotal">
+                  <span>Final score</span>
+                  <strong>{num(latestScore.snapshot.final_score)}</strong>
+                </div>
+                <dl className="facts">
+                  <Fact label="Scope" value={latestScore.snapshot.scope_value || latestScore.snapshot.scope_type || "unknown"} />
+                  <Fact label="Formula" value={latestScore.snapshot.formula_version} />
+                  <Fact label="Trigger" value={pct(latestScore.snapshot.trigger_rate)} />
+                  <Fact label="Mention" value={pct(latestScore.snapshot.mention_rate)} />
+                  <Fact label="Recommend" value={pct(latestScore.snapshot.recommendation_rate)} />
+                  <Fact label="Dispersion" value={num(latestScore.snapshot.dispersion)} />
+                  <Fact label="Answer runs" value={latestScore.answer_runs.length} />
+                  <Fact label="Audit events" value={latestScore.audit_events.length} />
+                </dl>
+              </div>
+              <div className="contributionGrid">
+                {latestScore.contributions.map((item) => (
+                  <article className="contributionItem" key={item.id || item.component_name}>
+                    <header>
+                      <h3>{item.component_name}</h3>
+                      <strong>{num(item.weighted_contribution)}</strong>
+                    </header>
+                    <dl className="facts contributionFacts">
+                      <Fact label="Raw score" value={num(item.component_score)} />
+                      <Fact label="Weight" value={num(item.weight)} />
+                      <Fact label="Denominator" value={item.denominator || "unknown"} />
+                      <Fact label="Evidence runs" value={item.evidence_answer_run_ids?.length || 0} />
+                    </dl>
+                    <div className="evidenceNote positiveNote">
+                      <strong>Positive evidence</strong>
+                      <span>{item.positive_evidence_summary || "No positive evidence summary"}</span>
+                    </div>
+                    <div className="evidenceNote">
+                      <strong>Negative evidence</strong>
+                      <span>{item.negative_evidence_summary || "No negative evidence summary"}</span>
+                    </div>
+                    <small>{item.confidence_note || "No confidence note"}</small>
+                  </article>
+                ))}
+              </div>
+              <div className="scoreRuns">
+                <h3>Linked Answer Runs</h3>
+                <ul className="plainList">
+                  {latestScore.answer_runs.slice(0, 6).map((run) => (
+                    <li key={run.answer_run.id}>
+                      <strong>
+                        {run.answer_run.platform || "platform"} · {run.answer_run.city || "city"} ·{" "}
+                        {shortId(run.answer_run.id)}
+                      </strong>
+                      <span>{run.answer_run.prompt_text || "No prompt text"}</span>
+                      <small>
+                        {run.answer_run.prompt_intent_type || "unknown intent"} · parser confidence{" "}
+                        {num(run.analysis?.confidence)}
+                      </small>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           ) : (
             <EmptyState />

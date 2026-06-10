@@ -359,6 +359,105 @@ code {
   padding: 10px;
 }
 
+.scoreDetail {
+  display: grid;
+  gap: 14px;
+}
+
+.scoreSummary {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(160px, 0.35fr) minmax(0, 1fr);
+}
+
+.scoreTotal {
+  background: #eef4f5;
+  border: 1px solid #d5e2e4;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.scoreTotal span {
+  color: #35575a;
+  font-size: 12px;
+}
+
+.scoreTotal strong {
+  color: #245d61;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.contributionGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.contributionItem {
+  border: 1px solid #e0e7ef;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.contributionItem header {
+  align-items: flex-start;
+  border-bottom: 1px solid #edf1f5;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding-bottom: 8px;
+}
+
+.contributionItem header strong {
+  color: #245d61;
+  font-size: 18px;
+}
+
+.contributionFacts {
+  grid-template-columns: minmax(82px, 0.5fr) minmax(0, 1fr);
+}
+
+.evidenceNote {
+  background: #f7fafc;
+  border-left: 3px solid #9aa8b5;
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+}
+
+.positiveNote {
+  border-left-color: #2f6f73;
+}
+
+.evidenceNote strong,
+.contributionItem small {
+  color: #667585;
+  font-size: 12px;
+}
+
+.evidenceNote span {
+  color: #27333f;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.scoreRuns {
+  background: #f7fafc;
+  border: 1px solid #e1e7ee;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
 .traceGrid {
   display: grid;
   gap: 14px;
@@ -466,6 +565,7 @@ summary {
 
   .dashboard,
   .evidenceGrid,
+  .contributionGrid,
   .traceGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -493,8 +593,10 @@ summary {
   .metrics,
   .dashboard,
   .scoreRow,
+  .scoreSummary,
   .evidenceGrid,
   .evidenceColumns,
+  .contributionGrid,
   .traceGrid,
   .detailGrid {
     grid-template-columns: 1fr;
