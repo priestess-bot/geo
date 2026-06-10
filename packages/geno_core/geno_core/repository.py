@@ -7,6 +7,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from io import StringIO
 from typing import Any, Protocol
+from urllib.parse import urlparse
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from geno_core.audit import build_audit_event
@@ -38,6 +39,8 @@ from geno_core.models import (
     RuntimeEvidencePage,
     RuntimeEvidenceRun,
     RuntimeEntityAlias,
+    RuntimeEntityAliasCandidate,
+    RuntimeEntityAliasCandidatePage,
     RuntimeEntityAliasPage,
     RuntimeProject,
     RuntimeProjectPage,
@@ -146,6 +149,47 @@ def _runtime_evidence_sort(sort: str | None) -> tuple[str, str]:
 
 def _stable_id(kind: str, *parts: object) -> str:
     return str(uuid5(NAMESPACE_URL, ":".join(("geno", kind, *(str(part) for part in parts)))))
+
+
+def _alias_host(value: str) -> str:
+    parsed = urlparse(value if "://" in value else f"https://{value}")
+    return (parsed.netloc or parsed.path).strip().lower().removeprefix("www.")
+
+
+def _append_alias_candidate(
+    candidates: list[dict[str, Any]],
+    seen: set[str],
+    *,
+    entity: dict[str, Any],
+    alias: str,
+    alias_type: str,
+    source: str,
+    confidence: float,
+) -> None:
+    normalized_alias = alias.strip()
+    key = normalized_alias.lower()
+    if not normalized_alias or key in seen:
+        return
+    seen.add(key)
+    candidates.append(
+        {
+            "id": _stable_id(
+                "entity-alias-candidate",
+                entity["entity_kind"],
+                entity["id"],
+                normalized_alias,
+                alias_type,
+                source,
+            ),
+            "entity_id": str(entity["id"]),
+            "entity_kind": str(entity["entity_kind"]),
+            "alias": normalized_alias,
+            "alias_type": alias_type,
+            "source": source,
+            "confidence": confidence,
+            "reason": f"candidate from {source}",
+        }
+    )
 
 
 def _artifact_hash(content: str | bytes) -> str:
@@ -930,6 +974,119 @@ class PostgresEvidenceRepository:
             if alias.lower() not in {item.lower() for item in aliases[entity_id]}:
                 aliases[entity_id].append(alias)
         return {entity_id: tuple(items) for entity_id, items in aliases.items()}
+
+    def list_runtime_entity_alias_candidates(
+        self,
+        *,
+        project_id: str,
+        entity_kind: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeEntityAliasCandidatePage:
+        filters: list[str] = ["entity.project_id = %s"]
+        params: list[object] = [_uuid(project_id)]
+        if entity_kind:
+            filters.append("entity.entity_kind = %s")
+            params.append(entity_kind)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                  entity.id,
+                  entity.project_id,
+                  entity.entity_kind,
+                  entity.canonical_name,
+                  entity.official_domains,
+                  entity.parent_company,
+                  entity.product_lines,
+                  entity.status
+                FROM (
+                  SELECT id, project_id, 'brand' AS entity_kind, canonical_name, official_domains, parent_company, product_lines, status
+                  FROM brand_entities
+                  UNION ALL
+                  SELECT id, project_id, 'competitor' AS entity_kind, canonical_name, official_domains, parent_company, product_lines, status
+                  FROM competitor_entities
+                ) entity
+                WHERE {" AND ".join(filters)}
+                ORDER BY entity.entity_kind ASC, entity.canonical_name ASC
+                """,
+                tuple(params),
+            )
+            entities = _rows_dict(
+                cursor.fetchall(),
+                (
+                    "id",
+                    "project_id",
+                    "entity_kind",
+                    "canonical_name",
+                    "official_domains",
+                    "parent_company",
+                    "product_lines",
+                    "status",
+                ),
+            )
+        confirmed_aliases = self.get_confirmed_entity_alias_terms(project_id)
+        records: list[RuntimeEntityAliasCandidate] = []
+        for entity in entities:
+            entity_id = str(entity["id"])
+            confirmed = confirmed_aliases.get(entity_id, ())
+            seen = {str(entity["canonical_name"]).lower(), *(alias.lower() for alias in confirmed)}
+            candidates: list[dict[str, Any]] = []
+            _append_alias_candidate(
+                candidates,
+                seen,
+                entity=entity,
+                alias=f"{entity['canonical_name']} Australia",
+                alias_type="alias",
+                source="canonical_name_market",
+                confidence=0.72,
+            )
+            for domain in entity.get("official_domains") or ():
+                host = _alias_host(str(domain))
+                _append_alias_candidate(
+                    candidates,
+                    seen,
+                    entity=entity,
+                    alias=host,
+                    alias_type="domain",
+                    source="official_domain",
+                    confidence=0.9,
+                )
+            for product_line in entity.get("product_lines") or ():
+                _append_alias_candidate(
+                    candidates,
+                    seen,
+                    entity=entity,
+                    alias=str(product_line),
+                    alias_type="product",
+                    source="product_line",
+                    confidence=0.68,
+                )
+            if entity.get("parent_company"):
+                _append_alias_candidate(
+                    candidates,
+                    seen,
+                    entity=entity,
+                    alias=str(entity["parent_company"]),
+                    alias_type="parent_company",
+                    source="parent_company",
+                    confidence=0.74,
+                )
+            for candidate in candidates:
+                records.append(
+                    RuntimeEntityAliasCandidate(
+                        candidate=candidate,
+                        entity=entity,
+                        confirmed_aliases=confirmed,
+                    )
+                )
+        total_count = len(records)
+        return RuntimeEntityAliasCandidatePage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=tuple(records[offset : offset + limit]),
+        )
 
     def confirm_entity_alias(self, alias: EntityAliasInput) -> RuntimeEntityAlias:
         normalized_kind = alias.entity_kind.strip().lower()

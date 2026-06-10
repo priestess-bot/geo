@@ -108,6 +108,13 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_entity_alias_candidates_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get(
+            "/v1/entity-aliases/runtime/candidates?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c&entity_kind=brand"
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_runtime_entity_alias_confirm_endpoint_requires_persistence_config(self) -> None:
         response = self.client.post(
             "/v1/entity-aliases/runtime/confirm",
@@ -287,6 +294,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("EntityAlias", payload["m1_bootstrap"])
         self.assertIn("EntityAliasInput", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAlias", payload["m1_bootstrap"])
+        self.assertIn("RuntimeEntityAliasCandidate", payload["m1_bootstrap"])
+        self.assertIn("RuntimeEntityAliasCandidatePage", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasPage", payload["m1_bootstrap"])
         self.assertIn("TraceabilityBundle", payload["auditability"])
         self.assertIn("build_traceability_bundle", payload["traceability"])
@@ -295,6 +304,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("ManualBackfillInput", payload["persistence"])
         self.assertIn("EntityAliasInput", payload["persistence"])
         self.assertIn("RuntimeEntityAlias", payload["persistence"])
+        self.assertIn("RuntimeEntityAliasCandidate", payload["persistence"])
+        self.assertIn("RuntimeEntityAliasCandidatePage", payload["persistence"])
         self.assertIn("RuntimeEntityAliasPage", payload["persistence"])
         self.assertIn("RuntimeSavedView", payload["persistence"])
         self.assertIn("RuntimeSavedViewInput", payload["persistence"])
@@ -313,6 +324,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/projects/runtime", payload["persistence"])
         self.assertIn("/v1/projects/runtime/au/dtc-ecommerce", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime", payload["persistence"])
+        self.assertIn("/v1/entity-aliases/runtime/candidates", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/confirm", payload["persistence"])
         self.assertIn("/v1/prompts/runtime", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])

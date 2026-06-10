@@ -659,6 +659,21 @@ class RuntimeEntityAliasPage:
 
 
 @dataclass(frozen=True)
+class RuntimeEntityAliasCandidate:
+    candidate: dict[str, Any]
+    entity: dict[str, Any]
+    confirmed_aliases: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeEntityAliasCandidatePage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeEntityAliasCandidate, ...]
+
+
+@dataclass(frozen=True)
 class RuntimeScoreSnapshotRun:
     answer_run: dict[str, Any]
     analysis: dict[str, Any] | None

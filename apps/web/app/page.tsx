@@ -376,6 +376,7 @@ type RuntimeData = {
   prompts: PageResponse<RuntimePrompt>;
   evidence: PageResponse<EvidenceRun>;
   entityAliases: PageResponse<RuntimeEntityAlias>;
+  entityAliasCandidates: PageResponse<RuntimeEntityAliasCandidate>;
   savedViews: PageResponse<RuntimeSavedView>;
   scores: PageResponse<ScoreSnapshot>;
   graphs: PageResponse<CitationGraph>;
@@ -405,6 +406,27 @@ type RuntimeEntityAlias = {
     status?: string;
   };
   audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
+};
+
+type RuntimeEntityAliasCandidate = {
+  candidate: {
+    id: string;
+    entity_id: string;
+    entity_kind: string;
+    alias: string;
+    alias_type: string;
+    source: string;
+    confidence?: number;
+    reason?: string;
+  };
+  entity: {
+    id: string;
+    project_id: string;
+    entity_kind: string;
+    canonical_name: string;
+    status?: string;
+  };
+  confirmed_aliases: string[];
 };
 
 type RuntimeFilters = {
@@ -437,6 +459,7 @@ const endpoints = {
   evidence: "/v1/evidence-runs/runtime",
   evidenceExport: "/v1/evidence-runs/runtime/export.csv",
   entityAliases: "/v1/entity-aliases/runtime",
+  entityAliasCandidates: "/v1/entity-aliases/runtime/candidates",
   savedViews: "/v1/runtime-saved-views",
   scores: "/v1/visibility-scores/runtime",
   graphs: "/v1/citation-graphs/runtime",
@@ -670,6 +693,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliases: runtimePath(endpoints.entityAliases, {
       limit: 5
     }),
+    entityAliasCandidates: runtimePath(endpoints.entityAliasCandidates, {
+      limit: 5
+    }),
     savedViews: runtimePath(endpoints.savedViews, {
       view_type: "runtime_evidence",
       limit: 5
@@ -681,12 +707,24 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     content: runtimePath(endpoints.content, { limit: 1 }),
     traceability: endpoints.traceability
   };
+  const projects = await fetchRuntimeEndpoint<PageResponse<RuntimeProject>>(
+    baseUrl,
+    paths.projects,
+    emptyPage<RuntimeProject>()
+  );
+  const latestProjectId = projects.payload.records[0]?.project.id;
+  paths.entityAliasCandidates = latestProjectId
+    ? runtimePath(endpoints.entityAliasCandidates, {
+        project_id: latestProjectId,
+        limit: 5
+      })
+    : paths.entityAliasCandidates;
 
   const [
-    projects,
     prompts,
     evidence,
     entityAliases,
+    entityAliasCandidates,
     savedViews,
     scores,
     graphs,
@@ -695,7 +733,6 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     content,
     traceability
   ] = await Promise.all([
-    fetchRuntimeEndpoint<PageResponse<RuntimeProject>>(baseUrl, paths.projects, emptyPage<RuntimeProject>()),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     fetchRuntimeEndpoint<PageResponse<EvidenceRun>>(baseUrl, paths.evidence, emptyPage<EvidenceRun>()),
     fetchRuntimeEndpoint<PageResponse<RuntimeEntityAlias>>(
@@ -703,6 +740,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       paths.entityAliases,
       emptyPage<RuntimeEntityAlias>()
     ),
+    latestProjectId
+      ? fetchRuntimeEndpoint<PageResponse<RuntimeEntityAliasCandidate>>(
+          baseUrl,
+          paths.entityAliasCandidates,
+          emptyPage<RuntimeEntityAliasCandidate>()
+        )
+      : Promise.resolve({ payload: emptyPage<RuntimeEntityAliasCandidate>(), error: null }),
     fetchRuntimeEndpoint<PageResponse<RuntimeSavedView>>(baseUrl, paths.savedViews, emptyPage<RuntimeSavedView>()),
     fetchRuntimeEndpoint<PageResponse<ScoreSnapshot>>(baseUrl, paths.scores, emptyPage<ScoreSnapshot>()),
     fetchRuntimeEndpoint<PageResponse<CitationGraph>>(baseUrl, paths.graphs, emptyPage<CitationGraph>()),
@@ -711,7 +755,20 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<PageResponse<ContentEngine>>(baseUrl, paths.content, emptyPage<ContentEngine>()),
     fetchRuntimeEndpoint<TraceabilityDetail | null>(baseUrl, paths.traceability, null, { optionalNotFound: true })
   ]);
-  const errors = [projects, prompts, evidence, entityAliases, savedViews, scores, graphs, reports, actions, content, traceability]
+  const errors = [
+    projects,
+    prompts,
+    evidence,
+    entityAliases,
+    entityAliasCandidates,
+    savedViews,
+    scores,
+    graphs,
+    reports,
+    actions,
+    content,
+    traceability
+  ]
     .map((result) => result.error)
     .filter((item): item is string => Boolean(item));
   return {
@@ -720,6 +777,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       prompts: prompts.payload,
       evidence: evidence.payload,
       entityAliases: entityAliases.payload,
+      entityAliasCandidates: entityAliasCandidates.payload,
       savedViews: savedViews.payload,
       scores: scores.payload,
       graphs: graphs.payload,
@@ -1032,7 +1090,9 @@ export default async function Home({
                 <form action={confirmEntityAlias} className="entityAliasForm">
                   <div className="formHeader">
                     <h3>Entity Alias</h3>
-                    <small>{data.entityAliases.total_count} confirmed</small>
+                    <small>
+                      {data.entityAliases.total_count} confirmed · {data.entityAliasCandidates.total_count} candidates
+                    </small>
                   </div>
                   <label className="wideField">
                     <span>Entity</span>
@@ -1070,6 +1130,41 @@ export default async function Home({
                     Confirm alias
                   </button>
                 </form>
+                {data.entityAliasCandidates.records.length ? (
+                  <ul className="plainList">
+                    {data.entityAliasCandidates.records.slice(0, 4).map((record) => (
+                      <li key={record.candidate.id}>
+                        <strong>
+                          Candidate · {record.candidate.alias_type} · {record.entity.entity_kind}
+                        </strong>
+                        <span>{record.candidate.alias}</span>
+                        <small>
+                          {record.entity.canonical_name} · {record.candidate.source} · confidence{" "}
+                          {num(record.candidate.confidence)}
+                        </small>
+                        <form action={confirmEntityAlias} className="inlineAliasForm">
+                          <input
+                            type="hidden"
+                            name="entity_ref"
+                            value={`${record.candidate.entity_kind}:${record.candidate.entity_id}`}
+                          />
+                          <input type="hidden" name="alias" value={record.candidate.alias} />
+                          <input type="hidden" name="alias_type" value={record.candidate.alias_type} />
+                          <input type="hidden" name="confidence" value={String(record.candidate.confidence || 0.7)} />
+                          <input type="hidden" name="confirmed_by" value="runtime-console" />
+                          <input
+                            type="hidden"
+                            name="notes"
+                            value={`Confirm generated alias candidate from ${record.candidate.source}`}
+                          />
+                          <button className="actionButton compactAction" type="submit">
+                            Confirm candidate
+                          </button>
+                        </form>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 {data.entityAliases.records.length ? (
                   <ul className="plainList">
                     {data.entityAliases.records.slice(0, 4).map((record) => (

@@ -189,6 +189,29 @@ def runtime_entity_aliases(
         close_repository_connection(repository)
 
 
+@app.get("/v1/entity-aliases/runtime/candidates")
+def runtime_entity_alias_candidates(
+    project_id: str,
+    entity_kind: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.list_runtime_entity_alias_candidates(
+            project_id=project_id,
+            entity_kind=entity_kind,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/entity-aliases/runtime/confirm")
 def confirm_runtime_entity_alias(payload: EntityAliasConfirmRequest) -> dict[str, object]:
     try:
@@ -1015,6 +1038,8 @@ def contracts() -> dict[str, list[str]]:
             "EntityAlias",
             "EntityAliasInput",
             "RuntimeEntityAlias",
+            "RuntimeEntityAliasCandidate",
+            "RuntimeEntityAliasCandidatePage",
             "RuntimeEntityAliasPage",
             "IndustryProfile",
             "PromptQuestion",
@@ -1091,6 +1116,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimePromptPage",
             "EntityAliasInput",
             "RuntimeEntityAlias",
+            "RuntimeEntityAliasCandidate",
+            "RuntimeEntityAliasCandidatePage",
             "RuntimeEntityAliasPage",
             "RuntimeEvidenceRun",
             "RuntimeEvidencePage",
@@ -1122,6 +1149,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/projects/runtime",
             "/v1/projects/runtime/au/dtc-ecommerce",
             "/v1/entity-aliases/runtime",
+            "/v1/entity-aliases/runtime/candidates",
             "/v1/entity-aliases/runtime/confirm",
             "/v1/prompts/runtime",
             "/v1/evidence-runs/runtime",

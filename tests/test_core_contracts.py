@@ -54,6 +54,7 @@ from geno_core.models import (
     RuntimeEvidencePage,
     RuntimeEvidenceExport,
     RuntimeEntityAlias,
+    RuntimeEntityAliasCandidatePage,
     RuntimeEntityAliasPage,
     RuntimeCitationGraphPage,
     RuntimeActionPlanPage,
@@ -3172,6 +3173,46 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM entity_aliases ea JOIN", executed_sql)
         self.assertIn("entity.entity_kind = ea.entity_kind", executed_sql)
         self.assertIn("WHERE entity.project_id = %s", executed_sql)
+
+    def test_postgres_repository_lists_runtime_entity_alias_candidates(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        brand_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+        connection = RecordingConnection(
+            result_sets=[
+                [
+                    {
+                        "id": brand_id,
+                        "project_id": project_id,
+                        "entity_kind": "brand",
+                        "canonical_name": "ExampleBrand",
+                        "official_domains": ["https://www.examplebrand.com.au"],
+                        "parent_company": "Example Holdings",
+                        "product_lines": ["mattresses", "pillows"],
+                        "status": "active",
+                    }
+                ],
+                [
+                    {"entity_id": brand_id, "alias": "ExampleBrand Australia"},
+                ],
+            ]
+        )
+        page = PostgresEvidenceRepository(connection).list_runtime_entity_alias_candidates(
+            project_id=project_id,
+            entity_kind="brand",
+            limit=10,
+            offset=0,
+        )
+        self.assertIsInstance(page, RuntimeEntityAliasCandidatePage)
+        aliases = [record.candidate["alias"] for record in page.records]
+        self.assertNotIn("ExampleBrand Australia", aliases)
+        self.assertIn("examplebrand.com.au", aliases)
+        self.assertIn("mattresses", aliases)
+        self.assertIn("pillows", aliases)
+        self.assertIn("Example Holdings", aliases)
+        self.assertEqual(page.records[0].confirmed_aliases, ("ExampleBrand Australia",))
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM ( SELECT id, project_id, 'brand' AS entity_kind", executed_sql)
+        self.assertIn("WHERE entity.project_id = %s AND entity.entity_kind = %s", executed_sql)
 
     def test_postgres_repository_lists_runtime_entity_aliases_with_audit_events(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

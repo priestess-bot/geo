@@ -419,6 +419,15 @@ code {
   padding: 10px 12px;
 }
 
+.compactAction {
+  justify-self: start;
+  padding: 8px 10px;
+}
+
+.inlineAliasForm {
+  display: grid;
+}
+
 .auditLine {
   background: #f7fafc;
   border: 1px solid #e1e7ee;
