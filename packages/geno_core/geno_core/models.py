@@ -241,6 +241,31 @@ class RawEvidenceRecord:
 
 
 @dataclass(frozen=True)
+class ManualBackfillInput:
+    project_id: str
+    prompt_question_id: str
+    prompt_text: str
+    market_code: str
+    city: str
+    language: str
+    platform: str
+    surface: str
+    answer_text: str
+    citation_urls: tuple[str, ...] = ()
+    screenshot_url: str | None = None
+    html_snapshot_url: str | None = None
+    answer_present: bool = True
+    surface_triggered: bool = True
+    sample_index: int = 1
+    sample_size: int = 1
+    device: str = "desktop"
+    account_state: str | None = None
+    submitted_by: str = "manual-backfill"
+    notes: str | None = None
+    collected_at: datetime | None = None
+
+
+@dataclass(frozen=True)
 class CollectionFailureRecord:
     answer_run: AnswerRun
     collector_logs: tuple[CollectorLog, ...]

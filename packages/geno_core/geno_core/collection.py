@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Iterable
 from uuid import uuid5, NAMESPACE_URL
+from urllib.parse import urlparse
 
 from geno_core.audit import build_audit_event, hash_payload
 from geno_core.contracts import CollectorBackend
@@ -15,6 +16,7 @@ from geno_core.models import (
     CollectionPlan,
     CollectorLog,
     EvidenceAsset,
+    ManualBackfillInput,
     MarketProfile,
     PromptQuestion,
     RawAnswer,
@@ -70,8 +72,187 @@ def _asset_hash(url: str | None) -> str | None:
     return hash_payload({"url": url}) if url else None
 
 
+def _extract_domain(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.netloc:
+        return parsed.netloc
+    return url.split("//", 1)[-1].split("/", 1)[0]
+
+
 def _collector_cost(collector: CollectorBackend) -> float:
     return float(getattr(collector, "vendor_cost", 0.0))
+
+
+def build_manual_backfill_record(backfill: ManualBackfillInput) -> RawEvidenceRecord:
+    collected_at = backfill.collected_at or datetime.now(UTC)
+    answer_run_id = _stable_id(
+        "answer-run-manual-backfill",
+        backfill.project_id,
+        backfill.prompt_question_id,
+        backfill.platform,
+        backfill.surface,
+        backfill.city,
+        backfill.sample_index,
+        backfill.sample_size,
+        backfill.answer_text,
+    )
+    collector_backend_id = f"{backfill.platform}.manual_backfill"
+    raw_payload = {
+        "prompt": backfill.prompt_text,
+        "project_id": backfill.project_id,
+        "prompt_question_id": backfill.prompt_question_id,
+        "market_code": backfill.market_code,
+        "city": backfill.city,
+        "language": backfill.language,
+        "device": backfill.device,
+        "platform": backfill.platform,
+        "surface": backfill.surface,
+        "answer_present": backfill.answer_present,
+        "surface_triggered": backfill.surface_triggered,
+        "citation_urls": list(backfill.citation_urls),
+        "screenshot_url": backfill.screenshot_url,
+        "html_snapshot_url": backfill.html_snapshot_url,
+        "submitted_by": backfill.submitted_by,
+        "notes": backfill.notes,
+        "source": "manual_backfill",
+    }
+    answer_run = AnswerRun(
+        id=answer_run_id,
+        project_id=backfill.project_id,
+        prompt_question_id=backfill.prompt_question_id,
+        platform=backfill.platform,
+        surface=backfill.surface,
+        access_method="manual",
+        market_code=backfill.market_code,
+        city=backfill.city,
+        language=backfill.language,
+        device=backfill.device,
+        answer_present=backfill.answer_present,
+        surface_triggered=backfill.surface_triggered,
+        sample_index=backfill.sample_index,
+        sample_size=backfill.sample_size,
+        model_or_surface="manual_backfill",
+        account_state=backfill.account_state,
+        collector_backend_id=collector_backend_id,
+        collector_version="manual_backfill_v1",
+        collected_at=collected_at,
+        status="completed",
+    )
+    raw_answer = RawAnswer(
+        id=_stable_id("raw-answer", answer_run_id),
+        answer_run_id=answer_run_id,
+        answer_text=backfill.answer_text,
+        raw_payload=raw_payload,
+        raw_payload_hash=hash_payload(raw_payload),
+    )
+    citations = tuple(
+        AnswerCitation(
+            id=_stable_id("answer-citation", answer_run_id, url, index),
+            answer_run_id=answer_run_id,
+            url=url,
+            domain=_extract_domain(url),
+            position=index,
+            source_type="manual_source",
+        )
+        for index, url in enumerate(backfill.citation_urls, start=1)
+        if url
+    )
+    evidence_assets = tuple(
+        asset
+        for asset in (
+            EvidenceAsset(
+                id=_stable_id("evidence-asset", answer_run_id, "screenshot"),
+                answer_run_id=answer_run_id,
+                asset_type="screenshot",
+                url=backfill.screenshot_url or "",
+                content_hash=_asset_hash(backfill.screenshot_url),
+            )
+            if backfill.screenshot_url
+            else None,
+            EvidenceAsset(
+                id=_stable_id("evidence-asset", answer_run_id, "html_snapshot"),
+                answer_run_id=answer_run_id,
+                asset_type="html_snapshot",
+                url=backfill.html_snapshot_url or "",
+                content_hash=_asset_hash(backfill.html_snapshot_url),
+            )
+            if backfill.html_snapshot_url
+            else None,
+        )
+        if asset is not None
+    )
+    collector_logs = (
+        CollectorLog(
+            id=_stable_id("collector-log", answer_run_id, "manual-backfill"),
+            answer_run_id=answer_run_id,
+            collector_backend_id=collector_backend_id,
+            event_type="manual_backfill_recorded",
+            payload={
+                "submitted_by": backfill.submitted_by,
+                "notes": backfill.notes,
+                "citation_count": len(citations),
+                "asset_count": len(evidence_assets),
+            },
+            created_at=collected_at,
+        ),
+    )
+    collection_cost = CollectionCost(
+        id=_stable_id("collection-cost", answer_run_id),
+        answer_run_id=answer_run_id,
+        project_id=backfill.project_id,
+        collector_backend_id=collector_backend_id,
+        llm_provider=None,
+        llm_tokens=0,
+        llm_cost=0.0,
+        proxy_or_vendor_cost=0.0,
+        compute_cost=0.0,
+        total_cost=0.0,
+        created_at=collected_at,
+    )
+    audit_events = (
+        build_audit_event(
+            event_type="manual_backfill_recorded",
+            project_id=backfill.project_id,
+            actor_type="user",
+            actor_id=backfill.submitted_by,
+            target_type="answer_run",
+            target_id=answer_run_id,
+            before=None,
+            after={
+                "answer_run_id": answer_run_id,
+                "prompt_question_id": backfill.prompt_question_id,
+                "platform": backfill.platform,
+                "surface": backfill.surface,
+                "city": backfill.city,
+                "sample_index": backfill.sample_index,
+                "sample_size": backfill.sample_size,
+                "answer_present": backfill.answer_present,
+                "surface_triggered": backfill.surface_triggered,
+                "raw_payload_hash": raw_answer.raw_payload_hash,
+                "citation_count": len(citations),
+                "asset_count": len(evidence_assets),
+                "notes": backfill.notes,
+            },
+            input_refs={"prompt_question_ids": [backfill.prompt_question_id]},
+            output_refs={
+                "answer_run_ids": [answer_run_id],
+                "raw_answer_ids": [raw_answer.id],
+                "answer_citation_ids": [citation.id for citation in citations],
+                "evidence_asset_ids": [asset.id for asset in evidence_assets],
+            },
+            method_version="manual_backfill_v1",
+            reason="manual answer backfill converted into auditable raw evidence",
+        ),
+    )
+    return RawEvidenceRecord(
+        answer_run=answer_run,
+        raw_answer=raw_answer,
+        citations=citations,
+        evidence_assets=evidence_assets,
+        collector_logs=collector_logs,
+        collection_cost=collection_cost,
+        audit_events=audit_events,
+    )
 
 
 def collect_prompt_once(

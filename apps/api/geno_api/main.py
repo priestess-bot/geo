@@ -17,6 +17,7 @@ from geno_core.action_plan import (
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
+    build_manual_backfill_record,
     build_p0a_collection_plan,
     run_collection_slice,
     run_fixture_collection_slice,
@@ -43,7 +44,7 @@ from geno_core.knowledge import (
     search_knowledge_facts,
 )
 from geno_core.market import build_au_market_profile
-from geno_core.models import RuntimeSavedViewInput
+from geno_core.models import ManualBackfillInput, RuntimeSavedViewInput
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.runtime import RuntimePersistenceError, build_repository_from_env, close_repository_connection
@@ -61,6 +62,24 @@ class RuntimeSavedViewRequest(BaseModel):
     query_path: str = Field(min_length=1, max_length=1000)
     export_path: str = Field(min_length=1, max_length=1000)
     created_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+
+
+class ManualBackfillRequest(BaseModel):
+    prompt_question_id: str = Field(min_length=1)
+    platform: str = Field(default="google", min_length=1, max_length=80)
+    surface: str = Field(default="google_ai_mode", min_length=1, max_length=120)
+    answer_text: str = Field(min_length=1, max_length=20000)
+    citation_urls: list[str] = Field(default_factory=list, max_length=20)
+    screenshot_url: str | None = Field(default=None, max_length=1000)
+    html_snapshot_url: str | None = Field(default=None, max_length=1000)
+    answer_present: bool = True
+    surface_triggered: bool = True
+    sample_index: int = Field(default=1, ge=1, le=50)
+    sample_size: int = Field(default=1, ge=1, le=50)
+    device: str = Field(default="desktop", min_length=1, max_length=80)
+    account_state: str | None = Field(default=None, max_length=120)
+    submitted_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 @app.get("/health")
@@ -262,6 +281,54 @@ def runtime_evidence_export_csv(
                 "X-GENO-Evidence-Export-Sort": str(export.filters.get("sort", "collected_at_desc")),
             },
         )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/evidence-runs/runtime/manual-backfill")
+def runtime_manual_backfill(payload: ManualBackfillRequest) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        prompt = repository.get_runtime_prompt(payload.prompt_question_id)
+        if not prompt:
+            raise HTTPException(status_code=404, detail="Prompt question not found")
+        citation_urls = tuple(url.strip() for url in payload.citation_urls if url.strip())
+        record = build_manual_backfill_record(
+            ManualBackfillInput(
+                project_id=str(prompt["project_id"]),
+                prompt_question_id=str(prompt["id"]),
+                prompt_text=str(prompt["text"]),
+                market_code=str(prompt["market_code"]),
+                city=str(prompt["city"]),
+                language=str(prompt["language"]),
+                platform=payload.platform.strip(),
+                surface=payload.surface.strip(),
+                answer_text=payload.answer_text.strip(),
+                citation_urls=citation_urls,
+                screenshot_url=payload.screenshot_url.strip() if payload.screenshot_url else None,
+                html_snapshot_url=payload.html_snapshot_url.strip() if payload.html_snapshot_url else None,
+                answer_present=payload.answer_present,
+                surface_triggered=payload.surface_triggered,
+                sample_index=payload.sample_index,
+                sample_size=payload.sample_size,
+                device=payload.device.strip(),
+                account_state=payload.account_state.strip() if payload.account_state else None,
+                submitted_by=payload.submitted_by.strip(),
+                notes=payload.notes.strip() if payload.notes else None,
+            )
+        )
+        repository.save_raw_evidence_records((record,))
+        return {
+            "answer_run_id": record.answer_run.id,
+            "raw_payload_hash": record.raw_answer.raw_payload_hash,
+            "citation_count": len(record.citations),
+            "evidence_asset_count": len(record.evidence_assets),
+            "audit_event_ids": [event.id for event in record.audit_events],
+            "record": asdict(record),
+        }
     finally:
         close_repository_connection(repository)
 
@@ -899,6 +966,7 @@ def contracts() -> dict[str, list[str]]:
             "CollectionCost",
             "RawEvidenceRecord",
             "CollectionFailureRecord",
+            "ManualBackfillInput",
             "PerplexitySonarCollector",
             "OpenAIWebSearchCollector",
         ],
@@ -960,6 +1028,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEvidenceRun",
             "RuntimeEvidencePage",
             "RuntimeEvidenceExport",
+            "ManualBackfillInput",
             "RuntimeSavedView",
             "RuntimeSavedViewPage",
             "RuntimeSavedViewInput",
@@ -988,6 +1057,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/prompts/runtime",
             "/v1/evidence-runs/runtime",
             "/v1/evidence-runs/runtime/export.csv",
+            "/v1/evidence-runs/runtime/manual-backfill",
             "/v1/runtime-saved-views",
             "worker --persist",
             "worker --persist-analysis",

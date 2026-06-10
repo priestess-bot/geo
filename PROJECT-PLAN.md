@@ -60,8 +60,8 @@
 - `[~]` 代码有单测；关键路径有集成测试（fixture/API/core 已覆盖；真实外部采集 E2E 待接）
 - `[~]` 通过 CI（lint + 测试 + 迁移可起）（本地 `make test` / `make docker-config` 通过；完整 lint/真实迁移起服待接）
 - `[x]` 若改了行为/口径，同 PR 更新对应 `docs/`，必要时加 `decisions/` ADR
-- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `PromptQuestion -> AnswerRun` / `answer_run_ids`（runtime project create/read API、runtime prompt API、fixture TraceabilityBundle、worker `--persist` 写 AU 启动包/prompt 元数据与 evidence、runtime project/prompt/evidence API 已读回项目、竞品、prompt 计数、prompt 文本与 prompt metadata；worker `--persist-analysis` 已保存 TraceabilityBundle，runtime traceability API 可读回报告/评分/证据/图谱/action/content/audit/evidence link 聚合详情；Runtime Console 已展示 Project Bootstrap、Runtime Filters、Evidence Sort、Saved Views、筛选后 Evidence CSV 导出、筛选/排序后的报告 artifact 下载、Prompt Pack、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail 和节点级 details 钻取；跨页面深链路和图谱可视化仍待接）
-- `[~]` 关键动作写入 `AuditEvent`；关键输出能生成 provenance 链路和解释包（采集/评分/报告/action/content fixture 已落；人工补录/实体确认待接）
+- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `PromptQuestion -> AnswerRun` / `answer_run_ids`（runtime project create/read API、runtime prompt API、fixture TraceabilityBundle、worker `--persist` 写 AU 启动包/prompt 元数据与 evidence、runtime project/prompt/evidence/manual backfill API 已读回项目、竞品、prompt 计数、prompt 文本与 prompt metadata；worker `--persist-analysis` 已保存 TraceabilityBundle，runtime traceability API 可读回报告/评分/证据/图谱/action/content/audit/evidence link 聚合详情；Runtime Console 已展示 Project Bootstrap、Runtime Filters、Evidence Sort、Saved Views、筛选后 Evidence CSV 导出、筛选/排序后的报告 artifact 下载、Prompt Pack、Manual Backfill、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail 和节点级 details 钻取；跨页面深链路和图谱可视化仍待接）
+- `[~]` 关键动作写入 `AuditEvent`；关键输出能生成 provenance 链路和解释包（采集/评分/报告/action/content fixture 与人工补录最小路径已落；实体确认待接）
 - `[~]` 有一次可演示（API fixture endpoints 与 Runtime Console MVP 已可演示；真实 design partner 数据演示待接）
 
 **P0a 稳定链路验收门槛**（M0 + M1 + M2a + M3 全绿才算可进入 design partner 试点）：
@@ -150,20 +150,20 @@ DoD：
 - `[~]` (P0a) CollectorBackend 接口落地 + **Perplexity Sonar 后端**（最易采，先打通全链路）— `Step4`（fixture + 真实 API adapter shell 已落；真实凭证联调待验证）
 - `[~]` (P0a) **OpenAI web search / ChatGPT Search** 官方 API 后端 — `Step4`（fixture + 真实 API adapter shell 已落；真实凭证联调待验证）
 - `[x]` (P0a) Raw Evidence Store：AnswerRun/RawAnswer/AnswerCitation/EvidenceAsset/CollectorLog，含 `answer_present`/`surface_triggered`/`sample_index`/`sample_size`/`access_method`，并有 PostgreSQL repository 写入映射、JSONB/UUID runtime adapter、worker `--persist` 写库开关、AU 启动包/prompt 元数据先写入和 prompt-linked runtime evidence 查询 API — `Step5 / §8.5..8.7`
-- `[~]` (P0a) Audit / Provenance 基础：采集开始/完成/失败、原始证据入库、人工补录写 `AuditEvent`；`ReportEvidence` / `ScoreSnapshotRun` / `SourceGraphEvidence` 关联表先建表 — `Step5.1 / §8.16..8.19`（采集完成/失败审计已落；人工补录待接）
+- `[~]` (P0a) Audit / Provenance 基础：采集开始/完成/失败、原始证据入库、人工补录写 `AuditEvent`；`ReportEvidence` / `ScoreSnapshotRun` / `SourceGraphEvidence` 关联表先建表 — `Step5.1 / §8.16..8.19`（采集完成/失败审计、人工补录最小路径 `manual_backfill_recorded` 已落；实体确认待接）
 - `[x]` (P0a) P0a 采样量闸门：100 prompts × 2 platforms × 4 geo × k=3 = 2400 planned_runs，可配置降级 prompt/geo 但不降级证据字段 — `Step9.3`
 - `[x]` (P0a) GeoProvider 抽象 + 城市采样（Australia/Sydney/Melbourne/Brisbane）— `Step6 / §8.4`
 - `[x]` (P0a) 截图/HTML 快照 + `raw_payload_hash` — `E3-05`
 - `[x]` (P0a) CollectionCost 记录（从首个采集器起），输出成功率/平均耗时/单位成本 — `§8.15`
 - `[ ]` (P0c/P1) 保真度抽检：同批 prompt 跑 官方 API vs 浏览器 两后端，量化差异率并入报告 — `Step4`
-- `[~]` (P1) 定时采集（Temporal）/复杂失败重试/限流/人工补录工作台 — `E3-03/06/07/08`（worker CLI 与 `--persist` 已落；复杂调度/限流/人工补录待接）
+- `[~]` (P1) 定时采集（Temporal）/复杂失败重试/限流/人工补录工作台 — `E3-03/06/07/08`（worker CLI 与 `--persist` 已落；Runtime Console 已有最小人工补录表单；复杂调度/限流/批量文件补录待接）
 
 DoD：
 
 - `[~]` Perplexity + OpenAI 两个平台均能采到 answer+citation+截图/HTML（fixture 可采；真实外部 API 待接）
 - `[x]` 每条记录平台/surface/access_method/city/language/device/时间/collector_version/collector_backend_id
 - `[x]` 记录 answer_present/surface_triggered；P0a 每 prompt k=3
-- `[~]` 采集事件和人工补录事件写 AuditEvent；原始证据能通过 EvidenceLink 关联到后续报告和评分（采集完成/失败审计已落；人工补录待接）
+- `[~]` 采集事件和人工补录事件写 AuditEvent；原始证据能通过 EvidenceLink 关联到后续报告和评分（采集完成/失败审计、人工补录写入 `AnswerRun/RawAnswer/AnswerCitation/EvidenceAsset/CollectorLog/CollectionCost/AuditEvent` 已落；实体确认待接）
 - `[x]` 每个采集器写 CollectionCost，能估算单项目 2400 planned_runs 的成本和耗时
 - `[x]` 采集后端可插拔：新增后端只实现 CollectorBackend，不改业务代码
 
@@ -176,7 +176,7 @@ DoD：
 - `[~]` (P0b·spike) `PlaywrightGoogleAIOCollector`：SERP 内嵌 AIO 采集，记录触发状态、截图/HTML、失败原因 — `Step4`（shell + fixture 已落；真实浏览器运行待接）
 - `[~]` (P0b·spike) `PlaywrightAIModeCollector`：AI Mode 独立界面采集，记录账号状态、地理、设备、失败原因 — `Step4`（shell + fixture 已落；真实浏览器运行待接）
 - `[~]` (P0b·spike) `ThirdPartySerpCollector`：至少接入一个第三方 SERP/AI-answer 供应商做对照 — `Step4`（shell + candidate 已落；供应商 API 待接）
-- `[~]` (P0b·spike) `ManualBackfillCollector`：人工补录最小路径，保证样本可审计 — `Step4`（shell + candidate 已落；补录 UI/文件流待接）
+- `[~]` (P0b·spike) `ManualBackfillCollector`：人工补录最小路径，保证样本可审计 — `Step4`（shell + candidate + runtime manual backfill API + 控制台最小表单已落；批量文件流待接）
 - `[x]` (P0b·spike) Google spike 采样：30 prompts × 2 surfaces × 2 geo（Australia + Sydney）× k=2 = 240 planned_runs — `Step4 / Step9.3`
 - `[x]` (P0b·spike) 失败分类：not_triggered / layout_changed / blocked / timeout / geo_mismatch / account_state — `Step4`
 - `[~]` (P0b·spike) pass/fail gate 报告：成功率、触发率、截图/HTML 样本、成本/耗时、推荐路径 — `Step4 / Step13`（fixture gate 已落；真实 spike 报告待跑）
@@ -294,7 +294,7 @@ DoD：
 | 架构可插拔是否为真 | M0 起持续 | 接口先行；P0a 先完成接口级可插拔，深度切换演示排到 P0c/P1 | Collector/Parser/Scoring/Report 可插拔；向量库/图库/LLM 后续演示 |
 | 城市级地理定位实现成本 | M2a/M2b | GeoProvider 抽象（uule/代理池/供应商可换）；P0a 四地理样本可降级但保留字段 | 地理样本可区分且成本可控 |
 | 单位经济不透明 | M2a 起 | CollectionCost 从首个采集器记录；P0a planned_runs 默认 2400，Google spike 默认 240 | 每份报告成本、耗时、成功率可估算 |
-| 审计链/解释链断裂 | M0 起，M5/M6 验收 | AuditEvent、ReportExport、ScoreContribution、EvidenceLink 从 P0 建表并写入关键事件 | TraceabilityBundle fixture 已证明报告可追到原始证据；runtime evidence API 已读回 prompt 文本并支持 platform/evidence city/intent_type 过滤、受控排序和即时 CSV 导出；runtime saved views API 已保存筛选/排序/query/export path 并写入 `runtime_saved_view_saved` 审计事件；runtime score API 已读回评分解释包；runtime graph API 已读回 source gap/竞品对标；runtime report API 已读回报告快照；runtime report artifact API 已支持附录级筛选/排序下载并返回 filter hash、sort、row/total count；runtime action plan API 已读回 action/retest audit events；runtime content engine API 已读回 fact/draft/connector/manual distribution/audit；runtime traceability API 已聚合报告/评分/证据/图谱/action/content/audit/evidence link；Runtime Console 已展示 Runtime Filters、Evidence Sort、Saved Views、筛选后 Evidence CSV 导出、筛选/排序后报告 artifact 下载、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail 与节点级 details 钻取；跨页面深链路/图谱可视化待接 |
+| 审计链/解释链断裂 | M0 起，M5/M6 验收 | AuditEvent、ReportExport、ScoreContribution、EvidenceLink 从 P0 建表并写入关键事件 | TraceabilityBundle fixture 已证明报告可追到原始证据；runtime evidence API 已读回 prompt 文本并支持 platform/evidence city/intent_type 过滤、受控排序和即时 CSV 导出；runtime manual backfill API 已把人工答案写入标准 RawEvidence 表并生成 `manual_backfill_recorded`；runtime saved views API 已保存筛选/排序/query/export path 并写入 `runtime_saved_view_saved` 审计事件；runtime score API 已读回评分解释包；runtime graph API 已读回 source gap/竞品对标；runtime report API 已读回报告快照；runtime report artifact API 已支持附录级筛选/排序下载并返回 filter hash、sort、row/total count；runtime action plan API 已读回 action/retest audit events；runtime content engine API 已读回 fact/draft/connector/manual distribution/audit；runtime traceability API 已聚合报告/评分/证据/图谱/action/content/audit/evidence link；Runtime Console 已展示 Runtime Filters、Evidence Sort、Saved Views、Manual Backfill、筛选后 Evidence CSV 导出、筛选/排序后报告 artifact 下载、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail 与节点级 details 钻取；跨页面深链路/图谱可视化待接 |
 | 打不过 Semrush/Ahrefs 数据规模 | 全程定位 | 押证据链/本地信源/代理商工作流，不拼分数广度 | design partner 认可证据价值 |
 | 评分构念效度未验证 | M6 后 | 复测展示变化；拿到客户转化数据再做相关性 | 报告标注 MVP 阶段不声称强因果 |
 

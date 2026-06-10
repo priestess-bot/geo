@@ -876,6 +876,20 @@ class PostgresEvidenceRepository:
             records = _rows_dict(cursor.fetchall(), PROMPT_QUESTION_READ_COLUMNS)
         return RuntimePromptPage(total_count=total_count, limit=limit, offset=offset, records=records)
 
+    def get_runtime_prompt(self, prompt_question_id: str) -> dict[str, Any] | None:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROMPT_QUESTION_READ_COLUMNS)}
+                FROM prompt_questions
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(prompt_question_id),),
+            )
+            row = cursor.fetchone()
+        return _row_dict(row, PROMPT_QUESTION_READ_COLUMNS) if row else None
+
     def list_runtime_evidence_runs(
         self,
         *,

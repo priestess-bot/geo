@@ -89,6 +89,20 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_manual_backfill_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.post(
+            "/v1/evidence-runs/runtime/manual-backfill",
+            json={
+                "prompt_question_id": "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0",
+                "platform": "google",
+                "surface": "google_ai_mode",
+                "answer_text": "Manual answer",
+                "citation_urls": ["https://examplebrand.example/au/manual"],
+            },
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_runtime_saved_views_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/runtime-saved-views?view_type=runtime_evidence")
         self.assertEqual(response.status_code, 503)
@@ -255,6 +269,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("build_traceability_bundle", payload["traceability"])
         self.assertIn("RuntimeEvidenceRun", payload["persistence"])
         self.assertIn("RuntimeEvidenceExport", payload["persistence"])
+        self.assertIn("ManualBackfillInput", payload["persistence"])
         self.assertIn("RuntimeSavedView", payload["persistence"])
         self.assertIn("RuntimeSavedViewInput", payload["persistence"])
         self.assertIn("RuntimeSavedViewPage", payload["persistence"])
@@ -274,6 +289,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/prompts/runtime", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime/export.csv", payload["persistence"])
+        self.assertIn("/v1/evidence-runs/runtime/manual-backfill", payload["persistence"])
         self.assertIn("/v1/runtime-saved-views", payload["persistence"])
         self.assertIn("/v1/visibility-scores/runtime", payload["persistence"])
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])

@@ -15,6 +15,7 @@ from geno_core.audit import build_audit_event, hash_payload
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
+    build_manual_backfill_record,
     build_p0a_collection_plan,
     collect_prompt_with_failure_record,
     run_collection_slice,
@@ -47,6 +48,7 @@ from geno_core.market import build_au_market_profile
 from geno_core.models import (
     AnswerAnalysis,
     CollectionFailureRecord,
+    ManualBackfillInput,
     ReportExport,
     RuntimeEvidencePage,
     RuntimeEvidenceExport,
@@ -357,6 +359,42 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(result.answer_run.status, "failed")
         self.assertEqual(result.audit_events[0].event_type, "answer_run_failed")
         self.assertIn("PERPLEXITY_API_KEY", result.error_message)
+
+    def test_manual_backfill_builds_auditable_raw_evidence_record(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        prompt = bootstrap.prompt_questions[0]
+        record = build_manual_backfill_record(
+            ManualBackfillInput(
+                project_id=bootstrap.project.id,
+                prompt_question_id=prompt.id,
+                prompt_text=prompt.text,
+                market_code=prompt.market_code,
+                city=prompt.city,
+                language=prompt.language,
+                platform="google",
+                surface="google_ai_mode",
+                answer_text="Manual Google AI Mode answer mentioning ExampleBrand with sources.",
+                citation_urls=("https://examplebrand.example/au/manual", "https://reviews.example/manual"),
+                screenshot_url="s3://manual-backfill/examplebrand-google-ai-mode.png",
+                html_snapshot_url="s3://manual-backfill/examplebrand-google-ai-mode.html",
+                submitted_by="analyst@example.com",
+                notes="Backfilled during Google AI Mode spike",
+            )
+        )
+        self.assertEqual(record.answer_run.access_method, "manual")
+        self.assertEqual(record.answer_run.platform, "google")
+        self.assertEqual(record.answer_run.surface, "google_ai_mode")
+        self.assertEqual(record.answer_run.collector_backend_id, "google.manual_backfill")
+        self.assertEqual(record.raw_answer.raw_payload["source"], "manual_backfill")
+        self.assertEqual(len(record.citations), 2)
+        self.assertEqual(record.citations[0].domain, "examplebrand.example")
+        self.assertEqual(len(record.evidence_assets), 2)
+        self.assertEqual(record.collection_cost.total_cost, 0.0)
+        self.assertEqual(record.collector_logs[0].event_type, "manual_backfill_recorded")
+        self.assertEqual(record.audit_events[0].event_type, "manual_backfill_recorded")
+        self.assertEqual(record.audit_events[0].actor_type, "user")
+        self.assertEqual(record.audit_events[0].actor_id, "analyst@example.com")
+        self.assertTrue(record.raw_answer.raw_payload_hash)
 
     def test_m2b_google_spike_plan_matches_240_runs(self) -> None:
         bootstrap = build_au_project_bootstrap()
@@ -1251,6 +1289,43 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("INSERT INTO audit_events", executed_sql)
         first_answer_run_insert = next(params for sql, params in connection.calls if "INSERT INTO answer_runs" in sql)
         self.assertEqual(first_answer_run_insert[19], "failed")
+        self.assertEqual(connection.commit_count, 1)
+
+    def test_postgres_repository_maps_manual_backfill_to_raw_evidence_tables(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        prompt = bootstrap.prompt_questions[0]
+        record = build_manual_backfill_record(
+            ManualBackfillInput(
+                project_id=bootstrap.project.id,
+                prompt_question_id=prompt.id,
+                prompt_text=prompt.text,
+                market_code=prompt.market_code,
+                city=prompt.city,
+                language=prompt.language,
+                platform="google",
+                surface="google_ai_mode",
+                answer_text="Manual Google AI Mode answer mentioning ExampleBrand with sources.",
+                citation_urls=("https://examplebrand.example/au/manual",),
+                screenshot_url="s3://manual-backfill/examplebrand-google-ai-mode.png",
+                submitted_by="runtime-console",
+            )
+        )
+        connection = RecordingConnection()
+        PostgresEvidenceRepository(connection).save_raw_evidence_records((record,))
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO answer_runs", executed_sql)
+        self.assertIn("INSERT INTO raw_answers", executed_sql)
+        self.assertIn("INSERT INTO answer_citations", executed_sql)
+        self.assertIn("INSERT INTO evidence_assets", executed_sql)
+        self.assertIn("INSERT INTO collector_logs", executed_sql)
+        self.assertIn("INSERT INTO collection_costs", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+        first_answer_run_insert = next(params for sql, params in connection.calls if "INSERT INTO answer_runs" in sql)
+        self.assertEqual(first_answer_run_insert[5], "manual")
+        self.assertEqual(first_answer_run_insert[16], "google.manual_backfill")
+        self.assertEqual(first_answer_run_insert[19], "completed")
+        audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
+        self.assertEqual(audit_insert[1], "manual_backfill_recorded")
         self.assertEqual(connection.commit_count, 1)
 
     def test_postgres_repository_reads_runtime_evidence_page(self) -> None:

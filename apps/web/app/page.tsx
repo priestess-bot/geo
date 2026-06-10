@@ -479,6 +479,44 @@ async function saveCurrentRuntimeView(formData: FormData) {
   revalidatePath("/");
 }
 
+async function submitManualBackfill(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const promptQuestionId = String(formData.get("prompt_question_id") || "").trim();
+  const answerText = String(formData.get("answer_text") || "").trim();
+  if (!promptQuestionId || !answerText) {
+    throw new Error("prompt_question_id and answer_text are required for manual backfill");
+  }
+  const citationUrls = String(formData.get("citation_urls") || "")
+    .split(/\r?\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const payload = {
+    prompt_question_id: promptQuestionId,
+    platform: String(formData.get("platform") || "google").trim(),
+    surface: String(formData.get("surface") || "google_ai_mode").trim(),
+    answer_text: answerText,
+    citation_urls: citationUrls,
+    screenshot_url: String(formData.get("screenshot_url") || "").trim() || undefined,
+    html_snapshot_url: String(formData.get("html_snapshot_url") || "").trim() || undefined,
+    submitted_by: String(formData.get("submitted_by") || "runtime-console").trim(),
+    notes: String(formData.get("notes") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/evidence-runs/runtime/manual-backfill`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/evidence-runs/runtime/manual-backfill returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
 async function fetchRuntimeEndpoint<T>(
   baseUrl: string,
   path: string,
@@ -751,6 +789,7 @@ export default async function Home({
             <select name="platform" defaultValue={filters.platform || ""}>
               <option value="">All platforms</option>
               <option value="chatgpt">chatgpt</option>
+              <option value="google">google</option>
               <option value="perplexity">perplexity</option>
             </select>
           </label>
@@ -923,6 +962,62 @@ export default async function Home({
                   </li>
                 ))}
               </ul>
+              <form action={submitManualBackfill} className="manualBackfillForm">
+                <input type="hidden" name="prompt_question_id" value={latestPrompt?.id || ""} />
+                <div className="formHeader">
+                  <h3>Manual Backfill</h3>
+                  <small>{latestPrompt ? shortId(latestPrompt.id) : "no prompt"}</small>
+                </div>
+                <label>
+                  <span>Platform</span>
+                  <select name="platform" defaultValue="google">
+                    <option value="google">google</option>
+                    <option value="perplexity">perplexity</option>
+                    <option value="chatgpt">chatgpt</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Surface</span>
+                  <select name="surface" defaultValue="google_ai_mode">
+                    <option value="google_ai_mode">google_ai_mode</option>
+                    <option value="google_aio">google_aio</option>
+                    <option value="sonar">sonar</option>
+                    <option value="chatgpt_search">chatgpt_search</option>
+                  </select>
+                </label>
+                <label className="wideField">
+                  <span>Answer text</span>
+                  <textarea
+                    name="answer_text"
+                    defaultValue={`Manual backfill answer for: ${latestPrompt?.text || "selected prompt"}`}
+                    rows={4}
+                  />
+                </label>
+                <label className="wideField">
+                  <span>Citation URLs</span>
+                  <textarea
+                    name="citation_urls"
+                    defaultValue={"https://examplebrand.example/au/manual-backfill\nhttps://reviews.example/manual-backfill"}
+                    rows={2}
+                  />
+                </label>
+                <label>
+                  <span>Screenshot URL</span>
+                  <input name="screenshot_url" defaultValue="s3://manual-backfill/examplebrand-google-ai-mode.png" />
+                </label>
+                <label>
+                  <span>HTML URL</span>
+                  <input name="html_snapshot_url" defaultValue="s3://manual-backfill/examplebrand-google-ai-mode.html" />
+                </label>
+                <label className="wideField">
+                  <span>Notes</span>
+                  <input name="notes" defaultValue="Manual Google AI Mode backfill for auditable spike coverage" />
+                </label>
+                <input type="hidden" name="submitted_by" value="runtime-console" />
+                <button className="actionButton" type="submit" disabled={!latestPrompt}>
+                  Save backfill
+                </button>
+              </form>
             </div>
           ) : (
             <EmptyState />
