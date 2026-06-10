@@ -384,6 +384,11 @@ def runtime_reports(
 def runtime_report_artifact(
     report_export_id: str,
     artifact_type: str = Query(default="markdown", alias="type", pattern="^(markdown|csv|pdf)$"),
+    platform: str | None = None,
+    city: str | None = None,
+    intent_type: str | None = None,
+    status: str | None = None,
+    sort: str | None = None,
 ) -> Response:
     try:
         repository = build_repository_from_env()
@@ -393,6 +398,11 @@ def runtime_report_artifact(
         artifact = repository.get_runtime_report_artifact(
             report_export_id=report_export_id,
             artifact_type=artifact_type,
+            platform=platform,
+            city=city,
+            intent_type=intent_type,
+            status=status,
+            sort=sort,
         )
         if artifact is None:
             raise HTTPException(status_code=404, detail="Runtime report artifact not found")
@@ -402,6 +412,10 @@ def runtime_report_artifact(
             headers={
                 "Content-Disposition": f'attachment; filename="{artifact.filename}"',
                 "X-GENO-Report-Artifact-Hash": artifact.content_hash,
+                "X-GENO-Report-Artifact-Filter-Hash": artifact.filter_hash,
+                "X-GENO-Report-Artifact-Sort": artifact.sort,
+                "X-GENO-Report-Artifact-Row-Count": str(artifact.row_count),
+                "X-GENO-Report-Artifact-Total-Count": str(artifact.total_count),
             },
         )
     finally:

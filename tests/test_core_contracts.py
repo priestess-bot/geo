@@ -1778,7 +1778,7 @@ class CoreContractsTest(unittest.TestCase):
             "surface": "sonar",
             "access_method": "official_api",
             "market_code": "AU",
-            "city": "Australia",
+            "city": "Sydney",
             "language": "en-AU",
             "device": "desktop",
             "answer_present": True,
@@ -1911,7 +1911,7 @@ class CoreContractsTest(unittest.TestCase):
             "surface": "sonar",
             "access_method": "official_api",
             "market_code": "AU",
-            "city": "Australia",
+            "city": "Sydney",
             "language": "en-AU",
             "device": "desktop",
             "answer_present": True,
@@ -1987,6 +1987,7 @@ class CoreContractsTest(unittest.TestCase):
     def test_postgres_repository_renders_runtime_report_csv_artifact(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
         answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        other_answer_run_id = "a20ec948-0443-5de5-8151-5ec1db8aef01"
         report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
         snapshot_id = "a7f7f8aa-5d40-4fdf-a2b3-b8729a9a5e2f"
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
@@ -1997,7 +1998,7 @@ class CoreContractsTest(unittest.TestCase):
             "report_version": "worker-runtime-v1",
             "report_type": "worker_runtime",
             "score_snapshot_ids": [snapshot_id],
-            "answer_run_ids": [answer_run_id],
+            "answer_run_ids": [answer_run_id, other_answer_run_id],
             "prompt_version": "au_dtc_ecommerce_v1",
             "scoring_formula_version": "au_visibility_v1",
             "platform_weights_snapshot": {"chatgpt": 0.30, "perplexity": 0.25},
@@ -2019,7 +2020,7 @@ class CoreContractsTest(unittest.TestCase):
             "surface": "sonar",
             "access_method": "official_api",
             "market_code": "AU",
-            "city": "Australia",
+            "city": "Sydney",
             "language": "en-AU",
             "device": "desktop",
             "answer_present": True,
@@ -2037,6 +2038,15 @@ class CoreContractsTest(unittest.TestCase):
             "prompt_priority": 1,
             "prompt_version": "au_dtc_ecommerce_v1",
         }
+        other_answer_run_row = {
+            **answer_run_row,
+            "id": other_answer_run_id,
+            "platform": "chatgpt",
+            "surface": "chatgpt_search",
+            "city": "Melbourne",
+            "prompt_text": "Best ExampleBrand alternatives in Melbourne",
+            "prompt_intent_type": "alternative",
+        }
         connection = RecordingConnection(
             result_sets=[
                 report_row,
@@ -2051,11 +2061,12 @@ class CoreContractsTest(unittest.TestCase):
                     "trigger_rate": 1.0,
                     "mention_rate": 1.0,
                     "recommendation_rate": 1.0,
-                    "answer_run_ids": [answer_run_id],
+                    "answer_run_ids": [answer_run_id, other_answer_run_id],
                     "created_at": now,
                     "dispersion": 0.0,
                 },
                 answer_run_row,
+                other_answer_run_row,
                 [],
                 {"count": 0},
             ]
@@ -2063,14 +2074,24 @@ class CoreContractsTest(unittest.TestCase):
         artifact = PostgresEvidenceRepository(connection).get_runtime_report_artifact(
             report_export_id=report_export_id,
             artifact_type="csv",
+            platform="perplexity",
+            city="Sydney",
+            intent_type="brand_awareness",
+            sort="cost_desc",
         )
         self.assertIsInstance(artifact, RuntimeReportArtifact)
         assert artifact is not None
         self.assertEqual(artifact.filename, "worker-runtime-v1.csv")
         self.assertEqual(artifact.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(artifact.filters["platform"], "perplexity")
+        self.assertEqual(artifact.sort, "cost_desc")
+        self.assertEqual(artifact.total_count, 2)
+        self.assertEqual(artifact.row_count, 1)
         self.assertIn("answer_run_id", artifact.content)
         self.assertIn("Is ExampleBrand good in Australia?", artifact.content)
+        self.assertNotIn("Best ExampleBrand alternatives in Melbourne", artifact.content)
         self.assertTrue(artifact.content_hash)
+        self.assertTrue(artifact.filter_hash)
 
     def test_postgres_repository_renders_runtime_report_pdf_artifact(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

@@ -60,7 +60,7 @@
 - `[~]` 代码有单测；关键路径有集成测试（fixture/API/core 已覆盖；真实外部采集 E2E 待接）
 - `[~]` 通过 CI（lint + 测试 + 迁移可起）（本地 `make test` / `make docker-config` 通过；完整 lint/真实迁移起服待接）
 - `[x]` 若改了行为/口径，同 PR 更新对应 `docs/`，必要时加 `decisions/` ADR
-- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `PromptQuestion -> AnswerRun` / `answer_run_ids`（runtime project create/read API、runtime prompt API、fixture TraceabilityBundle、worker `--persist` 写 AU 启动包/prompt 元数据与 evidence、runtime project/prompt/evidence API 已读回项目、竞品、prompt 计数、prompt 文本与 prompt metadata；worker `--persist-analysis` 已保存 TraceabilityBundle，runtime traceability API 可读回报告/评分/证据/图谱/action/content/audit/evidence link 聚合详情；Runtime Console 已展示 Project Bootstrap、Runtime Filters、Evidence Sort、Saved Views、筛选后 Evidence CSV 导出、Prompt Pack、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail 和节点级 details 钻取；跨页面深链路和图谱可视化仍待接）
+- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `PromptQuestion -> AnswerRun` / `answer_run_ids`（runtime project create/read API、runtime prompt API、fixture TraceabilityBundle、worker `--persist` 写 AU 启动包/prompt 元数据与 evidence、runtime project/prompt/evidence API 已读回项目、竞品、prompt 计数、prompt 文本与 prompt metadata；worker `--persist-analysis` 已保存 TraceabilityBundle，runtime traceability API 可读回报告/评分/证据/图谱/action/content/audit/evidence link 聚合详情；Runtime Console 已展示 Project Bootstrap、Runtime Filters、Evidence Sort、Saved Views、筛选后 Evidence CSV 导出、筛选/排序后的报告 artifact 下载、Prompt Pack、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail 和节点级 details 钻取；跨页面深链路和图谱可视化仍待接）
 - `[~]` 关键动作写入 `AuditEvent`；关键输出能生成 provenance 链路和解释包（采集/评分/报告/action/content fixture 已落；人工补录/实体确认待接）
 - `[~]` 有一次可演示（API fixture endpoints 与 Runtime Console MVP 已可演示；真实 design partner 数据演示待接）
 
@@ -88,7 +88,7 @@
 
 - `[ ]` 生成 Citation Graph，识别 source gap，输出 3–5 竞品 Benchmark
 - `[ ]` 导出含方法说明（含 API/消费者界面差异抽检结论、Google spike 结论、平台覆盖/降级口径）、审计摘要、分数解释包与原始证据附录的 PDF/CSV
-- `[~]` 任意报告数值可沿 `ReportExport -> VisibilityScoreSnapshot -> ScoreContribution -> AnswerAnalysis -> PromptQuestion -> AnswerRun -> RawAnswer/AnswerCitation/EvidenceAsset -> SourceGraph/SourceGap/CompetitorBenchmark` 追溯（fixture TraceabilityBundle、prompt-linked runtime evidence API、runtime score API、runtime citation graph API、runtime report API、runtime report artifact API、runtime traceability detail API 与 Runtime Console Evidence Runs、Score Contributions、Citation Graph & Competitors、Traceability Detail / node drilldown 已落；基础 PDF artifact 与 MinIO/S3-compatible artifact 归档已落，白标 PDF 模板、筛选和深链路详情 UI 待接）
+- `[~]` 任意报告数值可沿 `ReportExport -> VisibilityScoreSnapshot -> ScoreContribution -> AnswerAnalysis -> PromptQuestion -> AnswerRun -> RawAnswer/AnswerCitation/EvidenceAsset -> SourceGraph/SourceGap/CompetitorBenchmark` 追溯（fixture TraceabilityBundle、prompt-linked runtime evidence API、runtime score API、runtime citation graph API、runtime report API、runtime report artifact API、runtime traceability detail API 与 Runtime Console Evidence Runs、Score Contributions、Citation Graph & Competitors、Traceability Detail / node drilldown 已落；基础 PDF artifact、MinIO/S3-compatible artifact 归档、附录级筛选/排序 artifact 下载已落，白标 PDF 模板和深链路详情 UI 待接）
 
 **架构验收门槛**（开源·可插拔，搬自 AU 路径 §9）：
 
@@ -222,7 +222,7 @@ DoD：
 - `[x]` (P0c) Citation Graph 输出：常被引/竞品独占/过旧/本地缺失信源；worker `--persist-analysis` 已写入 source graph evidence 与 source gaps — `Step8`
 - `[x]` (P0c) CompetitorBenchmark（3–5 竞品：mention/recommend/position/citation overlap/local relevance…），并支持 runtime citation graph API 读回 — `Step10 / §8.10`
 - `[~]` (P0c) 监测看板：总览/平台对比/竞品对比/问题明细/风险 — `E5-01..05`（Runtime Console 已展示 Project Bootstrap、Runtime Filters、Prompt Pack、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、source gaps、actions、Content Engine Detail、Traceability Detail 和节点级 details 钻取；完整问题明细 UI 待接）
-- `[~]` (P1) 看板筛选与导出 — `E5-06`（platform/evidence city/intent_type URL 查询筛选已接入 evidence runtime API 与控制台，prompt runtime API 同步按 intent_type 筛选；evidence 支持 `collected_at/cost/citation/audit` 受控排序；筛选后 evidence CSV 导出已落并带 hash/sort header；Runtime Saved Views 已可保存筛选、排序、query/export path 并写入审计事件；报告级导出待接）
+- `[~]` (P1) 看板筛选与导出 — `E5-06`（platform/evidence city/intent_type URL 查询筛选已接入 evidence runtime API 与控制台，prompt runtime API 同步按 intent_type 筛选；evidence 支持 `collected_at/cost/citation/audit` 受控排序；筛选后 evidence CSV 导出已落并带 hash/sort header；Runtime Saved Views 已可保存筛选、排序、query/export path 并写入审计事件；Report Snapshot 的 Markdown/CSV/PDF artifact 下载已继承当前筛选/排序并返回 filter hash、sort、row/total count header；完整报告历史/白标导出待接）
 - `[ ]` (P1) GraphStore 切 Neo4j 验证可插拔 — `架构验收`
 
 DoD：
@@ -237,14 +237,14 @@ DoD：
 
 任务：
 
-- `[~]` (P0c) ReportExporter 接口 + Markdown/CSV/PDF 导出（方法说明 + 证据附录）、runtime report API、Markdown/CSV/PDF artifact 下载与 MinIO/S3-compatible artifact 归档；白标 PDF 模板 renderer 待接 — `Step13`
+- `[~]` (P0c) ReportExporter 接口 + Markdown/CSV/PDF 导出（方法说明 + 证据附录）、runtime report API、Markdown/CSV/PDF artifact 下载、附录级筛选/排序下载与 MinIO/S3-compatible artifact 归档；白标 PDF 模板 renderer 待接 — `Step13`
 - `[x]` (P0c) ReportExport 快照：冻结 score_snapshot_ids、answer_run_ids、prompt_version、公式版本、平台权重、采样窗口；worker `--persist-analysis` 已写入不可覆盖版本，runtime report API 可读回 — `Step5.1 / §8.17`
 - `[~]` (P0c) 报告展示：采集窗口/平台覆盖/access_method/样本量(k)/离散度/双分母/公式版本/API-界面差异抽检结论/Google spike pass/fail/limited coverage/审计摘要/分数解释包/非确定性说明 — `Step13`（Runtime Console 已展示 Report Method & Evidence Appendix：冻结 methodology hash、采样窗口、平台/access method/city 覆盖、样本量、双分母评分、离散度、公式版本、平台权重、证据附录、citation/audit 摘要；核心方法/分数/证据/source gap/competitor/report snapshot 与基础 PDF artifact 已落；白标 PDF 模板、API-界面差异抽检与真实 Google 结论待接）
 - `[ ]` (P1) 代理商工作流：多客户/多项目/白标/导出历史 — `Step13`
 
 DoD：
 
-- `[~]` 可导出含方法说明和证据附录的 Markdown/CSV/PDF，并通过 runtime report API 读取冻结快照、通过 artifact API 下载 Markdown/CSV/PDF；worker 可把 Markdown/CSV/PDF 归档到 MinIO/S3-compatible bucket；Runtime Console 已展示报告方法说明和证据附录详情；白标 PDF 模板待接
+- `[~]` 可导出含方法说明和证据附录的 Markdown/CSV/PDF，并通过 runtime report API 读取冻结快照、通过 artifact API 下载 Markdown/CSV/PDF；artifact API 支持按当前 `platform/city/intent_type/status/sort` 即时过滤/排序证据附录并返回 hash 与 row count，不改写冻结报告；worker 可把 Markdown/CSV/PDF 归档到 MinIO/S3-compatible bucket；Runtime Console 已展示报告方法说明和证据附录详情；白标 PDF 模板待接
 - `[x]` 报告每个数字可追溯 answer_run_ids、prompt metadata、score snapshot 和 citation graph
 - `[x]` 报告导出写 AuditEvent；重复导出生成新 ReportExport 版本，不覆盖旧报告
 
@@ -294,7 +294,7 @@ DoD：
 | 架构可插拔是否为真 | M0 起持续 | 接口先行；P0a 先完成接口级可插拔，深度切换演示排到 P0c/P1 | Collector/Parser/Scoring/Report 可插拔；向量库/图库/LLM 后续演示 |
 | 城市级地理定位实现成本 | M2a/M2b | GeoProvider 抽象（uule/代理池/供应商可换）；P0a 四地理样本可降级但保留字段 | 地理样本可区分且成本可控 |
 | 单位经济不透明 | M2a 起 | CollectionCost 从首个采集器记录；P0a planned_runs 默认 2400，Google spike 默认 240 | 每份报告成本、耗时、成功率可估算 |
-| 审计链/解释链断裂 | M0 起，M5/M6 验收 | AuditEvent、ReportExport、ScoreContribution、EvidenceLink 从 P0 建表并写入关键事件 | TraceabilityBundle fixture 已证明报告可追到原始证据；runtime evidence API 已读回 prompt 文本并支持 platform/evidence city/intent_type 过滤、受控排序和即时 CSV 导出；runtime saved views API 已保存筛选/排序/query/export path 并写入 `runtime_saved_view_saved` 审计事件；runtime score API 已读回评分解释包；runtime graph API 已读回 source gap/竞品对标；runtime report API 已读回报告快照；runtime action plan API 已读回 action/retest audit events；runtime content engine API 已读回 fact/draft/connector/manual distribution/audit；runtime traceability API 已聚合报告/评分/证据/图谱/action/content/audit/evidence link；Runtime Console 已展示 Runtime Filters、Evidence Sort、Saved Views、筛选后 Evidence CSV 导出、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail 与节点级 details 钻取；跨页面深链路/图谱可视化待接 |
+| 审计链/解释链断裂 | M0 起，M5/M6 验收 | AuditEvent、ReportExport、ScoreContribution、EvidenceLink 从 P0 建表并写入关键事件 | TraceabilityBundle fixture 已证明报告可追到原始证据；runtime evidence API 已读回 prompt 文本并支持 platform/evidence city/intent_type 过滤、受控排序和即时 CSV 导出；runtime saved views API 已保存筛选/排序/query/export path 并写入 `runtime_saved_view_saved` 审计事件；runtime score API 已读回评分解释包；runtime graph API 已读回 source gap/竞品对标；runtime report API 已读回报告快照；runtime report artifact API 已支持附录级筛选/排序下载并返回 filter hash、sort、row/total count；runtime action plan API 已读回 action/retest audit events；runtime content engine API 已读回 fact/draft/connector/manual distribution/audit；runtime traceability API 已聚合报告/评分/证据/图谱/action/content/audit/evidence link；Runtime Console 已展示 Runtime Filters、Evidence Sort、Saved Views、筛选后 Evidence CSV 导出、筛选/排序后报告 artifact 下载、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail 与节点级 details 钻取；跨页面深链路/图谱可视化待接 |
 | 打不过 Semrush/Ahrefs 数据规模 | 全程定位 | 押证据链/本地信源/代理商工作流，不拼分数广度 | design partner 认可证据价值 |
 | 评分构念效度未验证 | M6 后 | 复测展示变化；拿到客户转化数据再做相关性 | 报告标注 MVP 阶段不声称强因果 |
 

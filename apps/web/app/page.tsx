@@ -523,6 +523,21 @@ function runtimePath(path: string, params: Record<string, string | number | unde
   return `${path}${buildQuery(params)}`;
 }
 
+function reportArtifactPath(
+  reportArtifactBase: string | null,
+  artifactType: "markdown" | "csv" | "pdf",
+  filters: RuntimeFilters
+): string | null {
+  if (!reportArtifactBase) return null;
+  return runtimePath(reportArtifactBase, {
+    type: artifactType,
+    platform: filters.platform,
+    city: filters.city,
+    intent_type: filters.intent_type,
+    sort: filters.sort
+  });
+}
+
 async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   data: RuntimeData;
   error: string | null;
@@ -700,6 +715,9 @@ export default async function Home({
   const evidenceExportUrl = `${displayUrl}${paths.evidenceExport}`;
   const evidenceSort = data.evidence.sort || filters.sort || "collected_at_desc";
   const runtimeViewName = activeFilterCount ? `${filterLabel} · ${evidenceSort}` : `All runtime evidence · ${evidenceSort}`;
+  const reportMarkdownUrl = reportArtifactPath(reportArtifactBase, "markdown", { ...filters, sort: evidenceSort });
+  const reportCsvUrl = reportArtifactPath(reportArtifactBase, "csv", { ...filters, sort: evidenceSort });
+  const reportPdfUrl = reportArtifactPath(reportArtifactBase, "pdf", { ...filters, sort: evidenceSort });
 
   return (
     <main className="shell">
@@ -984,10 +1002,13 @@ export default async function Home({
                 <Fact label="Frozen CSV URL" value={latestReport.report_export.csv_url || "pending object store"} />
               </dl>
               <div className="downloadRow">
-                <a href={`${reportArtifactBase}?type=markdown`}>Download Markdown</a>
-                <a href={`${reportArtifactBase}?type=csv`}>Download CSV</a>
-                <a href={`${reportArtifactBase}?type=pdf`}>Download PDF</a>
+                {reportMarkdownUrl ? <a href={reportMarkdownUrl}>Download Markdown</a> : null}
+                {reportCsvUrl ? <a href={reportCsvUrl}>Download CSV</a> : null}
+                {reportPdfUrl ? <a href={reportPdfUrl}>Download PDF</a> : null}
               </div>
+              <dl className="facts">
+                <Fact label="Artifact filters" value={reportCsvUrl?.replace(displayUrl, "") || "No report artifact"} />
+              </dl>
             </div>
           ) : (
             <EmptyState />

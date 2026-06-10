@@ -217,6 +217,7 @@ def _render_runtime_report_csv(report: RuntimeReportExport) -> str:
             "answer_run_id",
             "prompt_question_id",
             "prompt_text",
+            "prompt_intent_type",
             "platform",
             "surface",
             "city",
@@ -226,6 +227,9 @@ def _render_runtime_report_csv(report: RuntimeReportExport) -> str:
             "answer_present",
             "surface_triggered",
             "status",
+            "total_cost",
+            "citation_count",
+            "audit_event_count",
         ],
     )
     writer.writeheader()
@@ -237,6 +241,7 @@ def _render_runtime_report_csv(report: RuntimeReportExport) -> str:
                 "answer_run_id": answer_run["id"],
                 "prompt_question_id": answer_run["prompt_question_id"],
                 "prompt_text": answer_run.get("prompt_text") or "",
+                "prompt_intent_type": answer_run.get("prompt_intent_type") or "",
                 "platform": answer_run["platform"],
                 "surface": answer_run["surface"],
                 "city": answer_run["city"],
@@ -246,9 +251,53 @@ def _render_runtime_report_csv(report: RuntimeReportExport) -> str:
                 "answer_present": answer_run["answer_present"],
                 "surface_triggered": answer_run["surface_triggered"],
                 "status": answer_run["status"],
+                "total_cost": answer_run.get("total_cost") or "",
+                "citation_count": answer_run.get("citation_count") or "",
+                "audit_event_count": answer_run.get("audit_event_count") or "",
             }
         )
     return output.getvalue()
+
+
+def _filter_runtime_report_answer_runs(
+    answer_runs: tuple[dict[str, Any], ...],
+    *,
+    platform: str | None = None,
+    city: str | None = None,
+    intent_type: str | None = None,
+    status: str | None = None,
+    sort: str | None = None,
+) -> tuple[tuple[dict[str, Any], ...], str]:
+    filtered = [
+        answer_run
+        for answer_run in answer_runs
+        if (not platform or answer_run.get("platform") == platform)
+        and (not city or answer_run.get("city") == city)
+        and (not intent_type or answer_run.get("prompt_intent_type") == intent_type)
+        and (not status or answer_run.get("status") == status)
+    ]
+    if sort is None:
+        return tuple(filtered), "report_evidence_order"
+    sort_key, _ = _runtime_evidence_sort(sort)
+
+    def sort_value(answer_run: dict[str, Any]) -> tuple[object, ...]:
+        if sort_key == "collected_at_asc":
+            return (answer_run.get("collected_at") or "", answer_run.get("id") or "")
+        if sort_key == "cost_desc":
+            return (-(float(answer_run.get("total_cost") or 0)), answer_run.get("collected_at") or "", answer_run.get("id") or "")
+        if sort_key == "cost_asc":
+            return (float(answer_run.get("total_cost") or 0), answer_run.get("collected_at") or "", answer_run.get("id") or "")
+        if sort_key == "citation_count_desc":
+            return (-(int(answer_run.get("citation_count") or 0)), answer_run.get("collected_at") or "", answer_run.get("id") or "")
+        if sort_key == "audit_count_desc":
+            return (-(int(answer_run.get("audit_event_count") or 0)), answer_run.get("collected_at") or "", answer_run.get("id") or "")
+        return (answer_run.get("collected_at") or "", answer_run.get("id") or "")
+
+    if sort_key == "collected_at_desc":
+        filtered.sort(key=lambda item: (item.get("collected_at") or "", item.get("id") or ""), reverse=True)
+    else:
+        filtered.sort(key=sort_value)
+    return tuple(filtered), sort_key
 
 
 def _render_runtime_evidence_csv(page: RuntimeEvidencePage) -> str:
@@ -1231,6 +1280,11 @@ class PostgresEvidenceRepository:
         *,
         report_export_id: str,
         artifact_type: str,
+        platform: str | None = None,
+        city: str | None = None,
+        intent_type: str | None = None,
+        status: str | None = None,
+        sort: str | None = None,
     ) -> RuntimeReportArtifact | None:
         artifact_type = artifact_type.lower()
         if artifact_type not in {"markdown", "csv", "pdf"}:
@@ -1246,18 +1300,40 @@ class PostgresEvidenceRepository:
                 cursor=cursor,
                 report_export=report_export,
             )
+        filtered_answer_runs, sort_key = _filter_runtime_report_answer_runs(
+            runtime_report.answer_runs,
+            platform=platform,
+            city=city,
+            intent_type=intent_type,
+            status=status,
+            sort=sort,
+        )
+        filtered_report = RuntimeReportExport(
+            report_export=runtime_report.report_export,
+            score_snapshots=runtime_report.score_snapshots,
+            answer_runs=filtered_answer_runs,
+            citation_graph=runtime_report.citation_graph,
+            audit_events=runtime_report.audit_events,
+        )
         if artifact_type == "markdown":
-            content = _render_runtime_report_markdown(runtime_report)
+            content = _render_runtime_report_markdown(filtered_report)
             extension = "md"
             media_type = "text/markdown; charset=utf-8"
         elif artifact_type == "csv":
-            content = _render_runtime_report_csv(runtime_report)
+            content = _render_runtime_report_csv(filtered_report)
             extension = "csv"
             media_type = "text/csv; charset=utf-8"
         else:
-            content = render_markdown_pdf(_render_runtime_report_markdown(runtime_report))
+            content = render_markdown_pdf(_render_runtime_report_markdown(filtered_report))
             extension = "pdf"
             media_type = "application/pdf"
+        filters = {
+            "platform": platform,
+            "city": city,
+            "intent_type": intent_type,
+            "status": status,
+        }
+        active_filters = {key: value for key, value in filters.items() if value is not None}
         filename = f"{report_export['report_version']}.{extension}"
         return RuntimeReportArtifact(
             report_export=report_export,
@@ -1266,6 +1342,11 @@ class PostgresEvidenceRepository:
             media_type=media_type,
             content=content,
             content_hash=_artifact_hash(content),
+            filters=active_filters,
+            filter_hash=_artifact_hash(json.dumps(active_filters, ensure_ascii=False, sort_keys=True)),
+            sort=sort_key,
+            total_count=len(runtime_report.answer_runs),
+            row_count=len(filtered_report.answer_runs),
         )
 
     def get_runtime_traceability_detail(
@@ -1895,10 +1976,25 @@ class PostgresEvidenceRepository:
                        pq.text AS prompt_text,
                        pq.intent_type AS prompt_intent_type,
                        pq.priority AS prompt_priority,
-                       pq.prompt_version AS prompt_version
+                       pq.prompt_version AS prompt_version,
+                       cc.total_cost AS total_cost,
+                       citation_counts.citation_count AS citation_count,
+                       audit_counts.audit_event_count AS audit_event_count
                 FROM report_evidence re
                 JOIN answer_runs ar ON ar.id = re.answer_run_id
                 LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id
+                LEFT JOIN collection_costs cc ON cc.answer_run_id = ar.id
+                LEFT JOIN (
+                    SELECT answer_run_id, count(*) AS citation_count
+                    FROM answer_citations
+                    GROUP BY answer_run_id
+                ) citation_counts ON citation_counts.answer_run_id = ar.id
+                LEFT JOIN (
+                    SELECT target_id AS answer_run_id, count(*) AS audit_event_count
+                    FROM audit_events
+                    WHERE target_type = 'answer_run'
+                    GROUP BY target_id
+                ) audit_counts ON audit_counts.answer_run_id = ar.id::text
                 WHERE re.report_export_id = %s AND re.answer_run_id = %s
                 ORDER BY re.created_at ASC
                 LIMIT 1
@@ -1907,7 +2003,12 @@ class PostgresEvidenceRepository:
             )
             answer_run_row = cursor.fetchone()
             if answer_run_row:
-                answer_runs.append(_row_dict(answer_run_row, ANSWER_RUN_READ_COLUMNS))
+                answer_runs.append(
+                    _row_dict(
+                        answer_run_row,
+                        ANSWER_RUN_READ_COLUMNS + ("total_cost", "citation_count", "audit_event_count"),
+                    )
+                )
         cursor.execute(
             f"""
             SELECT {", ".join(AUDIT_EVENT_COLUMNS)}

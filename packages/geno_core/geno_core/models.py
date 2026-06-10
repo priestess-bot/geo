@@ -691,6 +691,11 @@ class RuntimeReportArtifact:
     media_type: str
     content: str | bytes
     content_hash: str
+    filters: dict[str, Any]
+    filter_hash: str
+    sort: str
+    total_count: int
+    row_count: int
 
 
 @dataclass(frozen=True)

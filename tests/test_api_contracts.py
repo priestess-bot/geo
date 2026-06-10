@@ -127,7 +127,9 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
     def test_runtime_report_artifact_endpoint_requires_persistence_config(self) -> None:
-        response = self.client.get("/v1/reports/runtime/report-1/artifact?type=markdown")
+        response = self.client.get(
+            "/v1/reports/runtime/report-1/artifact?type=markdown&platform=perplexity&city=Sydney&intent_type=brand_awareness&sort=cost_desc"
+        )
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
