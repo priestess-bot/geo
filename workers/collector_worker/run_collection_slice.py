@@ -20,6 +20,7 @@ from geno_core.collection import (
     build_collection_run_audit_event,
     build_collection_run_summary,
     run_collection_slice,
+    evaluate_p0a_collection_readiness,
 )
 from geno_core.collectors import (
     FixtureGoogleAIModeCollector,
@@ -379,6 +380,7 @@ def main() -> None:
     )
     successes = tuple(record for record in records if isinstance(record, RawEvidenceRecord))
     failures = tuple(record for record in records if isinstance(record, CollectionFailureRecord))
+    p0a_readiness_gate = evaluate_p0a_collection_readiness(records=records) if args.mode != "google-fixture" else None
     persistence: dict[str, object] = {"enabled": False}
     if args.persist:
         try:
@@ -404,6 +406,7 @@ def main() -> None:
         "failure_count": len(failures),
         "answer_run_ids": [record.answer_run.id for record in records],
         "failure_events": [asdict(record) for record in failures],
+        "p0a_readiness_gate": asdict(p0a_readiness_gate) if p0a_readiness_gate is not None else None,
         "persistence": persistence,
     }
     if plan is not None:

@@ -1191,7 +1191,7 @@ Metabase：P0c 可用模板导出优先，Metabase 不阻塞报告
 | --- | --- | --- | --- |
 | 第 0 阶段 | 接口契约与轻量开源底座 | CollectorBackend/ParserEngine/VectorStore 等接口定义、核心 Compose 起服；重组件只保留接口和迁移路径 | FastAPI、PostgreSQL、MinIO、Docker |
 | 第 1 阶段 | AU MarketProfile、行业模板、Prompt Pack | 市场配置、1 个行业、100 条问题 | PostgreSQL |
-| 第 2a 阶段 | P0a 稳定 AI Answer Runner 和 Raw Evidence Store | Perplexity Sonar + OpenAI web search 两个后端、截图/HTML/引用/触发状态留存、CollectionCost | LiteLLM、MinIO、Playwright、simple worker/cron |
+| 第 2a 阶段 | P0a 稳定 AI Answer Runner 和 Raw Evidence Store | Perplexity Sonar + OpenAI web search 两个后端、截图/HTML/引用/触发状态留存、CollectionCost、P0ACollectionReadinessGate | LiteLLM、MinIO、Playwright、simple worker/cron |
 | 第 2b 阶段 | P0b Google AIO / AI Mode spike | 自建浏览器、第三方 SERP、人工补录三路径对比，输出 pass/fail gate | Playwright、第三方 SERP API、MinIO |
 | 第 3 阶段 | Answer Parser 和 AUVisibilityScore | 提及/推荐/排名/竞品/引用/本地相关性、双分母、重复采样 | spaCy、Sentence-Transformers、Langfuse、promptfoo |
 | 第 4 阶段 | Citation Graph 和 Competitor Benchmark | 信源图谱、竞品压制、source gap | PostgreSQL 邻接表（后续 Neo4j）、ClickHouse |
@@ -1651,6 +1651,7 @@ ReportEvidence
 - **解释包可用**：任意总分/平台分/城市分/intent 分都能展示子指标贡献、权重、分母、正负证据和局限说明。
 - P0a 每条 prompt 支持 k=3 重复采样（`sample_index`），评分展示均值与离散度；P0b Google spike 可先用 k=2，通过健康闸门后再升到 k=3。
 - 每个 collector_backend 写入 `CollectionCost`；报告能展示 planned_runs、成功率、平均耗时和单位成本。
+- `P0ACollectionReadinessGate` 必须在 worker/API 合同中可见，自动检查 required platforms、必备元数据、`answer_present/surface_triggered`、citation、screenshot/HTML 和 k=3；真实 API 批次未通过 gate 时不能进入 design partner 试点。
 - 可自动解析品牌提及、推荐、排名、竞品、引用源和本地相关性。
 - 可生成可拆解、公式版本化的 `AUVisibilityScore`。
 - 可生成 Citation Graph。

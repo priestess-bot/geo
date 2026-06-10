@@ -350,6 +350,24 @@ class CollectionRunSummary:
 
 
 @dataclass(frozen=True)
+class P0ACollectionReadinessGate:
+    gate_status: str
+    required_platforms: tuple[str, ...]
+    observed_platforms: tuple[str, ...]
+    required_sample_size: int
+    observed_sample_sizes: tuple[int, ...]
+    attempted_runs: int
+    success_count: int
+    failure_count: int
+    missing_metadata_fields: dict[str, tuple[str, ...]]
+    records_without_citations: tuple[str, ...]
+    records_without_evidence_assets: tuple[str, ...]
+    records_without_answer_flags: tuple[str, ...]
+    records_below_sample_size: tuple[str, ...]
+    failure_reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class GoogleSpikePlan:
     project_id: str
     prompt_count: int

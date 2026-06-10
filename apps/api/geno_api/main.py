@@ -1442,6 +1442,8 @@ def contracts() -> dict[str, list[str]]:
             "CollectorLog",
             "CollectionCost",
             "CollectionRunSummary",
+            "P0ACollectionReadinessGate",
+            "evaluate_p0a_collection_readiness",
             "RuntimeFidelityCheck",
             "RuntimeFidelityCheckPage",
             "RawEvidenceRecord",

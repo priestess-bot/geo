@@ -16,6 +16,20 @@ Local fixture slice:
 PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode fixture
 ```
 
+The worker always prints `p0a_readiness_gate` for stable P0a modes. The default local slice uses
+`--sample-size 1`, so it is useful for fast smoke tests but intentionally fails the P0a k=3 gate.
+Run a gate-ready fixture slice with:
+
+```bash
+PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py \
+  --mode fixture --prompt-limit 1 --sample-size 3
+```
+
+`P0ACollectionReadinessGate` checks required platforms (`chatgpt`, `perplexity`), required metadata,
+`answer_present` / `surface_triggered`, citation presence, screenshot or HTML evidence assets, and
+sample size k=3. Real API mode must pass the same gate before P0a design partner data is considered
+ready.
+
 Persisted fixture slice:
 
 ```bash

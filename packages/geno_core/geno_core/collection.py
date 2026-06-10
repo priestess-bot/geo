@@ -21,6 +21,7 @@ from geno_core.models import (
     EvidenceAsset,
     ManualBackfillInput,
     MarketProfile,
+    P0ACollectionReadinessGate,
     PromptQuestion,
     RawAnswer,
     RawEvidenceRecord,
@@ -200,6 +201,88 @@ def build_collection_run_audit_event(summary: CollectionRunSummary) -> "AuditEve
         output_refs={"collection_run_ids": [summary.id]},
         method_version="collection_run_summary_v1",
         reason="Summarize collection run quality, cost, and failure rates for audit and reporting",
+    )
+
+
+P0A_REQUIRED_PLATFORMS = ("chatgpt", "perplexity")
+P0A_REQUIRED_METADATA_FIELDS = (
+    "platform",
+    "surface",
+    "access_method",
+    "city",
+    "language",
+    "device",
+    "collected_at",
+    "collector_version",
+    "collector_backend_id",
+)
+
+
+def evaluate_p0a_collection_readiness(
+    *,
+    records: tuple[RawEvidenceRecord | CollectionFailureRecord, ...],
+    required_platforms: tuple[str, ...] = P0A_REQUIRED_PLATFORMS,
+    required_sample_size: int = P0A_SAMPLE_SIZE,
+) -> P0ACollectionReadinessGate:
+    successes = tuple(record for record in records if isinstance(record, RawEvidenceRecord))
+    failures = tuple(record for record in records if isinstance(record, CollectionFailureRecord))
+    observed_platforms = tuple(
+        sorted({_run_value(record, "platform") for record in records if _run_value(record, "platform") != "unknown"})
+    )
+    observed_sample_sizes = tuple(sorted({int(record.answer_run.sample_size) for record in records}))
+    missing_metadata_fields: dict[str, tuple[str, ...]] = {}
+    records_without_answer_flags: list[str] = []
+    records_below_sample_size: list[str] = []
+    for record in records:
+        answer_run = record.answer_run
+        missing = tuple(
+            field
+            for field in P0A_REQUIRED_METADATA_FIELDS
+            if getattr(answer_run, field) is None or str(getattr(answer_run, field)).strip() == ""
+        )
+        if missing:
+            missing_metadata_fields[answer_run.id] = missing
+        if answer_run.answer_present is None or answer_run.surface_triggered is None:
+            records_without_answer_flags.append(answer_run.id)
+        if int(answer_run.sample_size) < required_sample_size:
+            records_below_sample_size.append(answer_run.id)
+    records_without_citations = tuple(record.answer_run.id for record in successes if not record.citations)
+    records_without_evidence_assets = tuple(
+        record.answer_run.id
+        for record in successes
+        if not {asset.asset_type for asset in record.evidence_assets} & {"screenshot", "html_snapshot"}
+    )
+    failure_reasons: list[str] = []
+    missing_platforms = tuple(platform for platform in required_platforms if platform not in observed_platforms)
+    if missing_platforms:
+        failure_reasons.append(f"missing_platforms={','.join(missing_platforms)}")
+    if failures:
+        failure_reasons.append(f"collection_failures={len(failures)}")
+    if missing_metadata_fields:
+        failure_reasons.append(f"missing_metadata_records={len(missing_metadata_fields)}")
+    if records_without_answer_flags:
+        failure_reasons.append(f"missing_answer_flags={len(records_without_answer_flags)}")
+    if records_below_sample_size:
+        failure_reasons.append(f"below_required_sample_size={len(records_below_sample_size)}")
+    if records_without_citations:
+        failure_reasons.append(f"records_without_citations={len(records_without_citations)}")
+    if records_without_evidence_assets:
+        failure_reasons.append(f"records_without_evidence_assets={len(records_without_evidence_assets)}")
+    return P0ACollectionReadinessGate(
+        gate_status="pass" if not failure_reasons and bool(records) else "fail",
+        required_platforms=required_platforms,
+        observed_platforms=observed_platforms,
+        required_sample_size=required_sample_size,
+        observed_sample_sizes=observed_sample_sizes,
+        attempted_runs=len(records),
+        success_count=len(successes),
+        failure_count=len(failures),
+        missing_metadata_fields=missing_metadata_fields,
+        records_without_citations=records_without_citations,
+        records_without_evidence_assets=records_without_evidence_assets,
+        records_without_answer_flags=tuple(records_without_answer_flags),
+        records_below_sample_size=tuple(records_below_sample_size),
+        failure_reasons=tuple(failure_reasons),
     )
 
 

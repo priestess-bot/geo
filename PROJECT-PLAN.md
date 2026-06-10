@@ -67,9 +67,9 @@
 **P0a 稳定链路验收门槛**（M0 + M1 + M2a + M3 全绿才算可进入 design partner 试点）：
 
 - `[~]` 可创建 `market=AU` 项目，配 1 行业模板 + 100 条澳洲问题集 + 3–5 竞品（可配置客户项目 API/控制台已落；权限/RLS、真实客户数据验收待接）
-- `[ ]` 完成 Perplexity Sonar + OpenAI web search 两个平台采集，每条有 answer + citation + 截图/HTML
-- `[ ]` 每条采集记录 platform/surface/access_method/city/language/device/collected_at/collector_version/collector_backend_id
-- `[ ]` 每条采集记录 `answer_present`/`surface_triggered`；P0a 每 prompt 重复采样 k=3
+- `[~]` 完成 Perplexity Sonar + OpenAI web search 两个平台采集，每条有 answer + citation + 截图/HTML（fixture k=3 可通过 `P0ACollectionReadinessGate`；真实 Perplexity/OpenAI API 凭证联调与官方 API 截图/HTML 补充策略待验证）
+- `[~]` 每条采集记录 platform/surface/access_method/city/language/device/collected_at/collector_version/collector_backend_id（`P0ACollectionReadinessGate` 已自动检查必备元数据；真实外部批次待跑）
+- `[~]` 每条采集记录 `answer_present`/`surface_triggered`；P0a 每 prompt 重复采样 k=3（worker 输出 readiness gate；默认 sample-size=1 会 fail，`--sample-size 3` fixture 会 pass；真实外部批次待跑）
 - `[~]` 采集、采集批次摘要、解析、评分、人工补录、实体确认、报告导出均写入 `AuditEvent`（runtime `collection_run_summarized`、`manual_backfill_recorded` 与 `entity_alias_confirmed` 已落；真实外部解析/采集链路仍需凭证联调）
 - `[~]` 每个 collector_backend 写入 CollectionCost；可估算 planned_runs、成功率、触发率、回答率、失败摘要、单位成本和平均耗时（真实外部采集凭证联调待接）
 - `[~]` 自动解析品牌提及/推荐/排名/竞品/引用/本地相关性（rule parser、confirmed alias-aware parser、本地 judge fixture A/B、`llm_call_logs` 调用日志与 `human_review_records` 复核留痕已落；真实 LiteLLM provider judge、抽样复核队列和校准流程待接）
@@ -154,13 +154,13 @@ DoD：
 - `[x]` (P0a) P0a 采样量闸门：100 prompts × 2 platforms × 4 geo × k=3 = 2400 planned_runs，可配置降级 prompt/geo 但不降级证据字段 — `Step9.3`
 - `[x]` (P0a) GeoProvider 抽象 + 城市采样（Australia/Sydney/Melbourne/Brisbane）— `Step6 / §8.4`
 - `[x]` (P0a) 截图/HTML 快照 + `raw_payload_hash` — `E3-05`
-- `[~]` (P0a) CollectionCost 与 CollectionRunSummary 记录（从首个采集器起），输出 planned/attempted/success/failure、成功率、触发率、回答率、失败摘要、单位成本和平均耗时 — `§8.15`
+- `[~]` (P0a) CollectionCost、CollectionRunSummary 与 P0ACollectionReadinessGate 记录（从首个采集器起），输出 planned/attempted/success/failure、成功率、触发率、回答率、失败摘要、单位成本、平均耗时和 P0a 采集门禁 pass/fail/reasons — `§8.15`
 - `[~]` (P0c/P1) 保真度抽检：同批 prompt 跑 官方 API vs 浏览器 两后端，量化差异率并入报告 — `Step4`（`api_browser_fidelity_checks` 表、runtime GET/POST API、worker `--persist-analysis` 自动生成、报告 Method Disclosure 复用、Runtime Console 展示 status/mismatch/difference/payload hash 和 `api_browser_fidelity_checked` 审计事件已落；真实 browser collector 后端和定期抽检调度待接）
 - `[~]` (P1) 定时采集（Temporal）/复杂失败重试/限流/人工补录工作台 — `E3-03/06/07/08`（worker CLI 与 `--persist` 已落；Runtime Console 已有最小人工补录表单；复杂调度/限流/批量文件补录待接）
 
 DoD：
 
-- `[~]` Perplexity + OpenAI 两个平台均能采到 answer+citation+截图/HTML（fixture 可采；真实外部 API 待接）
+- `[~]` Perplexity + OpenAI 两个平台均能采到 answer+citation+截图/HTML（fixture k=3 可由 `P0ACollectionReadinessGate` 验证通过；真实外部 API 待接，官方 API 截图/HTML 需浏览器抽检或 artifact 策略补足）
 - `[x]` 每条记录平台/surface/access_method/city/language/device/时间/collector_version/collector_backend_id
 - `[x]` 记录 answer_present/surface_triggered；P0a 每 prompt k=3
 - `[~]` 采集事件、采集批次摘要、人工补录事件和实体别名确认事件写 AuditEvent；原始证据能通过 EvidenceLink 关联到后续报告和评分（采集完成/失败审计、`CollectionRunSummary` 与 `collection_run_summarized` 审计、人工补录写入 `AnswerRun/RawAnswer/AnswerCitation/EvidenceAsset/CollectorLog/CollectionCost/AuditEvent` 已落；实体别名确认写入 `EntityAlias/AuditEvent` 已落；confirmed alias 已进入 `rule_based_v2_aliases` parser 和 `AnswerAnalysis`；批量消歧队列待接）

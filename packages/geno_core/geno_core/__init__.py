@@ -15,6 +15,7 @@ from geno_core.collection import (
     build_manual_backfill_record,
     build_p0a_collection_plan,
     collect_prompt_with_failure_record,
+    evaluate_p0a_collection_readiness,
     run_collection_slice,
     run_fixture_collection_slice,
 )
@@ -105,6 +106,7 @@ __all__ = [
     "build_localized_knowledge_facts",
     "build_manual_distribution_records",
     "evaluate_google_spike_gate",
+    "evaluate_p0a_collection_readiness",
     "get_score_formula",
     "build_repository_from_env",
     "close_repository_connection",

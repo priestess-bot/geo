@@ -21,6 +21,7 @@ from geno_core.collection import (
     build_manual_backfill_record,
     build_p0a_collection_plan,
     collect_prompt_with_failure_record,
+    evaluate_p0a_collection_readiness,
     run_collection_slice,
     run_fixture_collection_slice,
 )
@@ -504,6 +505,96 @@ class CoreContractsTest(unittest.TestCase):
             len(first.audit_events[0].output_refs["evidence_asset_ids"]),
             len(first.evidence_assets),
         )
+
+    def test_m2a_p0a_collection_readiness_gate_passes_fixture_k3(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        records = run_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia",),
+            sample_size=3,
+            prompt_limit=1,
+        )
+        gate = evaluate_p0a_collection_readiness(records=records)
+
+        self.assertEqual(gate.gate_status, "pass")
+        self.assertEqual(gate.required_platforms, ("chatgpt", "perplexity"))
+        self.assertEqual(set(gate.observed_platforms), {"chatgpt", "perplexity"})
+        self.assertEqual(gate.required_sample_size, 3)
+        self.assertEqual(gate.observed_sample_sizes, (3,))
+        self.assertEqual(gate.attempted_runs, 6)
+        self.assertEqual(gate.success_count, 6)
+        self.assertEqual(gate.failure_count, 0)
+        self.assertEqual(gate.failure_reasons, ())
+        self.assertEqual(gate.records_without_citations, ())
+        self.assertEqual(gate.records_without_evidence_assets, ())
+        self.assertEqual(gate.records_without_answer_flags, ())
+        self.assertEqual(gate.records_below_sample_size, ())
+
+    def test_m2a_p0a_collection_readiness_gate_explains_failures(self) -> None:
+        class NoAssetChatGPTCollector(FixtureOpenAIWebSearchCollector):
+            def collect(self, **kwargs):  # type: ignore[no-untyped-def]
+                result = super().collect(**kwargs)
+                return result.__class__(
+                    answer_present=result.answer_present,
+                    surface_triggered=result.surface_triggered,
+                    answer_text=result.answer_text,
+                    citations=result.citations,
+                    screenshot_url=None,
+                    html_snapshot_url=None,
+                    raw_payload=result.raw_payload,
+                    model_or_surface=result.model_or_surface,
+                    account_state=result.account_state,
+                    collector_version=result.collector_version,
+                )
+
+        bootstrap = build_au_project_bootstrap()
+        success = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(),),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=1,
+        )[0]
+        failure = collect_prompt_with_failure_record(
+            project_id=bootstrap.project.id,
+            prompt=bootstrap.prompt_questions[0],
+            market_profile=bootstrap.market_profile,
+            collector=OpenAIWebSearchCollector(api_key=""),
+            city="Australia",
+            sample_index=1,
+            sample_size=1,
+        )
+        gate = evaluate_p0a_collection_readiness(records=(success, failure))
+
+        self.assertEqual(gate.gate_status, "fail")
+        self.assertEqual(gate.attempted_runs, 2)
+        self.assertEqual(gate.success_count, 1)
+        self.assertEqual(gate.failure_count, 1)
+        self.assertIn("collection_failures=1", gate.failure_reasons)
+        self.assertIn("below_required_sample_size=2", gate.failure_reasons)
+        self.assertEqual(gate.records_below_sample_size, (success.answer_run.id, failure.answer_run.id))
+        self.assertEqual(gate.records_without_citations, ())
+        self.assertEqual(gate.records_without_evidence_assets, ())
+
+        api_record = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(NoAssetChatGPTCollector(),),
+            cities=("Australia",),
+            sample_size=3,
+            prompt_limit=1,
+        )[0]
+        asset_gate = evaluate_p0a_collection_readiness(records=(api_record,))
+        self.assertEqual(asset_gate.gate_status, "fail")
+        self.assertIn("missing_platforms=perplexity", asset_gate.failure_reasons)
+        self.assertIn("records_without_evidence_assets=1", asset_gate.failure_reasons)
+        self.assertEqual(asset_gate.records_without_evidence_assets, (api_record.answer_run.id,))
 
     def test_m2a_collection_run_summary_explains_success_cost_and_failures(self) -> None:
         bootstrap = build_au_project_bootstrap()

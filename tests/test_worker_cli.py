@@ -34,13 +34,29 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(payload["record_count"], 4)
         self.assertEqual(payload["success_count"], 4)
         self.assertEqual(payload["failure_count"], 0)
+        gate = payload["p0a_readiness_gate"]
+        self.assertEqual(gate["gate_status"], "fail")
+        self.assertIn("below_required_sample_size=4", gate["failure_reasons"])
         self.assertEqual(payload["persistence"], {"enabled": False})
+
+    def test_fixture_worker_k3_slice_passes_p0a_readiness_gate(self) -> None:
+        payload = self._run_worker("--mode", "fixture", "--prompt-limit", "1", "--sample-size", "3")
+        self.assertEqual(payload["record_count"], 12)
+        gate = payload["p0a_readiness_gate"]
+        self.assertEqual(gate["gate_status"], "pass")
+        self.assertEqual(set(gate["observed_platforms"]), {"chatgpt", "perplexity"})
+        self.assertEqual(gate["required_sample_size"], 3)
+        self.assertEqual(gate["observed_sample_sizes"], [3])
+        self.assertEqual(gate["failure_reasons"], [])
 
     def test_api_worker_slice_without_keys_is_audited_failure(self) -> None:
         payload = self._run_worker("--mode", "api", "--prompt-limit", "1", "--cities", "Australia")
         self.assertEqual(payload["record_count"], 2)
         self.assertEqual(payload["success_count"], 0)
         self.assertEqual(payload["failure_count"], 2)
+        gate = payload["p0a_readiness_gate"]
+        self.assertEqual(gate["gate_status"], "fail")
+        self.assertIn("collection_failures=2", gate["failure_reasons"])
         failure_events = payload["failure_events"]
         self.assertIsInstance(failure_events, list)
         self.assertEqual(failure_events[0]["audit_events"][0]["event_type"], "answer_run_failed")

@@ -1115,6 +1115,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeFidelityCheck", payload["auditability"])
         self.assertIn("build_traceability_bundle", payload["traceability"])
         self.assertIn("CollectionRunSummary", payload["m2a_evidence"])
+        self.assertIn("P0ACollectionReadinessGate", payload["m2a_evidence"])
+        self.assertIn("evaluate_p0a_collection_readiness", payload["m2a_evidence"])
         self.assertIn("RuntimeFidelityCheck", payload["m2a_evidence"])
         self.assertIn("RuntimeFidelityCheckPage", payload["m2a_evidence"])
         self.assertIn("LLMJudgeAnswerParser", payload["m3_analysis_scoring"])
