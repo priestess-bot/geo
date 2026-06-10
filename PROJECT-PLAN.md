@@ -60,7 +60,7 @@
 - `[~]` 代码有单测；关键路径有集成测试（fixture/API/core 已覆盖；真实外部采集 E2E 待接）
 - `[~]` 通过 CI（lint + 测试 + 迁移可起）（本地 `make test` / `make docker-config` 通过；完整 lint/真实迁移起服待接）
 - `[x]` 若改了行为/口径，同 PR 更新对应 `docs/`，必要时加 `decisions/` ADR
-- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `PromptQuestion -> AnswerRun` / `answer_run_ids`（runtime project create/read API、runtime prompt API、fixture TraceabilityBundle、worker `--persist` 写 AU 启动包/prompt 元数据与 evidence、runtime project/prompt/evidence API 已读回项目、竞品、prompt 计数、prompt 文本与 prompt metadata；worker `--persist-analysis` 已保存 TraceabilityBundle，runtime traceability API 可读回报告/评分/证据/图谱/action/content/audit/evidence link 聚合详情；Runtime Console 已展示证据/评分/图谱/报告/action/content 摘要、Traceability Detail 和节点级 details 钻取；筛选、深链路和图谱可视化仍待接）
+- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `PromptQuestion -> AnswerRun` / `answer_run_ids`（runtime project create/read API、runtime prompt API、fixture TraceabilityBundle、worker `--persist` 写 AU 启动包/prompt 元数据与 evidence、runtime project/prompt/evidence API 已读回项目、竞品、prompt 计数、prompt 文本与 prompt metadata；worker `--persist-analysis` 已保存 TraceabilityBundle，runtime traceability API 可读回报告/评分/证据/图谱/action/content/audit/evidence link 聚合详情；Runtime Console 已展示 Prompt Pack、证据/评分/图谱/报告/action/content 摘要、Traceability Detail 和节点级 details 钻取；筛选、深链路和图谱可视化仍待接）
 - `[~]` 关键动作写入 `AuditEvent`；关键输出能生成 provenance 链路和解释包（采集/评分/报告/action/content fixture 已落；人工补录/实体确认待接）
 - `[~]` 有一次可演示（API fixture endpoints 与 Runtime Console MVP 已可演示；真实 design partner 数据演示待接）
 
@@ -110,7 +110,7 @@
 - `[x]` (P0a) 仓库骨架：`apps/`、`packages/`、`workers/`、`infra/`、`tests/`、`decisions/`
 - `[x]` (P0a/P0b/P0c) 数据契约：优先实现 MarketProfile、IndustryProfile、PromptQuestion、GeoSample、AnswerRun、RawAnswer、AnswerCitation、AnswerAnalysis、SourceGraph、CompetitorBenchmark、VisibilityScoreSnapshot、BrandEntity/CompetitorEntity/EntityAlias、CollectionCost、AuditEvent、ReportExport、ScoreContribution、EvidenceLink、TraceabilityBundle 关联表；P1/P2 表可延后 — `§8`
 - `[x]` (P0a) 接口契约 stub（先定义不实现）：CollectorBackend、LLMGateway、ParserEngine、VectorStore、GraphStore、GeoProvider、ScoringFormula、ReportExporter — `Step3.2`
-- `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web、repository 映射、`DATABASE_URL` connection factory、S3-compatible object store client、AU 启动包/prompt 元数据持久化、worker `--persist` / `--persist-analysis`、prompt-linked runtime evidence API、runtime score API、runtime citation graph API、runtime report API、runtime action plan API、runtime content engine API、runtime traceability API 与 Runtime Console MVP；LiteLLM、连接池与完整详情查询 UI 待接）
+- `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web、repository 映射、`DATABASE_URL` connection factory、S3-compatible object store client、AU 启动包/prompt 元数据持久化、worker `--persist` / `--persist-analysis`、runtime prompt API、prompt-linked runtime evidence API、runtime score API、runtime citation graph API、runtime report API、runtime action plan API、runtime content engine API、runtime traceability API 与 Runtime Console Prompt Pack/MVP；LiteLLM、连接池与完整详情查询 UI 待接）
 - `[x]` (P0c/P1) 重组件接入点：ClickHouse、Temporal、Langfuse、promptfoo、SearXNG、Metabase 写 ADR 和接口适配计划，但不阻塞 P0a — `§6`
 - `[~]` (P0a) 空 CI：lint + 测试 + 迁移起服（已落 contract tests、Compose config、repository mapping/runtime tests；lint 与真实迁移起服待补）
 - `[~]` (P0a) LLM 网关配置 + 调用日志 + 对象存储配置 — `E10-01 / E10-03 / E10-05`（已落 LLMGateway 接口与对象存储配置；运行时调用日志待接）
@@ -127,7 +127,7 @@ DoD：
 
 任务：
 
-- `[~]` (P0a) 租户/项目/品牌/竞品/角色权限 — `E1-01..05`（已落契约、启动包、PostgreSQL 幂等持久化、runtime AU/DTC 项目创建 API 与项目聚合读取 API；控制台 CRUD、RLS/鉴权待接）
+- `[~]` (P0a) 租户/项目/品牌/竞品/角色权限 — `E1-01..05`（已落契约、启动包、PostgreSQL 幂等持久化、runtime AU/DTC 项目创建 API 与项目聚合读取 API；控制台只读 Prompt Pack 已接入，项目 CRUD、RLS/鉴权待接）
 - `[x]` (P0a) AU MarketProfile 固定值（locale/timezone/currency/cities/平台权重/信源分类）— `Step1`
 - `[x]` (P0a) 1 个 IndustryProfile 行业模板 — `Step2`
 - `[x]` (P0a) Prompt Pack：100 条 AU 英文问题集（上限 200），每条绑 intent_type/city/prompt_version，并可通过 runtime prompt API 分页/过滤读回 — `Step3 / E2-03..05`
@@ -221,7 +221,7 @@ DoD：
 - `[x]` (P0c) GraphStore 接口 + PG 邻接表实现 + SourceGraph/SourceGap 表，并支持 runtime citation graph API 查询 — `Step8 / §8.9`
 - `[x]` (P0c) Citation Graph 输出：常被引/竞品独占/过旧/本地缺失信源；worker `--persist-analysis` 已写入 source graph evidence 与 source gaps — `Step8`
 - `[x]` (P0c) CompetitorBenchmark（3–5 竞品：mention/recommend/position/citation overlap/local relevance…），并支持 runtime citation graph API 读回 — `Step10 / §8.10`
-- `[~]` (P0c) 监测看板：总览/平台对比/竞品对比/问题明细/风险 — `E5-01..05`（Runtime Console 已展示总览、评分、source gaps、actions、content 摘要、Traceability Detail 和节点级 details 钻取；完整筛选/问题明细 UI 待接）
+- `[~]` (P0c) 监测看板：总览/平台对比/竞品对比/问题明细/风险 — `E5-01..05`（Runtime Console 已展示 Prompt Pack、总览、评分、source gaps、actions、content 摘要、Traceability Detail 和节点级 details 钻取；完整筛选/问题明细 UI 待接）
 - `[ ]` (P1) 看板筛选与导出 — `E5-06`
 - `[ ]` (P1) GraphStore 切 Neo4j 验证可插拔 — `架构验收`
 

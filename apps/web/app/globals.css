@@ -111,7 +111,7 @@ code {
 .metrics {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   margin-top: 18px;
 }
 
@@ -266,7 +266,8 @@ code {
 }
 
 .compactList span,
-.plainList span {
+.plainList span,
+.plainList small {
   font-size: 13px;
   line-height: 1.35;
   min-width: 0;
@@ -284,6 +285,16 @@ code {
   color: #52616f;
   font-size: 12px;
   text-transform: uppercase;
+}
+
+.plainList small {
+  color: #667585;
+  font-size: 12px;
+}
+
+.promptList {
+  max-height: 230px;
+  overflow: auto;
 }
 
 .traceGrid {

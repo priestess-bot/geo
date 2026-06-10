@@ -3,6 +3,22 @@ type PageResponse<T> = {
   records: T[];
 };
 
+type RuntimePrompt = {
+  id: string;
+  market_code: string;
+  industry_code: string;
+  text: string;
+  intent_type: string;
+  city: string;
+  language: string;
+  target_brand: string;
+  competitors: string[];
+  priority: number;
+  intent_weight: number;
+  prompt_version: string;
+  status: string;
+};
+
 type EvidenceRun = {
   answer_run: {
     id: string;
@@ -121,6 +137,7 @@ type TraceabilityDetail = {
 };
 
 type RuntimeData = {
+  prompts: PageResponse<RuntimePrompt>;
   evidence: PageResponse<EvidenceRun>;
   scores: PageResponse<ScoreSnapshot>;
   graphs: PageResponse<CitationGraph>;
@@ -131,6 +148,7 @@ type RuntimeData = {
 };
 
 const endpoints = {
+  prompts: "/v1/prompts/runtime?market_code=AU&limit=20",
   evidence: "/v1/evidence-runs/runtime?limit=5",
   scores: "/v1/visibility-scores/runtime?limit=1",
   graphs: "/v1/citation-graphs/runtime?limit=1",
@@ -175,6 +193,7 @@ async function fetchRuntimeData(): Promise<{
   } catch (error) {
     return {
       data: {
+        prompts: emptyPage,
         evidence: emptyPage,
         scores: emptyPage,
         graphs: emptyPage,
@@ -204,6 +223,7 @@ function shortId(value: string | undefined): string {
 
 export default async function Home() {
   const { data, error, displayUrl } = await fetchRuntimeData();
+  const latestPrompt = data.prompts.records[0];
   const latestEvidence = data.evidence.records[0];
   const latestScore = data.scores.records[0];
   const latestGraph = data.graphs.records[0];
@@ -221,6 +241,8 @@ export default async function Home() {
     (latestAction?.audit_events.length || 0) +
     (latestContent?.audit_events.length || 0) +
     (traceability?.audit_events.length || 0);
+  const promptIntentCount = new Set(data.prompts.records.map((prompt) => prompt.intent_type)).size;
+  const promptCityCount = new Set(data.prompts.records.map((prompt) => prompt.city)).size;
 
   return (
     <main className="shell">
@@ -244,6 +266,7 @@ export default async function Home() {
       ) : null}
 
       <section className="metrics" aria-label="runtime metrics">
+        <Metric label="Prompts" value={data.prompts.total_count} />
         <Metric label="Evidence runs" value={data.evidence.total_count} />
         <Metric label="Final score" value={num(latestScore?.snapshot.final_score)} />
         <Metric label="Source gaps" value={latestGraph?.source_gaps.length || 0} />
@@ -254,6 +277,36 @@ export default async function Home() {
       </section>
 
       <section className="dashboard">
+        <Panel title="Prompt Pack" subtitle={latestPrompt?.prompt_version || "No runtime prompts"}>
+          {data.prompts.records.length ? (
+            <div className="stack">
+              <dl className="facts">
+                <Fact label="Total prompts" value={data.prompts.total_count} />
+                <Fact label="Loaded" value={data.prompts.records.length} />
+                <Fact label="Intent types" value={promptIntentCount} />
+                <Fact label="Cities" value={promptCityCount} />
+                <Fact label="Brand" value={latestPrompt?.target_brand || "unknown"} />
+                <Fact label="Language" value={latestPrompt?.language || "unknown"} />
+              </dl>
+              <ul className="plainList promptList">
+                {data.prompts.records.slice(0, 5).map((prompt) => (
+                  <li key={prompt.id}>
+                    <strong>
+                      {prompt.priority} · {prompt.intent_type} · {prompt.city}
+                    </strong>
+                    <span>{prompt.text}</span>
+                    <small>
+                      weight {num(prompt.intent_weight)} · {prompt.status} · {prompt.competitors.length} competitors
+                    </small>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </Panel>
+
         <Panel title="Latest Evidence" subtitle={latestEvidence?.answer_run.platform || "No runtime evidence"}>
           {latestEvidence ? (
             <div className="stack">
