@@ -1363,11 +1363,13 @@ class CoreContractsTest(unittest.TestCase):
             city="Australia",
             intent_type="category_recommendation",
             status="completed",
+            sort="citation_count_desc",
             limit=10,
             offset=0,
         )
         self.assertIsInstance(page, RuntimeEvidencePage)
         self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.sort, "citation_count_desc")
         self.assertEqual(len(page.records), 1)
         record = page.records[0]
         self.assertEqual(record.answer_run["id"], answer_run_id)
@@ -1385,7 +1387,9 @@ class CoreContractsTest(unittest.TestCase):
             "WHERE ar.project_id = %s AND ar.platform = %s AND ar.city = %s AND pq.intent_type = %s AND ar.status = %s",
             executed_sql,
         )
+        self.assertIn("ORDER BY citation_counts.citation_count DESC NULLS LAST", executed_sql)
         self.assertIn("LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id", executed_sql)
+        self.assertIn("LEFT JOIN collection_costs cc ON cc.answer_run_id = ar.id", executed_sql)
         self.assertIn("FROM raw_answers", executed_sql)
 
     def test_postgres_repository_exports_filtered_runtime_evidence_csv(self) -> None:
@@ -1481,6 +1485,7 @@ class CoreContractsTest(unittest.TestCase):
             platform="perplexity",
             city="Sydney",
             intent_type="brand_awareness",
+            sort="cost_desc",
             limit=200,
             offset=0,
         )
@@ -1490,6 +1495,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(export.total_count, 1)
         self.assertEqual(export.row_count, 1)
         self.assertEqual(export.filters["platform"], "perplexity")
+        self.assertEqual(export.filters["sort"], "cost_desc")
         self.assertIn("answer_run_id", export.content)
         self.assertIn("prompt_intent_type", export.content)
         self.assertIn("Is ExampleBrand good in Australia?", export.content)
@@ -1497,6 +1503,20 @@ class CoreContractsTest(unittest.TestCase):
         self.assertTrue(export.content_hash)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("pq.intent_type = %s", executed_sql)
+        self.assertIn("ORDER BY cc.total_cost DESC NULLS LAST", executed_sql)
+
+    def test_postgres_repository_falls_back_for_unknown_runtime_evidence_sort(self) -> None:
+        connection = RecordingConnection(result_sets=[{"count": 0}, []])
+        page = PostgresEvidenceRepository(connection).list_runtime_evidence_runs(
+            sort="cc.total_cost DESC; DROP TABLE answer_runs",
+            limit=5,
+            offset=0,
+        )
+        self.assertEqual(page.sort, "collected_at_desc")
+        self.assertEqual(page.total_count, 0)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("ORDER BY ar.collected_at DESC, ar.id DESC", executed_sql)
+        self.assertNotIn("DROP TABLE", executed_sql)
 
     def test_postgres_repository_reads_runtime_score_snapshot_page(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 type PageResponse<T> = {
   total_count: number;
+  sort?: string;
   records: T[];
 };
 
@@ -386,6 +387,7 @@ type RuntimeFilters = {
   platform?: string;
   city?: string;
   intent_type?: string;
+  sort?: string;
 };
 
 const endpoints = {
@@ -489,12 +491,14 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       platform: filters.platform,
       city: filters.city,
       intent_type: filters.intent_type,
+      sort: filters.sort,
       limit: 5
     }),
     evidenceExport: runtimePath(endpoints.evidenceExport, {
       platform: filters.platform,
       city: filters.city,
       intent_type: filters.intent_type,
+      sort: filters.sort,
       limit: 200
     }),
     scores: runtimePath(endpoints.scores, { limit: 1 }),
@@ -577,7 +581,8 @@ export default async function Home({
   const filters: RuntimeFilters = {
     platform: cleanFilter(resolvedSearchParams.platform),
     city: cleanFilter(resolvedSearchParams.city),
-    intent_type: cleanFilter(resolvedSearchParams.intent_type)
+    intent_type: cleanFilter(resolvedSearchParams.intent_type),
+    sort: cleanFilter(resolvedSearchParams.sort)
   };
   const { data, error, displayUrl, paths } = await fetchRuntimeData(filters);
   const latestProject = data.projects.records[0];
@@ -610,11 +615,12 @@ export default async function Home({
     : "unknown";
   const reportCities = latestReport ? uniqueText(latestReport.answer_runs.map((run) => run.city)) : "unknown";
   const latestRetestComparison = latestAction?.retest_comparisons[0];
-  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const activeFilterCount = [filters.platform, filters.city, filters.intent_type].filter(Boolean).length;
   const filterLabel = activeFilterCount
     ? [filters.platform, filters.city, filters.intent_type].filter(Boolean).join(" / ")
     : "All runtime evidence";
   const evidenceExportUrl = `${displayUrl}${paths.evidenceExport}`;
+  const evidenceSort = data.evidence.sort || filters.sort || "collected_at_desc";
 
   return (
     <main className="shell">
@@ -677,6 +683,17 @@ export default async function Home({
               <option value="alternative">alternative</option>
             </select>
           </label>
+          <label>
+            <span>Sort evidence</span>
+            <select name="sort" defaultValue={filters.sort || "collected_at_desc"}>
+              <option value="collected_at_desc">Newest first</option>
+              <option value="collected_at_asc">Oldest first</option>
+              <option value="cost_desc">Highest cost</option>
+              <option value="cost_asc">Lowest cost</option>
+              <option value="citation_count_desc">Most citations</option>
+              <option value="audit_count_desc">Most audit events</option>
+            </select>
+          </label>
           <button className="actionButton" type="submit">
             Apply filters
           </button>
@@ -691,6 +708,7 @@ export default async function Home({
           <Fact label="Prompts query" value={paths.prompts} />
           <Fact label="Evidence query" value={paths.evidence} />
           <Fact label="Export query" value={paths.evidenceExport} />
+          <Fact label="Evidence sort" value={evidenceSort} />
         </dl>
       </section>
 
@@ -1220,7 +1238,7 @@ export default async function Home({
           )}
         </Panel>
 
-        <Panel title="Evidence Runs" subtitle={`${data.evidence.total_count} stored runs`} wide>
+        <Panel title="Evidence Runs" subtitle={`${data.evidence.total_count} stored runs · ${evidenceSort}`} wide>
           {data.evidence.records.length ? (
             <div className="evidenceGrid">
               {data.evidence.records.map((run) => (

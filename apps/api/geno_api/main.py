@@ -188,6 +188,7 @@ def runtime_evidence_runs(
     city: str | None = None,
     intent_type: str | None = None,
     status: str | None = None,
+    sort: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, object]:
@@ -202,6 +203,7 @@ def runtime_evidence_runs(
             city=city,
             intent_type=intent_type,
             status=status,
+            sort=sort,
             limit=limit,
             offset=offset,
         )
@@ -217,6 +219,7 @@ def runtime_evidence_export_csv(
     city: str | None = None,
     intent_type: str | None = None,
     status: str | None = None,
+    sort: str | None = None,
     limit: int = Query(default=200, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> Response:
@@ -231,6 +234,7 @@ def runtime_evidence_export_csv(
             city=city,
             intent_type=intent_type,
             status=status,
+            sort=sort,
             limit=limit,
             offset=offset,
         )
@@ -242,6 +246,7 @@ def runtime_evidence_export_csv(
                 "X-GENO-Evidence-Export-Hash": export.content_hash,
                 "X-GENO-Evidence-Export-Row-Count": str(export.row_count),
                 "X-GENO-Evidence-Export-Total-Count": str(export.total_count),
+                "X-GENO-Evidence-Export-Sort": str(export.filters.get("sort", "collected_at_desc")),
             },
         )
     finally:

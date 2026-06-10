@@ -120,6 +120,23 @@ def _rows_dict(rows: Any, columns: tuple[str, ...]) -> tuple[dict[str, Any], ...
     return tuple(_row_dict(row, columns) for row in rows)
 
 
+RUNTIME_EVIDENCE_SORTS = {
+    "collected_at_desc": "ar.collected_at DESC, ar.id DESC",
+    "collected_at_asc": "ar.collected_at ASC, ar.id ASC",
+    "cost_desc": "cc.total_cost DESC NULLS LAST, ar.collected_at DESC, ar.id DESC",
+    "cost_asc": "cc.total_cost ASC NULLS LAST, ar.collected_at DESC, ar.id DESC",
+    "citation_count_desc": "citation_counts.citation_count DESC NULLS LAST, ar.collected_at DESC, ar.id DESC",
+    "audit_count_desc": "audit_counts.audit_event_count DESC NULLS LAST, ar.collected_at DESC, ar.id DESC",
+}
+
+
+def _runtime_evidence_sort(sort: str | None) -> tuple[str, str]:
+    normalized = sort or "collected_at_desc"
+    return normalized if normalized in RUNTIME_EVIDENCE_SORTS else "collected_at_desc", RUNTIME_EVIDENCE_SORTS.get(
+        normalized, RUNTIME_EVIDENCE_SORTS["collected_at_desc"]
+    )
+
+
 def _stable_id(kind: str, *parts: object) -> str:
     return str(uuid5(NAMESPACE_URL, ":".join(("geno", kind, *(str(part) for part in parts)))))
 
@@ -801,11 +818,13 @@ class PostgresEvidenceRepository:
         city: str | None = None,
         intent_type: str | None = None,
         status: str | None = None,
+        sort: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> RuntimeEvidencePage:
         limit = max(1, min(limit, 200))
         offset = max(0, offset)
+        sort_key, order_by = _runtime_evidence_sort(sort)
         filters: list[str] = []
         params: list[object] = []
         if project_id:
@@ -846,8 +865,20 @@ class PostgresEvidenceRepository:
                        pq.prompt_version AS prompt_version
                 FROM answer_runs ar
                 LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id
+                LEFT JOIN collection_costs cc ON cc.answer_run_id = ar.id
+                LEFT JOIN (
+                    SELECT answer_run_id, count(*) AS citation_count
+                    FROM answer_citations
+                    GROUP BY answer_run_id
+                ) citation_counts ON citation_counts.answer_run_id = ar.id
+                LEFT JOIN (
+                    SELECT target_id AS answer_run_id, count(*) AS audit_event_count
+                    FROM audit_events
+                    WHERE target_type = 'answer_run'
+                    GROUP BY target_id
+                ) audit_counts ON audit_counts.answer_run_id = ar.id::text
                 {where_clause}
-                ORDER BY ar.collected_at DESC, ar.id DESC
+                ORDER BY {order_by}
                 LIMIT %s OFFSET %s
                 """,
                 (*params, limit, offset),
@@ -861,6 +892,7 @@ class PostgresEvidenceRepository:
             total_count=total_count,
             limit=limit,
             offset=offset,
+            sort=sort_key,
             records=tuple(records),
         )
 
@@ -872,6 +904,7 @@ class PostgresEvidenceRepository:
         city: str | None = None,
         intent_type: str | None = None,
         status: str | None = None,
+        sort: str | None = None,
         limit: int = 200,
         offset: int = 0,
     ) -> RuntimeEvidenceExport:
@@ -881,6 +914,7 @@ class PostgresEvidenceRepository:
             city=city,
             intent_type=intent_type,
             status=status,
+            sort=sort,
             limit=limit,
             offset=offset,
         )
@@ -891,6 +925,7 @@ class PostgresEvidenceRepository:
             "city": city,
             "intent_type": intent_type,
             "status": status,
+            "sort": page.sort,
             "limit": page.limit,
             "offset": page.offset,
         }

@@ -553,6 +553,7 @@ class RuntimeEvidencePage:
     total_count: int
     limit: int
     offset: int
+    sort: str
     records: tuple[RuntimeEvidenceRun, ...]
 
 

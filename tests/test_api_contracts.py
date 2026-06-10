@@ -77,14 +77,14 @@ class ApiContractsTest(unittest.TestCase):
 
     def test_runtime_evidence_filter_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get(
-            "/v1/evidence-runs/runtime?platform=perplexity&city=Sydney&intent_type=brand_awareness"
+            "/v1/evidence-runs/runtime?platform=perplexity&city=Sydney&intent_type=brand_awareness&sort=cost_desc"
         )
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
     def test_runtime_evidence_export_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get(
-            "/v1/evidence-runs/runtime/export.csv?platform=perplexity&city=Sydney&intent_type=brand_awareness"
+            "/v1/evidence-runs/runtime/export.csv?platform=perplexity&city=Sydney&intent_type=brand_awareness&sort=cost_desc"
         )
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
