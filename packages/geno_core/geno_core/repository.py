@@ -32,6 +32,7 @@ from geno_core.models import (
     RuntimeContentDraft,
     RuntimeContentEngine,
     RuntimeContentEnginePage,
+    RuntimeEvidenceExport,
     RuntimeEvidencePage,
     RuntimeEvidenceRun,
     RuntimeProject,
@@ -224,6 +225,73 @@ def _render_runtime_report_csv(report: RuntimeReportExport) -> str:
                 "answer_present": answer_run["answer_present"],
                 "surface_triggered": answer_run["surface_triggered"],
                 "status": answer_run["status"],
+            }
+        )
+    return output.getvalue()
+
+
+def _render_runtime_evidence_csv(page: RuntimeEvidencePage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "answer_run_id",
+            "project_id",
+            "prompt_question_id",
+            "prompt_text",
+            "prompt_intent_type",
+            "prompt_version",
+            "platform",
+            "surface",
+            "access_method",
+            "market_code",
+            "city",
+            "language",
+            "device",
+            "sample_index",
+            "sample_size",
+            "answer_present",
+            "surface_triggered",
+            "status",
+            "collector_backend_id",
+            "collector_version",
+            "raw_payload_hash",
+            "citation_count",
+            "asset_count",
+            "audit_event_count",
+            "total_cost",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        answer_run = record.answer_run
+        writer.writerow(
+            {
+                "answer_run_id": answer_run["id"],
+                "project_id": answer_run.get("project_id") or "",
+                "prompt_question_id": answer_run.get("prompt_question_id") or "",
+                "prompt_text": answer_run.get("prompt_text") or "",
+                "prompt_intent_type": answer_run.get("prompt_intent_type") or "",
+                "prompt_version": answer_run.get("prompt_version") or "",
+                "platform": answer_run.get("platform") or "",
+                "surface": answer_run.get("surface") or "",
+                "access_method": answer_run.get("access_method") or "",
+                "market_code": answer_run.get("market_code") or "",
+                "city": answer_run.get("city") or "",
+                "language": answer_run.get("language") or "",
+                "device": answer_run.get("device") or "",
+                "sample_index": answer_run.get("sample_index") or "",
+                "sample_size": answer_run.get("sample_size") or "",
+                "answer_present": answer_run.get("answer_present"),
+                "surface_triggered": answer_run.get("surface_triggered"),
+                "status": answer_run.get("status") or "",
+                "collector_backend_id": answer_run.get("collector_backend_id") or "",
+                "collector_version": answer_run.get("collector_version") or "",
+                "raw_payload_hash": (record.raw_answer or {}).get("raw_payload_hash", ""),
+                "citation_count": len(record.citations),
+                "asset_count": len(record.evidence_assets),
+                "audit_event_count": len(record.audit_events),
+                "total_cost": (record.collection_cost or {}).get("total_cost", ""),
             }
         )
     return output.getvalue()
@@ -794,6 +862,47 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=tuple(records),
+        )
+
+    def export_runtime_evidence_csv(
+        self,
+        *,
+        project_id: str | None = None,
+        platform: str | None = None,
+        city: str | None = None,
+        intent_type: str | None = None,
+        status: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        page = self.list_runtime_evidence_runs(
+            project_id=project_id,
+            platform=platform,
+            city=city,
+            intent_type=intent_type,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_evidence_csv(page)
+        filters = {
+            "project_id": project_id,
+            "platform": platform,
+            "city": city,
+            "intent_type": intent_type,
+            "status": status,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_evidence_csv",
+            filename="runtime-evidence.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=page.total_count,
+            row_count=len(page.records),
         )
 
     def list_runtime_score_snapshots(

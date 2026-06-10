@@ -82,6 +82,13 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_evidence_export_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get(
+            "/v1/evidence-runs/runtime/export.csv?platform=perplexity&city=Sydney&intent_type=brand_awareness"
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_runtime_visibility_scores_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/visibility-scores/runtime")
         self.assertEqual(response.status_code, 503)
@@ -223,6 +230,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("TraceabilityBundle", payload["auditability"])
         self.assertIn("build_traceability_bundle", payload["traceability"])
         self.assertIn("RuntimeEvidenceRun", payload["persistence"])
+        self.assertIn("RuntimeEvidenceExport", payload["persistence"])
         self.assertIn("RuntimeProject", payload["persistence"])
         self.assertIn("RuntimeProjectPage", payload["persistence"])
         self.assertIn("RuntimePromptPage", payload["persistence"])
@@ -238,6 +246,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/projects/runtime/au/dtc-ecommerce", payload["persistence"])
         self.assertIn("/v1/prompts/runtime", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])
+        self.assertIn("/v1/evidence-runs/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/visibility-scores/runtime", payload["persistence"])
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])
         self.assertIn("/v1/reports/runtime", payload["persistence"])

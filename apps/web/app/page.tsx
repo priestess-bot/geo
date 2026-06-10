@@ -392,6 +392,7 @@ const endpoints = {
   projects: "/v1/projects/runtime",
   prompts: "/v1/prompts/runtime",
   evidence: "/v1/evidence-runs/runtime",
+  evidenceExport: "/v1/evidence-runs/runtime/export.csv",
   scores: "/v1/visibility-scores/runtime",
   graphs: "/v1/citation-graphs/runtime",
   reports: "/v1/reports/runtime",
@@ -489,6 +490,12 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       city: filters.city,
       intent_type: filters.intent_type,
       limit: 5
+    }),
+    evidenceExport: runtimePath(endpoints.evidenceExport, {
+      platform: filters.platform,
+      city: filters.city,
+      intent_type: filters.intent_type,
+      limit: 200
     }),
     scores: runtimePath(endpoints.scores, { limit: 1 }),
     graphs: runtimePath(endpoints.graphs, { limit: 1 }),
@@ -607,6 +614,7 @@ export default async function Home({
   const filterLabel = activeFilterCount
     ? [filters.platform, filters.city, filters.intent_type].filter(Boolean).join(" / ")
     : "All runtime evidence";
+  const evidenceExportUrl = `${displayUrl}${paths.evidenceExport}`;
 
   return (
     <main className="shell">
@@ -675,10 +683,14 @@ export default async function Home({
           <a className="resetLink" href="/">
             Reset
           </a>
+          <a className="resetLink" href={evidenceExportUrl}>
+            Export Evidence CSV
+          </a>
         </form>
         <dl className="facts filterFacts">
           <Fact label="Prompts query" value={paths.prompts} />
           <Fact label="Evidence query" value={paths.evidence} />
+          <Fact label="Export query" value={paths.evidenceExport} />
         </dl>
       </section>
 

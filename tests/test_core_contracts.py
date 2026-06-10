@@ -49,6 +49,7 @@ from geno_core.models import (
     CollectionFailureRecord,
     ReportExport,
     RuntimeEvidencePage,
+    RuntimeEvidenceExport,
     RuntimeCitationGraphPage,
     RuntimeActionPlanPage,
     RuntimeContentEnginePage,
@@ -1386,6 +1387,116 @@ class CoreContractsTest(unittest.TestCase):
         )
         self.assertIn("LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id", executed_sql)
         self.assertIn("FROM raw_answers", executed_sql)
+
+    def test_postgres_repository_exports_filtered_runtime_evidence_csv(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [
+                    {
+                        "id": answer_run_id,
+                        "project_id": project_id,
+                        "prompt_question_id": "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0",
+                        "platform": "perplexity",
+                        "surface": "sonar",
+                        "access_method": "official_api",
+                        "market_code": "AU",
+                        "city": "Sydney",
+                        "language": "en-AU",
+                        "device": "desktop",
+                        "answer_present": True,
+                        "surface_triggered": True,
+                        "sample_index": 1,
+                        "sample_size": 1,
+                        "model_or_surface": "sonar",
+                        "account_state": "api_key",
+                        "collector_backend_id": "fixture_perplexity_sonar",
+                        "collector_version": "fixture-v1",
+                        "collected_at": now,
+                        "status": "completed",
+                        "prompt_text": "Is ExampleBrand good in Australia?",
+                        "prompt_intent_type": "brand_awareness",
+                        "prompt_priority": 1,
+                        "prompt_version": "au_dtc_ecommerce_v1",
+                    }
+                ],
+                {
+                    "id": "5d714ed1-25aa-5651-b8b3-5e4b275d278a",
+                    "answer_run_id": answer_run_id,
+                    "answer_text": "answer",
+                    "raw_payload": {"citations": 1},
+                    "raw_payload_hash": "raw-hash",
+                    "created_at": now,
+                },
+                [
+                    {
+                        "id": "6e5c424e-1674-58ce-b075-6c52259bbbe5",
+                        "answer_run_id": answer_run_id,
+                        "url": "https://reviews.example/koala",
+                        "domain": "reviews.example",
+                        "position": 1,
+                        "source_type": "review_site",
+                        "created_at": now,
+                    }
+                ],
+                [],
+                [],
+                {
+                    "id": "a428e674-b6ee-51cb-b59c-f0676654c46f",
+                    "answer_run_id": answer_run_id,
+                    "project_id": project_id,
+                    "collector_backend_id": "fixture_perplexity_sonar",
+                    "llm_provider": "perplexity",
+                    "llm_tokens": 12,
+                    "llm_cost": 0.001,
+                    "proxy_or_vendor_cost": 0.001,
+                    "compute_cost": 0.0005,
+                    "total_cost": 0.0015,
+                    "created_at": now,
+                },
+                [
+                    {
+                        "id": "495d24da-90cf-4073-bd9c-16afeb5b3169",
+                        "event_type": "answer_run_collected",
+                        "project_id": project_id,
+                        "actor_type": "worker",
+                        "actor_id": "fixture_perplexity_sonar",
+                        "target_type": "answer_run",
+                        "target_id": answer_run_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"prompt_question_ids": ["prompt"]},
+                        "output_refs": {"answer_run_ids": [answer_run_id]},
+                        "method_version": "fixture-v1",
+                        "reason": "test",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+        export = PostgresEvidenceRepository(connection).export_runtime_evidence_csv(
+            platform="perplexity",
+            city="Sydney",
+            intent_type="brand_awareness",
+            limit=200,
+            offset=0,
+        )
+        self.assertIsInstance(export, RuntimeEvidenceExport)
+        self.assertEqual(export.filename, "runtime-evidence.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["platform"], "perplexity")
+        self.assertIn("answer_run_id", export.content)
+        self.assertIn("prompt_intent_type", export.content)
+        self.assertIn("Is ExampleBrand good in Australia?", export.content)
+        self.assertIn("raw-hash", export.content)
+        self.assertTrue(export.content_hash)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("pq.intent_type = %s", executed_sql)
 
     def test_postgres_repository_reads_runtime_score_snapshot_page(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

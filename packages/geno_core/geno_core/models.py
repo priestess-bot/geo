@@ -557,6 +557,18 @@ class RuntimeEvidencePage:
 
 
 @dataclass(frozen=True)
+class RuntimeEvidenceExport:
+    export_type: str
+    filename: str
+    media_type: str
+    content: str | bytes
+    content_hash: str
+    filters: dict[str, Any]
+    total_count: int
+    row_count: int
+
+
+@dataclass(frozen=True)
 class RuntimeScoreSnapshotRun:
     answer_run: dict[str, Any]
     analysis: dict[str, Any] | None

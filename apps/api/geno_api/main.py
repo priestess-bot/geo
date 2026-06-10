@@ -210,6 +210,44 @@ def runtime_evidence_runs(
         close_repository_connection(repository)
 
 
+@app.get("/v1/evidence-runs/runtime/export.csv")
+def runtime_evidence_export_csv(
+    project_id: str | None = None,
+    platform: str | None = None,
+    city: str | None = None,
+    intent_type: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> Response:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        export = repository.export_runtime_evidence_csv(
+            project_id=project_id,
+            platform=platform,
+            city=city,
+            intent_type=intent_type,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GENO-Evidence-Export-Hash": export.content_hash,
+                "X-GENO-Evidence-Export-Row-Count": str(export.row_count),
+                "X-GENO-Evidence-Export-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/visibility-scores/runtime")
 def runtime_visibility_scores(
     project_id: str | None = None,
@@ -842,6 +880,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimePromptPage",
             "RuntimeEvidenceRun",
             "RuntimeEvidencePage",
+            "RuntimeEvidenceExport",
             "RuntimeScoreSnapshot",
             "RuntimeScoreSnapshotPage",
             "RuntimeCitationGraph",
@@ -866,6 +905,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/projects/runtime/au/dtc-ecommerce",
             "/v1/prompts/runtime",
             "/v1/evidence-runs/runtime",
+            "/v1/evidence-runs/runtime/export.csv",
             "worker --persist",
             "worker --persist-analysis",
             "/v1/visibility-scores/runtime",
