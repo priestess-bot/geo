@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
+from tempfile import TemporaryDirectory
 from uuid import UUID
 
 from geno_core.action_plan import (
@@ -92,7 +93,12 @@ from geno_core.models import (
     RuntimeScoreWeightConfigInput,
     RuntimeTraceabilityDetail,
 )
-from geno_core.object_store import S3CompatibleObjectStore, archive_api_snapshot_assets, archive_report_artifacts
+from geno_core.object_store import (
+    S3CompatibleObjectStore,
+    archive_api_snapshot_assets,
+    archive_browser_capture_assets,
+    archive_report_artifacts,
+)
 from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.parser import ComparativeAnswerParser, LLMJudgeAnswerParser, RuleBasedAnswerParser
 from geno_core.report import MarkdownCsvReportExporter
@@ -1973,6 +1979,127 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(len(object_puts), 1)
         self.assertIn(b"GENO Official API Response Snapshot", object_puts[0][3])
         self.assertIn(b"Perplexity answer", object_puts[0][3])
+
+    def test_browser_capture_assets_archive_to_s3_compatible_store(self) -> None:
+        class FakeLocator:
+            @property
+            def last(self) -> "FakeLocator":
+                return self
+
+            def inner_text(self, **kwargs: object) -> str:
+                return "Browser answer with durable artifacts."
+
+            def evaluate_all(self, script: str) -> list[str]:
+                return ["https://source.example/browser"]
+
+        class FakeKeyboard:
+            def press(self, key: str) -> None:
+                self.key = key
+
+        class FakePage:
+            url = "https://chatgpt.com/c/fake-browser-archive"
+
+            def __init__(self) -> None:
+                self.keyboard = FakeKeyboard()
+
+            def goto(self, *args: object, **kwargs: object) -> None:
+                return None
+
+            def fill(self, *args: object, **kwargs: object) -> None:
+                return None
+
+            def wait_for_selector(self, *args: object, **kwargs: object) -> None:
+                return None
+
+            def locator(self, selector: str) -> FakeLocator:
+                return FakeLocator()
+
+            def title(self) -> str:
+                return "Fake Browser Archive"
+
+            def content(self) -> str:
+                return "<html><body>Browser archive HTML</body></html>"
+
+            def screenshot(self, **kwargs: object) -> bytes:
+                return b"browser-png"
+
+        class FakeContext:
+            def new_page(self) -> FakePage:
+                return FakePage()
+
+            def close(self) -> None:
+                return None
+
+        class FakeBrowser:
+            def launch(self, **kwargs: object) -> "FakeBrowser":
+                return self
+
+            def new_context(self, **kwargs: object) -> FakeContext:
+                return FakeContext()
+
+            def close(self) -> None:
+                return None
+
+        class FakePlaywright:
+            def __init__(self) -> None:
+                self.chromium = FakeBrowser()
+
+        class FakePlaywrightManager:
+            def __enter__(self) -> FakePlaywright:
+                return FakePlaywright()
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+        requests: list[tuple[str, str, dict[str, str], bytes]] = []
+
+        def requester(
+            method: str,
+            url: str,
+            headers: object,
+            body: bytes,
+        ) -> tuple[int, dict[str, str], bytes]:
+            requests.append((method, url, dict(headers), body))
+            return 200, {"ETag": '"browser-etag"'}, b""
+
+        bootstrap = build_au_project_bootstrap()
+        with TemporaryDirectory() as artifact_dir:
+            record = collect_prompt_once(
+                project_id=bootstrap.project.id,
+                prompt=bootstrap.prompt_questions[0],
+                market_profile=bootstrap.market_profile,
+                collector=PlaywrightChatGPTSearchCollector(
+                    enabled=True,
+                    prompt_selector="#prompt",
+                    answer_selector=".answer",
+                    citation_selector=".citation",
+                    artifact_dir=artifact_dir,
+                    playwright_factory=FakePlaywrightManager,
+                ),
+                city="Sydney",
+                sample_index=1,
+                sample_size=1,
+            )
+            self.assertEqual(record.answer_run.access_method, "browser")
+            self.assertTrue(all(asset.url.startswith("file://") for asset in record.evidence_assets))
+            store = S3CompatibleObjectStore(
+                endpoint="http://minio:9000",
+                bucket="geno-reports",
+                access_key="minio",
+                secret_key="minio123",
+                requester=requester,
+            )
+            archived_records, stored = archive_browser_capture_assets(records=(record,), store=store)
+
+        self.assertEqual(len(stored), 2)
+        self.assertEqual({item.content_type for item in stored}, {"text/html; charset=utf-8", "image/png"})
+        archived_assets = archived_records[0].evidence_assets
+        self.assertTrue(all(asset.url.startswith("s3://geno-reports/evidence/") for asset in archived_assets))
+        self.assertTrue(all(asset.content_hash for asset in archived_assets))
+        object_puts = [item for item in requests if item[0] == "PUT" and item[1].count("/") > 3]
+        self.assertEqual(len(object_puts), 2)
+        self.assertTrue(any(b"Browser archive HTML" in item[3] for item in object_puts))
+        self.assertTrue(any(item[3] == b"browser-png" for item in object_puts))
 
     def test_m6_action_plan_and_retest_schedule_trace_evidence(self) -> None:
         bootstrap = build_au_project_bootstrap(

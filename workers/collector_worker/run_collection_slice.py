@@ -43,7 +43,11 @@ from geno_core.google_spike import (
 )
 from geno_core.llm_gateway import LiteLLMGateway
 from geno_core.models import CollectionFailureRecord, ProjectBootstrap, RawEvidenceRecord
-from geno_core.object_store import archive_api_snapshot_assets, archive_report_artifacts
+from geno_core.object_store import (
+    archive_api_snapshot_assets,
+    archive_browser_capture_assets,
+    archive_report_artifacts,
+)
 from geno_core.parser import ComparativeAnswerParser, LLMJudgeAnswerParser
 from geno_core.knowledge import (
     build_content_drafts,
@@ -133,10 +137,17 @@ def _persist_records(
         "enabled": False,
         "reason": "OBJECT_STORE_ENDPOINT not configured",
     }
+    browser_archive_summary: dict[str, object] = {
+        "enabled": False,
+        "reason": "OBJECT_STORE_ENDPOINT not configured",
+    }
+    snapshot_archive_audit = None
+    browser_archive_audit = None
     if successes and os.environ.get("OBJECT_STORE_ENDPOINT", "").strip():
+        object_store = build_object_store_from_env()
         successes, stored_snapshot_assets = archive_api_snapshot_assets(
             records=successes,
-            store=build_object_store_from_env(),
+            store=object_store,
         )
         if stored_snapshot_assets:
             snapshot_archive_audit = build_audit_event(
@@ -161,18 +172,54 @@ def _persist_records(
                 "audit_event_id": snapshot_archive_audit.id,
             }
         else:
-            snapshot_archive_audit = None
             snapshot_archive_summary = {
                 "enabled": True,
                 "stored_snapshot_assets": [],
                 "reason": "no_api_snapshot_assets",
             }
+        successes, stored_browser_assets = archive_browser_capture_assets(
+            records=successes,
+            store=object_store,
+        )
+        if stored_browser_assets:
+            browser_archive_audit = build_audit_event(
+                event_type="browser_capture_assets_archived",
+                project_id=bootstrap.project.id,
+                actor_type="worker",
+                actor_id="collector_worker",
+                target_type="project",
+                target_id=bootstrap.project.id,
+                before=None,
+                after={
+                    "stored_browser_assets": [asdict(item) for item in stored_browser_assets],
+                },
+                input_refs={"answer_run_ids": [record.answer_run.id for record in successes]},
+                output_refs={"artifact_uris": [item.uri for item in stored_browser_assets]},
+                method_version="s3_compatible_browser_capture_archive_v1",
+                reason="Archive browser screenshots and HTML captures to configured object storage",
+            )
+            browser_archive_summary = {
+                "enabled": True,
+                "stored_browser_assets": [asdict(item) for item in stored_browser_assets],
+                "audit_event_id": browser_archive_audit.id,
+            }
+        else:
+            browser_archive_summary = {
+                "enabled": True,
+                "stored_browser_assets": [],
+                "reason": "no_browser_capture_assets",
+            }
     else:
-        snapshot_archive_audit = None
+        pass
     if successes:
         repository.save_raw_evidence_records(successes)
-    if snapshot_archive_audit:
-        repository.save_audit_events((snapshot_archive_audit,))
+    archive_audit_events = tuple(
+        audit_event
+        for audit_event in (snapshot_archive_audit, browser_archive_audit)
+        if audit_event is not None
+    )
+    if archive_audit_events:
+        repository.save_audit_events(archive_audit_events)
     if failures:
         repository.save_collection_failure_records(failures)
     collection_summary = build_collection_run_summary(
@@ -229,6 +276,11 @@ def _persist_records(
                 "raw_evidence_records": len(successes),
                 "collection_failure_records": len(failures),
                 "api_snapshot_artifacts": snapshot_archive_summary,
+                "browser_capture_artifacts": browser_archive_summary,
+                "evidence_artifacts": {
+                    "api_snapshot_artifacts": snapshot_archive_summary,
+                    "browser_capture_artifacts": browser_archive_summary,
+                },
                 "collection_run_summary": asdict(collection_summary),
                 "collection_run_audit_event_id": collection_summary_audit.id,
                 "analysis": {
@@ -467,6 +519,11 @@ def _persist_records(
         "raw_evidence_records": len(successes),
         "collection_failure_records": len(failures),
         "api_snapshot_artifacts": snapshot_archive_summary,
+        "browser_capture_artifacts": browser_archive_summary,
+        "evidence_artifacts": {
+            "api_snapshot_artifacts": snapshot_archive_summary,
+            "browser_capture_artifacts": browser_archive_summary,
+        },
         "collection_run_summary": asdict(collection_summary),
         "collection_run_audit_event_id": collection_summary_audit.id,
         "analysis": analysis_summary,

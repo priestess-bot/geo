@@ -9,11 +9,12 @@ import unittest
 from dataclasses import asdict
 from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import collect_prompt_once
-from geno_core.collectors import JsonHttpResponse, PerplexitySonarCollector
+from geno_core.collectors import JsonHttpResponse, PerplexitySonarCollector, PlaywrightChatGPTSearchCollector
 from geno_core.object_store import StoredObject
 
 
@@ -379,6 +380,144 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(len(payload["api_snapshot_artifacts"]["stored_snapshot_assets"]), 1)
         self.assertEqual(repository.audit_events[0].event_type, "api_snapshot_assets_archived")
         self.assertEqual(asdict(repository.audit_events[0])["output_refs"]["artifact_uris"], [saved_asset.url])
+
+    def test_persist_records_archives_browser_capture_assets_before_saving_evidence(self) -> None:
+        class FakeLocator:
+            @property
+            def last(self) -> "FakeLocator":
+                return self
+
+            def inner_text(self, **kwargs: object) -> str:
+                return "Browser answer for worker archive."
+
+            def evaluate_all(self, script: str) -> list[str]:
+                return ["https://source.example/browser-worker"]
+
+        class FakeKeyboard:
+            def press(self, key: str) -> None:
+                self.key = key
+
+        class FakePage:
+            url = "https://chatgpt.com/c/worker-browser-archive"
+
+            def __init__(self) -> None:
+                self.keyboard = FakeKeyboard()
+
+            def goto(self, *args: object, **kwargs: object) -> None:
+                return None
+
+            def fill(self, *args: object, **kwargs: object) -> None:
+                return None
+
+            def wait_for_selector(self, *args: object, **kwargs: object) -> None:
+                return None
+
+            def locator(self, selector: str) -> FakeLocator:
+                return FakeLocator()
+
+            def title(self) -> str:
+                return "Fake Worker Browser"
+
+            def content(self) -> str:
+                return "<html><body>Worker browser HTML</body></html>"
+
+            def screenshot(self, **kwargs: object) -> bytes:
+                return b"worker-browser-png"
+
+        class FakeContext:
+            def new_page(self) -> FakePage:
+                return FakePage()
+
+            def close(self) -> None:
+                return None
+
+        class FakeBrowser:
+            def launch(self, **kwargs: object) -> "FakeBrowser":
+                return self
+
+            def new_context(self, **kwargs: object) -> FakeContext:
+                return FakeContext()
+
+            def close(self) -> None:
+                return None
+
+        class FakePlaywright:
+            def __init__(self) -> None:
+                self.chromium = FakeBrowser()
+
+        class FakePlaywrightManager:
+            def __enter__(self) -> FakePlaywright:
+                return FakePlaywright()
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+        class FakeObjectStore:
+            def put_object(self, *, key: str, content: str | bytes, content_type: str) -> StoredObject:
+                payload = content.encode("utf-8") if isinstance(content, str) else content
+                return StoredObject(
+                    uri=f"s3://geno-reports/{key}",
+                    bucket="geno-reports",
+                    key=key,
+                    content_type=content_type,
+                    content_hash=__import__("hashlib").sha256(payload).hexdigest(),
+                    etag='"browser-etag"',
+                )
+
+        from workers.collector_worker import run_collection_slice as worker_module
+
+        bootstrap = build_au_project_bootstrap()
+        with TemporaryDirectory() as artifact_dir:
+            record = collect_prompt_once(
+                project_id=bootstrap.project.id,
+                prompt=bootstrap.prompt_questions[0],
+                market_profile=bootstrap.market_profile,
+                collector=PlaywrightChatGPTSearchCollector(
+                    enabled=True,
+                    prompt_selector="#prompt",
+                    answer_selector=".answer",
+                    citation_selector=".citation",
+                    artifact_dir=artifact_dir,
+                    playwright_factory=FakePlaywrightManager,
+                ),
+                city="Sydney",
+                sample_index=1,
+                sample_size=1,
+            )
+            repository = FakeWorkerRepository()
+            env = {"OBJECT_STORE_ENDPOINT": "http://minio:9000"}
+            with patch.dict(os.environ, env, clear=False), patch(
+                "workers.collector_worker.run_collection_slice.build_repository_from_env",
+                return_value=repository,
+            ), patch(
+                "workers.collector_worker.run_collection_slice.build_object_store_from_env",
+                return_value=FakeObjectStore(),
+            ):
+                payload = worker_module._persist_records(
+                    bootstrap=bootstrap,
+                    mode="api",
+                    run_type="browser_fidelity_slice",
+                    planned_runs=1,
+                    records=(record,),
+                    successes=(record,),
+                    failures=(),
+                    persist_analysis=False,
+                    score_formula_version="au_visibility_v1",
+                    judge_gateway="fixture",
+                    judge_model="local-fixture-judge",
+                )
+
+        saved_assets = repository.raw_evidence_records[0].evidence_assets
+        self.assertEqual({asset.asset_type for asset in saved_assets}, {"html_snapshot", "screenshot"})
+        self.assertTrue(all(asset.url.startswith("s3://geno-reports/evidence/") for asset in saved_assets))
+        self.assertTrue(all(len(str(asset.content_hash)) == 64 for asset in saved_assets))
+        self.assertEqual(payload["browser_capture_artifacts"]["enabled"], True)
+        self.assertEqual(len(payload["browser_capture_artifacts"]["stored_browser_assets"]), 2)
+        self.assertEqual(repository.audit_events[0].event_type, "browser_capture_assets_archived")
+        self.assertEqual(
+            sorted(asdict(repository.audit_events[0])["output_refs"]["artifact_uris"]),
+            sorted(asset.url for asset in saved_assets),
+        )
 
     def test_persist_without_database_url_fails_loudly(self) -> None:
         result = self._run_worker_result(

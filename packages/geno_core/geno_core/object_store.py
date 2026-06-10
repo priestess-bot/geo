@@ -6,9 +6,10 @@ import html
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 from urllib.request import Request, urlopen
 
 from geno_core.models import EvidenceAsset, RawEvidenceRecord
@@ -253,6 +254,75 @@ def archive_api_snapshot_assets(
             updated_assets.append(replace(asset, url=stored.uri, content_hash=stored.content_hash))
         archived_records.append(replace(record, evidence_assets=tuple(updated_assets)))
     return tuple(archived_records), tuple(stored_objects)
+
+
+def archive_browser_capture_assets(
+    *,
+    records: tuple[RawEvidenceRecord, ...],
+    store: S3CompatibleObjectStore,
+) -> tuple[tuple[RawEvidenceRecord, ...], tuple[StoredObject, ...]]:
+    archived_records: list[RawEvidenceRecord] = []
+    stored_objects: list[StoredObject] = []
+    for record in records:
+        updated_assets: list[EvidenceAsset] = []
+        for asset in record.evidence_assets:
+            if not _is_archiveable_browser_asset(record=record, asset=asset):
+                updated_assets.append(asset)
+                continue
+            content = _read_file_uri(asset.url)
+            suffix = _browser_asset_suffix(asset)
+            key = f"evidence/{record.answer_run.project_id}/{record.answer_run.id}/{asset.id}{suffix}"
+            stored = store.put_object(
+                key=key,
+                content=content,
+                content_type=_browser_asset_content_type(asset),
+            )
+            stored_objects.append(stored)
+            updated_assets.append(replace(asset, url=stored.uri, content_hash=stored.content_hash))
+        archived_records.append(replace(record, evidence_assets=tuple(updated_assets)))
+    return tuple(archived_records), tuple(stored_objects)
+
+
+def _is_archiveable_browser_asset(*, record: RawEvidenceRecord, asset: EvidenceAsset) -> bool:
+    return (
+        record.answer_run.access_method == "browser"
+        and asset.asset_type in {"html_snapshot", "screenshot"}
+        and asset.url.startswith("file://")
+    )
+
+
+def _read_file_uri(uri: str) -> bytes:
+    parsed = urlsplit(uri)
+    if parsed.scheme != "file":
+        raise ObjectStoreError(f"Browser artifact URI is not a file URI: {uri}")
+    if parsed.netloc not in {"", "localhost"}:
+        raise ObjectStoreError(f"Unsupported browser artifact file host: {parsed.netloc}")
+    path = Path(unquote(parsed.path))
+    if not path.is_file():
+        raise ObjectStoreError(f"Browser artifact file is missing: {path}")
+    return path.read_bytes()
+
+
+def _browser_asset_suffix(asset: EvidenceAsset) -> str:
+    suffix = Path(unquote(urlsplit(asset.url).path)).suffix.lower()
+    if asset.asset_type == "html_snapshot":
+        return ".html"
+    if asset.asset_type == "screenshot":
+        return suffix if suffix in {".png", ".jpg", ".jpeg", ".webp"} else ".png"
+    return suffix or ".bin"
+
+
+def _browser_asset_content_type(asset: EvidenceAsset) -> str:
+    if asset.asset_type == "html_snapshot":
+        return "text/html; charset=utf-8"
+    suffix = _browser_asset_suffix(asset)
+    if suffix in {".jpg", ".jpeg"}:
+        return "image/jpeg"
+    if suffix == ".webp":
+        return "image/webp"
+    if suffix == ".png":
+        return "image/png"
+    return "application/octet-stream"
 
 
 def _render_api_snapshot_html(*, record: RawEvidenceRecord, asset: EvidenceAsset) -> str:

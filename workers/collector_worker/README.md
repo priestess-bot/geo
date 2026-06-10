@@ -167,8 +167,12 @@ collection starts. `make api-browser-fidelity-preflight` also passes
 `--require-no-collection-failures`, so it exits with worker code `5` if browser launch, login,
 selector matching, page interaction, or an official API call fails after health has passed.
 Successful browser collection writes both screenshot and HTML snapshot evidence hashes into the
-standard `RawEvidenceRecord` path. Local `GENO_BROWSER_ARTIFACT_DIR` files are a pre-object-store
-capture path; durable browser artifact archival to S3-compatible storage is still a follow-up.
+standard `RawEvidenceRecord` path. When `GENO_BROWSER_ARTIFACT_DIR` is configured and
+`OBJECT_STORE_ENDPOINT` is available, `--persist` archives local `file://` browser HTML/PNG assets
+to `evidence/<project_id>/<answer_run_id>/<asset_id>.<ext>`, replaces the EvidenceAsset URL/hash
+with the stored `s3://...` object, and writes a `browser_capture_assets_archived` audit event before
+raw evidence rows are saved. Browser `geno-browser-*://` metadata references are not archived
+because they do not carry retrievable artifact bytes.
 
 API adapter slice:
 
