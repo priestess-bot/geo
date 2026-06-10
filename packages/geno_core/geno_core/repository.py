@@ -52,6 +52,8 @@ from geno_core.models import (
     RuntimeFidelityTrendPoint,
     RuntimeHumanReviewInput,
     RuntimeHumanReviewPage,
+    RuntimeHumanReviewQueueItem,
+    RuntimeHumanReviewQueuePage,
     RuntimeHumanReviewRecord,
     RuntimeKnowledgeSearchPage,
     RuntimeKnowledgeSearchResult,
@@ -2465,6 +2467,160 @@ class PostgresEvidenceRepository:
             reviews = _rows_dict(cursor.fetchall(), HUMAN_REVIEW_COLUMNS)
             records = tuple(self._load_runtime_human_review(cursor=cursor, human_review=review) for review in reviews)
         return RuntimeHumanReviewPage(total_count=total_count, limit=limit, offset=offset, records=records)
+
+    def list_runtime_human_review_queue(
+        self,
+        *,
+        project_id: str | None = None,
+        target_type: str | None = None,
+        queue_status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeHumanReviewQueuePage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("candidate.project_id = %s")
+            params.append(_uuid(project_id))
+        if target_type:
+            filters.append("candidate.target_type = %s")
+            params.append(target_type)
+        if queue_status:
+            filters.append("candidate.queue_status = %s")
+            params.append(queue_status)
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        queue_sql = f"""
+            WITH review_candidate AS (
+              SELECT
+                vss.project_id,
+                'visibility_score_snapshot' AS target_type,
+                vss.id::text AS target_id,
+                'Visibility score ' || vss.final_score::text || ' · ' || vss.scope_type || ':' || vss.scope_value AS title,
+                vss.created_at,
+                CASE WHEN vss.final_score < 60 THEN 10 WHEN vss.final_score < 75 THEN 7 ELSE 5 END AS priority,
+                CASE WHEN vss.final_score < 60 THEN 'low_visibility_score' ELSE 'score_snapshot_ready_for_review' END AS reason,
+                jsonb_build_object(
+                  'score_snapshot_ids', jsonb_build_array(vss.id::text),
+                  'answer_run_ids', to_jsonb(COALESCE(vss.answer_run_ids::text[], ARRAY[]::text[])),
+                  'formula_version', vss.formula_version,
+                  'final_score', vss.final_score,
+                  'trigger_rate', vss.trigger_rate,
+                  'mention_rate', vss.mention_rate,
+                  'recommendation_rate', vss.recommendation_rate
+                ) AS evidence_refs
+              FROM visibility_score_snapshots vss
+              UNION ALL
+              SELECT
+                cd.project_id,
+                'content_draft' AS target_type,
+                cd.id::text AS target_id,
+                cd.title AS title,
+                cd.created_at,
+                CASE WHEN cd.review_status = 'pending_human_review' THEN 9 ELSE 6 END AS priority,
+                'content_draft_' || cd.review_status AS reason,
+                jsonb_build_object(
+                  'content_draft_ids', jsonb_build_array(cd.id::text),
+                  'answer_run_ids', to_jsonb(COALESCE(cd.evidence_answer_run_ids::text[], ARRAY[]::text[])),
+                  'knowledge_fact_ids', to_jsonb(COALESCE(cd.used_knowledge_fact_ids::text[], ARRAY[]::text[])),
+                  'source_gap_types', to_jsonb(COALESCE(cd.source_gap_types, ARRAY[]::text[])),
+                  'review_status', cd.review_status,
+                  'target_city', cd.target_city,
+                  'target_platform', cd.target_platform
+                ) AS evidence_refs
+              FROM content_drafts cd
+              WHERE cd.review_status IN ('pending_human_review', 'needs_changes')
+            ),
+            latest_review AS (
+              SELECT DISTINCT ON (target_type, target_id)
+                target_type,
+                target_id,
+                id,
+                review_status,
+                decision,
+                reviewer_id,
+                notes,
+                payload,
+                created_at
+              FROM human_review_records
+              ORDER BY target_type, target_id, created_at DESC, id DESC
+            ),
+            candidate AS (
+              SELECT
+                review_candidate.project_id,
+                review_candidate.target_type,
+                review_candidate.target_id,
+                review_candidate.title,
+                review_candidate.created_at,
+                review_candidate.priority,
+                review_candidate.reason,
+                review_candidate.evidence_refs,
+                CASE
+                  WHEN latest_review.review_status IN ('needs_changes', 'rejected') THEN latest_review.review_status
+                  WHEN latest_review.review_status IN ('approved', 'acknowledged') THEN 'reviewed'
+                  ELSE 'pending_review'
+                END AS queue_status,
+                CASE WHEN latest_review.id IS NULL THEN NULL ELSE jsonb_build_object(
+                  'id', latest_review.id::text,
+                  'review_status', latest_review.review_status,
+                  'decision', latest_review.decision,
+                  'reviewer_id', latest_review.reviewer_id,
+                  'notes', latest_review.notes,
+                  'payload', latest_review.payload,
+                  'created_at', latest_review.created_at
+                ) END AS latest_review
+              FROM review_candidate
+              LEFT JOIN latest_review
+                ON latest_review.target_type = review_candidate.target_type
+               AND latest_review.target_id = review_candidate.target_id
+            )
+            SELECT *
+            FROM candidate
+            {where_clause}
+        """
+        queue_columns = (
+            "project_id",
+            "target_type",
+            "target_id",
+            "title",
+            "created_at",
+            "priority",
+            "reason",
+            "evidence_refs",
+            "queue_status",
+            "latest_review",
+        )
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM ({queue_sql}) review_queue", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(queue_columns)}
+                FROM ({queue_sql}) review_queue
+                ORDER BY priority DESC, created_at DESC, target_id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            rows = _rows_dict(cursor.fetchall(), queue_columns)
+        records = tuple(
+            RuntimeHumanReviewQueueItem(
+                project_id=str(row["project_id"]),
+                target_type=str(row["target_type"]),
+                target_id=str(row["target_id"]),
+                title=str(row.get("title") or ""),
+                queue_status=str(row.get("queue_status") or "pending_review"),
+                priority=int(row.get("priority") or 0),
+                reason=str(row.get("reason") or ""),
+                created_at=str(row["created_at"]) if row.get("created_at") else None,
+                latest_review=dict(row["latest_review"]) if isinstance(row.get("latest_review"), dict) else None,
+                evidence_refs=dict(row.get("evidence_refs") or {}),
+            )
+            for row in rows
+        )
+        return RuntimeHumanReviewQueuePage(total_count=total_count, limit=limit, offset=offset, records=records)
 
     def save_human_review(self, review: RuntimeHumanReviewInput) -> RuntimeHumanReviewRecord:
         project_id = review.project_id.strip()

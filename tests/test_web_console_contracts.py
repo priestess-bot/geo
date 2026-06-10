@@ -106,8 +106,12 @@ class WebConsoleContractsTest(unittest.TestCase):
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
 
         self.assertIn("Human Review Trail", page_source)
+        self.assertIn("Review Queue", page_source)
         self.assertIn("submitHumanReview", page_source)
         self.assertIn("/v1/human-reviews/runtime", page_source)
+        self.assertIn("/v1/human-reviews/runtime/queue", page_source)
+        self.assertIn("RuntimeHumanReviewQueueItem", page_source)
+        self.assertIn("Queue query", page_source)
         self.assertIn("human_review_recorded", page_source)
         self.assertIn("human_review_v1", page_source)
         self.assertIn("approved_for_report", page_source)

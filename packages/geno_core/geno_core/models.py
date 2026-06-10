@@ -865,6 +865,28 @@ class RuntimeHumanReviewPage:
 
 
 @dataclass(frozen=True)
+class RuntimeHumanReviewQueueItem:
+    project_id: str
+    target_type: str
+    target_id: str
+    title: str
+    queue_status: str
+    priority: int
+    reason: str
+    created_at: str | None
+    latest_review: dict[str, Any] | None
+    evidence_refs: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class RuntimeHumanReviewQueuePage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeHumanReviewQueueItem, ...]
+
+
+@dataclass(frozen=True)
 class RuntimeHumanReviewInput:
     project_id: str
     target_type: str

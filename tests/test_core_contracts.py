@@ -77,6 +77,7 @@ from geno_core.models import (
     RuntimeFidelityTrend,
     RuntimeHumanReviewInput,
     RuntimeHumanReviewPage,
+    RuntimeHumanReviewQueuePage,
     RuntimeHumanReviewRecord,
     RuntimeCitationGraphPage,
     RuntimeProjectBrandKit,
@@ -5723,6 +5724,46 @@ class CoreContractsTest(unittest.TestCase):
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FROM human_review_records WHERE project_id = %s AND target_type = %s AND review_status = %s", executed_sql)
         self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_lists_runtime_human_review_queue(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        queue_row = {
+            "project_id": project_id,
+            "target_type": "content_draft",
+            "target_id": "1e53e0b4-7b1a-54d6-a918-fd8774df7bdd",
+            "title": "AU shipping proof page",
+            "created_at": now,
+            "priority": 9,
+            "reason": "content_draft_pending_human_review",
+            "evidence_refs": {
+                "content_draft_ids": ["1e53e0b4-7b1a-54d6-a918-fd8774df7bdd"],
+                "answer_run_ids": ["438ab927-5873-5516-8df3-47f6c75ef007"],
+            },
+            "queue_status": "pending_review",
+            "latest_review": None,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, [queue_row]])
+
+        page = PostgresEvidenceRepository(connection).list_runtime_human_review_queue(
+            project_id=project_id,
+            target_type="content_draft",
+            queue_status="pending_review",
+            limit=10,
+            offset=0,
+        )
+
+        self.assertIsInstance(page, RuntimeHumanReviewQueuePage)
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.records[0].queue_status, "pending_review")
+        self.assertEqual(page.records[0].priority, 9)
+        self.assertEqual(page.records[0].evidence_refs["answer_run_ids"], ["438ab927-5873-5516-8df3-47f6c75ef007"])
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM visibility_score_snapshots vss", executed_sql)
+        self.assertIn("FROM content_drafts cd", executed_sql)
+        self.assertIn("FROM human_review_records", executed_sql)
+        self.assertIn("candidate.project_id = %s", executed_sql)
+        self.assertIn("candidate.queue_status = %s", executed_sql)
 
     def test_postgres_repository_confirms_entity_alias_with_audit_event(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

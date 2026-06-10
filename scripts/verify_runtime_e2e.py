@@ -13,7 +13,7 @@ import psycopg
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import collect_prompt_once
 from geno_core.collectors import JsonHttpResponse, PerplexitySonarCollector
-from geno_core.runtime import build_object_store_from_env, close_repository_connection
+from geno_core.runtime import build_object_store_from_env, build_repository_from_env, close_repository_connection
 from workers.collector_worker import run_collection_slice as worker_module
 
 
@@ -155,6 +155,41 @@ def _assert_report_artifacts(project_id: str) -> list[str]:
     return [str(uri) for uri in uris]
 
 
+def _assert_human_review_queue(project_id: str) -> dict[str, Any]:
+    repository = build_repository_from_env()
+    try:
+        score_queue = repository.list_runtime_human_review_queue(
+            project_id=project_id,
+            target_type="visibility_score_snapshot",
+            limit=1,
+        )
+        draft_queue = repository.list_runtime_human_review_queue(
+            project_id=project_id,
+            target_type="content_draft",
+            queue_status="pending_review",
+            limit=1,
+        )
+    finally:
+        close_repository_connection(repository)
+    if score_queue.total_count < 1:
+        raise AssertionError("Expected at least one visibility score item in the human review queue")
+    if draft_queue.total_count < 1:
+        raise AssertionError("Expected at least one pending content draft item in the human review queue")
+    score_item = score_queue.records[0]
+    draft_item = draft_queue.records[0]
+    if not score_item.evidence_refs or not draft_item.evidence_refs:
+        raise AssertionError("Human review queue items must include evidence refs")
+    return {
+        "score_queue_count": score_queue.total_count,
+        "draft_queue_count": draft_queue.total_count,
+        "score_target_type": score_item.target_type,
+        "draft_target_type": draft_item.target_type,
+        "draft_queue_status": draft_item.queue_status,
+        "score_reason": score_item.reason,
+        "draft_reason": draft_item.reason,
+    }
+
+
 def _run_api_snapshot_archive_slice() -> dict[str, Any]:
     bootstrap = build_au_project_bootstrap(
         tenant_name="Runtime E2E API Snapshot Tenant",
@@ -233,6 +268,7 @@ def main() -> None:
         raise AssertionError(f"Expected fixture P0a readiness gate to pass: {readiness_gate}")
     counts = _assert_counts(project_id)
     report_artifacts = _assert_report_artifacts(project_id)
+    human_review_queue = _assert_human_review_queue(project_id)
     api_snapshot = _run_api_snapshot_archive_slice()
     summary = {
         "status": "passed",
@@ -246,6 +282,7 @@ def main() -> None:
         },
         "postgres_counts": counts,
         "report_artifacts": report_artifacts,
+        "human_review_queue": human_review_queue,
         "api_snapshot_archive": api_snapshot,
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2, default=str))

@@ -118,6 +118,11 @@ Human review is intentionally not created by the worker. Review decisions are ap
 `human_review_records` and a `human_review_recorded` audit event against the reviewed score snapshot,
 content draft, answer analysis/run, score weight config, or project.
 
+The read-only review queue is exposed through `GET /v1/human-reviews/runtime/queue`. It derives
+queue items from persisted `visibility_score_snapshots` and content drafts that are pending or need
+changes, joins the latest `human_review_records` decision, and returns priority, reason, status, and
+evidence refs without mutating the reviewed objects.
+
 The default formula is `au_visibility_v1`. To exercise a candidate formula without changing old
 snapshots, pass a registered version:
 

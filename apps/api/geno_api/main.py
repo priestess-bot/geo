@@ -730,6 +730,31 @@ def runtime_human_reviews(
         close_repository_connection(repository)
 
 
+@app.get("/v1/human-reviews/runtime/queue")
+def runtime_human_review_queue(
+    project_id: str | None = None,
+    target_type: str | None = None,
+    queue_status: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.list_runtime_human_review_queue(
+            project_id=project_id,
+            target_type=target_type,
+            queue_status=queue_status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/human-reviews/runtime")
 def record_runtime_human_review(payload: HumanReviewRequest) -> dict[str, object]:
     try:
@@ -1440,6 +1465,7 @@ def contracts() -> dict[str, list[str]]:
             "ScoreContribution",
             "ReportExport",
             "RuntimeHumanReviewRecord",
+            "RuntimeHumanReviewQueuePage",
             "RuntimeFidelityCheck",
             "RuntimeFidelityTrend",
             "TraceabilityBundle",
@@ -1518,6 +1544,8 @@ def contracts() -> dict[str, list[str]]:
             "rescore_snapshot_with_formula",
             "RuntimeHumanReviewRecord",
             "RuntimeHumanReviewPage",
+            "RuntimeHumanReviewQueueItem",
+            "RuntimeHumanReviewQueuePage",
             "RuntimeHumanReviewInput",
             "HumanReviewRequest",
             "au_visibility_v1",
@@ -1574,6 +1602,8 @@ def contracts() -> dict[str, list[str]]:
             "ScoreFormulaDefinition",
             "RuntimeHumanReviewRecord",
             "RuntimeHumanReviewPage",
+            "RuntimeHumanReviewQueueItem",
+            "RuntimeHumanReviewQueuePage",
             "RuntimeHumanReviewInput",
             "HumanReviewRequest",
             "RuntimePromptPage",
@@ -1639,6 +1669,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/score-weight-configs/runtime",
             "/v1/score-formulas/runtime",
             "/v1/human-reviews/runtime",
+            "/v1/human-reviews/runtime/queue",
             "worker --persist",
             "worker --persist-analysis",
             "/v1/visibility-scores/runtime",

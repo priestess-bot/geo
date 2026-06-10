@@ -479,6 +479,7 @@ type RuntimeData = {
   scoreWeights: RuntimeScoreWeightConfig | null;
   scoreFormulas: RuntimeScoreFormulaCatalog;
   humanReviews: PageResponse<RuntimeHumanReview>;
+  humanReviewQueue: PageResponse<RuntimeHumanReviewQueueItem>;
   knowledgeSearch: RuntimeKnowledgeSearch | null;
   prompts: PageResponse<RuntimePrompt>;
   evidence: PageResponse<EvidenceRun>;
@@ -551,6 +552,26 @@ type RuntimeHumanReview = {
     created_at?: string;
   };
   audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
+};
+
+type RuntimeHumanReviewQueueItem = {
+  project_id: string;
+  target_type: string;
+  target_id: string;
+  title: string;
+  queue_status: string;
+  priority: number;
+  reason: string;
+  created_at?: string | null;
+  latest_review?: {
+    id?: string;
+    review_status?: string;
+    decision?: string;
+    reviewer_id?: string;
+    notes?: string | null;
+    created_at?: string | null;
+  } | null;
+  evidence_refs: Record<string, unknown>;
 };
 
 type RuntimeKnowledgeSearch = {
@@ -721,6 +742,7 @@ const endpoints = {
   scoreWeights: "/v1/score-weight-configs/runtime",
   scoreFormulas: "/v1/score-formulas/runtime",
   humanReviews: "/v1/human-reviews/runtime",
+  humanReviewQueue: "/v1/human-reviews/runtime/queue",
   knowledgeSearch: "/v1/knowledge-facts/runtime/search",
   scores: "/v1/visibility-scores/runtime",
   graphs: "/v1/citation-graphs/runtime",
@@ -1153,6 +1175,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     humanReviews: runtimePath(endpoints.humanReviews, {
       limit: 5
     }),
+    humanReviewQueue: runtimePath(endpoints.humanReviewQueue, {
+      limit: 5
+    }),
     knowledgeSearch: endpoints.knowledgeSearch,
     scores: runtimePath(endpoints.scores, { limit: 1 }),
     graphs: runtimePath(endpoints.graphs, { limit: 1 }),
@@ -1251,6 +1276,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     ...selectedProjectParams,
     limit: 5
   });
+  paths.humanReviewQueue = runtimePath(endpoints.humanReviewQueue, {
+    ...selectedProjectParams,
+    limit: 5
+  });
   paths.knowledgeSearch = selectedProjectId
     ? runtimePath(endpoints.knowledgeSearch, {
         project_id: selectedProjectId,
@@ -1295,6 +1324,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     scoreWeights,
     scoreFormulas,
     humanReviews,
+    humanReviewQueue,
     knowledgeSearch,
     scores,
     graphs,
@@ -1337,6 +1367,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       paths.humanReviews,
       emptyPage<RuntimeHumanReview>()
     ),
+    fetchRuntimeEndpoint<PageResponse<RuntimeHumanReviewQueueItem>>(
+      baseUrl,
+      paths.humanReviewQueue,
+      emptyPage<RuntimeHumanReviewQueueItem>()
+    ),
     selectedProjectId
       ? fetchRuntimeEndpoint<RuntimeKnowledgeSearch | null>(baseUrl, paths.knowledgeSearch, null, {
           optionalNotFound: true
@@ -1363,6 +1398,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     scoreWeights,
     scoreFormulas,
     humanReviews,
+    humanReviewQueue,
     knowledgeSearch,
     scores,
     graphs,
@@ -1380,6 +1416,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       scoreWeights: scoreWeights.payload,
       scoreFormulas: scoreFormulas.payload,
       humanReviews: humanReviews.payload,
+      humanReviewQueue: humanReviewQueue.payload,
       knowledgeSearch: knowledgeSearch.payload,
       prompts: prompts.payload,
       evidence: evidence.payload,
@@ -1710,8 +1747,15 @@ export default async function Home({
   );
   const reportArtifactFilters = { ...filters, sort: evidenceSort };
   const latestContentDraft = latestContent?.content_drafts[0];
+  const topReviewQueueItem = data.humanReviewQueue.records[0];
   const reviewTarget =
-    latestScore?.snapshot.id
+    topReviewQueueItem
+      ? {
+          targetType: topReviewQueueItem.target_type,
+          targetId: topReviewQueueItem.target_id,
+          label: topReviewQueueItem.title
+        }
+      : latestScore?.snapshot.id
       ? {
           targetType: "visibility_score_snapshot",
           targetId: latestScore.snapshot.id,
@@ -2298,7 +2342,11 @@ export default async function Home({
           )}
         </Panel>
 
-        <Panel title="Human Review Trail" subtitle={`${data.humanReviews.total_count} review records`} wide>
+        <Panel
+          title="Human Review Trail"
+          subtitle={`${data.humanReviewQueue.total_count} queue items · ${data.humanReviews.total_count} review records`}
+          wide
+        >
           <div className="humanReviewGrid">
             <form action={submitHumanReview} className="humanReviewForm">
               <div className="formHeader">
@@ -2352,6 +2400,27 @@ export default async function Home({
               </button>
             </form>
             <div className="humanReviewList">
+              <h3>Review Queue</h3>
+              {data.humanReviewQueue.records.length ? (
+                <ul className="plainList">
+                  {data.humanReviewQueue.records.map((item) => (
+                    <li key={`${item.target_type}:${item.target_id}`}>
+                      <strong>
+                        {item.queue_status} · {item.target_type}
+                      </strong>
+                      <span>{item.title}</span>
+                      <small>
+                        priority {item.priority} · {item.reason} · {dateText(item.created_at || undefined)}
+                      </small>
+                      <small>
+                        {item.latest_review?.decision || "no decision"} · {shortId(item.target_id)}
+                      </small>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <small>No human review queue items.</small>
+              )}
               <h3>Recent Reviews</h3>
               {data.humanReviews.records.length ? (
                 <ul className="plainList">
@@ -2376,6 +2445,7 @@ export default async function Home({
               )}
               <dl className="facts">
                 <Fact label="Review query" value={paths.humanReviews} />
+                <Fact label="Queue query" value={paths.humanReviewQueue} />
                 <Fact label="Method" value="human_review_v1" />
                 <Fact label="Audit event" value="human_review_recorded" />
               </dl>

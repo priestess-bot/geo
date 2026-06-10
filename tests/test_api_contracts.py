@@ -13,6 +13,8 @@ from geno_core.models import (
     RuntimeFidelityTrend,
     RuntimeFidelityTrendPoint,
     RuntimeHumanReviewPage,
+    RuntimeHumanReviewQueueItem,
+    RuntimeHumanReviewQueuePage,
     RuntimeHumanReviewRecord,
     RuntimeKnowledgeSearchPage,
     RuntimeKnowledgeSearchResult,
@@ -792,6 +794,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_human_review_queue_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get("/v1/human-reviews/runtime/queue?queue_status=pending_review")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_runtime_human_reviews_endpoint_passes_filters(self) -> None:
         class FakeRepository:
             def list_runtime_human_reviews(self, **kwargs: object) -> RuntimeHumanReviewPage:
@@ -838,6 +845,50 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
         self.assertEqual(fake_repository.kwargs["target_type"], "content_draft")
         self.assertEqual(fake_repository.kwargs["review_status"], "needs_changes")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+        self.assertEqual(fake_repository.kwargs["offset"], 1)
+
+    def test_runtime_human_review_queue_endpoint_passes_filters(self) -> None:
+        class FakeRepository:
+            def list_runtime_human_review_queue(self, **kwargs: object) -> RuntimeHumanReviewQueuePage:
+                self.kwargs = kwargs
+                return RuntimeHumanReviewQueuePage(
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(
+                        RuntimeHumanReviewQueueItem(
+                            project_id=str(kwargs["project_id"]),
+                            target_type=str(kwargs["target_type"]),
+                            target_id="1e53e0b4-7b1a-54d6-a918-fd8774df7bdd",
+                            title="AU shipping proof page",
+                            queue_status=str(kwargs["queue_status"]),
+                            priority=9,
+                            reason="content_draft_pending_human_review",
+                            created_at="2026-06-10T00:00:00+00:00",
+                            latest_review=None,
+                            evidence_refs={"answer_run_ids": ["438ab927-5873-5516-8df3-47f6c75ef007"]},
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/human-reviews/runtime/queue"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
+                "&target_type=content_draft&queue_status=pending_review&limit=5&offset=1"
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_count"], 1)
+        self.assertEqual(payload["records"][0]["queue_status"], "pending_review")
+        self.assertEqual(payload["records"][0]["evidence_refs"]["answer_run_ids"], ["438ab927-5873-5516-8df3-47f6c75ef007"])
+        self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.kwargs["target_type"], "content_draft")
+        self.assertEqual(fake_repository.kwargs["queue_status"], "pending_review")
         self.assertEqual(fake_repository.kwargs["limit"], 5)
         self.assertEqual(fake_repository.kwargs["offset"], 1)
 
@@ -1207,10 +1258,12 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("build_score_input_policy", payload["m3_analysis_scoring"])
         self.assertIn("rescore_snapshot_with_formula", payload["m3_analysis_scoring"])
         self.assertIn("RuntimeHumanReviewRecord", payload["m3_analysis_scoring"])
+        self.assertIn("RuntimeHumanReviewQueuePage", payload["m3_analysis_scoring"])
         self.assertIn("RuntimeHumanReviewInput", payload["m3_analysis_scoring"])
         self.assertIn("HumanReviewRequest", payload["m3_analysis_scoring"])
         self.assertIn("LLMCallLog", payload["auditability"])
         self.assertIn("RuntimeHumanReviewRecord", payload["auditability"])
+        self.assertIn("RuntimeHumanReviewQueuePage", payload["auditability"])
         self.assertIn("RuntimeEvidenceRun", payload["persistence"])
         self.assertIn("RuntimeEvidenceExport", payload["persistence"])
         self.assertIn("RuntimeCollectionRun", payload["persistence"])
@@ -1240,6 +1293,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("ScoreFormulaDefinition", payload["persistence"])
         self.assertIn("RuntimeHumanReviewRecord", payload["persistence"])
         self.assertIn("RuntimeHumanReviewPage", payload["persistence"])
+        self.assertIn("RuntimeHumanReviewQueueItem", payload["persistence"])
+        self.assertIn("RuntimeHumanReviewQueuePage", payload["persistence"])
         self.assertIn("RuntimeHumanReviewInput", payload["persistence"])
         self.assertIn("HumanReviewRequest", payload["persistence"])
         self.assertIn("RuntimePromptPage", payload["persistence"])
@@ -1274,6 +1329,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/score-weight-configs/runtime", payload["persistence"])
         self.assertIn("/v1/score-formulas/runtime", payload["persistence"])
         self.assertIn("/v1/human-reviews/runtime", payload["persistence"])
+        self.assertIn("/v1/human-reviews/runtime/queue", payload["persistence"])
         self.assertIn("/v1/visibility-scores/runtime", payload["persistence"])
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])
         self.assertIn("/v1/reports/runtime", payload["persistence"])
