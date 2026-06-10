@@ -602,6 +602,24 @@ class RuntimeCitationGraphPage:
 
 
 @dataclass(frozen=True)
+class RuntimeProject:
+    project: dict[str, Any]
+    tenant: dict[str, Any]
+    brand: dict[str, Any] | None
+    competitors: tuple[dict[str, Any], ...]
+    prompt_count: int
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeProjectPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeProject, ...]
+
+
+@dataclass(frozen=True)
 class RuntimeReportExport:
     report_export: dict[str, Any]
     score_snapshots: tuple[dict[str, Any], ...]

@@ -60,7 +60,7 @@
 - `[~]` 代码有单测；关键路径有集成测试（fixture/API/core 已覆盖；真实外部采集 E2E 待接）
 - `[~]` 通过 CI（lint + 测试 + 迁移可起）（本地 `make test` / `make docker-config` 通过；完整 lint/真实迁移起服待接）
 - `[x]` 若改了行为/口径，同 PR 更新对应 `docs/`，必要时加 `decisions/` ADR
-- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `PromptQuestion -> AnswerRun` / `answer_run_ids`（fixture TraceabilityBundle、worker `--persist` 写 AU 启动包/prompt 元数据与 evidence、runtime evidence API 已读回 prompt 文本；worker `--persist-analysis` 已保存 TraceabilityBundle，runtime traceability API 可读回报告/评分/证据/图谱/action/content/audit/evidence link 聚合详情；Runtime Console 已展示证据/评分/图谱/报告/action/content 摘要、Traceability Detail 和节点级 details 钻取；筛选、深链路和图谱可视化仍待接）
+- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `PromptQuestion -> AnswerRun` / `answer_run_ids`（runtime project create/read API、fixture TraceabilityBundle、worker `--persist` 写 AU 启动包/prompt 元数据与 evidence、runtime project/evidence API 已读回项目、竞品、prompt 计数与 prompt 文本；worker `--persist-analysis` 已保存 TraceabilityBundle，runtime traceability API 可读回报告/评分/证据/图谱/action/content/audit/evidence link 聚合详情；Runtime Console 已展示证据/评分/图谱/报告/action/content 摘要、Traceability Detail 和节点级 details 钻取；筛选、深链路和图谱可视化仍待接）
 - `[~]` 关键动作写入 `AuditEvent`；关键输出能生成 provenance 链路和解释包（采集/评分/报告/action/content fixture 已落；人工补录/实体确认待接）
 - `[~]` 有一次可演示（API fixture endpoints 与 Runtime Console MVP 已可演示；真实 design partner 数据演示待接）
 
@@ -127,7 +127,7 @@ DoD：
 
 任务：
 
-- `[~]` (P0a) 租户/项目/品牌/竞品/角色权限 — `E1-01..05`（已落契约、启动包和 PostgreSQL 幂等持久化；控制台 CRUD、RLS/鉴权待接）
+- `[~]` (P0a) 租户/项目/品牌/竞品/角色权限 — `E1-01..05`（已落契约、启动包、PostgreSQL 幂等持久化、runtime AU/DTC 项目创建 API 与项目聚合读取 API；控制台 CRUD、RLS/鉴权待接）
 - `[x]` (P0a) AU MarketProfile 固定值（locale/timezone/currency/cities/平台权重/信源分类）— `Step1`
 - `[x]` (P0a) 1 个 IndustryProfile 行业模板 — `Step2`
 - `[x]` (P0a) Prompt Pack：100 条 AU 英文问题集（上限 200），每条绑 intent_type/city/prompt_version — `Step3 / E2-03..05`

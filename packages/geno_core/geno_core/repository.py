@@ -34,6 +34,8 @@ from geno_core.models import (
     RuntimeContentEnginePage,
     RuntimeEvidencePage,
     RuntimeEvidenceRun,
+    RuntimeProject,
+    RuntimeProjectPage,
     RuntimeReportArtifact,
     RuntimeReportExport,
     RuntimeReportExportPage,
@@ -253,6 +255,37 @@ ANSWER_RUN_READ_COLUMNS = ANSWER_RUN_COLUMNS + (
     "prompt_intent_type",
     "prompt_priority",
     "prompt_version",
+)
+TENANT_COLUMNS = ("id", "name", "slug", "created_at")
+PROJECT_COLUMNS = (
+    "id",
+    "tenant_id",
+    "name",
+    "market_code",
+    "industry_code",
+    "target_brand",
+    "category",
+    "prompt_version",
+    "status",
+    "created_at",
+)
+BRAND_ENTITY_COLUMNS = (
+    "id",
+    "project_id",
+    "canonical_name",
+    "official_domains",
+    "parent_company",
+    "product_lines",
+    "status",
+)
+COMPETITOR_ENTITY_COLUMNS = (
+    "id",
+    "project_id",
+    "canonical_name",
+    "official_domains",
+    "parent_company",
+    "product_lines",
+    "status",
 )
 RAW_ANSWER_COLUMNS = ("id", "answer_run_id", "answer_text", "raw_payload", "raw_payload_hash", "created_at")
 CITATION_COLUMNS = ("id", "answer_run_id", "url", "domain", "position", "source_type", "created_at")
@@ -533,6 +566,108 @@ class PostgresEvidenceRepository:
 
     def __init__(self, connection: DbConnection) -> None:
         self.connection = connection
+
+    def list_runtime_projects(
+        self,
+        *,
+        market_code: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeProjectPage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if market_code:
+            filters.append("p.market_code = %s")
+            params.append(market_code)
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT count(*)
+                FROM projects p
+                {where_clause}
+                """,
+                tuple(params),
+            )
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(f"p.{column}" for column in PROJECT_COLUMNS)}
+                FROM projects p
+                {where_clause}
+                ORDER BY p.created_at DESC, p.id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            projects = _rows_dict(cursor.fetchall(), PROJECT_COLUMNS)
+            records = tuple(self._load_runtime_project(cursor=cursor, project=project) for project in projects)
+        return RuntimeProjectPage(total_count=total_count, limit=limit, offset=offset, records=records)
+
+    def _load_runtime_project(self, *, cursor: DbCursor, project: dict[str, Any]) -> RuntimeProject:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(TENANT_COLUMNS)}
+            FROM tenants
+            WHERE id = %s
+            """,
+            (_uuid(project["tenant_id"]),),
+        )
+        tenant = _row_dict(cursor.fetchone(), TENANT_COLUMNS)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(BRAND_ENTITY_COLUMNS)}
+            FROM brand_entities
+            WHERE project_id = %s
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (_uuid(project["id"]),),
+        )
+        brand_row = cursor.fetchone()
+        cursor.execute(
+            f"""
+            SELECT {", ".join(COMPETITOR_ENTITY_COLUMNS)}
+            FROM competitor_entities
+            WHERE project_id = %s
+            ORDER BY canonical_name ASC
+            """,
+            (_uuid(project["id"]),),
+        )
+        competitors = _rows_dict(cursor.fetchall(), COMPETITOR_ENTITY_COLUMNS)
+        cursor.execute(
+            """
+            SELECT count(*)
+            FROM prompt_questions
+            WHERE project_id = %s
+            """,
+            (_uuid(project["id"]),),
+        )
+        prompt_count_row = cursor.fetchone()
+        prompt_count = int(
+            prompt_count_row[0] if not isinstance(prompt_count_row, dict) else prompt_count_row["count"]
+        )
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            """,
+            (_uuid(project["id"]), "project", str(project["id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeProject(
+            project=project,
+            tenant=tenant,
+            brand=_row_dict(brand_row, BRAND_ENTITY_COLUMNS) if brand_row else None,
+            competitors=competitors,
+            prompt_count=prompt_count,
+            audit_events=audit_events,
+        )
 
     def list_runtime_evidence_runs(
         self,

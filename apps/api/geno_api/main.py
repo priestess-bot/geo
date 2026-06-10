@@ -84,6 +84,46 @@ def au_dtc_project_bootstrap() -> dict[str, object]:
     return asdict(build_au_project_bootstrap())
 
 
+@app.post("/v1/projects/runtime/au/dtc-ecommerce")
+def create_runtime_au_dtc_project() -> dict[str, object]:
+    bootstrap = build_au_project_bootstrap()
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        repository.save_project_bootstrap(bootstrap)
+        return {
+            "tenant_id": bootstrap.tenant.id,
+            "project_id": bootstrap.project.id,
+            "market_code": bootstrap.project.market_code,
+            "industry_code": bootstrap.project.industry_code,
+            "prompt_count": len(bootstrap.prompt_questions),
+            "competitor_count": len(bootstrap.competitors),
+            "audit_event_ids": [event.id for event in bootstrap.audit_events],
+            "bootstrap": asdict(bootstrap),
+        }
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/projects/runtime")
+def runtime_projects(
+    market_code: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.list_runtime_projects(market_code=market_code, limit=limit, offset=offset)
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/collection-plans/au/p0a")
 def au_p0a_collection_plan() -> dict[str, object]:
     bootstrap = build_au_project_bootstrap()
@@ -764,6 +804,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimePersistenceError",
             "PostgresEvidenceRepository",
             "save_project_bootstrap",
+            "RuntimeProject",
+            "RuntimeProjectPage",
             "RuntimeEvidenceRun",
             "RuntimeEvidencePage",
             "RuntimeScoreSnapshot",
@@ -786,6 +828,8 @@ def contracts() -> dict[str, list[str]]:
             "VisibilityScoreSnapshot",
             "ReportExport",
             "TraceabilityBundle",
+            "/v1/projects/runtime",
+            "/v1/projects/runtime/au/dtc-ecommerce",
             "/v1/evidence-runs/runtime",
             "worker --persist",
             "worker --persist-analysis",

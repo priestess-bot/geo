@@ -215,6 +215,13 @@ class CoreContractsTest(unittest.TestCase):
             [prompt.id for prompt in prompts],
         )
 
+    def test_m1_project_bootstrap_audit_event_id_is_stable(self) -> None:
+        first = build_au_project_bootstrap()
+        second = build_au_project_bootstrap()
+
+        self.assertEqual(first.project.id, second.project.id)
+        self.assertEqual(first.audit_events[0].id, second.audit_events[0].id)
+
     def test_m1_bootstrap_rejects_invalid_competitor_count(self) -> None:
         with self.assertRaises(ValueError):
             build_au_project_bootstrap(competitors=("Only One",))
@@ -1064,6 +1071,95 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(str(first_prompt_insert[0]), bootstrap.prompt_questions[0].id)
         self.assertEqual(first_prompt_insert[4], bootstrap.prompt_questions[0].text)
         self.assertEqual(connection.commit_count, 1)
+
+    def test_postgres_repository_reads_runtime_project_page(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        tenant_id = "8330ea73-6914-5278-90cb-147f8369fed6"
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [
+                    {
+                        "id": project_id,
+                        "tenant_id": tenant_id,
+                        "name": "AU DTC Evidence Pilot",
+                        "market_code": "AU",
+                        "industry_code": "dtc_ecommerce",
+                        "target_brand": "ExampleBrand",
+                        "category": "DTC ecommerce products",
+                        "prompt_version": "au_dtc_ecommerce_v1",
+                        "status": "configured",
+                        "created_at": now,
+                    }
+                ],
+                {
+                    "id": tenant_id,
+                    "name": "Design Partner AU",
+                    "slug": "design-partner-au",
+                    "created_at": now,
+                },
+                {
+                    "id": "a44c30bf-27e5-55ff-988e-cfe61130e2a9",
+                    "project_id": project_id,
+                    "canonical_name": "ExampleBrand",
+                    "official_domains": [],
+                    "parent_company": None,
+                    "product_lines": [],
+                    "status": "active",
+                },
+                [
+                    {
+                        "id": "78db4b2e-1bc6-5cd1-ab03-6a9243a0993c",
+                        "project_id": project_id,
+                        "canonical_name": "Ecosa",
+                        "official_domains": [],
+                        "parent_company": None,
+                        "product_lines": [],
+                        "status": "active",
+                    }
+                ],
+                {"count": 100},
+                [
+                    {
+                        "id": "7f28023e-977f-4c14-9007-95e7e84db71a",
+                        "event_type": "project_bootstrap_created",
+                        "project_id": project_id,
+                        "actor_type": "system",
+                        "actor_id": "geno-core.bootstrap",
+                        "target_type": "project",
+                        "target_id": project_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {},
+                        "output_refs": {"prompt_question_ids": ["prompt-1"]},
+                        "method_version": "m1_project_bootstrap_v1",
+                        "reason": "test",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+
+        page = PostgresEvidenceRepository(connection).list_runtime_projects(
+            market_code="AU",
+            limit=10,
+            offset=0,
+        )
+
+        self.assertEqual(page.total_count, 1)
+        record = page.records[0]
+        self.assertEqual(record.project["id"], project_id)
+        self.assertEqual(record.tenant["name"], "Design Partner AU")
+        assert record.brand is not None
+        self.assertEqual(record.brand["canonical_name"], "ExampleBrand")
+        self.assertEqual(record.competitors[0]["canonical_name"], "Ecosa")
+        self.assertEqual(record.prompt_count, 100)
+        self.assertEqual(record.audit_events[0]["event_type"], "project_bootstrap_created")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM projects p WHERE p.market_code = %s", executed_sql)
+        self.assertIn("FROM tenants WHERE id = %s", executed_sql)
+        self.assertIn("FROM prompt_questions WHERE project_id = %s", executed_sql)
 
     def test_runtime_repository_requires_database_url(self) -> None:
         with self.assertRaises(RuntimePersistenceError):

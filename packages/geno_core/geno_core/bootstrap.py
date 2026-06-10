@@ -97,31 +97,36 @@ def build_au_project_bootstrap(
         competitors=competitors,
         prompt_version=project.prompt_version,
     )
-    audit_events = (
-        build_audit_event(
-            event_type="project_bootstrap_created",
-            project_id=project.id,
-            actor_type="system",
-            actor_id="geno-core.bootstrap",
-            target_type="project",
-            target_id=project.id,
-            before=None,
-            after={
-                "tenant_id": tenant.id,
-                "market_code": project.market_code,
-                "industry_code": project.industry_code,
-                "prompt_version": project.prompt_version,
-                "prompt_count": len(prompt_questions),
-                "competitor_count": len(competitor_entities),
-            },
-            output_refs={
-                "prompt_question_ids": [prompt.id for prompt in prompt_questions],
-                "competitor_entity_ids": [competitor.id for competitor in competitor_entities],
-            },
-            method_version="m1_project_bootstrap_v1",
-            reason="Create auditable AU design-partner project bootstrap package",
-        ),
+    bootstrap_audit_event = build_audit_event(
+        event_type="project_bootstrap_created",
+        project_id=project.id,
+        actor_type="system",
+        actor_id="geno-core.bootstrap",
+        target_type="project",
+        target_id=project.id,
+        before=None,
+        after={
+            "tenant_id": tenant.id,
+            "market_code": project.market_code,
+            "industry_code": project.industry_code,
+            "prompt_version": project.prompt_version,
+            "prompt_count": len(prompt_questions),
+            "competitor_count": len(competitor_entities),
+        },
+        output_refs={
+            "prompt_question_ids": [prompt.id for prompt in prompt_questions],
+            "competitor_entity_ids": [competitor.id for competitor in competitor_entities],
+        },
+        method_version="m1_project_bootstrap_v1",
+        reason="Create auditable AU design-partner project bootstrap package",
     )
+    bootstrap_audit_event = bootstrap_audit_event.__class__(
+        **{
+            **bootstrap_audit_event.__dict__,
+            "id": _stable_id("audit-event", project.id, "project_bootstrap_created", project.prompt_version),
+        }
+    )
+    audit_events = (bootstrap_audit_event,)
     return ProjectBootstrap(
         tenant=tenant,
         project=project,
