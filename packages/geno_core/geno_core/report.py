@@ -289,7 +289,7 @@ def _gate_payload(gate: GoogleSpikeGateResult | Mapping[str, object] | None, row
     }
 
 
-def _api_browser_fidelity_payload(rows: tuple[dict[str, Any], ...]) -> dict[str, Any]:
+def build_api_browser_fidelity_payload(rows: tuple[dict[str, Any], ...]) -> dict[str, Any]:
     official_rows = [row for row in rows if row.get("access_method") == "official_api"]
     browser_rows = [row for row in rows if row.get("access_method") == "browser"]
     official_by_key: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
@@ -336,7 +336,7 @@ def build_report_methodology_disclosure(
     access_distribution = dict(sorted(Counter(str(row.get("access_method") or "unknown") for row in rows).items()))
     platform_distribution = dict(sorted(Counter(str(row.get("platform") or "unknown") for row in rows).items()))
     gate_payload = _gate_payload(google_spike_gate, rows)
-    fidelity_payload = _api_browser_fidelity_payload(rows)
+    fidelity_payload = build_api_browser_fidelity_payload(rows)
     google_coverage = (
         "main_scoring_allowed"
         if gate_payload["gate_status"] == "pass" and not gate_payload["limited_coverage"]

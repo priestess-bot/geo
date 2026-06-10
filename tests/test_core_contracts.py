@@ -33,6 +33,7 @@ from geno_core.collectors import (
     PerplexitySonarCollector,
 )
 from geno_core.geo import StaticAUGeoProvider
+from geno_core.fidelity import build_runtime_fidelity_check
 from geno_core.google_spike import (
     build_google_spike_plan,
     evaluate_google_spike_gate,
@@ -60,6 +61,8 @@ from geno_core.models import (
     RuntimeEntityAlias,
     RuntimeEntityAliasCandidatePage,
     RuntimeEntityAliasPage,
+    RuntimeFidelityCheck,
+    RuntimeFidelityCheckPage,
     RuntimeHumanReviewInput,
     RuntimeHumanReviewPage,
     RuntimeHumanReviewRecord,
@@ -1326,6 +1329,23 @@ class CoreContractsTest(unittest.TestCase):
         )
         repository.save_citation_graph(bootstrap.project.id, graph)
         repository.save_report_export(report.report_export, report.audit_event)
+        fidelity_check, fidelity_audit = build_runtime_fidelity_check(
+            project_id=bootstrap.project.id,
+            report_export_id=report.report_export.id,
+            answer_run_rows=tuple(
+                {
+                    "id": record.answer_run.id,
+                    "prompt_question_id": record.answer_run.prompt_question_id,
+                    "access_method": record.answer_run.access_method,
+                    "city": record.answer_run.city,
+                    "answer_present": record.answer_run.answer_present,
+                    "surface_triggered": record.answer_run.surface_triggered,
+                }
+                for record in records
+            ),
+            checked_by="unit-test",
+        )
+        repository.save_fidelity_check(fidelity_check, fidelity_audit)
         repository.save_action_plan(
             actions=actions,
             schedule=schedule,
@@ -1356,6 +1376,7 @@ class CoreContractsTest(unittest.TestCase):
             "source_gaps",
             "competitor_benchmarks",
             "report_exports",
+            "api_browser_fidelity_checks",
             "action_recommendations",
             "retest_schedules",
             "localized_knowledge_facts",
@@ -1370,6 +1391,8 @@ class CoreContractsTest(unittest.TestCase):
         for table in expected_tables:
             self.assertIn(f"INSERT INTO {table}", executed_sql)
         self.assertIn("method_disclosure", executed_sql)
+        audit_inserts = [params for sql, params in connection.calls if "INSERT INTO audit_events" in sql]
+        self.assertTrue(any(params[1] == "api_browser_fidelity_checked" for params in audit_inserts))
         self.assertGreaterEqual(connection.commit_count, 8)
         first_answer_run_insert = next(params for sql, params in connection.calls if "INSERT INTO answer_runs" in sql)
         self.assertEqual(str(first_answer_run_insert[0]), records[0].answer_run.id)
@@ -2045,6 +2068,200 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM collection_run_summaries WHERE project_id = %s AND run_type = %s", executed_sql)
         self.assertIn("ORDER BY created_at DESC, id DESC", executed_sql)
         self.assertIn("WHERE target_type = %s AND target_id = %s", executed_sql)
+
+    def test_runtime_fidelity_check_records_mismatch_and_audit_event(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        prompt_id = "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0"
+        check, audit_event = build_runtime_fidelity_check(
+            project_id=project_id,
+            report_export_id=report_export_id,
+            answer_run_rows=(
+                {
+                    "id": "438ab927-5873-5516-8df3-47f6c75ef007",
+                    "project_id": project_id,
+                    "prompt_question_id": prompt_id,
+                    "platform": "chatgpt",
+                    "surface": "chatgpt_search",
+                    "access_method": "official_api",
+                    "city": "Sydney",
+                    "answer_present": True,
+                    "surface_triggered": True,
+                    "screenshot_count": 0,
+                    "html_snapshot_count": 0,
+                },
+                {
+                    "id": "4c498fd9-7aac-5f62-b29f-f15450c836d3",
+                    "project_id": project_id,
+                    "prompt_question_id": prompt_id,
+                    "platform": "chatgpt",
+                    "surface": "chatgpt_search",
+                    "access_method": "browser",
+                    "city": "Sydney",
+                    "answer_present": False,
+                    "surface_triggered": True,
+                    "screenshot_count": 1,
+                    "html_snapshot_count": 1,
+                },
+            ),
+            checked_by="unit-test",
+        )
+
+        self.assertEqual(check["status"], "sampled")
+        self.assertEqual(check["official_api_records"], 1)
+        self.assertEqual(check["browser_records"], 1)
+        self.assertEqual(check["comparable_prompt_city_pairs"], 1)
+        self.assertEqual(check["mismatch_count"], 1)
+        self.assertEqual(check["difference_rate"], 1.0)
+        self.assertEqual(len(check["payload_hash"]), 64)
+        self.assertEqual(audit_event.event_type, "api_browser_fidelity_checked")
+        self.assertEqual(audit_event.target_type, "api_browser_fidelity_check")
+        self.assertEqual(audit_event.method_version, "api_browser_fidelity_check_v1")
+        self.assertEqual(audit_event.input_refs["report_export_ids"], [report_export_id])
+
+    def test_postgres_repository_creates_runtime_fidelity_check_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        official_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        browser_run_id = "4c498fd9-7aac-5f62-b29f-f15450c836d3"
+        prompt_id = "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0"
+        official_answer_row = {
+            "id": official_run_id,
+            "project_id": project_id,
+            "prompt_question_id": prompt_id,
+            "platform": "chatgpt",
+            "surface": "chatgpt_search",
+            "access_method": "official_api",
+            "market_code": "AU",
+            "city": "Sydney",
+            "language": "en-AU",
+            "device": "desktop",
+            "answer_present": True,
+            "surface_triggered": True,
+            "sample_index": 1,
+            "sample_size": 1,
+            "model_or_surface": "gpt-search",
+            "account_state": "api_key",
+            "collector_backend_id": "fixture_openai_web_search",
+            "collector_version": "fixture-v1",
+            "collected_at": now,
+            "status": "completed",
+            "screenshot_count": 0,
+            "html_snapshot_count": 0,
+        }
+        browser_answer_row = {
+            **official_answer_row,
+            "id": browser_run_id,
+            "access_method": "browser",
+            "answer_present": False,
+            "collector_backend_id": "browser_chatgpt_search",
+            "screenshot_count": 1,
+            "html_snapshot_count": 1,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                {"id": project_id},
+                {"id": report_export_id},
+                [{"answer_run_id": official_run_id}, {"answer_run_id": browser_run_id}],
+                [official_answer_row, browser_answer_row],
+                [
+                    {
+                        "id": "d0ba559d-13f3-4b79-a984-b39cb273b6a4",
+                        "event_type": "api_browser_fidelity_checked",
+                        "project_id": project_id,
+                        "actor_type": "system",
+                        "actor_id": "runtime-console",
+                        "target_type": "api_browser_fidelity_check",
+                        "target_id": "check-id",
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"answer_run_ids": [official_run_id, browser_run_id]},
+                        "output_refs": {"api_browser_fidelity_check_ids": ["check-id"]},
+                        "method_version": "api_browser_fidelity_check_v1",
+                        "reason": "test",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+
+        record = PostgresEvidenceRepository(connection).create_runtime_fidelity_check(
+            project_id=project_id,
+            report_export_id=report_export_id,
+            checked_by="runtime-console",
+        )
+
+        self.assertIsInstance(record, RuntimeFidelityCheck)
+        self.assertEqual(record.fidelity_check["status"], "sampled")
+        self.assertEqual(record.fidelity_check["mismatch_count"], 1)
+        self.assertEqual(record.audit_events[0]["event_type"], "api_browser_fidelity_checked")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM report_evidence", executed_sql)
+        self.assertIn("GROUP BY ar.id", executed_sql)
+        self.assertIn("INSERT INTO api_browser_fidelity_checks", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+        audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
+        self.assertEqual(audit_insert[1], "api_browser_fidelity_checked")
+
+    def test_postgres_repository_lists_runtime_fidelity_checks_with_audit_events(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        check_id = "9128c59e-54ca-5ceb-9272-3efe226bd07b"
+        check_row = {
+            "id": check_id,
+            "project_id": project_id,
+            "report_export_id": report_export_id,
+            "status": "not_run",
+            "official_api_records": 4,
+            "browser_records": 0,
+            "comparable_prompt_city_pairs": 0,
+            "mismatch_count": 0,
+            "difference_rate": None,
+            "payload": {"status": "not_run", "summary": "browser sample not collected"},
+            "payload_hash": "f" * 64,
+            "answer_run_ids": ["438ab927-5873-5516-8df3-47f6c75ef007"],
+            "checked_by": "collector_worker",
+            "checked_at": now,
+        }
+        audit_row = {
+            "id": "d0ba559d-13f3-4b79-a984-b39cb273b6a4",
+            "event_type": "api_browser_fidelity_checked",
+            "project_id": project_id,
+            "actor_type": "system",
+            "actor_id": "collector_worker",
+            "target_type": "api_browser_fidelity_check",
+            "target_id": check_id,
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"report_export_ids": [report_export_id]},
+            "output_refs": {"api_browser_fidelity_check_ids": [check_id]},
+            "method_version": "api_browser_fidelity_check_v1",
+            "reason": "test",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, [check_row], [audit_row]])
+
+        page = PostgresEvidenceRepository(connection).list_runtime_fidelity_checks(
+            project_id=project_id,
+            report_export_id=report_export_id,
+            status="not_run",
+            limit=5,
+            offset=0,
+        )
+
+        self.assertIsInstance(page, RuntimeFidelityCheckPage)
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.records[0].fidelity_check["payload_hash"], "f" * 64)
+        self.assertEqual(page.records[0].audit_events[0]["method_version"], "api_browser_fidelity_check_v1")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn(
+            "FROM api_browser_fidelity_checks WHERE project_id = %s AND report_export_id = %s AND status = %s",
+            executed_sql,
+        )
+        self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
 
     def test_postgres_repository_exports_filtered_runtime_evidence_csv(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

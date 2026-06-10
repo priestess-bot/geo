@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 from geno_api.main import app
 from geno_core.models import (
     RuntimeCollectionRunPage,
+    RuntimeFidelityCheck,
+    RuntimeFidelityCheckPage,
     RuntimeHumanReviewPage,
     RuntimeHumanReviewRecord,
     RuntimeKnowledgeSearchPage,
@@ -256,6 +258,124 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["run_type"], "p0a_slice")
         self.assertEqual(fake_repository.kwargs["limit"], 2)
         self.assertEqual(fake_repository.kwargs["offset"], 1)
+
+    def test_runtime_fidelity_checks_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get("/v1/fidelity-checks/runtime?status=not_run")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_fidelity_check_create_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.post(
+            "/v1/fidelity-checks/runtime",
+            json={
+                "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                "checked_by": "runtime-console",
+            },
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_fidelity_checks_endpoint_passes_filters(self) -> None:
+        class FakeRepository:
+            def list_runtime_fidelity_checks(self, **kwargs: object) -> RuntimeFidelityCheckPage:
+                self.kwargs = kwargs
+                return RuntimeFidelityCheckPage(
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(
+                        RuntimeFidelityCheck(
+                            fidelity_check={
+                                "id": "9128c59e-54ca-5ceb-9272-3efe226bd07b",
+                                "project_id": kwargs["project_id"],
+                                "report_export_id": kwargs["report_export_id"],
+                                "status": kwargs["status"],
+                                "official_api_records": 4,
+                                "browser_records": 0,
+                                "comparable_prompt_city_pairs": 0,
+                                "mismatch_count": 0,
+                                "difference_rate": None,
+                                "payload_hash": "f" * 64,
+                            },
+                            audit_events=(
+                                {
+                                    "event_type": "api_browser_fidelity_checked",
+                                    "target_type": "api_browser_fidelity_check",
+                                    "method_version": "api_browser_fidelity_check_v1",
+                                },
+                            ),
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/fidelity-checks/runtime"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
+                "&report_export_id=b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+                "&status=not_run&limit=5&offset=1"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_count"], 1)
+        self.assertEqual(payload["records"][0]["audit_events"][0]["event_type"], "api_browser_fidelity_checked")
+        self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.kwargs["report_export_id"], "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad")
+        self.assertEqual(fake_repository.kwargs["status"], "not_run")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+        self.assertEqual(fake_repository.kwargs["offset"], 1)
+
+    def test_runtime_fidelity_check_create_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def create_runtime_fidelity_check(self, **kwargs: object) -> RuntimeFidelityCheck:
+                self.kwargs = kwargs
+                return RuntimeFidelityCheck(
+                    fidelity_check={
+                        "id": "9128c59e-54ca-5ceb-9272-3efe226bd07b",
+                        "project_id": kwargs["project_id"],
+                        "report_export_id": kwargs["report_export_id"],
+                        "status": "sampled",
+                        "official_api_records": 1,
+                        "browser_records": 1,
+                        "comparable_prompt_city_pairs": 1,
+                        "mismatch_count": 1,
+                        "difference_rate": 1.0,
+                        "payload_hash": "a" * 64,
+                        "checked_by": kwargs["checked_by"],
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "api_browser_fidelity_checked",
+                            "target_type": "api_browser_fidelity_check",
+                            "method_version": "api_browser_fidelity_check_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/fidelity-checks/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "report_export_id": "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad",
+                    "checked_by": "runtime-console",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["fidelity_check"]["status"], "sampled")
+        self.assertEqual(payload["audit_events"][0]["event_type"], "api_browser_fidelity_checked")
+        self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.kwargs["report_export_id"], "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad")
+        self.assertEqual(fake_repository.kwargs["checked_by"], "runtime-console")
 
     def test_runtime_evidence_export_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get(
@@ -891,8 +1011,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEntityAliasCandidatePage", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasPage", payload["m1_bootstrap"])
         self.assertIn("TraceabilityBundle", payload["auditability"])
+        self.assertIn("RuntimeFidelityCheck", payload["auditability"])
         self.assertIn("build_traceability_bundle", payload["traceability"])
         self.assertIn("CollectionRunSummary", payload["m2a_evidence"])
+        self.assertIn("RuntimeFidelityCheck", payload["m2a_evidence"])
+        self.assertIn("RuntimeFidelityCheckPage", payload["m2a_evidence"])
         self.assertIn("LLMJudgeAnswerParser", payload["m3_analysis_scoring"])
         self.assertIn("ComparativeAnswerParser", payload["m3_analysis_scoring"])
         self.assertIn("parser_ab_compare_v1", payload["m3_analysis_scoring"])
@@ -909,6 +1032,9 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEvidenceExport", payload["persistence"])
         self.assertIn("RuntimeCollectionRun", payload["persistence"])
         self.assertIn("RuntimeCollectionRunPage", payload["persistence"])
+        self.assertIn("RuntimeFidelityCheck", payload["persistence"])
+        self.assertIn("RuntimeFidelityCheckPage", payload["persistence"])
+        self.assertIn("RuntimeFidelityCheckRequest", payload["persistence"])
         self.assertIn("ManualBackfillInput", payload["persistence"])
         self.assertIn("EntityAliasInput", payload["persistence"])
         self.assertIn("RuntimeEntityAlias", payload["persistence"])
@@ -953,6 +1079,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/prompts/runtime/import.csv", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])
         self.assertIn("/v1/collection-runs/runtime", payload["persistence"])
+        self.assertIn("/v1/fidelity-checks/runtime", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime/manual-backfill", payload["persistence"])
         self.assertIn("/v1/runtime-saved-views", payload["persistence"])

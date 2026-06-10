@@ -693,6 +693,20 @@ class RuntimeCollectionRunPage:
 
 
 @dataclass(frozen=True)
+class RuntimeFidelityCheck:
+    fidelity_check: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeFidelityCheckPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeFidelityCheck, ...]
+
+
+@dataclass(frozen=True)
 class RuntimeEvidenceExport:
     export_type: str
     filename: str

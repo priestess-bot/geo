@@ -247,6 +247,7 @@ type ReportExport = {
         official_api_records?: number;
         browser_records?: number;
         comparable_prompt_city_pairs?: number;
+        mismatch_count?: number;
         difference_rate?: number | null;
       };
       access_method_distribution?: Record<string, number>;
@@ -464,6 +465,7 @@ type RuntimeData = {
   prompts: PageResponse<RuntimePrompt>;
   evidence: PageResponse<EvidenceRun>;
   collectionRuns: PageResponse<CollectionRun>;
+  fidelityChecks: PageResponse<RuntimeFidelityCheck>;
   entityAliases: PageResponse<RuntimeEntityAlias>;
   entityAliasCandidates: PageResponse<RuntimeEntityAliasCandidate>;
   savedViews: PageResponse<RuntimeSavedView>;
@@ -550,6 +552,34 @@ type RuntimeKnowledgeSearch = {
   audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
 };
 
+type RuntimeFidelityCheck = {
+  fidelity_check: {
+    id: string;
+    project_id: string;
+    report_export_id?: string | null;
+    status: string;
+    official_api_records: number;
+    browser_records: number;
+    comparable_prompt_city_pairs: number;
+    mismatch_count: number;
+    difference_rate?: number | null;
+    payload?: {
+      summary?: string;
+      status?: string;
+      official_api_records?: number;
+      browser_records?: number;
+      comparable_prompt_city_pairs?: number;
+      mismatch_count?: number;
+      difference_rate?: number | null;
+    } & Record<string, unknown>;
+    payload_hash?: string;
+    answer_run_ids?: string[];
+    checked_by: string;
+    checked_at?: string;
+  };
+  audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
+};
+
 type RuntimeEntityAlias = {
   entity_alias: {
     id: string;
@@ -623,6 +653,7 @@ const endpoints = {
   prompts: "/v1/prompts/runtime",
   evidence: "/v1/evidence-runs/runtime",
   collectionRuns: "/v1/collection-runs/runtime",
+  fidelityChecks: "/v1/fidelity-checks/runtime",
   evidenceExport: "/v1/evidence-runs/runtime/export.csv",
   entityAliases: "/v1/entity-aliases/runtime",
   entityAliasCandidates: "/v1/entity-aliases/runtime/candidates",
@@ -1046,6 +1077,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasCandidates: runtimePath(endpoints.entityAliasCandidates, {
       limit: 5
     }),
+    fidelityChecks: runtimePath(endpoints.fidelityChecks, {
+      limit: 5
+    }),
     savedViews: runtimePath(endpoints.savedViews, {
       view_type: "runtime_evidence",
       limit: 5
@@ -1108,6 +1142,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     limit: 5
   });
   paths.collectionRuns = runtimePath(endpoints.collectionRuns, {
+    ...selectedProjectParams,
+    limit: 5
+  });
+  paths.fidelityChecks = runtimePath(endpoints.fidelityChecks, {
     ...selectedProjectParams,
     limit: 5
   });
@@ -1179,6 +1217,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     prompts,
     evidence,
     collectionRuns,
+    fidelityChecks,
     entityAliases,
     entityAliasCandidates,
     savedViews,
@@ -1196,6 +1235,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     fetchRuntimeEndpoint<PageResponse<EvidenceRun>>(baseUrl, paths.evidence, emptyPage<EvidenceRun>()),
     fetchRuntimeEndpoint<PageResponse<CollectionRun>>(baseUrl, paths.collectionRuns, emptyPage<CollectionRun>()),
+    fetchRuntimeEndpoint<PageResponse<RuntimeFidelityCheck>>(
+      baseUrl,
+      paths.fidelityChecks,
+      emptyPage<RuntimeFidelityCheck>()
+    ),
     fetchRuntimeEndpoint<PageResponse<RuntimeEntityAlias>>(
       baseUrl,
       paths.entityAliases,
@@ -1237,6 +1281,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     prompts,
     evidence,
     collectionRuns,
+    fidelityChecks,
     entityAliases,
     entityAliasCandidates,
     savedViews,
@@ -1263,6 +1308,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       prompts: prompts.payload,
       evidence: evidence.payload,
       collectionRuns: collectionRuns.payload,
+      fidelityChecks: fidelityChecks.payload,
       entityAliases: entityAliases.payload,
       entityAliasCandidates: entityAliasCandidates.payload,
       savedViews: savedViews.payload,
@@ -1450,6 +1496,7 @@ export default async function Home({
   const totalAuditEvents =
     (latestEvidence?.audit_events.length || 0) +
     data.collectionRuns.records.reduce((total, item) => total + item.audit_events.length, 0) +
+    data.fidelityChecks.records.reduce((total, item) => total + item.audit_events.length, 0) +
     data.entityAliases.records.reduce((total, item) => total + item.audit_events.length, 0) +
     data.humanReviews.records.reduce((total, item) => total + item.audit_events.length, 0) +
     (latestScore?.audit_events.length || 0) +
@@ -1470,23 +1517,32 @@ export default async function Home({
   const reportAccessMethodCounts = latestReport ? countBy(latestReport.answer_runs, (run) => run.access_method) : {};
   const reportPlatformCounts = latestReport ? countBy(latestReport.answer_runs, (run) => run.platform) : {};
   const reportMethodDisclosure = latestReport?.report_export.method_disclosure;
+  const latestFidelityCheck =
+    data.fidelityChecks.records.find((item) => item.fidelity_check.report_export_id === latestReport?.report_export.id) ||
+    data.fidelityChecks.records[0];
   const reportFrozenAccessMethodCounts = reportMethodDisclosure?.access_method_distribution || reportAccessMethodCounts;
   const reportFrozenPlatformCounts = reportMethodDisclosure?.platform_distribution || reportPlatformCounts;
   const reportFidelity = reportMethodDisclosure?.api_browser_fidelity;
+  const runtimeFidelity = latestFidelityCheck?.fidelity_check;
   const reportGate = reportMethodDisclosure?.google_spike_gate;
-  const reportOfficialApiCount = reportFidelity?.official_api_records ?? reportFrozenAccessMethodCounts.official_api ?? 0;
-  const reportBrowserCount = reportFidelity?.browser_records ?? reportFrozenAccessMethodCounts.browser ?? 0;
-  const reportFidelityStatus = reportFidelity?.status || (reportOfficialApiCount && reportBrowserCount ? "sample_required" : "not_run");
+  const reportOfficialApiCount =
+    runtimeFidelity?.official_api_records ?? reportFidelity?.official_api_records ?? reportFrozenAccessMethodCounts.official_api ?? 0;
+  const reportBrowserCount =
+    runtimeFidelity?.browser_records ?? reportFidelity?.browser_records ?? reportFrozenAccessMethodCounts.browser ?? 0;
+  const reportFidelityStatus =
+    runtimeFidelity?.status || reportFidelity?.status || (reportOfficialApiCount && reportBrowserCount ? "sample_required" : "not_run");
   const reportGoogleCoverage =
     reportMethodDisclosure?.google_coverage ||
     ((reportPlatformCounts.google || 0) > 0 ? "limited_coverage_appendix_only" : "limited_coverage_no_google_rows");
   const reportGoogleGateStatus = reportGate?.gate_status || "not_run";
   const reportLimitedCoverage = reportGate?.limited_coverage ?? true;
-  const reportComparablePairs = reportFidelity?.comparable_prompt_city_pairs ?? 0;
-  const reportDifferenceRate =
-    reportFidelity?.difference_rate === null || reportFidelity?.difference_rate === undefined
-      ? "n/a"
-      : reportFidelity.difference_rate;
+  const reportComparablePairs = runtimeFidelity?.comparable_prompt_city_pairs ?? reportFidelity?.comparable_prompt_city_pairs ?? 0;
+  const reportDifferenceRateValue = runtimeFidelity?.difference_rate ?? reportFidelity?.difference_rate;
+  const reportDifferenceRate: string | number =
+    reportDifferenceRateValue === null || reportDifferenceRateValue === undefined ? "n/a" : reportDifferenceRateValue;
+  const reportFidelityMismatchCount = runtimeFidelity?.mismatch_count ?? reportFidelity?.mismatch_count ?? 0;
+  const reportFidelityAudit =
+    latestFidelityCheck?.audit_events[0]?.event_type || (latestFidelityCheck ? "api_browser_fidelity_checked" : "no check");
   const reportScreenshotCount =
     reportMethodDisclosure?.evidence_asset_coverage?.screenshot_records ??
     (latestReport?.answer_runs.filter((run) => run.access_method === "browser" || run.access_method === "manual").length || 0);
@@ -2407,7 +2463,11 @@ export default async function Home({
                   <Fact label="Official API rows" value={reportOfficialApiCount} />
                   <Fact label="Browser rows" value={reportBrowserCount} />
                   <Fact label="Comparable pairs" value={reportComparablePairs} />
+                  <Fact label="Mismatch count" value={reportFidelityMismatchCount} />
                   <Fact label="Difference rate" value={reportDifferenceRate} />
+                  <Fact label="Fidelity audit" value={reportFidelityAudit} />
+                  <Fact label="Fidelity query" value={paths.fidelityChecks} />
+                  <Fact label="Payload hash" value={shortId(runtimeFidelity?.payload_hash)} />
                   <Fact label="Access distribution" value={formatCounts(reportFrozenAccessMethodCounts)} />
                   <Fact label="Platform distribution" value={formatCounts(reportFrozenPlatformCounts)} />
                   <Fact label="Screenshot records" value={reportScreenshotCount} />
@@ -2415,8 +2475,7 @@ export default async function Home({
                 </dl>
                 <small className="auditLine">
                   Google remains outside the main scoring denominator until a stored Google AIO / AI Mode spike gate passes.
-                  API-vs-browser fidelity is disclosed as not run unless this report contains comparable official API and
-                  browser rows.
+                  API-vs-browser fidelity is frozen as a runtime check and audited with api_browser_fidelity_checked.
                 </small>
               </section>
 

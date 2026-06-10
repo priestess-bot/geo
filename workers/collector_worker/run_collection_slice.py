@@ -31,6 +31,7 @@ from geno_core.collectors import (
 )
 from geno_core.contracts import CollectorBackend
 from geno_core.graph import build_citation_graph
+from geno_core.fidelity import build_runtime_fidelity_check_from_records
 from geno_core.google_spike import (
     build_google_spike_plan,
     evaluate_google_spike_gate,
@@ -137,6 +138,13 @@ def _persist_records(
             google_spike_gate=google_gate,
         )
         repository.save_report_export(report.report_export, report.audit_event)
+        fidelity_check, fidelity_audit = build_runtime_fidelity_check_from_records(
+            project_id=bootstrap.project.id,
+            report_export_id=report.report_export.id,
+            records=successes,
+            checked_by="collector_worker",
+        )
+        repository.save_fidelity_check(fidelity_check, fidelity_audit)
         report_artifact_summary: dict[str, object] = {
             "enabled": False,
             "reason": "OBJECT_STORE_ENDPOINT not configured",
@@ -275,6 +283,9 @@ def _persist_records(
             "competitor_benchmarks": len(graph.competitor_benchmarks),
             "report_export_id": report.report_export.id,
             "report_evidence_answer_runs": len(report.report_evidence_answer_run_ids),
+            "fidelity_check_id": fidelity_check["id"],
+            "fidelity_check_status": fidelity_check["status"],
+            "fidelity_difference_rate": fidelity_check["difference_rate"],
             "report_artifacts": report_artifact_summary,
             "action_recommendations": len(actions),
             "retest_schedule_id": schedule.id,

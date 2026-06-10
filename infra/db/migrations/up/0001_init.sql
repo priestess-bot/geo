@@ -237,6 +237,23 @@ CREATE TABLE retest_comparisons (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE api_browser_fidelity_checks (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL,
+  report_export_id uuid,
+  status text NOT NULL,
+  official_api_records integer NOT NULL DEFAULT 0,
+  browser_records integer NOT NULL DEFAULT 0,
+  comparable_prompt_city_pairs integer NOT NULL DEFAULT 0,
+  mismatch_count integer NOT NULL DEFAULT 0,
+  difference_rate numeric(8,4),
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  payload_hash text NOT NULL,
+  answer_run_ids uuid[] NOT NULL DEFAULT '{}',
+  checked_by text NOT NULL,
+  checked_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE localized_knowledge_facts (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id uuid NOT NULL,
@@ -551,4 +568,6 @@ CREATE INDEX idx_project_brand_kits_project ON project_brand_kits(project_id, up
 CREATE INDEX idx_score_weight_configs_project ON score_weight_configs(project_id, formula_version);
 CREATE INDEX idx_human_review_records_project ON human_review_records(project_id, target_type, review_status, created_at);
 CREATE INDEX idx_human_review_records_target ON human_review_records(target_type, target_id, created_at);
+CREATE INDEX idx_api_browser_fidelity_checks_project ON api_browser_fidelity_checks(project_id, checked_at);
+CREATE INDEX idx_api_browser_fidelity_checks_report ON api_browser_fidelity_checks(report_export_id, checked_at);
 CREATE INDEX idx_traceability_bundles_project ON traceability_bundles(project_id, subject_type);

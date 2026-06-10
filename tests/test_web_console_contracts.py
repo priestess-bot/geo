@@ -35,6 +35,16 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Access distribution", page_source)
         self.assertIn("Google remains outside the main scoring denominator", page_source)
 
+    def test_runtime_console_surfaces_api_browser_fidelity_checks(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+
+        self.assertIn('fidelityChecks: "/v1/fidelity-checks/runtime"', page_source)
+        self.assertIn("RuntimeFidelityCheck", page_source)
+        self.assertIn("api_browser_fidelity_checked", page_source)
+        self.assertIn("Fidelity audit", page_source)
+        self.assertIn("Fidelity query", page_source)
+        self.assertIn("Payload hash", page_source)
+
     def test_runtime_console_surfaces_collection_run_quality(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
 

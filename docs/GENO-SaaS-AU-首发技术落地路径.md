@@ -423,7 +423,7 @@ fail_gate:
 
 两个采集保真度问题必须在后端处理：
 
-- **API ≠ 消费者界面**：官方 API（如 ChatGPT web search、Perplexity Sonar）便于稳定采集，但其答案组装、模型版本、引用与个性化不保证与消费者界面一致。默认走 API 是"用稳定性换保真度"的有意取舍，必须配一个**抽检环节**：定期对同一批 prompt 用官方 API 后端与浏览器后端各采一次，量化差异率并在报告方法说明里披露。`access_method` 字段全程记录，便于区分。
+- **API ≠ 消费者界面**：官方 API（如 ChatGPT web search、Perplexity Sonar）便于稳定采集，但其答案组装、模型版本、引用与个性化不保证与消费者界面一致。默认走 API 是"用稳定性换保真度"的有意取舍，必须配一个**抽检环节**：定期对同一批 prompt 用官方 API 后端与浏览器后端各采一次，量化差异率并在报告方法说明里披露。`access_method` 字段全程记录，便于区分。工程上已经把该环节落为独立 `ApiBrowserFidelityCheck`：对同一 `prompt_question_id + city` 的 `official_api` 与 `browser` run 做可比较配对，冻结 status、样本数、mismatch count、difference rate、payload hash，并写入 `api_browser_fidelity_checked` 审计事件；真实浏览器 collector 未接入前必须如实显示 `not_run/no_overlap`，不能用 API 结果冒充消费者界面。
 - **AIO 选择性触发**：Google AI Overviews 不是每个 query 都出现。后端必须如实返回 `answer_present / surface_triggered`，把"AIO 没触发"与"触发了但没提品牌"区分开（影响 Step 9 的分母口径）。
 
 采集服务要求：
@@ -1478,6 +1478,35 @@ compute_cost
 total_cost
 created_at
 ```
+
+### 8.15.1 ApiBrowserFidelityCheck（API/浏览器保真度抽检，新增）
+
+将"官方 API 答案是否等同于消费者界面答案"从报告里的说明文字升级为可查询、可审计、可重跑的运行时对象。它不替代 `ReportExport.method_disclosure`，而是为 Method Disclosure 提供独立证据。
+
+```text
+id
+project_id
+report_export_id
+status                         # not_run / no_overlap / sampled
+official_api_records
+browser_records
+comparable_prompt_city_pairs
+mismatch_count
+difference_rate
+payload                        # 完整 comparison payload 和 summary
+payload_hash
+answer_run_ids
+checked_by
+checked_at
+```
+
+实现约束：
+
+- 同一批次优先按 `report_export_id -> report_evidence -> answer_run_ids` 取样；没有 report 时可按项目当前 answer runs 生成临时 check。
+- 只比较同一 `prompt_question_id + city` 下的 `official_api` 与 `browser` access method；没有 browser 样本时状态为 `not_run`，两类样本没有交集时状态为 `no_overlap`。
+- `payload_hash` 冻结比较口径；Runtime Console 和报告方法说明展示 status、official/browser 记录数、comparable pairs、mismatch count、difference rate 和 hash。
+- 每次生成或重跑 check 追加 `api_browser_fidelity_checked` 审计事件，记录输入 report/answer_run ids、输出 check id、方法版本和 actor。
+- P0c 可先由 worker 在 `--persist-analysis` 后自动生成；P1 再接 browser collector、抽样调度和定期差异趋势。
 
 ### 8.16 AuditEvent（审计事件，新增）
 

@@ -18,6 +18,7 @@ DROP TABLE IF EXISTS visibility_score_snapshots;
 DROP TABLE IF EXISTS retest_comparisons;
 DROP TABLE IF EXISTS retest_schedules;
 DROP TABLE IF EXISTS action_recommendations;
+DROP TABLE IF EXISTS api_browser_fidelity_checks;
 DROP TABLE IF EXISTS manual_distribution_records;
 DROP TABLE IF EXISTS integration_connectors;
 DROP TABLE IF EXISTS content_drafts;

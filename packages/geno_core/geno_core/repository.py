@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+from contextlib import nullcontext
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from io import StringIO
@@ -45,6 +46,8 @@ from geno_core.models import (
     RuntimeEntityAliasCandidate,
     RuntimeEntityAliasCandidatePage,
     RuntimeEntityAliasPage,
+    RuntimeFidelityCheck,
+    RuntimeFidelityCheckPage,
     RuntimeHumanReviewInput,
     RuntimeHumanReviewPage,
     RuntimeHumanReviewRecord,
@@ -79,6 +82,7 @@ from geno_core.report import (
     render_markdown_pdf,
     render_methodology_disclosure_lines,
 )
+from geno_core.fidelity import build_runtime_fidelity_check
 from geno_core.scoring import AU_VISIBILITY_V1, normalize_score_weights
 from geno_core.knowledge import (
     KNOWLEDGE_EMBEDDING_MODEL,
@@ -828,6 +832,22 @@ COLLECTION_RUN_SUMMARY_COLUMNS = (
     "started_at",
     "completed_at",
     "created_at",
+)
+API_BROWSER_FIDELITY_CHECK_COLUMNS = (
+    "id",
+    "project_id",
+    "report_export_id",
+    "status",
+    "official_api_records",
+    "browser_records",
+    "comparable_prompt_city_pairs",
+    "mismatch_count",
+    "difference_rate",
+    "payload",
+    "payload_hash",
+    "answer_run_ids",
+    "checked_by",
+    "checked_at",
 )
 VISIBILITY_SCORE_SNAPSHOT_COLUMNS = (
     "id",
@@ -2541,6 +2561,223 @@ class PostgresEvidenceRepository:
         )
         audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
         return RuntimeHumanReviewRecord(human_review=human_review, audit_events=audit_events)
+
+    def list_runtime_fidelity_checks(
+        self,
+        *,
+        project_id: str | None = None,
+        report_export_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeFidelityCheckPage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id))
+        if report_export_id:
+            filters.append("report_export_id = %s")
+            params.append(_uuid(report_export_id))
+        if status:
+            filters.append("status = %s")
+            params.append(status)
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM api_browser_fidelity_checks {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(API_BROWSER_FIDELITY_CHECK_COLUMNS)}
+                FROM api_browser_fidelity_checks
+                {where_clause}
+                ORDER BY checked_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            checks = _rows_dict(cursor.fetchall(), API_BROWSER_FIDELITY_CHECK_COLUMNS)
+            records = tuple(self._load_runtime_fidelity_check(cursor=cursor, fidelity_check=check) for check in checks)
+        return RuntimeFidelityCheckPage(total_count=total_count, limit=limit, offset=offset, records=records)
+
+    def create_runtime_fidelity_check(
+        self,
+        *,
+        project_id: str,
+        report_export_id: str | None = None,
+        checked_by: str = "runtime-console",
+    ) -> RuntimeFidelityCheck:
+        project_id = project_id.strip()
+        if not project_id:
+            raise ValueError("project_id is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            selected_report_id = report_export_id
+            if selected_report_id:
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM report_exports
+                    WHERE id = %s AND project_id = %s
+                    LIMIT 1
+                    """,
+                    (_uuid(selected_report_id), _uuid(project_id)),
+                )
+                if not cursor.fetchone():
+                    raise ValueError("report_export not found")
+            else:
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM report_exports
+                    WHERE project_id = %s
+                    ORDER BY exported_at DESC, id DESC
+                    LIMIT 1
+                    """,
+                    (_uuid(project_id),),
+                )
+                report_row = cursor.fetchone()
+                selected_report_id = str(report_row["id"] if isinstance(report_row, dict) else report_row[0]) if report_row else None
+            answer_run_rows = self._load_fidelity_answer_run_rows(
+                cursor=cursor,
+                project_id=project_id,
+                report_export_id=selected_report_id,
+            )
+            check, audit_event = build_runtime_fidelity_check(
+                project_id=project_id,
+                report_export_id=selected_report_id,
+                answer_run_rows=answer_run_rows,
+                checked_by=checked_by.strip() or "runtime-console",
+            )
+            self.save_fidelity_check(check, audit_event, cursor=cursor)
+            record = self._load_runtime_fidelity_check(cursor=cursor, fidelity_check=check)
+        self.connection.commit()
+        return record
+
+    def save_fidelity_check(
+        self,
+        fidelity_check: dict[str, Any],
+        audit_event: AuditEvent,
+        *,
+        cursor: DbCursor | None = None,
+    ) -> None:
+        owns_cursor = cursor is None
+        active_cursor = cursor or self.connection.cursor()
+        try:
+            with active_cursor if owns_cursor else nullcontext(active_cursor) as current:
+                current.execute(
+                    """
+                    INSERT INTO api_browser_fidelity_checks (
+                      id, project_id, report_export_id, status, official_api_records,
+                      browser_records, comparable_prompt_city_pairs, mismatch_count,
+                      difference_rate, payload, payload_hash, answer_run_ids, checked_by, checked_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                      status = EXCLUDED.status,
+                      official_api_records = EXCLUDED.official_api_records,
+                      browser_records = EXCLUDED.browser_records,
+                      comparable_prompt_city_pairs = EXCLUDED.comparable_prompt_city_pairs,
+                      mismatch_count = EXCLUDED.mismatch_count,
+                      difference_rate = EXCLUDED.difference_rate,
+                      payload = EXCLUDED.payload,
+                      payload_hash = EXCLUDED.payload_hash,
+                      answer_run_ids = EXCLUDED.answer_run_ids,
+                      checked_by = EXCLUDED.checked_by,
+                      checked_at = EXCLUDED.checked_at
+                    """,
+                    (
+                        _uuid(str(fidelity_check["id"])),
+                        _uuid(str(fidelity_check["project_id"])),
+                        _uuid(str(fidelity_check["report_export_id"])) if fidelity_check.get("report_export_id") else None,
+                        str(fidelity_check["status"]),
+                        int(fidelity_check.get("official_api_records") or 0),
+                        int(fidelity_check.get("browser_records") or 0),
+                        int(fidelity_check.get("comparable_prompt_city_pairs") or 0),
+                        int(fidelity_check.get("mismatch_count") or 0),
+                        fidelity_check.get("difference_rate"),
+                        _json_payload(fidelity_check.get("payload") or {}),
+                        str(fidelity_check["payload_hash"]),
+                        _uuid_array(tuple(str(value) for value in fidelity_check.get("answer_run_ids") or ())),
+                        str(fidelity_check.get("checked_by") or "runtime-console"),
+                        fidelity_check.get("checked_at"),
+                    ),
+                )
+                self.save_audit_events((audit_event,), cursor=current)
+        finally:
+            if owns_cursor:
+                self.connection.commit()
+
+    def _load_fidelity_answer_run_rows(
+        self,
+        *,
+        cursor: DbCursor,
+        project_id: str,
+        report_export_id: str | None,
+    ) -> tuple[dict[str, Any], ...]:
+        if report_export_id:
+            cursor.execute(
+                """
+                SELECT answer_run_id
+                FROM report_evidence
+                WHERE report_export_id = %s
+                ORDER BY created_at ASC
+                """,
+                (_uuid(report_export_id),),
+            )
+            answer_run_ids = tuple(str(row["answer_run_id"] if isinstance(row, dict) else row[0]) for row in cursor.fetchall())
+            if not answer_run_ids:
+                return ()
+            filter_clause = "ar.id = ANY(%s::uuid[])"
+            params: tuple[object, ...] = (_uuid_array(answer_run_ids),)
+        else:
+            filter_clause = "ar.project_id = %s"
+            params = (_uuid(project_id),)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(f"ar.{column}" for column in ANSWER_RUN_COLUMNS)},
+                   count(*) FILTER (WHERE ea.asset_type = 'screenshot') AS screenshot_count,
+                   count(*) FILTER (WHERE ea.asset_type = 'html_snapshot') AS html_snapshot_count
+            FROM answer_runs ar
+            LEFT JOIN evidence_assets ea ON ea.answer_run_id = ar.id
+            WHERE {filter_clause}
+            GROUP BY {", ".join(f"ar.{column}" for column in ANSWER_RUN_COLUMNS)}
+            ORDER BY ar.collected_at ASC, ar.id ASC
+            """,
+            params,
+        )
+        return _rows_dict(cursor.fetchall(), ANSWER_RUN_COLUMNS + ("screenshot_count", "html_snapshot_count"))
+
+    def _load_runtime_fidelity_check(
+        self,
+        *,
+        cursor: DbCursor,
+        fidelity_check: dict[str, Any],
+    ) -> RuntimeFidelityCheck:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            LIMIT 5
+            """,
+            (_uuid(str(fidelity_check["project_id"])), "api_browser_fidelity_check", str(fidelity_check["id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeFidelityCheck(fidelity_check=fidelity_check, audit_events=audit_events)
 
     def list_runtime_score_snapshots(
         self,

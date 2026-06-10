@@ -150,6 +150,12 @@ class RuntimeProjectCreateRequest(BaseModel):
     owner_user_id: str = Field(default="runtime-console", min_length=1, max_length=120)
 
 
+class RuntimeFidelityCheckRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    report_export_id: str | None = Field(default=None, min_length=1)
+    checked_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "geno-saas-au-api"}
@@ -809,6 +815,51 @@ def runtime_reports(
         close_repository_connection(repository)
 
 
+@app.get("/v1/fidelity-checks/runtime")
+def runtime_fidelity_checks(
+    project_id: str | None = None,
+    report_export_id: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.list_runtime_fidelity_checks(
+            project_id=project_id,
+            report_export_id=report_export_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/fidelity-checks/runtime")
+def create_runtime_fidelity_check(payload: RuntimeFidelityCheckRequest) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        check = repository.create_runtime_fidelity_check(
+            project_id=payload.project_id.strip(),
+            report_export_id=payload.report_export_id.strip() if payload.report_export_id else None,
+            checked_by=payload.checked_by.strip(),
+        )
+        return asdict(check)
+    except ValueError as exc:
+        status_code = 404 if str(exc) in {"project not found", "report_export not found"} else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/reports/runtime/{report_export_id}/artifact")
 def runtime_report_artifact(
     report_export_id: str,
@@ -1350,6 +1401,7 @@ def contracts() -> dict[str, list[str]]:
             "ScoreContribution",
             "ReportExport",
             "RuntimeHumanReviewRecord",
+            "RuntimeFidelityCheck",
             "TraceabilityBundle",
         ],
         "m1_bootstrap": [
@@ -1377,6 +1429,8 @@ def contracts() -> dict[str, list[str]]:
             "CollectorLog",
             "CollectionCost",
             "CollectionRunSummary",
+            "RuntimeFidelityCheck",
+            "RuntimeFidelityCheckPage",
             "RawEvidenceRecord",
             "CollectionFailureRecord",
             "ManualBackfillInput",
@@ -1478,6 +1532,9 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEvidenceExport",
             "RuntimeCollectionRun",
             "RuntimeCollectionRunPage",
+            "RuntimeFidelityCheck",
+            "RuntimeFidelityCheckPage",
+            "RuntimeFidelityCheckRequest",
             "ManualBackfillInput",
             "RuntimeSavedView",
             "RuntimeSavedViewPage",
@@ -1513,6 +1570,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/prompts/runtime/import.csv",
             "/v1/evidence-runs/runtime",
             "/v1/collection-runs/runtime",
+            "/v1/fidelity-checks/runtime",
             "/v1/evidence-runs/runtime/export.csv",
             "/v1/evidence-runs/runtime/manual-backfill",
             "/v1/runtime-saved-views",

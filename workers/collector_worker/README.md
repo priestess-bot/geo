@@ -51,9 +51,13 @@ counts, estimated cost, latency, and status. It also reads any project-level `sc
 and freezes the active component weights into `VisibilityScoreSnapshot.component_weights_snapshot`.
 The worker then stores `VisibilityScoreSnapshot`, `ScoreContribution`,
 `ScoreSnapshotRun`, and the score audit event. It also builds and stores the M4 citation graph, source graph evidence,
-source gaps, competitor benchmarks, the M5 `ReportExport` snapshot, and the M6
-`ActionRecommendation`, `RetestSchedule`, `RetestComparison`, action plan audit event, and retest
-comparison audit event. It then persists the M7 `LocalizedKnowledgeFact`, upserts
+source gaps, competitor benchmarks, and the M5 `ReportExport` snapshot. After the report is saved,
+it freezes the current API-vs-browser fidelity payload into `api_browser_fidelity_checks` and writes
+an `api_browser_fidelity_checked` audit event. The fixture path currently contains official API
+samples only, so the check truthfully records `not_run` until a browser collector provides comparable
+samples. The worker then stores the M6 `ActionRecommendation`, `RetestSchedule`, `RetestComparison`,
+action plan audit event, and retest comparison audit event. It then persists the M7
+`LocalizedKnowledgeFact`, upserts
 `KnowledgeFactEmbedding` rows into pgvector through `knowledge_fact_embeddings`, persists
 `ContentDraft`, `IntegrationConnector`, `ManualDistributionRecord`, and writes both the
 `knowledge_fact_embeddings_indexed` and content engine audit events. Failed records remain auditable
@@ -87,7 +91,9 @@ prints the gate result. Real Google paths still require browser/API/manual runti
 When `--persist-analysis` creates a report from the stable fixture path, the report Method Disclosure
 is frozen into `report_exports.method_disclosure`, records Google as limited coverage until a Google
 spike gate is available, and records the current API-vs-browser fidelity status plus access-method
-distribution.
+distribution. The same fidelity status is also available as a standalone runtime object through
+`GET /v1/fidelity-checks/runtime` and can be regenerated for a report with
+`POST /v1/fidelity-checks/runtime`.
 
 Docker worker profile:
 
