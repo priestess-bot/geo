@@ -108,12 +108,21 @@ DATABASE_URL=postgresql://geno:geno@localhost:5432/geno \
 PYTHONPATH=packages/geno_core:apps/api \
 python3 workers/collector_worker/run_collection_slice.py \
   --mode fixture --prompt-limit 1 --persist --persist-analysis \
-  --judge-gateway litellm --judge-model gpt-4.1-mini
+  --judge-gateway litellm --judge-model geno-gpt-4.1-mini
 ```
 
-The adapter-level retry/cost behavior is covered by local contract tests. Production use still needs
-the LiteLLM service wired into Compose/deployment, real provider routing, and reconciliation against
-provider billing exports.
+The adapter-level retry/cost behavior is covered by local contract tests. The Compose stack also
+includes an optional `llm-gateway` profile with `litellm` and `collector-worker-litellm`; it mounts
+`infra/litellm_config.yaml`, reads provider secrets from environment variables, and routes the judge
+worker through `http://litellm:4000`.
+
+```bash
+OPENAI_API_KEY=... LITELLM_MASTER_KEY=... \
+docker compose -f infra/docker-compose.yml --profile llm-gateway run --rm collector-worker-litellm
+```
+
+Production use still needs real provider routing choices, live provider-key smoke tests, and
+reconciliation against provider billing exports.
 
 Fixture API-vs-browser fidelity sample:
 
@@ -166,6 +175,7 @@ Docker worker profile:
 
 ```bash
 docker compose -f infra/docker-compose.yml --profile worker run --rm collector-worker
+OPENAI_API_KEY=... LITELLM_MASTER_KEY=... docker compose -f infra/docker-compose.yml --profile llm-gateway run --rm collector-worker-litellm
 ```
 
 P0b planned adapters:

@@ -28,6 +28,23 @@ services:
     volumes:
       - minio_data:/data
 
+  litellm:
+    image: docker.litellm.ai/berriai/litellm:main-latest
+    profiles:
+      - llm-gateway
+    command:
+      - --config
+      - /app/config.yaml
+      - --port
+      - "4000"
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-geno-local}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml:ro
+
   api:
     build:
       context: ..
@@ -39,6 +56,8 @@ services:
       OBJECT_STORE_ACCESS_KEY: minio
       OBJECT_STORE_SECRET_KEY: minio123
       OBJECT_STORE_REGION: us-east-1
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geno-local}
     ports:
       - "8000:8000"
     depends_on:
@@ -60,6 +79,8 @@ services:
       OBJECT_STORE_ACCESS_KEY: minio
       OBJECT_STORE_SECRET_KEY: minio123
       OBJECT_STORE_REGION: us-east-1
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geno-local}
     command:
       - python
       - workers/collector_worker/run_collection_slice.py
@@ -73,6 +94,42 @@ services:
       postgres:
         condition: service_healthy
       minio:
+        condition: service_started
+
+  collector-worker-litellm:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    profiles:
+      - llm-gateway
+    environment:
+      DATABASE_URL: postgresql://geno:geno@postgres:5432/geno
+      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_ACCESS_KEY: minio
+      OBJECT_STORE_SECRET_KEY: minio123
+      OBJECT_STORE_REGION: us-east-1
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geno-local}
+    command:
+      - python
+      - workers/collector_worker/run_collection_slice.py
+      - --mode
+      - fixture
+      - --prompt-limit
+      - "1"
+      - --persist
+      - --persist-analysis
+      - --judge-gateway
+      - litellm
+      - --judge-model
+      - geno-gpt-4.1-mini
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      litellm:
         condition: service_started
 
   web:

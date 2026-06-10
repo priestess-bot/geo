@@ -1,0 +1,14 @@
+# GENO local LiteLLM proxy config.
+# Provider keys are read from container environment variables; do not commit secrets here.
+model_list:
+  - model_name: geno-gpt-4.1-mini
+    litellm_params:
+      model: openai/gpt-4.1-mini
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: geno-text-embedding-3-small
+    litellm_params:
+      model: openai/text-embedding-3-small
+      api_key: os.environ/OPENAI_API_KEY
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

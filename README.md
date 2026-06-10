@@ -43,12 +43,23 @@
 ```bash
 make test
 make docker-config
+make docker-config-llm
 ```
 
 核心服务一键启动入口：
 
 ```bash
 docker compose -f infra/docker-compose.yml up --build
+```
+
+LiteLLM proxy 作为可选 profile 接入，默认不会随核心服务启动。需要用真实 LLM judge 时，先提供供应商 key 和 master key，再启动 profile；`collector-worker-litellm` 会把 `--judge-gateway litellm --judge-model geno-gpt-4.1-mini` 走到同一个 `LiteLLMGateway` adapter：
+
+```bash
+OPENAI_API_KEY=... LITELLM_MASTER_KEY=... \
+docker compose -f infra/docker-compose.yml --profile llm-gateway up --build litellm
+
+OPENAI_API_KEY=... LITELLM_MASTER_KEY=... \
+docker compose -f infra/docker-compose.yml --profile llm-gateway run --rm collector-worker-litellm
 ```
 
 默认地址：API `http://localhost:8000/health`，控制台 `http://localhost:3000`。控制台会读取 runtime project / project brand kit / score weight config / score formula catalog / human review / prompt / prompt CSV import / evidence / collection run summary / fidelity check / entity alias / entity alias candidates / saved views / score / graph / report / report artifact / action / content / knowledge fact search / traceability API；Runtime Filters 支持通过 URL 查询参数按 `project_id`、`platform`、evidence `city`、`intent_type` 筛选 evidence，并用 `intent_type` 同步筛选 prompt 列表；Evidence Sort 支持 `collected_at_desc`、`collected_at_asc`、`cost_desc`、`cost_asc`、`citation_count_desc`、`audit_count_desc` 受控排序；Saved Views 可把当前筛选、排序、evidence query path 与 export path 保存到 PostgreSQL，并写入 `runtime_saved_view_saved` 审计事件；控制台同时展示实际 API 查询路径和筛选后 Evidence CSV 下载入口，CSV 响应含 `X-GENO-Evidence-Export-Hash` 与 `X-GENO-Evidence-Export-Sort`；Project Bootstrap 面板可创建并读回可配置 AU/DTC 客户启动包，输入 tenant、project、brand、category、brand domains、product lines 和 3-5 competitors 后生成 100 条 prompt、品牌/竞品实体和 `project_bootstrap_created` 审计事件，并提供 Brand Kit 表单保存项目级白标默认值、Score Weights 表单读取 `/v1/score-formulas/runtime`、选择评分公式版本并保存项目级 AUVisibilityScore 组件权重、Entity Alias 表单和候选列表；Score Weight Config 会写入 `score_weight_configs` 并生成 `score_weight_config_saved` 审计事件，后续 worker `--persist-analysis --score-formula-version ...` 会读取该配置并把本次使用的 `formula_version` 与 `component_weights_snapshot` 冻结到 `visibility_score_snapshots`；Human Review Trail 可对 score snapshot、content draft、answer analysis/run、score weight config 或 project 记录复核状态、decision、reviewer、notes 和 payload，写入 `human_review_records` 并生成 `human_review_recorded` 审计事件。Prompt Pack 面板展示 100 条 AU prompt 的总数、intent/city 覆盖和样本文本，提供 Prompt CSV Import 表单把 `text,intent_type,city,priority,intent_weight` 等字段导入为项目级 `PromptQuestion`，并写入 `runtime_prompts_imported` 审计事件，同时提供 Manual Backfill 表单，把人工答案、citation、截图/HTML URL 写成标准 `RawEvidenceRecord` 与 `manual_backfill_recorded` 审计事件；Collection Run Quality 面板展示最近批次的 planned/attempted/success/failure、success rate、trigger rate、answer rate、总成本、单次平均成本、总耗时、单次平均耗时、平台/access method 分布、失败摘要和 `collection_run_summarized` 审计事件数；Evidence Runs 面板展示每条 answer run 的 prompt、平台、城市、access method、触发状态、采样、collector、cost、duration、raw hash、citation、asset 和 audit；Score Contributions 面板展示 8 个评分组件的原始分、权重、加权贡献、分母、正负证据、confidence note、parser A/B agreement、冻结权重快照和关联 answer run，并能从组件跳到相关 answer run；Citation Graph & Competitors 面板展示 Citation Graph Map、source nodes、source gaps、graph evidence links 和竞品 benchmark，并能从 source node / graph link 跳到 answer run；Report Snapshot 面板提供 Markdown/CSV/PDF/White-label PDF 下载入口，并把当前 `platform/city/intent_type/sort` 传给 artifact API，白标 PDF 会优先使用当前项目 Brand Kit，响应头返回 `X-GENO-Report-Artifact-Hash`、`X-GENO-Report-Artifact-Filter-Hash`、`X-GENO-Report-Artifact-Template`、`X-GENO-Report-Artifact-Template-Hash`、`X-GENO-Report-Artifact-Sort`、row count 与 total count；Report History 面板按当前 runtime project 查询最近 5 个 `ReportExport`，逐条展示版本、导出时间、样本量、score snapshot 数、审计事件数、methodology hash、冻结对象存储 URL和继承当前筛选/排序的 Markdown/CSV/PDF/White-label PDF 下载入口；Report Method & Evidence Appendix 面板展示冻结 methodology hash、采样窗口、平台/access method/city 覆盖、双分母评分、平台权重、Method Disclosure（Google coverage/gate、limited coverage、API/browser fidelity、access/platform distribution）、API-vs-browser fidelity check 的 status、mismatch count、difference rate、payload hash、查询路径和 `api_browser_fidelity_checked` 审计事件；Action Plan & Retest Detail 面板展示任务 owner/status/next check/source gap/evidence runs、T+0/7/14/30 复测计划、前后分数对比和 action/retest audit trail；Content Engine Detail 面板展示本地 facts、pgvector Knowledge Search、证据绑定草稿、target questions/evidence runs、source action、connector 计划、manual distribution records 与 content/embedding audit trail，知识检索使用 `/v1/knowledge-facts/runtime/search`，按 `project_id/query/market_code/city` 查询 `knowledge_fact_embeddings`，并展示 `fixture-knowledge-embedding-v1` 与 `knowledge_fact_embeddings_indexed`；Traceability Detail 面板展示 Traceability Map、报告到评分、证据、图谱、行动、内容、审计事件和 evidence links 的聚合链路；节点级 details 区可展开查看 score components、answer evidence、citation/asset nodes、actions/content drafts 和 audit event nodes，页面内锚点深链路会高亮被跳转节点。如果还没有数据，先运行 worker profile 写入一批 fixture runtime 数据。
@@ -75,6 +86,7 @@ Docker worker profile：
 
 ```bash
 docker compose -f infra/docker-compose.yml --profile worker run --rm collector-worker
+OPENAI_API_KEY=... LITELLM_MASTER_KEY=... docker compose -f infra/docker-compose.yml --profile llm-gateway run --rm collector-worker-litellm
 ```
 
 Runtime Console 默认读取最近 20 个 AU runtime project 作为项目下拉选项；如果 URL 带 `?project_id=...` 且该项目不在第一页，控制台会额外按 `project_id + market_code=AU` 读取一次选中项目，再用同一个 `project_id` 构造 prompts/evidence/export/alias/saved views/scores/graphs/reports/actions/content/traceability 查询路径。Saved Views 链接也会保留 `project_id`，避免跨客户或跨项目复盘时误读最新项目。

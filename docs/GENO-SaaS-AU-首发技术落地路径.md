@@ -139,7 +139,7 @@ RawCollectResult（数据契约）
 其他需要先定义接口、后填实现的可插拔点：
 
 ```text
-LLMGateway       chat()/embed()，统一多模型，路由/重试/成本/日志；P0a 先用 FixtureLLMGateway 写 llm_call_logs，LiteLLMGateway adapter 已支持 OpenAI-compatible /chat/completions 与 /embeddings，chat 路径具备 retry/backoff、失败调用审计和上游响应 cost 读取，真实 LiteLLM 服务联调后可切换
+LLMGateway       chat()/embed()，统一多模型，路由/重试/成本/日志；P0a 先用 FixtureLLMGateway 写 llm_call_logs，LiteLLMGateway adapter 已支持 OpenAI-compatible /chat/completions 与 /embeddings，chat 路径具备 retry/backoff、失败调用审计和上游响应 cost 读取；infra 已提供可选 `llm-gateway` Compose profile、`litellm` proxy config 与 `collector-worker-litellm`，真实 provider key 联调后可切换
 ParserEngine     parse_record(RawEvidenceRecord, BrandEntity, competitors, entity_aliases) -> AnswerAnalysis（实现：规则 + LLM-as-judge，二者可切换/并存）
 VectorStore      upsert()/search()（实现：pgvector / Qdrant / Milvus）
 GraphStore       upsert_node()/query()（实现：Neo4j / Apache Jena / 纯 SQL 邻接表）
@@ -1668,7 +1668,7 @@ ReportEvidence
 架构验收（开源·可插拔）：
 
 - P0a 必须完成接口级可插拔：CollectorBackend、ParserEngine、ScoringFormula、ReportExporter 均有 stub 与至少一个工作实现，并用合约测试证明真实实现满足协议签名。
-- 向量库、图库、LLM 供应商的替换演示不阻塞 P0a 客户试点；P0c/P1 前至少各演示一次"替换/切换后业务不变"：向量库 pgvector ↔ Qdrant、图库 PG 邻接表 ↔ Neo4j、LLM 供应商经 LiteLLM 切换。当前 `LiteLLMGateway` 已可注入 `LLMJudgeAnswerParser` 和 `analyze_and_score_records()`，并保留成功/失败调用日志；chat 路径已具备 retry/backoff、重试错误留痕和上游响应 cost 优先读取。真实 LiteLLM 服务编排、供应商路由联调和账单 reconciliation 仍需完成。
+- 向量库、图库、LLM 供应商的替换演示不阻塞 P0a 客户试点；P0c/P1 前至少各演示一次"替换/切换后业务不变"：向量库 pgvector ↔ Qdrant、图库 PG 邻接表 ↔ Neo4j、LLM 供应商经 LiteLLM 切换。当前 `LiteLLMGateway` 已可注入 `LLMJudgeAnswerParser` 和 `analyze_and_score_records()`，并保留成功/失败调用日志；chat 路径已具备 retry/backoff、重试错误留痕和上游响应 cost 优先读取；Compose 已提供可选 `llm-gateway` profile 与 `collector-worker-litellm`。真实 provider key 联调、供应商路由选择和账单 reconciliation 仍需完成。
 - 解析器规则实现与 LLM-as-judge 实现可对同一答案并行对比并保留版本。
 - 评分公式可升级到新版本，历史分数仍可按旧版本重算。
 
