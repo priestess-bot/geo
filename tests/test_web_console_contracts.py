@@ -46,10 +46,14 @@ class WebConsoleContractsTest(unittest.TestCase):
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
 
         self.assertIn('fidelityChecks: "/v1/fidelity-checks/runtime"', page_source)
+        self.assertIn('fidelityTrend: "/v1/fidelity-checks/runtime/trend"', page_source)
         self.assertIn("RuntimeFidelityCheck", page_source)
+        self.assertIn("RuntimeFidelityTrend", page_source)
         self.assertIn("api_browser_fidelity_checked", page_source)
         self.assertIn("Fidelity audit", page_source)
         self.assertIn("Fidelity query", page_source)
+        self.assertIn("Fidelity trend", page_source)
+        self.assertIn("Trend query", page_source)
         self.assertIn("Payload hash", page_source)
 
     def test_runtime_console_surfaces_collection_run_quality(self) -> None:

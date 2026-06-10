@@ -484,6 +484,7 @@ type RuntimeData = {
   evidence: PageResponse<EvidenceRun>;
   collectionRuns: PageResponse<CollectionRun>;
   fidelityChecks: PageResponse<RuntimeFidelityCheck>;
+  fidelityTrend: RuntimeFidelityTrend | null;
   entityAliases: PageResponse<RuntimeEntityAlias>;
   entityAliasCandidates: PageResponse<RuntimeEntityAliasCandidate>;
   savedViews: PageResponse<RuntimeSavedView>;
@@ -608,6 +609,35 @@ type RuntimeFidelityCheck = {
   audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
 };
 
+type RuntimeFidelityTrend = {
+  project_id?: string | null;
+  report_export_id?: string | null;
+  total_count: number;
+  sampled_count: number;
+  limit: number;
+  latest_status?: string | null;
+  latest_checked_at?: string | null;
+  earliest_checked_at?: string | null;
+  latest_difference_rate?: number | null;
+  earliest_difference_rate?: number | null;
+  average_difference_rate?: number | null;
+  max_difference_rate?: number | null;
+  trend_direction: string;
+  points: Array<{
+    id: string;
+    project_id: string;
+    report_export_id?: string | null;
+    status: string;
+    official_api_records: number;
+    browser_records: number;
+    comparable_prompt_city_pairs: number;
+    mismatch_count: number;
+    difference_rate?: number | null;
+    payload_hash?: string | null;
+    checked_at?: string | null;
+  }>;
+};
+
 type RuntimeEntityAlias = {
   entity_alias: {
     id: string;
@@ -682,6 +712,7 @@ const endpoints = {
   evidence: "/v1/evidence-runs/runtime",
   collectionRuns: "/v1/collection-runs/runtime",
   fidelityChecks: "/v1/fidelity-checks/runtime",
+  fidelityTrend: "/v1/fidelity-checks/runtime/trend",
   evidenceExport: "/v1/evidence-runs/runtime/export.csv",
   entityAliases: "/v1/entity-aliases/runtime",
   entityAliasCandidates: "/v1/entity-aliases/runtime/candidates",
@@ -1109,6 +1140,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fidelityChecks: runtimePath(endpoints.fidelityChecks, {
       limit: 5
     }),
+    fidelityTrend: runtimePath(endpoints.fidelityTrend, {
+      limit: 20
+    }),
     savedViews: runtimePath(endpoints.savedViews, {
       view_type: "runtime_evidence",
       limit: 5
@@ -1178,6 +1212,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.fidelityChecks = runtimePath(endpoints.fidelityChecks, {
     ...selectedProjectParams,
     limit: 5
+  });
+  paths.fidelityTrend = runtimePath(endpoints.fidelityTrend, {
+    ...selectedProjectParams,
+    limit: 20
   });
   paths.evidenceExport = runtimePath(endpoints.evidenceExport, {
     ...selectedProjectParams,
@@ -1249,6 +1287,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     evidence,
     collectionRuns,
     fidelityChecks,
+    fidelityTrend,
     entityAliases,
     entityAliasCandidates,
     savedViews,
@@ -1272,6 +1311,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       paths.fidelityChecks,
       emptyPage<RuntimeFidelityCheck>()
     ),
+    fetchRuntimeEndpoint<RuntimeFidelityTrend | null>(baseUrl, paths.fidelityTrend, null),
     fetchRuntimeEndpoint<PageResponse<RuntimeEntityAlias>>(
       baseUrl,
       paths.entityAliases,
@@ -1315,6 +1355,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     evidence,
     collectionRuns,
     fidelityChecks,
+    fidelityTrend,
     entityAliases,
     entityAliasCandidates,
     savedViews,
@@ -1344,6 +1385,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       evidence: evidence.payload,
       collectionRuns: collectionRuns.payload,
       fidelityChecks: fidelityChecks.payload,
+      fidelityTrend: fidelityTrend.payload,
       entityAliases: entityAliases.payload,
       entityAliasCandidates: entityAliasCandidates.payload,
       savedViews: savedViews.payload,
@@ -1363,6 +1405,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
 
 function pct(value: number | undefined): string {
   return `${Math.round((value || 0) * 100)}%`;
+}
+
+function optionalPct(value: number | null | undefined): string {
+  return value === null || value === undefined ? "n/a" : pct(value);
 }
 
 function num(value: number | undefined): string {
@@ -1603,6 +1649,15 @@ export default async function Home({
   const reportDifferenceRate: string | number =
     reportDifferenceRateValue === null || reportDifferenceRateValue === undefined ? "n/a" : reportDifferenceRateValue;
   const reportFidelityMismatchCount = runtimeFidelity?.mismatch_count ?? reportFidelity?.mismatch_count ?? 0;
+  const fidelityTrend = data.fidelityTrend;
+  const fidelityTrendSampleText = fidelityTrend
+    ? `${fidelityTrend.sampled_count}/${fidelityTrend.total_count}`
+    : "0/0";
+  const fidelityTrendWindow = fidelityTrend
+    ? `${dateText(fidelityTrend.earliest_checked_at || undefined)} -> ${dateText(
+        fidelityTrend.latest_checked_at || undefined,
+      )}`
+    : "unknown";
   const reportFidelityAudit =
     latestFidelityCheck?.audit_events[0]?.event_type || (latestFidelityCheck ? "api_browser_fidelity_checked" : "no check");
   const reportScreenshotCount =
@@ -2566,8 +2621,14 @@ export default async function Home({
                   <Fact label="Comparable pairs" value={reportComparablePairs} />
                   <Fact label="Mismatch count" value={reportFidelityMismatchCount} />
                   <Fact label="Difference rate" value={reportDifferenceRate} />
+                  <Fact label="Fidelity trend" value={fidelityTrend?.trend_direction || "no_data"} />
+                  <Fact label="Trend samples" value={fidelityTrendSampleText} />
+                  <Fact label="Trend average" value={optionalPct(fidelityTrend?.average_difference_rate)} />
+                  <Fact label="Trend max" value={optionalPct(fidelityTrend?.max_difference_rate)} />
+                  <Fact label="Trend window" value={fidelityTrendWindow} />
                   <Fact label="Fidelity audit" value={reportFidelityAudit} />
                   <Fact label="Fidelity query" value={paths.fidelityChecks} />
+                  <Fact label="Trend query" value={paths.fidelityTrend} />
                   <Fact label="Payload hash" value={shortId(runtimeFidelity?.payload_hash)} />
                   <Fact label="Access distribution" value={formatCounts(reportFrozenAccessMethodCounts)} />
                   <Fact label="Platform distribution" value={formatCounts(reportFrozenPlatformCounts)} />

@@ -74,6 +74,7 @@ from geno_core.models import (
     RuntimeEntityAliasPage,
     RuntimeFidelityCheck,
     RuntimeFidelityCheckPage,
+    RuntimeFidelityTrend,
     RuntimeHumanReviewInput,
     RuntimeHumanReviewPage,
     RuntimeHumanReviewRecord,
@@ -3523,6 +3524,66 @@ class CoreContractsTest(unittest.TestCase):
             executed_sql,
         )
         self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_builds_runtime_fidelity_trend(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        rows_desc = [
+            {
+                "id": "a128c7bb-1264-51c0-97f8-0fb8ea32ae81",
+                "project_id": project_id,
+                "report_export_id": report_export_id,
+                "status": "sampled",
+                "official_api_records": 10,
+                "browser_records": 10,
+                "comparable_prompt_city_pairs": 4,
+                "mismatch_count": 2,
+                "difference_rate": 0.5,
+                "payload": {"status": "sampled"},
+                "payload_hash": "a" * 64,
+                "answer_run_ids": [],
+                "checked_by": "scheduler",
+                "checked_at": now,
+            },
+            {
+                "id": "9d0ccf2f-4058-5efd-a3d3-fef60a73191a",
+                "project_id": project_id,
+                "report_export_id": report_export_id,
+                "status": "sampled",
+                "official_api_records": 10,
+                "browser_records": 10,
+                "comparable_prompt_city_pairs": 4,
+                "mismatch_count": 1,
+                "difference_rate": 0.25,
+                "payload": {"status": "sampled"},
+                "payload_hash": "b" * 64,
+                "answer_run_ids": [],
+                "checked_by": "scheduler",
+                "checked_at": now.replace(hour=0),
+            },
+        ]
+        connection = RecordingConnection(result_sets=[{"count": 2}, rows_desc])
+
+        trend = PostgresEvidenceRepository(connection).get_runtime_fidelity_trend(
+            project_id=project_id,
+            report_export_id=report_export_id,
+            limit=10,
+        )
+
+        self.assertIsInstance(trend, RuntimeFidelityTrend)
+        self.assertEqual(trend.total_count, 2)
+        self.assertEqual(trend.sampled_count, 2)
+        self.assertEqual(trend.latest_status, "sampled")
+        self.assertEqual(trend.earliest_difference_rate, 0.25)
+        self.assertEqual(trend.latest_difference_rate, 0.5)
+        self.assertEqual(trend.average_difference_rate, 0.375)
+        self.assertEqual(trend.max_difference_rate, 0.5)
+        self.assertEqual(trend.trend_direction, "worsening")
+        self.assertEqual([point.difference_rate for point in trend.points], [0.25, 0.5])
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM api_browser_fidelity_checks WHERE project_id = %s AND report_export_id = %s", executed_sql)
+        self.assertIn("ORDER BY checked_at DESC, id DESC", executed_sql)
 
     def test_postgres_repository_exports_filtered_runtime_evidence_csv(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

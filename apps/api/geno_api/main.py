@@ -849,6 +849,27 @@ def runtime_fidelity_checks(
         close_repository_connection(repository)
 
 
+@app.get("/v1/fidelity-checks/runtime/trend")
+def runtime_fidelity_trend(
+    project_id: str | None = None,
+    report_export_id: str | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        trend = repository.get_runtime_fidelity_trend(
+            project_id=project_id,
+            report_export_id=report_export_id,
+            limit=limit,
+        )
+        return asdict(trend)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/fidelity-checks/runtime")
 def create_runtime_fidelity_check(payload: RuntimeFidelityCheckRequest) -> dict[str, object]:
     try:
@@ -1420,6 +1441,7 @@ def contracts() -> dict[str, list[str]]:
             "ReportExport",
             "RuntimeHumanReviewRecord",
             "RuntimeFidelityCheck",
+            "RuntimeFidelityTrend",
             "TraceabilityBundle",
         ],
         "m1_bootstrap": [
@@ -1453,6 +1475,8 @@ def contracts() -> dict[str, list[str]]:
             "build_browser_fidelity_sampling_plan",
             "RuntimeFidelityCheck",
             "RuntimeFidelityCheckPage",
+            "RuntimeFidelityTrend",
+            "RuntimeFidelityTrendPoint",
             "RawEvidenceRecord",
             "CollectionFailureRecord",
             "ManualBackfillInput",
@@ -1568,6 +1592,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeCollectionRunPage",
             "RuntimeFidelityCheck",
             "RuntimeFidelityCheckPage",
+            "RuntimeFidelityTrend",
+            "RuntimeFidelityTrendPoint",
             "RuntimeFidelityCheckRequest",
             "ManualBackfillInput",
             "RuntimeSavedView",
@@ -1605,6 +1631,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/evidence-runs/runtime",
             "/v1/collection-runs/runtime",
             "/v1/fidelity-checks/runtime",
+            "/v1/fidelity-checks/runtime/trend",
             "/v1/evidence-runs/runtime/export.csv",
             "/v1/evidence-runs/runtime/manual-backfill",
             "/v1/runtime-saved-views",

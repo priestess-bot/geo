@@ -10,6 +10,8 @@ from geno_core.models import (
     RuntimeCollectionRunPage,
     RuntimeFidelityCheck,
     RuntimeFidelityCheckPage,
+    RuntimeFidelityTrend,
+    RuntimeFidelityTrendPoint,
     RuntimeHumanReviewPage,
     RuntimeHumanReviewRecord,
     RuntimeKnowledgeSearchPage,
@@ -264,6 +266,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_fidelity_trend_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get("/v1/fidelity-checks/runtime/trend?limit=10")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_runtime_fidelity_check_create_endpoint_requires_persistence_config(self) -> None:
         response = self.client.post(
             "/v1/fidelity-checks/runtime",
@@ -328,6 +335,61 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["status"], "not_run")
         self.assertEqual(fake_repository.kwargs["limit"], 5)
         self.assertEqual(fake_repository.kwargs["offset"], 1)
+
+    def test_runtime_fidelity_trend_endpoint_passes_filters(self) -> None:
+        class FakeRepository:
+            def get_runtime_fidelity_trend(self, **kwargs: object) -> RuntimeFidelityTrend:
+                self.kwargs = kwargs
+                return RuntimeFidelityTrend(
+                    project_id=kwargs["project_id"],
+                    report_export_id=kwargs["report_export_id"],
+                    total_count=2,
+                    sampled_count=2,
+                    limit=int(kwargs["limit"]),
+                    latest_status="sampled",
+                    latest_checked_at="2026-06-10T01:00:00+00:00",
+                    earliest_checked_at="2026-06-10T00:00:00+00:00",
+                    latest_difference_rate=0.5,
+                    earliest_difference_rate=0.25,
+                    average_difference_rate=0.375,
+                    max_difference_rate=0.5,
+                    trend_direction="worsening",
+                    points=(
+                        RuntimeFidelityTrendPoint(
+                            id="9d0ccf2f-4058-5efd-a3d3-fef60a73191a",
+                            project_id=str(kwargs["project_id"]),
+                            report_export_id=str(kwargs["report_export_id"]),
+                            status="sampled",
+                            official_api_records=10,
+                            browser_records=10,
+                            comparable_prompt_city_pairs=4,
+                            mismatch_count=1,
+                            difference_rate=0.25,
+                            payload_hash="b" * 64,
+                            checked_at="2026-06-10T00:00:00+00:00",
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/fidelity-checks/runtime/trend"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
+                "&report_export_id=b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+                "&limit=10"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["trend_direction"], "worsening")
+        self.assertEqual(payload["average_difference_rate"], 0.375)
+        self.assertEqual(payload["points"][0]["difference_rate"], 0.25)
+        self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.kwargs["report_export_id"], "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad")
+        self.assertEqual(fake_repository.kwargs["limit"], 10)
 
     def test_runtime_fidelity_check_create_endpoint_passes_payload(self) -> None:
         class FakeRepository:
@@ -1115,6 +1177,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEntityAliasPage", payload["m1_bootstrap"])
         self.assertIn("TraceabilityBundle", payload["auditability"])
         self.assertIn("RuntimeFidelityCheck", payload["auditability"])
+        self.assertIn("RuntimeFidelityTrend", payload["auditability"])
         self.assertIn("build_traceability_bundle", payload["traceability"])
         self.assertIn("CollectionRunSummary", payload["m2a_evidence"])
         self.assertIn("BrowserFidelitySamplingPlan", payload["m2a_evidence"])
@@ -1123,6 +1186,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("build_browser_fidelity_sampling_plan", payload["m2a_evidence"])
         self.assertIn("RuntimeFidelityCheck", payload["m2a_evidence"])
         self.assertIn("RuntimeFidelityCheckPage", payload["m2a_evidence"])
+        self.assertIn("RuntimeFidelityTrend", payload["m2a_evidence"])
+        self.assertIn("RuntimeFidelityTrendPoint", payload["m2a_evidence"])
         self.assertIn("FixtureChatGPTSearchBrowserCollector", payload["m2a_evidence"])
         self.assertIn("PlaywrightChatGPTSearchCollector", payload["m2a_evidence"])
         self.assertIn("GoogleSpikeReadinessGate", payload["m2b_google_spike"])
@@ -1152,6 +1217,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeCollectionRunPage", payload["persistence"])
         self.assertIn("RuntimeFidelityCheck", payload["persistence"])
         self.assertIn("RuntimeFidelityCheckPage", payload["persistence"])
+        self.assertIn("RuntimeFidelityTrend", payload["persistence"])
+        self.assertIn("RuntimeFidelityTrendPoint", payload["persistence"])
         self.assertIn("RuntimeFidelityCheckRequest", payload["persistence"])
         self.assertIn("ManualBackfillInput", payload["persistence"])
         self.assertIn("EntityAliasInput", payload["persistence"])
@@ -1199,6 +1266,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])
         self.assertIn("/v1/collection-runs/runtime", payload["persistence"])
         self.assertIn("/v1/fidelity-checks/runtime", payload["persistence"])
+        self.assertIn("/v1/fidelity-checks/runtime/trend", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime/manual-backfill", payload["persistence"])
         self.assertIn("/v1/runtime-saved-views", payload["persistence"])

@@ -48,6 +48,8 @@ from geno_core.models import (
     RuntimeEntityAliasPage,
     RuntimeFidelityCheck,
     RuntimeFidelityCheckPage,
+    RuntimeFidelityTrend,
+    RuntimeFidelityTrendPoint,
     RuntimeHumanReviewInput,
     RuntimeHumanReviewPage,
     RuntimeHumanReviewRecord,
@@ -2614,6 +2616,85 @@ class PostgresEvidenceRepository:
             checks = _rows_dict(cursor.fetchall(), API_BROWSER_FIDELITY_CHECK_COLUMNS)
             records = tuple(self._load_runtime_fidelity_check(cursor=cursor, fidelity_check=check) for check in checks)
         return RuntimeFidelityCheckPage(total_count=total_count, limit=limit, offset=offset, records=records)
+
+    def get_runtime_fidelity_trend(
+        self,
+        *,
+        project_id: str | None = None,
+        report_export_id: str | None = None,
+        limit: int = 20,
+    ) -> RuntimeFidelityTrend:
+        limit = max(1, min(limit, 100))
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id))
+        if report_export_id:
+            filters.append("report_export_id = %s")
+            params.append(_uuid(report_export_id))
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM api_browser_fidelity_checks {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(API_BROWSER_FIDELITY_CHECK_COLUMNS)}
+                FROM api_browser_fidelity_checks
+                {where_clause}
+                ORDER BY checked_at DESC, id DESC
+                LIMIT %s
+                """,
+                (*params, limit),
+            )
+            rows_desc = _rows_dict(cursor.fetchall(), API_BROWSER_FIDELITY_CHECK_COLUMNS)
+
+        latest_row = rows_desc[0] if rows_desc else None
+        points = tuple(
+            RuntimeFidelityTrendPoint(
+                id=str(row["id"]),
+                project_id=str(row["project_id"]),
+                report_export_id=str(row["report_export_id"]) if row.get("report_export_id") else None,
+                status=str(row.get("status") or "unknown"),
+                official_api_records=int(row.get("official_api_records") or 0),
+                browser_records=int(row.get("browser_records") or 0),
+                comparable_prompt_city_pairs=int(row.get("comparable_prompt_city_pairs") or 0),
+                mismatch_count=int(row.get("mismatch_count") or 0),
+                difference_rate=float(row["difference_rate"]) if row.get("difference_rate") is not None else None,
+                payload_hash=str(row["payload_hash"]) if row.get("payload_hash") else None,
+                checked_at=str(row["checked_at"]) if row.get("checked_at") else None,
+            )
+            for row in reversed(rows_desc)
+        )
+        numeric_rates = [point.difference_rate for point in points if point.difference_rate is not None]
+        earliest_rate = numeric_rates[0] if numeric_rates else None
+        latest_rate = numeric_rates[-1] if numeric_rates else None
+        if len(numeric_rates) < 2:
+            trend_direction = "no_data" if not points else "insufficient_sampled_data"
+        elif latest_rate is not None and earliest_rate is not None and latest_rate > earliest_rate:
+            trend_direction = "worsening"
+        elif latest_rate is not None and earliest_rate is not None and latest_rate < earliest_rate:
+            trend_direction = "improving"
+        else:
+            trend_direction = "flat"
+
+        return RuntimeFidelityTrend(
+            project_id=project_id,
+            report_export_id=report_export_id,
+            total_count=total_count,
+            sampled_count=sum(1 for point in points if point.status == "sampled"),
+            limit=limit,
+            latest_status=str(latest_row.get("status")) if latest_row else None,
+            latest_checked_at=str(latest_row["checked_at"]) if latest_row and latest_row.get("checked_at") else None,
+            earliest_checked_at=points[0].checked_at if points else None,
+            latest_difference_rate=latest_rate,
+            earliest_difference_rate=earliest_rate,
+            average_difference_rate=round(sum(numeric_rates) / len(numeric_rates), 4) if numeric_rates else None,
+            max_difference_rate=max(numeric_rates) if numeric_rates else None,
+            trend_direction=trend_direction,
+            points=points,
+        )
 
     def create_runtime_fidelity_check(
         self,

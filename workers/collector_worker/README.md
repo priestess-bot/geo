@@ -277,7 +277,10 @@ distribution. With `--include-browser-fidelity-fixture`, Method Disclosure uses 
 API + browser sample for fidelity, while the report evidence appendix and score denominator remain
 restricted to `score_input_records`. The same fidelity status is also available as a standalone runtime object through
 `GET /v1/fidelity-checks/runtime` and can be regenerated for a report with
-`POST /v1/fidelity-checks/runtime`.
+`POST /v1/fidelity-checks/runtime`. Stored checks can be summarized through
+`GET /v1/fidelity-checks/runtime/trend`, which reports sampled/total, latest/earliest/average/max
+difference rate, trend window, and improving/worsening/flat/no_data direction for the selected
+project or report.
 
 Docker worker profile:
 

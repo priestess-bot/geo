@@ -765,6 +765,39 @@ class RuntimeFidelityCheckPage:
 
 
 @dataclass(frozen=True)
+class RuntimeFidelityTrendPoint:
+    id: str
+    project_id: str
+    report_export_id: str | None
+    status: str
+    official_api_records: int
+    browser_records: int
+    comparable_prompt_city_pairs: int
+    mismatch_count: int
+    difference_rate: float | None
+    payload_hash: str | None
+    checked_at: str | None
+
+
+@dataclass(frozen=True)
+class RuntimeFidelityTrend:
+    project_id: str | None
+    report_export_id: str | None
+    total_count: int
+    sampled_count: int
+    limit: int
+    latest_status: str | None
+    latest_checked_at: str | None
+    earliest_checked_at: str | None
+    latest_difference_rate: float | None
+    earliest_difference_rate: float | None
+    average_difference_rate: float | None
+    max_difference_rate: float | None
+    trend_direction: str
+    points: tuple[RuntimeFidelityTrendPoint, ...]
+
+
+@dataclass(frozen=True)
 class RuntimeEvidenceExport:
     export_type: str
     filename: str
