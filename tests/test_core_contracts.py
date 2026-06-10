@@ -4830,6 +4830,22 @@ class CoreContractsTest(unittest.TestCase):
             "checked_at": None,
             "notes": "Manual distribution only.",
         }
+        draft_audit_row = {
+            "id": "8e8c0a1e-8887-48cb-b709-d849d9a505f4",
+            "event_type": "content_draft_review_status_updated",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "editor@example.com",
+            "target_type": "content_draft",
+            "target_id": draft_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {"human_review_record_ids": ["f25cdddc-c3e7-4fcb-90b8-557fd6465ea7"]},
+            "output_refs": {"content_draft_ids": [draft_id], "review_status": "approved"},
+            "method_version": "content_draft_review_status_projection_v1",
+            "reason": "project latest human review decision onto content draft review_status",
+            "created_at": now,
+        }
         connection = RecordingConnection(
             result_sets=[
                 {"count": 1},
@@ -4894,6 +4910,7 @@ class CoreContractsTest(unittest.TestCase):
                     "created_at": now,
                 },
                 [distribution_row],
+                [draft_audit_row],
                 [
                     {
                         "id": connector_id,
@@ -4944,6 +4961,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(draft.answer_runs[0]["prompt_text"], "Is ExampleBrand good in Australia?")
         self.assertEqual(draft.action_recommendation["source_gap_type"], "low_mention_rate")
         self.assertEqual(draft.manual_distribution_records[0]["status"], "draft_created")
+        self.assertEqual(draft.audit_events[0]["event_type"], "content_draft_review_status_updated")
         self.assertEqual(record.integration_connectors[0]["provider"], "google_search_console")
         self.assertEqual(record.audit_events[0]["event_type"], "content_engine_fixture_created")
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
@@ -4951,6 +4969,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM localized_knowledge_facts", executed_sql)
         self.assertIn("FROM prompt_questions WHERE id = %s", executed_sql)
         self.assertIn("FROM action_recommendations WHERE id = %s", executed_sql)
+        self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
 
     def test_postgres_repository_reads_runtime_traceability_detail(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
@@ -5217,6 +5236,7 @@ class CoreContractsTest(unittest.TestCase):
                 fact_row,
                 answer_run_row,
                 action_row,
+                [],
                 [],
                 audit_row,
                 [
@@ -5675,6 +5695,83 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("INSERT INTO human_review_records", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
 
+    def test_postgres_repository_saves_content_draft_review_and_updates_draft_status(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        target_id = "1e53e0b4-7b1a-54d6-a918-fd8774df7bdd"
+        draft_row = {
+            "id": target_id,
+            "project_id": project_id,
+            "title": "AU shipping proof page",
+            "content_type": "evidence_backed_outline",
+            "content_template_id": "faq_for_australian_customers",
+            "target_question_ids": [],
+            "target_city": "Sydney",
+            "target_platform": "chatgpt/perplexity",
+            "target_source_type": "official_site",
+            "used_knowledge_fact_ids": [],
+            "source_gap_types": ["low_mention_rate"],
+            "source_action_id": None,
+            "evidence_answer_run_ids": ["438ab927-5873-5516-8df3-47f6c75ef007"],
+            "draft_markdown": "# AU shipping",
+            "review_status": "pending_human_review",
+            "created_by": "geno-core.knowledge",
+            "created_at": now,
+        }
+        review_row = {
+            "id": "f25cdddc-c3e7-4fcb-90b8-557fd6465ea7",
+            "project_id": project_id,
+            "target_type": "content_draft",
+            "target_id": target_id,
+            "review_status": "approved",
+            "decision": "approved_for_publish",
+            "reviewer_id": "editor@example.com",
+            "notes": "approved content evidence",
+            "payload": {"source": "runtime-console"},
+            "created_at": now,
+        }
+        audit_rows = [
+            {
+                "id": "b9b398cf-7a61-465e-bfdd-0870b9633523",
+                "event_type": "human_review_recorded",
+                "project_id": project_id,
+                "actor_type": "user",
+                "actor_id": "editor@example.com",
+                "target_type": "human_review_record",
+                "target_id": review_row["id"],
+                "before_hash": None,
+                "after_hash": "after",
+                "input_refs": {"review_target": [{"target_type": "content_draft", "target_id": target_id}]},
+                "output_refs": {"human_review_record_ids": [review_row["id"]]},
+                "method_version": "human_review_v1",
+                "reason": "record human review decision for an auditable runtime object",
+                "created_at": now,
+            }
+        ]
+        connection = RecordingConnection(result_sets=[{"id": project_id}, draft_row, review_row, audit_rows])
+
+        record = PostgresEvidenceRepository(connection).save_human_review(
+            RuntimeHumanReviewInput(
+                project_id=project_id,
+                target_type="content_draft",
+                target_id=target_id,
+                review_status="approved",
+                decision="approved_for_publish",
+                reviewer_id="editor@example.com",
+                notes="approved content evidence",
+                payload={"source": "runtime-console"},
+            )
+        )
+
+        self.assertEqual(record.human_review["target_type"], "content_draft")
+        self.assertEqual(record.human_review["review_status"], "approved")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("SELECT id FROM projects WHERE id = %s LIMIT 1", executed_sql)
+        self.assertIn("FROM content_drafts WHERE id = %s AND project_id = %s", executed_sql)
+        self.assertIn("UPDATE content_drafts SET review_status = %s WHERE id = %s AND project_id = %s", executed_sql)
+        self.assertIn("content_draft_review_status_projection_v1", str(connection.calls))
+
     def test_postgres_repository_lists_runtime_human_reviews_with_audit_events(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
@@ -5764,6 +5861,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM human_review_records", executed_sql)
         self.assertIn("candidate.project_id = %s", executed_sql)
         self.assertIn("candidate.queue_status = %s", executed_sql)
+        self.assertIn("review_candidate.source_status IN ('approved', 'acknowledged') THEN 'reviewed'", executed_sql)
 
     def test_postgres_repository_confirms_entity_alias_with_audit_event(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

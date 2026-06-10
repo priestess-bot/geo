@@ -422,6 +422,7 @@ type ContentEngine = {
       checked_at?: string | null;
       notes?: string;
     }>;
+    audit_events: Array<{ event_type?: string; actor_id?: string; method_version?: string | null; created_at?: string | null }>;
   }>;
   integration_connectors: Array<{
     provider: string;
@@ -2448,6 +2449,7 @@ export default async function Home({
                 <Fact label="Queue query" value={paths.humanReviewQueue} />
                 <Fact label="Method" value="human_review_v1" />
                 <Fact label="Audit event" value="human_review_recorded" />
+                <Fact label="Draft projection" value="content_draft_review_status_updated" />
               </dl>
             </div>
           </div>
@@ -3074,6 +3076,13 @@ export default async function Home({
                           {item.action_recommendation.status || "status"} ·{" "}
                           {item.action_recommendation.source_gap_type || "no source gap"} ·{" "}
                           {item.action_recommendation.title || "untitled"}
+                        </small>
+                      ) : null}
+                      {item.audit_events.length ? (
+                        <small className="auditLine">
+                          Draft audit: {item.audit_events[0].event_type || "audit_event"} ·{" "}
+                          {item.audit_events[0].method_version || "no method version"} ·{" "}
+                          {dateText(item.audit_events[0].created_at || undefined)}
                         </small>
                       ) : null}
                     </article>

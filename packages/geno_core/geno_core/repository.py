@@ -2501,6 +2501,7 @@ class PostgresEvidenceRepository:
                 vss.created_at,
                 CASE WHEN vss.final_score < 60 THEN 10 WHEN vss.final_score < 75 THEN 7 ELSE 5 END AS priority,
                 CASE WHEN vss.final_score < 60 THEN 'low_visibility_score' ELSE 'score_snapshot_ready_for_review' END AS reason,
+                NULL::text AS source_status,
                 jsonb_build_object(
                   'score_snapshot_ids', jsonb_build_array(vss.id::text),
                   'answer_run_ids', to_jsonb(COALESCE(vss.answer_run_ids::text[], ARRAY[]::text[])),
@@ -2518,8 +2519,15 @@ class PostgresEvidenceRepository:
                 cd.id::text AS target_id,
                 cd.title AS title,
                 cd.created_at,
-                CASE WHEN cd.review_status = 'pending_human_review' THEN 9 ELSE 6 END AS priority,
+                CASE
+                  WHEN cd.review_status = 'pending_human_review' THEN 9
+                  WHEN cd.review_status = 'needs_changes' THEN 6
+                  WHEN cd.review_status = 'rejected' THEN 4
+                  WHEN cd.review_status IN ('approved', 'acknowledged') THEN 1
+                  ELSE 3
+                END AS priority,
                 'content_draft_' || cd.review_status AS reason,
+                cd.review_status AS source_status,
                 jsonb_build_object(
                   'content_draft_ids', jsonb_build_array(cd.id::text),
                   'answer_run_ids', to_jsonb(COALESCE(cd.evidence_answer_run_ids::text[], ARRAY[]::text[])),
@@ -2530,7 +2538,6 @@ class PostgresEvidenceRepository:
                   'target_platform', cd.target_platform
                 ) AS evidence_refs
               FROM content_drafts cd
-              WHERE cd.review_status IN ('pending_human_review', 'needs_changes')
             ),
             latest_review AS (
               SELECT DISTINCT ON (target_type, target_id)
@@ -2555,10 +2562,13 @@ class PostgresEvidenceRepository:
                 review_candidate.created_at,
                 review_candidate.priority,
                 review_candidate.reason,
+                review_candidate.source_status,
                 review_candidate.evidence_refs,
                 CASE
                   WHEN latest_review.review_status IN ('needs_changes', 'rejected') THEN latest_review.review_status
                   WHEN latest_review.review_status IN ('approved', 'acknowledged') THEN 'reviewed'
+                  WHEN review_candidate.source_status IN ('needs_changes', 'rejected') THEN review_candidate.source_status
+                  WHEN review_candidate.source_status IN ('approved', 'acknowledged') THEN 'reviewed'
                   ELSE 'pending_review'
                 END AS queue_status,
                 CASE WHEN latest_review.id IS NULL THEN NULL ELSE jsonb_build_object(
@@ -2663,6 +2673,22 @@ class PostgresEvidenceRepository:
             )
             if not cursor.fetchone():
                 raise ValueError("project not found")
+            content_draft_before: dict[str, Any] | None = None
+            content_draft_after: dict[str, Any] | None = None
+            if target_type == "content_draft":
+                cursor.execute(
+                    f"""
+                    SELECT {", ".join(CONTENT_DRAFT_COLUMNS)}
+                    FROM content_drafts
+                    WHERE id = %s AND project_id = %s
+                    LIMIT 1
+                    """,
+                    (_uuid(target_id), _uuid(project_id)),
+                )
+                draft_row = cursor.fetchone()
+                if not draft_row:
+                    raise ValueError("content draft not found")
+                content_draft_before = _row_dict(draft_row, CONTENT_DRAFT_COLUMNS)
             cursor.execute(
                 """
                 INSERT INTO human_review_records (
@@ -2682,6 +2708,16 @@ class PostgresEvidenceRepository:
                     _json_payload(after["payload"]),
                 ),
             )
+            if content_draft_before is not None:
+                cursor.execute(
+                    """
+                    UPDATE content_drafts
+                    SET review_status = %s
+                    WHERE id = %s AND project_id = %s
+                    """,
+                    (review_status, _uuid(target_id), _uuid(project_id)),
+                )
+                content_draft_after = {**content_draft_before, "review_status": review_status}
             audit_event = build_audit_event(
                 event_type="human_review_recorded",
                 project_id=project_id,
@@ -2696,7 +2732,28 @@ class PostgresEvidenceRepository:
                 method_version="human_review_v1",
                 reason="record human review decision for an auditable runtime object",
             )
-            self.save_audit_events((audit_event,), cursor=cursor)
+            audit_events = [audit_event]
+            if content_draft_before is not None and content_draft_after is not None:
+                audit_events.append(
+                    build_audit_event(
+                        event_type="content_draft_review_status_updated",
+                        project_id=project_id,
+                        actor_type="user",
+                        actor_id=reviewer_id,
+                        target_type="content_draft",
+                        target_id=target_id,
+                        before=content_draft_before,
+                        after=content_draft_after,
+                        input_refs={
+                            "human_review_record_ids": [review_id],
+                            "review_target": [{"target_type": target_type, "target_id": target_id}],
+                        },
+                        output_refs={"content_draft_ids": [target_id], "review_status": review_status},
+                        method_version="content_draft_review_status_projection_v1",
+                        reason="project latest human review decision onto content draft review_status",
+                    )
+                )
+            self.save_audit_events(tuple(audit_events), cursor=cursor)
             cursor.execute(
                 f"""
                 SELECT {", ".join(HUMAN_REVIEW_COLUMNS)}
@@ -3996,6 +4053,17 @@ class PostgresEvidenceRepository:
             (_uuid(str(draft["id"])),),
         )
         distribution_records = _rows_dict(cursor.fetchall(), MANUAL_DISTRIBUTION_RECORD_COLUMNS)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            LIMIT 10
+            """,
+            (_uuid(str(draft["project_id"])), "content_draft", str(draft["id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
         return RuntimeContentDraft(
             draft=draft,
             target_questions=tuple(target_questions),
@@ -4003,6 +4071,7 @@ class PostgresEvidenceRepository:
             answer_runs=tuple(answer_runs),
             action_recommendation=action_recommendation,
             manual_distribution_records=distribution_records,
+            audit_events=audit_events,
         )
 
     def _load_runtime_report_export(

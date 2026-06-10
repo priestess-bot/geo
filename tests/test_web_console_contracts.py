@@ -113,6 +113,8 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("RuntimeHumanReviewQueueItem", page_source)
         self.assertIn("Queue query", page_source)
         self.assertIn("human_review_recorded", page_source)
+        self.assertIn("content_draft_review_status_updated", page_source)
+        self.assertIn("Draft audit", page_source)
         self.assertIn("human_review_v1", page_source)
         self.assertIn("approved_for_report", page_source)
         self.assertIn(".humanReviewGrid", css_source)

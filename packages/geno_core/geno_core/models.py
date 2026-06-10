@@ -1103,6 +1103,7 @@ class RuntimeContentDraft:
     answer_runs: tuple[dict[str, Any], ...]
     action_recommendation: dict[str, Any] | None
     manual_distribution_records: tuple[dict[str, Any], ...]
+    audit_events: tuple[dict[str, Any], ...]
 
 
 @dataclass(frozen=True)

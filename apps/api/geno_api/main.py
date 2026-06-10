@@ -776,7 +776,7 @@ def record_runtime_human_review(payload: HumanReviewRequest) -> dict[str, object
         )
         return asdict(record)
     except ValueError as exc:
-        status_code = 404 if str(exc) == "project not found" else 400
+        status_code = 404 if str(exc) in {"project not found", "content draft not found"} else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     finally:
         close_repository_connection(repository)

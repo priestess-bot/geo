@@ -806,7 +806,7 @@ ChatGPT Search / browsing: 30%
 Perplexity: 25%
 ```
 
-项目级评分权重可通过 `score_weight_configs` 按 `project_id + formula_version` 覆盖默认 8 项组件权重；保存时必须校验组件完整、非负、总和为 1.00，并写入 `score_weight_config_saved` 审计事件。每次生成 `VisibilityScoreSnapshot` 时都把实际使用的 `formula_version` 与 `component_weights_snapshot` 冻结到快照，后续即使项目权重调整或默认公式升级，历史分数和 `ScoreContribution.weight` 仍能按当时口径复盘。人工复核采用追加型 `human_review_records`，不覆盖原始评分、内容草稿或解析结果；每条记录保存 `project_id / target_type / target_id / review_status / decision / reviewer_id / notes / payload / created_at`，并写入 `human_review_recorded` 审计事件。MVP 可先覆盖 `visibility_score_snapshot`、`content_draft`、`answer_analysis`、`answer_run`、`score_weight_config` 和 `project` 六类对象；当前已补 `RuntimeHumanReviewQueue` 只读队列，从 `visibility_score_snapshot` 与 `content_draft` 聚合待审对象，冻结 `priority / reason / latest_review / evidence_refs` 供 Console 复盘，后续再接状态回写、审批流、分配、通知和抽样校准。
+项目级评分权重可通过 `score_weight_configs` 按 `project_id + formula_version` 覆盖默认 8 项组件权重；保存时必须校验组件完整、非负、总和为 1.00，并写入 `score_weight_config_saved` 审计事件。每次生成 `VisibilityScoreSnapshot` 时都把实际使用的 `formula_version` 与 `component_weights_snapshot` 冻结到快照，后续即使项目权重调整或默认公式升级，历史分数和 `ScoreContribution.weight` 仍能按当时口径复盘。人工复核采用追加型 `human_review_records`，不覆盖原始评分、内容草稿正文或证据绑定；每条记录保存 `project_id / target_type / target_id / review_status / decision / reviewer_id / notes / payload / created_at`，并写入 `human_review_recorded` 审计事件。MVP 可先覆盖 `visibility_score_snapshot`、`content_draft`、`answer_analysis`、`answer_run`、`score_weight_config` 和 `project` 六类对象；当前已补 `RuntimeHumanReviewQueue` 队列，从 `visibility_score_snapshot` 与 `content_draft` 聚合待审对象，冻结 `priority / reason / latest_review / evidence_refs` 供 Console 复盘；对 `content_draft` 的复核会把同项目 `content_drafts.review_status` 投影为本次复核状态并写入 `content_draft_review_status_updated`，后续再接复杂审批流、分配、通知、权限和抽样校准。
 
 P1/P2 平台扩展权重（默认值，可在 MarketProfile 调整）：
 
@@ -1123,7 +1123,7 @@ review_status
 human_review_record_ids
 ```
 
-`review_status` 表示内容草稿自身的默认状态，例如 `pending_human_review`；实际人工判断不应直接改写草稿正文或证据绑定，而是追加写入 `human_review_records`，用 `target_type=content_draft`、`target_id=<content_draft_id>` 记录 reviewer、decision、notes 和 `human_review_recorded` 审计事件。这样内容是否可发布、为何需要修改、由谁审核，能和原始证据、source gap、score snapshot 一起被追溯。`RuntimeHumanReviewQueue` 会把 `pending_human_review` / `needs_changes` 草稿与评分快照放进同一只读复核列表，按 `priority` 和 `created_at` 排序，便于一期先做可审计人工复核入口，而不是提前实现复杂审批流。
+`review_status` 表示内容草稿自身的默认状态，例如 `pending_human_review`；实际人工判断先追加写入 `human_review_records`，用 `target_type=content_draft`、`target_id=<content_draft_id>` 记录 reviewer、decision、notes 和 `human_review_recorded` 审计事件，再把同项目草稿的 `review_status` 投影为本次复核状态并写入 `content_draft_review_status_updated` 审计事件。该投影只更新状态，不改写草稿正文、知识事实、source gap 或 evidence answer run 绑定。这样内容是否可发布、为何需要修改、由谁审核，能和原始证据、source gap、score snapshot 一起被追溯。`RuntimeHumanReviewQueue` 会把 `pending_human_review` / `needs_changes` 草稿与评分快照放进同一复核列表，已通过的草稿会因 latest review 进入 reviewed 队列，便于一期先做可审计人工复核入口，而不是提前实现复杂审批流。
 
 P2 集成优先级：
 

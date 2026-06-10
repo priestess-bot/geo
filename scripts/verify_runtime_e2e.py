@@ -13,6 +13,7 @@ import psycopg
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import collect_prompt_once
 from geno_core.collectors import JsonHttpResponse, PerplexitySonarCollector
+from geno_core.models import RuntimeHumanReviewInput
 from geno_core.runtime import build_object_store_from_env, build_repository_from_env, close_repository_connection
 from workers.collector_worker import run_collection_slice as worker_module
 
@@ -179,6 +180,50 @@ def _assert_human_review_queue(project_id: str) -> dict[str, Any]:
     draft_item = draft_queue.records[0]
     if not score_item.evidence_refs or not draft_item.evidence_refs:
         raise AssertionError("Human review queue items must include evidence refs")
+    repository = build_repository_from_env()
+    try:
+        approved_review = repository.save_human_review(
+            RuntimeHumanReviewInput(
+                project_id=project_id,
+                target_type="content_draft",
+                target_id=draft_item.target_id,
+                review_status="approved",
+                decision="approved_for_publish",
+                reviewer_id="runtime-e2e",
+                notes="Runtime E2E approved the content draft review projection.",
+                payload={"source": "runtime-e2e"},
+            )
+        )
+        reviewed_queue = repository.list_runtime_human_review_queue(
+            project_id=project_id,
+            target_type="content_draft",
+            queue_status="reviewed",
+            limit=10,
+        )
+    finally:
+        close_repository_connection(repository)
+    approved_draft = _query_one(
+        "SELECT review_status FROM content_drafts WHERE id = %s AND project_id = %s",
+        (draft_item.target_id, project_id),
+    )
+    reviewed_ids = {item.target_id for item in reviewed_queue.records}
+    projection_audit = _query_one(
+        """
+        SELECT event_type, method_version
+        FROM audit_events
+        WHERE project_id = %s
+          AND target_type = 'content_draft'
+          AND target_id = %s
+          AND event_type = 'content_draft_review_status_updated'
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (project_id, draft_item.target_id),
+    )
+    if approved_draft["review_status"] != "approved":
+        raise AssertionError(f"Expected content draft review_status=approved, got {approved_draft['review_status']}")
+    if draft_item.target_id not in reviewed_ids:
+        raise AssertionError("Approved content draft did not move into the reviewed queue")
     return {
         "score_queue_count": score_queue.total_count,
         "draft_queue_count": draft_queue.total_count,
@@ -187,6 +232,12 @@ def _assert_human_review_queue(project_id: str) -> dict[str, Any]:
         "draft_queue_status": draft_item.queue_status,
         "score_reason": score_item.reason,
         "draft_reason": draft_item.reason,
+        "approved_review_id": approved_review.human_review["id"],
+        "approved_draft_id": draft_item.target_id,
+        "approved_draft_status": approved_draft["review_status"],
+        "reviewed_queue_count": reviewed_queue.total_count,
+        "projection_audit_event_type": projection_audit["event_type"],
+        "projection_audit_method_version": projection_audit["method_version"],
     }
 
 

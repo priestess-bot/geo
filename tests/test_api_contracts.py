@@ -941,6 +941,28 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.review.target_type, "visibility_score_snapshot")
         self.assertEqual(fake_repository.review.payload["source"], "runtime-console")
 
+    def test_runtime_human_review_save_endpoint_maps_missing_content_draft_to_404(self) -> None:
+        class FakeRepository:
+            def save_human_review(self, review: object) -> RuntimeHumanReviewRecord:
+                raise ValueError("content draft not found")
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/human-reviews/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "target_type": "content_draft",
+                    "target_id": "1e53e0b4-7b1a-54d6-a918-fd8774df7bdd",
+                    "review_status": "approved",
+                    "decision": "approved_for_publish",
+                    "reviewer_id": "runtime-console",
+                },
+            )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"], "content draft not found")
+
     def test_runtime_visibility_scores_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/visibility-scores/runtime")
         self.assertEqual(response.status_code, 503)

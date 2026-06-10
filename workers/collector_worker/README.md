@@ -117,6 +117,9 @@ Human review is intentionally not created by the worker. Review decisions are ap
 `POST /v1/human-reviews/runtime` or the Runtime Console Human Review Trail, which writes
 `human_review_records` and a `human_review_recorded` audit event against the reviewed score snapshot,
 content draft, answer analysis/run, score weight config, or project.
+For `target_type=content_draft`, the runtime review path also projects the review status onto
+`content_drafts.review_status` and writes a `content_draft_review_status_updated` audit event. It
+does not rewrite the draft markdown, facts, source gaps, or evidence answer-run bindings.
 
 The read-only review queue is exposed through `GET /v1/human-reviews/runtime/queue`. It derives
 queue items from persisted `visibility_score_snapshots` and content drafts that are pending or need
