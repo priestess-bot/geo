@@ -286,6 +286,21 @@ CREATE TABLE evidence_links (
   answer_run_ids uuid[] NOT NULL DEFAULT '{}'
 );
 
+CREATE TABLE runtime_saved_views (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL,
+  name text NOT NULL,
+  view_type text NOT NULL,
+  filters jsonb NOT NULL DEFAULT '{}'::jsonb,
+  sort text NOT NULL DEFAULT 'collected_at_desc',
+  query_path text NOT NULL,
+  export_path text NOT NULL,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(project_id, name)
+);
+
 CREATE TABLE traceability_bundles (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id uuid NOT NULL,
@@ -456,4 +471,5 @@ CREATE INDEX idx_action_recommendations_project ON action_recommendations(projec
 CREATE INDEX idx_localized_knowledge_facts_project ON localized_knowledge_facts(project_id, market_code, status);
 CREATE INDEX idx_content_drafts_project ON content_drafts(project_id, review_status);
 CREATE INDEX idx_evidence_links_project ON evidence_links(project_id, source_type, target_type);
+CREATE INDEX idx_runtime_saved_views_project ON runtime_saved_views(project_id, view_type, updated_at);
 CREATE INDEX idx_traceability_bundles_project ON traceability_bundles(project_id, subject_type);

@@ -56,6 +56,9 @@ from geno_core.models import (
     RuntimeScoreSnapshotPage,
     RuntimeReportArtifact,
     RuntimeReportExportPage,
+    RuntimeSavedView,
+    RuntimeSavedViewInput,
+    RuntimeSavedViewPage,
     RuntimeTraceabilityDetail,
 )
 from geno_core.object_store import S3CompatibleObjectStore, archive_report_artifacts
@@ -2775,6 +2778,118 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM evidence_links WHERE project_id = %s", executed_sql)
         self.assertIn("FROM report_exports WHERE id = %s", executed_sql)
         self.assertIn("FROM content_drafts WHERE id = %s", executed_sql)
+
+    def test_postgres_repository_saves_runtime_saved_view_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        saved_view_id = "dcb0b54f-2d65-5ce3-bd46-c08b85bc4020e"
+        saved_view_row = {
+            "id": saved_view_id,
+            "project_id": project_id,
+            "name": "Perplexity Sydney",
+            "view_type": "runtime_evidence",
+            "filters": {"platform": "perplexity", "city": "Sydney", "intent_type": "brand_awareness"},
+            "sort": "cost_desc",
+            "query_path": "/v1/evidence-runs/runtime?platform=perplexity&city=Sydney&intent_type=brand_awareness&sort=cost_desc&limit=5",
+            "export_path": "/v1/evidence-runs/runtime/export.csv?platform=perplexity&city=Sydney&intent_type=brand_awareness&sort=cost_desc&limit=200",
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "725067ce-00b5-49a5-a3ec-8b8e74c85f4f",
+            "event_type": "runtime_saved_view_saved",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "runtime_saved_view",
+            "target_id": saved_view_id,
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"query_path": [saved_view_row["query_path"]]},
+            "output_refs": {"runtime_saved_view_ids": [saved_view_id]},
+            "method_version": "runtime_saved_view_v1",
+            "reason": "save runtime evidence filter view",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[None, saved_view_row, [audit_row]])
+        record = PostgresEvidenceRepository(connection).save_runtime_saved_view(
+            RuntimeSavedViewInput(
+                project_id=project_id,
+                name="Perplexity Sydney",
+                view_type="runtime_evidence",
+                filters=saved_view_row["filters"],
+                sort="cost_desc",
+                query_path=saved_view_row["query_path"],
+                export_path=saved_view_row["export_path"],
+                created_by="runtime-console",
+            )
+        )
+        self.assertIsInstance(record, RuntimeSavedView)
+        self.assertEqual(record.saved_view["name"], "Perplexity Sydney")
+        self.assertEqual(record.saved_view["sort"], "cost_desc")
+        self.assertEqual(record.audit_events[0]["event_type"], "runtime_saved_view_saved")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO runtime_saved_views", executed_sql)
+        self.assertIn("ON CONFLICT (project_id, name) DO UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_lists_runtime_saved_views_with_audit_events(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        saved_view_id = "dcb0b54f-2d65-5ce3-bd46-c08b85bc4020e"
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [
+                    {
+                        "id": saved_view_id,
+                        "project_id": project_id,
+                        "name": "Perplexity Sydney",
+                        "view_type": "runtime_evidence",
+                        "filters": {"platform": "perplexity", "city": "Sydney"},
+                        "sort": "cost_desc",
+                        "query_path": "/v1/evidence-runs/runtime?platform=perplexity&city=Sydney&sort=cost_desc&limit=5",
+                        "export_path": "/v1/evidence-runs/runtime/export.csv?platform=perplexity&city=Sydney&sort=cost_desc&limit=200",
+                        "created_by": "runtime-console",
+                        "created_at": now,
+                        "updated_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": "725067ce-00b5-49a5-a3ec-8b8e74c85f4f",
+                        "event_type": "runtime_saved_view_saved",
+                        "project_id": project_id,
+                        "actor_type": "user",
+                        "actor_id": "runtime-console",
+                        "target_type": "runtime_saved_view",
+                        "target_id": saved_view_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {},
+                        "output_refs": {"runtime_saved_view_ids": [saved_view_id]},
+                        "method_version": "runtime_saved_view_v1",
+                        "reason": "save runtime evidence filter view",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+        page = PostgresEvidenceRepository(connection).list_runtime_saved_views(
+            project_id=project_id,
+            view_type="runtime_evidence",
+            limit=5,
+            offset=0,
+        )
+        self.assertIsInstance(page, RuntimeSavedViewPage)
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.records[0].saved_view["name"], "Perplexity Sydney")
+        self.assertEqual(page.records[0].audit_events[0]["event_type"], "runtime_saved_view_saved")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM runtime_saved_views WHERE project_id = %s AND view_type = %s", executed_sql)
+        self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
 
 
 if __name__ == "__main__":

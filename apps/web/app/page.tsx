@@ -375,6 +375,7 @@ type RuntimeData = {
   projects: PageResponse<RuntimeProject>;
   prompts: PageResponse<RuntimePrompt>;
   evidence: PageResponse<EvidenceRun>;
+  savedViews: PageResponse<RuntimeSavedView>;
   scores: PageResponse<ScoreSnapshot>;
   graphs: PageResponse<CitationGraph>;
   reports: PageResponse<ReportExport>;
@@ -390,11 +391,29 @@ type RuntimeFilters = {
   sort?: string;
 };
 
+type RuntimeSavedView = {
+  saved_view: {
+    id: string;
+    project_id: string;
+    name: string;
+    view_type: string;
+    filters: Record<string, unknown>;
+    sort: string;
+    query_path: string;
+    export_path: string;
+    created_by: string;
+    created_at: string;
+    updated_at: string;
+  };
+  audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
+};
+
 const endpoints = {
   projects: "/v1/projects/runtime",
   prompts: "/v1/prompts/runtime",
   evidence: "/v1/evidence-runs/runtime",
   evidenceExport: "/v1/evidence-runs/runtime/export.csv",
+  savedViews: "/v1/runtime-saved-views",
   scores: "/v1/visibility-scores/runtime",
   graphs: "/v1/citation-graphs/runtime",
   reports: "/v1/reports/runtime",
@@ -419,6 +438,43 @@ async function createAuRuntimeProject() {
   });
   if (!response.ok) {
     throw new Error(`/v1/projects/runtime/au/dtc-ecommerce returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function saveCurrentRuntimeView(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const name = String(formData.get("name") || "").trim() || "Runtime evidence view";
+  if (!projectId) {
+    throw new Error("project_id is required to save a runtime view");
+  }
+  const payload = {
+    project_id: projectId,
+    name,
+    view_type: "runtime_evidence",
+    filters: {
+      platform: String(formData.get("platform") || "").trim() || undefined,
+      city: String(formData.get("city") || "").trim() || undefined,
+      intent_type: String(formData.get("intent_type") || "").trim() || undefined
+    },
+    sort: String(formData.get("sort") || "collected_at_desc").trim(),
+    query_path: String(formData.get("query_path") || "").trim(),
+    export_path: String(formData.get("export_path") || "").trim(),
+    created_by: "runtime-console"
+  };
+  const response = await fetch(`${baseUrl}/v1/runtime-saved-views`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/runtime-saved-views returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -501,6 +557,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       sort: filters.sort,
       limit: 200
     }),
+    savedViews: runtimePath(endpoints.savedViews, {
+      view_type: "runtime_evidence",
+      limit: 5
+    }),
     scores: runtimePath(endpoints.scores, { limit: 1 }),
     graphs: runtimePath(endpoints.graphs, { limit: 1 }),
     reports: runtimePath(endpoints.reports, { limit: 1 }),
@@ -509,10 +569,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     traceability: endpoints.traceability
   };
 
-  const [projects, prompts, evidence, scores, graphs, reports, actions, content, traceability] = await Promise.all([
+  const [projects, prompts, evidence, savedViews, scores, graphs, reports, actions, content, traceability] = await Promise.all([
     fetchRuntimeEndpoint<PageResponse<RuntimeProject>>(baseUrl, paths.projects, emptyPage<RuntimeProject>()),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     fetchRuntimeEndpoint<PageResponse<EvidenceRun>>(baseUrl, paths.evidence, emptyPage<EvidenceRun>()),
+    fetchRuntimeEndpoint<PageResponse<RuntimeSavedView>>(baseUrl, paths.savedViews, emptyPage<RuntimeSavedView>()),
     fetchRuntimeEndpoint<PageResponse<ScoreSnapshot>>(baseUrl, paths.scores, emptyPage<ScoreSnapshot>()),
     fetchRuntimeEndpoint<PageResponse<CitationGraph>>(baseUrl, paths.graphs, emptyPage<CitationGraph>()),
     fetchRuntimeEndpoint<PageResponse<ReportExport>>(baseUrl, paths.reports, emptyPage<ReportExport>()),
@@ -520,7 +581,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<PageResponse<ContentEngine>>(baseUrl, paths.content, emptyPage<ContentEngine>()),
     fetchRuntimeEndpoint<TraceabilityDetail | null>(baseUrl, paths.traceability, null, { optionalNotFound: true })
   ]);
-  const errors = [projects, prompts, evidence, scores, graphs, reports, actions, content, traceability]
+  const errors = [projects, prompts, evidence, savedViews, scores, graphs, reports, actions, content, traceability]
     .map((result) => result.error)
     .filter((item): item is string => Boolean(item));
   return {
@@ -528,6 +589,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       projects: projects.payload,
       prompts: prompts.payload,
       evidence: evidence.payload,
+      savedViews: savedViews.payload,
       scores: scores.payload,
       graphs: graphs.payload,
       reports: reports.payload,
@@ -570,6 +632,22 @@ function dateText(value: string | undefined): string {
 function uniqueText(values: Array<string | undefined>): string {
   const items = Array.from(new Set(values.filter((item): item is string => Boolean(item))));
   return items.length ? items.join(", ") : "unknown";
+}
+
+function savedViewHref(savedView: RuntimeSavedView["saved_view"]): string {
+  const params = new URLSearchParams();
+  const filters = savedView.filters || {};
+  ["platform", "city", "intent_type"].forEach((key) => {
+    const value = filters[key];
+    if (typeof value === "string" && value) {
+      params.set(key, value);
+    }
+  });
+  if (savedView.sort) {
+    params.set("sort", savedView.sort);
+  }
+  const query = params.toString();
+  return query ? `/?${query}` : "/";
 }
 
 export default async function Home({
@@ -621,6 +699,7 @@ export default async function Home({
     : "All runtime evidence";
   const evidenceExportUrl = `${displayUrl}${paths.evidenceExport}`;
   const evidenceSort = data.evidence.sort || filters.sort || "collected_at_desc";
+  const runtimeViewName = activeFilterCount ? `${filterLabel} · ${evidenceSort}` : `All runtime evidence · ${evidenceSort}`;
 
   return (
     <main className="shell">
@@ -708,8 +787,46 @@ export default async function Home({
           <Fact label="Prompts query" value={paths.prompts} />
           <Fact label="Evidence query" value={paths.evidence} />
           <Fact label="Export query" value={paths.evidenceExport} />
+          <Fact label="Saved views query" value={paths.savedViews} />
           <Fact label="Evidence sort" value={evidenceSort} />
         </dl>
+        <div className="savedViews">
+          <form action={saveCurrentRuntimeView} className="saveViewForm">
+            <input type="hidden" name="project_id" value={latestProject?.project.id || ""} />
+            <input type="hidden" name="platform" value={filters.platform || ""} />
+            <input type="hidden" name="city" value={filters.city || ""} />
+            <input type="hidden" name="intent_type" value={filters.intent_type || ""} />
+            <input type="hidden" name="sort" value={evidenceSort} />
+            <input type="hidden" name="query_path" value={paths.evidence} />
+            <input type="hidden" name="export_path" value={paths.evidenceExport} />
+            <label>
+              <span>Saved view name</span>
+              <input name="name" defaultValue={runtimeViewName} />
+            </label>
+            <button className="actionButton" type="submit" disabled={!latestProject}>
+              Save view
+            </button>
+          </form>
+          <div className="savedViewList">
+            <h3>Saved Views</h3>
+            {data.savedViews.records.length ? (
+              <ul className="plainList">
+                {data.savedViews.records.map((item) => (
+                  <li key={item.saved_view.id}>
+                    <strong>{item.saved_view.name}</strong>
+                    <a href={savedViewHref(item.saved_view)}>{item.saved_view.query_path}</a>
+                    <small>
+                      {item.saved_view.sort} · {item.audit_events[0]?.event_type || "no audit"} ·{" "}
+                      {item.audit_events[0]?.after_hash || "no hash"}
+                    </small>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <small>No saved runtime views yet.</small>
+            )}
+          </div>
+        </div>
       </section>
 
       <section className="metrics" aria-label="runtime metrics">

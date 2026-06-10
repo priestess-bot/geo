@@ -89,6 +89,28 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_saved_views_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get("/v1/runtime-saved-views?view_type=runtime_evidence")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_saved_view_save_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.post(
+            "/v1/runtime-saved-views",
+            json={
+                "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                "name": "Perplexity Sydney",
+                "view_type": "runtime_evidence",
+                "filters": {"platform": "perplexity", "city": "Sydney"},
+                "sort": "cost_desc",
+                "query_path": "/v1/evidence-runs/runtime?platform=perplexity&city=Sydney&sort=cost_desc&limit=5",
+                "export_path": "/v1/evidence-runs/runtime/export.csv?platform=perplexity&city=Sydney&sort=cost_desc&limit=200",
+                "created_by": "runtime-console",
+            },
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_runtime_visibility_scores_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/visibility-scores/runtime")
         self.assertEqual(response.status_code, 503)
@@ -231,6 +253,9 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("build_traceability_bundle", payload["traceability"])
         self.assertIn("RuntimeEvidenceRun", payload["persistence"])
         self.assertIn("RuntimeEvidenceExport", payload["persistence"])
+        self.assertIn("RuntimeSavedView", payload["persistence"])
+        self.assertIn("RuntimeSavedViewInput", payload["persistence"])
+        self.assertIn("RuntimeSavedViewPage", payload["persistence"])
         self.assertIn("RuntimeProject", payload["persistence"])
         self.assertIn("RuntimeProjectPage", payload["persistence"])
         self.assertIn("RuntimePromptPage", payload["persistence"])
@@ -247,6 +272,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/prompts/runtime", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime/export.csv", payload["persistence"])
+        self.assertIn("/v1/runtime-saved-views", payload["persistence"])
         self.assertIn("/v1/visibility-scores/runtime", payload["persistence"])
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])
         self.assertIn("/v1/reports/runtime", payload["persistence"])

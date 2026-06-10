@@ -570,6 +570,32 @@ class RuntimeEvidenceExport:
 
 
 @dataclass(frozen=True)
+class RuntimeSavedView:
+    saved_view: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeSavedViewPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeSavedView, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeSavedViewInput:
+    project_id: str
+    name: str
+    view_type: str
+    filters: dict[str, Any]
+    sort: str
+    query_path: str
+    export_path: str
+    created_by: str
+
+
+@dataclass(frozen=True)
 class RuntimeScoreSnapshotRun:
     answer_run: dict[str, Any]
     analysis: dict[str, Any] | None

@@ -9,6 +9,7 @@ from io import StringIO
 from typing import Any, Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from geno_core.audit import build_audit_event
 from geno_core.models import (
     ActionRecommendation,
     AnswerAnalysis,
@@ -41,6 +42,9 @@ from geno_core.models import (
     RuntimeReportArtifact,
     RuntimeReportExport,
     RuntimeReportExportPage,
+    RuntimeSavedView,
+    RuntimeSavedViewInput,
+    RuntimeSavedViewPage,
     RuntimeScoreSnapshot,
     RuntimeScoreSnapshotPage,
     RuntimeScoreSnapshotRun,
@@ -645,6 +649,19 @@ TRACEABILITY_BUNDLE_COLUMNS = (
     "audit_event_ids",
     "explanation_summary",
 )
+RUNTIME_SAVED_VIEW_COLUMNS = (
+    "id",
+    "project_id",
+    "name",
+    "view_type",
+    "filters",
+    "sort",
+    "query_path",
+    "export_path",
+    "created_by",
+    "created_at",
+    "updated_at",
+)
 
 
 class PostgresEvidenceRepository:
@@ -939,6 +956,136 @@ class PostgresEvidenceRepository:
             total_count=page.total_count,
             row_count=len(page.records),
         )
+
+    def list_runtime_saved_views(
+        self,
+        *,
+        project_id: str | None = None,
+        view_type: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> RuntimeSavedViewPage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id))
+        if view_type:
+            filters.append("view_type = %s")
+            params.append(view_type)
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM runtime_saved_views {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_SAVED_VIEW_COLUMNS)}
+                FROM runtime_saved_views
+                {where_clause}
+                ORDER BY updated_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            saved_views = _rows_dict(cursor.fetchall(), RUNTIME_SAVED_VIEW_COLUMNS)
+            records = tuple(self._load_runtime_saved_view(cursor=cursor, saved_view=saved_view) for saved_view in saved_views)
+        return RuntimeSavedViewPage(total_count=total_count, limit=limit, offset=offset, records=records)
+
+    def save_runtime_saved_view(self, view: RuntimeSavedViewInput) -> RuntimeSavedView:
+        view_id = _stable_id("runtime-saved-view", view.project_id, view.name)
+        after = {
+            "id": view_id,
+            "project_id": view.project_id,
+            "name": view.name,
+            "view_type": view.view_type,
+            "filters": view.filters,
+            "sort": view.sort,
+            "query_path": view.query_path,
+            "export_path": view.export_path,
+            "created_by": view.created_by,
+        }
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_SAVED_VIEW_COLUMNS)}
+                FROM runtime_saved_views
+                WHERE project_id = %s AND name = %s
+                LIMIT 1
+                """,
+                (_uuid(view.project_id), view.name),
+            )
+            existing = cursor.fetchone()
+            before = _row_dict(existing, RUNTIME_SAVED_VIEW_COLUMNS) if existing else None
+            cursor.execute(
+                """
+                INSERT INTO runtime_saved_views (
+                  id, project_id, name, view_type, filters, sort, query_path, export_path,
+                  created_by
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (project_id, name) DO UPDATE SET
+                  view_type = EXCLUDED.view_type,
+                  filters = EXCLUDED.filters,
+                  sort = EXCLUDED.sort,
+                  query_path = EXCLUDED.query_path,
+                  export_path = EXCLUDED.export_path,
+                  created_by = EXCLUDED.created_by,
+                  updated_at = now()
+                """,
+                (
+                    _uuid(view_id),
+                    _uuid(view.project_id),
+                    view.name,
+                    view.view_type,
+                    _json_payload(view.filters),
+                    view.sort,
+                    view.query_path,
+                    view.export_path,
+                    view.created_by,
+                ),
+            )
+            audit_event = build_audit_event(
+                event_type="runtime_saved_view_saved",
+                project_id=view.project_id,
+                actor_type="user",
+                actor_id=view.created_by,
+                target_type="runtime_saved_view",
+                target_id=view_id,
+                before=before,
+                after=after,
+                input_refs={"query_path": [view.query_path], "export_path": [view.export_path]},
+                output_refs={"runtime_saved_view_ids": [view_id]},
+                method_version="runtime_saved_view_v1",
+                reason="save runtime evidence filter view",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_SAVED_VIEW_COLUMNS)}
+                FROM runtime_saved_views
+                WHERE id = %s
+                """,
+                (_uuid(view_id),),
+            )
+            saved_view = _row_dict(cursor.fetchone(), RUNTIME_SAVED_VIEW_COLUMNS)
+            record = self._load_runtime_saved_view(cursor=cursor, saved_view=saved_view)
+        self.connection.commit()
+        return record
+
+    def _load_runtime_saved_view(self, *, cursor: DbCursor, saved_view: dict[str, Any]) -> RuntimeSavedView:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            """,
+            (_uuid(saved_view["project_id"]), "runtime_saved_view", str(saved_view["id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeSavedView(saved_view=saved_view, audit_events=audit_events)
 
     def list_runtime_score_snapshots(
         self,

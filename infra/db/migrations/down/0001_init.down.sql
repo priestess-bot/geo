@@ -20,6 +20,7 @@ DROP TABLE IF EXISTS integration_connectors;
 DROP TABLE IF EXISTS content_drafts;
 DROP TABLE IF EXISTS localized_knowledge_facts;
 DROP TABLE IF EXISTS traceability_bundles;
+DROP TABLE IF EXISTS runtime_saved_views;
 DROP TABLE IF EXISTS evidence_links;
 DROP TABLE IF EXISTS competitor_benchmarks;
 DROP TABLE IF EXISTS source_gaps;

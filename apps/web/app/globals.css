@@ -139,18 +139,21 @@ code {
   grid-template-columns: repeat(4, minmax(145px, 1fr)) repeat(3, auto);
 }
 
-.filterForm label {
+.filterForm label,
+.saveViewForm label {
   display: grid;
   gap: 5px;
   min-width: 0;
 }
 
-.filterForm label span {
+.filterForm label span,
+.saveViewForm label span {
   color: #667585;
   font-size: 12px;
 }
 
-.filterForm select {
+.filterForm select,
+.saveViewForm input {
   appearance: none;
   background: #f7fafc;
   border: 1px solid #cfd7e1;
@@ -160,6 +163,44 @@ code {
   font-size: 13px;
   min-width: 0;
   padding: 9px 10px;
+}
+
+.savedViews {
+  border-top: 1px solid #e1e7ee;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(260px, 0.6fr) minmax(0, 1fr);
+  padding-top: 12px;
+}
+
+.saveViewForm {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.savedViewList {
+  background: #f7fafc;
+  border: 1px solid #e1e7ee;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.savedViewList h3 {
+  color: #334453;
+  font-size: 13px;
+  margin: 0;
+}
+
+.savedViewList a {
+  color: #245d61;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  text-decoration: none;
 }
 
 .resetLink {
@@ -842,6 +883,7 @@ summary {
 
   .dashboard,
   .filterForm,
+  .savedViews,
   .evidenceGrid,
   .contributionGrid,
   .benchmarkGrid,
@@ -885,6 +927,8 @@ summary {
   .metrics,
   .dashboard,
   .filterForm,
+  .savedViews,
+  .saveViewForm,
   .scoreRow,
   .scoreSummary,
   .evidenceGrid,

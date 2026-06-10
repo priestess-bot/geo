@@ -4,6 +4,7 @@ import hashlib
 from dataclasses import asdict
 
 from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel, Field
 from fastapi.responses import Response
 
 from geno_core.action_plan import (
@@ -42,12 +43,24 @@ from geno_core.knowledge import (
     search_knowledge_facts,
 )
 from geno_core.market import build_au_market_profile
+from geno_core.models import RuntimeSavedViewInput
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.runtime import RuntimePersistenceError, build_repository_from_env, close_repository_connection
 from geno_core.traceability import build_traceability_bundle
 
 app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
+
+
+class RuntimeSavedViewRequest(BaseModel):
+    project_id: str
+    name: str = Field(min_length=1, max_length=120)
+    view_type: str = Field(default="runtime_evidence", min_length=1, max_length=80)
+    filters: dict[str, object] = Field(default_factory=dict)
+    sort: str = Field(default="collected_at_desc", max_length=80)
+    query_path: str = Field(min_length=1, max_length=1000)
+    export_path: str = Field(min_length=1, max_length=1000)
+    created_by: str = Field(default="runtime-console", min_length=1, max_length=120)
 
 
 @app.get("/health")
@@ -249,6 +262,53 @@ def runtime_evidence_export_csv(
                 "X-GENO-Evidence-Export-Sort": str(export.filters.get("sort", "collected_at_desc")),
             },
         )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-saved-views")
+def runtime_saved_views(
+    project_id: str | None = None,
+    view_type: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.list_runtime_saved_views(
+            project_id=project_id,
+            view_type=view_type,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-saved-views")
+def save_runtime_saved_view(payload: RuntimeSavedViewRequest) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        saved_view = repository.save_runtime_saved_view(
+            RuntimeSavedViewInput(
+                project_id=payload.project_id,
+                name=payload.name.strip(),
+                view_type=payload.view_type,
+                filters=payload.filters,
+                sort=payload.sort,
+                query_path=payload.query_path,
+                export_path=payload.export_path,
+                created_by=payload.created_by,
+            )
+        )
+        return asdict(saved_view)
     finally:
         close_repository_connection(repository)
 
@@ -886,6 +946,9 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEvidenceRun",
             "RuntimeEvidencePage",
             "RuntimeEvidenceExport",
+            "RuntimeSavedView",
+            "RuntimeSavedViewPage",
+            "RuntimeSavedViewInput",
             "RuntimeScoreSnapshot",
             "RuntimeScoreSnapshotPage",
             "RuntimeCitationGraph",
@@ -911,6 +974,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/prompts/runtime",
             "/v1/evidence-runs/runtime",
             "/v1/evidence-runs/runtime/export.csv",
+            "/v1/runtime-saved-views",
             "worker --persist",
             "worker --persist-analysis",
             "/v1/visibility-scores/runtime",
