@@ -382,15 +382,21 @@ type RuntimeData = {
   traceability: TraceabilityDetail | null;
 };
 
+type RuntimeFilters = {
+  platform?: string;
+  city?: string;
+  intent_type?: string;
+};
+
 const endpoints = {
-  projects: "/v1/projects/runtime?market_code=AU&limit=1",
-  prompts: "/v1/prompts/runtime?market_code=AU&limit=20",
-  evidence: "/v1/evidence-runs/runtime?limit=5",
-  scores: "/v1/visibility-scores/runtime?limit=1",
-  graphs: "/v1/citation-graphs/runtime?limit=1",
-  reports: "/v1/reports/runtime?limit=1",
-  actions: "/v1/action-plans/runtime?limit=1",
-  content: "/v1/content-engines/runtime?limit=1",
+  projects: "/v1/projects/runtime",
+  prompts: "/v1/prompts/runtime",
+  evidence: "/v1/evidence-runs/runtime",
+  scores: "/v1/visibility-scores/runtime",
+  graphs: "/v1/citation-graphs/runtime",
+  reports: "/v1/reports/runtime",
+  actions: "/v1/action-plans/runtime",
+  content: "/v1/content-engines/runtime",
   traceability: "/v1/traceability/runtime"
 } as const;
 
@@ -437,28 +443,71 @@ async function fetchRuntimeEndpoint<T>(
   }
 }
 
-async function fetchRuntimeData(): Promise<{
+function cleanFilter(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const trimmed = raw?.trim();
+  return trimmed || undefined;
+}
+
+function buildQuery(params: Record<string, string | number | undefined>): string {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") {
+      query.set(key, String(value));
+    }
+  });
+  const serialized = query.toString();
+  return serialized ? `?${serialized}` : "";
+}
+
+function runtimePath(path: string, params: Record<string, string | number | undefined>): string {
+  return `${path}${buildQuery(params)}`;
+}
+
+async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   data: RuntimeData;
   error: string | null;
   fetchUrl: string;
   displayUrl: string;
+  paths: Record<keyof typeof endpoints, string>;
 }> {
   const baseUrl =
     process.env.API_INTERNAL_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     "http://localhost:8000";
   const displayUrl = process.env.NEXT_PUBLIC_API_BASE_URL || baseUrl;
+  const sharedProjectParams = { market_code: "AU", limit: 1 };
+  const paths = {
+    projects: runtimePath(endpoints.projects, sharedProjectParams),
+    prompts: runtimePath(endpoints.prompts, {
+      market_code: "AU",
+      intent_type: filters.intent_type,
+      limit: 20
+    }),
+    evidence: runtimePath(endpoints.evidence, {
+      platform: filters.platform,
+      city: filters.city,
+      intent_type: filters.intent_type,
+      limit: 5
+    }),
+    scores: runtimePath(endpoints.scores, { limit: 1 }),
+    graphs: runtimePath(endpoints.graphs, { limit: 1 }),
+    reports: runtimePath(endpoints.reports, { limit: 1 }),
+    actions: runtimePath(endpoints.actions, { limit: 1 }),
+    content: runtimePath(endpoints.content, { limit: 1 }),
+    traceability: endpoints.traceability
+  };
 
   const [projects, prompts, evidence, scores, graphs, reports, actions, content, traceability] = await Promise.all([
-    fetchRuntimeEndpoint<PageResponse<RuntimeProject>>(baseUrl, endpoints.projects, emptyPage<RuntimeProject>()),
-    fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, endpoints.prompts, emptyPage<RuntimePrompt>()),
-    fetchRuntimeEndpoint<PageResponse<EvidenceRun>>(baseUrl, endpoints.evidence, emptyPage<EvidenceRun>()),
-    fetchRuntimeEndpoint<PageResponse<ScoreSnapshot>>(baseUrl, endpoints.scores, emptyPage<ScoreSnapshot>()),
-    fetchRuntimeEndpoint<PageResponse<CitationGraph>>(baseUrl, endpoints.graphs, emptyPage<CitationGraph>()),
-    fetchRuntimeEndpoint<PageResponse<ReportExport>>(baseUrl, endpoints.reports, emptyPage<ReportExport>()),
-    fetchRuntimeEndpoint<PageResponse<ActionPlan>>(baseUrl, endpoints.actions, emptyPage<ActionPlan>()),
-    fetchRuntimeEndpoint<PageResponse<ContentEngine>>(baseUrl, endpoints.content, emptyPage<ContentEngine>()),
-    fetchRuntimeEndpoint<TraceabilityDetail | null>(baseUrl, endpoints.traceability, null, { optionalNotFound: true })
+    fetchRuntimeEndpoint<PageResponse<RuntimeProject>>(baseUrl, paths.projects, emptyPage<RuntimeProject>()),
+    fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
+    fetchRuntimeEndpoint<PageResponse<EvidenceRun>>(baseUrl, paths.evidence, emptyPage<EvidenceRun>()),
+    fetchRuntimeEndpoint<PageResponse<ScoreSnapshot>>(baseUrl, paths.scores, emptyPage<ScoreSnapshot>()),
+    fetchRuntimeEndpoint<PageResponse<CitationGraph>>(baseUrl, paths.graphs, emptyPage<CitationGraph>()),
+    fetchRuntimeEndpoint<PageResponse<ReportExport>>(baseUrl, paths.reports, emptyPage<ReportExport>()),
+    fetchRuntimeEndpoint<PageResponse<ActionPlan>>(baseUrl, paths.actions, emptyPage<ActionPlan>()),
+    fetchRuntimeEndpoint<PageResponse<ContentEngine>>(baseUrl, paths.content, emptyPage<ContentEngine>()),
+    fetchRuntimeEndpoint<TraceabilityDetail | null>(baseUrl, paths.traceability, null, { optionalNotFound: true })
   ]);
   const errors = [projects, prompts, evidence, scores, graphs, reports, actions, content, traceability]
     .map((result) => result.error)
@@ -477,7 +526,8 @@ async function fetchRuntimeData(): Promise<{
     },
     error: errors.length ? errors.join("; ") : null,
     fetchUrl: baseUrl,
-    displayUrl
+    displayUrl,
+    paths
   };
 }
 
@@ -511,8 +561,18 @@ function uniqueText(values: Array<string | undefined>): string {
   return items.length ? items.join(", ") : "unknown";
 }
 
-export default async function Home() {
-  const { data, error, displayUrl } = await fetchRuntimeData();
+export default async function Home({
+  searchParams
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedSearchParams = (await searchParams) || {};
+  const filters: RuntimeFilters = {
+    platform: cleanFilter(resolvedSearchParams.platform),
+    city: cleanFilter(resolvedSearchParams.city),
+    intent_type: cleanFilter(resolvedSearchParams.intent_type)
+  };
+  const { data, error, displayUrl, paths } = await fetchRuntimeData(filters);
   const latestProject = data.projects.records[0];
   const latestPrompt = data.prompts.records[0];
   const latestEvidence = data.evidence.records[0];
@@ -543,6 +603,10 @@ export default async function Home() {
     : "unknown";
   const reportCities = latestReport ? uniqueText(latestReport.answer_runs.map((run) => run.city)) : "unknown";
   const latestRetestComparison = latestAction?.retest_comparisons[0];
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const filterLabel = activeFilterCount
+    ? [filters.platform, filters.city, filters.intent_type].filter(Boolean).join(" / ")
+    : "All runtime evidence";
 
   return (
     <main className="shell">
@@ -564,6 +628,59 @@ export default async function Home() {
           <code>docker compose -f infra/docker-compose.yml --profile worker run --rm collector-worker</code>
         </section>
       ) : null}
+
+      <section className="filterBar" aria-label="runtime filters">
+        <div>
+          <h2>Runtime Filters</h2>
+          <span>{filterLabel}</span>
+        </div>
+        <form className="filterForm">
+          <label>
+            <span>Platform</span>
+            <select name="platform" defaultValue={filters.platform || ""}>
+              <option value="">All platforms</option>
+              <option value="chatgpt">chatgpt</option>
+              <option value="perplexity">perplexity</option>
+            </select>
+          </label>
+          <label>
+            <span>Evidence city</span>
+            <select name="city" defaultValue={filters.city || ""}>
+              <option value="">All cities</option>
+              <option value="Australia">Australia</option>
+              <option value="Sydney">Sydney</option>
+              <option value="Melbourne">Melbourne</option>
+              <option value="Brisbane">Brisbane</option>
+            </select>
+          </label>
+          <label>
+            <span>Intent</span>
+            <select name="intent_type" defaultValue={filters.intent_type || ""}>
+              <option value="">All intents</option>
+              <option value="brand_awareness">brand_awareness</option>
+              <option value="category_recommendation">category_recommendation</option>
+              <option value="city_category_recommendation">city_category_recommendation</option>
+              <option value="competitor_comparison">competitor_comparison</option>
+              <option value="purchase_decision">purchase_decision</option>
+              <option value="review_reputation">review_reputation</option>
+              <option value="price">price</option>
+              <option value="service_coverage">service_coverage</option>
+              <option value="local_trust">local_trust</option>
+              <option value="alternative">alternative</option>
+            </select>
+          </label>
+          <button className="actionButton" type="submit">
+            Apply filters
+          </button>
+          <a className="resetLink" href="/">
+            Reset
+          </a>
+        </form>
+        <dl className="facts filterFacts">
+          <Fact label="Prompts query" value={paths.prompts} />
+          <Fact label="Evidence query" value={paths.evidence} />
+        </dl>
+      </section>
 
       <section className="metrics" aria-label="runtime metrics">
         <Metric label="Projects" value={data.projects.total_count} />

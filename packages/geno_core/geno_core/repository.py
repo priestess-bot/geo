@@ -730,6 +730,8 @@ class PostgresEvidenceRepository:
         *,
         project_id: str | None = None,
         platform: str | None = None,
+        city: str | None = None,
+        intent_type: str | None = None,
         status: str | None = None,
         limit: int = 50,
         offset: int = 0,
@@ -744,13 +746,27 @@ class PostgresEvidenceRepository:
         if platform:
             filters.append("ar.platform = %s")
             params.append(platform)
+        if city:
+            filters.append("ar.city = %s")
+            params.append(city)
+        if intent_type:
+            filters.append("pq.intent_type = %s")
+            params.append(intent_type)
         if status:
             filters.append("ar.status = %s")
             params.append(status)
         where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
 
         with self.connection.cursor() as cursor:
-            cursor.execute(f"SELECT count(*) FROM answer_runs ar {where_clause}", tuple(params))
+            cursor.execute(
+                f"""
+                SELECT count(*)
+                FROM answer_runs ar
+                LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id
+                {where_clause}
+                """,
+                tuple(params),
+            )
             total_row = cursor.fetchone()
             total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
             cursor.execute(

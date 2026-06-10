@@ -1359,6 +1359,8 @@ class CoreContractsTest(unittest.TestCase):
         page = PostgresEvidenceRepository(connection).list_runtime_evidence_runs(
             project_id=project_id,
             platform="perplexity",
+            city="Australia",
+            intent_type="category_recommendation",
             status="completed",
             limit=10,
             offset=0,
@@ -1377,7 +1379,11 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(record.collection_cost["total_cost"], 0.0015)
         self.assertEqual(record.audit_events[0]["event_type"], "answer_run_collected")
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
-        self.assertIn("FROM answer_runs ar WHERE ar.project_id = %s AND ar.platform = %s AND ar.status = %s", executed_sql)
+        self.assertIn("FROM answer_runs ar LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id", executed_sql)
+        self.assertIn(
+            "WHERE ar.project_id = %s AND ar.platform = %s AND ar.city = %s AND pq.intent_type = %s AND ar.status = %s",
+            executed_sql,
+        )
         self.assertIn("LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id", executed_sql)
         self.assertIn("FROM raw_answers", executed_sql)
 

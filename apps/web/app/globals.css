@@ -108,6 +108,76 @@ code {
   white-space: nowrap;
 }
 
+.filterBar {
+  background: #ffffff;
+  border: 1px solid #d5dde6;
+  border-radius: 6px;
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 14px;
+}
+
+.filterBar > div {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.filterBar > div span {
+  color: #647382;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.filterForm {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(160px, 1fr)) auto auto;
+}
+
+.filterForm label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.filterForm label span {
+  color: #667585;
+  font-size: 12px;
+}
+
+.filterForm select {
+  appearance: none;
+  background: #f7fafc;
+  border: 1px solid #cfd7e1;
+  border-radius: 4px;
+  color: #202a36;
+  font: inherit;
+  font-size: 13px;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.resetLink {
+  border: 1px solid #cfd7e1;
+  border-radius: 4px;
+  color: #245d61;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 10px 12px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.filterFacts {
+  grid-template-columns: minmax(110px, 0.2fr) minmax(0, 1fr);
+}
+
 .metrics {
   display: grid;
   gap: 10px;
@@ -771,6 +841,7 @@ summary {
   }
 
   .dashboard,
+  .filterForm,
   .evidenceGrid,
   .contributionGrid,
   .benchmarkGrid,
@@ -803,8 +874,17 @@ summary {
     text-align: left;
   }
 
+  .filterBar > div {
+    display: grid;
+  }
+
+  .filterBar > div span {
+    text-align: left;
+  }
+
   .metrics,
   .dashboard,
+  .filterForm,
   .scoreRow,
   .scoreSummary,
   .evidenceGrid,

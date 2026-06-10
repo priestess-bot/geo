@@ -185,6 +185,8 @@ def au_p0a_fixture_slice() -> dict[str, object]:
 def runtime_evidence_runs(
     project_id: str | None = None,
     platform: str | None = None,
+    city: str | None = None,
+    intent_type: str | None = None,
     status: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -197,6 +199,8 @@ def runtime_evidence_runs(
         page = repository.list_runtime_evidence_runs(
             project_id=project_id,
             platform=platform,
+            city=city,
+            intent_type=intent_type,
             status=status,
             limit=limit,
             offset=offset,

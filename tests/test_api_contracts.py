@@ -75,6 +75,13 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_evidence_filter_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get(
+            "/v1/evidence-runs/runtime?platform=perplexity&city=Sydney&intent_type=brand_awareness"
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_runtime_visibility_scores_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/visibility-scores/runtime")
         self.assertEqual(response.status_code, 503)

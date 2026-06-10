@@ -60,7 +60,7 @@
 - `[~]` 代码有单测；关键路径有集成测试（fixture/API/core 已覆盖；真实外部采集 E2E 待接）
 - `[~]` 通过 CI（lint + 测试 + 迁移可起）（本地 `make test` / `make docker-config` 通过；完整 lint/真实迁移起服待接）
 - `[x]` 若改了行为/口径，同 PR 更新对应 `docs/`，必要时加 `decisions/` ADR
-- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `PromptQuestion -> AnswerRun` / `answer_run_ids`（runtime project create/read API、runtime prompt API、fixture TraceabilityBundle、worker `--persist` 写 AU 启动包/prompt 元数据与 evidence、runtime project/prompt/evidence API 已读回项目、竞品、prompt 计数、prompt 文本与 prompt metadata；worker `--persist-analysis` 已保存 TraceabilityBundle，runtime traceability API 可读回报告/评分/证据/图谱/action/content/audit/evidence link 聚合详情；Runtime Console 已展示 Project Bootstrap、Prompt Pack、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail 和节点级 details 钻取；筛选、深链路和图谱可视化仍待接）
+- `[~]` P0a/P0b/P0c 数据写入可追溯：能点回 `PromptQuestion -> AnswerRun` / `answer_run_ids`（runtime project create/read API、runtime prompt API、fixture TraceabilityBundle、worker `--persist` 写 AU 启动包/prompt 元数据与 evidence、runtime project/prompt/evidence API 已读回项目、竞品、prompt 计数、prompt 文本与 prompt metadata；worker `--persist-analysis` 已保存 TraceabilityBundle，runtime traceability API 可读回报告/评分/证据/图谱/action/content/audit/evidence link 聚合详情；Runtime Console 已展示 Project Bootstrap、Runtime Filters、Prompt Pack、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail 和节点级 details 钻取；跨页面深链路和图谱可视化仍待接）
 - `[~]` 关键动作写入 `AuditEvent`；关键输出能生成 provenance 链路和解释包（采集/评分/报告/action/content fixture 已落；人工补录/实体确认待接）
 - `[~]` 有一次可演示（API fixture endpoints 与 Runtime Console MVP 已可演示；真实 design partner 数据演示待接）
 
@@ -110,7 +110,7 @@
 - `[x]` (P0a) 仓库骨架：`apps/`、`packages/`、`workers/`、`infra/`、`tests/`、`decisions/`
 - `[x]` (P0a/P0b/P0c) 数据契约：优先实现 MarketProfile、IndustryProfile、PromptQuestion、GeoSample、AnswerRun、RawAnswer、AnswerCitation、AnswerAnalysis、SourceGraph、CompetitorBenchmark、VisibilityScoreSnapshot、BrandEntity/CompetitorEntity/EntityAlias、CollectionCost、AuditEvent、ReportExport、ScoreContribution、EvidenceLink、TraceabilityBundle 关联表；P1/P2 表可延后 — `§8`
 - `[x]` (P0a) 接口契约 stub（先定义不实现）：CollectorBackend、LLMGateway、ParserEngine、VectorStore、GraphStore、GeoProvider、ScoringFormula、ReportExporter — `Step3.2`
-- `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web、repository 映射、`DATABASE_URL` connection factory、S3-compatible object store client、AU 启动包/prompt 元数据持久化、worker `--persist` / `--persist-analysis`、runtime project/prompt/evidence/score API、runtime citation graph API、runtime report API、runtime action plan API、runtime content engine API、runtime traceability API 与 Runtime Console Project Bootstrap/Prompt Pack/Evidence Runs/Score Contributions/Citation Graph & Competitors/Report Method & Evidence Appendix/Action Plan & Retest Detail/Content Engine Detail/MVP；LiteLLM、连接池与完整详情查询 UI 待接）
+- `[~]` (P0a) `infra/docker-compose.yml` 核心底座：PostgreSQL+pgvector、MinIO、FastAPI、Next.js、LiteLLM、simple worker/cron — `§6`（已落 PostgreSQL+pgvector、MinIO、API、Web、repository 映射、`DATABASE_URL` connection factory、S3-compatible object store client、AU 启动包/prompt 元数据持久化、worker `--persist` / `--persist-analysis`、runtime project/prompt/evidence/score API、runtime citation graph API、runtime report API、runtime action plan API、runtime content engine API、runtime traceability API 与 Runtime Console Project Bootstrap/Runtime Filters/Prompt Pack/Evidence Runs/Score Contributions/Citation Graph & Competitors/Report Method & Evidence Appendix/Action Plan & Retest Detail/Content Engine Detail/MVP；LiteLLM、连接池与完整详情查询 UI 待接）
 - `[x]` (P0c/P1) 重组件接入点：ClickHouse、Temporal、Langfuse、promptfoo、SearXNG、Metabase 写 ADR 和接口适配计划，但不阻塞 P0a — `§6`
 - `[~]` (P0a) 空 CI：lint + 测试 + 迁移起服（已落 contract tests、Compose config、repository mapping/runtime tests；lint 与真实迁移起服待补）
 - `[~]` (P0a) LLM 网关配置 + 调用日志 + 对象存储配置 — `E10-01 / E10-03 / E10-05`（已落 LLMGateway 接口与对象存储配置；运行时调用日志待接）
@@ -221,8 +221,8 @@ DoD：
 - `[x]` (P0c) GraphStore 接口 + PG 邻接表实现 + SourceGraph/SourceGap 表，并支持 runtime citation graph API 查询 — `Step8 / §8.9`
 - `[x]` (P0c) Citation Graph 输出：常被引/竞品独占/过旧/本地缺失信源；worker `--persist-analysis` 已写入 source graph evidence 与 source gaps — `Step8`
 - `[x]` (P0c) CompetitorBenchmark（3–5 竞品：mention/recommend/position/citation overlap/local relevance…），并支持 runtime citation graph API 读回 — `Step10 / §8.10`
-- `[~]` (P0c) 监测看板：总览/平台对比/竞品对比/问题明细/风险 — `E5-01..05`（Runtime Console 已展示 Project Bootstrap、Prompt Pack、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、source gaps、actions、Content Engine Detail、Traceability Detail 和节点级 details 钻取；完整筛选/问题明细 UI 待接）
-- `[ ]` (P1) 看板筛选与导出 — `E5-06`
+- `[~]` (P0c) 监测看板：总览/平台对比/竞品对比/问题明细/风险 — `E5-01..05`（Runtime Console 已展示 Project Bootstrap、Runtime Filters、Prompt Pack、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、source gaps、actions、Content Engine Detail、Traceability Detail 和节点级 details 钻取；完整问题明细 UI 待接）
+- `[~]` (P1) 看板筛选与导出 — `E5-06`（platform/evidence city/intent_type URL 查询筛选已接入 evidence runtime API 与控制台，prompt runtime API 同步按 intent_type 筛选；CSV/报告级导出、排序、保存视图待接）
 - `[ ]` (P1) GraphStore 切 Neo4j 验证可插拔 — `架构验收`
 
 DoD：
@@ -294,7 +294,7 @@ DoD：
 | 架构可插拔是否为真 | M0 起持续 | 接口先行；P0a 先完成接口级可插拔，深度切换演示排到 P0c/P1 | Collector/Parser/Scoring/Report 可插拔；向量库/图库/LLM 后续演示 |
 | 城市级地理定位实现成本 | M2a/M2b | GeoProvider 抽象（uule/代理池/供应商可换）；P0a 四地理样本可降级但保留字段 | 地理样本可区分且成本可控 |
 | 单位经济不透明 | M2a 起 | CollectionCost 从首个采集器记录；P0a planned_runs 默认 2400，Google spike 默认 240 | 每份报告成本、耗时、成功率可估算 |
-| 审计链/解释链断裂 | M0 起，M5/M6 验收 | AuditEvent、ReportExport、ScoreContribution、EvidenceLink 从 P0 建表并写入关键事件 | TraceabilityBundle fixture 已证明报告可追到原始证据；runtime evidence API 已读回 prompt 文本；runtime score API 已读回评分解释包；runtime graph API 已读回 source gap/竞品对标；runtime report API 已读回报告快照；runtime action plan API 已读回 action/retest audit events；runtime content engine API 已读回 fact/draft/connector/manual distribution/audit；runtime traceability API 已聚合报告/评分/证据/图谱/action/content/audit/evidence link；Runtime Console 已展示 Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail 与节点级 details 钻取；深链路/图谱可视化待接 |
+| 审计链/解释链断裂 | M0 起，M5/M6 验收 | AuditEvent、ReportExport、ScoreContribution、EvidenceLink 从 P0 建表并写入关键事件 | TraceabilityBundle fixture 已证明报告可追到原始证据；runtime evidence API 已读回 prompt 文本并支持 platform/evidence city/intent_type 过滤；runtime score API 已读回评分解释包；runtime graph API 已读回 source gap/竞品对标；runtime report API 已读回报告快照；runtime action plan API 已读回 action/retest audit events；runtime content engine API 已读回 fact/draft/connector/manual distribution/audit；runtime traceability API 已聚合报告/评分/证据/图谱/action/content/audit/evidence link；Runtime Console 已展示 Runtime Filters、Evidence Runs 明细、Score Contributions 完整解释包、Citation Graph & Competitors 明细、Report Method & Evidence Appendix、Action Plan & Retest Detail、Content Engine Detail、Traceability Detail 与节点级 details 钻取；跨页面深链路/图谱可视化待接 |
 | 打不过 Semrush/Ahrefs 数据规模 | 全程定位 | 押证据链/本地信源/代理商工作流，不拼分数广度 | design partner 认可证据价值 |
 | 评分构念效度未验证 | M6 后 | 复测展示变化；拿到客户转化数据再做相关性 | 报告标注 MVP 阶段不声称强因果 |
 
