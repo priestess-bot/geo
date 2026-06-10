@@ -7,7 +7,7 @@ from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from geno_core.contracts import LLMGateway
-from geno_core.llm_gateway import FixtureLLMGateway
+from geno_core.llm_gateway import FixtureLLMGateway, LLMGatewayRequestError
 from geno_core.models import AnswerAnalysis, BrandEntity, CompetitorEntity, RawEvidenceRecord
 
 
@@ -176,40 +176,53 @@ class LLMJudgeAnswerParser:
     ) -> AnswerAnalysis:
         answer_text = record.raw_answer.answer_text
         alias_map = entity_aliases or {}
-        gateway_result = self.gateway.chat(
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Judge brand visibility for a GENO answer. Return structured labels for "
-                        "brand mention, recommendation, rank, competitors, citations, local relevance, and sentiment."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        {
-                            "answer_run_id": record.answer_run.id,
-                            "brand": brand.canonical_name,
-                            "competitors": [competitor.canonical_name for competitor in competitors],
-                            "entity_aliases": alias_map,
-                            "answer_text": answer_text,
-                            "citation_urls": [citation.url for citation in record.citations],
-                        },
-                        ensure_ascii=False,
-                        sort_keys=True,
-                    ),
-                },
-            ],
-            model=self.model,
-            metadata={
-                "project_id": record.answer_run.project_id,
-                "answer_run_id": record.answer_run.id,
-                "purpose": "parser_judge",
-                "prompt_version": self.prompt_version,
-                "parser_engine_id": self.parser_engine_id,
+        gateway_messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Judge brand visibility for a GENO answer. Return structured labels for "
+                    "brand mention, recommendation, rank, competitors, citations, local relevance, and sentiment."
+                ),
             },
-        )
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "answer_run_id": record.answer_run.id,
+                        "brand": brand.canonical_name,
+                        "competitors": [competitor.canonical_name for competitor in competitors],
+                        "entity_aliases": alias_map,
+                        "answer_text": answer_text,
+                        "citation_urls": [citation.url for citation in record.citations],
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+            },
+        ]
+        gateway_metadata = {
+            "project_id": record.answer_run.project_id,
+            "answer_run_id": record.answer_run.id,
+            "purpose": "parser_judge",
+            "prompt_version": self.prompt_version,
+            "parser_engine_id": self.parser_engine_id,
+        }
+        gateway_result: dict[str, Any]
+        gateway_error: str | None = None
+        try:
+            gateway_result = self.gateway.chat(
+                messages=gateway_messages,
+                model=self.model,
+                metadata=gateway_metadata,
+            )
+        except LLMGatewayRequestError as exc:
+            gateway_result = {
+                "provider": getattr(self.gateway, "provider", "unknown"),
+                "model": self.model,
+                "usage": {},
+                "call_log": exc.call_log,
+            }
+            gateway_error = str(exc)
         brand_terms = _entity_terms(brand.canonical_name, alias_map.get(brand.id, ()))
         competitor_terms_by_name = {
             competitor.canonical_name: _entity_terms(
@@ -235,6 +248,8 @@ class LLMJudgeAnswerParser:
         freshness_score = 70.0 if record.citations else 40.0
         confidence = 0.78 if brand_mentioned or competitors_mentioned else 0.58
         uncertainty_flags = [f"judge_model:{self.model}"]
+        if gateway_error:
+            uncertainty_flags.append("llm_gateway_failed")
         if not brand_mentioned:
             uncertainty_flags.append("brand_not_mentioned")
         if negative_context and recommendation_context:
@@ -262,6 +277,7 @@ class LLMJudgeAnswerParser:
                 "llm_gateway_provider": gateway_result.get("provider"),
                 "llm_gateway_model": gateway_result.get("model"),
                 "llm_gateway_usage": gateway_result.get("usage"),
+                "llm_gateway_error": gateway_error,
                 "prompt_version": self.prompt_version,
             },
         )

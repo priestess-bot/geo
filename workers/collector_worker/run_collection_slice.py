@@ -40,8 +40,10 @@ from geno_core.google_spike import (
     evaluate_google_spike_readiness_gate,
     select_google_spike_prompts,
 )
+from geno_core.llm_gateway import LiteLLMGateway
 from geno_core.models import CollectionFailureRecord, ProjectBootstrap, RawEvidenceRecord
 from geno_core.object_store import archive_report_artifacts
+from geno_core.parser import ComparativeAnswerParser, LLMJudgeAnswerParser
 from geno_core.knowledge import (
     build_content_drafts,
     build_content_engine_audit_event,
@@ -71,6 +73,19 @@ def _fidelity_fixture_collectors(mode: str) -> tuple[CollectorBackend, ...]:
     return ()
 
 
+def _analysis_parser(*, judge_gateway: str, judge_model: str) -> ComparativeAnswerParser:
+    if judge_gateway == "fixture":
+        return ComparativeAnswerParser()
+    if judge_gateway == "litellm":
+        return ComparativeAnswerParser(
+            judge_parser=LLMJudgeAnswerParser(
+                model=judge_model,
+                gateway=LiteLLMGateway(),
+            )
+        )
+    raise ValueError(f"Unsupported judge gateway: {judge_gateway}")
+
+
 def _persist_records(
     *,
     bootstrap: ProjectBootstrap,
@@ -82,6 +97,8 @@ def _persist_records(
     failures: tuple[CollectionFailureRecord, ...],
     persist_analysis: bool,
     score_formula_version: str,
+    judge_gateway: str,
+    judge_model: str,
 ) -> dict[str, object]:
     repository = build_repository_from_env()
     repository.save_project_bootstrap(bootstrap)
@@ -166,6 +183,7 @@ def _persist_records(
             scope_value="worker_runtime",
             google_spike_gate=google_gate,
             google_spike_readiness_gate=google_readiness_gate,
+            parser=_analysis_parser(judge_gateway=judge_gateway, judge_model=judge_model),
         )
         repository.save_answer_analyses(analysis_result.analyses)
         repository.save_score_snapshot(
@@ -335,6 +353,8 @@ def _persist_records(
             "score_input_policy": analysis_result.score_input_policy,
             "entity_alias_entity_count": len(entity_aliases),
             "entity_alias_term_count": sum(len(aliases) for aliases in entity_aliases.values()),
+            "judge_gateway": judge_gateway,
+            "judge_model": judge_model,
             "score_snapshot_id": analysis_result.snapshot.id,
             "score_formula_version": analysis_result.snapshot.formula_version,
             "score_contributions": len(analysis_result.contributions),
@@ -408,6 +428,17 @@ def main() -> None:
         default="au_visibility_v1",
         help="Registered score formula version to use with --persist-analysis",
     )
+    parser.add_argument(
+        "--judge-gateway",
+        choices=["fixture", "litellm"],
+        default="fixture",
+        help="LLMGateway implementation for parser judge calls during --persist-analysis.",
+    )
+    parser.add_argument(
+        "--judge-model",
+        default="local-fixture-judge",
+        help="Judge model name passed to the selected LLMGateway.",
+    )
     args = parser.parse_args()
     if args.persist_analysis and not args.persist:
         parser.error("--persist-analysis requires --persist")
@@ -456,6 +487,8 @@ def main() -> None:
                 failures=failures,
                 persist_analysis=args.persist_analysis,
                 score_formula_version=args.score_formula_version,
+                judge_gateway=args.judge_gateway,
+                judge_model=args.judge_model,
             )
         except RuntimePersistenceError as exc:
             print(f"persistence_error: {exc}", file=sys.stderr)

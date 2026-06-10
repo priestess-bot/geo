@@ -53,7 +53,7 @@ from geno_core.knowledge import (
     build_manual_distribution_records,
     search_knowledge_facts,
 )
-from geno_core.llm_gateway import FixtureLLMGateway
+from geno_core.llm_gateway import FixtureLLMGateway, LiteLLMGateway, LLMGatewayRequestError
 from geno_core.market import build_au_market_profile
 from geno_core.models import (
     AnswerAnalysis,
@@ -943,6 +943,209 @@ class CoreContractsTest(unittest.TestCase):
         self.assertGreater(call_log["prompt_tokens"], 0)
         self.assertGreater(call_log["completion_tokens"], 0)
         self.assertEqual(call_log["total_tokens"], call_log["prompt_tokens"] + call_log["completion_tokens"])
+
+    def test_m0_litellm_gateway_records_auditable_chat_and_embedding_calls(self) -> None:
+        class FakeLiteLLMHttpClient:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def post_json(
+                self,
+                *,
+                url: str,
+                headers: dict[str, str],
+                payload: dict[str, object],
+                timeout_seconds: float,
+            ) -> dict[str, object]:
+                self.calls.append(
+                    {
+                        "url": url,
+                        "headers": headers,
+                        "payload": payload,
+                        "timeout_seconds": timeout_seconds,
+                    }
+                )
+                if url.endswith("/embeddings"):
+                    return {"data": [{"embedding": [0.1, 0.2]}, {"embedding": [0.3, 0.4]}]}
+                return {
+                    "choices": [{"message": {"content": "{\"status\":\"succeeded\"}"}}],
+                    "usage": {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18},
+                }
+
+        http_client = FakeLiteLLMHttpClient()
+        gateway = LiteLLMGateway(
+            base_url="http://litellm.local",
+            api_key="test-key",
+            http_client=http_client,
+            cost_per_1k_tokens=0.02,
+        )
+
+        response = gateway.chat(
+            messages=[{"role": "user", "content": "Judge Koala in Australia."}],
+            model="gpt-4.1-mini",
+            metadata={"project_id": "project-1", "answer_run_id": "run-1", "purpose": "parser_judge"},
+        )
+        embeddings = gateway.embed(texts=["koala", "mattress"], model="text-embedding-3-small")
+
+        self.assertEqual(response["provider"], "litellm")
+        self.assertEqual(response["content"], "{\"status\":\"succeeded\"}")
+        self.assertEqual(response["usage"]["total_tokens"], 18)
+        self.assertEqual(response["usage"]["estimated_cost"], 0.00036)
+        call_log = response["call_log"]
+        self.assertEqual(call_log["provider"], "litellm")
+        self.assertEqual(call_log["model"], "gpt-4.1-mini")
+        self.assertEqual(call_log["purpose"], "parser_judge")
+        self.assertEqual(call_log["status"], "succeeded")
+        self.assertEqual(call_log["prompt_tokens"], 11)
+        self.assertEqual(call_log["completion_tokens"], 7)
+        self.assertEqual(call_log["total_tokens"], 18)
+        self.assertEqual(len(call_log["request_hash"]), 64)
+        self.assertEqual(len(call_log["response_hash"]), 64)
+        self.assertEqual(embeddings, [[0.1, 0.2], [0.3, 0.4]])
+        self.assertEqual(http_client.calls[0]["url"], "http://litellm.local/chat/completions")
+        self.assertEqual(http_client.calls[0]["headers"], {"Authorization": "Bearer test-key"})
+        self.assertEqual(http_client.calls[1]["url"], "http://litellm.local/embeddings")
+
+    def test_m0_litellm_gateway_failed_request_keeps_auditable_call_log(self) -> None:
+        class FailingLiteLLMHttpClient:
+            def post_json(self, **kwargs: object) -> dict[str, object]:
+                raise RuntimeError("upstream unavailable")
+
+        gateway = LiteLLMGateway(base_url="http://litellm.local", api_key="test-key", http_client=FailingLiteLLMHttpClient())
+
+        with self.assertRaises(LLMGatewayRequestError) as context:
+            gateway.chat(
+                messages=[{"role": "user", "content": "Judge Koala in Australia."}],
+                model="gpt-4.1-mini",
+                metadata={"project_id": "project-1", "answer_run_id": "run-1", "purpose": "parser_judge"},
+            )
+
+        call_log = context.exception.call_log
+        self.assertEqual(call_log["provider"], "litellm")
+        self.assertEqual(call_log["status"], "failed")
+        self.assertEqual(call_log["error_message"], "upstream unavailable")
+        self.assertEqual(len(call_log["request_hash"]), 64)
+        self.assertEqual(len(call_log["response_hash"]), 64)
+
+    def test_m3_litellm_judge_failure_degrades_with_call_log(self) -> None:
+        class FailingLiteLLMHttpClient:
+            def post_json(self, **kwargs: object) -> dict[str, object]:
+                raise RuntimeError("upstream unavailable")
+
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(),),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=1,
+        )
+        judge_parser = LLMJudgeAnswerParser(
+            model="gpt-4.1-mini",
+            gateway=LiteLLMGateway(base_url="http://litellm.local", api_key="test-key", http_client=FailingLiteLLMHttpClient()),
+        )
+
+        analysis = judge_parser.parse_record(
+            record=records[0],
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+        )
+
+        comparison = analysis.parser_comparison or {}
+        call_log = comparison["llm_call_log"]
+        self.assertEqual(call_log["provider"], "litellm")
+        self.assertEqual(call_log["status"], "failed")
+        self.assertEqual(call_log["error_message"], "upstream unavailable")
+        self.assertIn("llm_gateway_failed", analysis.uncertainty_flags)
+        self.assertIn("LiteLLM chat request failed", comparison["llm_gateway_error"])
+
+    def test_m3_litellm_gateway_can_back_llm_judge_without_parser_changes(self) -> None:
+        class FakeLiteLLMHttpClient:
+            def post_json(self, **kwargs: object) -> dict[str, object]:
+                return {
+                    "choices": [{"message": {"content": "{\"brand_mentioned\":true}"}}],
+                    "usage": {"prompt_tokens": 17, "completion_tokens": 5},
+                }
+
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(),),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=1,
+        )
+        judge_parser = LLMJudgeAnswerParser(
+            model="gpt-4.1-mini",
+            gateway=LiteLLMGateway(base_url="http://litellm.local", api_key="test-key", http_client=FakeLiteLLMHttpClient()),
+        )
+
+        analysis = ComparativeAnswerParser(judge_parser=judge_parser).parse_record(
+            record=records[0],
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+        )
+
+        comparison = analysis.parser_comparison or {}
+        call_log = comparison["secondary_result"]["llm_call_log"]
+        self.assertEqual(call_log["provider"], "litellm")
+        self.assertEqual(call_log["model"], "gpt-4.1-mini")
+        self.assertEqual(call_log["status"], "succeeded")
+        self.assertEqual(comparison["secondary_prompt_version"], "llm_judge_prompt_v1")
+
+    def test_m3_analysis_pipeline_accepts_litellm_judge_parser_adapter(self) -> None:
+        class FakeLiteLLMHttpClient:
+            def post_json(self, **kwargs: object) -> dict[str, object]:
+                return {
+                    "choices": [{"message": {"content": "{\"brand_mentioned\":true}"}}],
+                    "usage": {"prompt_tokens": 17, "completion_tokens": 5},
+                }
+
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(),),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=1,
+        )
+        parser = ComparativeAnswerParser(
+            judge_parser=LLMJudgeAnswerParser(
+                model="gpt-4.1-mini",
+                gateway=LiteLLMGateway(base_url="http://litellm.local", api_key="test-key", http_client=FakeLiteLLMHttpClient()),
+            )
+        )
+
+        result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+            parser=parser,
+        )
+
+        call_log = result.analyses[0].parser_comparison["secondary_result"]["llm_call_log"]  # type: ignore[index]
+        self.assertEqual(call_log["provider"], "litellm")
+        self.assertEqual(result.audit_event.event_type, "visibility_score_snapshot_created")
 
     def test_m3_rule_parser_uses_confirmed_entity_aliases(self) -> None:
         bootstrap = build_au_project_bootstrap(

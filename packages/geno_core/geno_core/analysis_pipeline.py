@@ -156,12 +156,13 @@ def analyze_and_score_records(
     scope_value: str = "p0a_fixture",
     google_spike_gate: Mapping[str, object] | object | None = None,
     google_spike_readiness_gate: Mapping[str, object] | object | None = None,
+    parser: ComparativeAnswerParser | None = None,
 ) -> VisibilityAnalysisResult:
-    parser = ComparativeAnswerParser()
+    answer_parser = parser or ComparativeAnswerParser()
     record_analysis_pairs = tuple(
         (
             record,
-            parser.parse_record(
+            answer_parser.parse_record(
                 record=record,
                 brand=brand,
                 competitors=competitors,

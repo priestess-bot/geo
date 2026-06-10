@@ -57,11 +57,13 @@ python3 workers/collector_worker/run_collection_slice.py --mode fixture --prompt
 ```
 
 `--persist-analysis` requires `--persist`; it parses successful records with the comparative
-parser, using `rule_based_v2_aliases` as the primary result and `llm_judge_fixture_v1` as the local
-judge comparison. The `AnswerAnalysis` payload stores `parser_ab_compare_v1` agreement, mismatch
-fields, the secondary judge result, and a `FixtureLLMGateway` `llm_call_log`; the same call log is
-upserted into `llm_call_logs` with provider/model/prompt version, request/response hashes, token
-counts, estimated cost, latency, and status. It also reads any project-level `score_weight_configs`
+parser, using `rule_based_v2_aliases` as the primary result and `llm_judge_fixture_v1` as the judge
+comparison. By default the judge uses `FixtureLLMGateway`; `--judge-gateway litellm --judge-model <model>`
+switches the same parser path to `LiteLLMGateway` through `LITELLM_BASE_URL` and `LITELLM_API_KEY`.
+The `AnswerAnalysis` payload stores `parser_ab_compare_v1` agreement, mismatch fields, the secondary
+judge result, and the selected gateway `llm_call_log`; the same call log is upserted into
+`llm_call_logs` with provider/model/prompt version, request/response hashes, token counts, estimated
+cost, latency, status, and failed-call error messages. It also reads any project-level `score_weight_configs`
 for the selected score formula and freezes both the formula version and active component weights into
 `VisibilityScoreSnapshot.formula_version` and `VisibilityScoreSnapshot.component_weights_snapshot`.
 The worker then stores `VisibilityScoreSnapshot`, `ScoreContribution`,
@@ -94,6 +96,17 @@ PYTHONPATH=packages/geno_core:apps/api \
 python3 workers/collector_worker/run_collection_slice.py \
   --mode fixture --prompt-limit 1 --persist --persist-analysis \
   --score-formula-version au_visibility_v1_1_local_boost
+```
+
+LiteLLM judge adapter slice:
+
+```bash
+LITELLM_BASE_URL=http://localhost:4000 LITELLM_API_KEY=... \
+DATABASE_URL=postgresql://geno:geno@localhost:5432/geno \
+PYTHONPATH=packages/geno_core:apps/api \
+python3 workers/collector_worker/run_collection_slice.py \
+  --mode fixture --prompt-limit 1 --persist --persist-analysis \
+  --judge-gateway litellm --judge-model gpt-4.1-mini
 ```
 
 Fixture API-vs-browser fidelity sample:

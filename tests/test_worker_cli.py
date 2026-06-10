@@ -197,6 +197,8 @@ class WorkerCliTest(unittest.TestCase):
         analysis = payload["persistence"]["analysis"]
         self.assertEqual(analysis["analysis_count"], 3)
         self.assertEqual(analysis["score_input_record_count"], 2)
+        self.assertEqual(analysis["judge_gateway"], "fixture")
+        self.assertEqual(analysis["judge_model"], "local-fixture-judge")
         self.assertEqual(analysis["score_input_policy"]["excluded_fidelity_sample_record_count"], 1)
         self.assertEqual(analysis["fidelity_check_status"], "sampled")
         self.assertEqual(analysis["fidelity_difference_rate"], 0.0)

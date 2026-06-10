@@ -1128,6 +1128,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("ComparativeAnswerParser", payload["m3_analysis_scoring"])
         self.assertIn("parser_ab_compare_v1", payload["m3_analysis_scoring"])
         self.assertIn("FixtureLLMGateway", payload["m3_analysis_scoring"])
+        self.assertIn("LiteLLMGateway", payload["m3_analysis_scoring"])
         self.assertIn("LLMCallLog", payload["m3_analysis_scoring"])
         self.assertIn("RuntimeScoreWeightConfig", payload["m3_analysis_scoring"])
         self.assertIn("ScoreWeightConfigRequest", payload["m3_analysis_scoring"])

@@ -1475,6 +1475,7 @@ def contracts() -> dict[str, list[str]]:
             "parser_ab_compare_v1",
             "llm_judge_prompt_v1",
             "FixtureLLMGateway",
+            "LiteLLMGateway",
             "LLMCallLog",
             "AnswerAnalysis",
             "VisibilityScoreSnapshot",
