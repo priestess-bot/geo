@@ -49,6 +49,8 @@ make runtime-e2e
 
 `make runtime-e2e` 会用独立 Compose project 启动临时 PostgreSQL+pgvector 与 MinIO，构建 `runtime-e2e` 容器，跑 fixture worker `--persist --persist-analysis`，验证 Postgres 中的 answer/score/report/traceability 行、MinIO 中的 Markdown/PDF/CSV report artifact，并用 fake official API response 验证 `geno-api-snapshot://...` 会归档为 `s3://...` EvidenceAsset 和 `api_snapshot_assets_archived` 审计事件；结束时自动 `down -v` 清理容器和卷。
 
+真实 Perplexity/OpenAI key 到位后，用 `make api-preflight` 跑 AU P0a 最小官方 API smoke（1 个 prompt × Sydney × k=3 × 2 平台）。该目标会先检查 collector health，再要求 `P0ACollectionReadinessGate` 通过；缺 key 时底层 worker 以退出码 `3` 在采集前失败，避免把配置缺失误判为真实采集结论。
+
 核心服务一键启动入口：
 
 ```bash

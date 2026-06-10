@@ -73,6 +73,26 @@ def _fidelity_fixture_collectors(mode: str) -> tuple[CollectorBackend, ...]:
     return ()
 
 
+def _collector_health_report(collectors: tuple[CollectorBackend, ...]) -> tuple[dict[str, object], ...]:
+    return tuple(
+        {
+            "collector_backend_id": collector.id(),
+            "health": collector.health(),
+            "capabilities": collector.capabilities(),
+        }
+        for collector in collectors
+    )
+
+
+def _collector_health_failure_reasons(collector_health: tuple[dict[str, object], ...]) -> tuple[str, ...]:
+    ready_statuses = {"ready", "fixture_ready"}
+    return tuple(
+        f"{item['collector_backend_id']}:{item['health']}"
+        for item in collector_health
+        if item["health"] not in ready_statuses
+    )
+
+
 def _analysis_parser(*, judge_gateway: str, judge_model: str) -> ComparativeAnswerParser:
     if judge_gateway == "fixture":
         return ComparativeAnswerParser()
@@ -458,6 +478,16 @@ def main() -> None:
         help="In fixture mode, add paired browser answer runs for API-vs-browser fidelity sampling only.",
     )
     parser.add_argument(
+        "--require-ready-collectors",
+        action="store_true",
+        help="Exit before collection if any selected collector health is not ready.",
+    )
+    parser.add_argument(
+        "--require-p0a-readiness",
+        action="store_true",
+        help="Exit non-zero when the P0a readiness gate fails after collection.",
+    )
+    parser.add_argument(
         "--persist",
         action="store_true",
         help="Persist successful and failed collection records through DATABASE_URL",
@@ -486,6 +516,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.persist_analysis and not args.persist:
         parser.error("--persist-analysis requires --persist")
+    if args.require_p0a_readiness and args.mode == "google-fixture":
+        parser.error("--require-p0a-readiness is only valid for fixture/api P0a modes")
 
     bootstrap = build_au_project_bootstrap()
     prompts = bootstrap.prompt_questions
@@ -501,11 +533,32 @@ def main() -> None:
     base_collectors = _collectors(args.mode)
     fidelity_collectors = _fidelity_fixture_collectors(args.mode) if args.include_browser_fidelity_fixture else ()
     collectors = base_collectors + fidelity_collectors
+    collector_health = _collector_health_report(collectors)
+    collector_health_failure_reasons = _collector_health_failure_reasons(collector_health)
+    collector_health_gate = {
+        "gate_status": "fail" if collector_health_failure_reasons else "pass",
+        "failure_reasons": collector_health_failure_reasons,
+    }
     planned_runs = (
         plan.planned_runs
         if plan is not None
         else len(prompts[: args.prompt_limit]) * len(collectors) * len(cities) * args.sample_size
     )
+    if args.require_ready_collectors and collector_health_failure_reasons:
+        output = {
+            "mode": args.mode,
+            "record_count": 0,
+            "planned_runs": planned_runs,
+            "success_count": 0,
+            "failure_count": 0,
+            "collector_health": collector_health,
+            "collector_health_gate": collector_health_gate,
+            "p0a_readiness_gate": None,
+            "persistence": {"enabled": False},
+        }
+        print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
+        print(f"collector_preflight_failed: {', '.join(collector_health_failure_reasons)}", file=sys.stderr)
+        raise SystemExit(3)
     records = run_collection_slice(
         project_id=bootstrap.project.id,
         prompts=prompts,
@@ -545,6 +598,8 @@ def main() -> None:
         "failure_count": len(failures),
         "answer_run_ids": [record.answer_run.id for record in records],
         "failure_events": [asdict(record) for record in failures],
+        "collector_health": collector_health,
+        "collector_health_gate": collector_health_gate,
         "p0a_readiness_gate": asdict(p0a_readiness_gate) if p0a_readiness_gate is not None else None,
         "persistence": persistence,
     }
@@ -556,6 +611,12 @@ def main() -> None:
             evaluate_google_spike_readiness_gate(project_id=bootstrap.project.id, plan=plan, records=records)
         )
     print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
+    if args.require_p0a_readiness and p0a_readiness_gate is not None and p0a_readiness_gate.gate_status != "pass":
+        print(
+            f"p0a_readiness_failed: {', '.join(p0a_readiness_gate.failure_reasons)}",
+            file=sys.stderr,
+        )
+        raise SystemExit(4)
 
 
 if __name__ == "__main__":

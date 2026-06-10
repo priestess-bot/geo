@@ -130,6 +130,11 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(payload["record_count"], 4)
         self.assertEqual(payload["success_count"], 4)
         self.assertEqual(payload["failure_count"], 0)
+        self.assertEqual(payload["collector_health_gate"]["gate_status"], "pass")
+        self.assertEqual(
+            {item["health"] for item in payload["collector_health"]},
+            {"fixture_ready"},
+        )
         gate = payload["p0a_readiness_gate"]
         self.assertEqual(gate["gate_status"], "fail")
         self.assertIn("below_required_sample_size=4", gate["failure_reasons"])
@@ -150,12 +155,53 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(payload["record_count"], 2)
         self.assertEqual(payload["success_count"], 0)
         self.assertEqual(payload["failure_count"], 2)
+        self.assertEqual(payload["collector_health_gate"]["gate_status"], "fail")
+        self.assertEqual(
+            payload["collector_health_gate"]["failure_reasons"],
+            ["perplexity.sonar.api:not_configured", "openai.web_search.api:not_configured"],
+        )
         gate = payload["p0a_readiness_gate"]
         self.assertEqual(gate["gate_status"], "fail")
         self.assertIn("collection_failures=2", gate["failure_reasons"])
         failure_events = payload["failure_events"]
         self.assertIsInstance(failure_events, list)
         self.assertEqual(failure_events[0]["audit_events"][0]["event_type"], "answer_run_failed")
+
+    def test_api_preflight_without_keys_fails_before_collection(self) -> None:
+        result = self._run_worker_result(
+            "--mode",
+            "api",
+            "--prompt-limit",
+            "1",
+            "--cities",
+            "Sydney",
+            "--require-ready-collectors",
+            unset_env=("PERPLEXITY_API_KEY", "OPENAI_API_KEY"),
+        )
+        self.assertEqual(result.returncode, 3)
+        self.assertIn("collector_preflight_failed", result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["record_count"], 0)
+        self.assertEqual(payload["planned_runs"], 2)
+        self.assertEqual(payload["collector_health_gate"]["gate_status"], "fail")
+        self.assertEqual(
+            payload["collector_health_gate"]["failure_reasons"],
+            ["perplexity.sonar.api:not_configured", "openai.web_search.api:not_configured"],
+        )
+
+    def test_require_p0a_readiness_fails_nonzero_when_gate_fails(self) -> None:
+        result = self._run_worker_result(
+            "--mode",
+            "fixture",
+            "--prompt-limit",
+            "1",
+            "--require-p0a-readiness",
+        )
+        self.assertEqual(result.returncode, 4)
+        self.assertIn("p0a_readiness_failed", result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["p0a_readiness_gate"]["gate_status"], "fail")
+        self.assertIn("below_required_sample_size=4", payload["p0a_readiness_gate"]["failure_reasons"])
 
     def test_google_fixture_worker_slice_returns_gate(self) -> None:
         payload = self._run_worker("--mode", "google-fixture")

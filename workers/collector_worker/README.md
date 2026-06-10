@@ -155,6 +155,20 @@ If API keys are missing, the worker returns `CollectionFailureRecord` items and 
 the project/prompt metadata, failed runs, failure logs, collection costs, batch-level collection
 summary, and audit events are stored in PostgreSQL as well.
 
+Use the stricter preflight path when validating real AU P0a provider readiness:
+
+```bash
+PERPLEXITY_API_KEY=... OPENAI_API_KEY=... make api-preflight
+```
+
+`make api-preflight` runs `--mode api --prompt-limit 1 --cities Sydney --sample-size 3
+--require-ready-collectors --require-p0a-readiness`. `--require-ready-collectors` exits before
+collection with worker exit code `3` if a selected collector health is not `ready`; the JSON output
+still includes `collector_health` and `collector_health_gate` for audit. `--require-p0a-readiness`
+exits with worker exit code `4` after collection if the P0a gate fails, for example because k=3,
+required platforms, citations, or HTML snapshot evidence are missing. This is the minimum real API
+smoke; it does not replace the full 100 prompts × 4 geo × k=3 design-partner batch.
+
 Google spike fixture:
 
 ```bash

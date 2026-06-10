@@ -67,7 +67,7 @@
 **P0a 稳定链路验收门槛**（M0 + M1 + M2a + M3 全绿才算可进入 design partner 试点）：
 
 - `[~]` 可创建 `market=AU` 项目，配 1 行业模板 + 100 条澳洲问题集 + 3–5 竞品（可配置客户项目 API/控制台已落；权限/RLS、真实客户数据验收待接）
-- `[~]` 完成 Perplexity Sonar + OpenAI web search 两个平台采集，每条有 answer + citation + 截图/HTML（fixture k=3 可通过 `P0ACollectionReadinessGate`；真实 API adapter 已为官方 API 响应生成 `geno-api-snapshot://...` HTML snapshot 证据，并可在配置对象存储时归档为 `s3://...` EvidenceAsset 与 `api_snapshot_assets_archived` 审计事件；真实 Perplexity/OpenAI API 凭证批次待跑）
+- `[~]` 完成 Perplexity Sonar + OpenAI web search 两个平台采集，每条有 answer + citation + 截图/HTML（fixture k=3 可通过 `P0ACollectionReadinessGate`；真实 API adapter 已为官方 API 响应生成 `geno-api-snapshot://...` HTML snapshot 证据，并可在配置对象存储时归档为 `s3://...` EvidenceAsset 与 `api_snapshot_assets_archived` 审计事件；`make api-preflight` 已提供真实 key 到位后的 1 prompt × Sydney × k=3 × 2 平台预检，真实 Perplexity/OpenAI API 凭证批次待跑）
 - `[~]` 每条采集记录 platform/surface/access_method/city/language/device/collected_at/collector_version/collector_backend_id（`P0ACollectionReadinessGate` 已自动检查必备元数据；真实外部批次待跑）
 - `[~]` 每条采集记录 `answer_present`/`surface_triggered`；P0a 每 prompt 重复采样 k=3（worker 输出 readiness gate；默认 sample-size=1 会 fail，`--sample-size 3` fixture 会 pass；真实外部批次待跑）
 - `[~]` 采集、采集批次摘要、解析、评分、人工补录、实体确认、报告导出均写入 `AuditEvent`（runtime `collection_run_summarized`、`manual_backfill_recorded` 与 `entity_alias_confirmed` 已落；真实外部解析/采集链路仍需凭证联调）
@@ -147,20 +147,20 @@ DoD：
 
 任务（构建顺序：稳定 API → 证据 → 成本 → 地理）：
 
-- `[~]` (P0a) CollectorBackend 接口落地 + **Perplexity Sonar 后端**（最易采，先打通全链路）— `Step4`（fixture + 真实 API adapter + API HTML snapshot 证据已落；配置对象存储时可落为 `s3://...` EvidenceAsset；真实凭证联调待验证）
-- `[~]` (P0a) **OpenAI web search / ChatGPT Search** 官方 API 后端 — `Step4`（fixture + 真实 API adapter + API HTML snapshot 证据已落；配置对象存储时可落为 `s3://...` EvidenceAsset；真实凭证联调待验证）
+- `[~]` (P0a) CollectorBackend 接口落地 + **Perplexity Sonar 后端**（最易采，先打通全链路）— `Step4`（fixture + 真实 API adapter + API HTML snapshot 证据已落；配置对象存储时可落为 `s3://...` EvidenceAsset；`collector_health`、`--require-ready-collectors` 和 `make api-preflight` 已落，真实凭证联调待验证）
+- `[~]` (P0a) **OpenAI web search / ChatGPT Search** 官方 API 后端 — `Step4`（fixture + 真实 API adapter + API HTML snapshot 证据已落；配置对象存储时可落为 `s3://...` EvidenceAsset；`collector_health`、`--require-ready-collectors` 和 `make api-preflight` 已落，真实凭证联调待验证）
 - `[x]` (P0a) Raw Evidence Store：AnswerRun/RawAnswer/AnswerCitation/EvidenceAsset/CollectorLog，含 `answer_present`/`surface_triggered`/`sample_index`/`sample_size`/`access_method`，并有 PostgreSQL repository 写入映射、JSONB/UUID runtime adapter、worker `--persist` 写库开关、AU 启动包/prompt 元数据先写入和 prompt-linked runtime evidence 查询 API — `Step5 / §8.5..8.7`
 - `[~]` (P0a) Audit / Provenance 基础：采集开始/完成/失败、采集批次摘要、原始证据入库、人工补录和实体别名确认写 `AuditEvent`；`ReportEvidence` / `ScoreSnapshotRun` / `SourceGraphEvidence` 关联表先建表 — `Step5.1 / §8.16..8.19`（采集完成/失败审计、批次级 `collection_run_summarized`、人工补录最小路径 `manual_backfill_recorded` 与实体别名确认最小路径 `entity_alias_confirmed` 已落；批量消歧队列待接）
 - `[x]` (P0a) P0a 采样量闸门：100 prompts × 2 platforms × 4 geo × k=3 = 2400 planned_runs，可配置降级 prompt/geo 但不降级证据字段 — `Step9.3`
 - `[x]` (P0a) GeoProvider 抽象 + 城市采样（Australia/Sydney/Melbourne/Brisbane）— `Step6 / §8.4`
 - `[x]` (P0a) 截图/HTML 快照 + `raw_payload_hash` — `E3-05`
-- `[~]` (P0a) CollectionCost、CollectionRunSummary 与 P0ACollectionReadinessGate 记录（从首个采集器起），输出 planned/attempted/success/failure、成功率、触发率、回答率、失败摘要、单位成本、平均耗时和 P0a 采集门禁 pass/fail/reasons — `§8.15`
+- `[~]` (P0a) CollectionCost、CollectionRunSummary 与 P0ACollectionReadinessGate 记录（从首个采集器起），输出 collector health、planned/attempted/success/failure、成功率、触发率、回答率、失败摘要、单位成本、平均耗时和 P0a 采集门禁 pass/fail/reasons；`--require-p0a-readiness` 可让真实 smoke 在 gate fail 时非零退出 — `§8.15`
 - `[~]` (P0c/P1) 保真度抽检：同批 prompt 跑 官方 API vs 浏览器 两后端，量化差异率并入报告 — `Step4`（`api_browser_fidelity_checks` 表、runtime GET/POST API、worker `--persist-analysis` 自动生成、报告 Method Disclosure 复用、Runtime Console 展示 status/mismatch/difference/payload hash 和 `api_browser_fidelity_checked` 审计事件已落；`--include-browser-fidelity-fixture` 已可生成同 prompt/city 的 official_api + browser fixture 配对样本并得到 `sampled`，browser fidelity samples 通过 `score_input_policy` 排除出主评分分母；真实 browser collector 后端和定期抽检调度待接）
 - `[~]` (P1) 定时采集（Temporal）/复杂失败重试/限流/人工补录工作台 — `E3-03/06/07/08`（worker CLI 与 `--persist` 已落；Runtime Console 已有最小人工补录表单；复杂调度/限流/批量文件补录待接）
 
 DoD：
 
-- `[~]` Perplexity + OpenAI 两个平台均能采到 answer+citation+截图/HTML（fixture k=3 可由 `P0ACollectionReadinessGate` 验证通过；真实 API adapter 已生成官方 API response HTML snapshot 资产，且 `--persist` 配对象存储时会归档为可追溯 `s3://...` EvidenceAsset；真实外部 API 凭证批次待跑；消费者界面截图仍通过浏览器抽检补足）
+- `[~]` Perplexity + OpenAI 两个平台均能采到 answer+citation+截图/HTML（fixture k=3 可由 `P0ACollectionReadinessGate` 验证通过；真实 API adapter 已生成官方 API response HTML snapshot 资产，且 `--persist` 配对象存储时会归档为可追溯 `s3://...` EvidenceAsset；`make api-preflight` 已可在 key 到位后验证最小真实 API k=3 gate，真实外部 API 凭证批次待跑；消费者界面截图仍通过浏览器抽检补足）
 - `[x]` 每条记录平台/surface/access_method/city/language/device/时间/collector_version/collector_backend_id
 - `[x]` 记录 answer_present/surface_triggered；P0a 每 prompt k=3
 - `[~]` 采集事件、采集批次摘要、人工补录事件和实体别名确认事件写 AuditEvent；原始证据能通过 EvidenceLink 关联到后续报告和评分（采集完成/失败审计、`CollectionRunSummary` 与 `collection_run_summarized` 审计、人工补录写入 `AnswerRun/RawAnswer/AnswerCitation/EvidenceAsset/CollectorLog/CollectionCost/AuditEvent` 已落；实体别名确认写入 `EntityAlias/AuditEvent` 已落；confirmed alias 已进入 `rule_based_v2_aliases` parser 和 `AnswerAnalysis`；批量消歧队列待接）
