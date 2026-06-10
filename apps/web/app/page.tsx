@@ -1,6 +1,27 @@
+import { revalidatePath } from "next/cache";
+import type { ReactNode } from "react";
+
 type PageResponse<T> = {
   total_count: number;
   records: T[];
+};
+
+type RuntimeProject = {
+  project: {
+    id: string;
+    name: string;
+    market_code: string;
+    industry_code: string;
+    target_brand: string;
+    category: string;
+    prompt_version: string;
+    status: string;
+  };
+  tenant: { id: string; name: string };
+  brand: { canonical_name: string; official_domains?: string[]; status?: string } | null;
+  competitors: Array<{ canonical_name: string; official_domains?: string[]; status?: string }>;
+  prompt_count: number;
+  audit_events: Array<{ event_type: string; method_version?: string | null }>;
 };
 
 type RuntimePrompt = {
@@ -137,6 +158,7 @@ type TraceabilityDetail = {
 };
 
 type RuntimeData = {
+  projects: PageResponse<RuntimeProject>;
   prompts: PageResponse<RuntimePrompt>;
   evidence: PageResponse<EvidenceRun>;
   scores: PageResponse<ScoreSnapshot>;
@@ -148,6 +170,7 @@ type RuntimeData = {
 };
 
 const endpoints = {
+  projects: "/v1/projects/runtime?market_code=AU&limit=1",
   prompts: "/v1/prompts/runtime?market_code=AU&limit=20",
   evidence: "/v1/evidence-runs/runtime?limit=5",
   scores: "/v1/visibility-scores/runtime?limit=1",
@@ -158,9 +181,48 @@ const endpoints = {
   traceability: "/v1/traceability/runtime"
 } as const;
 
-const emptyPage = { total_count: 0, records: [] };
+const emptyPage = <T,>(): PageResponse<T> => ({ total_count: 0, records: [] });
 
 export const dynamic = "force-dynamic";
+
+async function createAuRuntimeProject() {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const response = await fetch(`${baseUrl}/v1/projects/runtime/au/dtc-ecommerce`, {
+    method: "POST",
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/projects/runtime/au/dtc-ecommerce returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function fetchRuntimeEndpoint<T>(
+  baseUrl: string,
+  path: string,
+  fallback: T,
+  options: { optionalNotFound?: boolean } = {}
+): Promise<{ payload: T; error: string | null }> {
+  try {
+    const response = await fetch(`${baseUrl}${path}`, { cache: "no-store" });
+    if (response.status === 404 && options.optionalNotFound) {
+      return { payload: fallback, error: null };
+    }
+    if (!response.ok) {
+      return { payload: fallback, error: `${path} returned ${response.status}` };
+    }
+    return { payload: (await response.json()) as T, error: null };
+  } catch (error) {
+    return {
+      payload: fallback,
+      error: error instanceof Error ? `${path} failed: ${error.message}` : `${path} failed`
+    };
+  }
+}
 
 async function fetchRuntimeData(): Promise<{
   data: RuntimeData;
@@ -174,39 +236,36 @@ async function fetchRuntimeData(): Promise<{
     "http://localhost:8000";
   const displayUrl = process.env.NEXT_PUBLIC_API_BASE_URL || baseUrl;
 
-  try {
-    const entries = await Promise.all(
-      Object.entries(endpoints).map(async ([key, path]) => {
-        const response = await fetch(`${baseUrl}${path}`, { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error(`${path} returned ${response.status}`);
-        }
-        return [key, await response.json()] as const;
-      })
-    );
-    return {
-      data: Object.fromEntries(entries) as RuntimeData,
-      error: null,
-      fetchUrl: baseUrl,
-      displayUrl
-    };
-  } catch (error) {
-    return {
-      data: {
-        prompts: emptyPage,
-        evidence: emptyPage,
-        scores: emptyPage,
-        graphs: emptyPage,
-        reports: emptyPage,
-        actions: emptyPage,
-        content: emptyPage,
-        traceability: null
-      },
-      error: error instanceof Error ? error.message : "Runtime API unavailable",
-      fetchUrl: baseUrl,
-      displayUrl
-    };
-  }
+  const [projects, prompts, evidence, scores, graphs, reports, actions, content, traceability] = await Promise.all([
+    fetchRuntimeEndpoint<PageResponse<RuntimeProject>>(baseUrl, endpoints.projects, emptyPage<RuntimeProject>()),
+    fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, endpoints.prompts, emptyPage<RuntimePrompt>()),
+    fetchRuntimeEndpoint<PageResponse<EvidenceRun>>(baseUrl, endpoints.evidence, emptyPage<EvidenceRun>()),
+    fetchRuntimeEndpoint<PageResponse<ScoreSnapshot>>(baseUrl, endpoints.scores, emptyPage<ScoreSnapshot>()),
+    fetchRuntimeEndpoint<PageResponse<CitationGraph>>(baseUrl, endpoints.graphs, emptyPage<CitationGraph>()),
+    fetchRuntimeEndpoint<PageResponse<ReportExport>>(baseUrl, endpoints.reports, emptyPage<ReportExport>()),
+    fetchRuntimeEndpoint<PageResponse<ActionPlan>>(baseUrl, endpoints.actions, emptyPage<ActionPlan>()),
+    fetchRuntimeEndpoint<PageResponse<ContentEngine>>(baseUrl, endpoints.content, emptyPage<ContentEngine>()),
+    fetchRuntimeEndpoint<TraceabilityDetail | null>(baseUrl, endpoints.traceability, null, { optionalNotFound: true })
+  ]);
+  const errors = [projects, prompts, evidence, scores, graphs, reports, actions, content, traceability]
+    .map((result) => result.error)
+    .filter((item): item is string => Boolean(item));
+  return {
+    data: {
+      projects: projects.payload,
+      prompts: prompts.payload,
+      evidence: evidence.payload,
+      scores: scores.payload,
+      graphs: graphs.payload,
+      reports: reports.payload,
+      actions: actions.payload,
+      content: content.payload,
+      traceability: traceability.payload
+    },
+    error: errors.length ? errors.join("; ") : null,
+    fetchUrl: baseUrl,
+    displayUrl
+  };
 }
 
 function pct(value: number | undefined): string {
@@ -223,6 +282,7 @@ function shortId(value: string | undefined): string {
 
 export default async function Home() {
   const { data, error, displayUrl } = await fetchRuntimeData();
+  const latestProject = data.projects.records[0];
   const latestPrompt = data.prompts.records[0];
   const latestEvidence = data.evidence.records[0];
   const latestScore = data.scores.records[0];
@@ -266,6 +326,7 @@ export default async function Home() {
       ) : null}
 
       <section className="metrics" aria-label="runtime metrics">
+        <Metric label="Projects" value={data.projects.total_count} />
         <Metric label="Prompts" value={data.prompts.total_count} />
         <Metric label="Evidence runs" value={data.evidence.total_count} />
         <Metric label="Final score" value={num(latestScore?.snapshot.final_score)} />
@@ -277,6 +338,45 @@ export default async function Home() {
       </section>
 
       <section className="dashboard">
+        <Panel title="Project Bootstrap" subtitle={latestProject?.project.name || "No runtime project"}>
+          <div className="stack">
+            {latestProject ? (
+              <>
+                <dl className="facts">
+                  <Fact label="Tenant" value={latestProject.tenant.name} />
+                  <Fact label="Project ID" value={shortId(latestProject.project.id)} />
+                  <Fact label="Market" value={latestProject.project.market_code} />
+                  <Fact label="Industry" value={latestProject.project.industry_code} />
+                  <Fact label="Brand" value={latestProject.brand?.canonical_name || latestProject.project.target_brand} />
+                  <Fact label="Category" value={latestProject.project.category} />
+                  <Fact label="Prompts" value={latestProject.prompt_count} />
+                  <Fact label="Competitors" value={latestProject.competitors.length} />
+                </dl>
+                <ul className="plainList">
+                  {latestProject.competitors.slice(0, 4).map((competitor) => (
+                    <li key={competitor.canonical_name}>
+                      <strong>{competitor.status || "competitor"}</strong>
+                      <span>{competitor.canonical_name}</span>
+                      <small>{competitor.official_domains?.[0] || "domain pending"}</small>
+                    </li>
+                  ))}
+                </ul>
+                <small className="auditLine">
+                  {latestProject.audit_events[0]?.event_type || "no bootstrap audit"} ·{" "}
+                  {latestProject.audit_events[0]?.method_version || "no method version"}
+                </small>
+              </>
+            ) : (
+              <EmptyState />
+            )}
+            <form action={createAuRuntimeProject}>
+              <button className="actionButton" type="submit">
+                Create AU project
+              </button>
+            </form>
+          </div>
+        </Panel>
+
         <Panel title="Prompt Pack" subtitle={latestPrompt?.prompt_version || "No runtime prompts"}>
           {data.prompts.records.length ? (
             <div className="stack">
@@ -630,4 +730,3 @@ function Fact({ label, value }: { label: string; value: string | number }) {
 function EmptyState() {
   return <p className="empty">Run the collector worker to populate runtime data.</p>;
 }
-import type { ReactNode } from "react";

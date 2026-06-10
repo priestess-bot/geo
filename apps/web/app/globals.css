@@ -111,7 +111,7 @@ code {
 .metrics {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(9, minmax(0, 1fr));
   margin-top: 18px;
 }
 
@@ -245,6 +245,31 @@ code {
 .downloadRow a + a {
   background: #ffffff;
   color: #245d61;
+}
+
+.actionButton {
+  background: #245d61;
+  border: 1px solid #245d61;
+  border-radius: 4px;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 10px 12px;
+}
+
+.auditLine {
+  background: #f7fafc;
+  border: 1px solid #e1e7ee;
+  border-radius: 4px;
+  color: #667585;
+  display: block;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  padding: 8px;
 }
 
 .compactList,
