@@ -43,12 +43,28 @@ type RuntimePrompt = {
 type EvidenceRun = {
   answer_run: {
     id: string;
+    project_id?: string;
+    prompt_question_id?: string;
     platform: string;
     surface: string;
+    access_method?: string;
+    market_code?: string;
     city: string;
+    language?: string;
+    device?: string;
     status: string;
+    answer_present?: boolean;
+    surface_triggered?: boolean;
+    sample_index?: number;
+    sample_size?: number;
+    model_or_surface?: string;
+    account_state?: string | null;
+    collector_backend_id?: string;
+    collector_version?: string;
     prompt_text?: string;
     prompt_intent_type?: string;
+    prompt_priority?: number;
+    prompt_version?: string;
     collected_at: string;
   };
   raw_answer?: {
@@ -57,7 +73,9 @@ type EvidenceRun = {
   } | null;
   citations: Array<{ domain?: string; url?: string; source_type?: string; position?: number }>;
   evidence_assets: Array<{ asset_type?: string; url?: string; content_hash?: string | null }>;
-  audit_events: unknown[];
+  collector_logs: Array<{ event_type?: string; collector_backend_id?: string; payload?: Record<string, unknown> }>;
+  collection_cost?: { total_cost?: number; llm_provider?: string; llm_tokens?: number } | null;
+  audit_events: Array<{ event_type?: string; method_version?: string | null; target_type?: string }>;
 };
 
 type ScoreSnapshot = {
@@ -278,6 +296,12 @@ function num(value: number | undefined): string {
 
 function shortId(value: string | undefined): string {
   return value ? value.slice(0, 8) : "unknown";
+}
+
+function boolText(value: boolean | undefined): string {
+  if (value === true) return "yes";
+  if (value === false) return "no";
+  return "unknown";
 }
 
 export default async function Home() {
@@ -525,6 +549,86 @@ export default async function Home() {
                   </li>
                 ))}
               </ul>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </Panel>
+
+        <Panel title="Evidence Runs" subtitle={`${data.evidence.total_count} stored runs`} wide>
+          {data.evidence.records.length ? (
+            <div className="evidenceGrid">
+              {data.evidence.records.map((run) => (
+                <details className="evidenceItem" key={run.answer_run.id} open>
+                  <summary>
+                    {run.answer_run.platform} · {run.answer_run.city} · {shortId(run.answer_run.id)}
+                  </summary>
+                  <div className="evidenceBody">
+                    <p className="prompt">{run.answer_run.prompt_text || "No prompt text"}</p>
+                    <dl className="facts evidenceFacts">
+                      <Fact label="Intent" value={run.answer_run.prompt_intent_type || "unknown"} />
+                      <Fact label="Priority" value={run.answer_run.prompt_priority || "unknown"} />
+                      <Fact label="Surface" value={run.answer_run.surface} />
+                      <Fact label="Access" value={run.answer_run.access_method || "unknown"} />
+                      <Fact label="Device" value={run.answer_run.device || "unknown"} />
+                      <Fact label="Language" value={run.answer_run.language || "unknown"} />
+                      <Fact label="Answer" value={boolText(run.answer_run.answer_present)} />
+                      <Fact label="Triggered" value={boolText(run.answer_run.surface_triggered)} />
+                      <Fact
+                        label="Sample"
+                        value={`${run.answer_run.sample_index || "?"}/${run.answer_run.sample_size || "?"}`}
+                      />
+                      <Fact label="Collector" value={run.answer_run.collector_backend_id || "unknown"} />
+                      <Fact label="Version" value={run.answer_run.collector_version || "unknown"} />
+                      <Fact label="Cost" value={num(run.collection_cost?.total_cost)} />
+                      <Fact label="Citations" value={run.citations.length} />
+                      <Fact label="Assets" value={run.evidence_assets.length} />
+                      <Fact label="Raw hash" value={run.raw_answer?.raw_payload_hash || "missing"} />
+                      <Fact label="Audit" value={run.audit_events.length} />
+                    </dl>
+                    <div className="evidenceColumns">
+                      <div>
+                        <h3>Citations</h3>
+                        <ul className="plainList">
+                          {run.citations.slice(0, 3).map((citation, index) => (
+                            <li key={`${run.answer_run.id}-citation-${index}`}>
+                              <strong>{citation.domain || citation.source_type || "citation"}</strong>
+                              <span>{citation.url || "No URL"}</span>
+                              <small>position {citation.position || index + 1}</small>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div>
+                        <h3>Assets & Audit</h3>
+                        <ul className="plainList">
+                          {run.evidence_assets.slice(0, 2).map((asset, index) => (
+                            <li key={`${run.answer_run.id}-asset-${index}`}>
+                              <strong>{asset.asset_type || "asset"}</strong>
+                              <span>{asset.url || "No URL"}</span>
+                              <small>{asset.content_hash || "No content hash"}</small>
+                            </li>
+                          ))}
+                          {run.collector_logs.slice(0, 1).map((log, index) => (
+                            <li key={`${run.answer_run.id}-log-${index}`}>
+                              <strong>{log.event_type || "collector_log"}</strong>
+                              <span>{log.collector_backend_id || run.answer_run.collector_backend_id || "unknown"}</span>
+                              <small>{JSON.stringify(log.payload || {})}</small>
+                            </li>
+                          ))}
+                          {run.audit_events.slice(0, 1).map((event, index) => (
+                            <li key={`${run.answer_run.id}-audit-${index}`}>
+                              <strong>{event.event_type || "audit_event"}</strong>
+                              <span>{event.target_type || "answer_run"}</span>
+                              <small>{event.method_version || "no method version"}</small>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+              ))}
             </div>
           ) : (
             <EmptyState />
