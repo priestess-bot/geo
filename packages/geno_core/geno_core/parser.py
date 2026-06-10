@@ -25,19 +25,47 @@ def _contains_term(text: str, term: str) -> bool:
     return re.search(rf"\b{re.escape(term.lower())}\b", text.lower()) is not None
 
 
-def _position_from_text(text: str, brand: str, competitors: tuple[str, ...]) -> int | None:
-    candidates = [brand, *competitors]
+def _entity_terms(canonical_name: str, aliases: tuple[str, ...] = ()) -> tuple[str, ...]:
+    seen: set[str] = set()
+    terms: list[str] = []
+    for term in (canonical_name, *aliases):
+        normalized = term.strip()
+        key = normalized.lower()
+        if normalized and key not in seen:
+            seen.add(key)
+            terms.append(normalized)
+    return tuple(terms)
+
+
+def _contains_any_term(text: str, terms: tuple[str, ...]) -> bool:
+    return any(_contains_term(text, term) for term in terms)
+
+
+def _matched_aliases(text: str, canonical_name: str, aliases: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(alias for alias in aliases if alias.lower() != canonical_name.lower() and _contains_term(text, alias))
+
+
+def _position_from_text(
+    text: str,
+    brand_terms: tuple[str, ...],
+    competitor_terms_by_name: dict[str, tuple[str, ...]],
+) -> int | None:
     positions: list[tuple[int, str]] = []
     lower_text = text.lower()
-    for candidate in candidates:
+    for candidate in brand_terms:
         index = lower_text.find(candidate.lower())
         if index >= 0:
-            positions.append((index, candidate))
+            positions.append((index, "brand"))
+    for competitor_name, terms in competitor_terms_by_name.items():
+        for candidate in terms:
+            index = lower_text.find(candidate.lower())
+            if index >= 0:
+                positions.append((index, competitor_name))
     if not positions:
         return None
     positions.sort(key=lambda item: item[0])
     for rank, (_, candidate) in enumerate(positions, start=1):
-        if candidate == brand:
+        if candidate == "brand":
             return rank
     return None
 
@@ -50,8 +78,8 @@ def _score_from_terms(text: str, positive_terms: tuple[str, ...], negative_terms
 
 
 class RuleBasedAnswerParser:
-    parser_engine_id = "rule_based_v1"
-    analysis_version = "rule_based_v1"
+    parser_engine_id = "rule_based_v2_aliases"
+    analysis_version = "rule_based_v2_aliases"
 
     def parse_record(
         self,
@@ -59,18 +87,27 @@ class RuleBasedAnswerParser:
         record: RawEvidenceRecord,
         brand: BrandEntity,
         competitors: tuple[CompetitorEntity, ...],
+        entity_aliases: dict[str, tuple[str, ...]] | None = None,
     ) -> AnswerAnalysis:
         answer_text = record.raw_answer.answer_text
-        competitor_names = tuple(competitor.canonical_name for competitor in competitors)
-        brand_mentioned = _contains_term(answer_text, brand.canonical_name)
+        alias_map = entity_aliases or {}
+        brand_terms = _entity_terms(brand.canonical_name, alias_map.get(brand.id, ()))
+        competitor_terms_by_name = {
+            competitor.canonical_name: _entity_terms(
+                competitor.canonical_name,
+                alias_map.get(competitor.id, ()),
+            )
+            for competitor in competitors
+        }
+        brand_mentioned = _contains_any_term(answer_text, brand_terms)
         competitors_mentioned = [
-            competitor_name
-            for competitor_name in competitor_names
-            if _contains_term(answer_text, competitor_name)
+            competitor.canonical_name
+            for competitor in competitors
+            if _contains_any_term(answer_text, competitor_terms_by_name[competitor.canonical_name])
         ]
         recommendation_context = any(term in answer_text.lower() for term in RECOMMENDATION_TERMS)
         brand_recommended = brand_mentioned and recommendation_context
-        brand_position = _position_from_text(answer_text, brand.canonical_name, competitor_names)
+        brand_position = _position_from_text(answer_text, brand_terms, competitor_terms_by_name)
         local_hits = sum(1 for term in LOCAL_TERMS if term in answer_text.lower())
         local_relevance_score = min(100.0, 40.0 + local_hits * 15.0)
         sentiment_score = _score_from_terms(answer_text, POSITIVE_TERMS, NEGATIVE_TERMS)
@@ -78,6 +115,11 @@ class RuleBasedAnswerParser:
         freshness_score = 70.0 if record.citations else 40.0
         confidence = 0.82 if brand_mentioned or competitors_mentioned else 0.64
         uncertainty_flags = []
+        if _matched_aliases(answer_text, brand.canonical_name, alias_map.get(brand.id, ())):
+            uncertainty_flags.append("brand_alias_matched")
+        for competitor in competitors:
+            if _matched_aliases(answer_text, competitor.canonical_name, alias_map.get(competitor.id, ())):
+                uncertainty_flags.append(f"competitor_alias_matched:{competitor.canonical_name}")
         if not brand_mentioned:
             uncertainty_flags.append("brand_not_mentioned")
         if not record.citations:

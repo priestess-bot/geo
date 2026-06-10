@@ -467,7 +467,48 @@ class CoreContractsTest(unittest.TestCase):
         self.assertTrue(analysis.brand_recommended)
         self.assertEqual(analysis.citation_count, 3)
         self.assertGreaterEqual(analysis.local_relevance_score, 40)
-        self.assertEqual(analysis.parser_engine_id, "rule_based_v1")
+        self.assertEqual(analysis.parser_engine_id, "rule_based_v2_aliases")
+
+    def test_m3_rule_parser_uses_confirmed_entity_aliases(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        prompt = bootstrap.prompt_questions[0]
+        record = build_manual_backfill_record(
+            ManualBackfillInput(
+                project_id=bootstrap.project.id,
+                prompt_question_id=prompt.id,
+                prompt_text=prompt.text,
+                market_code=prompt.market_code,
+                city=prompt.city,
+                language=prompt.language,
+                platform="google",
+                surface="google_ai_mode",
+                answer_text=(
+                    "K-Brand AU is a good choice in Sydney. "
+                    "Emma-Sleep-AU is also visible in Australian recommendations."
+                ),
+                citation_urls=("https://example.com/koala-alias",),
+            )
+        )
+        analysis = RuleBasedAnswerParser().parse_record(
+            record=record,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            entity_aliases={
+                bootstrap.brand.id: ("K-Brand AU",),
+                bootstrap.competitors[0].id: ("Emma-Sleep-AU",),
+            },
+        )
+        self.assertTrue(analysis.brand_mentioned)
+        self.assertTrue(analysis.brand_recommended)
+        self.assertEqual(analysis.brand_position, 1)
+        self.assertEqual(analysis.competitors_mentioned, ["Emma Sleep"])
+        self.assertIn("brand_alias_matched", analysis.uncertainty_flags)
+        self.assertIn("competitor_alias_matched:Emma Sleep", analysis.uncertainty_flags)
+        self.assertNotIn("brand_not_mentioned", analysis.uncertainty_flags)
 
     def test_m3_analysis_pipeline_creates_aggregate_score_and_explanation(self) -> None:
         bootstrap = build_au_project_bootstrap(
@@ -503,6 +544,47 @@ class CoreContractsTest(unittest.TestCase):
             result.audit_event.output_refs["score_snapshot_ids"],
             [result.snapshot.id],
         )
+
+    def test_m3_analysis_pipeline_scores_alias_only_mentions(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        prompt = bootstrap.prompt_questions[0]
+        record = build_manual_backfill_record(
+            ManualBackfillInput(
+                project_id=bootstrap.project.id,
+                prompt_question_id=prompt.id,
+                prompt_text=prompt.text,
+                market_code=prompt.market_code,
+                city=prompt.city,
+                language=prompt.language,
+                platform="google",
+                surface="google_ai_mode",
+                answer_text="K-Brand AU is recommended for Australian mattress shoppers.",
+                citation_urls=("https://example.com/k-brand",),
+            )
+        )
+        without_alias = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=(record,),
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+        )
+        with_alias = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=(record,),
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+            entity_aliases={bootstrap.brand.id: ("K-Brand AU",)},
+        )
+        self.assertEqual(without_alias.snapshot.mention_rate, 0.0)
+        self.assertEqual(with_alias.snapshot.mention_rate, 1.0)
+        self.assertEqual(with_alias.snapshot.recommendation_rate, 1.0)
+        self.assertIn("brand_alias_matched", with_alias.analyses[0].uncertainty_flags)
 
     def test_m4_citation_graph_and_competitor_benchmark_trace_to_answer_runs(self) -> None:
         bootstrap = build_au_project_bootstrap(
@@ -1085,6 +1167,7 @@ class CoreContractsTest(unittest.TestCase):
         first_analysis_insert = next(params for sql, params in connection.calls if "INSERT INTO answer_analyses" in sql)
         self.assertEqual(str(first_analysis_insert[0]), analysis_result.analyses[0].id)
         self.assertEqual(len(str(first_analysis_insert[0])), 36)
+        self.assertIn("ON CONFLICT (id) DO UPDATE SET parser_engine_id = EXCLUDED.parser_engine_id", executed_sql)
 
     def test_postgres_repository_persists_project_bootstrap_metadata(self) -> None:
         bootstrap = build_au_project_bootstrap()
@@ -1671,8 +1754,8 @@ class CoreContractsTest(unittest.TestCase):
                 {
                     "id": "d1466dad-237b-5f5f-b7cc-44e67d628d15",
                     "answer_run_id": answer_run_id,
-                    "parser_engine_id": "rule_based_v1",
-                    "analysis_version": "v1",
+                    "parser_engine_id": "rule_based_v2_aliases",
+                    "analysis_version": "rule_based_v2_aliases",
                     "payload": {"brand_mentioned": True},
                     "confidence": 0.9,
                     "created_at": now,
@@ -2758,8 +2841,8 @@ class CoreContractsTest(unittest.TestCase):
                 {
                     "id": "d1466dad-237b-5f5f-b7cc-44e67d628d15",
                     "answer_run_id": answer_run_id,
-                    "parser_engine_id": "rule_based_v1",
-                    "analysis_version": "v1",
+                    "parser_engine_id": "rule_based_v2_aliases",
+                    "analysis_version": "rule_based_v2_aliases",
                     "payload": {"brand_mentioned": True},
                     "confidence": 0.9,
                     "created_at": now,
@@ -3062,6 +3145,33 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("INSERT INTO entity_aliases", executed_sql)
         self.assertIn("ON CONFLICT (id) DO UPDATE", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_reads_confirmed_entity_alias_terms(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        brand_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+        competitor_id = "0c0a4e87-c27a-58ee-b379-3cf3adaf7c0d"
+        connection = RecordingConnection(
+            result_sets=[
+                [
+                    {"entity_id": brand_id, "alias": "ExampleBrand Australia"},
+                    {"entity_id": brand_id, "alias": "examplebrand.com.au"},
+                    {"entity_id": competitor_id, "alias": "Competitor AU"},
+                    {"entity_id": brand_id, "alias": "ExampleBrand Australia"},
+                ]
+            ]
+        )
+        aliases = PostgresEvidenceRepository(connection).get_confirmed_entity_alias_terms(project_id)
+        self.assertEqual(
+            aliases,
+            {
+                brand_id: ("ExampleBrand Australia", "examplebrand.com.au"),
+                competitor_id: ("Competitor AU",),
+            },
+        )
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM entity_aliases ea JOIN", executed_sql)
+        self.assertIn("entity.entity_kind = ea.entity_kind", executed_sql)
+        self.assertIn("WHERE entity.project_id = %s", executed_sql)
 
     def test_postgres_repository_lists_runtime_entity_aliases_with_audit_events(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

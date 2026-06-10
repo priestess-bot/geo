@@ -72,6 +72,7 @@ def _persist_records(
         repository.save_collection_failure_records(failures)
     analysis_summary: dict[str, object] = {"enabled": False}
     if persist_analysis and successes:
+        entity_aliases = repository.get_confirmed_entity_alias_terms(bootstrap.project.id)
         platform_weights_snapshot = {
             item.platform: item.weight
             for item in bootstrap.market_profile.platforms
@@ -83,6 +84,7 @@ def _persist_records(
             brand=bootstrap.brand,
             competitors=bootstrap.competitors,
             platform_weights_snapshot=platform_weights_snapshot,
+            entity_aliases=entity_aliases,
             scope_type="collection_slice",
             scope_value="worker_runtime",
         )
@@ -240,6 +242,8 @@ def _persist_records(
         analysis_summary = {
             "enabled": True,
             "analysis_count": len(analysis_result.analyses),
+            "entity_alias_entity_count": len(entity_aliases),
+            "entity_alias_term_count": sum(len(aliases) for aliases in entity_aliases.values()),
             "score_snapshot_id": analysis_result.snapshot.id,
             "score_contributions": len(analysis_result.contributions),
             "final_score": analysis_result.snapshot.final_score,

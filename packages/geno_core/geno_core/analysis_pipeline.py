@@ -30,12 +30,18 @@ def analyze_and_score_records(
     brand: BrandEntity,
     competitors: tuple[CompetitorEntity, ...],
     platform_weights_snapshot: dict[str, float],
+    entity_aliases: dict[str, tuple[str, ...]] | None = None,
     scope_type: str = "project",
     scope_value: str = "p0a_fixture",
 ) -> VisibilityAnalysisResult:
     parser = RuleBasedAnswerParser()
     analyses = tuple(
-        parser.parse_record(record=record, brand=brand, competitors=competitors)
+        parser.parse_record(
+            record=record,
+            brand=brand,
+            competitors=competitors,
+            entity_aliases=entity_aliases,
+        )
         for record in records
     )
     score_result = score_answer_analyses(

@@ -903,6 +903,34 @@ class PostgresEvidenceRepository:
             records = tuple(self._load_runtime_entity_alias(cursor=cursor, row=row) for row in rows)
         return RuntimeEntityAliasPage(total_count=total_count, limit=limit, offset=offset, records=records)
 
+    def get_confirmed_entity_alias_terms(self, project_id: str) -> dict[str, tuple[str, ...]]:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT ea.entity_id, ea.alias
+                FROM entity_aliases ea
+                JOIN (
+                  SELECT id, project_id, 'brand' AS entity_kind FROM brand_entities
+                  UNION ALL
+                  SELECT id, project_id, 'competitor' AS entity_kind FROM competitor_entities
+                ) entity ON entity.id = ea.entity_id AND entity.entity_kind = ea.entity_kind
+                WHERE entity.project_id = %s
+                ORDER BY ea.created_at ASC, ea.alias ASC
+                """,
+                (_uuid(project_id),),
+            )
+            rows = _rows_dict(cursor.fetchall(), ("entity_id", "alias"))
+        aliases: dict[str, list[str]] = {}
+        for row in rows:
+            entity_id = str(row["entity_id"])
+            alias = str(row["alias"]).strip()
+            if not alias:
+                continue
+            aliases.setdefault(entity_id, [])
+            if alias.lower() not in {item.lower() for item in aliases[entity_id]}:
+                aliases[entity_id].append(alias)
+        return {entity_id: tuple(items) for entity_id, items in aliases.items()}
+
     def confirm_entity_alias(self, alias: EntityAliasInput) -> RuntimeEntityAlias:
         normalized_kind = alias.entity_kind.strip().lower()
         if normalized_kind not in {"brand", "competitor"}:
@@ -2880,7 +2908,12 @@ class PostgresEvidenceRepository:
                     INSERT INTO answer_analyses (
                       id, answer_run_id, parser_engine_id, analysis_version, payload, confidence
                     ) VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (id) DO NOTHING
+                    ON CONFLICT (id) DO UPDATE SET
+                      parser_engine_id = EXCLUDED.parser_engine_id,
+                      analysis_version = EXCLUDED.analysis_version,
+                      payload = EXCLUDED.payload,
+                      confidence = EXCLUDED.confidence,
+                      created_at = now()
                     """,
                     (
                         _uuid(analysis.id),
