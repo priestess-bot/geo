@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from datetime import UTC, datetime
 from typing import Iterable
 from uuid import uuid5, NAMESPACE_URL
@@ -14,6 +15,7 @@ from geno_core.models import (
     CollectionFailureRecord,
     CollectionCost,
     CollectionPlan,
+    CollectionRunSummary,
     CollectorLog,
     EvidenceAsset,
     ManualBackfillInput,
@@ -81,6 +83,116 @@ def _extract_domain(url: str) -> str:
 
 def _collector_cost(collector: CollectorBackend) -> float:
     return float(getattr(collector, "vendor_cost", 0.0))
+
+
+def _run_value(record: RawEvidenceRecord | CollectionFailureRecord, field: str) -> str:
+    return str(getattr(record.answer_run, field) or "unknown")
+
+
+def build_collection_run_summary(
+    *,
+    project_id: str,
+    run_type: str,
+    mode: str,
+    planned_runs: int,
+    records: tuple[RawEvidenceRecord | CollectionFailureRecord, ...],
+) -> CollectionRunSummary:
+    if planned_runs < 0:
+        raise ValueError("planned_runs must be non-negative")
+    if not records:
+        now = datetime.now(UTC)
+        return CollectionRunSummary(
+            id=_stable_id("collection-run", project_id, run_type, mode, planned_runs, "empty"),
+            project_id=project_id,
+            run_type=run_type,
+            mode=mode,
+            planned_runs=planned_runs,
+            attempted_runs=0,
+            success_count=0,
+            failure_count=0,
+            success_rate=0.0,
+            trigger_rate=0.0,
+            answer_present_rate=0.0,
+            total_cost=0.0,
+            average_cost_per_run=0.0,
+            collector_backend_ids=(),
+            platform_distribution={},
+            city_distribution={},
+            access_method_distribution={},
+            failure_summary={},
+            answer_run_ids=(),
+            started_at=now,
+            completed_at=now,
+            created_at=now,
+        )
+    attempted_runs = len(records)
+    successes = tuple(record for record in records if isinstance(record, RawEvidenceRecord))
+    failures = tuple(record for record in records if isinstance(record, CollectionFailureRecord))
+    answer_run_ids = tuple(record.answer_run.id for record in records)
+    started_at = min(record.answer_run.collected_at for record in records)
+    completed_at = max(record.answer_run.collected_at for record in records)
+    total_cost = round(sum(float(record.collection_cost.total_cost) for record in records), 6)
+    trigger_rate = sum(1 for record in records if record.answer_run.surface_triggered) / attempted_runs
+    answer_present_rate = sum(1 for record in records if record.answer_run.answer_present) / attempted_runs
+    failure_summary = Counter(
+        record.error_message or record.error_type
+        for record in failures
+    )
+    return CollectionRunSummary(
+        id=_stable_id("collection-run", project_id, run_type, mode, planned_runs, *answer_run_ids),
+        project_id=project_id,
+        run_type=run_type,
+        mode=mode,
+        planned_runs=planned_runs,
+        attempted_runs=attempted_runs,
+        success_count=len(successes),
+        failure_count=len(failures),
+        success_rate=round(len(successes) / attempted_runs, 4),
+        trigger_rate=round(trigger_rate, 4),
+        answer_present_rate=round(answer_present_rate, 4),
+        total_cost=total_cost,
+        average_cost_per_run=round(total_cost / attempted_runs, 6),
+        collector_backend_ids=tuple(sorted({_run_value(record, "collector_backend_id") for record in records})),
+        platform_distribution=dict(sorted(Counter(_run_value(record, "platform") for record in records).items())),
+        city_distribution=dict(sorted(Counter(_run_value(record, "city") for record in records).items())),
+        access_method_distribution=dict(sorted(Counter(_run_value(record, "access_method") for record in records).items())),
+        failure_summary=dict(sorted(failure_summary.items())),
+        answer_run_ids=answer_run_ids,
+        started_at=started_at,
+        completed_at=completed_at,
+        created_at=datetime.now(UTC),
+    )
+
+
+def build_collection_run_audit_event(summary: CollectionRunSummary) -> "AuditEvent":
+    return build_audit_event(
+        event_type="collection_run_summarized",
+        project_id=summary.project_id,
+        actor_type="worker",
+        actor_id="collector_worker",
+        target_type="collection_run",
+        target_id=summary.id,
+        before=None,
+        after={
+            "collection_run_id": summary.id,
+            "run_type": summary.run_type,
+            "mode": summary.mode,
+            "planned_runs": summary.planned_runs,
+            "attempted_runs": summary.attempted_runs,
+            "success_count": summary.success_count,
+            "failure_count": summary.failure_count,
+            "success_rate": summary.success_rate,
+            "trigger_rate": summary.trigger_rate,
+            "answer_present_rate": summary.answer_present_rate,
+            "total_cost": summary.total_cost,
+            "average_cost_per_run": summary.average_cost_per_run,
+            "failure_summary": summary.failure_summary,
+        },
+        input_refs={"answer_run_ids": list(summary.answer_run_ids)},
+        output_refs={"collection_run_ids": [summary.id]},
+        method_version="collection_run_summary_v1",
+        reason="Summarize collection run quality, cost, and failure rates for audit and reporting",
+    )
 
 
 def build_manual_backfill_record(backfill: ManualBackfillInput) -> RawEvidenceRecord:

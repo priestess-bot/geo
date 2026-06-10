@@ -6,7 +6,13 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from geno_api.main import app
-from geno_core.models import RuntimeProjectBrandKit, RuntimePromptImportResult, RuntimeProjectPage, RuntimeReportArtifact
+from geno_core.models import (
+    RuntimeCollectionRunPage,
+    RuntimeProjectBrandKit,
+    RuntimePromptImportResult,
+    RuntimeProjectPage,
+    RuntimeReportArtifact,
+)
 
 
 class ApiContractsTest(unittest.TestCase):
@@ -213,6 +219,38 @@ class ApiContractsTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_collection_runs_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get("/v1/collection-runs/runtime?run_type=p0a_slice")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_collection_runs_endpoint_passes_filters(self) -> None:
+        class FakeRepository:
+            def list_runtime_collection_runs(self, **kwargs: object) -> RuntimeCollectionRunPage:
+                self.kwargs = kwargs
+                return RuntimeCollectionRunPage(
+                    total_count=0,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/collection-runs/runtime"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c&run_type=p0a_slice&limit=2&offset=1"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["total_count"], 0)
+        self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.kwargs["run_type"], "p0a_slice")
+        self.assertEqual(fake_repository.kwargs["limit"], 2)
+        self.assertEqual(fake_repository.kwargs["offset"], 1)
 
     def test_runtime_evidence_export_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get(
@@ -592,8 +630,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEntityAliasPage", payload["m1_bootstrap"])
         self.assertIn("TraceabilityBundle", payload["auditability"])
         self.assertIn("build_traceability_bundle", payload["traceability"])
+        self.assertIn("CollectionRunSummary", payload["m2a_evidence"])
         self.assertIn("RuntimeEvidenceRun", payload["persistence"])
         self.assertIn("RuntimeEvidenceExport", payload["persistence"])
+        self.assertIn("RuntimeCollectionRun", payload["persistence"])
+        self.assertIn("RuntimeCollectionRunPage", payload["persistence"])
         self.assertIn("ManualBackfillInput", payload["persistence"])
         self.assertIn("EntityAliasInput", payload["persistence"])
         self.assertIn("RuntimeEntityAlias", payload["persistence"])
@@ -628,6 +669,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/prompts/runtime", payload["persistence"])
         self.assertIn("/v1/prompts/runtime/import.csv", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])
+        self.assertIn("/v1/collection-runs/runtime", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime/manual-backfill", payload["persistence"])
         self.assertIn("/v1/runtime-saved-views", payload["persistence"])

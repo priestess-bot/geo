@@ -35,6 +35,19 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Access distribution", page_source)
         self.assertIn("Google remains outside the main scoring denominator", page_source)
 
+    def test_runtime_console_surfaces_collection_run_quality(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+
+        self.assertIn('collectionRuns: "/v1/collection-runs/runtime"', page_source)
+        self.assertIn("type CollectionRun", page_source)
+        self.assertIn("Collection Run Quality", page_source)
+        self.assertIn("Success rate", page_source)
+        self.assertIn("Trigger rate", page_source)
+        self.assertIn("Answer rate", page_source)
+        self.assertIn("Total cost", page_source)
+        self.assertIn("Avg cost/run", page_source)
+        self.assertIn("failure_summary", page_source)
+
 
 if __name__ == "__main__":
     unittest.main()

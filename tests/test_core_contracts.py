@@ -16,6 +16,8 @@ from geno_core.audit import build_audit_event, hash_payload
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
+    build_collection_run_audit_event,
+    build_collection_run_summary,
     build_manual_backfill_record,
     build_p0a_collection_plan,
     collect_prompt_with_failure_record,
@@ -64,6 +66,7 @@ from geno_core.models import (
     RuntimePromptImportResult,
     RuntimeActionPlanPage,
     RuntimeContentEnginePage,
+    RuntimeCollectionRunPage,
     RuntimeScoreSnapshotPage,
     RuntimeReportArtifact,
     RuntimeReportExportPage,
@@ -317,6 +320,57 @@ class CoreContractsTest(unittest.TestCase):
             len(first.audit_events[0].output_refs["evidence_asset_ids"]),
             len(first.evidence_assets),
         )
+
+    def test_m2a_collection_run_summary_explains_success_cost_and_failures(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        success = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(),),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=1,
+        )[0]
+        failure = collect_prompt_with_failure_record(
+            project_id=bootstrap.project.id,
+            prompt=bootstrap.prompt_questions[0],
+            market_profile=bootstrap.market_profile,
+            collector=OpenAIWebSearchCollector(api_key=""),
+            city="Australia",
+            sample_index=1,
+            sample_size=1,
+        )
+
+        summary = build_collection_run_summary(
+            project_id=bootstrap.project.id,
+            run_type="p0a_slice",
+            mode="fixture",
+            planned_runs=2,
+            records=(success, failure),
+        )
+        audit_event = build_collection_run_audit_event(summary)
+
+        self.assertEqual(summary.planned_runs, 2)
+        self.assertEqual(summary.attempted_runs, 2)
+        self.assertEqual(summary.success_count, 1)
+        self.assertEqual(summary.failure_count, 1)
+        self.assertEqual(summary.success_rate, 0.5)
+        self.assertEqual(summary.trigger_rate, 0.5)
+        self.assertEqual(summary.answer_present_rate, 0.5)
+        self.assertAlmostEqual(summary.total_cost, 0.0026)
+        self.assertAlmostEqual(summary.average_cost_per_run, 0.0013)
+        self.assertEqual(summary.platform_distribution, {"chatgpt": 1, "perplexity": 1})
+        self.assertEqual(summary.city_distribution, {"Australia": 2})
+        self.assertEqual(summary.access_method_distribution, {"official_api": 2})
+        self.assertEqual(summary.failure_summary, {"OPENAI_API_KEY is required": 1})
+        self.assertEqual(len(summary.answer_run_ids), 2)
+        self.assertEqual(audit_event.event_type, "collection_run_summarized")
+        self.assertEqual(audit_event.target_type, "collection_run")
+        self.assertEqual(audit_event.target_id, summary.id)
+        self.assertEqual(audit_event.method_version, "collection_run_summary_v1")
+        self.assertEqual(audit_event.input_refs["answer_run_ids"], list(summary.answer_run_ids))
+        self.assertEqual(audit_event.output_refs["collection_run_ids"], [summary.id])
 
     def test_m2a_static_au_geo_provider_resolves_city_params(self) -> None:
         params = StaticAUGeoProvider().resolve(
@@ -1547,6 +1601,48 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(audit_insert[1], "manual_backfill_recorded")
         self.assertEqual(connection.commit_count, 1)
 
+    def test_postgres_repository_saves_collection_run_summary_with_audit_event(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(),),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=1,
+        )
+        summary = build_collection_run_summary(
+            project_id=bootstrap.project.id,
+            run_type="p0a_slice",
+            mode="fixture",
+            planned_runs=1,
+            records=records,
+        )
+        audit_event = build_collection_run_audit_event(summary)
+        connection = RecordingConnection()
+
+        PostgresEvidenceRepository(connection).save_collection_run_summary(summary, audit_event)
+
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO collection_run_summaries", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+        self.assertIn("ON CONFLICT (id) DO NOTHING", executed_sql)
+        collection_run_insert = next(
+            params for sql, params in connection.calls if "INSERT INTO collection_run_summaries" in sql
+        )
+        self.assertEqual(str(collection_run_insert[0]), summary.id)
+        self.assertEqual(str(collection_run_insert[1]), bootstrap.project.id)
+        self.assertEqual(collection_run_insert[2], "p0a_slice")
+        self.assertEqual(collection_run_insert[3], "fixture")
+        self.assertEqual(collection_run_insert[4], 1)
+        self.assertEqual(collection_run_insert[5], 1)
+        audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
+        self.assertEqual(audit_insert[1], "collection_run_summarized")
+        self.assertEqual(audit_insert[5], "collection_run")
+        self.assertEqual(str(audit_insert[6]), summary.id)
+        self.assertEqual(connection.commit_count, 1)
+
     def test_postgres_repository_reads_runtime_evidence_page(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
         answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
@@ -1688,6 +1784,83 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id", executed_sql)
         self.assertIn("LEFT JOIN collection_costs cc ON cc.answer_run_id = ar.id", executed_sql)
         self.assertIn("FROM raw_answers", executed_sql)
+
+    def test_postgres_repository_reads_runtime_collection_run_page(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        collection_run_id = "67b5d761-bd78-51c8-923e-f934ac31cae2"
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [
+                    {
+                        "id": collection_run_id,
+                        "project_id": project_id,
+                        "run_type": "p0a_slice",
+                        "mode": "fixture",
+                        "planned_runs": 4,
+                        "attempted_runs": 4,
+                        "success_count": 3,
+                        "failure_count": 1,
+                        "success_rate": 0.75,
+                        "trigger_rate": 0.75,
+                        "answer_present_rate": 0.75,
+                        "total_cost": 0.0076,
+                        "average_cost_per_run": 0.0019,
+                        "collector_backend_ids": ["perplexity.sonar.fixture", "openai.web_search.api"],
+                        "platform_distribution": {"perplexity": 3, "chatgpt": 1},
+                        "city_distribution": {"Australia": 4},
+                        "access_method_distribution": {"official_api": 4},
+                        "failure_summary": {"OPENAI_API_KEY is required": 1},
+                        "answer_run_ids": [answer_run_id],
+                        "started_at": now,
+                        "completed_at": now,
+                        "created_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": "495d24da-90cf-4073-bd9c-16afeb5b3169",
+                        "event_type": "collection_run_summarized",
+                        "project_id": project_id,
+                        "actor_type": "worker",
+                        "actor_id": "collector_worker",
+                        "target_type": "collection_run",
+                        "target_id": collection_run_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"answer_run_ids": [answer_run_id]},
+                        "output_refs": {"collection_run_ids": [collection_run_id]},
+                        "method_version": "collection_run_summary_v1",
+                        "reason": "test",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+
+        page = PostgresEvidenceRepository(connection).list_runtime_collection_runs(
+            project_id=project_id,
+            run_type="p0a_slice",
+            limit=10,
+            offset=0,
+        )
+
+        self.assertIsInstance(page, RuntimeCollectionRunPage)
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(len(page.records), 1)
+        record = page.records[0]
+        self.assertEqual(record.collection_run["id"], collection_run_id)
+        self.assertEqual(record.collection_run["success_rate"], 0.75)
+        self.assertIsInstance(record.collection_run["success_rate"], float)
+        self.assertIsInstance(record.collection_run["planned_runs"], int)
+        self.assertEqual(record.collection_run["failure_summary"], {"OPENAI_API_KEY is required": 1})
+        self.assertEqual(record.audit_events[0]["event_type"], "collection_run_summarized")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM collection_run_summaries WHERE project_id = %s AND run_type = %s", executed_sql)
+        self.assertIn("ORDER BY created_at DESC, id DESC", executed_sql)
+        self.assertIn("WHERE target_type = %s AND target_id = %s", executed_sql)
 
     def test_postgres_repository_exports_filtered_runtime_evidence_csv(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

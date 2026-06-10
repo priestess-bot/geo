@@ -26,8 +26,11 @@ python3 workers/collector_worker/run_collection_slice.py --mode fixture --persis
 
 `--persist` first writes the AU `ProjectBootstrap` metadata (`Tenant`, `Project`,
 `BrandEntity`, `CompetitorEntity`, and 100 `PromptQuestion` rows), then writes successful
-`RawEvidenceRecord` rows and failed `CollectionFailureRecord` rows through
-`PostgresEvidenceRepository`. If `DATABASE_URL` is missing, the worker exits with code `2` and
+`RawEvidenceRecord` rows, failed `CollectionFailureRecord` rows, and a batch-level
+`CollectionRunSummary` through `PostgresEvidenceRepository`. The summary records planned runs,
+attempted runs, success/failure counts, success rate, trigger rate, answer-present rate, total cost,
+average cost per run, platform/city/access-method distributions, failure summary, and linked
+`answer_run_ids`, then writes a `collection_run_summarized` audit event. If `DATABASE_URL` is missing, the worker exits with code `2` and
 prints a persistence error instead of silently dropping evidence.
 
 Persisted fixture slice with analysis/scoring:
@@ -56,8 +59,8 @@ PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_coll
 
 If API keys are missing, the worker returns `CollectionFailureRecord` items and writes
 `answer_run_failed` audit events instead of pretending collection succeeded. With `--persist`,
-the project/prompt metadata, failed runs, failure logs, collection costs, and audit events are
-stored in PostgreSQL as well.
+the project/prompt metadata, failed runs, failure logs, collection costs, batch-level collection
+summary, and audit events are stored in PostgreSQL as well.
 
 Google spike fixture:
 

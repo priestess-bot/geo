@@ -17,6 +17,7 @@ from geno_core.models import (
     AuditEvent,
     CitationGraphResult,
     CollectionFailureRecord,
+    CollectionRunSummary,
     ContentDraft,
     EntityAliasInput,
     IntegrationConnector,
@@ -35,6 +36,8 @@ from geno_core.models import (
     RuntimeContentDraft,
     RuntimeContentEngine,
     RuntimeContentEnginePage,
+    RuntimeCollectionRun,
+    RuntimeCollectionRunPage,
     RuntimeEvidenceExport,
     RuntimeEvidencePage,
     RuntimeEvidenceRun,
@@ -137,6 +140,23 @@ def _row_dict(row: Any, columns: tuple[str, ...]) -> dict[str, Any]:
 
 def _rows_dict(rows: Any, columns: tuple[str, ...]) -> tuple[dict[str, Any], ...]:
     return tuple(_row_dict(row, columns) for row in rows)
+
+
+def _runtime_collection_run_row(row: dict[str, Any]) -> dict[str, Any]:
+    int_fields = ("planned_runs", "attempted_runs", "success_count", "failure_count")
+    float_fields = (
+        "success_rate",
+        "trigger_rate",
+        "answer_present_rate",
+        "total_cost",
+        "average_cost_per_run",
+    )
+    normalized = dict(row)
+    for field in int_fields:
+        normalized[field] = int(normalized.get(field) or 0)
+    for field in float_fields:
+        normalized[field] = float(normalized.get(field) or 0.0)
+    return normalized
 
 
 def _frozen_method_disclosure(report_export: dict[str, Any]) -> dict[str, Any] | None:
@@ -732,6 +752,30 @@ COLLECTION_COST_COLUMNS = (
     "proxy_or_vendor_cost",
     "compute_cost",
     "total_cost",
+    "created_at",
+)
+COLLECTION_RUN_SUMMARY_COLUMNS = (
+    "id",
+    "project_id",
+    "run_type",
+    "mode",
+    "planned_runs",
+    "attempted_runs",
+    "success_count",
+    "failure_count",
+    "success_rate",
+    "trigger_rate",
+    "answer_present_rate",
+    "total_cost",
+    "average_cost_per_run",
+    "collector_backend_ids",
+    "platform_distribution",
+    "city_distribution",
+    "access_method_distribution",
+    "failure_summary",
+    "answer_run_ids",
+    "started_at",
+    "completed_at",
     "created_at",
 )
 VISIBILITY_SCORE_SNAPSHOT_COLUMNS = (
@@ -1749,6 +1793,62 @@ class PostgresEvidenceRepository:
             sort=sort_key,
             records=tuple(records),
         )
+
+    def list_runtime_collection_runs(
+        self,
+        *,
+        project_id: str | None = None,
+        run_type: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeCollectionRunPage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id))
+        if run_type:
+            filters.append("run_type = %s")
+            params.append(run_type)
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM collection_run_summaries {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(COLLECTION_RUN_SUMMARY_COLUMNS)}
+                FROM collection_run_summaries
+                {where_clause}
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            runs = tuple(
+                _runtime_collection_run_row(run)
+                for run in _rows_dict(cursor.fetchall(), COLLECTION_RUN_SUMMARY_COLUMNS)
+            )
+            records: list[RuntimeCollectionRun] = []
+            for run in runs:
+                cursor.execute(
+                    f"""
+                    SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                    FROM audit_events
+                    WHERE target_type = %s AND target_id = %s
+                    ORDER BY created_at ASC
+                    """,
+                    ("collection_run", str(run["id"])),
+                )
+                records.append(
+                    RuntimeCollectionRun(
+                        collection_run=run,
+                        audit_events=_rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS),
+                    )
+                )
+        return RuntimeCollectionRunPage(total_count=total_count, limit=limit, offset=offset, records=tuple(records))
 
     def export_runtime_evidence_csv(
         self,
@@ -3635,6 +3735,47 @@ class PostgresEvidenceRepository:
                     ),
                 )
                 self.save_audit_events(record.audit_events, cursor=cursor)
+        self.connection.commit()
+
+    def save_collection_run_summary(self, summary: CollectionRunSummary, audit_event: AuditEvent) -> None:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO collection_run_summaries (
+                  id, project_id, run_type, mode, planned_runs, attempted_runs, success_count,
+                  failure_count, success_rate, trigger_rate, answer_present_rate, total_cost,
+                  average_cost_per_run, collector_backend_ids, platform_distribution,
+                  city_distribution, access_method_distribution, failure_summary, answer_run_ids,
+                  started_at, completed_at, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (
+                    _uuid(summary.id),
+                    _uuid(summary.project_id),
+                    summary.run_type,
+                    summary.mode,
+                    summary.planned_runs,
+                    summary.attempted_runs,
+                    summary.success_count,
+                    summary.failure_count,
+                    summary.success_rate,
+                    summary.trigger_rate,
+                    summary.answer_present_rate,
+                    summary.total_cost,
+                    summary.average_cost_per_run,
+                    list(summary.collector_backend_ids),
+                    _json_payload(summary.platform_distribution),
+                    _json_payload(summary.city_distribution),
+                    _json_payload(summary.access_method_distribution),
+                    _json_payload(summary.failure_summary),
+                    _uuid_array(summary.answer_run_ids),
+                    _datetime(summary.started_at),
+                    _datetime(summary.completed_at),
+                    _datetime(summary.created_at),
+                ),
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
         self.connection.commit()
 
     def save_answer_analyses(self, analyses: tuple[AnswerAnalysis, ...]) -> None:

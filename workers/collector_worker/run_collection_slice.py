@@ -16,7 +16,11 @@ from geno_core.action_plan import (
 )
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.bootstrap import build_au_project_bootstrap
-from geno_core.collection import run_collection_slice
+from geno_core.collection import (
+    build_collection_run_audit_event,
+    build_collection_run_summary,
+    run_collection_slice,
+)
 from geno_core.collectors import (
     FixtureGoogleAIModeCollector,
     FixtureGoogleAIOCollector,
@@ -60,6 +64,10 @@ def _collectors(mode: str) -> tuple[CollectorBackend, ...]:
 def _persist_records(
     *,
     bootstrap: ProjectBootstrap,
+    mode: str,
+    run_type: str,
+    planned_runs: int,
+    records: tuple[RawEvidenceRecord | CollectionFailureRecord, ...],
     successes: tuple[RawEvidenceRecord, ...],
     failures: tuple[CollectionFailureRecord, ...],
     persist_analysis: bool,
@@ -70,6 +78,15 @@ def _persist_records(
         repository.save_raw_evidence_records(successes)
     if failures:
         repository.save_collection_failure_records(failures)
+    collection_summary = build_collection_run_summary(
+        project_id=bootstrap.project.id,
+        run_type=run_type,
+        mode=mode,
+        planned_runs=planned_runs,
+        records=records,
+    )
+    collection_summary_audit = build_collection_run_audit_event(collection_summary)
+    repository.save_collection_run_summary(collection_summary, collection_summary_audit)
     analysis_summary: dict[str, object] = {"enabled": False}
     if persist_analysis and successes:
         entity_aliases = repository.get_confirmed_entity_alias_terms(bootstrap.project.id)
@@ -284,6 +301,8 @@ def _persist_records(
         "competitors": len(bootstrap.competitors),
         "raw_evidence_records": len(successes),
         "collection_failure_records": len(failures),
+        "collection_run_summary": asdict(collection_summary),
+        "collection_run_audit_event_id": collection_summary_audit.id,
         "analysis": analysis_summary,
     }
 
@@ -319,11 +338,17 @@ def main() -> None:
         args.prompt_limit = plan.prompt_count
     else:
         plan = None
+    collectors = _collectors(args.mode)
+    planned_runs = (
+        plan.planned_runs
+        if plan is not None
+        else len(prompts[: args.prompt_limit]) * len(collectors) * len(cities) * args.sample_size
+    )
     records = run_collection_slice(
         project_id=bootstrap.project.id,
         prompts=prompts,
         market_profile=bootstrap.market_profile,
-        collectors=_collectors(args.mode),
+        collectors=collectors,
         cities=cities,
         sample_size=args.sample_size,
         prompt_limit=args.prompt_limit,
@@ -335,6 +360,10 @@ def main() -> None:
         try:
             persistence = _persist_records(
                 bootstrap=bootstrap,
+                mode=args.mode,
+                run_type="google_spike" if args.mode == "google-fixture" else "p0a_slice",
+                planned_runs=planned_runs,
+                records=records,
                 successes=successes,
                 failures=failures,
                 persist_analysis=args.persist_analysis,
@@ -345,6 +374,7 @@ def main() -> None:
     output = {
         "mode": args.mode,
         "record_count": len(records),
+        "planned_runs": planned_runs,
         "success_count": len(successes),
         "failure_count": len(failures),
         "answer_run_ids": [record.answer_run.id for record in records],

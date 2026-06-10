@@ -411,6 +411,29 @@ def runtime_evidence_runs(
         close_repository_connection(repository)
 
 
+@app.get("/v1/collection-runs/runtime")
+def runtime_collection_runs(
+    project_id: str | None = None,
+    run_type: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.list_runtime_collection_runs(
+            project_id=project_id,
+            run_type=run_type,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/evidence-runs/runtime/export.csv")
 def runtime_evidence_export_csv(
     project_id: str | None = None,
@@ -1190,6 +1213,7 @@ def contracts() -> dict[str, list[str]]:
             "EvidenceAsset",
             "CollectorLog",
             "CollectionCost",
+            "CollectionRunSummary",
             "RawEvidenceRecord",
             "CollectionFailureRecord",
             "ManualBackfillInput",
@@ -1266,6 +1290,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEvidenceRun",
             "RuntimeEvidencePage",
             "RuntimeEvidenceExport",
+            "RuntimeCollectionRun",
+            "RuntimeCollectionRunPage",
             "ManualBackfillInput",
             "RuntimeSavedView",
             "RuntimeSavedViewPage",
@@ -1298,6 +1324,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/prompts/runtime",
             "/v1/prompts/runtime/import.csv",
             "/v1/evidence-runs/runtime",
+            "/v1/collection-runs/runtime",
             "/v1/evidence-runs/runtime/export.csv",
             "/v1/evidence-runs/runtime/manual-backfill",
             "/v1/runtime-saved-views",

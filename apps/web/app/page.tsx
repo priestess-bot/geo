@@ -79,6 +79,34 @@ type EvidenceRun = {
   audit_events: Array<{ event_type?: string; method_version?: string | null; target_type?: string }>;
 };
 
+type CollectionRun = {
+  collection_run: {
+    id: string;
+    project_id?: string;
+    run_type?: string;
+    mode?: string;
+    planned_runs?: number;
+    attempted_runs?: number;
+    success_count?: number;
+    failure_count?: number;
+    success_rate?: number;
+    trigger_rate?: number;
+    answer_present_rate?: number;
+    total_cost?: number;
+    average_cost_per_run?: number;
+    collector_backend_ids?: string[];
+    platform_distribution?: Record<string, number>;
+    city_distribution?: Record<string, number>;
+    access_method_distribution?: Record<string, number>;
+    failure_summary?: Record<string, number>;
+    answer_run_ids?: string[];
+    started_at?: string;
+    completed_at?: string;
+    created_at?: string;
+  };
+  audit_events: Array<{ event_type?: string; method_version?: string | null; target_type?: string }>;
+};
+
 type ScoreSnapshot = {
   snapshot: {
     id?: string;
@@ -398,6 +426,7 @@ type RuntimeData = {
   brandKit: RuntimeProjectBrandKit | null;
   prompts: PageResponse<RuntimePrompt>;
   evidence: PageResponse<EvidenceRun>;
+  collectionRuns: PageResponse<CollectionRun>;
   entityAliases: PageResponse<RuntimeEntityAlias>;
   entityAliasCandidates: PageResponse<RuntimeEntityAliasCandidate>;
   savedViews: PageResponse<RuntimeSavedView>;
@@ -498,6 +527,7 @@ const endpoints = {
   projects: "/v1/projects/runtime",
   prompts: "/v1/prompts/runtime",
   evidence: "/v1/evidence-runs/runtime",
+  collectionRuns: "/v1/collection-runs/runtime",
   evidenceExport: "/v1/evidence-runs/runtime/export.csv",
   entityAliases: "/v1/entity-aliases/runtime",
   entityAliasCandidates: "/v1/entity-aliases/runtime/candidates",
@@ -810,6 +840,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       sort: filters.sort,
       limit: 5
     }),
+    collectionRuns: runtimePath(endpoints.collectionRuns, {
+      limit: 5
+    }),
     evidenceExport: runtimePath(endpoints.evidenceExport, {
       platform: filters.platform,
       city: filters.city,
@@ -879,6 +912,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     sort: filters.sort,
     limit: 5
   });
+  paths.collectionRuns = runtimePath(endpoints.collectionRuns, {
+    ...selectedProjectParams,
+    limit: 5
+  });
   paths.evidenceExport = runtimePath(endpoints.evidenceExport, {
     ...selectedProjectParams,
     platform: filters.platform,
@@ -930,6 +967,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   const [
     prompts,
     evidence,
+    collectionRuns,
     entityAliases,
     entityAliasCandidates,
     savedViews,
@@ -943,6 +981,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   ] = await Promise.all([
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     fetchRuntimeEndpoint<PageResponse<EvidenceRun>>(baseUrl, paths.evidence, emptyPage<EvidenceRun>()),
+    fetchRuntimeEndpoint<PageResponse<CollectionRun>>(baseUrl, paths.collectionRuns, emptyPage<CollectionRun>()),
     fetchRuntimeEndpoint<PageResponse<RuntimeEntityAlias>>(
       baseUrl,
       paths.entityAliases,
@@ -970,6 +1009,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     projects,
     prompts,
     evidence,
+    collectionRuns,
     entityAliases,
     entityAliasCandidates,
     savedViews,
@@ -989,6 +1029,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       brandKit: brandKit.payload,
       prompts: prompts.payload,
       evidence: evidence.payload,
+      collectionRuns: collectionRuns.payload,
       entityAliases: entityAliases.payload,
       entityAliasCandidates: entityAliasCandidates.payload,
       savedViews: savedViews.payload,
@@ -1128,6 +1169,7 @@ export default async function Home({
   const defaultEntityAlias = entityAliasOptions[0]?.defaultAlias || latestProject?.project.target_brand || "";
   const latestPrompt = data.prompts.records[0];
   const latestEvidence = data.evidence.records[0];
+  const latestCollectionRun = data.collectionRuns.records[0];
   const latestScore = data.scores.records[0];
   const latestGraph = data.graphs.records[0];
   const latestReport = data.reports.records[0];
@@ -1139,6 +1181,7 @@ export default async function Home({
     : null;
   const totalAuditEvents =
     (latestEvidence?.audit_events.length || 0) +
+    data.collectionRuns.records.reduce((total, item) => total + item.audit_events.length, 0) +
     data.entityAliases.records.reduce((total, item) => total + item.audit_events.length, 0) +
     (latestScore?.audit_events.length || 0) +
     (latestReport?.audit_events.length || 0) +
@@ -1712,6 +1755,42 @@ export default async function Home({
                 <Fact label="Citations" value={latestEvidence.citations.length} />
                 <Fact label="Assets" value={latestEvidence.evidence_assets.length} />
               </dl>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </Panel>
+
+        <Panel title="Collection Run Quality" subtitle={latestCollectionRun?.collection_run.run_type || "No collection run"}>
+          {latestCollectionRun ? (
+            <div className="stack">
+              <dl className="facts">
+                <Fact label="Planned" value={latestCollectionRun.collection_run.planned_runs || 0} />
+                <Fact label="Attempted" value={latestCollectionRun.collection_run.attempted_runs || 0} />
+                <Fact label="Success" value={latestCollectionRun.collection_run.success_count || 0} />
+                <Fact label="Failure" value={latestCollectionRun.collection_run.failure_count || 0} />
+                <Fact label="Success rate" value={pct(latestCollectionRun.collection_run.success_rate)} />
+                <Fact label="Trigger rate" value={pct(latestCollectionRun.collection_run.trigger_rate)} />
+                <Fact label="Answer rate" value={pct(latestCollectionRun.collection_run.answer_present_rate)} />
+                <Fact label="Total cost" value={num(latestCollectionRun.collection_run.total_cost)} />
+                <Fact label="Avg cost/run" value={num(latestCollectionRun.collection_run.average_cost_per_run)} />
+                <Fact label="Mode" value={latestCollectionRun.collection_run.mode || "unknown"} />
+                <Fact
+                  label="Platforms"
+                  value={formatCounts(latestCollectionRun.collection_run.platform_distribution || {})}
+                />
+                <Fact
+                  label="Access"
+                  value={formatCounts(latestCollectionRun.collection_run.access_method_distribution || {})}
+                />
+                <Fact label="Audit" value={latestCollectionRun.audit_events.length} />
+              </dl>
+              <small className="auditLine">
+                Collection run {shortId(latestCollectionRun.collection_run.id)} ·{" "}
+                {dateText(latestCollectionRun.collection_run.started_at)} to{" "}
+                {dateText(latestCollectionRun.collection_run.completed_at)} · failures{" "}
+                {formatCounts(latestCollectionRun.collection_run.failure_summary || {})}
+              </small>
             </div>
           ) : (
             <EmptyState />

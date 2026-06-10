@@ -10,6 +10,8 @@ from geno_core.action_plan import (
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
+    build_collection_run_audit_event,
+    build_collection_run_summary,
     build_manual_backfill_record,
     build_p0a_collection_plan,
     collect_prompt_with_failure_record,
@@ -63,6 +65,8 @@ __all__ = [
     "build_au_dtc_prompt_pack",
     "build_au_market_profile",
     "build_au_project_bootstrap",
+    "build_collection_run_audit_event",
+    "build_collection_run_summary",
     "build_manual_backfill_record",
     "build_p0a_collection_plan",
     "build_retest_schedule",

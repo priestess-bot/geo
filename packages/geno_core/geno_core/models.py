@@ -300,6 +300,32 @@ class CollectionPlan:
 
 
 @dataclass(frozen=True)
+class CollectionRunSummary:
+    id: str
+    project_id: str
+    run_type: str
+    mode: str
+    planned_runs: int
+    attempted_runs: int
+    success_count: int
+    failure_count: int
+    success_rate: float
+    trigger_rate: float
+    answer_present_rate: float
+    total_cost: float
+    average_cost_per_run: float
+    collector_backend_ids: tuple[str, ...]
+    platform_distribution: dict[str, int]
+    city_distribution: dict[str, int]
+    access_method_distribution: dict[str, int]
+    failure_summary: dict[str, int]
+    answer_run_ids: tuple[str, ...]
+    started_at: datetime
+    completed_at: datetime
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class GoogleSpikePlan:
     project_id: str
     prompt_count: int
@@ -592,6 +618,20 @@ class RuntimeEvidencePage:
     offset: int
     sort: str
     records: tuple[RuntimeEvidenceRun, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeCollectionRun:
+    collection_run: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeCollectionRunPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeCollectionRun, ...]
 
 
 @dataclass(frozen=True)
