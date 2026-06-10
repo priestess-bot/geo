@@ -24,6 +24,7 @@ from geno_core.collection import (
     run_collection_slice,
     run_fixture_collection_slice,
 )
+from geno_core.contracts import CollectorBackend, ParserEngine, ReportExporter, ScoringFormula
 from geno_core.collectors import (
     FixtureGoogleAIModeCollector,
     FixtureGoogleAIOCollector,
@@ -93,11 +94,18 @@ from geno_core.runtime import RuntimePersistenceError, build_repository_from_env
 from geno_core.scoring import (
     AU_VISIBILITY_V1,
     AU_VISIBILITY_V1_1_LOCAL_BOOST,
+    RegistryScoringFormula,
     get_score_formula,
     list_score_formulas,
     normalize_score_weights,
     rescore_snapshot_with_formula,
     score_answer_analysis,
+)
+from geno_core.stubs import (
+    NotConfiguredCollectorBackend,
+    NotConfiguredParserEngine,
+    NotConfiguredReportExporter,
+    NotConfiguredScoringFormula,
 )
 from geno_core.traceability import build_traceability_bundle
 
@@ -153,6 +161,88 @@ class CoreContractsTest(unittest.TestCase):
         stages = {(item.platform, item.surface): item.build_stage for item in profile.platforms}
         self.assertEqual(stages[("google", "google_aio")], "P0b")
         self.assertEqual(stages[("perplexity", "sonar")], "P0a")
+
+    def test_p0a_pluggable_interfaces_have_stubs_and_working_implementations(self) -> None:
+        collector_stub = NotConfiguredCollectorBackend(
+            "collector.not_configured",
+            "chatgpt",
+            "chatgpt_search",
+            "official_api",
+        )
+        parser_stub = NotConfiguredParserEngine()
+        scoring_stub = NotConfiguredScoringFormula()
+        report_stub = NotConfiguredReportExporter()
+
+        self.assertIsInstance(collector_stub, CollectorBackend)
+        self.assertIsInstance(parser_stub, ParserEngine)
+        self.assertIsInstance(scoring_stub, ScoringFormula)
+        self.assertIsInstance(report_stub, ReportExporter)
+        self.assertEqual(collector_stub.health(), "not_configured")
+        self.assertEqual(parser_stub.parser_engine_id, "parser.not_configured")
+        self.assertEqual(scoring_stub.formula_version, "scoring.not_configured")
+        self.assertEqual(report_stub.exporter_id, "report_exporter.not_configured")
+
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        collector = FixturePerplexitySonarCollector()
+        parser = RuleBasedAnswerParser()
+        scoring_formula = RegistryScoringFormula("au_visibility_v1_1_local_boost")
+        report_exporter = MarkdownCsvReportExporter()
+        self.assertIsInstance(collector, CollectorBackend)
+        self.assertIsInstance(parser, ParserEngine)
+        self.assertIsInstance(scoring_formula, ScoringFormula)
+        self.assertIsInstance(report_exporter, ReportExporter)
+
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(collector,),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=1,
+        )
+        analysis = parser.parse_record(
+            record=records[0],
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+        )
+        score_result = scoring_formula.score_analyses(
+            project_id=bootstrap.project.id,
+            analyses=(analysis,),
+            platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25},
+            scope_type="interface_contract",
+            scope_value="p0a",
+        )
+        graph = build_citation_graph(
+            project_id=bootstrap.project.id,
+            records=records,
+            analyses=(analysis,),
+            competitors=bootstrap.competitors,
+            industry_profile=bootstrap.industry_profile,
+        )
+        report = report_exporter.export(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            report_version="interface-contract-v1",
+            report_type="contract_fixture",
+            prompt_version=bootstrap.project.prompt_version,
+            snapshot=score_result.snapshot,
+            contributions=tuple(score_result.contributions),
+            records=records,
+            graph=graph,
+            platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25},
+        )
+
+        self.assertEqual(analysis.parser_engine_id, "rule_based_v2_aliases")
+        self.assertEqual(score_result.snapshot.formula_version, "au_visibility_v1_1_local_boost")
+        self.assertIn("Trigger rate", report.markdown)
+        self.assertIn("Mention rate", report.markdown)
+        self.assertIn("Recommendation rate", report.markdown)
+        self.assertEqual(report.report_export.scoring_formula_version, "au_visibility_v1_1_local_boost")
 
     def test_score_contributions_explain_final_score(self) -> None:
         analysis = AnswerAnalysis(

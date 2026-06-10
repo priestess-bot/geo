@@ -140,13 +140,20 @@ RawCollectResult（数据契约）
 
 ```text
 LLMGateway       chat()/embed()，统一多模型，路由/重试/成本/日志；P0a 先用 FixtureLLMGateway 写 llm_call_logs，后续替换为 LiteLLM
-ParserEngine     parse(RawAnswer) -> AnswerAnalysis（实现：规则 + LLM-as-judge，二者可切换/并存）
+ParserEngine     parse_record(RawEvidenceRecord, BrandEntity, competitors, entity_aliases) -> AnswerAnalysis（实现：规则 + LLM-as-judge，二者可切换/并存）
 VectorStore      upsert()/search()（实现：pgvector / Qdrant / Milvus）
 GraphStore       upsert_node()/query()（实现：Neo4j / Apache Jena / 纯 SQL 邻接表）
 GeoProvider      resolve(city) -> 地理参数/出口（实现：uule 参数 / 代理池 / 第三方供应商，见 Step 6）
-ScoringFormula   score(AnswerAnalysis, weights) -> 分数（公式版本化，可整体替换，见 Step 9）
-ReportExporter   export(snapshot) -> PDF/CSV（实现：模板引擎 / Metabase 导出）
+ScoringFormula   score_analysis()/score_analyses() -> VisibilityScoreSnapshot + ScoreContribution + AuditEvent（公式版本化，可整体替换，见 Step 9）
+ReportExporter   export(snapshot, contributions, records, graph, method) -> Markdown/PDF/CSV + ReportExport（实现：模板引擎 / Metabase 导出）
 ```
+
+P0a 这四个主链路接口必须是可测试的运行时契约，而不是仅保留文档名。工程实现要求：
+
+- `CollectorBackend / ParserEngine / ScoringFormula / ReportExporter` 使用 runtime-checkable Protocol 对齐真实调用签名。
+- 每个接口都有 `NotConfigured*` stub，能暴露 id/version/health 等元信息，业务调用时明确失败，避免静默落空。
+- 每个接口至少有一个工作实现进入合约测试：fixture collector、rule/comparative parser、registry scoring formula、Markdown/PDF/CSV report exporter。
+- 合约测试必须证明 stub 和工作实现都满足同一接口，且工作实现可以串起 evidence -> analysis -> score -> report。
 
 ### 3.3 开源优先选型映射
 
@@ -1651,7 +1658,7 @@ ReportEvidence
 
 架构验收（开源·可插拔）：
 
-- P0a 必须完成接口级可插拔：CollectorBackend、ParserEngine、ScoringFormula、ReportExporter 均有 stub 与至少一个工作实现。
+- P0a 必须完成接口级可插拔：CollectorBackend、ParserEngine、ScoringFormula、ReportExporter 均有 stub 与至少一个工作实现，并用合约测试证明真实实现满足协议签名。
 - 向量库、图库、LLM 供应商的替换演示不阻塞 P0a 客户试点；P0c/P1 前至少各演示一次"替换/切换后业务不变"：向量库 pgvector ↔ Qdrant、图库 PG 邻接表 ↔ Neo4j、LLM 供应商经 LiteLLM 切换。
 - 解析器规则实现与 LLM-as-judge 实现可对同一答案并行对比并保留版本。
 - 评分公式可升级到新版本，历史分数仍可按旧版本重算。

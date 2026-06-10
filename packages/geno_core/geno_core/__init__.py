@@ -57,6 +57,7 @@ from geno_core.runtime import (
 from geno_core.scoring import (
     AU_VISIBILITY_V1,
     AU_VISIBILITY_V1_1_LOCAL_BOOST,
+    RegistryScoringFormula,
     SCORE_FORMULA_REGISTRY,
     ScoreFormulaDefinition,
     get_score_formula,
@@ -65,6 +66,12 @@ from geno_core.scoring import (
     rescore_snapshot_with_formula,
     score_answer_analyses,
     score_answer_analysis,
+)
+from geno_core.stubs import (
+    NotConfiguredCollectorBackend,
+    NotConfiguredParserEngine,
+    NotConfiguredReportExporter,
+    NotConfiguredScoringFormula,
 )
 from geno_core.traceability import build_traceability_bundle
 
@@ -115,8 +122,13 @@ __all__ = [
     "PlaywrightGoogleAIOCollector",
     "PostgresEvidenceRepository",
     "RuntimePersistenceError",
+    "RegistryScoringFormula",
     "list_score_formulas",
     "normalize_score_weights",
+    "NotConfiguredCollectorBackend",
+    "NotConfiguredParserEngine",
+    "NotConfiguredReportExporter",
+    "NotConfiguredScoringFormula",
     "rescore_snapshot_with_formula",
     "run_collection_slice",
     "run_fixture_collection_slice",

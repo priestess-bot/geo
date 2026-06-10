@@ -117,6 +117,52 @@ def normalize_score_weights(
     return normalized
 
 
+class RegistryScoringFormula:
+    def __init__(self, formula_version: str = "au_visibility_v1") -> None:
+        formula = get_score_formula(formula_version)
+        self.formula_version = formula.formula_version
+
+    def score_analysis(
+        self,
+        *,
+        project_id: str,
+        analysis: AnswerAnalysis,
+        platform_weights_snapshot: dict[str, float],
+        score_weights: dict[str, float] | None = None,
+        scope_type: str = "answer",
+        scope_value: str = "single",
+    ) -> "ScoreResult":
+        return score_answer_analysis(
+            project_id=project_id,
+            analysis=analysis,
+            platform_weights_snapshot=platform_weights_snapshot,
+            score_weights=score_weights,
+            formula_version=self.formula_version,
+            scope_type=scope_type,
+            scope_value=scope_value,
+        )
+
+    def score_analyses(
+        self,
+        *,
+        project_id: str,
+        analyses: tuple[AnswerAnalysis, ...],
+        platform_weights_snapshot: dict[str, float],
+        score_weights: dict[str, float] | None = None,
+        scope_type: str,
+        scope_value: str,
+    ) -> "AggregateScoreResult":
+        return score_answer_analyses(
+            project_id=project_id,
+            analyses=analyses,
+            platform_weights_snapshot=platform_weights_snapshot,
+            score_weights=score_weights,
+            formula_version=self.formula_version,
+            scope_type=scope_type,
+            scope_value=scope_value,
+        )
+
+
 @dataclass(frozen=True)
 class ScoreResult:
     snapshot: VisibilityScoreSnapshot
