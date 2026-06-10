@@ -211,10 +211,54 @@ type ReportExport = {
 };
 
 type ActionPlan = {
-  retest_schedule: { offsets_days: number[]; prompt_version: string };
-  action_recommendations: Array<{ title: string; priority: string; status: string }>;
-  retest_comparisons: Array<{ trend: string; score_delta: number }>;
-  audit_events: unknown[];
+  retest_schedule: {
+    id?: string;
+    project_id?: string;
+    prompt_version: string;
+    sample_size?: number;
+    offsets_days: number[];
+    scheduled_dates?: string[];
+    answer_run_ids?: string[];
+    created_at?: string;
+  };
+  action_recommendations: Array<{
+    id?: string;
+    title: string;
+    description?: string;
+    priority: string;
+    status: string;
+    owner_id?: string;
+    source_gap_type?: string | null;
+    evidence_answer_run_ids?: string[];
+    related_source_types?: string[];
+    next_check_date?: string;
+    created_at?: string;
+  }>;
+  retest_comparisons: Array<{
+    id?: string;
+    baseline_score?: number;
+    retest_score?: number;
+    score_delta: number;
+    baseline_answer_run_ids?: string[];
+    retest_answer_run_ids?: string[];
+    trend: string;
+    created_at?: string;
+  }>;
+  answer_runs: Array<{
+    id: string;
+    platform?: string;
+    surface?: string;
+    city?: string;
+    access_method?: string;
+    prompt_text?: string;
+    prompt_intent_type?: string;
+    prompt_version?: string;
+    sample_index?: number;
+    sample_size?: number;
+    answer_present?: boolean;
+    surface_triggered?: boolean;
+  }>;
+  audit_events: Array<{ event_type?: string; target_type?: string; method_version?: string | null }>;
 };
 
 type ContentEngine = {
@@ -440,6 +484,7 @@ export default async function Home() {
     ? uniqueText(latestReport.answer_runs.map((run) => run.access_method))
     : "unknown";
   const reportCities = latestReport ? uniqueText(latestReport.answer_runs.map((run) => run.city)) : "unknown";
+  const latestRetestComparison = latestAction?.retest_comparisons[0];
 
   return (
     <main className="shell">
@@ -720,6 +765,8 @@ export default async function Home() {
               <dl className="facts">
                 <Fact label="Retest days" value={latestAction.retest_schedule.offsets_days.join("/")} />
                 <Fact label="Score delta" value={num(latestAction.retest_comparisons[0]?.score_delta)} />
+                <Fact label="Open actions" value={latestAction.action_recommendations.length} />
+                <Fact label="Evidence runs" value={latestAction.answer_runs.length} />
               </dl>
               <ul className="plainList">
                 {latestAction.action_recommendations.slice(0, 3).map((action) => (
@@ -729,6 +776,102 @@ export default async function Home() {
                   </li>
                 ))}
               </ul>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </Panel>
+
+        <Panel
+          title="Action Plan & Retest Detail"
+          subtitle={latestAction?.retest_schedule.prompt_version || "No retest schedule"}
+          wide
+        >
+          {latestAction ? (
+            <div className="actionDetail">
+              <section className="actionSection actionSchedule">
+                <h3>Retest Schedule</h3>
+                <dl className="facts">
+                  <Fact label="Schedule ID" value={shortId(latestAction.retest_schedule.id)} />
+                  <Fact label="Prompt version" value={latestAction.retest_schedule.prompt_version} />
+                  <Fact label="Sample size" value={latestAction.retest_schedule.sample_size || 0} />
+                  <Fact label="Offsets" value={latestAction.retest_schedule.offsets_days.join("/")} />
+                  <Fact label="Answer runs" value={latestAction.retest_schedule.answer_run_ids?.length || 0} />
+                  <Fact label="Created" value={dateText(latestAction.retest_schedule.created_at)} />
+                </dl>
+                <ul className="plainList">
+                  {(latestAction.retest_schedule.scheduled_dates || []).map((date, index) => (
+                    <li key={`${date}-${index}`}>
+                      <strong>T+{latestAction.retest_schedule.offsets_days[index] ?? index}</strong>
+                      <span>{dateText(date)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              <section className="actionSection">
+                <h3>Action Recommendations</h3>
+                <div className="actionCards">
+                  {latestAction.action_recommendations.map((action) => (
+                    <article className="actionCard" key={action.id || action.title}>
+                      <header>
+                        <h3>{action.title}</h3>
+                        <span>{action.priority}</span>
+                      </header>
+                      <p>{action.description || "No description"}</p>
+                      <dl className="facts contributionFacts">
+                        <Fact label="Status" value={action.status} />
+                        <Fact label="Owner" value={action.owner_id || "unassigned"} />
+                        <Fact label="Source gap" value={action.source_gap_type || "none"} />
+                        <Fact label="Source types" value={(action.related_source_types || []).join(", ") || "none"} />
+                        <Fact label="Evidence runs" value={action.evidence_answer_run_ids?.length || 0} />
+                        <Fact label="Next check" value={dateText(action.next_check_date)} />
+                      </dl>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section className="actionSection">
+                <h3>Retest Comparison</h3>
+                <dl className="facts">
+                  <Fact label="Trend" value={latestRetestComparison?.trend || "unknown"} />
+                  <Fact label="Baseline score" value={num(latestRetestComparison?.baseline_score)} />
+                  <Fact label="Retest score" value={num(latestRetestComparison?.retest_score)} />
+                  <Fact label="Score delta" value={num(latestRetestComparison?.score_delta)} />
+                  <Fact label="Baseline runs" value={latestRetestComparison?.baseline_answer_run_ids?.length || 0} />
+                  <Fact label="Retest runs" value={latestRetestComparison?.retest_answer_run_ids?.length || 0} />
+                  <Fact label="Compared at" value={dateText(latestRetestComparison?.created_at)} />
+                </dl>
+              </section>
+
+              <section className="actionSection">
+                <h3>Evidence Runs & Audit</h3>
+                <ul className="plainList">
+                  {latestAction.answer_runs.slice(0, 6).map((run) => (
+                    <li key={run.id}>
+                      <strong>
+                        {run.platform || "platform"} / {run.surface || "surface"} / {run.city || "city"}
+                      </strong>
+                      <span>{run.prompt_text || run.id}</span>
+                      <small>
+                        intent {run.prompt_intent_type || "unknown"} · access {run.access_method || "unknown"} · sample{" "}
+                        {run.sample_index || 0}/{run.sample_size || 0} · answer {boolText(run.answer_present)} ·
+                        surface {boolText(run.surface_triggered)} · run {shortId(run.id)}
+                      </small>
+                    </li>
+                  ))}
+                </ul>
+                <h3>Audit Trail</h3>
+                <ul className="plainList">
+                  {latestAction.audit_events.map((event, index) => (
+                    <li key={`${event.event_type}-${index}`}>
+                      <strong>{event.event_type || "audit_event"}</strong>
+                      <span>{event.target_type || "target"} · {event.method_version || "no method version"}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             </div>
           ) : (
             <EmptyState />
