@@ -5,8 +5,8 @@ import math
 import os
 from dataclasses import asdict
 from datetime import UTC, datetime
-from time import perf_counter
-from typing import Any
+from time import perf_counter, sleep
+from typing import Any, Callable
 from uuid import NAMESPACE_URL, uuid5
 from urllib.request import Request, urlopen
 
@@ -112,6 +112,13 @@ class LLMGatewayRequestError(RuntimeError):
         self.call_log = call_log
 
 
+class LLMGatewayRetryExhaustedError(RuntimeError):
+    def __init__(self, message: str, *, attempt_count: int, prior_errors: tuple[str, ...]) -> None:
+        super().__init__(message)
+        self.attempt_count = attempt_count
+        self.prior_errors = prior_errors
+
+
 class JsonGatewayHttpClient:
     def post_json(
         self,
@@ -143,7 +150,10 @@ class LiteLLMGateway:
         prompt_version: str = "llm_judge_prompt_v1",
         timeout_seconds: float = 30.0,
         cost_per_1k_tokens: float = 0.0,
+        max_retries: int = 0,
+        retry_backoff_seconds: float = 0.25,
         http_client: JsonGatewayHttpClient | None = None,
+        sleep_fn: Callable[[float], None] = sleep,
     ) -> None:
         configured_base_url = base_url if base_url is not None else os.getenv("LITELLM_BASE_URL")
         self.base_url = (configured_base_url or "http://localhost:4000").rstrip("/")
@@ -151,7 +161,10 @@ class LiteLLMGateway:
         self.prompt_version = prompt_version
         self.timeout_seconds = timeout_seconds
         self.cost_per_1k_tokens = cost_per_1k_tokens
+        self.max_retries = max(0, max_retries)
+        self.retry_backoff_seconds = max(0.0, retry_backoff_seconds)
         self.http_client = http_client or JsonGatewayHttpClient()
+        self.sleep_fn = sleep_fn
 
     def health(self) -> str:
         return "ready" if self.base_url and self.api_key else "not_configured"
@@ -171,6 +184,8 @@ class LiteLLMGateway:
         started: float,
         status: str,
         error_message: str | None = None,
+        attempt_count: int = 1,
+        prior_errors: tuple[str, ...] = (),
     ) -> LLMCallLog:
         prompt_version = str(metadata.get("prompt_version") or self.prompt_version)
         request_hash = hash_payload(request_payload)
@@ -182,7 +197,14 @@ class LiteLLMGateway:
         )
         total_tokens = prompt_tokens + completion_tokens
         latency_ms = max(0, round((perf_counter() - started) * 1000))
-        estimated_cost = round((total_tokens / 1000.0) * self.cost_per_1k_tokens, 6)
+        estimated_cost = _response_cost(response_payload)
+        if estimated_cost is None:
+            estimated_cost = round((total_tokens / 1000.0) * self.cost_per_1k_tokens, 6)
+        enriched_error_message = error_message
+        if enriched_error_message and (attempt_count > 1 or prior_errors):
+            enriched_error_message = (
+                f"{enriched_error_message}; attempts={attempt_count}; prior_errors={list(prior_errors)}"
+            )
         return LLMCallLog(
             id=str(uuid5(NAMESPACE_URL, f"geno:llm-call:{self.provider}:{model}:{request_hash}:{response_hash}")),
             project_id=str(metadata["project_id"]) if metadata.get("project_id") else None,
@@ -199,9 +221,40 @@ class LiteLLMGateway:
             estimated_cost=estimated_cost,
             latency_ms=latency_ms,
             status=status,
-            error_message=error_message,
+            error_message=enriched_error_message,
             created_at=datetime.now(UTC),
         )
+
+    def _post_with_retries(
+        self,
+        *,
+        url: str,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+    ) -> tuple[dict[str, Any], int, tuple[str, ...]]:
+        prior_errors: list[str] = []
+        for attempt_index in range(self.max_retries + 1):
+            try:
+                return (
+                    self.http_client.post_json(
+                        url=url,
+                        headers=headers,
+                        payload=payload,
+                        timeout_seconds=self.timeout_seconds,
+                    ),
+                    attempt_index + 1,
+                    tuple(prior_errors),
+                )
+            except Exception as exc:  # noqa: BLE001 - retry policy must capture heterogeneous client errors.
+                prior_errors.append(str(exc))
+                if attempt_index >= self.max_retries:
+                    raise LLMGatewayRetryExhaustedError(
+                        str(exc),
+                        attempt_count=attempt_index + 1,
+                        prior_errors=tuple(prior_errors),
+                    ) from exc
+                self.sleep_fn(self.retry_backoff_seconds * (2**attempt_index))
+        raise RuntimeError("unreachable LiteLLM retry state")
 
     def chat(
         self,
@@ -213,14 +266,15 @@ class LiteLLMGateway:
         metadata = metadata or {}
         request_payload = {"model": model, "messages": messages}
         started = perf_counter()
+        attempt_count = 1
+        prior_errors: tuple[str, ...] = ()
         try:
-            response_payload = self.http_client.post_json(
+            response_payload, attempt_count, prior_errors = self._post_with_retries(
                 url=f"{self.base_url}/chat/completions",
                 headers=self._headers(),
                 payload=request_payload,
-                timeout_seconds=self.timeout_seconds,
             )
-        except Exception as exc:  # noqa: BLE001 - preserve failed gateway calls as auditable logs.
+        except LLMGatewayRetryExhaustedError as exc:
             call_log = self._call_log(
                 request_payload=request_payload,
                 response_payload=None,
@@ -229,6 +283,21 @@ class LiteLLMGateway:
                 started=started,
                 status="failed",
                 error_message=str(exc),
+                attempt_count=exc.attempt_count,
+                prior_errors=exc.prior_errors,
+            )
+            raise LLMGatewayRequestError(f"LiteLLM chat request failed: {exc}", call_log=asdict(call_log)) from exc
+        except Exception as exc:  # noqa: BLE001 - configuration/client failures must remain auditable.
+            call_log = self._call_log(
+                request_payload=request_payload,
+                response_payload=None,
+                model=model,
+                metadata=metadata,
+                started=started,
+                status="failed",
+                error_message=str(exc),
+                attempt_count=attempt_count,
+                prior_errors=prior_errors,
             )
             raise LLMGatewayRequestError(f"LiteLLM chat request failed: {exc}", call_log=asdict(call_log)) from exc
         try:
@@ -242,6 +311,8 @@ class LiteLLMGateway:
                 started=started,
                 status="failed",
                 error_message=str(exc),
+                attempt_count=attempt_count,
+                prior_errors=prior_errors,
             )
             raise LLMGatewayRequestError(f"LiteLLM chat response parsing failed: {exc}", call_log=asdict(call_log)) from exc
         call_log = self._call_log(
@@ -251,6 +322,8 @@ class LiteLLMGateway:
             metadata=metadata,
             started=started,
             status="succeeded",
+            attempt_count=attempt_count,
+            prior_errors=prior_errors,
         )
         return {
             "content": content,
@@ -261,8 +334,13 @@ class LiteLLMGateway:
                 "completion_tokens": call_log.completion_tokens,
                 "total_tokens": call_log.total_tokens,
                 "estimated_cost": call_log.estimated_cost,
+                "attempt_count": attempt_count,
+                "retry_errors": list(prior_errors),
             },
-            "raw_response": response_payload,
+            "raw_response": {
+                **response_payload,
+                "_geno_retry": {"attempt_count": attempt_count, "prior_errors": list(prior_errors)},
+            },
             "call_log": asdict(call_log),
         }
 
@@ -301,6 +379,33 @@ def _usage_tokens(
         )
         return prompt_tokens, completion_tokens
     return fallback_prompt_tokens, fallback_completion_tokens
+
+
+def _response_cost(response_payload: dict[str, Any] | None) -> float | None:
+    if not isinstance(response_payload, dict):
+        return None
+    candidate_paths = (
+        ("usage", "cost"),
+        ("usage", "total_cost"),
+        ("usage", "estimated_cost"),
+        ("_hidden_params", "response_cost"),
+        ("response_cost",),
+        ("cost",),
+    )
+    for path in candidate_paths:
+        value: object = response_payload
+        for key in path:
+            if not isinstance(value, dict):
+                value = None
+                break
+            value = value.get(key)
+        if value is None:
+            continue
+        try:
+            return round(float(value), 6)
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def _extract_chat_content(payload: dict[str, Any]) -> str:

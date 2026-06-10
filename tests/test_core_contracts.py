@@ -1006,12 +1006,66 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(http_client.calls[0]["headers"], {"Authorization": "Bearer test-key"})
         self.assertEqual(http_client.calls[1]["url"], "http://litellm.local/embeddings")
 
+    def test_m0_litellm_gateway_retries_and_prefers_response_cost(self) -> None:
+        class FlakyLiteLLMHttpClient:
+            def __init__(self) -> None:
+                self.call_count = 0
+
+            def post_json(self, **kwargs: object) -> dict[str, object]:
+                self.call_count += 1
+                if self.call_count == 1:
+                    raise RuntimeError("rate limited")
+                return {
+                    "choices": [{"message": {"content": "{\"status\":\"succeeded\"}"}}],
+                    "usage": {"prompt_tokens": 11, "completion_tokens": 7, "cost": 0.1234567},
+                }
+
+        sleep_calls: list[float] = []
+        http_client = FlakyLiteLLMHttpClient()
+        gateway = LiteLLMGateway(
+            base_url="http://litellm.local",
+            api_key="test-key",
+            http_client=http_client,
+            cost_per_1k_tokens=99.0,
+            max_retries=2,
+            retry_backoff_seconds=0.5,
+            sleep_fn=sleep_calls.append,
+        )
+
+        response = gateway.chat(
+            messages=[{"role": "user", "content": "Judge Koala in Australia."}],
+            model="gpt-4.1-mini",
+            metadata={"project_id": "project-1", "answer_run_id": "run-1", "purpose": "parser_judge"},
+        )
+
+        self.assertEqual(http_client.call_count, 2)
+        self.assertEqual(sleep_calls, [0.5])
+        self.assertEqual(response["usage"]["attempt_count"], 2)
+        self.assertEqual(response["usage"]["retry_errors"], ["rate limited"])
+        self.assertEqual(response["usage"]["estimated_cost"], 0.123457)
+        self.assertEqual(response["call_log"]["estimated_cost"], 0.123457)
+        self.assertEqual(response["raw_response"]["_geno_retry"]["attempt_count"], 2)
+        self.assertEqual(response["raw_response"]["_geno_retry"]["prior_errors"], ["rate limited"])
+
     def test_m0_litellm_gateway_failed_request_keeps_auditable_call_log(self) -> None:
         class FailingLiteLLMHttpClient:
+            def __init__(self) -> None:
+                self.call_count = 0
+
             def post_json(self, **kwargs: object) -> dict[str, object]:
+                self.call_count += 1
                 raise RuntimeError("upstream unavailable")
 
-        gateway = LiteLLMGateway(base_url="http://litellm.local", api_key="test-key", http_client=FailingLiteLLMHttpClient())
+        http_client = FailingLiteLLMHttpClient()
+        sleep_calls: list[float] = []
+        gateway = LiteLLMGateway(
+            base_url="http://litellm.local",
+            api_key="test-key",
+            http_client=http_client,
+            max_retries=1,
+            retry_backoff_seconds=0.25,
+            sleep_fn=sleep_calls.append,
+        )
 
         with self.assertRaises(LLMGatewayRequestError) as context:
             gateway.chat(
@@ -1021,9 +1075,13 @@ class CoreContractsTest(unittest.TestCase):
             )
 
         call_log = context.exception.call_log
+        self.assertEqual(http_client.call_count, 2)
+        self.assertEqual(sleep_calls, [0.25])
         self.assertEqual(call_log["provider"], "litellm")
         self.assertEqual(call_log["status"], "failed")
-        self.assertEqual(call_log["error_message"], "upstream unavailable")
+        self.assertIn("upstream unavailable", call_log["error_message"])
+        self.assertIn("attempts=2", call_log["error_message"])
+        self.assertIn("prior_errors", call_log["error_message"])
         self.assertEqual(len(call_log["request_hash"]), 64)
         self.assertEqual(len(call_log["response_hash"]), 64)
 
@@ -1061,7 +1119,8 @@ class CoreContractsTest(unittest.TestCase):
         call_log = comparison["llm_call_log"]
         self.assertEqual(call_log["provider"], "litellm")
         self.assertEqual(call_log["status"], "failed")
-        self.assertEqual(call_log["error_message"], "upstream unavailable")
+        self.assertIn("upstream unavailable", call_log["error_message"])
+        self.assertIn("attempts=1", call_log["error_message"])
         self.assertIn("llm_gateway_failed", analysis.uncertainty_flags)
         self.assertIn("LiteLLM chat request failed", comparison["llm_gateway_error"])
 

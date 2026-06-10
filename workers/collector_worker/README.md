@@ -63,7 +63,9 @@ switches the same parser path to `LiteLLMGateway` through `LITELLM_BASE_URL` and
 The `AnswerAnalysis` payload stores `parser_ab_compare_v1` agreement, mismatch fields, the secondary
 judge result, and the selected gateway `llm_call_log`; the same call log is upserted into
 `llm_call_logs` with provider/model/prompt version, request/response hashes, token counts, estimated
-cost, latency, status, and failed-call error messages. It also reads any project-level `score_weight_configs`
+cost, latency, status, retry attempts, retry errors, and failed-call error messages. `LiteLLMGateway`
+uses bounded exponential backoff for chat requests and prefers upstream response cost fields before
+falling back to local token-price estimates. It also reads any project-level `score_weight_configs`
 for the selected score formula and freezes both the formula version and active component weights into
 `VisibilityScoreSnapshot.formula_version` and `VisibilityScoreSnapshot.component_weights_snapshot`.
 The worker then stores `VisibilityScoreSnapshot`, `ScoreContribution`,
@@ -108,6 +110,10 @@ python3 workers/collector_worker/run_collection_slice.py \
   --mode fixture --prompt-limit 1 --persist --persist-analysis \
   --judge-gateway litellm --judge-model gpt-4.1-mini
 ```
+
+The adapter-level retry/cost behavior is covered by local contract tests. Production use still needs
+the LiteLLM service wired into Compose/deployment, real provider routing, and reconciliation against
+provider billing exports.
 
 Fixture API-vs-browser fidelity sample:
 
