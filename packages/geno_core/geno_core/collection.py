@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from time import perf_counter
-from typing import Iterable
+from time import perf_counter, sleep
+from typing import Callable, Iterable
 from uuid import uuid5, NAMESPACE_URL
 from urllib.parse import urlparse
 
@@ -31,6 +32,24 @@ from geno_core.models import (
 P0A_GEO_CITIES = ("Australia", "Sydney", "Melbourne", "Brisbane")
 P0A_SAMPLE_SIZE = 3
 DEFAULT_DEVICE = "desktop"
+
+
+@dataclass(frozen=True)
+class CollectionExecutionPolicy:
+    max_retries: int = 0
+    retry_backoff_seconds: float = 0.0
+    rate_limit_delay_seconds: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.max_retries < 0:
+            raise ValueError("max_retries must be non-negative")
+        if self.retry_backoff_seconds < 0:
+            raise ValueError("retry_backoff_seconds must be non-negative")
+        if self.rate_limit_delay_seconds < 0:
+            raise ValueError("rate_limit_delay_seconds must be non-negative")
+
+
+DEFAULT_COLLECTION_EXECUTION_POLICY = CollectionExecutionPolicy()
 
 
 def _stable_id(kind: str, *parts: object) -> str:
@@ -648,19 +667,88 @@ def collect_prompt_with_failure_record(
     sample_index: int,
     sample_size: int,
     device: str = DEFAULT_DEVICE,
+    execution_policy: CollectionExecutionPolicy = DEFAULT_COLLECTION_EXECUTION_POLICY,
+    sleep_fn: Callable[[float], None] = sleep,
 ) -> RawEvidenceRecord | CollectionFailureRecord:
     started_counter = perf_counter()
+    retry_errors: list[dict[str, str | int]] = []
+    attempt_count = 0
     try:
-        return collect_prompt_once(
-            project_id=project_id,
-            prompt=prompt,
-            market_profile=market_profile,
-            collector=collector,
-            city=city,
-            sample_index=sample_index,
-            sample_size=sample_size,
-            device=device,
-        )
+        last_error: Exception | None = None
+        for attempt_index in range(execution_policy.max_retries + 1):
+            attempt_count = attempt_index + 1
+            try:
+                record = collect_prompt_once(
+                    project_id=project_id,
+                    prompt=prompt,
+                    market_profile=market_profile,
+                    collector=collector,
+                    city=city,
+                    sample_index=sample_index,
+                    sample_size=sample_size,
+                    device=device,
+                )
+                if attempt_count > 1 or retry_errors:
+                    total_duration_ms = max(0, round((perf_counter() - started_counter) * 1000))
+                    completed_log = record.collector_logs[0]
+                    retry_payload = {
+                        **completed_log.payload,
+                        "duration_ms": total_duration_ms,
+                        "attempt_count": attempt_count,
+                        "retry_errors": retry_errors,
+                    }
+                    retry_log = replace(completed_log, payload=retry_payload)
+                    retry_cost = replace(record.collection_cost, duration_ms=total_duration_ms)
+                    retry_audit = build_audit_event(
+                        event_type="collection_retry_succeeded",
+                        project_id=project_id,
+                        actor_type="worker",
+                        actor_id=collector.id(),
+                        target_type="answer_run",
+                        target_id=record.answer_run.id,
+                        before=None,
+                        after={
+                            "answer_run_id": record.answer_run.id,
+                            "prompt_question_id": prompt.id,
+                            "collector_backend_id": collector.id(),
+                            "city": city,
+                            "sample_index": sample_index,
+                            "sample_size": sample_size,
+                            "attempt_count": attempt_count,
+                            "retry_errors": retry_errors,
+                            "duration_ms": total_duration_ms,
+                        },
+                        input_refs={"prompt_question_ids": [prompt.id]},
+                        output_refs={"answer_run_ids": [record.answer_run.id]},
+                        method_version="collection_retry_policy_v1",
+                        reason="Collection succeeded after retry attempts",
+                    )
+                    return RawEvidenceRecord(
+                        answer_run=record.answer_run,
+                        raw_answer=record.raw_answer,
+                        citations=record.citations,
+                        evidence_assets=record.evidence_assets,
+                        collector_logs=(retry_log,),
+                        collection_cost=retry_cost,
+                        audit_events=record.audit_events + (retry_audit,),
+                    )
+                return record
+            except Exception as exc:  # noqa: BLE001 - heterogeneous collector failures are retried uniformly.
+                last_error = exc
+                if attempt_index >= execution_policy.max_retries:
+                    raise
+                retry_errors.append(
+                    {
+                        "attempt": attempt_count,
+                        "error_type": exc.__class__.__name__,
+                        "error_message": str(exc),
+                    }
+                )
+                if execution_policy.retry_backoff_seconds > 0:
+                    sleep_fn(execution_policy.retry_backoff_seconds * (2**attempt_index))
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("unreachable collection retry state")
     except Exception as exc:  # noqa: BLE001 - failures must be converted into audit records.
         duration_ms = max(0, round((perf_counter() - started_counter) * 1000))
         capabilities = collector.capabilities()
@@ -704,7 +792,14 @@ def collect_prompt_with_failure_record(
                 answer_run_id=answer_run_id,
                 collector_backend_id=collector.id(),
                 event_type="collection_failed",
-                payload={"error_type": error_type, "error_message": error_message, "duration_ms": duration_ms},
+                payload={
+                    "error_type": error_type,
+                    "error_message": error_message,
+                    "duration_ms": duration_ms,
+                    "attempt_count": attempt_count or 1,
+                    "retry_errors": retry_errors,
+                    "max_retries": execution_policy.max_retries,
+                },
                 created_at=collected_at,
             ),
         )
@@ -742,10 +837,15 @@ def collect_prompt_with_failure_record(
                     "error_type": error_type,
                     "error_message": error_message,
                     "duration_ms": duration_ms,
+                    "attempt_count": attempt_count or 1,
+                    "retry_errors": retry_errors,
+                    "max_retries": execution_policy.max_retries,
                 },
                 input_refs={"prompt_question_ids": [prompt.id]},
                 output_refs={"answer_run_ids": [answer_run_id]},
-                method_version="collector_failure_v1",
+                method_version="collector_failure_v1+retry_policy_v1"
+                if execution_policy.max_retries
+                else "collector_failure_v1",
                 reason="M2a collection failure converted into auditable evidence record",
             ),
         )
@@ -768,6 +868,8 @@ def run_fixture_collection_slice(
     cities: tuple[str, ...] = ("Australia", "Sydney"),
     sample_size: int = 1,
     prompt_limit: int = 2,
+    execution_policy: CollectionExecutionPolicy = DEFAULT_COLLECTION_EXECUTION_POLICY,
+    sleep_fn: Callable[[float], None] = sleep,
 ) -> tuple[RawEvidenceRecord, ...]:
     records = run_collection_slice(
         project_id=project_id,
@@ -777,6 +879,8 @@ def run_fixture_collection_slice(
         cities=cities,
         sample_size=sample_size,
         prompt_limit=prompt_limit,
+        execution_policy=execution_policy,
+        sleep_fn=sleep_fn,
     )
     return tuple(record for record in records if isinstance(record, RawEvidenceRecord))
 
@@ -790,6 +894,8 @@ def run_collection_slice(
     cities: tuple[str, ...] = ("Australia", "Sydney"),
     sample_size: int = 1,
     prompt_limit: int = 2,
+    execution_policy: CollectionExecutionPolicy = DEFAULT_COLLECTION_EXECUTION_POLICY,
+    sleep_fn: Callable[[float], None] = sleep,
 ) -> tuple[RawEvidenceRecord | CollectionFailureRecord, ...]:
     selected_prompts = prompts[:prompt_limit]
     records: list[RawEvidenceRecord | CollectionFailureRecord] = []
@@ -797,6 +903,8 @@ def run_collection_slice(
         for collector in collectors:
             for city in cities:
                 for sample_index in range(1, sample_size + 1):
+                    if records and execution_policy.rate_limit_delay_seconds > 0:
+                        sleep_fn(execution_policy.rate_limit_delay_seconds)
                     result = collect_prompt_with_failure_record(
                         project_id=project_id,
                         prompt=prompt,
@@ -805,6 +913,8 @@ def run_collection_slice(
                         city=city,
                         sample_index=sample_index,
                         sample_size=sample_size,
+                        execution_policy=execution_policy,
+                        sleep_fn=sleep_fn,
                     )
                     records.append(result)
     return tuple(records)

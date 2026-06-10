@@ -154,9 +154,9 @@ DoD：
 - `[x]` (P0a) P0a 采样量闸门：100 prompts × 2 platforms × 4 geo × k=3 = 2400 planned_runs，可配置降级 prompt/geo 但不降级证据字段 — `Step9.3`
 - `[x]` (P0a) GeoProvider 抽象 + 城市采样（Australia/Sydney/Melbourne/Brisbane）— `Step6 / §8.4`
 - `[x]` (P0a) 截图/HTML 快照 + `raw_payload_hash` — `E3-05`
-- `[~]` (P0a) CollectionCost、CollectionRunSummary 与 P0ACollectionReadinessGate 记录（从首个采集器起），输出 collector health、planned/attempted/success/failure、成功率、触发率、回答率、失败摘要、单位成本、平均耗时和 P0a 采集门禁 pass/fail/reasons；`--require-p0a-readiness` 可让真实 smoke 在 gate fail 时非零退出 — `§8.15`
+- `[~]` (P0a) CollectionCost、CollectionRunSummary 与 P0ACollectionReadinessGate 记录（从首个采集器起），输出 collector health、planned/attempted/success/failure、成功率、触发率、回答率、失败摘要、单位成本、平均耗时和 P0a 采集门禁 pass/fail/reasons；`--require-p0a-readiness` 可让真实 smoke 在 gate fail 时非零退出；worker 内 `CollectionExecutionPolicy` 已支持可审计重试/backoff/节流，不膨胀 planned/attempted 分母 — `§8.15`
 - `[~]` (P0c/P1) 保真度抽检：同批 prompt 跑 官方 API vs 浏览器 两后端，量化差异率并入报告 — `Step4`（`api_browser_fidelity_checks` 表、runtime GET/POST API、worker `--persist-analysis` 自动生成、报告 Method Disclosure 复用、Runtime Console 展示 status/mismatch/difference/payload hash 和 `api_browser_fidelity_checked` 审计事件已落；`--include-browser-fidelity-fixture` 已可生成同 prompt/city 的 official_api + browser fixture 配对样本并得到 `sampled`，browser fidelity samples 通过 `score_input_policy` 排除出主评分分母；`PlaywrightChatGPTSearchCollector`、`--include-browser-fidelity-playwright` 和 `make api-browser-fidelity-preflight` 已接入真实浏览器抽检入口，可在缺启用开关/selector/session/Playwright 时采集前 fail 并输出 health reason；配置 `GENO_BROWSER_ARTIFACT_DIR` 和对象存储时，本地 `file://` browser HTML/PNG 会归档为 `s3://...` EvidenceAsset 并写 `browser_capture_assets_archived` 审计事件；`BrowserFidelitySamplingPlan`、`--plan-browser-fidelity-sampling` 和 `make browser-fidelity-plan` 已提供确定性抽样计划与 `browser_fidelity_sampling_planned` 审计事件；`scripts/run_browser_fidelity_scheduler.py`、`make browser-fidelity-scheduler-plan/run` 和 Compose `scheduler` profile 已提供 cron/K8s CronJob 友好的轻量调度入口；真实 ChatGPT 账号/selector 联调、复杂失败重试队列和 Temporal 深度编排待接）
-- `[~]` (P1) 定时采集（Temporal）/复杂失败重试/限流/人工补录工作台 — `E3-03/06/07/08`（worker CLI 与 `--persist` 已落；Runtime Console 已有最小人工补录表单；复杂调度/限流/批量文件补录待接）
+- `[~]` (P1) 定时采集（Temporal）/复杂失败重试/限流/人工补录工作台 — `E3-03/06/07/08`（worker CLI 与 `--persist` 已落；worker 内 retry/backoff/rate-limit 策略已可配置并写入审计；Runtime Console 已有最小人工补录表单；分布式重试队列、复杂调度、全局限流和批量文件补录待接）
 
 DoD：
 

@@ -17,6 +17,7 @@ from geno_core.audit import build_audit_event, hash_payload
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
+    CollectionExecutionPolicy,
     build_collection_run_audit_event,
     build_collection_run_summary,
     build_manual_backfill_record,
@@ -934,6 +935,84 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(result.answer_run.status, "failed")
         self.assertEqual(result.audit_events[0].event_type, "answer_run_failed")
         self.assertIn("PERPLEXITY_API_KEY", result.error_message)
+
+    def test_collection_retry_policy_is_audited_on_success_after_retry(self) -> None:
+        class FlakyCollector(FixturePerplexitySonarCollector):
+            def __init__(self) -> None:
+                super().__init__()
+                self.calls = 0
+
+            def collect(self, **kwargs: object) -> object:
+                self.calls += 1
+                if self.calls == 1:
+                    raise TimeoutError("temporary timeout")
+                return super().collect(**kwargs)
+
+        bootstrap = build_au_project_bootstrap()
+        sleeps: list[float] = []
+        record = collect_prompt_with_failure_record(
+            project_id=bootstrap.project.id,
+            prompt=bootstrap.prompt_questions[0],
+            market_profile=bootstrap.market_profile,
+            collector=FlakyCollector(),
+            city="Australia",
+            sample_index=1,
+            sample_size=1,
+            execution_policy=CollectionExecutionPolicy(max_retries=1, retry_backoff_seconds=0.25),
+            sleep_fn=sleeps.append,
+        )
+
+        self.assertNotIsInstance(record, CollectionFailureRecord)
+        assert not isinstance(record, CollectionFailureRecord)
+        retry_payload = record.collector_logs[0].payload
+        self.assertEqual(retry_payload["attempt_count"], 2)
+        self.assertEqual(retry_payload["retry_errors"][0]["error_type"], "TimeoutError")
+        self.assertEqual(record.collection_cost.duration_ms, retry_payload["duration_ms"])
+        self.assertEqual(sleeps, [0.25])
+        self.assertEqual(record.audit_events[-1].event_type, "collection_retry_succeeded")
+        self.assertEqual(record.audit_events[-1].method_version, "collection_retry_policy_v1")
+
+    def test_collection_retry_policy_records_exhausted_attempts(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        sleeps: list[float] = []
+        failure = collect_prompt_with_failure_record(
+            project_id=bootstrap.project.id,
+            prompt=bootstrap.prompt_questions[0],
+            market_profile=bootstrap.market_profile,
+            collector=PerplexitySonarCollector(api_key=""),
+            city="Australia",
+            sample_index=1,
+            sample_size=1,
+            execution_policy=CollectionExecutionPolicy(max_retries=2, retry_backoff_seconds=0.1),
+            sleep_fn=sleeps.append,
+        )
+
+        self.assertIsInstance(failure, CollectionFailureRecord)
+        assert isinstance(failure, CollectionFailureRecord)
+        payload = failure.collector_logs[0].payload
+        self.assertEqual(payload["attempt_count"], 3)
+        self.assertEqual(payload["max_retries"], 2)
+        self.assertEqual(len(payload["retry_errors"]), 2)
+        self.assertEqual(sleeps, [0.1, 0.2])
+        self.assertEqual(failure.audit_events[0].method_version, "collector_failure_v1+retry_policy_v1")
+
+    def test_collection_rate_limit_policy_sleeps_between_planned_runs(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        sleeps: list[float] = []
+        records = run_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(),),
+            cities=("Australia", "Sydney"),
+            sample_size=1,
+            prompt_limit=1,
+            execution_policy=CollectionExecutionPolicy(rate_limit_delay_seconds=0.5),
+            sleep_fn=sleeps.append,
+        )
+
+        self.assertEqual(len(records), 2)
+        self.assertEqual(sleeps, [0.5])
 
     def test_manual_backfill_builds_auditable_raw_evidence_record(self) -> None:
         bootstrap = build_au_project_bootstrap()

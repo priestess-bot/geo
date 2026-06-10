@@ -19,6 +19,7 @@ from geno_core.action_plan import (
 from geno_core.analysis_pipeline import analyze_and_score_records, build_score_input_policy, select_score_input_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
+    CollectionExecutionPolicy,
     build_collection_run_audit_event,
     build_collection_run_summary,
     run_collection_slice,
@@ -607,6 +608,24 @@ def main() -> None:
         help="Exit non-zero after collection if any selected collector produced a failure record.",
     )
     parser.add_argument(
+        "--collection-max-retries",
+        type=int,
+        default=int(os.environ.get("GENO_COLLECTION_MAX_RETRIES", "0")),
+        help="Retry each prompt/city/sample collector call this many times after the first failure.",
+    )
+    parser.add_argument(
+        "--collection-retry-backoff-seconds",
+        type=float,
+        default=float(os.environ.get("GENO_COLLECTION_RETRY_BACKOFF_SECONDS", "0")),
+        help="Base exponential backoff between collection retries.",
+    )
+    parser.add_argument(
+        "--collection-rate-limit-delay-seconds",
+        type=float,
+        default=float(os.environ.get("GENO_COLLECTION_RATE_LIMIT_DELAY_SECONDS", "0")),
+        help="Sleep between planned collection attempts to respect provider/browser rate limits.",
+    )
+    parser.add_argument(
         "--persist",
         action="store_true",
         help="Persist successful and failed collection records through DATABASE_URL",
@@ -639,6 +658,14 @@ def main() -> None:
         parser.error("--require-p0a-readiness is only valid for fixture/api P0a modes")
     if args.prompt_ids and args.mode == "google-fixture":
         parser.error("--prompt-ids is only valid for fixture/api modes")
+    try:
+        execution_policy = CollectionExecutionPolicy(
+            max_retries=args.collection_max_retries,
+            retry_backoff_seconds=args.collection_retry_backoff_seconds,
+            rate_limit_delay_seconds=args.collection_rate_limit_delay_seconds,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
 
     bootstrap = build_au_project_bootstrap()
     if args.plan_browser_fidelity_sampling:
@@ -726,6 +753,7 @@ def main() -> None:
             "planned_runs": planned_runs,
             "success_count": 0,
             "failure_count": 0,
+            "collection_execution_policy": asdict(execution_policy),
             "collector_health": collector_health,
             "collector_health_gate": collector_health_gate,
             "p0a_readiness_gate": None,
@@ -742,6 +770,7 @@ def main() -> None:
         cities=cities,
         sample_size=args.sample_size,
         prompt_limit=args.prompt_limit,
+        execution_policy=execution_policy,
     )
     successes = tuple(record for record in records if isinstance(record, RawEvidenceRecord))
     failures = tuple(record for record in records if isinstance(record, CollectionFailureRecord))
@@ -771,6 +800,7 @@ def main() -> None:
         "planned_runs": planned_runs,
         "success_count": len(successes),
         "failure_count": len(failures),
+        "collection_execution_policy": asdict(execution_policy),
         "answer_run_ids": [record.answer_run.id for record in records],
         "failure_events": [asdict(record) for record in failures],
         "collector_health": collector_health,

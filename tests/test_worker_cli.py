@@ -131,6 +131,10 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(payload["record_count"], 4)
         self.assertEqual(payload["success_count"], 4)
         self.assertEqual(payload["failure_count"], 0)
+        self.assertEqual(
+            payload["collection_execution_policy"],
+            {"max_retries": 0, "retry_backoff_seconds": 0.0, "rate_limit_delay_seconds": 0.0},
+        )
         self.assertEqual(payload["collector_health_gate"]["gate_status"], "pass")
         self.assertEqual(
             {item["health"] for item in payload["collector_health"]},
@@ -300,6 +304,27 @@ class WorkerCliTest(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["failure_count"], 2)
         self.assertEqual(payload["record_count"], 2)
+
+    def test_collection_retry_cli_options_are_reported(self) -> None:
+        payload = self._run_worker(
+            "--mode",
+            "fixture",
+            "--prompt-limit",
+            "1",
+            "--cities",
+            "Sydney",
+            "--collection-max-retries",
+            "1",
+            "--collection-retry-backoff-seconds",
+            "0",
+            "--collection-rate-limit-delay-seconds",
+            "0",
+        )
+        self.assertEqual(payload["record_count"], 2)
+        self.assertEqual(
+            payload["collection_execution_policy"],
+            {"max_retries": 1, "retry_backoff_seconds": 0.0, "rate_limit_delay_seconds": 0.0},
+        )
 
     def test_google_fixture_worker_slice_returns_gate(self) -> None:
         payload = self._run_worker("--mode", "google-fixture")

@@ -37,6 +37,25 @@ prove API-response provenance but do not replace browser fidelity samples. Durin
 stored `s3://...` object, and writes an `api_snapshot_assets_archived` audit event before saving
 raw evidence rows.
 
+Collection retry/rate-limit policy:
+
+```bash
+PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py \
+  --mode api --prompt-limit 1 --cities Sydney \
+  --collection-max-retries 2 \
+  --collection-retry-backoff-seconds 1 \
+  --collection-rate-limit-delay-seconds 0.5
+```
+
+The default policy is no retry and no sleep, matching local fixture smoke behavior. When enabled,
+each planned prompt/city/sample still produces at most one final `RawEvidenceRecord` or
+`CollectionFailureRecord`, so planned/attempted denominators are not inflated by retry attempts.
+Successful retry paths add `attempt_count`, `retry_errors`, and a `collection_retry_succeeded` audit
+event; exhausted failures keep the final `answer_run_failed` record and include `attempt_count`,
+`retry_errors`, and `max_retries` in the collector log and audit payload. The worker JSON always
+prints `collection_execution_policy`. This is a worker-local policy, not a distributed retry queue or
+Temporal workflow.
+
 Persisted fixture slice:
 
 ```bash
