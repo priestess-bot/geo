@@ -14,7 +14,7 @@ from geno_core.action_plan import (
     build_retest_schedule,
     compare_retest_windows,
 )
-from geno_core.analysis_pipeline import analyze_and_score_records, build_score_input_policy
+from geno_core.analysis_pipeline import analyze_and_score_records, build_score_input_policy, select_score_input_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
     build_collection_run_audit_event,
@@ -23,6 +23,7 @@ from geno_core.collection import (
     evaluate_p0a_collection_readiness,
 )
 from geno_core.collectors import (
+    FixtureChatGPTSearchBrowserCollector,
     FixtureGoogleAIModeCollector,
     FixtureGoogleAIOCollector,
     FixtureOpenAIWebSearchCollector,
@@ -62,6 +63,12 @@ def _collectors(mode: str) -> tuple[CollectorBackend, ...]:
     if mode == "google-fixture":
         return (FixtureGoogleAIOCollector(), FixtureGoogleAIModeCollector())
     raise ValueError(f"Unsupported collector mode: {mode}")
+
+
+def _fidelity_fixture_collectors(mode: str) -> tuple[CollectorBackend, ...]:
+    if mode == "fixture":
+        return (FixtureChatGPTSearchBrowserCollector(),)
+    return ()
 
 
 def _persist_records(
@@ -114,15 +121,10 @@ def _persist_records(
             plan=google_plan,
             records=records if run_type == "google_spike" else (),
         )
-        google_allowed_for_scoring = (
-            google_gate.gate_status == "pass"
-            and not google_gate.limited_coverage
-            and google_readiness_gate.gate_status == "pass"
-        )
-        score_input_successes = tuple(
-            record
-            for record in successes
-            if record.answer_run.platform != "google" or google_allowed_for_scoring
+        score_input_successes = select_score_input_records(
+            records=successes,
+            google_spike_gate=google_gate,
+            google_spike_readiness_gate=google_readiness_gate,
         )
         score_input_policy = build_score_input_policy(
             records=successes,
@@ -173,7 +175,7 @@ def _persist_records(
         )
         graph = build_citation_graph(
             project_id=bootstrap.project.id,
-            records=successes,
+            records=analysis_result.score_input_records,
             analyses=analysis_result.score_input_analyses,
             competitors=bootstrap.competitors,
             industry_profile=bootstrap.industry_profile,
@@ -187,11 +189,12 @@ def _persist_records(
             prompt_version=bootstrap.project.prompt_version,
             snapshot=analysis_result.snapshot,
             contributions=analysis_result.contributions,
-            records=successes,
+            records=analysis_result.score_input_records,
             graph=graph,
             platform_weights_snapshot=platform_weights_snapshot,
             google_spike_gate=google_gate,
             score_input_policy=analysis_result.score_input_policy,
+            fidelity_records=successes,
         )
         repository.save_report_export(report.report_export, report.audit_event)
         fidelity_check, fidelity_audit = build_runtime_fidelity_check_from_records(
@@ -238,8 +241,8 @@ def _persist_records(
         schedule = build_retest_schedule(
             project_id=bootstrap.project.id,
             prompt_version=bootstrap.project.prompt_version,
-            sample_size=successes[0].answer_run.sample_size,
-            answer_run_ids=tuple(record.answer_run.id for record in successes),
+            sample_size=analysis_result.score_input_records[0].answer_run.sample_size,
+            answer_run_ids=tuple(record.answer_run.id for record in analysis_result.score_input_records),
         )
         action_audit = build_action_plan_audit_event(
             project_id=bootstrap.project.id,
@@ -273,7 +276,7 @@ def _persist_records(
             market_code=bootstrap.project.market_code,
             brand=bootstrap.brand,
             category=bootstrap.project.category,
-            answer_run_ids=tuple(record.answer_run.id for record in successes),
+            answer_run_ids=tuple(record.answer_run.id for record in analysis_result.score_input_records),
         )
         knowledge_results = search_knowledge_facts(
             facts=facts,
@@ -311,11 +314,11 @@ def _persist_records(
             report_export=report.report_export,
             snapshot=analysis_result.snapshot,
             contributions=analysis_result.contributions,
-            records=successes,
+            records=analysis_result.score_input_records,
             graph=graph,
             actions=actions,
             content_drafts=drafts,
-            audit_events=tuple(record.audit_events[0] for record in successes)
+            audit_events=tuple(record.audit_events[0] for record in analysis_result.score_input_records)
             + (
                 analysis_result.audit_event,
                 report.audit_event,
@@ -386,6 +389,11 @@ def main() -> None:
     parser.add_argument("--sample-size", type=int, default=1)
     parser.add_argument("--cities", default="Australia,Sydney")
     parser.add_argument(
+        "--include-browser-fidelity-fixture",
+        action="store_true",
+        help="In fixture mode, add paired browser answer runs for API-vs-browser fidelity sampling only.",
+    )
+    parser.add_argument(
         "--persist",
         action="store_true",
         help="Persist successful and failed collection records through DATABASE_URL",
@@ -415,7 +423,9 @@ def main() -> None:
         args.prompt_limit = plan.prompt_count
     else:
         plan = None
-    collectors = _collectors(args.mode)
+    base_collectors = _collectors(args.mode)
+    fidelity_collectors = _fidelity_fixture_collectors(args.mode) if args.include_browser_fidelity_fixture else ()
+    collectors = base_collectors + fidelity_collectors
     planned_runs = (
         plan.planned_runs
         if plan is not None

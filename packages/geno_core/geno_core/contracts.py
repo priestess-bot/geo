@@ -131,4 +131,5 @@ class ReportExporter(Protocol):
         exported_by: str = "system",
         google_spike_gate: GoogleSpikeGateResult | Mapping[str, object] | None = None,
         score_input_policy: Mapping[str, object] | None = None,
+        fidelity_records: tuple[RawEvidenceRecord, ...] | None = None,
     ) -> EvidenceReport: ...

@@ -7,7 +7,7 @@ from geno_core.action_plan import (
     build_retest_comparison_audit_event,
     compare_retest_windows,
 )
-from geno_core.analysis_pipeline import analyze_and_score_records, build_score_input_policy
+from geno_core.analysis_pipeline import analyze_and_score_records, build_score_input_policy, select_score_input_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
     build_collection_run_audit_event,
@@ -20,6 +20,7 @@ from geno_core.collection import (
     run_fixture_collection_slice,
 )
 from geno_core.collectors import (
+    FixtureChatGPTSearchBrowserCollector,
     FixtureGoogleAIModeCollector,
     FixtureGoogleAIOCollector,
     FixtureManualBackfillCollector,
@@ -87,6 +88,7 @@ __all__ = [
     "ScoreFormulaDefinition",
     "analyze_and_score_records",
     "build_score_input_policy",
+    "select_score_input_records",
     "build_action_plan_audit_event",
     "build_action_recommendations",
     "build_au_dtc_ecommerce_profile",
@@ -117,6 +119,7 @@ __all__ = [
     "build_repository_from_env",
     "close_repository_connection",
     "connect_postgres_from_env",
+    "FixtureChatGPTSearchBrowserCollector",
     "FixtureGoogleAIModeCollector",
     "FixtureGoogleAIOCollector",
     "FixtureLLMGateway",

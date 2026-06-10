@@ -16,6 +16,8 @@ from geno_core.models import (
 from geno_core.parser import ComparativeAnswerParser
 from geno_core.scoring import score_answer_analyses
 
+FIDELITY_SAMPLE_BACKEND_IDS = frozenset({"chatgpt_search.browser.fixture"})
+
 
 @dataclass(frozen=True)
 class VisibilityAnalysisResult:
@@ -79,10 +81,21 @@ def build_score_input_policy(
         for record in records
         if record.answer_run.platform == "google" and record.answer_run.id in excluded_answer_run_id_set
     ]
+    excluded_fidelity_sample_answer_run_ids = [
+        record.answer_run.id
+        for record in records
+        if record.answer_run.collector_backend_id in FIDELITY_SAMPLE_BACKEND_IDS
+        and record.answer_run.id in excluded_answer_run_id_set
+    ]
     google_allowed = _google_main_scoring_allowed(
         google_spike_gate=google_spike_gate,
         google_spike_readiness_gate=google_spike_readiness_gate,
     )
+    exclusion_reasons: dict[str, str] = {}
+    for answer_run_id in excluded_google_answer_run_ids:
+        exclusion_reasons[answer_run_id] = "google_spike_gates_not_ready"
+    for answer_run_id in excluded_fidelity_sample_answer_run_ids:
+        exclusion_reasons[answer_run_id] = "api_browser_fidelity_sample_only"
     return {
         "policy_version": "score_input_scope_v1",
         "google_main_scoring_allowed": google_allowed,
@@ -90,20 +103,43 @@ def build_score_input_policy(
         "google_limited_coverage": bool((gate or {}).get("limited_coverage", True)),
         "google_readiness_gate_status": str((readiness_gate or {}).get("gate_status") or "not_run"),
         "google_collection_paths_ready": str((readiness_gate or {}).get("gate_status") or "") == "pass",
+        "fidelity_sample_backend_ids": sorted(FIDELITY_SAMPLE_BACKEND_IDS),
         "all_record_count": len(records),
         "score_input_record_count": len(score_input_records),
         "excluded_record_count": len(excluded_answer_run_ids),
         "excluded_google_record_count": len(excluded_google_answer_run_ids),
+        "excluded_fidelity_sample_record_count": len(excluded_fidelity_sample_answer_run_ids),
         "all_answer_run_ids": all_answer_run_ids,
         "score_input_answer_run_ids": score_input_answer_run_ids,
         "excluded_answer_run_ids": excluded_answer_run_ids,
         "excluded_google_answer_run_ids": excluded_google_answer_run_ids,
+        "excluded_fidelity_sample_answer_run_ids": excluded_fidelity_sample_answer_run_ids,
+        "exclusion_reasons_by_answer_run_id": exclusion_reasons,
         "reason": (
-            "Google answer runs excluded from the main scoring denominator until both Google spike gates pass"
+            "Non-scoring evidence is retained for audit/method disclosure but excluded from the main scoring denominator"
             if excluded_google_answer_run_ids
+            or excluded_fidelity_sample_answer_run_ids
             else "All parsed answer runs are eligible for the main scoring denominator"
         ),
     }
+
+
+def select_score_input_records(
+    *,
+    records: tuple[RawEvidenceRecord, ...],
+    google_spike_gate: Mapping[str, object] | object | None,
+    google_spike_readiness_gate: Mapping[str, object] | object | None,
+) -> tuple[RawEvidenceRecord, ...]:
+    google_allowed = _google_main_scoring_allowed(
+        google_spike_gate=google_spike_gate,
+        google_spike_readiness_gate=google_spike_readiness_gate,
+    )
+    return tuple(
+        record
+        for record in records
+        if record.answer_run.collector_backend_id not in FIDELITY_SAMPLE_BACKEND_IDS
+        and (record.answer_run.platform != "google" or google_allowed)
+    )
 
 
 def analyze_and_score_records(
@@ -135,14 +171,18 @@ def analyze_and_score_records(
         for record in records
     )
     analyses = tuple(analysis for _, analysis in record_analysis_pairs)
-    google_allowed = _google_main_scoring_allowed(
-        google_spike_gate=google_spike_gate,
-        google_spike_readiness_gate=google_spike_readiness_gate,
-    )
+    score_input_record_ids = {
+        record.answer_run.id
+        for record in select_score_input_records(
+            records=records,
+            google_spike_gate=google_spike_gate,
+            google_spike_readiness_gate=google_spike_readiness_gate,
+        )
+    }
     score_input_pairs = tuple(
         (record, analysis)
         for record, analysis in record_analysis_pairs
-        if record.answer_run.platform != "google" or google_allowed
+        if record.answer_run.id in score_input_record_ids
     )
     if not score_input_pairs:
         raise ValueError("At least one non-limited-coverage AnswerAnalysis is required for main scoring")

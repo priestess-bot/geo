@@ -173,6 +173,18 @@ class FixtureOpenAIWebSearchCollector(FixtureAICollector):
         )
 
 
+class FixtureChatGPTSearchBrowserCollector(FixtureAICollector):
+    def __init__(self) -> None:
+        super().__init__(
+            backend_id="chatgpt_search.browser.fixture",
+            platform="chatgpt",
+            surface="chatgpt_search",
+            access_method="browser",
+            model_or_surface="chatgpt-search-browser-fixture",
+            vendor_cost=0.004,
+        )
+
+
 class FixtureGoogleAIOCollector(FixtureAICollector):
     def __init__(self) -> None:
         super().__init__(

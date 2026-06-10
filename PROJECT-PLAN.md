@@ -155,7 +155,7 @@ DoD：
 - `[x]` (P0a) GeoProvider 抽象 + 城市采样（Australia/Sydney/Melbourne/Brisbane）— `Step6 / §8.4`
 - `[x]` (P0a) 截图/HTML 快照 + `raw_payload_hash` — `E3-05`
 - `[~]` (P0a) CollectionCost、CollectionRunSummary 与 P0ACollectionReadinessGate 记录（从首个采集器起），输出 planned/attempted/success/failure、成功率、触发率、回答率、失败摘要、单位成本、平均耗时和 P0a 采集门禁 pass/fail/reasons — `§8.15`
-- `[~]` (P0c/P1) 保真度抽检：同批 prompt 跑 官方 API vs 浏览器 两后端，量化差异率并入报告 — `Step4`（`api_browser_fidelity_checks` 表、runtime GET/POST API、worker `--persist-analysis` 自动生成、报告 Method Disclosure 复用、Runtime Console 展示 status/mismatch/difference/payload hash 和 `api_browser_fidelity_checked` 审计事件已落；真实 browser collector 后端和定期抽检调度待接）
+- `[~]` (P0c/P1) 保真度抽检：同批 prompt 跑 官方 API vs 浏览器 两后端，量化差异率并入报告 — `Step4`（`api_browser_fidelity_checks` 表、runtime GET/POST API、worker `--persist-analysis` 自动生成、报告 Method Disclosure 复用、Runtime Console 展示 status/mismatch/difference/payload hash 和 `api_browser_fidelity_checked` 审计事件已落；`--include-browser-fidelity-fixture` 已可生成同 prompt/city 的 official_api + browser fixture 配对样本并得到 `sampled`，browser fidelity samples 通过 `score_input_policy` 排除出主评分分母；真实 browser collector 后端和定期抽检调度待接）
 - `[~]` (P1) 定时采集（Temporal）/复杂失败重试/限流/人工补录工作台 — `E3-03/06/07/08`（worker CLI 与 `--persist` 已落；Runtime Console 已有最小人工补录表单；复杂调度/限流/批量文件补录待接）
 
 DoD：
@@ -289,7 +289,7 @@ DoD：
 
 | 风险 | 何时处理 | 缓解动作 | 出口判据 |
 | --- | --- | --- | --- |
-| 采集保真度：API ≠ 消费者界面 | M2a 起，M5 披露 | 接口化采集；官方 API 默认交付，浏览器抽检放入 P0c/P1 | `api_browser_fidelity_checks` 已作为独立运行时对象落库，冻结 status、official_api/browser 记录数、comparable pairs、mismatch count、difference rate、payload hash 和 `api_browser_fidelity_checked` 审计事件；报告 Method Disclosure 与 Runtime Console 已展示该对象；真实浏览器后端、定期抽检调度和 sampled 数据待接 |
+| 采集保真度：API ≠ 消费者界面 | M2a 起，M5 披露 | 接口化采集；官方 API 默认交付，浏览器抽检放入 P0c/P1 | `api_browser_fidelity_checks` 已作为独立运行时对象落库，冻结 status、official_api/browser 记录数、comparable pairs、mismatch count、difference rate、payload hash 和 `api_browser_fidelity_checked` 审计事件；报告 Method Disclosure 与 Runtime Console 已展示该对象；`--include-browser-fidelity-fixture` 已可生成 paired fixture sampled 数据，且 browser fidelity samples 不进入主评分分母；真实浏览器后端和定期抽检调度待接 |
 | Google AIO / AI Mode 选择性触发与采集脆弱 | M2b（spike） | 拆 AIO/AI Mode 两后端；建模 answer_present；自建/第三方/人工补录限时对比 | pass/fail gate、两路径 readiness gate、limited coverage 与 `score_input_policy` 已进入评分审计和报告 Method Disclosure；真实 Google gate 待跑 |
 | AI 非确定性导致评分噪声 | M2a–M3 | P0a k=3；Google spike k=2 单独标注；报告展示离散度；parser A/B agreement 进入评分解释 | 同 prompt 多次采样 + 置信展示 + parser agreement |
 | 架构可插拔是否为真 | M0 起持续 | 接口先行；P0a 先完成接口级可插拔，深度切换演示排到 P0c/P1 | P0a Collector/Parser/Scoring/Report 已有 runtime-checkable Protocol、`NotConfigured*` stubs 和工作实现合约测试；parser rule + judge fixture 已可并行；ScoringFormula registry、候选公式、旧版本重算和 worker 公式参数已落；pgvector runtime knowledge search 已落；Qdrant/Milvus、图库和真实 LLM provider 切换演示待接 |

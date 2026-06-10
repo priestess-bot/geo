@@ -68,9 +68,11 @@ The worker then stores `VisibilityScoreSnapshot`, `ScoreContribution`,
 `ScoreSnapshotRun`, and the score audit event. It also builds and stores the M4 citation graph, source graph evidence,
 source gaps, competitor benchmarks, and the M5 `ReportExport` snapshot. After the report is saved,
 it freezes the current API-vs-browser fidelity payload into `api_browser_fidelity_checks` and writes
-an `api_browser_fidelity_checked` audit event. The fixture path currently contains official API
-samples only, so the check truthfully records `not_run` until a browser collector provides comparable
-samples. The worker then stores the M6 `ActionRecommendation`, `RetestSchedule`, `RetestComparison`,
+an `api_browser_fidelity_checked` audit event. The default fixture path contains official API
+samples only, so the check truthfully records `not_run`; adding `--include-browser-fidelity-fixture`
+also collects `chatgpt_search.browser.fixture` on the same prompt/city, records `sampled`, and keeps
+those browser runs out of `VisibilityScoreSnapshot.answer_run_ids` through `score_input_policy`.
+The worker then stores the M6 `ActionRecommendation`, `RetestSchedule`, `RetestComparison`,
 action plan audit event, and retest comparison audit event. It then persists the M7
 `LocalizedKnowledgeFact`, upserts
 `KnowledgeFactEmbedding` rows into pgvector through `knowledge_fact_embeddings`, persists
@@ -92,6 +94,16 @@ PYTHONPATH=packages/geno_core:apps/api \
 python3 workers/collector_worker/run_collection_slice.py \
   --mode fixture --prompt-limit 1 --persist --persist-analysis \
   --score-formula-version au_visibility_v1_1_local_boost
+```
+
+Fixture API-vs-browser fidelity sample:
+
+```bash
+DATABASE_URL=postgresql://geno:geno@localhost:5432/geno \
+PYTHONPATH=packages/geno_core:apps/api \
+python3 workers/collector_worker/run_collection_slice.py \
+  --mode fixture --prompt-limit 1 --cities Sydney \
+  --include-browser-fidelity-fixture --persist --persist-analysis
 ```
 
 API adapter slice:
@@ -125,7 +137,9 @@ implementations.
 When `--persist-analysis` creates a report from the stable fixture path, the report Method Disclosure
 is frozen into `report_exports.method_disclosure`, records Google as limited coverage until a Google
 spike gate is available, and records the current API-vs-browser fidelity status plus access-method
-distribution. The same fidelity status is also available as a standalone runtime object through
+distribution. With `--include-browser-fidelity-fixture`, Method Disclosure uses the paired official
+API + browser sample for fidelity, while the report evidence appendix and score denominator remain
+restricted to `score_input_records`. The same fidelity status is also available as a standalone runtime object through
 `GET /v1/fidelity-checks/runtime` and can be regenerated for a report with
 `POST /v1/fidelity-checks/runtime`.
 

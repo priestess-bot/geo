@@ -175,6 +175,35 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(analysis["score_input_policy"]["excluded_google_record_count"], 240)
         self.assertFalse(analysis["score_input_policy"]["google_main_scoring_allowed"])
 
+    def test_fixture_persist_analysis_samples_browser_fidelity_without_scoring_browser_runs(self) -> None:
+        repository = FakeWorkerRepository()
+        payload = self._run_worker_in_process(
+            "--mode",
+            "fixture",
+            "--prompt-limit",
+            "1",
+            "--cities",
+            "Sydney",
+            "--include-browser-fidelity-fixture",
+            "--persist",
+            "--persist-analysis",
+            repository=repository,
+        )
+        self.assertEqual(payload["record_count"], 3)
+        self.assertEqual(payload["success_count"], 3)
+        self.assertEqual(repository.saved_raw_evidence_records, 3)
+        self.assertEqual(repository.saved_score_snapshots, 1)
+        self.assertEqual(repository.saved_reports, 1)
+        analysis = payload["persistence"]["analysis"]
+        self.assertEqual(analysis["analysis_count"], 3)
+        self.assertEqual(analysis["score_input_record_count"], 2)
+        self.assertEqual(analysis["score_input_policy"]["excluded_fidelity_sample_record_count"], 1)
+        self.assertEqual(analysis["fidelity_check_status"], "sampled")
+        self.assertEqual(analysis["fidelity_difference_rate"], 0.0)
+        self.assertEqual(repository.saved_fidelity_check["status"], "sampled")
+        self.assertEqual(repository.saved_fidelity_check["official_api_records"], 2)
+        self.assertEqual(repository.saved_fidelity_check["browser_records"], 1)
+
     def test_persist_without_database_url_fails_loudly(self) -> None:
         result = self._run_worker_result(
             "--mode",

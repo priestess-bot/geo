@@ -433,7 +433,7 @@ fail_gate:
 
 两个采集保真度问题必须在后端处理：
 
-- **API ≠ 消费者界面**：官方 API（如 ChatGPT web search、Perplexity Sonar）便于稳定采集，但其答案组装、模型版本、引用与个性化不保证与消费者界面一致。默认走 API 是"用稳定性换保真度"的有意取舍，必须配一个**抽检环节**：定期对同一批 prompt 用官方 API 后端与浏览器后端各采一次，量化差异率并在报告方法说明里披露。`access_method` 字段全程记录，便于区分。工程上已经把该环节落为独立 `ApiBrowserFidelityCheck`：对同一 `prompt_question_id + city` 的 `official_api` 与 `browser` run 做可比较配对，冻结 status、样本数、mismatch count、difference rate、payload hash，并写入 `api_browser_fidelity_checked` 审计事件；真实浏览器 collector 未接入前必须如实显示 `not_run/no_overlap`，不能用 API 结果冒充消费者界面。
+- **API ≠ 消费者界面**：官方 API（如 ChatGPT web search、Perplexity Sonar）便于稳定采集，但其答案组装、模型版本、引用与个性化不保证与消费者界面一致。默认走 API 是"用稳定性换保真度"的有意取舍，必须配一个**抽检环节**：定期对同一批 prompt 用官方 API 后端与浏览器后端各采一次，量化差异率并在报告方法说明里披露。`access_method` 字段全程记录，便于区分。工程上已经把该环节落为独立 `ApiBrowserFidelityCheck`：对同一 `prompt_question_id + city` 的 `official_api` 与 `browser` run 做可比较配对，冻结 status、样本数、mismatch count、difference rate、payload hash，并写入 `api_browser_fidelity_checked` 审计事件；worker 的 `--include-browser-fidelity-fixture` 可先用 `chatgpt_search.browser.fixture` 生成 paired sampled 数据，且这些 browser fidelity samples 通过 `score_input_policy.excluded_fidelity_sample_answer_run_ids` 排除出主评分分母。真实浏览器 collector 未接入前，未启用 paired fixture 的批次必须如实显示 `not_run/no_overlap`，不能用 API 结果冒充消费者界面。
 - **AIO 选择性触发**：Google AI Overviews 不是每个 query 都出现。后端必须如实返回 `answer_present / surface_triggered`，把"AIO 没触发"与"触发了但没提品牌"区分开（影响 Step 9 的分母口径）。
 
 采集服务要求：
@@ -1541,7 +1541,7 @@ checked_at
 - 只比较同一 `prompt_question_id + city` 下的 `official_api` 与 `browser` access method；没有 browser 样本时状态为 `not_run`，两类样本没有交集时状态为 `no_overlap`。
 - `payload_hash` 冻结比较口径；Runtime Console 和报告方法说明展示 status、official/browser 记录数、comparable pairs、mismatch count、difference rate 和 hash。
 - 每次生成或重跑 check 追加 `api_browser_fidelity_checked` 审计事件，记录输入 report/answer_run ids、输出 check id、方法版本和 actor。
-- P0c 可先由 worker 在 `--persist-analysis` 后自动生成；P1 再接 browser collector、抽样调度和定期差异趋势。
+- P0c 可先由 worker 在 `--persist-analysis` 后自动生成；启用 `--include-browser-fidelity-fixture` 时，报告 Method Disclosure 的 fidelity payload 使用全量 official_api + browser 抽检样本，但报告证据附录、score rate denominators 和 `VisibilityScoreSnapshot.answer_run_ids` 仍只使用 `score_input_records`；P1 再接真实 browser collector、抽样调度和定期差异趋势。
 
 ### 8.16 AuditEvent（审计事件，新增）
 
@@ -1647,6 +1647,7 @@ ReportEvidence
 - **P0b Google spike**：可完成 Google AIO / AI Mode 的限时采集验证，输出 pass/fail gate、触发率、失败原因、成本/耗时估算和样本证据。
 - `GoogleSpikeReadinessGate` 必须在 worker/API 合同中可见，明确区分“Google 是否可进主评分分母”和“P0b 是否完成两路径对照”。
 - `score_input_policy` 必须冻结在评分审计和 Report Method Disclosure 中，列出 all/score-input/excluded answer_run_ids，证明未过双 gate 的 Google 证据没有进入主评分分母。
+- API-vs-browser fidelity samples 必须同样经过 `score_input_policy` 排除出主评分分母，只作为保真度抽检、方法披露和审计证据；报告分母不能因 browser 抽检样本膨胀。
 - **每个平台的采集后端可插拔**：P0a 至少两个官方 API 后端可工作；P0b 至少对比自建浏览器、第三方 SERP API、人工补录中的两条路径；新增后端不改业务代码。
 - 每条采集结果有 answer、citation、screenshot 或 HTML 快照。
 - 每条采集结果记录平台、surface、access_method、城市、语言、设备、采集时间、collector_version 和 collector_backend_id。

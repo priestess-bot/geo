@@ -124,5 +124,6 @@ class NotConfiguredReportExporter:
         exported_by: str = "system",
         google_spike_gate: GoogleSpikeGateResult | Mapping[str, object] | None = None,
         score_input_policy: Mapping[str, object] | None = None,
+        fidelity_records: tuple[RawEvidenceRecord, ...] | None = None,
     ) -> EvidenceReport:
         raise NotImplementedError("ReportExporter is not configured; choose a report exporter implementation.")

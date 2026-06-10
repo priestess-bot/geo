@@ -79,6 +79,7 @@ class MarkdownCsvReportExporter:
         exported_by: str = "system",
         google_spike_gate: GoogleSpikeGateResult | Mapping[str, object] | None = None,
         score_input_policy: Mapping[str, object] | None = None,
+        fidelity_records: tuple[RawEvidenceRecord, ...] | None = None,
     ) -> EvidenceReport:
         if not records:
             raise ValueError("Evidence report requires at least one raw evidence record")
@@ -87,6 +88,7 @@ class MarkdownCsvReportExporter:
         answer_run_ids = tuple(record.answer_run.id for record in records)
         method_disclosure = build_report_methodology_disclosure(
             rows=_methodology_rows_from_records(records),
+            fidelity_rows=_methodology_rows_from_records(fidelity_records or records),
             platform_weights_snapshot=platform_weights_snapshot,
             google_spike_gate=google_spike_gate,
             score_input_policy=score_input_policy,
@@ -372,6 +374,7 @@ def build_api_browser_fidelity_payload(rows: tuple[dict[str, Any], ...]) -> dict
 def build_report_methodology_disclosure(
     *,
     rows: tuple[dict[str, Any], ...],
+    fidelity_rows: tuple[dict[str, Any], ...] | None = None,
     platform_weights_snapshot: dict[str, float],
     google_spike_gate: GoogleSpikeGateResult | Mapping[str, object] | None = None,
     score_input_policy: Mapping[str, object] | None = None,
@@ -380,7 +383,7 @@ def build_report_methodology_disclosure(
     platform_distribution = dict(sorted(Counter(str(row.get("platform") or "unknown") for row in rows).items()))
     gate_payload = _gate_payload(google_spike_gate, rows)
     score_policy = dict(score_input_policy or {})
-    fidelity_payload = build_api_browser_fidelity_payload(rows)
+    fidelity_payload = build_api_browser_fidelity_payload(fidelity_rows or rows)
     score_policy_allows_google = bool(score_policy.get("google_main_scoring_allowed", False))
     google_coverage = (
         "main_scoring_allowed"

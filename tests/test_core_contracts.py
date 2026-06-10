@@ -27,6 +27,7 @@ from geno_core.collection import (
 )
 from geno_core.contracts import CollectorBackend, ParserEngine, ReportExporter, ScoringFormula
 from geno_core.collectors import (
+    FixtureChatGPTSearchBrowserCollector,
     FixtureGoogleAIModeCollector,
     FixtureGoogleAIOCollector,
     FixtureOpenAIWebSearchCollector,
@@ -1112,6 +1113,54 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(allowed_result.score_input_policy["excluded_google_record_count"], 0)
         self.assertEqual(len(allowed_result.score_input_analyses), len(stable_records) + len(multi_path_google_records))
 
+    def test_m3_score_input_policy_excludes_browser_fidelity_samples_from_main_score(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(
+                FixturePerplexitySonarCollector(),
+                FixtureOpenAIWebSearchCollector(),
+                FixtureChatGPTSearchBrowserCollector(),
+            ),
+            cities=("Sydney",),
+            sample_size=1,
+            prompt_limit=1,
+        )
+
+        result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+        )
+
+        browser_records = tuple(record for record in records if record.answer_run.access_method == "browser")
+        self.assertEqual(len(records), 3)
+        self.assertEqual(len(browser_records), 1)
+        self.assertEqual(len(result.analyses), 3)
+        self.assertEqual(len(result.score_input_records), 2)
+        self.assertNotIn(browser_records[0].answer_run.id, result.snapshot.answer_run_ids)
+        self.assertEqual(result.score_input_policy["excluded_fidelity_sample_record_count"], 1)
+        self.assertEqual(
+            result.score_input_policy["excluded_fidelity_sample_answer_run_ids"],
+            [browser_records[0].answer_run.id],
+        )
+        self.assertEqual(
+            result.score_input_policy["exclusion_reasons_by_answer_run_id"][browser_records[0].answer_run.id],
+            "api_browser_fidelity_sample_only",
+        )
+        self.assertIn(
+            browser_records[0].answer_run.id,
+            result.audit_event.input_refs["excluded_fidelity_sample_answer_run_ids"],
+        )
+
     def test_m3_analysis_pipeline_scores_alias_only_mentions(self) -> None:
         bootstrap = build_au_project_bootstrap(
             target_brand="Koala",
@@ -1273,6 +1322,73 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(report.audit_event.event_type, "report_export_created")
         self.assertEqual(report.audit_event.output_refs["report_export_ids"], [report.report_export.id])
         self.assertEqual(report.report_evidence_answer_run_ids, report.report_export.answer_run_ids)
+
+    def test_m5_report_method_disclosure_can_use_fidelity_records_without_changing_report_denominator(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        all_records = run_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(
+                FixturePerplexitySonarCollector(),
+                FixtureOpenAIWebSearchCollector(),
+                FixtureChatGPTSearchBrowserCollector(),
+            ),
+            cities=("Sydney",),
+            sample_size=1,
+            prompt_limit=1,
+        )
+        analysis_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=all_records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+        )
+        graph = build_citation_graph(
+            project_id=bootstrap.project.id,
+            records=analysis_result.score_input_records,
+            analyses=analysis_result.score_input_analyses,
+            competitors=bootstrap.competitors,
+            industry_profile=bootstrap.industry_profile,
+        )
+        report = MarkdownCsvReportExporter().export(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            report_version="p0a-fidelity-fixture-v1",
+            report_type="design_partner_fixture",
+            prompt_version=bootstrap.project.prompt_version,
+            snapshot=analysis_result.snapshot,
+            contributions=analysis_result.contributions,
+            records=analysis_result.score_input_records,
+            graph=graph,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+            score_input_policy=analysis_result.score_input_policy,
+            fidelity_records=all_records,
+        )
+
+        self.assertEqual(report.report_export.sample_size, 2)
+        self.assertEqual(len(report.report_export.answer_run_ids), 2)
+        self.assertEqual(
+            report.report_export.method_disclosure["score_rate_denominators"]["evidence_denominators"][
+                "attempted_records"
+            ],
+            2,
+        )
+        fidelity = report.report_export.method_disclosure["api_browser_fidelity"]
+        self.assertEqual(fidelity["status"], "sampled")
+        self.assertEqual(fidelity["official_api_records"], 2)
+        self.assertEqual(fidelity["browser_records"], 1)
+        self.assertEqual(fidelity["comparable_prompt_city_pairs"], 1)
+        self.assertEqual(fidelity["difference_rate"], 0.0)
+        self.assertIn("API-vs-browser fidelity: sampled", report.markdown)
+        self.assertIn("Official API records: 2", report.markdown)
+        self.assertIn("Browser records: 1", report.markdown)
+        self.assertIn("Report evidence attempted records: 2", report.markdown)
 
     def test_report_artifacts_archive_to_s3_compatible_store(self) -> None:
         bootstrap = build_au_project_bootstrap(
