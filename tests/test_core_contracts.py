@@ -60,6 +60,8 @@ from geno_core.models import (
     RuntimeCitationGraphPage,
     RuntimeProjectBrandKit,
     RuntimeProjectBrandKitInput,
+    RuntimePromptImportInput,
+    RuntimePromptImportResult,
     RuntimeActionPlanPage,
     RuntimeContentEnginePage,
     RuntimeScoreSnapshotPage,
@@ -1380,6 +1382,81 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM prompt_questions WHERE project_id = %s", executed_sql)
         self.assertIn("intent_type = %s", executed_sql)
         self.assertIn("ORDER BY priority ASC, id ASC", executed_sql)
+
+    def test_postgres_repository_imports_runtime_prompts_csv_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        prompt_id = "c5070b70-1c9b-55a1-aad1-457ed04b9707"
+        audit_id = "f858da95-fb57-4086-9fa2-eac9e13c0d19"
+        imported_prompt_row = {
+            "id": prompt_id,
+            "project_id": project_id,
+            "market_code": "AU",
+            "industry_code": "dtc_ecommerce",
+            "text": "Is ExampleBrand visible in Sydney AI recommendations?",
+            "intent_type": "brand_awareness",
+            "city": "Sydney",
+            "language": "en-AU",
+            "target_brand": "ExampleBrand",
+            "competitors": ["Emma Sleep", "Sleeping Duck", "Ecosa"],
+            "priority": 1,
+            "intent_weight": 0.9,
+            "prompt_version": "au_dtc_ecommerce_v1_imported",
+            "status": "active",
+        }
+        audit_row = {
+            "id": audit_id,
+            "event_type": "runtime_prompts_imported",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "prompt_import",
+            "target_id": "prompt-import-1",
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {"csv_sha256": ["hash"]},
+            "output_refs": {"prompt_question_ids": [prompt_id]},
+            "method_version": "runtime_prompt_import_csv_v1",
+            "reason": "import runtime prompts from csv",
+            "created_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                {
+                    "id": project_id,
+                    "market_code": "AU",
+                    "industry_code": "dtc_ecommerce",
+                    "target_brand": "ExampleBrand",
+                    "prompt_version": "au_dtc_ecommerce_v1",
+                },
+                [
+                    {"canonical_name": "Emma Sleep"},
+                    {"canonical_name": "Sleeping Duck"},
+                    {"canonical_name": "Ecosa"},
+                ],
+                imported_prompt_row,
+                [audit_row],
+            ]
+        )
+        result = PostgresEvidenceRepository(connection).import_runtime_prompts_csv(
+            RuntimePromptImportInput(
+                project_id=project_id,
+                csv_content=(
+                    "text,intent_type,city,priority,intent_weight,prompt_version\n"
+                    "Is ExampleBrand visible in Sydney AI recommendations?,brand_awareness,Sydney,1,0.9,au_dtc_ecommerce_v1_imported\n"
+                ),
+                imported_by="runtime-console",
+            )
+        )
+        self.assertIsInstance(result, RuntimePromptImportResult)
+        self.assertEqual(result.prompt_import["prompt_count"], 1)
+        self.assertEqual(result.prompts[0]["text"], "Is ExampleBrand visible in Sydney AI recommendations?")
+        self.assertEqual(result.audit_events[0]["event_type"], "runtime_prompts_imported")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO prompt_questions", executed_sql)
+        self.assertIn("ON CONFLICT (id) DO UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
 
     def test_runtime_repository_requires_database_url(self) -> None:
         with self.assertRaises(RuntimePersistenceError):

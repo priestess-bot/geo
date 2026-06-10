@@ -639,6 +639,34 @@ async function submitManualBackfill(formData: FormData) {
   revalidatePath("/");
 }
 
+async function importRuntimePromptsCsv(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const csvContent = String(formData.get("csv_content") || "").trim();
+  if (!projectId || !csvContent) {
+    throw new Error("project_id and csv_content are required to import prompts");
+  }
+  const response = await fetch(`${baseUrl}/v1/prompts/runtime/import.csv`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      project_id: projectId,
+      csv_content: csvContent,
+      imported_by: "runtime-console",
+      max_rows: 100
+    }),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/prompts/runtime/import.csv returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
 async function confirmEntityAlias(formData: FormData) {
   "use server";
   const baseUrl =
@@ -1516,6 +1544,28 @@ export default async function Home({
                   </li>
                 ))}
               </ul>
+              <form action={importRuntimePromptsCsv} className="promptImportForm">
+                <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+                <div className="formHeader">
+                  <h3>Prompt CSV Import</h3>
+                  <small>text,intent_type,city,priority,intent_weight</small>
+                </div>
+                <label className="wideField">
+                  <span>CSV rows</span>
+                  <textarea
+                    name="csv_content"
+                    defaultValue={
+                      "text,intent_type,city,priority,intent_weight\n" +
+                      `"Is ${latestProject?.project.target_brand || "ExampleBrand"} visible in Sydney AI recommendations?",brand_awareness,Sydney,1,0.9\n` +
+                      `"Best ${latestProject?.project.category || "DTC ecommerce products"} for Melbourne shoppers",category_recommendation,Melbourne,2,1.0`
+                    }
+                    rows={5}
+                  />
+                </label>
+                <button className="actionButton" type="submit" disabled={!selectedProjectId}>
+                  Import prompts
+                </button>
+              </form>
               <form action={submitManualBackfill} className="manualBackfillForm">
                 <input type="hidden" name="prompt_question_id" value={latestPrompt?.id || ""} />
                 <div className="formHeader">

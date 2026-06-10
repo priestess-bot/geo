@@ -6,7 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from geno_api.main import app
-from geno_core.models import RuntimeProjectBrandKit, RuntimeProjectPage, RuntimeReportArtifact
+from geno_core.models import RuntimeProjectBrandKit, RuntimePromptImportResult, RuntimeProjectPage, RuntimeReportArtifact
 
 
 class ApiContractsTest(unittest.TestCase):
@@ -142,6 +142,65 @@ class ApiContractsTest(unittest.TestCase):
         response = self.client.get("/v1/prompts/runtime")
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_prompt_import_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.post(
+            "/v1/prompts/runtime/import.csv",
+            json={
+                "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                "csv_content": "text,intent_type\nIs ExampleBrand visible?,brand_awareness\n",
+            },
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_prompt_import_endpoint_passes_csv_payload(self) -> None:
+        class FakeRepository:
+            def import_runtime_prompts_csv(self, prompt_import: object) -> RuntimePromptImportResult:
+                self.prompt_import = prompt_import
+                return RuntimePromptImportResult(
+                    prompt_import={
+                        "project_id": prompt_import.project_id,
+                        "prompt_count": 1,
+                        "prompt_ids": ["prompt-1"],
+                        "prompt_version": "au_dtc_ecommerce_v1_imported",
+                    },
+                    prompts=(
+                        {
+                            "id": "prompt-1",
+                            "project_id": prompt_import.project_id,
+                            "text": "Is ExampleBrand visible?",
+                            "intent_type": "brand_awareness",
+                        },
+                    ),
+                    audit_events=(
+                        {
+                            "event_type": "runtime_prompts_imported",
+                            "target_type": "prompt_import",
+                            "method_version": "runtime_prompt_import_csv_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/prompts/runtime/import.csv",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "csv_content": "text,intent_type\nIs ExampleBrand visible?,brand_awareness\n",
+                    "imported_by": "runtime-console",
+                    "max_rows": 100,
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["prompt_import"]["prompt_count"], 1)
+        self.assertEqual(payload["audit_events"][0]["event_type"], "runtime_prompts_imported")
+        self.assertEqual(fake_repository.prompt_import.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertIn("Is ExampleBrand visible?", fake_repository.prompt_import.csv_content)
 
     def test_runtime_evidence_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/evidence-runs/runtime")
@@ -546,6 +605,9 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeProjectBrandKitInput", payload["persistence"])
         self.assertIn("ProjectBrandKitRequest", payload["persistence"])
         self.assertIn("RuntimePromptPage", payload["persistence"])
+        self.assertIn("RuntimePromptImportInput", payload["persistence"])
+        self.assertIn("RuntimePromptImportResult", payload["persistence"])
+        self.assertIn("RuntimePromptImportRequest", payload["persistence"])
         self.assertIn("RuntimeScoreSnapshot", payload["persistence"])
         self.assertIn("RuntimeCitationGraph", payload["persistence"])
         self.assertIn("RuntimeReportArtifact", payload["persistence"])
@@ -560,6 +622,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/entity-aliases/runtime/candidates", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/confirm", payload["persistence"])
         self.assertIn("/v1/prompts/runtime", payload["persistence"])
+        self.assertIn("/v1/prompts/runtime/import.csv", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime/manual-backfill", payload["persistence"])

@@ -46,6 +46,8 @@ from geno_core.models import (
     RuntimeProjectBrandKitInput,
     RuntimeProject,
     RuntimeProjectPage,
+    RuntimePromptImportInput,
+    RuntimePromptImportResult,
     RuntimePromptPage,
     RuntimeReportArtifact,
     RuntimeReportExport,
@@ -197,6 +199,106 @@ def _append_alias_candidate(
 def _artifact_hash(content: str | bytes) -> str:
     payload = content.encode("utf-8") if isinstance(content, str) else content
     return hashlib.sha256(payload).hexdigest()
+
+
+def _parse_prompt_import_csv(
+    *,
+    project_id: str,
+    csv_content: str,
+    max_rows: int,
+) -> tuple[dict[str, Any], ...]:
+    content = csv_content.strip()
+    if not content:
+        raise ValueError("csv_content is required")
+    reader = csv.DictReader(StringIO(content))
+    if not reader.fieldnames:
+        raise ValueError("csv header is required")
+    fieldnames = {field.strip() for field in reader.fieldnames if field}
+    missing = sorted({"text", "intent_type"} - fieldnames)
+    if missing:
+        raise ValueError(f"csv missing required columns: {', '.join(missing)}")
+    prompts: list[dict[str, Any]] = []
+    seen_texts: set[str] = set()
+    for row_index, row in enumerate(reader, start=1):
+        if row_index > max_rows:
+            raise ValueError(f"csv row count exceeds max_rows={max_rows}")
+        prompt = {str(key).strip(): (value.strip() if isinstance(value, str) else value) for key, value in row.items() if key}
+        text = str(prompt.get("text") or "").strip()
+        intent_type = str(prompt.get("intent_type") or "").strip()
+        if not text:
+            raise ValueError(f"row {row_index} text is required")
+        if not intent_type:
+            raise ValueError(f"row {row_index} intent_type is required")
+        normalized_key = text.lower()
+        if normalized_key in seen_texts:
+            raise ValueError(f"row {row_index} duplicates prompt text")
+        seen_texts.add(normalized_key)
+        prompt["project_id"] = project_id
+        prompt["text"] = text
+        prompt["intent_type"] = intent_type
+        prompts.append(prompt)
+    if not prompts:
+        raise ValueError("csv must contain at least one prompt row")
+    return tuple(prompts)
+
+
+def _normalize_import_prompt(
+    *,
+    prompt: dict[str, Any],
+    project: dict[str, Any],
+    default_competitors: tuple[str, ...],
+) -> dict[str, Any]:
+    def text_value(key: str, default: str) -> str:
+        value = str(prompt.get(key) or "").strip()
+        return value or default
+
+    def int_value(key: str, default: int) -> int:
+        raw = str(prompt.get(key) or "").strip()
+        if not raw:
+            return default
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise ValueError(f"{key} must be an integer") from exc
+        if value < 0:
+            raise ValueError(f"{key} must be >= 0")
+        return value
+
+    def float_value(key: str, default: float) -> float:
+        raw = str(prompt.get(key) or "").strip()
+        if not raw:
+            return default
+        try:
+            value = float(raw)
+        except ValueError as exc:
+            raise ValueError(f"{key} must be a number") from exc
+        if value < 0 or value > 1:
+            raise ValueError(f"{key} must be between 0 and 1")
+        return value
+
+    competitors_raw = str(prompt.get("competitors") or "").strip()
+    competitors = (
+        tuple(item.strip() for item in competitors_raw.replace("|", ";").split(";") if item.strip())
+        if competitors_raw
+        else default_competitors
+    )
+    if len(competitors) > 5:
+        raise ValueError("competitors must contain at most 5 items")
+    return {
+        "project_id": str(project["id"]),
+        "market_code": text_value("market_code", str(project["market_code"])),
+        "industry_code": text_value("industry_code", str(project["industry_code"])),
+        "text": str(prompt["text"]),
+        "intent_type": str(prompt["intent_type"]),
+        "city": text_value("city", "Australia"),
+        "language": text_value("language", "en-AU"),
+        "target_brand": text_value("target_brand", str(project["target_brand"])),
+        "competitors": competitors,
+        "priority": int_value("priority", 0),
+        "intent_weight": float_value("intent_weight", 1.0),
+        "prompt_version": text_value("prompt_version", str(project["prompt_version"])),
+        "status": text_value("status", "active"),
+    }
 
 
 def _render_runtime_report_markdown(report: RuntimeReportExport) -> str:
@@ -1398,6 +1500,144 @@ class PostgresEvidenceRepository:
             )
             row = cursor.fetchone()
         return _row_dict(row, PROMPT_QUESTION_READ_COLUMNS) if row else None
+
+    def import_runtime_prompts_csv(self, prompt_import: RuntimePromptImportInput) -> RuntimePromptImportResult:
+        project_id = prompt_import.project_id.strip()
+        imported_by = prompt_import.imported_by.strip() or "runtime-console"
+        max_rows = max(1, min(prompt_import.max_rows, 200))
+        if not project_id:
+            raise ValueError("project_id is required")
+        prompts = _parse_prompt_import_csv(
+            project_id=project_id,
+            csv_content=prompt_import.csv_content,
+            max_rows=max_rows,
+        )
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, market_code, industry_code, target_brand, prompt_version
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            project_row = cursor.fetchone()
+            if not project_row:
+                raise ValueError("project not found")
+            project = _row_dict(project_row, ("id", "market_code", "industry_code", "target_brand", "prompt_version"))
+            cursor.execute(
+                """
+                SELECT canonical_name
+                FROM competitor_entities
+                WHERE project_id = %s
+                ORDER BY canonical_name ASC
+                """,
+                (_uuid(project_id),),
+            )
+            competitor_rows = _rows_dict(cursor.fetchall(), ("canonical_name",))
+            default_competitors = tuple(str(row["canonical_name"]) for row in competitor_rows)
+            normalized_prompts = tuple(
+                _normalize_import_prompt(
+                    prompt=prompt,
+                    project=project,
+                    default_competitors=default_competitors,
+                )
+                for prompt in prompts
+            )
+            before = {"project_id": project_id, "imported_prompt_count": 0}
+            prompt_ids: list[str] = []
+            for index, prompt in enumerate(normalized_prompts, start=1):
+                prompt_id = _stable_id("runtime-prompt-import", project_id, prompt["prompt_version"], index, prompt["text"])
+                prompt_ids.append(prompt_id)
+                cursor.execute(
+                    """
+                    INSERT INTO prompt_questions (
+                      id, project_id, market_code, industry_code, text, intent_type, city,
+                      language, target_brand, competitors, priority, intent_weight,
+                      prompt_version, status
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                      text = EXCLUDED.text,
+                      intent_type = EXCLUDED.intent_type,
+                      city = EXCLUDED.city,
+                      language = EXCLUDED.language,
+                      target_brand = EXCLUDED.target_brand,
+                      competitors = EXCLUDED.competitors,
+                      priority = EXCLUDED.priority,
+                      intent_weight = EXCLUDED.intent_weight,
+                      prompt_version = EXCLUDED.prompt_version,
+                      status = EXCLUDED.status
+                    """,
+                    (
+                        _uuid(prompt_id),
+                        _uuid(project_id),
+                        prompt["market_code"],
+                        prompt["industry_code"],
+                        prompt["text"],
+                        prompt["intent_type"],
+                        prompt["city"],
+                        prompt["language"],
+                        prompt["target_brand"],
+                        _json_payload(prompt["competitors"]),
+                        prompt["priority"],
+                        prompt["intent_weight"],
+                        prompt["prompt_version"],
+                        prompt["status"],
+                    ),
+                )
+            after = {
+                "project_id": project_id,
+                "prompt_count": len(normalized_prompts),
+                "prompt_ids": prompt_ids,
+                "prompt_version": normalized_prompts[0]["prompt_version"] if normalized_prompts else project["prompt_version"],
+            }
+            audit_event = build_audit_event(
+                event_type="runtime_prompts_imported",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=imported_by,
+                target_type="prompt_import",
+                target_id=_stable_id("prompt-import", project_id, imported_by, len(normalized_prompts)),
+                before=before,
+                after=after,
+                input_refs={"csv_sha256": [_artifact_hash(prompt_import.csv_content)]},
+                output_refs={"prompt_question_ids": prompt_ids},
+                method_version="runtime_prompt_import_csv_v1",
+                reason="import runtime prompts from csv",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            imported_rows: list[dict[str, Any]] = []
+            for prompt_id in prompt_ids:
+                cursor.execute(
+                    f"""
+                    SELECT {", ".join(PROMPT_QUESTION_READ_COLUMNS)}
+                    FROM prompt_questions
+                    WHERE id = %s
+                    LIMIT 1
+                    """,
+                    (_uuid(prompt_id),),
+                )
+                row = cursor.fetchone()
+                if row:
+                    imported_rows.append(_row_dict(row, PROMPT_QUESTION_READ_COLUMNS))
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE project_id = %s AND target_type = %s AND target_id = %s
+                ORDER BY created_at DESC
+                LIMIT 5
+                """,
+                (_uuid(project_id), "prompt_import", audit_event.target_id),
+            )
+            audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        self.connection.commit()
+        return RuntimePromptImportResult(
+            prompt_import=after,
+            prompts=tuple(imported_rows),
+            audit_events=audit_events,
+        )
 
     def list_runtime_evidence_runs(
         self,

@@ -44,7 +44,13 @@ from geno_core.knowledge import (
     search_knowledge_facts,
 )
 from geno_core.market import build_au_market_profile
-from geno_core.models import EntityAliasInput, ManualBackfillInput, RuntimeProjectBrandKitInput, RuntimeSavedViewInput
+from geno_core.models import (
+    EntityAliasInput,
+    ManualBackfillInput,
+    RuntimeProjectBrandKitInput,
+    RuntimePromptImportInput,
+    RuntimeSavedViewInput,
+)
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.runtime import RuntimePersistenceError, build_repository_from_env, close_repository_connection
@@ -73,6 +79,13 @@ class ProjectBrandKitRequest(BaseModel):
     secondary_color: str | None = Field(default=None, max_length=40)
     footer_text: str | None = Field(default=None, max_length=500)
     updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+
+
+class RuntimePromptImportRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    csv_content: str = Field(min_length=1, max_length=120000)
+    imported_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    max_rows: int = Field(default=100, ge=1, le=200)
 
 
 class ManualBackfillRequest(BaseModel):
@@ -312,6 +325,29 @@ def runtime_prompts(
             offset=offset,
         )
         return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/prompts/runtime/import.csv")
+def import_runtime_prompts_csv(payload: RuntimePromptImportRequest) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        result = repository.import_runtime_prompts_csv(
+            RuntimePromptImportInput(
+                project_id=payload.project_id.strip(),
+                csv_content=payload.csv_content,
+                imported_by=payload.imported_by.strip(),
+                max_rows=payload.max_rows,
+            )
+        )
+        return asdict(result)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     finally:
         close_repository_connection(repository)
 
@@ -1216,6 +1252,9 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeProjectBrandKitInput",
             "ProjectBrandKitRequest",
             "RuntimePromptPage",
+            "RuntimePromptImportInput",
+            "RuntimePromptImportResult",
+            "RuntimePromptImportRequest",
             "EntityAliasInput",
             "RuntimeEntityAlias",
             "RuntimeEntityAliasCandidate",
@@ -1254,6 +1293,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/entity-aliases/runtime/candidates",
             "/v1/entity-aliases/runtime/confirm",
             "/v1/prompts/runtime",
+            "/v1/prompts/runtime/import.csv",
             "/v1/evidence-runs/runtime",
             "/v1/evidence-runs/runtime/export.csv",
             "/v1/evidence-runs/runtime/manual-backfill",

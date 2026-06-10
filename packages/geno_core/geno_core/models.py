@@ -763,6 +763,21 @@ class RuntimePromptPage:
 
 
 @dataclass(frozen=True)
+class RuntimePromptImportInput:
+    project_id: str
+    csv_content: str
+    imported_by: str = "runtime-console"
+    max_rows: int = 100
+
+
+@dataclass(frozen=True)
+class RuntimePromptImportResult:
+    prompt_import: dict[str, Any]
+    prompts: tuple[dict[str, Any], ...]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class RuntimeReportExport:
     report_export: dict[str, Any]
     score_snapshots: tuple[dict[str, Any], ...]
