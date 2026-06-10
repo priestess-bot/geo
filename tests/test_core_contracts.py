@@ -74,6 +74,8 @@ from geno_core.models import (
     RuntimeSavedView,
     RuntimeSavedViewInput,
     RuntimeSavedViewPage,
+    RuntimeScoreWeightConfig,
+    RuntimeScoreWeightConfigInput,
     RuntimeTraceabilityDetail,
 )
 from geno_core.object_store import S3CompatibleObjectStore, archive_report_artifacts
@@ -82,7 +84,7 @@ from geno_core.parser import ComparativeAnswerParser, LLMJudgeAnswerParser, Rule
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.repository import PostgresEvidenceRepository
 from geno_core.runtime import RuntimePersistenceError, build_repository_from_env
-from geno_core.scoring import AU_VISIBILITY_V1, score_answer_analysis
+from geno_core.scoring import AU_VISIBILITY_V1, normalize_score_weights, score_answer_analysis
 from geno_core.traceability import build_traceability_bundle
 
 
@@ -164,6 +166,43 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(result.snapshot.formula_version, "au_visibility_v1")
         self.assertEqual(contribution_total, result.snapshot.final_score)
         self.assertEqual(len(result.contributions), len(AU_VISIBILITY_V1))
+        self.assertEqual(result.snapshot.component_weights_snapshot, AU_VISIBILITY_V1)
+
+    def test_score_weights_are_configurable_and_frozen_in_snapshot(self) -> None:
+        weights = normalize_score_weights(
+            {
+                **AU_VISIBILITY_V1,
+                "MentionScore": 0.20,
+                "FreshnessScore": 0.03,
+            }
+        )
+        analysis = AnswerAnalysis(
+            id="analysis-1",
+            answer_run_id="run-1",
+            parser_engine_id="rule",
+            analysis_version="v1",
+            brand_mentioned=True,
+            brand_recommended=False,
+            brand_position=2,
+            competitors_mentioned=["competitor"],
+            citation_count=2,
+            local_relevance_score=75.0,
+            sentiment_score=80.0,
+            freshness_score=60.0,
+            competitor_share_score=40.0,
+            confidence=0.92,
+        )
+
+        result = score_answer_analysis(
+            project_id="project-1",
+            analysis=analysis,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+            score_weights=weights,
+        )
+
+        self.assertEqual(result.snapshot.component_weights_snapshot, weights)
+        self.assertEqual({item.component_name: item.weight for item in result.contributions}, weights)
+        self.assertAlmostEqual(sum(result.snapshot.component_weights_snapshot.values()), 1.0)
 
     def test_audit_event_hashes_are_stable(self) -> None:
         before = {"b": 2, "a": 1}
@@ -3831,6 +3870,106 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(record.audit_events[0]["target_type"], "project_brand_kit")
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FROM project_brand_kits WHERE project_id = %s", executed_sql)
+        self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_saves_score_weight_config_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        config_id = "7daa9492-8fb2-565e-827a-bfd3de846cde"
+        weights = {
+            **AU_VISIBILITY_V1,
+            "MentionScore": 0.20,
+            "FreshnessScore": 0.03,
+        }
+        config_row = {
+            "id": config_id,
+            "project_id": project_id,
+            "formula_version": "au_visibility_v1",
+            "weights": weights,
+            "updated_by": "runtime-console",
+            "notes": "prioritize mention",
+            "created_at": now,
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "2d3d80f1-74de-49ee-a990-a47e44d88ccf",
+            "event_type": "score_weight_config_saved",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "score_weight_config",
+            "target_id": config_id,
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"project_ids": [project_id]},
+            "output_refs": {"score_weight_config_ids": [config_id]},
+            "method_version": "score_weight_config_v1",
+            "reason": "save project-level AU visibility score weights",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"id": project_id}, None, config_row, [audit_row]])
+
+        record = PostgresEvidenceRepository(connection).save_score_weight_config(
+            RuntimeScoreWeightConfigInput(
+                project_id=project_id,
+                weights=weights,
+                updated_by="runtime-console",
+                notes="prioritize mention",
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeScoreWeightConfig)
+        self.assertEqual(record.score_weight_config["weights"]["MentionScore"], 0.20)
+        self.assertEqual(record.audit_events[0]["event_type"], "score_weight_config_saved")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO score_weight_configs", executed_sql)
+        self.assertIn("ON CONFLICT (project_id, formula_version) DO UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_reads_score_weight_config_with_audit_events(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        config_id = "7daa9492-8fb2-565e-827a-bfd3de846cde"
+        connection = RecordingConnection(
+            result_sets=[
+                {
+                    "id": config_id,
+                    "project_id": project_id,
+                    "formula_version": "au_visibility_v1",
+                    "weights": AU_VISIBILITY_V1,
+                    "updated_by": "runtime-console",
+                    "notes": "default review",
+                    "created_at": now,
+                    "updated_at": now,
+                },
+                [
+                    {
+                        "id": "2d3d80f1-74de-49ee-a990-a47e44d88ccf",
+                        "event_type": "score_weight_config_saved",
+                        "project_id": project_id,
+                        "actor_type": "user",
+                        "actor_id": "runtime-console",
+                        "target_type": "score_weight_config",
+                        "target_id": config_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"project_ids": [project_id]},
+                        "output_refs": {"score_weight_config_ids": [config_id]},
+                        "method_version": "score_weight_config_v1",
+                        "reason": "save project-level AU visibility score weights",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+        record = PostgresEvidenceRepository(connection).get_score_weight_config(project_id=project_id)
+        self.assertIsInstance(record, RuntimeScoreWeightConfig)
+        assert record is not None
+        self.assertEqual(record.score_weight_config["weights"], AU_VISIBILITY_V1)
+        self.assertEqual(record.audit_events[0]["target_type"], "score_weight_config")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM score_weight_configs WHERE project_id = %s AND formula_version = %s", executed_sql)
         self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
 
     def test_postgres_repository_confirms_entity_alias_with_audit_event(self) -> None:

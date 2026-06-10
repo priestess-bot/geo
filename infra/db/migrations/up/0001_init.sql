@@ -336,6 +336,18 @@ CREATE TABLE project_brand_kits (
   UNIQUE(project_id)
 );
 
+CREATE TABLE score_weight_configs (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  formula_version text NOT NULL,
+  weights jsonb NOT NULL,
+  updated_by text NOT NULL,
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(project_id, formula_version)
+);
+
 CREATE TABLE traceability_bundles (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id uuid NOT NULL,
@@ -369,7 +381,8 @@ CREATE TABLE visibility_score_snapshots (
   recommendation_rate numeric(8,4) NOT NULL,
   answer_run_ids uuid[] NOT NULL DEFAULT '{}',
   created_at timestamptz NOT NULL DEFAULT now(),
-  dispersion numeric(8,4) NOT NULL DEFAULT 0
+  dispersion numeric(8,4) NOT NULL DEFAULT 0,
+  component_weights_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb
 );
 
 CREATE TABLE collection_costs (

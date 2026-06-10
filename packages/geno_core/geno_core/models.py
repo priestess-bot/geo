@@ -573,6 +573,7 @@ class VisibilityScoreSnapshot:
     answer_run_ids: list[str]
     created_at: datetime
     dispersion: float = 0.0
+    component_weights_snapshot: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -695,6 +696,21 @@ class RuntimeSavedViewInput:
     query_path: str
     export_path: str
     created_by: str
+
+
+@dataclass(frozen=True)
+class RuntimeScoreWeightConfig:
+    score_weight_config: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeScoreWeightConfigInput:
+    project_id: str
+    weights: dict[str, float]
+    formula_version: str = "au_visibility_v1"
+    updated_by: str = "runtime-console"
+    notes: str | None = None
 
 
 @dataclass(frozen=True)

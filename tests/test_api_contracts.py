@@ -12,6 +12,7 @@ from geno_core.models import (
     RuntimePromptImportResult,
     RuntimeProjectPage,
     RuntimeReportArtifact,
+    RuntimeScoreWeightConfig,
 )
 
 
@@ -430,6 +431,76 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.brand_kit.client_name, "Koala AU")
         self.assertEqual(fake_repository.brand_kit.logo_url, "https://koala.example/logo.png")
 
+    def test_runtime_score_weight_config_endpoint_returns_default_when_missing(self) -> None:
+        class FakeRepository:
+            def get_score_weight_config(self, **kwargs: object) -> None:
+                self.kwargs = kwargs
+                return None
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/score-weight-configs/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["score_weight_config"]["updated_by"], "system-default")
+        self.assertEqual(round(sum(payload["score_weight_config"]["weights"].values()), 6), 1.0)
+        self.assertEqual(fake_repository.kwargs["formula_version"], "au_visibility_v1")
+
+    def test_runtime_score_weight_config_save_endpoint_passes_payload(self) -> None:
+        weights = {
+            "MentionScore": 0.20,
+            "RecommendationScore": 0.22,
+            "PositionScore": 0.12,
+            "CitationScore": 0.16,
+            "LocalRelevanceScore": 0.14,
+            "SentimentScore": 0.08,
+            "FreshnessScore": 0.03,
+            "CompetitorShareScore": 0.05,
+        }
+
+        class FakeRepository:
+            def save_score_weight_config(self, config: object) -> RuntimeScoreWeightConfig:
+                self.config = config
+                return RuntimeScoreWeightConfig(
+                    score_weight_config={
+                        "id": "7daa9492-8fb2-565e-827a-bfd3de846cde",
+                        "project_id": config.project_id,
+                        "formula_version": config.formula_version,
+                        "weights": config.weights,
+                        "updated_by": config.updated_by,
+                        "notes": config.notes,
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "score_weight_config_saved",
+                            "target_type": "score_weight_config",
+                            "method_version": "score_weight_config_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/score-weight-configs/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "weights": weights,
+                    "updated_by": "runtime-console",
+                    "notes": "prioritize mention",
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["score_weight_config"]["weights"]["MentionScore"], 0.20)
+        self.assertEqual(fake_repository.config.notes, "prioritize mention")
+
     def test_runtime_visibility_scores_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/visibility-scores/runtime")
         self.assertEqual(response.status_code, 503)
@@ -636,6 +707,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("parser_ab_compare_v1", payload["m3_analysis_scoring"])
         self.assertIn("FixtureLLMGateway", payload["m3_analysis_scoring"])
         self.assertIn("LLMCallLog", payload["m3_analysis_scoring"])
+        self.assertIn("RuntimeScoreWeightConfig", payload["m3_analysis_scoring"])
+        self.assertIn("ScoreWeightConfigRequest", payload["m3_analysis_scoring"])
         self.assertIn("LLMCallLog", payload["auditability"])
         self.assertIn("RuntimeEvidenceRun", payload["persistence"])
         self.assertIn("RuntimeEvidenceExport", payload["persistence"])
@@ -655,6 +728,9 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeProjectBrandKit", payload["persistence"])
         self.assertIn("RuntimeProjectBrandKitInput", payload["persistence"])
         self.assertIn("ProjectBrandKitRequest", payload["persistence"])
+        self.assertIn("RuntimeScoreWeightConfig", payload["persistence"])
+        self.assertIn("RuntimeScoreWeightConfigInput", payload["persistence"])
+        self.assertIn("ScoreWeightConfigRequest", payload["persistence"])
         self.assertIn("RuntimePromptPage", payload["persistence"])
         self.assertIn("RuntimePromptImportInput", payload["persistence"])
         self.assertIn("RuntimePromptImportResult", payload["persistence"])
@@ -680,6 +756,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/evidence-runs/runtime/manual-backfill", payload["persistence"])
         self.assertIn("/v1/runtime-saved-views", payload["persistence"])
         self.assertIn("/v1/project-brand-kits/runtime", payload["persistence"])
+        self.assertIn("/v1/score-weight-configs/runtime", payload["persistence"])
         self.assertIn("/v1/visibility-scores/runtime", payload["persistence"])
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])
         self.assertIn("/v1/reports/runtime", payload["persistence"])

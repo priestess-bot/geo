@@ -774,6 +774,8 @@ ChatGPT Search / browsing: 30%
 Perplexity: 25%
 ```
 
+项目级评分权重可通过 `score_weight_configs` 覆盖默认 8 项组件权重；保存时必须校验组件完整、非负、总和为 1.00，并写入 `score_weight_config_saved` 审计事件。每次生成 `VisibilityScoreSnapshot` 时都把实际使用的 `component_weights_snapshot` 冻结到快照，后续即使项目权重调整，历史分数和 `ScoreContribution.weight` 仍能按当时口径复盘。
+
 P1/P2 平台扩展权重（默认值，可在 MarketProfile 调整）：
 
 ```text

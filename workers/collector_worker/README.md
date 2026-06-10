@@ -47,7 +47,9 @@ parser, using `rule_based_v2_aliases` as the primary result and `llm_judge_fixtu
 judge comparison. The `AnswerAnalysis` payload stores `parser_ab_compare_v1` agreement, mismatch
 fields, the secondary judge result, and a `FixtureLLMGateway` `llm_call_log`; the same call log is
 upserted into `llm_call_logs` with provider/model/prompt version, request/response hashes, token
-counts, estimated cost, latency, and status. The worker then stores `VisibilityScoreSnapshot`, `ScoreContribution`,
+counts, estimated cost, latency, and status. It also reads any project-level `score_weight_configs`
+and freezes the active component weights into `VisibilityScoreSnapshot.component_weights_snapshot`.
+The worker then stores `VisibilityScoreSnapshot`, `ScoreContribution`,
 `ScoreSnapshotRun`, and the score audit event. It also builds and stores the M4 citation graph, source graph evidence,
 source gaps, competitor benchmarks, the M5 `ReportExport` snapshot, and the M6
 `ActionRecommendation`, `RetestSchedule`, `RetestComparison`, action plan audit event, and retest

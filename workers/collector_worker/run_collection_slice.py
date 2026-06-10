@@ -95,12 +95,14 @@ def _persist_records(
             for item in bootstrap.market_profile.platforms
             if item.enabled and item.platform in {"chatgpt", "perplexity"}
         }
+        score_weights = repository.get_score_weights_snapshot(project_id=bootstrap.project.id)
         analysis_result = analyze_and_score_records(
             project_id=bootstrap.project.id,
             records=successes,
             brand=bootstrap.brand,
             competitors=bootstrap.competitors,
             platform_weights_snapshot=platform_weights_snapshot,
+            score_weights=score_weights,
             entity_aliases=entity_aliases,
             scope_type="collection_slice",
             scope_value="worker_runtime",

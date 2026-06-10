@@ -58,6 +58,8 @@ from geno_core.models import (
     RuntimeSavedView,
     RuntimeSavedViewInput,
     RuntimeSavedViewPage,
+    RuntimeScoreWeightConfig,
+    RuntimeScoreWeightConfigInput,
     RuntimeScoreSnapshot,
     RuntimeScoreSnapshotPage,
     RuntimeScoreSnapshotRun,
@@ -72,6 +74,7 @@ from geno_core.report import (
     render_markdown_pdf,
     render_methodology_disclosure_lines,
 )
+from geno_core.scoring import AU_VISIBILITY_V1, normalize_score_weights
 
 
 class DbCursor(Protocol):
@@ -825,6 +828,7 @@ VISIBILITY_SCORE_SNAPSHOT_COLUMNS = (
     "answer_run_ids",
     "created_at",
     "dispersion",
+    "component_weights_snapshot",
 )
 SCORE_CONTRIBUTION_COLUMNS = (
     "id",
@@ -1083,6 +1087,16 @@ PROJECT_BRAND_KIT_COLUMNS = (
     "secondary_color",
     "footer_text",
     "updated_by",
+    "created_at",
+    "updated_at",
+)
+SCORE_WEIGHT_CONFIG_COLUMNS = (
+    "id",
+    "project_id",
+    "formula_version",
+    "weights",
+    "updated_by",
+    "notes",
     "created_at",
     "updated_at",
 )
@@ -2193,6 +2207,153 @@ class PostgresEvidenceRepository:
         )
         audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
         return RuntimeProjectBrandKit(brand_kit=brand_kit, audit_events=audit_events)
+
+    def get_score_weight_config(
+        self,
+        *,
+        project_id: str,
+        formula_version: str = "au_visibility_v1",
+    ) -> RuntimeScoreWeightConfig | None:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(SCORE_WEIGHT_CONFIG_COLUMNS)}
+                FROM score_weight_configs
+                WHERE project_id = %s AND formula_version = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id), formula_version),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return self._load_score_weight_config(
+                cursor=cursor,
+                config=_row_dict(row, SCORE_WEIGHT_CONFIG_COLUMNS),
+            )
+
+    def save_score_weight_config(self, config: RuntimeScoreWeightConfigInput) -> RuntimeScoreWeightConfig:
+        project_id = config.project_id.strip()
+        formula_version = config.formula_version.strip() or "au_visibility_v1"
+        updated_by = config.updated_by.strip() or "runtime-console"
+        if formula_version != "au_visibility_v1":
+            raise ValueError("formula_version must be au_visibility_v1")
+        if not project_id:
+            raise ValueError("project_id is required")
+        weights = normalize_score_weights(config.weights)
+        config_id = _stable_id("score-weight-config", project_id, formula_version)
+        after = {
+            "id": config_id,
+            "project_id": project_id,
+            "formula_version": formula_version,
+            "weights": weights,
+            "updated_by": updated_by,
+            "notes": config.notes.strip() if config.notes else None,
+        }
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(SCORE_WEIGHT_CONFIG_COLUMNS)}
+                FROM score_weight_configs
+                WHERE project_id = %s AND formula_version = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id), formula_version),
+            )
+            existing = cursor.fetchone()
+            before = _row_dict(existing, SCORE_WEIGHT_CONFIG_COLUMNS) if existing else None
+            cursor.execute(
+                """
+                INSERT INTO score_weight_configs (
+                  id, project_id, formula_version, weights, updated_by, notes
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (project_id, formula_version) DO UPDATE SET
+                  weights = EXCLUDED.weights,
+                  updated_by = EXCLUDED.updated_by,
+                  notes = EXCLUDED.notes,
+                  updated_at = now()
+                """,
+                (
+                    _uuid(config_id),
+                    _uuid(project_id),
+                    formula_version,
+                    _json_payload(weights),
+                    updated_by,
+                    after["notes"],
+                ),
+            )
+            audit_event = build_audit_event(
+                event_type="score_weight_config_saved",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="score_weight_config",
+                target_id=config_id,
+                before=before,
+                after=after,
+                input_refs={"project_ids": [project_id]},
+                output_refs={"score_weight_config_ids": [config_id]},
+                method_version="score_weight_config_v1",
+                reason="save project-level AU visibility score weights",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(SCORE_WEIGHT_CONFIG_COLUMNS)}
+                FROM score_weight_configs
+                WHERE project_id = %s AND formula_version = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id), formula_version),
+            )
+            saved_row = cursor.fetchone()
+            record = self._load_score_weight_config(
+                cursor=cursor,
+                config=_row_dict(saved_row, SCORE_WEIGHT_CONFIG_COLUMNS),
+            )
+        self.connection.commit()
+        return record
+
+    def get_score_weights_snapshot(
+        self,
+        *,
+        project_id: str,
+        formula_version: str = "au_visibility_v1",
+    ) -> dict[str, float]:
+        record = self.get_score_weight_config(project_id=project_id, formula_version=formula_version)
+        if record is None:
+            return dict(AU_VISIBILITY_V1)
+        return normalize_score_weights(dict(record.score_weight_config.get("weights") or {}))
+
+    def _load_score_weight_config(
+        self,
+        *,
+        cursor: DbCursor,
+        config: dict[str, Any],
+    ) -> RuntimeScoreWeightConfig:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            LIMIT 5
+            """,
+            (_uuid(config["project_id"]), "score_weight_config", str(config["id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeScoreWeightConfig(score_weight_config=config, audit_events=audit_events)
 
     def list_runtime_score_snapshots(
         self,
@@ -3900,8 +4061,8 @@ class PostgresEvidenceRepository:
                 INSERT INTO visibility_score_snapshots (
                   id, project_id, scope_type, scope_value, formula_version, platform_weights_snapshot,
                   final_score, trigger_rate, mention_rate, recommendation_rate, answer_run_ids,
-                  created_at, dispersion
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                  created_at, dispersion, component_weights_snapshot
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO NOTHING
                 """,
                 (
@@ -3918,6 +4079,7 @@ class PostgresEvidenceRepository:
                     _uuid_array(snapshot.answer_run_ids),
                     _datetime(snapshot.created_at),
                     snapshot.dispersion,
+                    _json_payload(snapshot.component_weights_snapshot),
                 ),
             )
             for contribution in contributions:

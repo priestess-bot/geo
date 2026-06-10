@@ -64,6 +64,15 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("llm_call_log", page_source)
         self.assertIn("LLM call", page_source)
 
+    def test_runtime_console_surfaces_score_weight_configuration(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("Score Weights", page_source)
+        self.assertIn("saveScoreWeightConfig", page_source)
+        self.assertIn("/v1/score-weight-configs/runtime", page_source)
+        self.assertIn("component_weights_snapshot", page_source)
+        self.assertIn("Weight snapshot", page_source)
+
 
 if __name__ == "__main__":
     unittest.main()

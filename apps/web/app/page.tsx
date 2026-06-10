@@ -125,6 +125,7 @@ type ScoreSnapshot = {
     scope_type?: string;
     scope_value?: string;
     formula_version: string;
+    component_weights_snapshot?: Record<string, number>;
   };
   contributions: Array<{
     id?: string;
@@ -457,6 +458,7 @@ type TraceabilityDetail = {
 type RuntimeData = {
   projects: PageResponse<RuntimeProject>;
   brandKit: RuntimeProjectBrandKit | null;
+  scoreWeights: RuntimeScoreWeightConfig | null;
   prompts: PageResponse<RuntimePrompt>;
   evidence: PageResponse<EvidenceRun>;
   collectionRuns: PageResponse<CollectionRun>;
@@ -482,6 +484,20 @@ type RuntimeProjectBrandKit = {
     secondary_color?: string | null;
     footer_text?: string | null;
     updated_by: string;
+    created_at?: string;
+    updated_at?: string;
+  };
+  audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
+};
+
+type RuntimeScoreWeightConfig = {
+  score_weight_config: {
+    id?: string | null;
+    project_id: string;
+    formula_version: string;
+    weights: Record<string, number>;
+    updated_by: string;
+    notes?: string | null;
     created_at?: string;
     updated_at?: string;
   };
@@ -566,6 +582,7 @@ const endpoints = {
   entityAliasCandidates: "/v1/entity-aliases/runtime/candidates",
   savedViews: "/v1/runtime-saved-views",
   brandKit: "/v1/project-brand-kits/runtime",
+  scoreWeights: "/v1/score-weight-configs/runtime",
   scores: "/v1/visibility-scores/runtime",
   graphs: "/v1/citation-graphs/runtime",
   reports: "/v1/reports/runtime",
@@ -575,6 +592,28 @@ const endpoints = {
 } as const;
 
 const emptyPage = <T,>(): PageResponse<T> => ({ total_count: 0, records: [] });
+
+const scoreComponentNames = [
+  "MentionScore",
+  "RecommendationScore",
+  "PositionScore",
+  "CitationScore",
+  "LocalRelevanceScore",
+  "SentimentScore",
+  "FreshnessScore",
+  "CompetitorShareScore"
+] as const;
+
+const defaultScoreWeights: Record<string, number> = {
+  MentionScore: 0.18,
+  RecommendationScore: 0.22,
+  PositionScore: 0.12,
+  CitationScore: 0.16,
+  LocalRelevanceScore: 0.14,
+  SentimentScore: 0.08,
+  FreshnessScore: 0.05,
+  CompetitorShareScore: 0.05
+};
 
 export const dynamic = "force-dynamic";
 
@@ -682,6 +721,38 @@ async function saveProjectBrandKit(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/project-brand-kits/runtime returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function saveScoreWeightConfig(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  if (!projectId) {
+    throw new Error("project_id is required to save score weights");
+  }
+  const weights = Object.fromEntries(
+    scoreComponentNames.map((component) => [component, Number(formData.get(component) || 0)])
+  );
+  const payload = {
+    project_id: projectId,
+    formula_version: "au_visibility_v1",
+    weights,
+    updated_by: "runtime-console",
+    notes: String(formData.get("notes") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/score-weight-configs/runtime`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/score-weight-configs/runtime returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -894,6 +965,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       limit: 5
     }),
     brandKit: endpoints.brandKit,
+    scoreWeights: endpoints.scoreWeights,
     scores: runtimePath(endpoints.scores, { limit: 1 }),
     graphs: runtimePath(endpoints.graphs, { limit: 1 }),
     reports: runtimePath(endpoints.reports, { limit: 5 }),
@@ -975,6 +1047,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.brandKit = selectedProjectId
     ? runtimePath(endpoints.brandKit, { project_id: selectedProjectId })
     : endpoints.brandKit;
+  paths.scoreWeights = selectedProjectId
+    ? runtimePath(endpoints.scoreWeights, { project_id: selectedProjectId })
+    : endpoints.scoreWeights;
   paths.scores = runtimePath(endpoints.scores, {
     ...selectedProjectParams,
     limit: 1
@@ -1005,6 +1080,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasCandidates,
     savedViews,
     brandKit,
+    scoreWeights,
     scores,
     graphs,
     reports,
@@ -1031,6 +1107,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     selectedProjectId
       ? fetchRuntimeEndpoint<RuntimeProjectBrandKit | null>(baseUrl, paths.brandKit, null, { optionalNotFound: true })
       : Promise.resolve({ payload: null, error: null }),
+    selectedProjectId
+      ? fetchRuntimeEndpoint<RuntimeScoreWeightConfig | null>(baseUrl, paths.scoreWeights, null)
+      : Promise.resolve({ payload: null, error: null }),
     fetchRuntimeEndpoint<PageResponse<ScoreSnapshot>>(baseUrl, paths.scores, emptyPage<ScoreSnapshot>()),
     fetchRuntimeEndpoint<PageResponse<CitationGraph>>(baseUrl, paths.graphs, emptyPage<CitationGraph>()),
     fetchRuntimeEndpoint<PageResponse<ReportExport>>(baseUrl, paths.reports, emptyPage<ReportExport>()),
@@ -1047,6 +1126,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasCandidates,
     savedViews,
     brandKit,
+    scoreWeights,
     scores,
     graphs,
     reports,
@@ -1060,6 +1140,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     data: {
       projects: projects.payload,
       brandKit: brandKit.payload,
+      scoreWeights: scoreWeights.payload,
       prompts: prompts.payload,
       evidence: evidence.payload,
       collectionRuns: collectionRuns.payload,
@@ -1233,6 +1314,17 @@ export default async function Home({
   const latestAction = data.actions.records[0];
   const latestContent = data.content.records[0];
   const traceability = data.traceability;
+  const scoreWeightConfig = data.scoreWeights?.score_weight_config || null;
+  const scoreWeightAuditEvent = data.scoreWeights?.audit_events[0]?.event_type || "default weights";
+  const configuredScoreWeights = scoreWeightConfig?.weights || latestScore?.snapshot.component_weights_snapshot || defaultScoreWeights;
+  const scoreWeightTotal = scoreComponentNames.reduce(
+    (total, component) => total + Number(configuredScoreWeights[component] || 0),
+    0
+  );
+  const latestScoreWeightTotal = scoreComponentNames.reduce(
+    (total, component) => total + Number(latestScore?.snapshot.component_weights_snapshot?.[component] || 0),
+    0
+  );
   const reportArtifactBase = latestReport
     ? `${displayUrl}/v1/reports/runtime/${latestReport.report_export.id}/artifact`
     : null;
@@ -1688,6 +1780,40 @@ export default async function Home({
               </label>
               <button className="actionButton" type="submit" disabled={!selectedProjectId}>
                 Save brand kit
+              </button>
+            </form>
+            <form action={saveScoreWeightConfig} className="brandKitForm">
+              <div className="formHeader">
+                <h3>Score Weights</h3>
+                <small>
+                  {scoreWeightConfig?.updated_by || "system-default"} · {scoreWeightAuditEvent} · total{" "}
+                  {num(scoreWeightTotal)}
+                </small>
+              </div>
+              <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+              {scoreComponentNames.map((component) => (
+                <label key={component}>
+                  <span>{component}</span>
+                  <input
+                    name={component}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="1"
+                    defaultValue={String(configuredScoreWeights[component] ?? defaultScoreWeights[component])}
+                  />
+                </label>
+              ))}
+              <label className="wideField">
+                <span>Notes</span>
+                <textarea
+                  name="notes"
+                  defaultValue={scoreWeightConfig?.notes || "Project-level scoring weight review"}
+                  rows={2}
+                />
+              </label>
+              <button className="actionButton" type="submit" disabled={!selectedProjectId}>
+                Save score weights
               </button>
             </form>
           </div>
@@ -2526,6 +2652,7 @@ export default async function Home({
                   <Fact label="Mention" value={pct(latestScore.snapshot.mention_rate)} />
                   <Fact label="Recommend" value={pct(latestScore.snapshot.recommendation_rate)} />
                   <Fact label="Dispersion" value={num(latestScore.snapshot.dispersion)} />
+                  <Fact label="Weight snapshot" value={latestScore.snapshot.component_weights_snapshot ? num(latestScoreWeightTotal) : "legacy"} />
                   <Fact label="Answer runs" value={latestScore.answer_runs.length} />
                   <Fact label="Parser agreement" value={parserAgreement(latestScore.answer_runs[0])} />
                   <Fact label="Audit events" value={latestScore.audit_events.length} />

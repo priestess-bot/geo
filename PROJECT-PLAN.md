@@ -73,8 +73,8 @@
 - `[~]` 采集、采集批次摘要、解析、评分、人工补录、实体确认、报告导出均写入 `AuditEvent`（runtime `collection_run_summarized`、`manual_backfill_recorded` 与 `entity_alias_confirmed` 已落；真实外部解析/采集链路仍需凭证联调）
 - `[~]` 每个 collector_backend 写入 CollectionCost；可估算 planned_runs、成功率、触发率、回答率、失败摘要、单位成本和平均耗时（真实外部采集凭证联调待接）
 - `[~]` 自动解析品牌提及/推荐/排名/竞品/引用/本地相关性（rule parser、confirmed alias-aware parser、本地 judge fixture A/B 与 `llm_call_logs` 调用日志已落；真实 LiteLLM provider judge 与人工复核待接）
-- `[ ]` 生成可拆解、公式版本化的 `AUVisibilityScore`，能点回原始 answer run
-- `[ ]` 生成 `ScoreContribution` 分数解释包，展示子指标贡献、权重、分母、正负证据和局限
+- `[x]` 生成可拆解、公式版本化的 `AUVisibilityScore`，能点回原始 answer run
+- `[x]` 生成 `ScoreContribution` 分数解释包，展示子指标贡献、权重、分母、正负证据和局限
 - `[ ]` 报告区分 Trigger Rate 与 Mention/Recommendation Rate
 
 **P0b Google spike 验收门槛**：
@@ -200,9 +200,9 @@ DoD：
 - `[x]` (P0a) 双分母：Trigger Rate vs Mention/Recommendation Rate — `Step9.2`
 - `[x]` (P0a) k 次聚合 + 均值/离散度；P0a k=3，Google spike k=2 且单独标注 — `Step9.3`
 - `[x]` (P0a) VisibilityScoreSnapshot 聚合表（project/platform/city/intent/prompt），并支持 worker `--persist-analysis` 写库与 runtime score API 查询 — `§8.13`
-- `[x]` (P0a) ScoreContribution 分数解释包：子指标贡献、权重、分母、正负证据、局限说明；runtime score API 可读回贡献项、关联 prompt/answer run/analysis/audit，Runtime Console 已展示完整评分解释包和 parser A/B agreement — `Step5.1 / §8.18`
+- `[x]` (P0a) ScoreContribution 分数解释包：子指标贡献、权重、分母、正负证据、局限说明；runtime score API 可读回贡献项、关联 prompt/answer run/analysis/audit，Runtime Console 已展示完整评分解释包、parser A/B agreement 和权重快照 — `Step5.1 / §8.18`
 - `[~]` (P1) LLM-as-judge 解析实现（与规则 A/B）— `Step7`（`llm_judge_fixture_v1` 本地 judge、`ComparativeAnswerParser`、`parser_ab_compare_v1` payload、`llm_judge_prompt_v1` 和 `llm_call_logs` 调用日志已落；真实 LiteLLM provider judge、重试、真实成本账单和人工抽检待接）
-- `[ ]` (P1) 评分权重可配置 + 审计；人工复核留痕 — `E4-10/11`
+- `[~]` (P1) 评分权重可配置 + 审计；人工复核留痕 — `E4-10/11`（项目级 `score_weight_configs`、runtime GET/POST API、`score_weight_config_saved` 审计、worker `--persist-analysis` 读取配置和 `VisibilityScoreSnapshot.component_weights_snapshot` 冻结已落；人工复核队列/复核意见留痕待接）
 
 DoD：
 

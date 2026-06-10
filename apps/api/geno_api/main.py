@@ -50,10 +50,12 @@ from geno_core.models import (
     RuntimeProjectBrandKitInput,
     RuntimePromptImportInput,
     RuntimeSavedViewInput,
+    RuntimeScoreWeightConfigInput,
 )
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.runtime import RuntimePersistenceError, build_repository_from_env, close_repository_connection
+from geno_core.scoring import AU_VISIBILITY_V1, normalize_score_weights
 from geno_core.traceability import build_traceability_bundle
 
 app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
@@ -79,6 +81,14 @@ class ProjectBrandKitRequest(BaseModel):
     secondary_color: str | None = Field(default=None, max_length=40)
     footer_text: str | None = Field(default=None, max_length=500)
     updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+
+
+class ScoreWeightConfigRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    formula_version: str = Field(default="au_visibility_v1", min_length=1, max_length=80)
+    weights: dict[str, float]
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=500)
 
 
 class RuntimePromptImportRequest(BaseModel):
@@ -605,6 +615,62 @@ def save_runtime_project_brand_kit(payload: ProjectBrandKitRequest) -> dict[str,
             )
         )
         return asdict(brand_kit)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/score-weight-configs/runtime")
+def runtime_score_weight_config(
+    project_id: str = Query(min_length=1),
+    formula_version: str = Query(default="au_visibility_v1", min_length=1),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        config = repository.get_score_weight_config(project_id=project_id, formula_version=formula_version)
+        if config is None:
+            return {
+                "score_weight_config": {
+                    "id": None,
+                    "project_id": project_id,
+                    "formula_version": formula_version,
+                    "weights": AU_VISIBILITY_V1,
+                    "updated_by": "system-default",
+                    "notes": "Default AU visibility score weights",
+                },
+                "audit_events": [],
+            }
+        return asdict(config)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/score-weight-configs/runtime")
+def save_runtime_score_weight_config(payload: ScoreWeightConfigRequest) -> dict[str, object]:
+    try:
+        weights = normalize_score_weights(payload.weights)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        config = repository.save_score_weight_config(
+            RuntimeScoreWeightConfigInput(
+                project_id=payload.project_id.strip(),
+                formula_version=payload.formula_version.strip(),
+                weights=weights,
+                updated_by=payload.updated_by.strip(),
+                notes=payload.notes.strip() if payload.notes else None,
+            )
+        )
+        return asdict(config)
     except ValueError as exc:
         status_code = 404 if str(exc) == "project not found" else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
@@ -1240,6 +1306,9 @@ def contracts() -> dict[str, list[str]]:
             "AnswerAnalysis",
             "VisibilityScoreSnapshot",
             "ScoreContribution",
+            "RuntimeScoreWeightConfig",
+            "RuntimeScoreWeightConfigInput",
+            "ScoreWeightConfigRequest",
             "au_visibility_v1",
         ],
         "m4_graph_benchmark": [
@@ -1285,6 +1354,9 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeProjectBrandKit",
             "RuntimeProjectBrandKitInput",
             "ProjectBrandKitRequest",
+            "RuntimeScoreWeightConfig",
+            "RuntimeScoreWeightConfigInput",
+            "ScoreWeightConfigRequest",
             "RuntimePromptPage",
             "RuntimePromptImportInput",
             "RuntimePromptImportResult",
@@ -1336,6 +1408,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/evidence-runs/runtime/manual-backfill",
             "/v1/runtime-saved-views",
             "/v1/project-brand-kits/runtime",
+            "/v1/score-weight-configs/runtime",
             "worker --persist",
             "worker --persist-analysis",
             "/v1/visibility-scores/runtime",

@@ -21,6 +21,26 @@ AU_VISIBILITY_V1: dict[str, float] = {
 }
 
 
+def normalize_score_weights(score_weights: dict[str, float] | None = None) -> dict[str, float]:
+    if score_weights is None:
+        return dict(AU_VISIBILITY_V1)
+    expected = set(AU_VISIBILITY_V1)
+    provided = set(score_weights)
+    missing = sorted(expected - provided)
+    unknown = sorted(provided - expected)
+    if missing:
+        raise ValueError(f"Missing score weight components: {', '.join(missing)}")
+    if unknown:
+        raise ValueError(f"Unknown score weight components: {', '.join(unknown)}")
+    normalized = {name: round(float(score_weights[name]), 6) for name in AU_VISIBILITY_V1}
+    if any(weight < 0 for weight in normalized.values()):
+        raise ValueError("Score weights must be non-negative")
+    total_weight = round(sum(normalized.values()), 6)
+    if abs(total_weight - 1.0) > 0.0001:
+        raise ValueError("Score weights must sum to 1.0")
+    return normalized
+
+
 @dataclass(frozen=True)
 class ScoreResult:
     snapshot: VisibilityScoreSnapshot
@@ -54,9 +74,11 @@ def score_answer_analysis(
     project_id: str,
     analysis: AnswerAnalysis,
     platform_weights_snapshot: dict[str, float],
+    score_weights: dict[str, float] | None = None,
     scope_type: str = "answer",
     scope_value: str = "single",
 ) -> ScoreResult:
+    component_weights = normalize_score_weights(score_weights)
     component_scores = {
         "MentionScore": 100.0 if analysis.brand_mentioned else 0.0,
         "RecommendationScore": 100.0 if analysis.brand_recommended else 0.0,
@@ -68,7 +90,7 @@ def score_answer_analysis(
         "CompetitorShareScore": analysis.competitor_share_score,
     }
     final_score = round(
-        sum(component_scores[name] * weight for name, weight in AU_VISIBILITY_V1.items()),
+        sum(component_scores[name] * weight for name, weight in component_weights.items()),
         4,
     )
     now = datetime.now(UTC)
@@ -86,6 +108,7 @@ def score_answer_analysis(
         recommendation_rate=1.0 if analysis.brand_recommended else 0.0,
         answer_run_ids=[analysis.answer_run_id],
         created_at=now,
+        component_weights_snapshot=component_weights,
     )
     contributions = [
         ScoreContribution(
@@ -106,7 +129,7 @@ def score_answer_analysis(
             confidence_note=f"parser_confidence={analysis.confidence}",
             created_at=now,
         )
-        for name, weight in AU_VISIBILITY_V1.items()
+        for name, weight in component_weights.items()
     ]
     return ScoreResult(snapshot=snapshot, contributions=contributions)
 
@@ -124,8 +147,8 @@ def _component_scores(analysis: AnswerAnalysis) -> dict[str, float]:
     }
 
 
-def _final_score_from_components(component_scores: dict[str, float]) -> float:
-    return round(sum(component_scores[name] * weight for name, weight in AU_VISIBILITY_V1.items()), 4)
+def _final_score_from_components(component_scores: dict[str, float], score_weights: dict[str, float]) -> float:
+    return round(sum(component_scores[name] * weight for name, weight in score_weights.items()), 4)
 
 
 def _avg_parser_agreement(analyses: tuple[AnswerAnalysis, ...]) -> float | None:
@@ -151,11 +174,13 @@ def score_answer_analyses(
     project_id: str,
     analyses: tuple[AnswerAnalysis, ...],
     platform_weights_snapshot: dict[str, float],
+    score_weights: dict[str, float] | None = None,
     scope_type: str,
     scope_value: str,
 ) -> AggregateScoreResult:
     if not analyses:
         raise ValueError("At least one AnswerAnalysis is required")
+    component_weights = normalize_score_weights(score_weights)
     per_answer_components = [_component_scores(analysis) for analysis in analyses]
     component_scores = {
         name: round(
@@ -163,10 +188,10 @@ def score_answer_analyses(
             / len(per_answer_components),
             4,
         )
-        for name in AU_VISIBILITY_V1
+        for name in component_weights
     }
-    per_answer_scores = [_final_score_from_components(components) for components in per_answer_components]
-    final_score = _final_score_from_components(component_scores)
+    per_answer_scores = [_final_score_from_components(components, component_weights) for components in per_answer_components]
+    final_score = _final_score_from_components(component_scores, component_weights)
     now = datetime.now(UTC)
     snapshot_id = str(uuid4())
     triggered_count = len(analyses)
@@ -192,6 +217,7 @@ def score_answer_analyses(
         answer_run_ids=answer_run_ids,
         created_at=now,
         dispersion=round(pstdev(per_answer_scores), 4) if len(per_answer_scores) > 1 else 0.0,
+        component_weights_snapshot=component_weights,
     )
     contributions = [
         ScoreContribution(
@@ -210,7 +236,7 @@ def score_answer_analyses(
             confidence_note=confidence_note,
             created_at=now,
         )
-        for name, weight in AU_VISIBILITY_V1.items()
+        for name, weight in component_weights.items()
     ]
     audit_event = build_audit_event(
         event_type="visibility_score_snapshot_created",
@@ -228,6 +254,7 @@ def score_answer_analyses(
             "mention_rate": snapshot.mention_rate,
             "recommendation_rate": snapshot.recommendation_rate,
             "dispersion": snapshot.dispersion,
+            "component_weights_snapshot": component_weights,
         },
         input_refs={"answer_run_ids": answer_run_ids},
         output_refs={
