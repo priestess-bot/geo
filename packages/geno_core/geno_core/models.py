@@ -900,6 +900,7 @@ class ReportExport:
     prompt_version: str
     scoring_formula_version: str
     platform_weights_snapshot: dict[str, float]
+    method_disclosure: dict[str, Any]
     sample_size: int
     window_start: datetime
     window_end: datetime

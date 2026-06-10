@@ -192,6 +192,7 @@ class CoreContractsTest(unittest.TestCase):
             prompt_version="prompt-v1",
             scoring_formula_version="au_visibility_v1",
             platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+            method_disclosure={},
             sample_size=3,
             window_start=datetime(2026, 6, 1, tzinfo=UTC),
             window_end=datetime(2026, 6, 8, tzinfo=UTC),
@@ -703,6 +704,11 @@ class CoreContractsTest(unittest.TestCase):
         self.assertTrue(report.report_export.pdf_url.endswith(".pdf"))
         self.assertTrue(report.report_export.csv_url.endswith(".csv"))
         self.assertIn("GENO AU Evidence Report", report.markdown)
+        self.assertIn("### Method Disclosure", report.markdown)
+        self.assertIn("Google spike gate: not_run", report.markdown)
+        self.assertIn("Google limited coverage: yes", report.markdown)
+        self.assertIn("API-vs-browser fidelity: not_run", report.markdown)
+        self.assertIn("Access method distribution", report.markdown)
         self.assertIn("answer_run_id", report.csv_content)
         self.assertTrue(report.pdf_content.startswith(b"%PDF-1.4"))
         self.assertIn(b"%%EOF", report.pdf_content)
@@ -1193,6 +1199,7 @@ class CoreContractsTest(unittest.TestCase):
         )
         for table in expected_tables:
             self.assertIn(f"INSERT INTO {table}", executed_sql)
+        self.assertIn("method_disclosure", executed_sql)
         self.assertGreaterEqual(connection.commit_count, 8)
         first_answer_run_insert = next(params for sql, params in connection.calls if "INSERT INTO answer_runs" in sql)
         self.assertEqual(str(first_answer_run_insert[0]), records[0].answer_run.id)
@@ -1200,6 +1207,8 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(str(first_analysis_insert[0]), analysis_result.analyses[0].id)
         self.assertEqual(len(str(first_analysis_insert[0])), 36)
         self.assertIn("ON CONFLICT (id) DO UPDATE SET parser_engine_id = EXCLUDED.parser_engine_id", executed_sql)
+        report_export_insert = next(params for sql, params in connection.calls if "INSERT INTO report_exports" in sql)
+        self.assertEqual(report_export_insert[10]["google_coverage"], report.report_export.method_disclosure["google_coverage"])
 
     def test_postgres_repository_persists_project_bootstrap_metadata(self) -> None:
         bootstrap = build_au_project_bootstrap()
@@ -2045,6 +2054,29 @@ class CoreContractsTest(unittest.TestCase):
             "prompt_version": "au_dtc_ecommerce_v1",
             "scoring_formula_version": "au_visibility_v1",
             "platform_weights_snapshot": {"chatgpt": 0.30, "perplexity": 0.25},
+            "method_disclosure": {
+                "google_coverage": "limited_coverage_appendix_only",
+                "google_spike_gate": {
+                    "gate_status": "fail",
+                    "planned_runs": 240,
+                    "completed_runs": 0,
+                    "google_aio_completed_runs": 0,
+                    "success_rate": 0.0,
+                    "trigger_rate": 0.0,
+                    "limited_coverage": True,
+                    "recommendation": "Keep Google in limited coverage appendix until a google_aio backend reaches 80% completion",
+                },
+                "api_browser_fidelity": {
+                    "status": "not_run",
+                    "official_api_records": 1,
+                    "browser_records": 0,
+                    "comparable_prompt_city_pairs": 0,
+                    "difference_rate": None,
+                },
+                "access_method_distribution": {"official_api": 1},
+                "platform_distribution": {"perplexity": 1},
+                "evidence_asset_coverage": {"screenshot_records": 1, "html_snapshot_records": 1},
+            },
             "sample_size": 1,
             "window_start": now,
             "window_end": now,
@@ -2178,6 +2210,29 @@ class CoreContractsTest(unittest.TestCase):
             "prompt_version": "au_dtc_ecommerce_v1",
             "scoring_formula_version": "au_visibility_v1",
             "platform_weights_snapshot": {"chatgpt": 0.30, "perplexity": 0.25},
+            "method_disclosure": {
+                "google_coverage": "limited_coverage_appendix_only",
+                "google_spike_gate": {
+                    "gate_status": "fail",
+                    "planned_runs": 240,
+                    "completed_runs": 0,
+                    "google_aio_completed_runs": 0,
+                    "success_rate": 0.0,
+                    "trigger_rate": 0.0,
+                    "limited_coverage": True,
+                    "recommendation": "Keep Google in limited coverage appendix until a google_aio backend reaches 80% completion",
+                },
+                "api_browser_fidelity": {
+                    "status": "not_run",
+                    "official_api_records": 1,
+                    "browser_records": 0,
+                    "comparable_prompt_city_pairs": 0,
+                    "difference_rate": None,
+                },
+                "access_method_distribution": {"official_api": 1},
+                "platform_distribution": {"perplexity": 1},
+                "evidence_asset_coverage": {"screenshot_records": 1, "html_snapshot_records": 1},
+            },
             "sample_size": 1,
             "window_start": now,
             "window_end": now,
@@ -2264,6 +2319,13 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(artifact.media_type, "text/markdown; charset=utf-8")
         self.assertIn("GENO AU Evidence Report", artifact.content)
         self.assertIn("Is ExampleBrand good in Australia?", artifact.content)
+        self.assertIn("## Method Disclosure", artifact.content)
+        self.assertIn("Google spike gate: fail", artifact.content)
+        self.assertIn("Google limited coverage: yes", artifact.content)
+        self.assertIn("Google AIO completed runs: 0 / planned 240", artifact.content)
+        self.assertIn("API-vs-browser fidelity: not_run", artifact.content)
+        self.assertIn("Screenshot records: 1", artifact.content)
+        self.assertIn("HTML snapshot records: 1", artifact.content)
         self.assertIn("ReportExport -> VisibilityScoreSnapshot", artifact.content)
         self.assertTrue(artifact.content_hash)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)

@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import csv
 import hashlib
-from dataclasses import dataclass
+from collections import Counter, defaultdict
+from dataclasses import asdict, dataclass, is_dataclass
 from datetime import UTC, datetime
 from io import StringIO
+from typing import Any, Mapping
 from uuid import uuid5, NAMESPACE_URL
 
 from geno_core.audit import build_audit_event, hash_payload
 from geno_core.models import (
     AuditEvent,
     CitationGraphResult,
+    GoogleSpikeGateResult,
     RawEvidenceRecord,
     ReportExport,
     ScoreContribution,
@@ -49,12 +52,18 @@ class MarkdownCsvReportExporter:
         graph: CitationGraphResult,
         platform_weights_snapshot: dict[str, float],
         exported_by: str = "system",
+        google_spike_gate: GoogleSpikeGateResult | Mapping[str, object] | None = None,
     ) -> EvidenceReport:
         if not records:
             raise ValueError("Evidence report requires at least one raw evidence record")
         window_start = min(record.answer_run.collected_at for record in records)
         window_end = max(record.answer_run.collected_at for record in records)
         answer_run_ids = tuple(record.answer_run.id for record in records)
+        method_disclosure = build_report_methodology_disclosure(
+            rows=_methodology_rows_from_records(records),
+            platform_weights_snapshot=platform_weights_snapshot,
+            google_spike_gate=google_spike_gate,
+        )
         methodology = {
             "market_code": market_code,
             "report_type": report_type,
@@ -62,8 +71,9 @@ class MarkdownCsvReportExporter:
             "scoring_formula_version": snapshot.formula_version,
             "sample_size": len(records),
             "platform_weights_snapshot": platform_weights_snapshot,
-            "google_coverage": "limited unless spike gate passes on real collection",
+            "google_coverage": method_disclosure["google_coverage"],
             "access_methods": sorted({record.answer_run.access_method for record in records}),
+            "method_disclosure": method_disclosure,
         }
         methodology_hash = hash_payload(methodology)
         report_id = _stable_id("report-export", project_id, report_version, methodology_hash)
@@ -81,6 +91,7 @@ class MarkdownCsvReportExporter:
             prompt_version=prompt_version,
             scoring_formula_version=snapshot.formula_version,
             platform_weights_snapshot=platform_weights_snapshot,
+            method_disclosure=method_disclosure,
             sample_size=len(records),
             window_start=window_start,
             window_end=window_end,
@@ -166,6 +177,12 @@ def _build_markdown_report(
         f"- Access methods: {', '.join(methodology['access_methods'])}",
         f"- Google coverage: {methodology['google_coverage']}",
         "",
+        "### Method Disclosure",
+        "",
+        *render_methodology_disclosure_lines(
+            methodology.get("method_disclosure") if isinstance(methodology.get("method_disclosure"), dict) else {}
+        ),
+        "",
         "## Score Contributions",
         "",
     ]
@@ -196,6 +213,171 @@ def _build_markdown_report(
         "AnswerAnalysis -> AnswerRun -> RawAnswer/AnswerCitation/EvidenceAsset."
     )
     return "\n".join(lines) + "\n"
+
+
+def _methodology_rows_from_records(records: tuple[RawEvidenceRecord, ...]) -> tuple[dict[str, Any], ...]:
+    return tuple(
+        {
+            "id": record.answer_run.id,
+            "prompt_question_id": record.answer_run.prompt_question_id,
+            "platform": record.answer_run.platform,
+            "surface": record.answer_run.surface,
+            "access_method": record.answer_run.access_method,
+            "city": record.answer_run.city,
+            "answer_present": record.answer_run.answer_present,
+            "surface_triggered": record.answer_run.surface_triggered,
+            "screenshot_count": sum(1 for asset in record.evidence_assets if asset.asset_type == "screenshot"),
+            "html_snapshot_count": sum(1 for asset in record.evidence_assets if asset.asset_type == "html_snapshot"),
+        }
+        for record in records
+    )
+
+
+def methodology_rows_from_runtime_answer_runs(answer_runs: tuple[dict[str, Any], ...]) -> tuple[dict[str, Any], ...]:
+    return tuple(
+        {
+            "id": str(row.get("id") or ""),
+            "prompt_question_id": str(row.get("prompt_question_id") or ""),
+            "platform": str(row.get("platform") or ""),
+            "surface": str(row.get("surface") or ""),
+            "access_method": str(row.get("access_method") or "unknown"),
+            "city": str(row.get("city") or ""),
+            "answer_present": bool(row.get("answer_present")) if row.get("answer_present") is not None else None,
+            "surface_triggered": bool(row.get("surface_triggered")) if row.get("surface_triggered") is not None else None,
+            "screenshot_count": int(row.get("screenshot_count") or 0),
+            "html_snapshot_count": int(row.get("html_snapshot_count") or 0),
+        }
+        for row in answer_runs
+    )
+
+
+def _gate_payload(gate: GoogleSpikeGateResult | Mapping[str, object] | None, rows: tuple[dict[str, Any], ...]) -> dict[str, Any]:
+    google_rows = [row for row in rows if row.get("platform") == "google"]
+    if gate is None:
+        observed = bool(google_rows)
+        return {
+            "gate_status": "observed_without_gate" if observed else "not_run",
+            "planned_runs": 0,
+            "completed_runs": len(google_rows),
+            "google_aio_completed_runs": sum(1 for row in google_rows if row.get("surface") == "google_aio"),
+            "success_rate": 0.0,
+            "trigger_rate": round(
+                sum(1 for row in google_rows if row.get("surface_triggered")) / len(google_rows), 4
+            )
+            if google_rows
+            else 0.0,
+            "best_backend_id": None,
+            "limited_coverage": True,
+            "failure_summary": {},
+            "recommendation": (
+                "Do not use Google records in the main scoring denominator until a stored Google AIO / AI Mode "
+                "spike gate reaches the pass threshold."
+            ),
+        }
+    raw = asdict(gate) if is_dataclass(gate) else dict(gate)
+    return {
+        "gate_status": str(raw.get("gate_status") or "unknown"),
+        "planned_runs": int(raw.get("planned_runs") or 0),
+        "completed_runs": int(raw.get("completed_runs") or 0),
+        "google_aio_completed_runs": int(raw.get("google_aio_completed_runs") or 0),
+        "success_rate": float(raw.get("success_rate") or 0.0),
+        "trigger_rate": float(raw.get("trigger_rate") or 0.0),
+        "best_backend_id": raw.get("best_backend_id"),
+        "limited_coverage": bool(raw.get("limited_coverage", True)),
+        "failure_summary": dict(raw.get("failure_summary") or {}),
+        "recommendation": str(raw.get("recommendation") or "No Google spike recommendation recorded"),
+    }
+
+
+def _api_browser_fidelity_payload(rows: tuple[dict[str, Any], ...]) -> dict[str, Any]:
+    official_rows = [row for row in rows if row.get("access_method") == "official_api"]
+    browser_rows = [row for row in rows if row.get("access_method") == "browser"]
+    official_by_key: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    browser_by_key: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for row in official_rows:
+        official_by_key[(str(row.get("prompt_question_id") or ""), str(row.get("city") or ""))].append(row)
+    for row in browser_rows:
+        browser_by_key[(str(row.get("prompt_question_id") or ""), str(row.get("city") or ""))].append(row)
+    overlap_keys = sorted(set(official_by_key) & set(browser_by_key))
+    mismatch_count = 0
+    for key in overlap_keys:
+        official_answer_present = any(bool(row.get("answer_present")) for row in official_by_key[key])
+        browser_answer_present = any(bool(row.get("answer_present")) for row in browser_by_key[key])
+        official_triggered = any(bool(row.get("surface_triggered")) for row in official_by_key[key])
+        browser_triggered = any(bool(row.get("surface_triggered")) for row in browser_by_key[key])
+        if (official_answer_present, official_triggered) != (browser_answer_present, browser_triggered):
+            mismatch_count += 1
+    if not official_rows or not browser_rows:
+        status = "not_run"
+        summary = "API-vs-browser fidelity check not run for this artifact."
+    elif not overlap_keys:
+        status = "no_overlap"
+        summary = "Official API and browser records exist, but no prompt/city overlap was available for comparison."
+    else:
+        status = "sampled"
+        summary = "Official API and browser records were compared on overlapping prompt/city pairs."
+    return {
+        "status": status,
+        "official_api_records": len(official_rows),
+        "browser_records": len(browser_rows),
+        "comparable_prompt_city_pairs": len(overlap_keys),
+        "mismatch_count": mismatch_count,
+        "difference_rate": round(mismatch_count / len(overlap_keys), 4) if overlap_keys else None,
+        "summary": summary,
+    }
+
+
+def build_report_methodology_disclosure(
+    *,
+    rows: tuple[dict[str, Any], ...],
+    platform_weights_snapshot: dict[str, float],
+    google_spike_gate: GoogleSpikeGateResult | Mapping[str, object] | None = None,
+) -> dict[str, Any]:
+    access_distribution = dict(sorted(Counter(str(row.get("access_method") or "unknown") for row in rows).items()))
+    platform_distribution = dict(sorted(Counter(str(row.get("platform") or "unknown") for row in rows).items()))
+    gate_payload = _gate_payload(google_spike_gate, rows)
+    fidelity_payload = _api_browser_fidelity_payload(rows)
+    google_coverage = (
+        "main_scoring_allowed"
+        if gate_payload["gate_status"] == "pass" and not gate_payload["limited_coverage"]
+        else "limited_coverage_appendix_only"
+    )
+    return {
+        "google_coverage": google_coverage,
+        "google_spike_gate": gate_payload,
+        "api_browser_fidelity": fidelity_payload,
+        "access_method_distribution": access_distribution,
+        "platform_distribution": platform_distribution,
+        "platform_weights_snapshot": dict(sorted(platform_weights_snapshot.items())),
+        "evidence_asset_coverage": {
+            "screenshot_records": sum(1 for row in rows if int(row.get("screenshot_count") or 0) > 0),
+            "html_snapshot_records": sum(1 for row in rows if int(row.get("html_snapshot_count") or 0) > 0),
+        },
+    }
+
+
+def render_methodology_disclosure_lines(disclosure: Mapping[str, Any]) -> list[str]:
+    gate = dict(disclosure.get("google_spike_gate") or {})
+    fidelity = dict(disclosure.get("api_browser_fidelity") or {})
+    assets = dict(disclosure.get("evidence_asset_coverage") or {})
+    access_distribution = dict(disclosure.get("access_method_distribution") or {})
+    platform_distribution = dict(disclosure.get("platform_distribution") or {})
+    return [
+        f"- Google spike gate: {gate.get('gate_status', 'unknown')}",
+        f"- Google limited coverage: {'yes' if gate.get('limited_coverage', True) else 'no'}",
+        f"- Google AIO completed runs: {gate.get('google_aio_completed_runs', 0)} / planned {gate.get('planned_runs', 0)}",
+        f"- Google trigger rate: {gate.get('trigger_rate', 0.0)}",
+        f"- Google recommendation: {gate.get('recommendation', 'No recommendation recorded')}",
+        f"- API-vs-browser fidelity: {fidelity.get('status', 'unknown')}",
+        f"- Official API records: {fidelity.get('official_api_records', 0)}",
+        f"- Browser records: {fidelity.get('browser_records', 0)}",
+        f"- Comparable prompt/city pairs: {fidelity.get('comparable_prompt_city_pairs', 0)}",
+        f"- API/browser difference rate: {fidelity.get('difference_rate') if fidelity.get('difference_rate') is not None else 'n/a'}",
+        f"- Access method distribution: {access_distribution}",
+        f"- Platform distribution: {platform_distribution}",
+        f"- Screenshot records: {assets.get('screenshot_records', 0)}",
+        f"- HTML snapshot records: {assets.get('html_snapshot_records', 0)}",
+    ]
 
 
 def _build_csv_evidence(records: tuple[RawEvidenceRecord, ...]) -> str:

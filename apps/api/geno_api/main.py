@@ -893,6 +893,8 @@ def au_p0a_fixture_report() -> dict[str, object]:
         competitors=bootstrap.competitors,
         industry_profile=bootstrap.industry_profile,
     )
+    google_plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
+    google_gate = evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=google_plan, records=())
     report = MarkdownCsvReportExporter().export(
         project_id=bootstrap.project.id,
         market_code=bootstrap.project.market_code,
@@ -904,6 +906,7 @@ def au_p0a_fixture_report() -> dict[str, object]:
         records=records,
         graph=graph,
         platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
+        google_spike_gate=google_gate,
     )
     return {
         "report_export": asdict(report.report_export),

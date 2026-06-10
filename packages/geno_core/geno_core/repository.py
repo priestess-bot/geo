@@ -63,7 +63,12 @@ from geno_core.models import (
     TraceabilityBundle,
     VisibilityScoreSnapshot,
 )
-from geno_core.report import render_markdown_pdf
+from geno_core.report import (
+    build_report_methodology_disclosure,
+    methodology_rows_from_runtime_answer_runs,
+    render_markdown_pdf,
+    render_methodology_disclosure_lines,
+)
 
 
 class DbCursor(Protocol):
@@ -132,6 +137,11 @@ def _row_dict(row: Any, columns: tuple[str, ...]) -> dict[str, Any]:
 
 def _rows_dict(rows: Any, columns: tuple[str, ...]) -> tuple[dict[str, Any], ...]:
     return tuple(_row_dict(row, columns) for row in rows)
+
+
+def _frozen_method_disclosure(report_export: dict[str, Any]) -> dict[str, Any] | None:
+    disclosure = report_export.get("method_disclosure")
+    return dict(disclosure) if isinstance(disclosure, dict) else None
 
 
 RUNTIME_EVIDENCE_SORTS = {
@@ -305,6 +315,10 @@ def _render_runtime_report_markdown(report: RuntimeReportExport) -> str:
     report_export = report.report_export
     snapshot = report.score_snapshots[0] if report.score_snapshots else {}
     graph = report.citation_graph
+    method_disclosure = _frozen_method_disclosure(report_export) or build_report_methodology_disclosure(
+        rows=methodology_rows_from_runtime_answer_runs(report.answer_runs),
+        platform_weights_snapshot=dict(report_export.get("platform_weights_snapshot") or {}),
+    )
     lines = [
         "# GENO AU Evidence Report",
         "",
@@ -323,6 +337,10 @@ def _render_runtime_report_markdown(report: RuntimeReportExport) -> str:
         f"- Mention rate: {snapshot.get('mention_rate', 'n/a')}",
         f"- Recommendation rate: {snapshot.get('recommendation_rate', 'n/a')}",
         f"- Dispersion: {snapshot.get('dispersion', 'n/a')}",
+        "",
+        "## Method Disclosure",
+        "",
+        *render_methodology_disclosure_lines(method_disclosure),
         "",
         "## Evidence Appendix",
         "",
@@ -371,6 +389,10 @@ def _render_white_label_report_markdown(
     report_export = report.report_export
     snapshot = report.score_snapshots[0] if report.score_snapshots else {}
     graph = report.citation_graph
+    method_disclosure = _frozen_method_disclosure(report_export) or build_report_methodology_disclosure(
+        rows=methodology_rows_from_runtime_answer_runs(report.answer_runs),
+        platform_weights_snapshot=dict(report_export.get("platform_weights_snapshot") or {}),
+    )
     platform_values = sorted(
         {
             str(answer_run.get("platform"))
@@ -411,6 +433,8 @@ def _render_white_label_report_markdown(
         "- This white-label PDF is regenerated from the frozen runtime ReportExport snapshot.",
         "- Active appendix filters affect only this downloadable artifact, not stored score snapshots or evidence ids.",
         "- Every displayed score remains traceable to answer runs, citations, score contributions, and audit events.",
+        f"- Google coverage: {method_disclosure['google_coverage']}",
+        f"- API-vs-browser fidelity: {method_disclosure['api_browser_fidelity']['status']}",
         "",
         "## Evidence Highlights",
         "",
@@ -798,6 +822,7 @@ REPORT_EXPORT_COLUMNS = (
     "prompt_version",
     "scoring_formula_version",
     "platform_weights_snapshot",
+    "method_disclosure",
     "sample_size",
     "window_start",
     "window_end",
@@ -3800,9 +3825,9 @@ class PostgresEvidenceRepository:
                 INSERT INTO report_exports (
                   id, project_id, market_code, report_version, report_type, score_snapshot_ids,
                   answer_run_ids, prompt_version, scoring_formula_version, platform_weights_snapshot,
-                  sample_size, window_start, window_end, methodology_hash, markdown_url, pdf_url,
+                  method_disclosure, sample_size, window_start, window_end, methodology_hash, markdown_url, pdf_url,
                   csv_url, exported_by, exported_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO NOTHING
                 """,
                 (
@@ -3816,6 +3841,7 @@ class PostgresEvidenceRepository:
                     report_export.prompt_version,
                     report_export.scoring_formula_version,
                     _json_payload(report_export.platform_weights_snapshot),
+                    _json_payload(report_export.method_disclosure),
                     report_export.sample_size,
                     _datetime(report_export.window_start),
                     _datetime(report_export.window_end),

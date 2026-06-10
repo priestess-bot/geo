@@ -102,6 +102,8 @@ def _persist_records(
             industry_profile=bootstrap.industry_profile,
         )
         repository.save_citation_graph(bootstrap.project.id, graph)
+        google_plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
+        google_gate = evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=google_plan, records=())
         report = MarkdownCsvReportExporter().export(
             project_id=bootstrap.project.id,
             market_code=bootstrap.project.market_code,
@@ -113,6 +115,7 @@ def _persist_records(
             records=successes,
             graph=graph,
             platform_weights_snapshot=platform_weights_snapshot,
+            google_spike_gate=google_gate,
         )
         repository.save_report_export(report.report_export, report.audit_event)
         report_artifact_summary: dict[str, object] = {

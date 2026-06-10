@@ -174,6 +174,26 @@ type ReportExport = {
     prompt_version?: string;
     scoring_formula_version?: string;
     platform_weights_snapshot?: Record<string, number>;
+    method_disclosure?: {
+      google_coverage?: string;
+      google_spike_gate?: {
+        gate_status?: string;
+        limited_coverage?: boolean;
+      };
+      api_browser_fidelity?: {
+        status?: string;
+        official_api_records?: number;
+        browser_records?: number;
+        comparable_prompt_city_pairs?: number;
+        difference_rate?: number | null;
+      };
+      access_method_distribution?: Record<string, number>;
+      platform_distribution?: Record<string, number>;
+      evidence_asset_coverage?: {
+        screenshot_records?: number;
+        html_snapshot_records?: number;
+      };
+    };
     window_start?: string;
     window_end?: string;
     methodology_hash?: string;
@@ -1049,6 +1069,19 @@ function clipText(value: string | undefined, maxLength: number): string {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
 }
 
+function countBy<T>(items: T[], selector: (item: T) => string | undefined): Record<string, number> {
+  return items.reduce<Record<string, number>>((counts, item) => {
+    const key = selector(item) || "unknown";
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function formatCounts(counts: Record<string, number>): string {
+  const entries = Object.entries(counts);
+  return entries.length ? entries.map(([key, value]) => `${key}:${value}`).join(", ") : "none";
+}
+
 export default async function Home({
   searchParams
 }: {
@@ -1122,6 +1155,30 @@ export default async function Home({
     ? uniqueText(latestReport.answer_runs.map((run) => run.access_method))
     : "unknown";
   const reportCities = latestReport ? uniqueText(latestReport.answer_runs.map((run) => run.city)) : "unknown";
+  const reportAccessMethodCounts = latestReport ? countBy(latestReport.answer_runs, (run) => run.access_method) : {};
+  const reportPlatformCounts = latestReport ? countBy(latestReport.answer_runs, (run) => run.platform) : {};
+  const reportMethodDisclosure = latestReport?.report_export.method_disclosure;
+  const reportFrozenAccessMethodCounts = reportMethodDisclosure?.access_method_distribution || reportAccessMethodCounts;
+  const reportFrozenPlatformCounts = reportMethodDisclosure?.platform_distribution || reportPlatformCounts;
+  const reportFidelity = reportMethodDisclosure?.api_browser_fidelity;
+  const reportGate = reportMethodDisclosure?.google_spike_gate;
+  const reportOfficialApiCount = reportFidelity?.official_api_records ?? reportFrozenAccessMethodCounts.official_api ?? 0;
+  const reportBrowserCount = reportFidelity?.browser_records ?? reportFrozenAccessMethodCounts.browser ?? 0;
+  const reportFidelityStatus = reportFidelity?.status || (reportOfficialApiCount && reportBrowserCount ? "sample_required" : "not_run");
+  const reportGoogleCoverage =
+    reportMethodDisclosure?.google_coverage ||
+    ((reportPlatformCounts.google || 0) > 0 ? "limited_coverage_appendix_only" : "limited_coverage_no_google_rows");
+  const reportGoogleGateStatus = reportGate?.gate_status || "not_run";
+  const reportLimitedCoverage = reportGate?.limited_coverage ?? true;
+  const reportComparablePairs = reportFidelity?.comparable_prompt_city_pairs ?? 0;
+  const reportDifferenceRate =
+    reportFidelity?.difference_rate === null || reportFidelity?.difference_rate === undefined
+      ? "n/a"
+      : reportFidelity.difference_rate;
+  const reportScreenshotCount =
+    reportMethodDisclosure?.evidence_asset_coverage?.screenshot_records ??
+    (latestReport?.answer_runs.filter((run) => run.access_method === "browser" || run.access_method === "manual").length || 0);
+  const reportHtmlSnapshotCount = reportMethodDisclosure?.evidence_asset_coverage?.html_snapshot_records ?? 0;
   const latestRetestComparison = latestAction?.retest_comparisons[0];
   const activeFilterCount = [filters.platform, filters.city, filters.intent_type].filter(Boolean).length;
   const filterLabel = activeFilterCount
@@ -1841,6 +1898,29 @@ export default async function Home({
                   <Fact label="Cities" value={reportCities} />
                   <Fact label="Method hash" value={latestReport.report_export.methodology_hash || "unknown"} />
                 </dl>
+              </section>
+
+              <section className="reportSection">
+                <h3>Method Disclosure</h3>
+                <dl className="facts">
+                  <Fact label="Google coverage" value={reportGoogleCoverage} />
+                  <Fact label="Google gate" value={reportGoogleGateStatus} />
+                  <Fact label="Limited coverage" value={reportLimitedCoverage ? "yes" : "no"} />
+                  <Fact label="API/browser fidelity" value={reportFidelityStatus} />
+                  <Fact label="Official API rows" value={reportOfficialApiCount} />
+                  <Fact label="Browser rows" value={reportBrowserCount} />
+                  <Fact label="Comparable pairs" value={reportComparablePairs} />
+                  <Fact label="Difference rate" value={reportDifferenceRate} />
+                  <Fact label="Access distribution" value={formatCounts(reportFrozenAccessMethodCounts)} />
+                  <Fact label="Platform distribution" value={formatCounts(reportFrozenPlatformCounts)} />
+                  <Fact label="Screenshot records" value={reportScreenshotCount} />
+                  <Fact label="HTML records" value={reportHtmlSnapshotCount} />
+                </dl>
+                <small className="auditLine">
+                  Google remains outside the main scoring denominator until a stored Google AIO / AI Mode spike gate passes.
+                  API-vs-browser fidelity is disclosed as not run unless this report contains comparable official API and
+                  browser rows.
+                </small>
               </section>
 
               <section className="reportSection">

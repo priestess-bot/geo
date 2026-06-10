@@ -239,7 +239,7 @@ DoD：
 
 - `[~]` (P0c) ReportExporter 接口 + Markdown/CSV/PDF 导出（方法说明 + 证据附录）、runtime report API、Markdown/CSV/PDF artifact 下载、附录级筛选/排序下载、项目级 Brand Kit 默认值、白标 PDF 模板 renderer 与 MinIO/S3-compatible artifact 归档；品牌资产上传/高级主题编辑待接 — `Step13`
 - `[x]` (P0c) ReportExport 快照：冻结 score_snapshot_ids、answer_run_ids、prompt_version、公式版本、平台权重、采样窗口；worker `--persist-analysis` 已写入不可覆盖版本，runtime report API 可读回 — `Step5.1 / §8.17`
-- `[~]` (P0c) 报告展示：采集窗口/平台覆盖/access_method/样本量(k)/离散度/双分母/公式版本/API-界面差异抽检结论/Google spike pass/fail/limited coverage/审计摘要/分数解释包/非确定性说明 — `Step13`（Runtime Console 已展示 Report Snapshot、Report History 与 Report Method & Evidence Appendix：冻结 methodology hash、采样窗口、平台/access method/city 覆盖、样本量、双分母评分、离散度、公式版本、平台权重、证据附录、citation/audit 摘要、历史 report version/exported_at/object store URL/artifact path、白标 PDF template path 与项目级 Brand Kit 默认值；核心方法/分数/证据/source gap/competitor/report snapshot、基础 PDF artifact 与项目级白标 PDF artifact 已落；API-界面差异抽检与真实 Google 结论待接）
+- `[~]` (P0c) 报告展示：采集窗口/平台覆盖/access_method/样本量(k)/离散度/双分母/公式版本/API-界面差异抽检结论/Google spike pass/fail/limited coverage/审计摘要/分数解释包/非确定性说明 — `Step13`（Runtime Console 已展示 Report Snapshot、Report History 与 Report Method & Evidence Appendix：冻结 methodology hash、采样窗口、平台/access method/city 覆盖、样本量、双分母评分、离散度、公式版本、平台权重、Method Disclosure、证据附录、citation/audit 摘要、历史 report version/exported_at/object store URL/artifact path、白标 PDF template path 与项目级 Brand Kit 默认值；标准/运行时报告 artifact 已写入 Google gate/limited coverage/API-vs-browser fidelity/access distribution 方法披露，`report_exports.method_disclosure` 已冻结同一快照供 runtime artifact/console 复用；核心方法/分数/证据/source gap/competitor/report snapshot、基础 PDF artifact 与项目级白标 PDF artifact 已落；真实 Google 运行结论和真实 API-vs-browser 抽检数据待接）
 - `[~]` (P1) 代理商工作流：多客户/多项目/白标/导出历史 — `Step13`（当前已接入 Runtime Console 项目下拉/URL `project_id` 选择，并把 brand kit/prompt/evidence/export/alias/saved view/score/graph/report/action/content/traceability read path 收敛到选中项目；已接入客户项目创建表单、项目级 Brand Kit 表单、Report History/导出历史只读面板和 `template=white_label` PDF 下载，按 `project_id` 读取最近 5 个 `ReportExport` 并展示冻结 URL、artifact 下载、白标 artifact path 和报告审计摘要；品牌资产上传、高级主题编辑、导出历史管理、权限/账单隔离与客户级授权流转待接）
 
 DoD：
@@ -288,8 +288,8 @@ DoD：
 
 | 风险 | 何时处理 | 缓解动作 | 出口判据 |
 | --- | --- | --- | --- |
-| 采集保真度：API ≠ 消费者界面 | M2a 起，M5 披露 | 接口化采集；官方 API 默认交付，浏览器抽检放入 P0c/P1 | 差异率量化并写入报告方法说明 |
-| Google AIO / AI Mode 选择性触发与采集脆弱 | M2b（spike） | 拆 AIO/AI Mode 两后端；建模 answer_present；自建/第三方/人工补录限时对比 | pass/fail gate 明确；未过闸只进 limited coverage 附录 |
+| 采集保真度：API ≠ 消费者界面 | M2a 起，M5 披露 | 接口化采集；官方 API 默认交付，浏览器抽检放入 P0c/P1 | 报告 Method Disclosure 已冻结入库并披露 fidelity 状态、official_api/browser 记录数和差异率字段；真实抽检数据待接 |
+| Google AIO / AI Mode 选择性触发与采集脆弱 | M2b（spike） | 拆 AIO/AI Mode 两后端；建模 answer_present；自建/第三方/人工补录限时对比 | pass/fail gate 与 limited coverage 字段已进入并冻结在报告 Method Disclosure；真实 Google gate 待跑 |
 | AI 非确定性导致评分噪声 | M2a–M3 | P0a k=3；Google spike k=2 单独标注；报告展示离散度 | 同 prompt 多次采样 + 置信展示 |
 | 架构可插拔是否为真 | M0 起持续 | 接口先行；P0a 先完成接口级可插拔，深度切换演示排到 P0c/P1 | Collector/Parser/Scoring/Report 可插拔；向量库/图库/LLM 后续演示 |
 | 城市级地理定位实现成本 | M2a/M2b | GeoProvider 抽象（uule/代理池/供应商可换）；P0a 四地理样本可降级但保留字段 | 地理样本可区分且成本可控 |

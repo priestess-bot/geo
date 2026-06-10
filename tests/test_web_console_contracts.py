@@ -25,6 +25,16 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".nodeLink", css_source)
         self.assertIn(":target", css_source)
 
+    def test_runtime_console_discloses_report_method_boundaries(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("Method Disclosure", page_source)
+        self.assertIn("Google coverage", page_source)
+        self.assertIn("Google gate", page_source)
+        self.assertIn("API/browser fidelity", page_source)
+        self.assertIn("Access distribution", page_source)
+        self.assertIn("Google remains outside the main scoring denominator", page_source)
+
 
 if __name__ == "__main__":
     unittest.main()

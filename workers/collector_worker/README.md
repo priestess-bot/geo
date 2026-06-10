@@ -67,6 +67,10 @@ PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_coll
 
 This runs the 30 prompt × 2 surfaces × 2 geo × k=2 spike matrix with fixture Google adapters and
 prints the gate result. Real Google paths still require browser/API/manual runtime implementations.
+When `--persist-analysis` creates a report from the stable fixture path, the report Method Disclosure
+is frozen into `report_exports.method_disclosure`, records Google as limited coverage until a Google
+spike gate is available, and records the current API-vs-browser fidelity status plus access-method
+distribution.
 
 Docker worker profile:
 
