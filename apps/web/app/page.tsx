@@ -702,7 +702,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     }),
     scores: runtimePath(endpoints.scores, { limit: 1 }),
     graphs: runtimePath(endpoints.graphs, { limit: 1 }),
-    reports: runtimePath(endpoints.reports, { limit: 1 }),
+    reports: runtimePath(endpoints.reports, { limit: 5 }),
     actions: runtimePath(endpoints.actions, { limit: 1 }),
     content: runtimePath(endpoints.content, { limit: 1 }),
     traceability: endpoints.traceability
@@ -719,6 +719,12 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
         limit: 5
       })
     : paths.entityAliasCandidates;
+  paths.reports = latestProjectId
+    ? runtimePath(endpoints.reports, {
+        project_id: latestProjectId,
+        limit: 5
+      })
+    : paths.reports;
 
   const [
     prompts,
@@ -917,6 +923,7 @@ export default async function Home({
   const reportMarkdownUrl = reportArtifactPath(reportArtifactBase, "markdown", { ...filters, sort: evidenceSort });
   const reportCsvUrl = reportArtifactPath(reportArtifactBase, "csv", { ...filters, sort: evidenceSort });
   const reportPdfUrl = reportArtifactPath(reportArtifactBase, "pdf", { ...filters, sort: evidenceSort });
+  const reportArtifactFilters = { ...filters, sort: evidenceSort };
 
   return (
     <main className="shell">
@@ -1006,6 +1013,7 @@ export default async function Home({
           <Fact label="Evidence query" value={paths.evidence} />
           <Fact label="Export query" value={paths.evidenceExport} />
           <Fact label="Saved views query" value={paths.savedViews} />
+          <Fact label="Report query" value={paths.reports} />
           <Fact label="Evidence sort" value={evidenceSort} />
         </dl>
         <div className="savedViews">
@@ -1360,6 +1368,70 @@ export default async function Home({
               <dl className="facts">
                 <Fact label="Artifact filters" value={reportCsvUrl?.replace(displayUrl, "") || "No report artifact"} />
               </dl>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </Panel>
+
+        <Panel title="Report History" subtitle={`${data.reports.total_count} stored exports`} wide>
+          {data.reports.records.length ? (
+            <div className="reportHistory">
+              {data.reports.records.map((report) => {
+                const artifactBase = `${displayUrl}/v1/reports/runtime/${report.report_export.id}/artifact`;
+                const markdownUrl = reportArtifactPath(artifactBase, "markdown", reportArtifactFilters);
+                const csvUrl = reportArtifactPath(artifactBase, "csv", reportArtifactFilters);
+                const pdfUrl = reportArtifactPath(artifactBase, "pdf", reportArtifactFilters);
+                const scoreSnapshot = report.score_snapshots[0];
+                return (
+                  <article className="reportHistoryItem" key={report.report_export.id}>
+                    <header>
+                      <div>
+                        <h3>{report.report_export.report_version}</h3>
+                        <span>{dateText(report.report_export.exported_at)}</span>
+                      </div>
+                      <strong>{report.report_export.report_type || "report"}</strong>
+                    </header>
+                    <dl className="facts contributionFacts">
+                      <Fact label="Report ID" value={shortId(report.report_export.id)} />
+                      <Fact label="Market" value={report.report_export.market_code || "unknown"} />
+                      <Fact label="Sample size" value={report.report_export.sample_size} />
+                      <Fact label="Evidence links" value={report.answer_runs.length} />
+                      <Fact label="Score snapshots" value={report.score_snapshots.length} />
+                      <Fact label="Audit events" value={report.audit_events.length} />
+                      <Fact label="Final score" value={num(scoreSnapshot?.final_score)} />
+                      <Fact label="Method hash" value={shortId(report.report_export.methodology_hash)} />
+                    </dl>
+                    <div className="downloadRow reportHistoryDownloads">
+                      {markdownUrl ? <a href={markdownUrl}>Markdown</a> : null}
+                      {csvUrl ? <a href={csvUrl}>CSV</a> : null}
+                      {pdfUrl ? <a href={pdfUrl}>PDF</a> : null}
+                    </div>
+                    <ul className="plainList">
+                      <li>
+                        <strong>Frozen artifact URLs</strong>
+                        <span>{report.report_export.markdown_url || "markdown pending"}</span>
+                        <small>
+                          {report.report_export.pdf_url || "pdf pending"} · {report.report_export.csv_url || "csv pending"}
+                        </small>
+                      </li>
+                      <li>
+                        <strong>Artifact filter path</strong>
+                        <span>{csvUrl?.replace(displayUrl, "") || "No artifact API path"}</span>
+                        <small>
+                          {filters.platform || "all platforms"} · {filters.city || "all cities"} ·{" "}
+                          {filters.intent_type || "all intents"} · {evidenceSort}
+                        </small>
+                      </li>
+                      <li>
+                        <strong>{report.audit_events[0]?.event_type || "no report audit"}</strong>
+                        <span>{report.audit_events[0]?.target_type || "report_export"}</span>
+                        <small>{report.audit_events[0]?.method_version || "no method version"}</small>
+                      </li>
+                    </ul>
+                  </article>
+                );
+              })}
             </div>
           ) : (
             <EmptyState />

@@ -699,6 +699,60 @@ code {
   grid-column: 1 / -1;
 }
 
+.reportHistory {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.reportHistoryItem {
+  align-content: start;
+  background: #f7fafc;
+  border: 1px solid #e1e7ee;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.reportHistoryItem header {
+  align-items: flex-start;
+  border-bottom: 1px solid #edf1f5;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+  padding-bottom: 8px;
+}
+
+.reportHistoryItem header div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.reportHistoryItem header h3,
+.reportHistoryItem header span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.reportHistoryItem header span,
+.reportHistoryItem header strong {
+  color: #667585;
+  font-size: 12px;
+}
+
+.reportHistoryItem header strong {
+  text-transform: uppercase;
+}
+
+.reportHistoryDownloads a {
+  min-width: 84px;
+  text-align: center;
+}
+
 .actionDetail {
   display: grid;
   gap: 14px;
@@ -947,6 +1001,7 @@ summary {
   .contributionGrid,
   .benchmarkGrid,
   .reportDetail,
+  .reportHistory,
   .actionDetail,
   .contentDetail,
   .connectorGrid,
@@ -998,6 +1053,7 @@ summary {
   .graphColumns,
   .benchmarkGrid,
   .reportDetail,
+  .reportHistory,
   .actionDetail,
   .contentDetail,
   .connectorGrid,
