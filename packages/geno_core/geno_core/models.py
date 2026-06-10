@@ -620,6 +620,14 @@ class RuntimeProjectPage:
 
 
 @dataclass(frozen=True)
+class RuntimePromptPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class RuntimeReportExport:
     report_export: dict[str, Any]
     score_snapshots: tuple[dict[str, Any], ...]

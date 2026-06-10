@@ -36,6 +36,7 @@ from geno_core.models import (
     RuntimeEvidenceRun,
     RuntimeProject,
     RuntimeProjectPage,
+    RuntimePromptPage,
     RuntimeReportArtifact,
     RuntimeReportExport,
     RuntimeReportExportPage,
@@ -668,6 +669,61 @@ class PostgresEvidenceRepository:
             prompt_count=prompt_count,
             audit_events=audit_events,
         )
+
+    def list_runtime_prompts(
+        self,
+        *,
+        project_id: str | None = None,
+        market_code: str | None = None,
+        intent_type: str | None = None,
+        city: str | None = None,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> RuntimePromptPage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id))
+        if market_code:
+            filters.append("market_code = %s")
+            params.append(market_code)
+        if intent_type:
+            filters.append("intent_type = %s")
+            params.append(intent_type)
+        if city:
+            filters.append("city = %s")
+            params.append(city)
+        if status:
+            filters.append("status = %s")
+            params.append(status)
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT count(*)
+                FROM prompt_questions
+                {where_clause}
+                """,
+                tuple(params),
+            )
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROMPT_QUESTION_READ_COLUMNS)}
+                FROM prompt_questions
+                {where_clause}
+                ORDER BY priority ASC, id ASC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            records = _rows_dict(cursor.fetchall(), PROMPT_QUESTION_READ_COLUMNS)
+        return RuntimePromptPage(total_count=total_count, limit=limit, offset=offset, records=records)
 
     def list_runtime_evidence_runs(
         self,

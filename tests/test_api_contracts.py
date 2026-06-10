@@ -65,6 +65,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_prompts_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get("/v1/prompts/runtime")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_runtime_evidence_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/evidence-runs/runtime")
         self.assertEqual(response.status_code, 503)
@@ -213,6 +218,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEvidenceRun", payload["persistence"])
         self.assertIn("RuntimeProject", payload["persistence"])
         self.assertIn("RuntimeProjectPage", payload["persistence"])
+        self.assertIn("RuntimePromptPage", payload["persistence"])
         self.assertIn("RuntimeScoreSnapshot", payload["persistence"])
         self.assertIn("RuntimeCitationGraph", payload["persistence"])
         self.assertIn("RuntimeReportArtifact", payload["persistence"])
@@ -223,6 +229,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("build_object_store_from_env", payload["persistence"])
         self.assertIn("/v1/projects/runtime", payload["persistence"])
         self.assertIn("/v1/projects/runtime/au/dtc-ecommerce", payload["persistence"])
+        self.assertIn("/v1/prompts/runtime", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])
         self.assertIn("/v1/visibility-scores/runtime", payload["persistence"])
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])

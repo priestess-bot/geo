@@ -1161,6 +1161,51 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM tenants WHERE id = %s", executed_sql)
         self.assertIn("FROM prompt_questions WHERE project_id = %s", executed_sql)
 
+    def test_postgres_repository_reads_runtime_prompt_page(self) -> None:
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        prompt_id = "5b9615f3-533b-5f18-96fb-5c8cbcb934c1"
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [
+                    {
+                        "id": prompt_id,
+                        "project_id": project_id,
+                        "market_code": "AU",
+                        "industry_code": "dtc_ecommerce",
+                        "text": "Is ExampleBrand good in Australia?",
+                        "intent_type": "brand_awareness",
+                        "city": "Australia",
+                        "language": "en-AU",
+                        "target_brand": "ExampleBrand",
+                        "competitors": ["Emma Sleep", "Sleeping Duck", "Ecosa", "IKEA Australia"],
+                        "priority": 1,
+                        "intent_weight": 0.9,
+                        "prompt_version": "au_dtc_ecommerce_v1",
+                        "status": "active",
+                    }
+                ],
+            ]
+        )
+
+        page = PostgresEvidenceRepository(connection).list_runtime_prompts(
+            project_id=project_id,
+            intent_type="brand_awareness",
+            city="Australia",
+            status="active",
+            limit=10,
+            offset=0,
+        )
+
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.records[0]["id"], prompt_id)
+        self.assertEqual(page.records[0]["text"], "Is ExampleBrand good in Australia?")
+        self.assertEqual(page.records[0]["competitors"][0], "Emma Sleep")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM prompt_questions WHERE project_id = %s", executed_sql)
+        self.assertIn("intent_type = %s", executed_sql)
+        self.assertIn("ORDER BY priority ASC, id ASC", executed_sql)
+
     def test_runtime_repository_requires_database_url(self) -> None:
         with self.assertRaises(RuntimePersistenceError):
             build_repository_from_env({})

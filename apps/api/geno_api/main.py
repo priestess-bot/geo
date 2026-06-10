@@ -124,6 +124,35 @@ def runtime_projects(
         close_repository_connection(repository)
 
 
+@app.get("/v1/prompts/runtime")
+def runtime_prompts(
+    project_id: str | None = None,
+    market_code: str | None = None,
+    intent_type: str | None = None,
+    city: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.list_runtime_prompts(
+            project_id=project_id,
+            market_code=market_code,
+            intent_type=intent_type,
+            city=city,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/collection-plans/au/p0a")
 def au_p0a_collection_plan() -> dict[str, object]:
     bootstrap = build_au_project_bootstrap()
@@ -806,6 +835,7 @@ def contracts() -> dict[str, list[str]]:
             "save_project_bootstrap",
             "RuntimeProject",
             "RuntimeProjectPage",
+            "RuntimePromptPage",
             "RuntimeEvidenceRun",
             "RuntimeEvidencePage",
             "RuntimeScoreSnapshot",
@@ -830,6 +860,7 @@ def contracts() -> dict[str, list[str]]:
             "TraceabilityBundle",
             "/v1/projects/runtime",
             "/v1/projects/runtime/au/dtc-ecommerce",
+            "/v1/prompts/runtime",
             "/v1/evidence-runs/runtime",
             "worker --persist",
             "worker --persist-analysis",
