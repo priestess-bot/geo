@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
+import os
 import unittest
 from datetime import UTC, datetime
 
@@ -34,7 +37,12 @@ class FakeNotificationDeliveryRepository:
         return self.delivery
 
 
-def _delivery_record(*, attempt_count: int = 1, max_attempts: int = 3) -> RuntimeNotificationDelivery:
+def _delivery_record(
+    *,
+    attempt_count: int = 1,
+    max_attempts: int = 3,
+    subscription_metadata: dict[str, object] | None = None,
+) -> RuntimeNotificationDelivery:
     now = datetime(2026, 6, 12, tzinfo=UTC)
     return RuntimeNotificationDelivery(
         delivery={
@@ -66,9 +74,26 @@ def _delivery_record(*, attempt_count: int = 1, max_attempts: int = 3) -> Runtim
             "updated_at": now,
         },
         notification={"id": "3ba5d5b7-8759-557b-a8a8-7297f98e2339", "title": "Report export failed"},
-        subscription={"id": "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8", "endpoint_url": "https://hooks.example.com/geno"},
+        subscription={
+            "id": "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8",
+            "endpoint_url": "https://hooks.example.com/geno",
+            "metadata": subscription_metadata or {},
+        },
         audit_events=(),
     )
+
+
+def _expected_signature(*, secret: str, headers: dict[str, str]) -> str:
+    signature_input = ".".join(
+        [
+            headers["x-geno-signature-timestamp"],
+            headers["x-geno-delivery-id"],
+            headers["x-geno-notification-id"],
+            headers["x-geno-payload-sha256"],
+        ]
+    )
+    signature = hmac.new(secret.encode("utf-8"), signature_input.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"sha256={signature}"
 
 
 class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
@@ -91,6 +116,7 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
             updated_by="notification-worker",
             lease_seconds=120,
             timeout_seconds=2.5,
+            default_signing_secret_env=None,
             requester=requester,
         )
 
@@ -109,6 +135,94 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         body_payload = json.loads(requests[0][3].decode("utf-8"))
         self.assertEqual(body_payload["delivery_version"], "runtime_notification_delivery_v1")
         self.assertEqual(result["payload_hash"], requests[0][2]["x-geno-payload-sha256"])
+        self.assertFalse(result["signed"])
+
+    def test_process_next_notification_delivery_signs_webhook_from_subscription_secret_env(self) -> None:
+        repository = FakeNotificationDeliveryRepository(
+            _delivery_record(subscription_metadata={"signing_secret_env": "GENO_TEST_WEBHOOK_SECRET"})
+        )
+        os.environ["GENO_TEST_WEBHOOK_SECRET"] = "test-secret"
+        requests: list[tuple[str, str, dict[str, str], bytes, float]] = []
+
+        def requester(
+            method: str,
+            url: str,
+            headers: dict[str, str],
+            body: bytes,
+            timeout_seconds: float,
+        ) -> tuple[int, bytes]:
+            requests.append((method, url, dict(headers), body, timeout_seconds))
+            return 200, b"ok"
+
+        try:
+            result = process_next_notification_delivery(
+                repository=repository,
+                default_signing_secret_env=None,
+                requester=requester,
+            )
+        finally:
+            os.environ.pop("GENO_TEST_WEBHOOK_SECRET", None)
+
+        self.assertEqual(result["status"], "delivered")
+        self.assertTrue(result["signed"])
+        self.assertEqual(requests[0][2]["x-geno-signature-version"], "runtime_notification_webhook_hmac_sha256_v1")
+        self.assertEqual(
+            requests[0][2]["x-geno-signature-input"],
+            "timestamp.delivery_id.notification_id.payload_sha256",
+        )
+        self.assertEqual(requests[0][2]["x-geno-signature"], _expected_signature(secret="test-secret", headers=requests[0][2]))
+        self.assertTrue(requests[0][2]["x-geno-signature-timestamp"].isdigit())
+
+    def test_process_next_notification_delivery_requeues_missing_subscription_secret_env(self) -> None:
+        repository = FakeNotificationDeliveryRepository(
+            _delivery_record(
+                attempt_count=1,
+                max_attempts=3,
+                subscription_metadata={"signing_secret_env": "GENO_MISSING_WEBHOOK_SECRET"},
+            )
+        )
+
+        result = process_next_notification_delivery(
+            repository=repository,
+            default_signing_secret_env=None,
+            requester=lambda *args: (204, b""),
+        )
+
+        self.assertEqual(result["status"], "queued")
+        self.assertFalse(result["signed"])
+        self.assertEqual(repository.status_updates[-1].status, "queued")
+        self.assertIn("GENO_MISSING_WEBHOOK_SECRET", repository.status_updates[-1].error_message or "")
+
+    def test_process_next_notification_delivery_signs_with_default_secret_env(self) -> None:
+        repository = FakeNotificationDeliveryRepository(_delivery_record())
+        os.environ["GENO_DEFAULT_WEBHOOK_SECRET"] = "default-secret"
+        requests: list[tuple[str, str, dict[str, str], bytes, float]] = []
+
+        def requester(
+            method: str,
+            url: str,
+            headers: dict[str, str],
+            body: bytes,
+            timeout_seconds: float,
+        ) -> tuple[int, bytes]:
+            requests.append((method, url, dict(headers), body, timeout_seconds))
+            return 202, b"accepted"
+
+        try:
+            result = process_next_notification_delivery(
+                repository=repository,
+                default_signing_secret_env="GENO_DEFAULT_WEBHOOK_SECRET",
+                requester=requester,
+            )
+        finally:
+            os.environ.pop("GENO_DEFAULT_WEBHOOK_SECRET", None)
+
+        self.assertEqual(result["status"], "delivered")
+        self.assertTrue(result["signed"])
+        self.assertEqual(
+            requests[0][2]["x-geno-signature"],
+            _expected_signature(secret="default-secret", headers=requests[0][2]),
+        )
 
     def test_process_next_notification_delivery_requeues_non_2xx_before_max_attempts(self) -> None:
         repository = FakeNotificationDeliveryRepository(_delivery_record(attempt_count=1, max_attempts=3))
@@ -125,6 +239,7 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         result = process_next_notification_delivery(
             repository=repository,
             retry_backoff_seconds=30,
+            default_signing_secret_env=None,
             requester=requester,
         )
 
@@ -146,7 +261,11 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         ) -> tuple[int, bytes]:
             raise RuntimeError("webhook timeout")
 
-        result = process_next_notification_delivery(repository=repository, requester=requester)
+        result = process_next_notification_delivery(
+            repository=repository,
+            default_signing_secret_env=None,
+            requester=requester,
+        )
 
         self.assertEqual(result["status"], "dead_letter")
         self.assertEqual(repository.status_updates[-1].status, "dead_letter")

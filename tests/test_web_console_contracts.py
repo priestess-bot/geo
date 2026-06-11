@@ -190,6 +190,8 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("notificationSubscriptions", page_source)
         self.assertIn("notificationDeliveries", page_source)
         self.assertIn("Save webhook", page_source)
+        self.assertIn("signing_secret_env", page_source)
+        self.assertIn("GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET", page_source)
         self.assertIn("unread_count", page_source)
         self.assertIn("retryable_count", page_source)
         self.assertIn("expired_running_count", page_source)

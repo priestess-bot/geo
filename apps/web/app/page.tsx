@@ -1683,7 +1683,8 @@ async function saveRuntimeNotificationSubscription(formData: FormData) {
     severity_threshold: String(formData.get("severity_threshold") || "info").trim(),
     status: String(formData.get("status") || "active").trim(),
     metadata: {
-      source: "runtime_console_notification_subscription"
+      source: "runtime_console_notification_subscription",
+      signing_secret_env: String(formData.get("signing_secret_env") || "").trim() || undefined
     },
     updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
     reason: String(formData.get("reason") || "").trim() || undefined
@@ -4187,6 +4188,10 @@ export default async function Home({
               <input name="event_types" defaultValue="report_export_job" />
             </label>
             <label>
+              <span>Signing env</span>
+              <input name="signing_secret_env" placeholder="GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET" />
+            </label>
+            <label>
               <span>Severity</span>
               <select name="severity_threshold" defaultValue="info">
                 <option value="info">info</option>
@@ -4223,6 +4228,9 @@ export default async function Home({
                   <span>{record.subscription.endpoint_url}</span>
                   <small>
                     {record.subscription.event_types.join(", ")} ·{" "}
+                    {typeof record.subscription.metadata?.signing_secret_env === "string"
+                      ? `signed by ${record.subscription.metadata.signing_secret_env} · `
+                      : ""}
                     {record.audit_events[0]?.event_type || "runtime_notification_subscription_saved pending"} ·{" "}
                     {dateText(record.subscription.updated_at)}
                   </small>
