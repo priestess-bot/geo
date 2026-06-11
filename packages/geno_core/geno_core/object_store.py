@@ -13,7 +13,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, unquote, urlsplit
 from urllib.request import Request, urlopen
 
-from geno_core.models import EvidenceAsset, RawEvidenceRecord
+from geno_core.models import EvidenceAsset, RawEvidenceRecord, RuntimeReportArtifact
 
 
 RequestFn = Callable[[str, str, Mapping[str, str], bytes], tuple[int, Mapping[str, str], bytes]]
@@ -233,6 +233,35 @@ def archive_report_artifacts(report: Any, store: S3CompatibleObjectStore) -> tup
         if uri:
             stored.append(store.put_s3_uri(uri=uri, content=content, content_type=content_type))
     return tuple(stored)
+
+
+def archive_runtime_report_artifact(
+    *,
+    project_id: str,
+    artifact: RuntimeReportArtifact,
+    store: S3CompatibleObjectStore,
+) -> StoredObject:
+    if not project_id.strip():
+        raise ObjectStoreError("project_id is required")
+    report_export = artifact.report_export
+    report_export_id = str(report_export.get("id") or "").strip()
+    if not report_export_id:
+        raise ObjectStoreError("report_export id is required")
+    content_hash = artifact.content_hash or hashlib.sha256(
+        artifact.content.encode("utf-8") if isinstance(artifact.content, str) else artifact.content
+    ).hexdigest()
+    key = "/".join(
+        [
+            "report-artifacts",
+            project_id.strip(),
+            report_export_id,
+            artifact.template,
+            artifact.filter_hash,
+            artifact.sort,
+            f"{content_hash[:12]}-{_safe_asset_filename(artifact.filename)}",
+        ]
+    )
+    return store.put_object(key=key, content=artifact.content, content_type=artifact.media_type)
 
 
 def archive_project_brand_logo(

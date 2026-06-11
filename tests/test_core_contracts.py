@@ -107,6 +107,7 @@ from geno_core.models import (
     RuntimeCollectionRunPage,
     RuntimeScoreSnapshotPage,
     RuntimeReportArtifact,
+    RuntimeReportExportJob,
     RuntimeReportExportJobInput,
     RuntimeReportExportJobPage,
     RuntimeReportExportJobStatusInput,
@@ -125,6 +126,7 @@ from geno_core.object_store import (
     archive_browser_capture_assets,
     archive_project_brand_logo,
     archive_report_artifacts,
+    archive_runtime_report_artifact,
 )
 from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.prompt_import import prompt_import_file_to_csv
@@ -2171,6 +2173,62 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(len(object_puts), 1)
         self.assertTrue(object_puts[0][1].endswith("/brand-assets/9a50797d-a341-55a4-8bdf-cc255c017e5c/logo-3a4fbb95f7aa-Client-Logo-Final.PNG"))
         self.assertEqual(object_puts[0][3], b"fake-logo-bytes")
+
+    def test_runtime_report_artifact_archive_to_s3_compatible_store(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        requests: list[tuple[str, str, dict[str, str], bytes]] = []
+
+        def requester(
+            method: str,
+            url: str,
+            headers: object,
+            body: bytes,
+        ) -> tuple[int, dict[str, str], bytes]:
+            requests.append((method, url, dict(headers), body))
+            return 200, {"ETag": '"runtime-report-etag"'}, b""
+
+        store = S3CompatibleObjectStore(
+            endpoint="http://minio:9000",
+            bucket="geno-reports",
+            access_key="minio",
+            secret_key="minio123",
+            requester=requester,
+        )
+        artifact = RuntimeReportArtifact(
+            report_export={"id": report_export_id, "project_id": project_id, "report_version": "worker-runtime-v1"},
+            artifact_type="pdf",
+            template="white_label",
+            template_payload={"template": "white_label", "client_name": "ExampleBrand AU"},
+            template_hash="template-hash",
+            filename="worker-runtime-v1-white-label.pdf",
+            media_type="application/pdf",
+            content=b"%PDF-1.4 runtime report\n%%EOF",
+            content_hash="report-content-hash",
+            filters={"platform": "perplexity"},
+            filter_hash="filter-hash",
+            sort="cost_desc",
+            total_count=10,
+            row_count=4,
+        )
+
+        stored = archive_runtime_report_artifact(project_id=project_id, artifact=artifact, store=store)
+
+        self.assertEqual(stored.content_type, "application/pdf")
+        self.assertEqual(stored.uri, (
+            "s3://geno-reports/report-artifacts/"
+            "9a50797d-a341-55a4-8bdf-cc255c017e5c/"
+            "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad/"
+            "white_label/filter-hash/cost_desc/report-conte-worker-runtime-v1-white-label.pdf"
+        ))
+        object_puts = [item for item in requests if item[0] == "PUT" and "report-artifacts" in item[1]]
+        self.assertEqual(len(object_puts), 1)
+        self.assertTrue(object_puts[0][1].endswith(
+            "/report-artifacts/9a50797d-a341-55a4-8bdf-cc255c017e5c/"
+            "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad/white_label/filter-hash/cost_desc/"
+            "report-conte-worker-runtime-v1-white-label.pdf"
+        ))
+        self.assertEqual(object_puts[0][3], b"%PDF-1.4 runtime report\n%%EOF")
 
     def test_api_snapshot_assets_archive_to_s3_compatible_store(self) -> None:
         class FakeApiHttpClient:
@@ -5173,6 +5231,65 @@ class CoreContractsTest(unittest.TestCase):
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FROM report_export_jobs WHERE project_id = %s AND status = %s", executed_sql)
         self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_claims_next_report_export_job_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        job_id = "8f4f2a24-d6cf-5050-96a4-942d2c337fd0"
+        before_row = {
+            "id": job_id,
+            "project_id": project_id,
+            "report_export_id": None,
+            "status": "queued",
+            "artifact_type": "pdf",
+            "template": "standard",
+            "filters": {"city": "Sydney"},
+            "sort": "collected_at_desc",
+            "requested_by": "runtime-console",
+            "requested_at": now,
+            "started_at": None,
+            "completed_at": None,
+            "artifact_url": None,
+            "error_message": None,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        after_row = {
+            **before_row,
+            "status": "running",
+            "started_at": now,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "e011f214-7cf4-40e4-b73e-8cc4308cc7d9",
+            "event_type": "report_export_job_status_updated",
+            "project_id": project_id,
+            "actor_type": "worker",
+            "actor_id": "runtime-worker",
+            "target_type": "report_export_job",
+            "target_id": job_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {"status": ["running"], "report_export_job_ids": [job_id]},
+            "output_refs": {"claimed": [True]},
+            "method_version": "runtime_report_export_job_claim_v1",
+            "reason": "claim queued report export job",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[before_row, after_row, [audit_row]])
+
+        record = PostgresEvidenceRepository(connection).claim_next_runtime_report_export_job(updated_by="runtime-worker")
+
+        self.assertIsInstance(record, RuntimeReportExportJob)
+        assert record is not None
+        self.assertEqual(record.report_export_job["status"], "running")
+        self.assertEqual(record.audit_events[0]["method_version"], "runtime_report_export_job_claim_v1")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FOR UPDATE SKIP LOCKED", executed_sql)
+        self.assertIn("UPDATE report_export_jobs SET status = %s", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
 
     def test_postgres_repository_updates_report_export_job_status_with_audit_event(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

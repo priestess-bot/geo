@@ -4365,6 +4365,74 @@ class PostgresEvidenceRepository:
             records=records,
         )
 
+    def claim_next_runtime_report_export_job(
+        self,
+        *,
+        updated_by: str = "runtime-worker",
+    ) -> RuntimeReportExportJob | None:
+        updated_by = updated_by.strip()
+        if not updated_by:
+            raise ValueError("updated_by is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(REPORT_EXPORT_JOB_COLUMNS)}
+                FROM report_export_jobs
+                WHERE status = %s
+                ORDER BY requested_at ASC, id ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+                """,
+                ("queued",),
+            )
+            before = _row_dict(cursor.fetchone(), REPORT_EXPORT_JOB_COLUMNS)
+            if not before:
+                return None
+            now = datetime.now(UTC)
+            cursor.execute(
+                """
+                UPDATE report_export_jobs
+                SET status = %s,
+                    started_at = COALESCE(started_at, %s),
+                    updated_by = %s,
+                    updated_at = %s
+                WHERE id = %s AND status = %s
+                RETURNING id, project_id, report_export_id, status, artifact_type, template,
+                          filters, sort, requested_by, requested_at, started_at, completed_at,
+                          artifact_url, error_message, updated_by, updated_at
+                """,
+                ("running", now, updated_by, now, _uuid(str(before["id"])), "queued"),
+            )
+            after = _row_dict(cursor.fetchone(), REPORT_EXPORT_JOB_COLUMNS)
+            if not after:
+                self.connection.rollback()
+                return None
+            job_id = str(after["id"])
+            audit_event = build_audit_event(
+                event_type="report_export_job_status_updated",
+                project_id=str(after["project_id"]),
+                actor_type="worker",
+                actor_id=updated_by,
+                target_type="report_export_job",
+                target_id=job_id,
+                before=before,
+                after=after,
+                input_refs={
+                    "report_export_job_ids": [job_id],
+                    "status": ["running"],
+                },
+                output_refs={
+                    "report_export_job_ids": [job_id],
+                    "claimed": [True],
+                },
+                method_version="runtime_report_export_job_claim_v1",
+                reason="claim queued report export job",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            record = self._runtime_report_export_job_from_row(cursor=cursor, row=after)
+        self.connection.commit()
+        return record
+
     def update_runtime_report_export_job_status(
         self,
         update: RuntimeReportExportJobStatusInput,
