@@ -133,6 +133,7 @@ BEGIN
     'audit_events',
     'report_exports',
     'report_export_jobs',
+    'runtime_notifications',
     'brand_entities',
     'competitor_entities'
   ]

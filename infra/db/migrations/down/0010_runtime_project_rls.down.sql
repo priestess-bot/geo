@@ -53,6 +53,7 @@ BEGIN
     'audit_events',
     'report_exports',
     'report_export_jobs',
+    'runtime_notifications',
     'score_contributions',
     'score_snapshot_runs',
     'source_graph_evidence',

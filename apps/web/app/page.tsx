@@ -562,6 +562,7 @@ type RuntimeData = {
   reports: PageResponse<ReportExport>;
   reportJobs: PageResponse<RuntimeReportExportJob>;
   reportJobStats: RuntimeReportExportJobQueueStats;
+  notifications: RuntimeNotificationPage;
   actions: PageResponse<ActionPlan>;
   alerts: PageResponse<RuntimeAlert>;
   content: PageResponse<ContentEngine>;
@@ -657,6 +658,32 @@ type RuntimeReportExportJobQueueStats = {
   max_attempts_reached_count: number;
   oldest_queued_at?: string | null;
   generated_at?: string;
+};
+
+type RuntimeNotificationPage = PageResponse<RuntimeNotification> & {
+  unread_count: number;
+};
+
+type RuntimeNotification = {
+  notification: {
+    id: string;
+    project_id: string;
+    notification_type: string;
+    severity: string;
+    title: string;
+    message: string;
+    target_type: string;
+    target_id: string;
+    recipient_role: string;
+    status: string;
+    payload: Record<string, unknown>;
+    created_by: string;
+    created_at?: string;
+    read_at?: string | null;
+    updated_by: string;
+    updated_at?: string;
+  };
+  audit_events: Array<{ event_type?: string; actor_id?: string; method_version?: string | null }>;
 };
 
 type RuntimeScoreWeightConfig = {
@@ -923,6 +950,7 @@ const endpoints = {
   reports: "/v1/reports/runtime",
   reportJobs: "/v1/report-export-jobs/runtime",
   reportJobStats: "/v1/report-export-jobs/runtime/stats",
+  notifications: "/v1/runtime-notifications",
   actions: "/v1/action-plans/runtime",
   alerts: "/v1/runtime-alerts",
   content: "/v1/content-engines/runtime",
@@ -1227,6 +1255,33 @@ async function updateRuntimeReportExportJobStatus(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/report-export-jobs/runtime/${jobId}/status returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function updateRuntimeNotificationStatus(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const notificationId = String(formData.get("notification_id") || "").trim();
+  if (!notificationId) {
+    throw new Error("notification_id is required to update notification status");
+  }
+  const payload = {
+    status: String(formData.get("status") || "read").trim(),
+    updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/runtime-notifications/${notificationId}/status`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/runtime-notifications/${notificationId}/status returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -1669,6 +1724,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     reports: runtimePath(endpoints.reports, { limit: 5 }),
     reportJobs: runtimePath(endpoints.reportJobs, { limit: 5 }),
     reportJobStats: endpoints.reportJobStats,
+    notifications: runtimePath(endpoints.notifications, { limit: 8 }),
     actions: runtimePath(endpoints.actions, { limit: 1 }),
     alerts: runtimePath(endpoints.alerts, { limit: 10 }),
     content: runtimePath(endpoints.content, { limit: 1 }),
@@ -1817,6 +1873,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.reportJobStats = runtimePath(endpoints.reportJobStats, {
     ...selectedProjectParams
   });
+  paths.notifications = runtimePath(endpoints.notifications, {
+    ...selectedProjectParams,
+    limit: 8
+  });
   paths.actions = runtimePath(endpoints.actions, {
     ...selectedProjectParams,
     limit: 1
@@ -1856,6 +1916,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     reports,
     reportJobs,
     reportJobStats,
+    notifications,
     actions,
     alerts,
     content,
@@ -1948,6 +2009,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       max_attempts_reached_count: 0,
       oldest_queued_at: null
     }),
+    fetchRuntimeEndpoint<RuntimeNotificationPage>(baseUrl, paths.notifications, {
+      total_count: 0,
+      unread_count: 0,
+      records: []
+    }),
     fetchRuntimeEndpoint<PageResponse<ActionPlan>>(baseUrl, paths.actions, emptyPage<ActionPlan>()),
     fetchRuntimeEndpoint<PageResponse<RuntimeAlert>>(baseUrl, paths.alerts, emptyPage<RuntimeAlert>()),
     fetchRuntimeEndpoint<PageResponse<ContentEngine>>(baseUrl, paths.content, emptyPage<ContentEngine>()),
@@ -1979,6 +2045,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     reports,
     reportJobs,
     reportJobStats,
+    notifications,
     actions,
     alerts,
     content,
@@ -2013,6 +2080,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       reports: reports.payload,
       reportJobs: reportJobs.payload,
       reportJobStats: reportJobStats.payload,
+      notifications: notifications.payload,
       actions: actions.payload,
       alerts: alerts.payload,
       content: content.payload,
@@ -3893,6 +3961,49 @@ export default async function Home({
                         <small>{job.started_at ? `started ${dateText(job.started_at)}` : "not started"}</small>
                       </li>
                     </ul>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </Panel>
+
+        <Panel title="Runtime Notifications" subtitle={`${data.notifications.unread_count} unread notifications`} wide>
+          {data.notifications.records.length ? (
+            <div className="alertGrid">
+              {data.notifications.records.map((record) => {
+                const notification = record.notification;
+                const audit = record.audit_events[0];
+                return (
+                  <article className={`alertCard ${notification.severity}`} key={notification.id}>
+                    <header>
+                      <div>
+                        <h3>{notification.title}</h3>
+                        <span>{notification.notification_type} · {notification.status}</span>
+                      </div>
+                      <strong>{notification.severity}</strong>
+                    </header>
+                    <p>{notification.message}</p>
+                    <dl className="facts contributionFacts">
+                      <Fact label="Target" value={`${notification.target_type} · ${shortId(notification.target_id)}`} />
+                      <Fact label="Recipient" value={notification.recipient_role} />
+                      <Fact label="Created by" value={notification.created_by} />
+                      <Fact label="Created at" value={dateText(notification.created_at)} />
+                      <Fact label="Read at" value={dateText(notification.read_at || undefined)} />
+                      <Fact label="Audit" value={audit?.event_type || "runtime_notification_created pending"} />
+                    </dl>
+                    <form action={updateRuntimeNotificationStatus} className="reportManagementForm">
+                      <input type="hidden" name="notification_id" value={notification.id} />
+                      <input type="hidden" name="updated_by" value="runtime-console" />
+                      <input type="hidden" name="reason" value="Mark runtime notification read from console" />
+                      <input type="hidden" name="status" value={notification.status === "read" ? "unread" : "read"} />
+                      <button className="actionButton compactAction" type="submit">
+                        {notification.status === "read" ? "Mark unread" : "Mark read"}
+                      </button>
+                    </form>
+                    <small>{paths.notifications} · {audit?.method_version || "runtime_notification_v1"}</small>
                   </article>
                 );
               })}

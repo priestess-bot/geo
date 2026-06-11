@@ -523,6 +523,25 @@ CREATE TABLE report_export_jobs (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE runtime_notifications (
+  id uuid PRIMARY KEY,
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  notification_type text NOT NULL,
+  severity text NOT NULL DEFAULT 'info',
+  title text NOT NULL,
+  message text NOT NULL,
+  target_type text NOT NULL,
+  target_id text NOT NULL,
+  recipient_role text NOT NULL DEFAULT 'project_member',
+  status text NOT NULL DEFAULT 'unread',
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  read_at timestamptz,
+  updated_by text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE score_contributions (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   score_snapshot_id uuid NOT NULL REFERENCES visibility_score_snapshots(id) ON DELETE CASCADE,
@@ -616,3 +635,5 @@ CREATE INDEX idx_traceability_bundles_project ON traceability_bundles(project_id
 CREATE INDEX idx_report_export_jobs_project ON report_export_jobs(project_id, status, requested_at);
 CREATE INDEX idx_report_export_jobs_claim ON report_export_jobs(status, next_attempt_at, lease_expires_at, requested_at);
 CREATE INDEX idx_report_export_jobs_report ON report_export_jobs(report_export_id, requested_at);
+CREATE INDEX idx_runtime_notifications_project ON runtime_notifications(project_id, status, severity, created_at);
+CREATE INDEX idx_runtime_notifications_target ON runtime_notifications(target_type, target_id, created_at);

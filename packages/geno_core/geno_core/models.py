@@ -1240,6 +1240,29 @@ class RuntimeReportExportJobQueueStats:
 
 
 @dataclass(frozen=True)
+class RuntimeNotification:
+    notification: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeNotificationPage:
+    total_count: int
+    unread_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeNotification, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeNotificationStatusInput:
+    notification_id: str
+    status: str
+    updated_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeReportArtifact:
     report_export: dict[str, Any]
     artifact_type: str

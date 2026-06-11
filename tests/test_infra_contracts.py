@@ -157,6 +157,13 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("'report_export_jobs'", rls_sql)
         self.assertIn("'report_export_jobs'", rls_down_sql)
         self.assertIn('"report_export_jobs"', db_smoke_source)
+        self.assertIn("CREATE TABLE runtime_notifications", init_sql)
+        self.assertIn("idx_runtime_notifications_project", init_sql)
+        self.assertIn("idx_runtime_notifications_target", init_sql)
+        self.assertIn("recipient_role text NOT NULL DEFAULT 'project_member'", init_sql)
+        self.assertIn("'runtime_notifications'", rls_sql)
+        self.assertIn("'runtime_notifications'", rls_down_sql)
+        self.assertIn('"runtime_notifications"', db_smoke_source)
 
     def test_litellm_config_uses_env_secrets_and_geno_model_aliases(self) -> None:
         config = yaml.safe_load((ROOT / "infra/litellm_config.yaml").read_text(encoding="utf-8"))

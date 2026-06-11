@@ -31,6 +31,8 @@ from geno_core.models import (
     RuntimeHumanReviewRecord,
     RuntimeKnowledgeSearchPage,
     RuntimeKnowledgeSearchResult,
+    RuntimeNotification,
+    RuntimeNotificationPage,
     RuntimeProjectBrandAsset,
     RuntimeProjectBrandAssetInput,
     RuntimeProjectBrandAssetPage,
@@ -2654,6 +2656,93 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["retryable_count"], 2)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
 
+    def test_runtime_notifications_endpoint_returns_project_inbox(self) -> None:
+        class FakeRepository:
+            def list_runtime_notifications(self, **kwargs: object) -> RuntimeNotificationPage:
+                self.kwargs = kwargs
+                return RuntimeNotificationPage(
+                    total_count=1,
+                    unread_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(
+                        RuntimeNotification(
+                            notification={
+                                "id": "notification-1",
+                                "project_id": kwargs["project_id"],
+                                "notification_type": "report_export_job",
+                                "severity": "critical",
+                                "title": "Report export dead-lettered",
+                                "message": "pdf/standard report export job dead_letter.",
+                                "target_type": "report_export_job",
+                                "target_id": "job-1",
+                                "recipient_role": "project_member",
+                                "status": "unread",
+                                "payload": {"status": "dead_letter"},
+                                "created_by": "runtime-worker",
+                                "updated_by": "runtime-worker",
+                            },
+                            audit_events=({"event_type": "runtime_notification_created"},),
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/runtime-notifications?project_id=project-1&status=unread&notification_type=report_export_job&limit=5"
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["unread_count"], 1)
+        self.assertEqual(payload["records"][0]["notification"]["severity"], "critical")
+        self.assertEqual(payload["records"][0]["audit_events"][0]["event_type"], "runtime_notification_created")
+        self.assertEqual(fake_repository.kwargs["notification_type"], "report_export_job")
+
+    def test_runtime_notification_status_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def get_runtime_notification_project_id(self, *, notification_id: str) -> str:
+                self.notification_id = notification_id
+                return "project-1"
+
+            def update_runtime_notification_status(self, update: object) -> RuntimeNotification:
+                self.update = update
+                return RuntimeNotification(
+                    notification={
+                        "id": update.notification_id,
+                        "project_id": "project-1",
+                        "notification_type": "report_export_job",
+                        "severity": "info",
+                        "title": "Report export succeeded",
+                        "message": "pdf/standard report export job succeeded.",
+                        "target_type": "report_export_job",
+                        "target_id": "job-1",
+                        "recipient_role": "project_member",
+                        "status": update.status,
+                        "payload": {"status": "succeeded"},
+                        "created_by": "runtime-worker",
+                        "updated_by": update.updated_by,
+                    },
+                    audit_events=({"event_type": "runtime_notification_status_updated"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/runtime-notifications/notification-1/status",
+                json={"status": "read", "updated_by": "runtime-console", "reason": "mark read"},
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["notification"]["status"], "read")
+        self.assertEqual(payload["audit_events"][0]["event_type"], "runtime_notification_status_updated")
+        self.assertEqual(fake_repository.notification_id, "notification-1")
+        self.assertEqual(fake_repository.update.reason, "mark read")
+
     def test_runtime_report_export_job_enqueue_and_status_endpoints_pass_payload(self) -> None:
         class FakeRepository:
             def __init__(self) -> None:
@@ -3294,6 +3383,10 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeReportExportJobStatusInput", payload["persistence"])
         self.assertIn("RuntimeReportExportJobRequest", payload["persistence"])
         self.assertIn("RuntimeReportExportJobStatusRequest", payload["persistence"])
+        self.assertIn("RuntimeNotification", payload["persistence"])
+        self.assertIn("RuntimeNotificationPage", payload["persistence"])
+        self.assertIn("RuntimeNotificationStatusInput", payload["persistence"])
+        self.assertIn("RuntimeNotificationStatusRequest", payload["persistence"])
         self.assertIn("RuntimeReportManagementInput", payload["persistence"])
         self.assertIn("RuntimeReportManagementEventRequest", payload["persistence"])
         self.assertIn("RuntimeActionPlan", payload["persistence"])
@@ -3343,6 +3436,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/report-export-jobs/runtime", payload["persistence"])
         self.assertIn("/v1/report-export-jobs/runtime/stats", payload["persistence"])
         self.assertIn("/v1/report-export-jobs/runtime/{job_id}/status", payload["persistence"])
+        self.assertIn("/v1/runtime-notifications", payload["persistence"])
+        self.assertIn("/v1/runtime-notifications/{notification_id}/status", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/management-events", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/artifact", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/artifact/signed-url", payload["persistence"])

@@ -89,6 +89,8 @@ from geno_core.models import (
     RuntimeHumanReviewQueuePage,
     RuntimeHumanReviewRecord,
     RuntimeCitationGraphPage,
+    RuntimeNotificationPage,
+    RuntimeNotificationStatusInput,
     RuntimeProjectBrandAsset,
     RuntimeProjectBrandAssetInput,
     RuntimeProjectBrandAssetPage,
@@ -5411,7 +5413,26 @@ class CoreContractsTest(unittest.TestCase):
             "reason": "artifact archived",
             "created_at": now,
         }
-        connection = RecordingConnection(result_sets=[before_row, report_row, after_row, [audit_row]])
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        notification_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "report_export_job",
+            "severity": "info",
+            "title": "Report export succeeded",
+            "message": "pdf/standard report export job succeeded. Artifact is ready.",
+            "target_type": "report_export_job",
+            "target_id": job_id,
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {"report_export_job_id": job_id, "status": "succeeded"},
+            "created_by": "runtime-worker",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        connection = RecordingConnection(result_sets=[before_row, report_row, after_row, notification_row, [audit_row]])
 
         record = PostgresEvidenceRepository(connection).update_runtime_report_export_job_status(
             RuntimeReportExportJobStatusInput(
@@ -5430,6 +5451,126 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(connection.commit_count, 1)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("UPDATE report_export_jobs SET status = %s", executed_sql)
+        self.assertIn("INSERT INTO runtime_notifications", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_lists_runtime_notifications_with_audit_events(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        notification_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "report_export_job",
+            "severity": "critical",
+            "title": "Report export dead-lettered",
+            "message": "pdf/standard report export job dead_letter.",
+            "target_type": "report_export_job",
+            "target_id": "8f4f2a24-d6cf-5050-96a4-942d2c337fd0",
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {"status": "dead_letter"},
+            "created_by": "runtime-worker",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "4fbc0529-5523-4879-a217-f0d07955ff69",
+            "event_type": "runtime_notification_created",
+            "project_id": project_id,
+            "actor_type": "worker",
+            "actor_id": "runtime-worker",
+            "target_type": "runtime_notification",
+            "target_id": notification_id,
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"status": ["dead_letter"]},
+            "output_refs": {"runtime_notification_ids": [notification_id]},
+            "method_version": "runtime_notification_v1",
+            "reason": "report export job dead_letter",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, {"count": 1}, [notification_row], [audit_row]])
+
+        page = PostgresEvidenceRepository(connection).list_runtime_notifications(
+            project_id=project_id,
+            status="unread",
+            notification_type="report_export_job",
+            limit=5,
+            offset=0,
+        )
+
+        self.assertIsInstance(page, RuntimeNotificationPage)
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.unread_count, 1)
+        self.assertEqual(page.records[0].notification["severity"], "critical")
+        self.assertEqual(page.records[0].audit_events[0]["event_type"], "runtime_notification_created")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM runtime_notifications WHERE project_id = %s AND status = %s", executed_sql)
+        self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_updates_runtime_notification_status_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        before_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "report_export_job",
+            "severity": "info",
+            "title": "Report export succeeded",
+            "message": "pdf/standard report export job succeeded.",
+            "target_type": "report_export_job",
+            "target_id": "8f4f2a24-d6cf-5050-96a4-942d2c337fd0",
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {"status": "succeeded"},
+            "created_by": "runtime-worker",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        after_row = {
+            **before_row,
+            "status": "read",
+            "read_at": now,
+            "updated_by": "runtime-console",
+        }
+        audit_row = {
+            "id": "b6b7c7c1-5d19-44c2-95e8-18437a84db53",
+            "event_type": "runtime_notification_status_updated",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "runtime_notification",
+            "target_id": notification_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {"status": ["read"]},
+            "output_refs": {"runtime_notification_ids": [notification_id], "status": ["read"]},
+            "method_version": "runtime_notification_status_v1",
+            "reason": "mark read",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[before_row, after_row, [audit_row]])
+
+        record = PostgresEvidenceRepository(connection).update_runtime_notification_status(
+            RuntimeNotificationStatusInput(
+                notification_id=notification_id,
+                status="read",
+                updated_by="runtime-console",
+                reason="mark read",
+            )
+        )
+
+        self.assertEqual(record.notification["status"], "read")
+        self.assertEqual(record.audit_events[0]["event_type"], "runtime_notification_status_updated")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("UPDATE runtime_notifications SET status = %s", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
 
     def test_postgres_repository_renders_runtime_report_artifact(self) -> None:

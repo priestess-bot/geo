@@ -73,6 +73,7 @@ from geno_core.models import (
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
     RuntimePromptImportInput,
+    RuntimeNotificationStatusInput,
     RuntimeReportExportJobInput,
     RuntimeReportExportJobStatusInput,
     RuntimeReportManagementInput,
@@ -1187,6 +1188,12 @@ class RuntimeReportExportJobStatusRequest(BaseModel):
     report_export_id: str | None = Field(default=None, min_length=1)
     artifact_url: str | None = Field(default=None, max_length=1000)
     error_message: str | None = Field(default=None, max_length=2000)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationStatusRequest(BaseModel):
+    status: str = Field(min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     reason: str | None = Field(default=None, max_length=500)
 
 
@@ -2752,6 +2759,71 @@ def runtime_report_export_job_stats(
         close_repository_connection(repository)
 
 
+@app.get("/v1/runtime-notifications")
+def runtime_notifications(
+    project_id: str | None = None,
+    status: str | None = None,
+    notification_type: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_notifications(
+            project_id=project_id,
+            status=status,
+            notification_type=notification_type,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-notifications/{notification_id}/status")
+def update_runtime_notification_status(
+    notification_id: str,
+    payload: RuntimeNotificationStatusRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_id = repository.get_runtime_notification_project_id(notification_id=notification_id)
+        if project_id is None:
+            raise HTTPException(status_code=404, detail="runtime notification not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        record = repository.update_runtime_notification_status(
+            RuntimeNotificationStatusInput(
+                notification_id=notification_id,
+                status=payload.status,
+                updated_by=actor_id or payload.updated_by,
+                reason=payload.reason,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "runtime notification not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/report-export-jobs/runtime")
 def enqueue_runtime_report_export_job(
     payload: RuntimeReportExportJobRequest,
@@ -3584,6 +3656,10 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeReportExportJobStatusInput",
             "RuntimeReportExportJobRequest",
             "RuntimeReportExportJobStatusRequest",
+            "RuntimeNotification",
+            "RuntimeNotificationPage",
+            "RuntimeNotificationStatusInput",
+            "RuntimeNotificationStatusRequest",
             "RuntimeReportManagementInput",
             "RuntimeReportManagementEventRequest",
             "RuntimeActionPlan",
@@ -3637,6 +3713,8 @@ def contracts() -> dict[str, list[str]]:
             "/v1/report-export-jobs/runtime",
             "/v1/report-export-jobs/runtime/stats",
             "/v1/report-export-jobs/runtime/{job_id}/status",
+            "/v1/runtime-notifications",
+            "/v1/runtime-notifications/{notification_id}/status",
             "/v1/reports/runtime/{report_export_id}/management-events",
             "/v1/reports/runtime/{report_export_id}/artifact",
             "/v1/reports/runtime/{report_export_id}/artifact/signed-url",
