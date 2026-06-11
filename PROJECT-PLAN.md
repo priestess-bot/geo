@@ -80,7 +80,7 @@
 **P0b Google spike 验收门槛**：
 
 - `[~]` 对 30 条高意图 prompt 跑 Google AIO / AI Mode，地理范围 Australia + Sydney，k=2（`google-spike` 真实 worker 模式、`make au-p0b-google-runbook`、`make verify-au-p0b-google-runbook`、`make au-p0b-google-runbook-dry-run`、`make verify-au-p0b-google-runbook-execution`、`make au-p0b-google-status`、`make verify-au-p0b-google-status` 已落；真实 240-run 待跑）
-- `[~]` 至少对比自建浏览器、第三方 SERP API、人工补录中的两条路径（`GoogleSpikeReadinessGate` 已自动检查 access method 路径数；browser-only fixture 会 fail，browser+third_party fixture 可 pass；真实 `google-spike` 默认核心矩阵为 browser + manual 以保持 240 planned runs；`ThirdPartySerpCollector` 已有 provider-neutral JSON adapter，待单独接入对照切片后纳入真实比较）
+- `[~]` 至少对比自建浏览器、第三方 SERP API、人工补录中的两条路径（`GoogleSpikeReadinessGate` 已自动检查 access method 路径数；browser-only fixture 会 fail，browser+third_party fixture 可 pass；真实 `google-spike` 默认核心矩阵为 browser + manual 以保持 240 planned runs；`ThirdPartySerpCollector` 已有 provider-neutral JSON adapter，并已新增独立 `google-serp-fixture` / `google-serp-spike` 120-run 对照入口，真实供应商凭证/endpoint 联调后再纳入 P0b 对照复盘）
 - `[~]` 输出 pass/fail gate：成功率、触发率、失败原因、截图/HTML 证据、成本/耗时估算（`GoogleSpikeGateResult` + `GoogleSpikeReadinessGate`、P0b runbook/dry-run/status report/hash verifier 已落；真实 spike JSON 与 manifest 待生成）
 - `[~]` 未通过健康闸门时，Google 只进入 limited coverage 附录，不进入主评分分母（`score_input_policy` 已在分析/评分层硬性排除未同时通过 `GoogleSpikeGateResult` 与 `GoogleSpikeReadinessGate` 的 Google answer runs，并写入评分审计与报告 Method Disclosure；真实 spike 待跑）
 
@@ -175,7 +175,7 @@ DoD：
 
 - `[~]` (P0b·spike) `PlaywrightGoogleAIOCollector`：SERP 内嵌 AIO 采集，记录触发状态、截图/HTML、失败原因 — `Step4`（shell + fixture 已落；真实浏览器运行待接）
 - `[~]` (P0b·spike) `PlaywrightAIModeCollector`：AI Mode 独立界面采集，记录账号状态、地理、设备、失败原因 — `Step4`（shell + fixture 已落；真实浏览器运行待接）
-- `[~]` (P0b·spike) `ThirdPartySerpCollector`：至少接入一个第三方 SERP/AI-answer 供应商做对照 — `Step4`（provider-neutral JSON adapter、health gate、snapshot hash 与响应解析测试已落；真实供应商凭证/endpoint 联调与 240-run 待跑）
+- `[~]` (P0b·spike) `ThirdPartySerpCollector`：至少接入一个第三方 SERP/AI-answer 供应商做对照 — `Step4`（provider-neutral JSON adapter、health gate、snapshot hash、响应解析测试、独立 `google-serp-fixture` / `google-serp-spike` 120-run comparison entry 与 Make 入口已落；真实供应商凭证/endpoint 联调、对照 manifest/status 汇总与默认 240-run 待跑）
 - `[~]` (P0b·spike) `ManualBackfillCollector`：人工补录最小路径，保证样本可审计 — `Step4`（shell + candidate + runtime manual backfill API + 控制台最小表单已落；批量文件流待接）
 - `[x]` (P0b·spike) Google spike 采样：30 prompts × 2 surfaces × 2 geo（Australia + Sydney）× k=2 = 240 planned_runs — `Step4 / Step9.3`
 - `[x]` (P0b·spike) 失败分类：not_triggered / layout_changed / blocked / timeout / geo_mismatch / account_state — `Step4`
@@ -183,7 +183,7 @@ DoD：
 
 DoD：
 
-- `[~]` 至少两条 Google 采集路径完成对照（自建浏览器、第三方 API、人工补录三选二）（readiness gate 已可执行；browser+third_party fixture 可 pass；真实 `google-spike` 默认验证 browser + manual 两路径，第三方 API adapter 已实现但真实对照切片待编排/运行）
+- `[~]` 至少两条 Google 采集路径完成对照（自建浏览器、第三方 API、人工补录三选二）（readiness gate 已可执行；browser+third_party fixture 可 pass；真实 `google-spike` 默认验证 browser + manual 两路径；第三方 API adapter 与独立 120-run 对照切片已实现，真实 supplier health/collection 待跑）
 - `[x]` 每条结果可靠记录 surface_triggered / answer_present
 - `[x]` 至少一个 google_aio 后端在同一窗口完成 >= 80% 计划样本，才允许进入主评分
 - `[x]` 未达标时，Google 只进 limited coverage 附录，报告明确标注不进入主评分分母（评分层 `score_input_policy` 会把未同时通过成功率 gate 与两路径 readiness gate 的 Google run 排除出 `VisibilityScoreSnapshot.answer_run_ids`）
@@ -291,7 +291,7 @@ DoD：
 | 风险 | 何时处理 | 缓解动作 | 出口判据 |
 | --- | --- | --- | --- |
 | 采集保真度：API ≠ 消费者界面 | M2a 起，M5 披露 | 接口化采集；官方 API 默认交付，浏览器抽检放入 P0c/P1 | `api_browser_fidelity_checks` 已作为独立运行时对象落库，冻结 status、official_api/browser 记录数、comparable pairs、mismatch count、difference rate、payload hash 和 `api_browser_fidelity_checked` 审计事件；`GET /v1/fidelity-checks/runtime/trend` 已基于最近 checks 提供 sampled/total、latest/earliest/average/max difference rate、趋势窗口和 improving/worsening/flat/insufficient_sampled_data/no_data 方向，Runtime Console 已展示趋势摘要；官方 API adapter 已生成 response HTML snapshot 资产，满足原始响应可追溯，但不冒充消费者界面截图；报告 Method Disclosure 与 Runtime Console 已展示该对象；`--include-browser-fidelity-fixture` 已可生成 paired fixture sampled 数据，且 browser fidelity samples 不进入主评分分母；`PlaywrightChatGPTSearchCollector` 已把真实 browser capture 接入 CollectorBackend 和 worker health gate，成功时输出 screenshot/html snapshot hash，未配置时采集前解释失败；本地 browser artifact 已可在对象存储配置下归档为 `s3://...` EvidenceAsset 并写 `browser_capture_assets_archived`；`BrowserFidelitySamplingPlan` 已支持按日期/周期/seed 确定性选择 prompt/city 并输出可复跑 worker args 与审计事件；轻量 scheduler wrapper、Make 目标和 Compose `scheduler` profile 已可用于 cron/K8s CronJob 生成计划并可选执行；真实账号/selector 联调、真实周期样本数据、复杂重试队列和 Temporal 深度编排待接 |
-| Google AIO / AI Mode 选择性触发与采集脆弱 | M2b（spike） | 拆 AIO/AI Mode 两后端；建模 answer_present；自建/第三方/人工补录限时对比 | pass/fail gate、两路径 readiness gate、limited coverage 与 `score_input_policy` 已进入评分审计和报告 Method Disclosure；`google-spike` worker 真实模式、provider-neutral `ThirdPartySerpCollector`、P0b runbook/dry-run/status/hash verifier 已落；真实 Google gate 待跑 |
+| Google AIO / AI Mode 选择性触发与采集脆弱 | M2b（spike） | 拆 AIO/AI Mode 两后端；建模 answer_present；自建/第三方/人工补录限时对比 | pass/fail gate、两路径 readiness gate、limited coverage 与 `score_input_policy` 已进入评分审计和报告 Method Disclosure；`google-spike` worker 真实模式、provider-neutral `ThirdPartySerpCollector`、独立 `google-serp-fixture` / `google-serp-spike` 120-run 对照入口、P0b runbook/dry-run/status/hash verifier 已落；真实 Google gate 与真实 third-party supplier 对照待跑 |
 | AI 非确定性导致评分噪声 | M2a–M3 | P0a k=3；Google spike k=2 单独标注；报告展示离散度；parser A/B agreement 进入评分解释 | 同 prompt 多次采样 + 置信展示 + parser agreement |
 | 架构可插拔是否为真 | M0 起持续 | 接口先行；P0a 先完成接口级可插拔，深度切换演示排到 P0c/P1 | P0a Collector/Parser/Scoring/Report 已有 runtime-checkable Protocol、`NotConfigured*` stubs 和工作实现合约测试；parser rule + judge fixture 已可并行；ScoringFormula registry、候选公式、旧版本重算和 worker 公式参数已落；pgvector runtime knowledge search 已落；VectorStore 已有 pgvector 与 Qdrant projection contract test，证明 deterministic embedding search 排序口径一致；GraphStore 已有 PG adjacency 与 Neo4j projection contract test，证明 Citation Graph 关键查询口径一致；LiteLLM adapter、parser 注入、retry/backoff、响应 cost 读取与可选 Compose profile 已可测；真实 Qdrant/Milvus service、真实 Neo4j driver/container 和真实 LLM provider 联调待接 |
 | 城市级地理定位实现成本 | M2a/M2b | GeoProvider 抽象（uule/代理池/供应商可换）；P0a 四地理样本可降级但保留字段 | 地理样本可区分且成本可控 |

@@ -296,6 +296,10 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("scripts/build_au_p0b_google_spike_status_report.py", makefile)
         self.assertIn("verify-au-p0b-google-status:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_spike_status_report.py", makefile)
+        self.assertIn("au-p0b-google-serp-health:", makefile)
+        self.assertIn("--mode google-serp-spike", makefile)
+        self.assertIn("au-p0b-google-serp-fixture:", makefile)
+        self.assertIn("--mode google-serp-fixture", makefile)
         self.assertIn(
             "\t@PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --plan-browser-fidelity-sampling",
             makefile,

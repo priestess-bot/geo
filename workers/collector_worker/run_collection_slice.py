@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import sys
+from collections import Counter
 from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
@@ -33,11 +34,13 @@ from geno_core.collectors import (
     FixtureGoogleAIOCollector,
     FixtureOpenAIWebSearchCollector,
     FixturePerplexitySonarCollector,
+    FixtureThirdPartySerpCollector,
     ManualBackfillCollector,
     OpenAIWebSearchCollector,
     PerplexitySonarCollector,
     PlaywrightChatGPTSearchCollector,
     PlaywrightGoogleAIOCollector,
+    ThirdPartySerpCollector,
 )
 from geno_core.contracts import CollectorBackend
 from geno_core.graph import build_citation_graph
@@ -79,6 +82,10 @@ def _collectors(mode: str) -> tuple[CollectorBackend, ...]:
         return (FixtureGoogleAIOCollector(), FixtureGoogleAIModeCollector())
     if mode == "google-spike":
         return (PlaywrightGoogleAIOCollector(), ManualBackfillCollector())
+    if mode == "google-serp-fixture":
+        return (FixtureThirdPartySerpCollector(),)
+    if mode == "google-serp-spike":
+        return (ThirdPartySerpCollector(),)
     raise ValueError(f"Unsupported collector mode: {mode}")
 
 
@@ -128,6 +135,60 @@ def _string_tuple(value: object | None) -> tuple[str, ...]:
     if isinstance(value, tuple | list):
         return tuple(str(item) for item in value)
     return (str(value),)
+
+
+def _google_serp_comparison_plan(*, google_plan: object | None) -> dict[str, object] | None:
+    if google_plan is None:
+        return None
+    prompt_count = int(getattr(google_plan, "prompt_count", 0))
+    geo_cities = tuple(str(city) for city in getattr(google_plan, "geo_cities", ()))
+    sample_size = int(getattr(google_plan, "sample_size", 0))
+    planned_runs = prompt_count * len(geo_cities) * sample_size
+    return {
+        "comparison_version": "google_serp_comparison_plan_v1",
+        "surface": "google_aio",
+        "access_method": "third_party_api",
+        "collector_backend_id": "google.third_party_serp",
+        "prompt_count": prompt_count,
+        "geo_cities": geo_cities,
+        "sample_size": sample_size,
+        "planned_runs": planned_runs,
+        "main_google_spike_planned_runs": int(getattr(google_plan, "planned_runs", 0)),
+        "score_input_policy": "comparison evidence only until merged with full GoogleSpikeGateResult and GoogleSpikeReadinessGate",
+    }
+
+
+def _google_serp_comparison_summary(
+    *,
+    records: tuple[RawEvidenceRecord | CollectionFailureRecord, ...],
+    comparison_plan: dict[str, object] | None,
+) -> dict[str, object] | None:
+    if comparison_plan is None:
+        return None
+    successes = tuple(record for record in records if isinstance(record, RawEvidenceRecord))
+    failures = tuple(record for record in records if isinstance(record, CollectionFailureRecord))
+    triggered_runs = sum(1 for record in successes if record.answer_run.surface_triggered)
+    answer_present_runs = sum(1 for record in successes if record.answer_run.answer_present)
+    asset_runs = sum(
+        1
+        for record in successes
+        if any(asset.asset_type in {"screenshot", "html_snapshot"} for asset in record.evidence_assets)
+    )
+    planned_runs = int(comparison_plan["planned_runs"])
+    return {
+        "comparison_version": "google_serp_comparison_summary_v1",
+        "planned_runs": planned_runs,
+        "attempted_runs": len(records),
+        "completed_runs": len(successes),
+        "failure_count": len(failures),
+        "success_rate": round(len(successes) / len(records), 4) if records else 0.0,
+        "surface_trigger_rate": round(triggered_runs / len(successes), 4) if successes else 0.0,
+        "answer_present_rate": round(answer_present_runs / len(successes), 4) if successes else 0.0,
+        "screenshot_or_html_runs": asset_runs,
+        "ready_for_comparison": bool(records) and len(records) == planned_runs and not failures and asset_runs == len(successes),
+        "failure_summary": dict(Counter(str(record.error_message or record.error_type) for record in failures)),
+        "score_input_policy": comparison_plan["score_input_policy"],
+    }
 
 
 def _provider_preflight_next_action(
@@ -799,7 +860,11 @@ def _persist_records(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a small AU P0a collection slice")
-    parser.add_argument("--mode", choices=["fixture", "api", "google-fixture", "google-spike"], default="fixture")
+    parser.add_argument(
+        "--mode",
+        choices=["fixture", "api", "google-fixture", "google-spike", "google-serp-fixture", "google-serp-spike"],
+        default="fixture",
+    )
     parser.add_argument("--prompt-limit", type=int, default=2)
     parser.add_argument(
         "--prompt-ids",
@@ -907,12 +972,16 @@ def main() -> None:
         help="Write the final worker JSON output to this path for preflight audit replay.",
     )
     args = parser.parse_args()
+    google_modes = {"google-fixture", "google-spike", "google-serp-fixture", "google-serp-spike"}
+    google_full_spike_modes = {"google-fixture", "google-spike"}
+    google_serp_modes = {"google-serp-fixture", "google-serp-spike"}
     if args.persist_analysis and not args.persist:
         parser.error("--persist-analysis requires --persist")
-    google_modes = {"google-fixture", "google-spike"}
+    if args.persist_analysis and args.mode in google_serp_modes:
+        parser.error("--persist-analysis is not valid for google-serp comparison modes")
     if args.require_p0a_readiness and args.mode in google_modes:
         parser.error("--require-p0a-readiness is only valid for fixture/api P0a modes")
-    if args.require_google_spike_gates and args.mode not in google_modes:
+    if args.require_google_spike_gates and args.mode not in google_full_spike_modes:
         parser.error("--require-google-spike-gates is only valid for google-fixture/google-spike modes")
     if args.prompt_ids and args.mode in google_modes:
         parser.error("--prompt-ids is only valid for fixture/api modes")
@@ -988,6 +1057,9 @@ def main() -> None:
             parser.error(str(exc))
         if args.prompt_ids:
             args.prompt_limit = max(args.prompt_limit, len(prompts))
+    google_serp_comparison_plan = (
+        _google_serp_comparison_plan(google_plan=plan) if args.mode in google_serp_modes else None
+    )
     base_collectors = _collectors(args.mode)
     fidelity_collectors = _fidelity_fixture_collectors(args.mode) if args.include_browser_fidelity_fixture else ()
     if args.include_browser_fidelity_playwright:
@@ -1000,7 +1072,9 @@ def main() -> None:
         "failure_reasons": collector_health_failure_reasons,
     }
     planned_runs = (
-        plan.planned_runs
+        int(google_serp_comparison_plan["planned_runs"])
+        if google_serp_comparison_plan is not None
+        else plan.planned_runs
         if plan is not None
         else len(prompts[: args.prompt_limit]) * len(collectors) * len(cities) * args.sample_size
     )
@@ -1020,6 +1094,8 @@ def main() -> None:
         }
         if plan is not None:
             output["google_spike_plan"] = asdict(plan)
+        if google_serp_comparison_plan is not None:
+            output["google_serp_comparison_plan"] = google_serp_comparison_plan
         preflight_summary = _build_preflight_summary(
             mode=args.mode,
             phase="collector_health",
@@ -1073,6 +1149,8 @@ def main() -> None:
         }
         if plan is not None:
             output["google_spike_plan"] = asdict(plan)
+        if google_serp_comparison_plan is not None:
+            output["google_serp_comparison_plan"] = google_serp_comparison_plan
         preflight_summary = _build_preflight_summary(
             mode=args.mode,
             phase="collector_health",
@@ -1119,11 +1197,19 @@ def main() -> None:
     successes = tuple(record for record in records if isinstance(record, RawEvidenceRecord))
     failures = tuple(record for record in records if isinstance(record, CollectionFailureRecord))
     p0a_readiness_gate = evaluate_p0a_collection_readiness(records=records) if args.mode not in google_modes else None
-    google_spike_gate = evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=plan, records=records) if plan is not None else None
+    google_spike_gate = (
+        evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=plan, records=records)
+        if plan is not None and args.mode in google_full_spike_modes
+        else None
+    )
     google_spike_readiness_gate = (
         evaluate_google_spike_readiness_gate(project_id=bootstrap.project.id, plan=plan, records=records)
-        if plan is not None
+        if plan is not None and args.mode in google_full_spike_modes
         else None
+    )
+    google_serp_comparison_summary = _google_serp_comparison_summary(
+        records=records,
+        comparison_plan=google_serp_comparison_plan,
     )
     persistence: dict[str, object] = {"enabled": False}
     if args.persist:
@@ -1131,7 +1217,13 @@ def main() -> None:
             persistence = _persist_records(
                 bootstrap=bootstrap,
                 mode=args.mode,
-                run_type="google_spike" if args.mode in google_modes else "p0a_slice",
+                run_type=(
+                    "google_serp_comparison"
+                    if args.mode in google_serp_modes
+                    else "google_spike"
+                    if args.mode in google_full_spike_modes
+                    else "p0a_slice"
+                ),
                 planned_runs=planned_runs,
                 records=records,
                 successes=successes,
@@ -1210,6 +1302,10 @@ def main() -> None:
     )
     if plan is not None:
         output["google_spike_plan"] = asdict(plan)
+    if google_serp_comparison_plan is not None:
+        output["google_serp_comparison_plan"] = google_serp_comparison_plan
+        output["google_serp_comparison_summary"] = google_serp_comparison_summary
+    if plan is not None and args.mode in google_full_spike_modes:
         output["google_spike_gate"] = asdict(google_spike_gate) if google_spike_gate is not None else None
         output["google_spike_readiness_gate"] = (
             asdict(google_spike_readiness_gate) if google_spike_readiness_gate is not None else None

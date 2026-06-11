@@ -20,7 +20,7 @@ google_aio     -> PlaywrightGoogleAIOCollector -> access_method=browser
 google_ai_mode -> ManualBackfillCollector      -> access_method=manual
 ```
 
-`ThirdPartySerpCollector` 已作为 provider-neutral JSON adapter 落地，但不进入默认 240-run 核心矩阵。它可通过 `SERP_API_KEY` / `SERP_API_ENDPOINT` 调用第三方 SERP/AI-answer 服务，解析常见 `ai_overview`、`answer_box`、`organic_results`、`inline_results` 字段，生成 HTML snapshot hash。普通 organic-only 响应只算 `answer_present`，不算 AIO `surface_triggered`。后续应把它作为独立对照切片或可替换 AIO backend 编排，避免同一 prompt/city/sample 多后端结果重复进入主评分分母。
+`ThirdPartySerpCollector` 已作为 provider-neutral JSON adapter 落地，但不进入默认 240-run 核心矩阵。它可通过 `SERP_API_KEY` / `SERP_API_ENDPOINT` 调用第三方 SERP/AI-answer 服务，解析常见 `ai_overview`、`answer_box`、`organic_results`、`inline_results` 字段，生成 HTML snapshot hash。普通 organic-only 响应只算 `answer_present`，不算 AIO `surface_triggered`。当前第三方路径已拆为独立 `google-serp-fixture` / `google-serp-spike` 对照模式，计划口径为 30 prompts × Australia/Sydney × k=2 × 1 third-party backend = 120 planned runs；它输出 `google_serp_comparison_plan` 与 `google_serp_comparison_summary`，`--persist` 时只保存 raw evidence 与 `CollectionRunSummary(run_type=google_serp_comparison)`，不允许 `--persist-analysis`，避免同一 prompt/city/sample 多后端结果重复进入主评分分母。
 
 ## 2. 运行前环境
 
@@ -117,6 +117,57 @@ python3 scripts/verify_au_p0b_google_spike_status_report.py \
   --require-google-main-scoring-allowed
 ```
 
+## 3.1 第三方 SERP 独立对照切片
+
+第三方 SERP 对照切片用于验证供应商是否能补充 Google AIO 证据，不替代默认 `google-spike` 240-run 核心矩阵，也不单独证明 Google 可以进入主评分分母。
+
+1. 先运行 fixture，复核 120-run 计划口径、summary 与持久化边界：
+
+```bash
+make au-p0b-google-serp-fixture
+```
+
+默认输出：
+
+```text
+docs/runtime_preflight/au-p0b-google-serp-fixture-latest.json
+```
+
+关键字段：
+
+```text
+google_serp_comparison_plan.planned_runs = 120
+google_serp_comparison_plan.main_google_spike_planned_runs = 240
+google_serp_comparison_summary.ready_for_comparison = true
+google_spike_gate / google_spike_readiness_gate 不应出现在该模式输出中
+```
+
+2. 接入真实供应商前做 health-only 预检：
+
+```bash
+make au-p0b-google-serp-health
+```
+
+默认输出：
+
+```text
+docs/runtime_preflight/au-p0b-google-serp-health-latest.json
+```
+
+若缺少 `SERP_API_KEY` 或 `SERP_API_ENDPOINT`，该目标会以 collector health gate fail 退出，并在 payload 中给出 `google.third_party_serp:not_configured` 或 endpoint 相关原因。health 通过后再用显式 worker 命令运行真实对照：
+
+```bash
+PYTHONPATH=packages/geno_core:apps/api \
+python3 workers/collector_worker/run_collection_slice.py \
+  --mode google-serp-spike \
+  --require-ready-collectors \
+  --require-no-collection-failures \
+  --persist \
+  --preflight-output-path docs/runtime_preflight/au-p0b-google-serp-latest.json
+```
+
+禁止在该模式使用 `--persist-analysis`；真实 third-party 结果只能作为 comparison evidence，待与完整 `GoogleSpikeGateResult` 和 `GoogleSpikeReadinessGate` 复盘后，才讨论是否调整主评分准入口径。
+
 ## 4. 停止条件
 
 - `verify-au-p0b-google-runbook` 失败：停止，先修步骤顺序、planned runs、gate 参数或 runbook hash。
@@ -136,9 +187,12 @@ python3 scripts/verify_au_p0b_google_spike_status_report.py \
 - `docs/runtime_preflight/au-p0b-google-spike-latest.json`
 - `docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json`
 - `docs/runtime_preflight/au-p0b-google-spike-status-latest.json`
+- `docs/runtime_preflight/au-p0b-google-serp-fixture-latest.json`
+- `docs/runtime_preflight/au-p0b-google-serp-health-latest.json`
+- `docs/runtime_preflight/au-p0b-google-serp-latest.json`
 
 真实运行后，应保留 gitignored JSON 产物用于本地复盘，并把摘要写回 `docs/工程实施审计日志.md`。
 
 ## 6. 当前边界
 
-本手册固定真实 Google spike 的可审计执行路径，不代表已经完成真实 Playwright 采集、真实 AI Mode 浏览器采集、真实第三方供应商凭证联调或 240-run 真实样本。当前第三方路径是通用 JSON adapter，不绑定单一供应商私有 schema；若选定供应商有更稳定的专用字段，应在保持 `RawCollectResult`、snapshot hash、`answer_present/surface_triggered` 语义不变的前提下新增轻量 mapping，并通过独立对照切片进入 `GoogleSpikeReadinessGate` 复盘。
+本手册固定真实 Google spike 的可审计执行路径，不代表已经完成真实 Playwright 采集、真实 AI Mode 浏览器采集、真实第三方供应商凭证联调或 240-run 真实样本。当前第三方路径是通用 JSON adapter，不绑定单一供应商私有 schema；若选定供应商有更稳定的专用字段，应在保持 `RawCollectResult`、snapshot hash、`answer_present/surface_triggered` 语义不变的前提下新增轻量 mapping，并通过独立 120-run 对照切片进入 P0b 复盘。第三方对照结果不能绕过 `GoogleSpikeGateResult`、`GoogleSpikeReadinessGate` 和 `score_input_policy`。

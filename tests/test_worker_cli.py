@@ -38,6 +38,8 @@ class FakeWorkerRepository:
 
     def save_collection_run_summary(self, summary: object, audit_event: object) -> None:
         self.saved_collection_summaries += 1
+        self.collection_summary = summary
+        self.collection_summary_audit_event = audit_event
 
     def get_confirmed_entity_alias_terms(self, project_id: str) -> dict[str, tuple[str, ...]]:
         return {}
@@ -508,6 +510,52 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(payload["collector_health_gate"]["gate_status"], "pass")
         self.assertEqual(payload["preflight_summary"]["phase"], "collector_health")
         self.assertEqual(payload["google_spike_plan"]["geo_cities"], ["Australia", "Sydney"])
+
+    def test_google_serp_fixture_runs_third_party_comparison_without_full_spike_gates(self) -> None:
+        payload = self._run_worker("--mode", "google-serp-fixture")
+
+        self.assertEqual(payload["record_count"], 120)
+        self.assertEqual(payload["planned_runs"], 120)
+        self.assertNotIn("google_spike_gate", payload)
+        self.assertNotIn("google_spike_readiness_gate", payload)
+        comparison_plan = payload["google_serp_comparison_plan"]
+        self.assertEqual(comparison_plan["planned_runs"], 120)
+        self.assertEqual(comparison_plan["main_google_spike_planned_runs"], 240)
+        summary = payload["google_serp_comparison_summary"]
+        self.assertEqual(summary["planned_runs"], 120)
+        self.assertTrue(summary["ready_for_comparison"])
+        self.assertEqual(summary["screenshot_or_html_runs"], 120)
+
+    def test_google_serp_spike_health_check_requires_serp_configuration(self) -> None:
+        result = self._run_worker_result(
+            "--mode",
+            "google-serp-spike",
+            "--require-ready-collectors",
+            "--health-check-only",
+            unset_env=("SERP_API_KEY", "SERP_API_ENDPOINT"),
+        )
+        self.assertEqual(result.returncode, 3)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["planned_runs"], 120)
+        self.assertEqual(payload["collector_health_gate"]["gate_status"], "fail")
+        self.assertEqual(payload["collector_health_gate"]["failure_reasons"], ["google.third_party_serp:not_configured"])
+        self.assertEqual(payload["google_serp_comparison_plan"]["planned_runs"], 120)
+
+    def test_google_serp_fixture_persist_records_comparison_only_without_analysis(self) -> None:
+        repository = FakeWorkerRepository()
+        payload = self._run_worker_in_process("--mode", "google-serp-fixture", "--persist", repository=repository)
+
+        self.assertEqual(payload["record_count"], 120)
+        self.assertEqual(payload["success_count"], 120)
+        self.assertEqual(repository.saved_raw_evidence_records, 120)
+        self.assertEqual(repository.saved_collection_summaries, 1)
+        self.assertEqual(repository.saved_score_snapshots, 0)
+        self.assertEqual(repository.saved_reports, 0)
+        self.assertEqual(repository.collection_summary.run_type, "google_serp_comparison")
+        self.assertEqual(repository.collection_summary.mode, "google-serp-fixture")
+        self.assertEqual(repository.collection_summary.planned_runs, 120)
+        self.assertEqual(payload["persistence"]["analysis"], {"enabled": False})
+        self.assertEqual(payload["google_serp_comparison_summary"]["ready_for_comparison"], True)
 
     def test_google_fixture_persist_analysis_skips_main_score_without_readiness_gate(self) -> None:
         repository = FakeWorkerRepository()
