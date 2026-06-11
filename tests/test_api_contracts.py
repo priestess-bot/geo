@@ -12,7 +12,7 @@ from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
 
-from geno_api.main import app, close_runtime_resources
+from geno_api.main import app, close_runtime_resources, reset_runtime_metrics
 from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
 from geno_core.models import (
     RuntimeCollectionRunPage,
@@ -43,6 +43,7 @@ from geno_core.models import (
 
 class ApiContractsTest(unittest.TestCase):
     def setUp(self) -> None:
+        reset_runtime_metrics()
         self.client = TestClient(app)
 
     def _runtime_jwt(self, *, secret: str = "test-runtime-secret", payload: dict[str, object] | None = None) -> str:
@@ -156,6 +157,46 @@ class ApiContractsTest(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["status"], "warn")
         self.assertEqual([check["name"] for check in payload["checks"]], ["database", "object_store"])
+
+    def test_metrics_endpoint_exports_request_and_pool_metrics(self) -> None:
+        self.client.get("/health")
+        with patch(
+            "geno_api.main.runtime_postgres_pool_snapshot",
+            return_value={
+                "enabled": True,
+                "max_size": 10,
+                "timeout_seconds": 5.0,
+                "created": 2,
+                "available": 1,
+            },
+        ):
+            response = self.client.get("/metrics")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/plain", response.headers["content-type"])
+        body = response.text
+        self.assertIn("# TYPE geno_api_requests_total counter", body)
+        self.assertIn('geno_api_requests_total{method="GET",path="/health",status="200"} 1', body)
+        self.assertIn(
+            'geno_api_request_duration_seconds_bucket{method="GET",path="/health",status="200",le="+Inf"} 1',
+            body,
+        )
+        self.assertIn('geno_api_request_duration_seconds_count{method="GET",path="/health",status="200"} 1', body)
+        self.assertIn("geno_runtime_postgres_pool_snapshot_ok 1", body)
+        self.assertIn("geno_runtime_postgres_pool_enabled 1", body)
+        self.assertIn("geno_runtime_postgres_pool_max_size 10", body)
+        self.assertIn("geno_runtime_postgres_pool_connections_created 2", body)
+        self.assertNotIn('path="/metrics"', body)
+
+    def test_metrics_endpoint_uses_route_path_without_query_values(self) -> None:
+        response = self.client.get("/v1/projects/runtime?market_code=AU&limit=5")
+        self.assertEqual(response.status_code, 503)
+
+        metrics = self.client.get("/metrics").text
+
+        self.assertIn('geno_api_requests_total{method="GET",path="/v1/projects/runtime",status="503"} 1', metrics)
+        self.assertNotIn("market_code", metrics)
+        self.assertNotIn("limit=5", metrics)
 
     def test_shutdown_closes_runtime_postgres_pool(self) -> None:
         with patch("geno_api.main.close_runtime_postgres_pool") as close_pool:
@@ -2335,6 +2376,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/traceability/runtime", payload["persistence"])
         self.assertIn("/ready", payload["persistence"])
         self.assertIn("/v1/runtime-diagnostics", payload["persistence"])
+        self.assertIn("/metrics", payload["persistence"])
 
 
 if __name__ == "__main__":

@@ -155,6 +155,7 @@ P0a 这四个主链路接口必须是可测试的运行时契约，而不是仅�
 - 每个接口至少有一个工作实现进入合约测试：fixture collector、rule/comparative parser、registry scoring formula、Markdown/PDF/CSV report exporter。
 - 合约测试必须证明 stub 和工作实现都满足同一接口，且工作实现可以串起 evidence -> analysis -> score -> report。
 - 运行时服务必须区分 liveness 与 readiness：`/health` 只证明 API 进程响应，`/ready` 至少验证 PostgreSQL 可用；`/v1/runtime-diagnostics` 暴露 database/object_store/runtime_auth 的配置诊断、连接池快照和 JWT/access-control 状态。对象存储诊断默认只检查配置完整性，不主动写对象，避免健康检查产生副作用。
+- 运行时可观测性先落轻量 Prometheus 文本格式 `/metrics`：按 route template 记录请求总量、状态码、请求延迟 histogram，并暴露 runtime PostgreSQL connection pool enabled/max size/timeout/created/available gauge；`/metrics` 自身不计入请求指标。完整 Prometheus/Grafana/OpenTelemetry、日志采样、慢查询追踪、告警订阅和 SLO dashboard 仍是生产化后续项。
 
 ### 3.3 开源优先选型映射
 
