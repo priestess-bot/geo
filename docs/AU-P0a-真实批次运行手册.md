@@ -8,6 +8,7 @@
 - 每一步都必须先生成 JSON，再 verify，再 manifest。
 - runbook 自身也必须先 verify，避免命令顺序、planned runs 或 gate 参数漂移。
 - 每个阶段开始前都先跑 readiness gate，缺 key、缺上游 manifest 或上游未达 design-partner ready 时停止。
+- readiness 默认不主动连接数据库；真实批次前建议开启 `GENO_AU_P0A_REQUIRE_DB_CHECK=1`，用只读 `SELECT 1` 验证 `DATABASE_URL` 可用。
 - “可审计”不等于“可进入 design partner”；进入下一阶段必须通过 `--require-design-partner-ready`。
 - live 运行产物位于 `docs/runtime_preflight/*.json`，默认不提交，避免把 provider 状态、错误上下文或潜在敏感配置写入仓库。
 
@@ -18,7 +19,7 @@
 ```bash
 make au-p0a-runbook
 make verify-au-p0a-runbook
-make au-p0a-readiness
+GENO_AU_P0A_REQUIRE_DB_CHECK=1 make au-p0a-readiness
 ```
 
 2. 准备环境：
@@ -107,6 +108,7 @@ python3 scripts/build_preflight_manifest.py \
 - manifest verifier `status=fail`：停止，先修 payload 完整性、必备字段或 gate 状态。
 - runbook verifier `status=fail`：停止，先修命令计划、planned runs、gate 参数或 runbook hash。
 - readiness verifier `status=fail`：停止，先修必需环境、上游 payload、manifest 或 design-partner gate。
+- `database.connection_check=fail`：停止，先修 `DATABASE_URL`、网络、凭证或迁移后的 PostgreSQL 服务。
 - `ready_for_design_partner=false`：停止，不进入 design partner 或 full batch。
 
 ## 产物清单

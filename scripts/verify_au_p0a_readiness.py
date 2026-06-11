@@ -4,7 +4,7 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,6 +25,7 @@ from scripts.verify_preflight_payload import verify_preflight_payload  # noqa: E
 READINESS_VERSION = "au_p0a_readiness_v1"
 DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-p0a-readiness-latest.json"
 PHASES = ("preflight", "small_batch", "full_batch")
+DB_CHECK_ENABLED_VALUES = {"1", "true", "yes", "on"}
 
 
 def _utc_now_iso() -> str:
@@ -37,6 +38,10 @@ def _as_dict(value: object) -> dict[str, Any]:
 
 def _as_sequence(value: object) -> list[object]:
     return list(value) if isinstance(value, list | tuple) else []
+
+
+def _flag_enabled(value: str | None) -> bool:
+    return (value or "").strip().lower() in DB_CHECK_ENABLED_VALUES
 
 
 def _load_json(path: Path, missing_error: str, invalid_prefix: str) -> tuple[Any | None, dict[str, Any]]:
@@ -98,6 +103,64 @@ def _environment_check(runbook: dict[str, Any] | None, env: Mapping[str, str]) -
         "missing_recommended": missing_recommended,
         "secrets_redacted": True,
     }
+
+
+def _database_check(
+    env: Mapping[str, str],
+    *,
+    require_db_check: bool,
+    connector: Callable[[str], Any] | None = None,
+) -> dict[str, Any]:
+    database_url = env.get("DATABASE_URL", "").strip()
+    entry: dict[str, Any] = {
+        "status": "skipped",
+        "database_url": "configured" if database_url else "missing",
+        "connection_check": "not_run",
+        "required": require_db_check,
+        "secrets_redacted": True,
+        "errors": [],
+    }
+    if not require_db_check:
+        return entry
+    if not database_url:
+        entry.update(
+            {
+                "status": "fail",
+                "connection_check": "not_run",
+                "errors": ["database_url_missing"],
+            }
+        )
+        return entry
+
+    connection: Any | None = None
+    try:
+        if connector is None:
+            import psycopg
+
+            connection = psycopg.connect(database_url)
+        else:
+            connection = connector(database_url)
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            fetchone = getattr(cursor, "fetchone", None)
+            if callable(fetchone):
+                fetchone()
+    except Exception as exc:
+        entry.update(
+            {
+                "status": "fail",
+                "connection_check": "fail",
+                "error_type": exc.__class__.__name__,
+                "errors": ["database_connection_check_failed"],
+            }
+        )
+    else:
+        entry.update({"status": "pass", "connection_check": "pass"})
+    finally:
+        close = getattr(connection, "close", None)
+        if callable(close):
+            close()
+    return entry
 
 
 def _artifact_path(artifact_paths: dict[str, Any], key: str) -> Path | None:
@@ -208,6 +271,8 @@ def _next_action(phase: str, errors: list[str]) -> str:
     if errors:
         if any(error.startswith("required_env_missing:") for error in errors):
             return "configure_required_environment"
+        if any(error.startswith("database:") for error in errors):
+            return "fix_database_readiness"
         if any(error.startswith("runbook") or error.startswith("runbook:") for error in errors):
             return "run_make_au_p0a_runbook_and_verify"
         if any(error.startswith("preflight_") for error in errors):
@@ -227,6 +292,8 @@ def verify_au_p0a_readiness(
     phase: str = "preflight",
     runbook_path: Path = Path(DEFAULT_RUNBOOK_PATH),
     env: Mapping[str, str] | None = None,
+    require_db_check: bool = False,
+    db_connector: Callable[[str], Any] | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     env_map = os.environ if env is None else env
@@ -247,6 +314,9 @@ def verify_au_p0a_readiness(
         errors.append(f"required_env_missing:{name}")
     for name in environment["missing_recommended"]:
         warnings.append(f"recommended_env_missing:{name}")
+
+    database = _database_check(env_map, require_db_check=require_db_check, connector=db_connector)
+    _append_gate_errors(errors, "database", database)
 
     artifact_paths = _as_dict(_as_dict(runbook).get("artifact_paths"))
     if runbook is not None and phase in ("small_batch", "full_batch"):
@@ -284,6 +354,7 @@ def verify_au_p0a_readiness(
         "recommended_next_action": _next_action(phase, errors),
         "runbook": runbook_entry,
         "environment": environment,
+        "database": database,
         "artifact_paths": artifact_paths,
         "gates": gates,
     }
@@ -308,6 +379,12 @@ def parse_args() -> argparse.Namespace:
         help="Path to write the readiness JSON result.",
     )
     parser.add_argument(
+        "--require-db-check",
+        action="store_true",
+        default=_flag_enabled(os.environ.get("GENO_AU_P0A_REQUIRE_DB_CHECK")),
+        help="Require a read-only SELECT 1 check against DATABASE_URL before passing readiness.",
+    )
+    parser.add_argument(
         "--generated-at",
         default=None,
         help="Override generated_at timestamp, primarily for deterministic replay tests.",
@@ -321,6 +398,7 @@ def main() -> None:
     result = verify_au_p0a_readiness(
         phase=args.phase,
         runbook_path=Path(args.runbook_path),
+        require_db_check=args.require_db_check,
         generated_at=args.generated_at,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)

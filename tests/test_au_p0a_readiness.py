@@ -86,6 +86,33 @@ class AuP0aReadinessTest(unittest.TestCase):
         )
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
+    def _db_connection(self) -> object:
+        class Cursor:
+            def __enter__(self) -> "Cursor":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+            def execute(self, sql: str) -> None:
+                if sql != "SELECT 1":
+                    raise AssertionError(f"unexpected SQL: {sql}")
+
+            def fetchone(self) -> tuple[int]:
+                return (1,)
+
+        class Connection:
+            def __init__(self) -> None:
+                self.closed = False
+
+            def cursor(self) -> Cursor:
+                return Cursor()
+
+            def close(self) -> None:
+                self.closed = True
+
+        return Connection()
+
     def test_preflight_phase_requires_provider_env_and_valid_runbook(self) -> None:
         with TemporaryDirectory() as temp_dir:
             runbook_path, _runbook = self._write_runbook(temp_dir)
@@ -101,6 +128,7 @@ class AuP0aReadinessTest(unittest.TestCase):
         self.assertIn("required_env_missing:PERPLEXITY_API_KEY", result["errors"])
         self.assertEqual(result["runbook"]["status"], "pass")
         self.assertEqual(result["recommended_next_action"], "configure_required_environment")
+        self.assertEqual(result["database"]["status"], "skipped")
 
     def test_preflight_phase_passes_with_required_env_and_valid_runbook(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -116,7 +144,45 @@ class AuP0aReadinessTest(unittest.TestCase):
         self.assertTrue(result["ready_to_run_phase"])
         self.assertEqual(result["recommended_next_action"], "run_make_api_preflight")
         self.assertEqual(result["environment"]["missing_required"], [])
+        self.assertEqual(result["database"]["status"], "skipped")
         self.assertIn("recommended_env_missing:OBJECT_STORE_ENDPOINT", result["warnings"])
+
+    def test_preflight_phase_can_require_database_connection_check(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, _runbook = self._write_runbook(temp_dir)
+            result = verify_au_p0a_readiness(
+                phase="preflight",
+                runbook_path=runbook_path,
+                env=self._env(),
+                require_db_check=True,
+                db_connector=lambda _database_url: self._db_connection(),
+                generated_at="2026-06-11T00:00:00Z",
+            )
+
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["database"]["status"], "pass")
+        self.assertEqual(result["database"]["connection_check"], "pass")
+
+    def test_preflight_phase_fails_when_required_database_check_fails(self) -> None:
+        def broken_connector(_database_url: str) -> object:
+            raise RuntimeError("cannot connect")
+
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, _runbook = self._write_runbook(temp_dir)
+            result = verify_au_p0a_readiness(
+                phase="preflight",
+                runbook_path=runbook_path,
+                env=self._env(),
+                require_db_check=True,
+                db_connector=broken_connector,
+                generated_at="2026-06-11T00:00:00Z",
+            )
+
+        self.assertEqual(result["status"], "fail")
+        self.assertEqual(result["database"]["status"], "fail")
+        self.assertEqual(result["database"]["error_type"], "RuntimeError")
+        self.assertIn("database:database_connection_check_failed", result["errors"])
+        self.assertEqual(result["recommended_next_action"], "fix_database_readiness")
 
     def test_small_batch_phase_requires_ready_preflight_payload_and_manifest(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -187,6 +253,35 @@ class AuP0aReadinessTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(stdout_payload, written_payload)
         self.assertEqual(written_payload["status"], "pass")
+
+    def test_cli_can_require_database_check_from_environment(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, _runbook = self._write_runbook(temp_dir)
+            output_path = Path(temp_dir) / "readiness.json"
+            env = self._env()
+            env["GENO_AU_P0A_REQUIRE_DB_CHECK"] = "1"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/verify_au_p0a_readiness.py",
+                    "--phase",
+                    "preflight",
+                    "--runbook-path",
+                    str(runbook_path),
+                    "--output-path",
+                    str(output_path),
+                    "--generated-at",
+                    "2026-06-11T00:00:00Z",
+                ],
+                capture_output=True,
+                env=env,
+                text=True,
+            )
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(payload["database"]["status"], "fail")
+        self.assertIn("database:database_connection_check_failed", payload["errors"])
 
 
 if __name__ == "__main__":
