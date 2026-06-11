@@ -98,6 +98,8 @@ python3 scripts/build_preflight_manifest.py \
   docs/runtime_preflight/au-p0a-full-batch.json \
   --manifest-path docs/runtime_preflight/au-p0a-full-batch-manifest.json \
   --require-design-partner-ready
+
+make au-p0a-package
 ```
 
 ## 停止条件
@@ -119,6 +121,7 @@ python3 scripts/build_preflight_manifest.py \
 - `docs/runtime_preflight/api-preflight-manifest-latest.json`
 - `docs/runtime_preflight/au-p0a-runbook-latest.json`
 - `docs/runtime_preflight/au-p0a-readiness-latest.json`
+- `docs/runtime_preflight/au-p0a-evidence-package-latest.json`
 - `docs/runtime_preflight/au-p0a-small-batch.json`
 - `docs/runtime_preflight/au-p0a-small-batch-manifest.json`
 - `docs/runtime_preflight/au-p0a-full-batch.json`
@@ -138,6 +141,13 @@ runbook verifier 必须确认：
 - preflight、small batch、full batch 步骤顺序固定
 - small batch planned runs = 30，full batch planned runs = 2400
 - design partner gate、P0a readiness gate 和 no-collection-failures gate 未缺失
+
+evidence package 必须确认：
+
+- runbook、readiness、preflight、small batch、full batch 和对应 manifest 是否存在
+- 每个已存在文件的 file sha256、payload hash 或 manifest hash
+- 每个 payload/manifest 的 verifier status、ready_for_design_partner 和 blocking reasons
+- missing_artifacts、failed_artifacts、blocking_reasons 和 package_payload_hash
 
 ## 当前边界
 
