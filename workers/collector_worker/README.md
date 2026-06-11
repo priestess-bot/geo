@@ -256,6 +256,7 @@ Use the stricter preflight path when validating real AU P0a provider readiness:
 
 ```bash
 PERPLEXITY_API_KEY=... OPENAI_API_KEY=... make api-preflight
+make verify-api-preflight
 ```
 
 `make api-preflight` runs `--mode api --prompt-limit 1 --cities Sydney --sample-size 3
@@ -273,6 +274,11 @@ reasons, evidence field references, run totals, output path status, and replayab
 `preflight_payload_hash` is a sha256 over the canonical JSON payload after removing only the
 `preflight_payload_hash` field itself; when `--preflight-output-path` is set, the hash includes
 that top-level path so stdout and the written file can be recomputed against the same payload.
+`make verify-api-preflight` runs `scripts/verify_preflight_payload.py` against the same path and
+verifies the hash plus summary/checklist structure offline. Failed provider preflights, such as
+missing keys, still pass this audit verifier when the payload is complete; use
+`python3 scripts/verify_preflight_payload.py --require-design-partner-ready` when the check is
+intended to gate expansion to a design-partner batch.
 The default preflight JSON path is gitignored because live provider status and run context belong
 to local audit evidence, not committed project docs. This is the minimum real API smoke; it does
 not replace the full 100 prompts × 4 geo × k=3 design-partner batch.
