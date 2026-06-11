@@ -559,6 +559,7 @@ type RuntimeData = {
   scores: PageResponse<ScoreSnapshot>;
   graphs: PageResponse<CitationGraph>;
   reports: PageResponse<ReportExport>;
+  reportJobs: PageResponse<RuntimeReportExportJob>;
   actions: PageResponse<ActionPlan>;
   alerts: PageResponse<RuntimeAlert>;
   content: PageResponse<ContentEngine>;
@@ -598,6 +599,28 @@ type RuntimeProjectBrandAssetVersion = {
   uploaded_at?: string | null;
   is_active: boolean;
   audit_event?: { event_type?: string; method_version?: string | null };
+};
+
+type RuntimeReportExportJob = {
+  report_export_job: {
+    id: string;
+    project_id: string;
+    report_export_id?: string | null;
+    status: string;
+    artifact_type: string;
+    template: string;
+    filters: Record<string, unknown>;
+    sort: string;
+    requested_by: string;
+    requested_at?: string;
+    started_at?: string | null;
+    completed_at?: string | null;
+    artifact_url?: string | null;
+    error_message?: string | null;
+    updated_by: string;
+    updated_at?: string;
+  };
+  audit_events: Array<{ event_type?: string; actor_id?: string; reason?: string | null; method_version?: string | null }>;
 };
 
 type RuntimeScoreWeightConfig = {
@@ -861,6 +884,7 @@ const endpoints = {
   scores: "/v1/visibility-scores/runtime",
   graphs: "/v1/citation-graphs/runtime",
   reports: "/v1/reports/runtime",
+  reportJobs: "/v1/report-export-jobs/runtime",
   actions: "/v1/action-plans/runtime",
   alerts: "/v1/runtime-alerts",
   content: "/v1/content-engines/runtime",
@@ -1055,6 +1079,74 @@ async function recordRuntimeReportManagementEvent(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/reports/runtime/${reportExportId}/management-events returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function enqueueRuntimeReportExportJob(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  if (!projectId) {
+    throw new Error("project_id is required to enqueue report export job");
+  }
+  const filters = {
+    platform: String(formData.get("platform") || "").trim() || undefined,
+    city: String(formData.get("city") || "").trim() || undefined,
+    intent_type: String(formData.get("intent_type") || "").trim() || undefined,
+    status: String(formData.get("evidence_status") || "").trim() || undefined
+  };
+  const payload = {
+    project_id: projectId,
+    report_export_id: String(formData.get("report_export_id") || "").trim() || undefined,
+    artifact_type: String(formData.get("artifact_type") || "pdf").trim(),
+    template: String(formData.get("template") || "standard").trim(),
+    filters,
+    sort: String(formData.get("sort") || "collected_at_desc").trim(),
+    requested_by: String(formData.get("requested_by") || "runtime-console").trim(),
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/report-export-jobs/runtime`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/report-export-jobs/runtime returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function updateRuntimeReportExportJobStatus(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const jobId = String(formData.get("job_id") || "").trim();
+  if (!jobId) {
+    throw new Error("job_id is required to update report export job status");
+  }
+  const payload = {
+    status: String(formData.get("status") || "cancelled").trim(),
+    updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
+    report_export_id: String(formData.get("report_export_id") || "").trim() || undefined,
+    artifact_url: String(formData.get("artifact_url") || "").trim() || undefined,
+    error_message: String(formData.get("error_message") || "").trim() || undefined,
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/report-export-jobs/runtime/${jobId}/status`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/report-export-jobs/runtime/${jobId}/status returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -1494,6 +1586,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     scores: runtimePath(endpoints.scores, { limit: 1 }),
     graphs: runtimePath(endpoints.graphs, { limit: 1 }),
     reports: runtimePath(endpoints.reports, { limit: 5 }),
+    reportJobs: runtimePath(endpoints.reportJobs, { limit: 5 }),
     actions: runtimePath(endpoints.actions, { limit: 1 }),
     alerts: runtimePath(endpoints.alerts, { limit: 10 }),
     content: runtimePath(endpoints.content, { limit: 1 }),
@@ -1632,6 +1725,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     ...selectedProjectParams,
     limit: 5
   });
+  paths.reportJobs = runtimePath(endpoints.reportJobs, {
+    ...selectedProjectParams,
+    limit: 5
+  });
   paths.actions = runtimePath(endpoints.actions, {
     ...selectedProjectParams,
     limit: 1
@@ -1668,6 +1765,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     scores,
     graphs,
     reports,
+    reportJobs,
     actions,
     alerts,
     content,
@@ -1740,6 +1838,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<PageResponse<ScoreSnapshot>>(baseUrl, paths.scores, emptyPage<ScoreSnapshot>()),
     fetchRuntimeEndpoint<PageResponse<CitationGraph>>(baseUrl, paths.graphs, emptyPage<CitationGraph>()),
     fetchRuntimeEndpoint<PageResponse<ReportExport>>(baseUrl, paths.reports, emptyPage<ReportExport>()),
+    fetchRuntimeEndpoint<PageResponse<RuntimeReportExportJob>>(
+      baseUrl,
+      paths.reportJobs,
+      emptyPage<RuntimeReportExportJob>()
+    ),
     fetchRuntimeEndpoint<PageResponse<ActionPlan>>(baseUrl, paths.actions, emptyPage<ActionPlan>()),
     fetchRuntimeEndpoint<PageResponse<RuntimeAlert>>(baseUrl, paths.alerts, emptyPage<RuntimeAlert>()),
     fetchRuntimeEndpoint<PageResponse<ContentEngine>>(baseUrl, paths.content, emptyPage<ContentEngine>()),
@@ -1768,6 +1871,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     scores,
     graphs,
     reports,
+    reportJobs,
     actions,
     alerts,
     content,
@@ -1799,6 +1903,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       scores: scores.payload,
       graphs: graphs.payload,
       reports: reports.payload,
+      reportJobs: reportJobs.payload,
       actions: actions.payload,
       alerts: alerts.payload,
       content: content.payload,
@@ -3360,6 +3465,34 @@ export default async function Home({
                   value={reportSignedPdfUrl?.replace(displayUrl, "") || "No signed artifact URL"}
                 />
               </dl>
+              <form action={enqueueRuntimeReportExportJob} className="reportExportJobForm">
+                <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+                <input type="hidden" name="report_export_id" value={latestReport.report_export.id} />
+                <input type="hidden" name="platform" value={filters.platform || ""} />
+                <input type="hidden" name="city" value={filters.city || ""} />
+                <input type="hidden" name="intent_type" value={filters.intent_type || ""} />
+                <input type="hidden" name="sort" value={evidenceSort} />
+                <input type="hidden" name="requested_by" value="runtime-console" />
+                <input type="hidden" name="reason" value="Queue filtered report artifact export" />
+                <label>
+                  <span>Artifact</span>
+                  <select name="artifact_type" defaultValue="pdf">
+                    <option value="pdf">PDF</option>
+                    <option value="csv">CSV</option>
+                    <option value="markdown">Markdown</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Template</span>
+                  <select name="template" defaultValue="standard">
+                    <option value="standard">Standard</option>
+                    <option value="white_label">White label</option>
+                  </select>
+                </label>
+                <button className="actionButton compactAction" type="submit" disabled={!selectedProjectId}>
+                  Queue export
+                </button>
+              </form>
             </div>
           ) : (
             <EmptyState />
@@ -3470,6 +3603,83 @@ export default async function Home({
                         <strong>{report.audit_events[0]?.event_type || "no report audit"}</strong>
                         <span>{report.audit_events[0]?.target_type || "report_export"}</span>
                         <small>{report.audit_events[0]?.method_version || "no method version"}</small>
+                      </li>
+                    </ul>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </Panel>
+
+        <Panel title="Report Export Queue" subtitle={`${data.reportJobs.total_count} queued jobs`} wide>
+          {data.reportJobs.records.length ? (
+            <div className="reportHistory">
+              {data.reportJobs.records.map((jobRecord) => {
+                const job = jobRecord.report_export_job;
+                const latestAudit = jobRecord.audit_events[0];
+                return (
+                  <article className="reportHistoryItem" key={job.id}>
+                    <header>
+                      <div>
+                        <h3>{job.artifact_type.toUpperCase()} · {job.template}</h3>
+                        <span>{dateText(job.requested_at)}</span>
+                      </div>
+                      <strong>{job.status}</strong>
+                    </header>
+                    <dl className="facts contributionFacts">
+                      <Fact label="Job ID" value={shortId(job.id)} />
+                      <Fact label="Report ID" value={shortId(job.report_export_id || undefined)} />
+                      <Fact label="Sort" value={job.sort} />
+                      <Fact label="Requested by" value={job.requested_by} />
+                      <Fact label="Updated by" value={job.updated_by} />
+                      <Fact label="Completed" value={dateText(job.completed_at || undefined)} />
+                    </dl>
+                    <form action={updateRuntimeReportExportJobStatus} className="reportManagementForm">
+                      <input type="hidden" name="job_id" value={job.id} />
+                      <input type="hidden" name="updated_by" value="runtime-console" />
+                      <label>
+                        <span>Status</span>
+                        <select name="status" defaultValue={job.status === "queued" ? "cancelled" : job.status}>
+                          <option value="queued">Queued</option>
+                          <option value="running">Running</option>
+                          <option value="succeeded">Succeeded</option>
+                          <option value="failed">Failed</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Artifact URL</span>
+                        <input name="artifact_url" defaultValue={job.artifact_url || ""} />
+                      </label>
+                      <label>
+                        <span>Reason</span>
+                        <input name="reason" defaultValue="Update queued report export job" />
+                      </label>
+                      <button className="actionButton compactAction" type="submit">
+                        Update job
+                      </button>
+                    </form>
+                    <ul className="plainList">
+                      <li>
+                        <strong>{latestAudit?.event_type || "report_export_job_queued"}</strong>
+                        <span>{latestAudit?.reason || job.error_message || "No queue status note"}</span>
+                        <small>
+                          {latestAudit?.actor_id || job.updated_by} ·{" "}
+                          {latestAudit?.method_version || "runtime_report_export_job_v1"} · report_export_job_status_updated
+                        </small>
+                      </li>
+                      <li>
+                        <strong>Queued filters</strong>
+                        <span>{JSON.stringify(job.filters || {})}</span>
+                        <small>{paths.reportJobs}</small>
+                      </li>
+                      <li>
+                        <strong>Artifact output</strong>
+                        <span>{job.artifact_url || "artifact pending"}</span>
+                        <small>{job.started_at ? `started ${dateText(job.started_at)}` : "not started"}</small>
                       </li>
                     </ul>
                   </article>

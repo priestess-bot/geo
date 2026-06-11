@@ -42,6 +42,8 @@ from geno_core.models import (
     RuntimeProjectPage,
     RuntimeReportArtifact,
     RuntimeReportExport,
+    RuntimeReportExportJob,
+    RuntimeReportExportJobPage,
     RuntimeScoreWeightConfig,
 )
 
@@ -2458,6 +2460,131 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.event.updated_by, "runtime-console")
         self.assertEqual(fake_repository.event.note, "Ready for client")
 
+    def test_runtime_report_export_jobs_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get("/v1/report-export-jobs/runtime")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_report_export_jobs_endpoint_returns_jobs(self) -> None:
+        class FakeRepository:
+            def list_runtime_report_export_jobs(self, **kwargs: object) -> RuntimeReportExportJobPage:
+                self.kwargs = kwargs
+                return RuntimeReportExportJobPage(
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(
+                        RuntimeReportExportJob(
+                            report_export_job={
+                                "id": "job-1",
+                                "project_id": kwargs["project_id"],
+                                "status": "queued",
+                                "artifact_type": "pdf",
+                                "template": "white_label",
+                                "filters": {"platform": "perplexity"},
+                                "sort": "cost_desc",
+                                "requested_by": "runtime-console",
+                                "updated_by": "runtime-console",
+                            },
+                            audit_events=({"event_type": "report_export_job_queued"},),
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/report-export-jobs/runtime?project_id=project-1&status=queued&limit=5&offset=0"
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_count"], 1)
+        self.assertEqual(payload["records"][0]["report_export_job"]["template"], "white_label")
+        self.assertEqual(payload["records"][0]["audit_events"][0]["event_type"], "report_export_job_queued")
+        self.assertEqual(fake_repository.kwargs["status"], "queued")
+
+    def test_runtime_report_export_job_enqueue_and_status_endpoints_pass_payload(self) -> None:
+        class FakeRepository:
+            def __init__(self) -> None:
+                self.enqueued = None
+                self.updated = None
+
+            def get_report_export_job_project_id(self, *, job_id: str) -> str:
+                self.job_id = job_id
+                return "project-1"
+
+            def enqueue_runtime_report_export_job(self, job: object) -> RuntimeReportExportJob:
+                self.enqueued = job
+                return RuntimeReportExportJob(
+                    report_export_job={
+                        "id": "job-1",
+                        "project_id": job.project_id,
+                        "report_export_id": job.report_export_id,
+                        "status": "queued",
+                        "artifact_type": job.artifact_type,
+                        "template": job.template,
+                        "filters": job.filters,
+                        "sort": job.sort,
+                        "requested_by": job.requested_by,
+                        "updated_by": job.requested_by,
+                    },
+                    audit_events=({"event_type": "report_export_job_queued"},),
+                )
+
+            def update_runtime_report_export_job_status(self, update: object) -> RuntimeReportExportJob:
+                self.updated = update
+                return RuntimeReportExportJob(
+                    report_export_job={
+                        "id": update.job_id,
+                        "project_id": "project-1",
+                        "report_export_id": update.report_export_id,
+                        "status": update.status,
+                        "artifact_type": "pdf",
+                        "template": "standard",
+                        "filters": {},
+                        "sort": "collected_at_desc",
+                        "requested_by": "runtime-console",
+                        "updated_by": update.updated_by,
+                        "artifact_url": update.artifact_url,
+                    },
+                    audit_events=({"event_type": "report_export_job_status_updated"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            enqueue_response = self.client.post(
+                "/v1/report-export-jobs/runtime",
+                json={
+                    "project_id": "project-1",
+                    "report_export_id": "report-1",
+                    "artifact_type": "pdf",
+                    "template": "standard",
+                    "filters": {"city": "Sydney"},
+                    "sort": "cost_desc",
+                    "requested_by": "runtime-console",
+                },
+            )
+            status_response = self.client.post(
+                "/v1/report-export-jobs/runtime/job-1/status",
+                json={
+                    "status": "succeeded",
+                    "updated_by": "runtime-console",
+                    "report_export_id": "report-1",
+                    "artifact_url": "s3://geno-reports/report.pdf",
+                },
+            )
+        self.assertEqual(enqueue_response.status_code, 200)
+        self.assertEqual(status_response.status_code, 200)
+        self.assertEqual(enqueue_response.json()["audit_events"][0]["event_type"], "report_export_job_queued")
+        self.assertEqual(status_response.json()["audit_events"][0]["event_type"], "report_export_job_status_updated")
+        self.assertEqual(fake_repository.enqueued.filters["city"], "Sydney")
+        self.assertEqual(fake_repository.updated.status, "succeeded")
+        self.assertEqual(fake_repository.updated.artifact_url, "s3://geno-reports/report.pdf")
+
     def test_runtime_report_artifact_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get(
             "/v1/reports/runtime/report-1/artifact?type=markdown&platform=perplexity&city=Sydney&intent_type=brand_awareness&sort=cost_desc"
@@ -3007,6 +3134,12 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeCitationGraph", payload["persistence"])
         self.assertIn("RuntimeReportArtifact", payload["persistence"])
         self.assertIn("RuntimeReportExport", payload["persistence"])
+        self.assertIn("RuntimeReportExportJob", payload["persistence"])
+        self.assertIn("RuntimeReportExportJobPage", payload["persistence"])
+        self.assertIn("RuntimeReportExportJobInput", payload["persistence"])
+        self.assertIn("RuntimeReportExportJobStatusInput", payload["persistence"])
+        self.assertIn("RuntimeReportExportJobRequest", payload["persistence"])
+        self.assertIn("RuntimeReportExportJobStatusRequest", payload["persistence"])
         self.assertIn("RuntimeReportManagementInput", payload["persistence"])
         self.assertIn("RuntimeReportManagementEventRequest", payload["persistence"])
         self.assertIn("RuntimeActionPlan", payload["persistence"])
@@ -3052,6 +3185,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/visibility-scores/runtime", payload["persistence"])
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])
         self.assertIn("/v1/reports/runtime", payload["persistence"])
+        self.assertIn("/v1/report-export-jobs/runtime", payload["persistence"])
+        self.assertIn("/v1/report-export-jobs/runtime/{job_id}/status", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/management-events", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/artifact", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/artifact/signed-url", payload["persistence"])

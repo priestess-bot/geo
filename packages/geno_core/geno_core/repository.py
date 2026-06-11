@@ -5,7 +5,7 @@ import hashlib
 import json
 from contextlib import nullcontext
 from dataclasses import asdict, is_dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from io import StringIO
 from typing import Any, Protocol
 from urllib.parse import urlparse
@@ -77,6 +77,10 @@ from geno_core.models import (
     RuntimePromptImportResult,
     RuntimePromptPage,
     RuntimeReportArtifact,
+    RuntimeReportExportJob,
+    RuntimeReportExportJobInput,
+    RuntimeReportExportJobPage,
+    RuntimeReportExportJobStatusInput,
     RuntimeReportExport,
     RuntimeReportExportPage,
     RuntimeReportManagementInput,
@@ -1050,6 +1054,24 @@ REPORT_EXPORT_COLUMNS = (
     "exported_by",
     "exported_at",
 )
+REPORT_EXPORT_JOB_COLUMNS = (
+    "id",
+    "project_id",
+    "report_export_id",
+    "status",
+    "artifact_type",
+    "template",
+    "filters",
+    "sort",
+    "requested_by",
+    "requested_at",
+    "started_at",
+    "completed_at",
+    "artifact_url",
+    "error_message",
+    "updated_by",
+    "updated_at",
+)
 ACTION_RECOMMENDATION_COLUMNS = (
     "id",
     "project_id",
@@ -1407,6 +1429,22 @@ class PostgresEvidenceRepository:
                 LIMIT 1
                 """,
                 (_uuid(report_export_id),),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return str(row["project_id"] if isinstance(row, dict) else row[0])
+
+    def get_report_export_job_project_id(self, *, job_id: str) -> str | None:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT project_id
+                FROM report_export_jobs
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(job_id),),
             )
             row = cursor.fetchone()
         if not row:
@@ -4173,6 +4211,258 @@ class PostgresEvidenceRepository:
             row_count=len(filtered_report.answer_runs),
         )
 
+    def enqueue_runtime_report_export_job(
+        self,
+        job: RuntimeReportExportJobInput,
+    ) -> RuntimeReportExportJob:
+        project_id = job.project_id.strip()
+        report_export_id = job.report_export_id.strip() if job.report_export_id else None
+        artifact_type = job.artifact_type.strip().lower()
+        template = job.template.strip().lower() or "standard"
+        sort = job.sort.strip() or "collected_at_desc"
+        requested_by = job.requested_by.strip()
+        reason = job.reason.strip() if job.reason else None
+        if not project_id:
+            raise ValueError("project_id is required")
+        if artifact_type not in {"markdown", "csv", "pdf"}:
+            raise ValueError("artifact_type must be markdown, csv, or pdf")
+        if template not in {"standard", "white_label"}:
+            raise ValueError("template must be standard or white_label")
+        if template == "white_label" and artifact_type != "pdf":
+            raise ValueError("white_label template is only supported for pdf artifacts")
+        if not requested_by:
+            raise ValueError("requested_by is required")
+        filters = _json_compatible(job.filters or {})
+        if not isinstance(filters, dict):
+            raise ValueError("filters must be an object")
+        job_id = _stable_id(
+            "report-export-job",
+            project_id,
+            report_export_id or "latest",
+            artifact_type,
+            template,
+            json.dumps(filters, ensure_ascii=False, sort_keys=True),
+            sort,
+            requested_by,
+            datetime.now(UTC).isoformat(),
+        )
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id FROM projects WHERE id = %s LIMIT 1",
+                (_uuid(project_id),),
+            )
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            report_export: dict[str, Any] | None = None
+            if report_export_id:
+                report_export = self._load_report_export_by_id(
+                    cursor=cursor,
+                    report_export_id=report_export_id,
+                )
+                if not report_export:
+                    raise ValueError("report_export not found")
+                if str(report_export["project_id"]) != project_id:
+                    raise ValueError("report_export does not belong to project")
+            cursor.execute(
+                """
+                INSERT INTO report_export_jobs (
+                  id, project_id, report_export_id, status, artifact_type, template,
+                  filters, sort, requested_by, requested_at, updated_by, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, project_id, report_export_id, status, artifact_type, template,
+                          filters, sort, requested_by, requested_at, started_at, completed_at,
+                          artifact_url, error_message, updated_by, updated_at
+                """,
+                (
+                    _uuid(job_id),
+                    _uuid(project_id),
+                    _uuid(report_export_id),
+                    "queued",
+                    artifact_type,
+                    template,
+                    _json_payload(filters),
+                    sort,
+                    requested_by,
+                    datetime.now(UTC),
+                    requested_by,
+                    datetime.now(UTC),
+                ),
+            )
+            saved_job = _row_dict(cursor.fetchone(), REPORT_EXPORT_JOB_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="report_export_job_queued",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=requested_by,
+                target_type="report_export_job",
+                target_id=job_id,
+                before=None,
+                after=saved_job,
+                input_refs={
+                    "project_ids": [project_id],
+                    "report_export_ids": [report_export_id] if report_export_id else [],
+                    "artifact_type": [artifact_type],
+                    "template": [template],
+                    "sort": [sort],
+                    "filters": [filters],
+                },
+                output_refs={
+                    "report_export_job_ids": [job_id],
+                    "status": ["queued"],
+                },
+                method_version="runtime_report_export_job_v1",
+                reason=reason or "enqueue report export artifact job",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            record = self._runtime_report_export_job_from_row(cursor=cursor, row=saved_job)
+        self.connection.commit()
+        return record
+
+    def list_runtime_report_export_jobs(
+        self,
+        *,
+        project_id: str | None = None,
+        status: str | None = None,
+        report_export_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeReportExportJobPage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id.strip()))
+        if status:
+            filters.append("status = %s")
+            params.append(status.strip().lower())
+        if report_export_id:
+            filters.append("report_export_id = %s")
+            params.append(_uuid(report_export_id.strip()))
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM report_export_jobs {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(REPORT_EXPORT_JOB_COLUMNS)}
+                FROM report_export_jobs
+                {where_clause}
+                ORDER BY requested_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            rows = _rows_dict(cursor.fetchall(), REPORT_EXPORT_JOB_COLUMNS)
+            records = tuple(self._runtime_report_export_job_from_row(cursor=cursor, row=row) for row in rows)
+        return RuntimeReportExportJobPage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=records,
+        )
+
+    def update_runtime_report_export_job_status(
+        self,
+        update: RuntimeReportExportJobStatusInput,
+    ) -> RuntimeReportExportJob:
+        job_id = update.job_id.strip()
+        status = update.status.strip().lower()
+        updated_by = update.updated_by.strip()
+        report_export_id = update.report_export_id.strip() if update.report_export_id else None
+        artifact_url = update.artifact_url.strip() if update.artifact_url else None
+        error_message = update.error_message.strip() if update.error_message else None
+        reason = update.reason.strip() if update.reason else None
+        allowed_statuses = {"queued", "running", "succeeded", "failed", "cancelled"}
+        if not job_id:
+            raise ValueError("job_id is required")
+        if status not in allowed_statuses:
+            raise ValueError("status must be queued, running, succeeded, failed, or cancelled")
+        if not updated_by:
+            raise ValueError("updated_by is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(REPORT_EXPORT_JOB_COLUMNS)}
+                FROM report_export_jobs
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(job_id),),
+            )
+            before = _row_dict(cursor.fetchone(), REPORT_EXPORT_JOB_COLUMNS)
+            if not before:
+                raise ValueError("report_export_job not found")
+            if report_export_id:
+                report_export = self._load_report_export_by_id(
+                    cursor=cursor,
+                    report_export_id=report_export_id,
+                )
+                if not report_export:
+                    raise ValueError("report_export not found")
+                if str(report_export["project_id"]) != str(before["project_id"]):
+                    raise ValueError("report_export does not belong to project")
+            now = datetime.now(UTC)
+            cursor.execute(
+                """
+                UPDATE report_export_jobs
+                SET status = %s,
+                    report_export_id = COALESCE(%s, report_export_id),
+                    started_at = CASE WHEN %s = 'running' AND started_at IS NULL THEN %s ELSE started_at END,
+                    completed_at = CASE WHEN %s IN ('succeeded', 'failed', 'cancelled') THEN %s ELSE completed_at END,
+                    artifact_url = COALESCE(%s, artifact_url),
+                    error_message = %s,
+                    updated_by = %s,
+                    updated_at = %s
+                WHERE id = %s
+                RETURNING id, project_id, report_export_id, status, artifact_type, template,
+                          filters, sort, requested_by, requested_at, started_at, completed_at,
+                          artifact_url, error_message, updated_by, updated_at
+                """,
+                (
+                    status,
+                    _uuid(report_export_id),
+                    status,
+                    now,
+                    status,
+                    now,
+                    artifact_url,
+                    error_message,
+                    updated_by,
+                    now,
+                    _uuid(job_id),
+                ),
+            )
+            after = _row_dict(cursor.fetchone(), REPORT_EXPORT_JOB_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="report_export_job_status_updated",
+                project_id=str(after["project_id"]),
+                actor_type="worker" if updated_by == "runtime-worker" else "user",
+                actor_id=updated_by,
+                target_type="report_export_job",
+                target_id=job_id,
+                before=before,
+                after=after,
+                input_refs={
+                    "report_export_job_ids": [job_id],
+                    "report_export_ids": [report_export_id] if report_export_id else [],
+                    "status": [status],
+                },
+                output_refs={
+                    "report_export_job_ids": [job_id],
+                    "artifact_url": [artifact_url] if artifact_url else [],
+                },
+                method_version="runtime_report_export_job_status_v1",
+                reason=reason or f"mark report export job {status}",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            record = self._runtime_report_export_job_from_row(cursor=cursor, row=after)
+        self.connection.commit()
+        return record
+
     def record_runtime_report_management_event(
         self,
         event: RuntimeReportManagementInput,
@@ -4405,6 +4695,28 @@ class PostgresEvidenceRepository:
         )
         report_row = cursor.fetchone()
         return _row_dict(report_row, REPORT_EXPORT_COLUMNS) if report_row else None
+
+    def _runtime_report_export_job_from_row(
+        self,
+        *,
+        cursor: DbCursor,
+        row: dict[str, Any],
+    ) -> RuntimeReportExportJob:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            LIMIT 5
+            """,
+            (_uuid(str(row["project_id"])), "report_export_job", str(row["id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeReportExportJob(
+            report_export_job=row,
+            audit_events=audit_events,
+        )
 
     def _load_score_snapshot_by_id(
         self,

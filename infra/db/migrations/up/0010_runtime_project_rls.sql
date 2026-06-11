@@ -131,6 +131,7 @@ BEGIN
     'collection_run_summaries',
     'audit_events',
     'report_exports',
+    'report_export_jobs',
     'brand_entities',
     'competitor_entities'
   ]

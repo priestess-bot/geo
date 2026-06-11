@@ -149,7 +149,17 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Signed PDF URL", page_source)
         self.assertIn("Signed white-label URL", page_source)
         self.assertIn("HMAC signed URL endpoint", page_source)
+        self.assertIn("Report Export Queue", page_source)
+        self.assertIn("enqueueRuntimeReportExportJob", page_source)
+        self.assertIn("updateRuntimeReportExportJobStatus", page_source)
+        self.assertIn("/v1/report-export-jobs/runtime", page_source)
+        self.assertIn("/v1/report-export-jobs/runtime/${jobId}/status", page_source)
+        self.assertIn("report_export_job_queued", page_source)
+        self.assertIn("report_export_job_status_updated", page_source)
+        self.assertIn("Queue export", page_source)
+        self.assertIn("Update job", page_source)
         self.assertIn(".reportManagementForm", css_source)
+        self.assertIn(".reportExportJobForm", css_source)
 
     def test_runtime_console_surfaces_project_member_management(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")

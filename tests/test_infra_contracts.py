@@ -141,6 +141,18 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(datasource["url"], "http://prometheus:9090")
         self.assertTrue(datasource["isDefault"])
 
+    def test_report_export_jobs_migration_is_covered_by_rls_and_db_smoke(self) -> None:
+        init_sql = (ROOT / "infra/db/migrations/up/0001_init.sql").read_text(encoding="utf-8")
+        rls_sql = (ROOT / "infra/db/migrations/up/0010_runtime_project_rls.sql").read_text(encoding="utf-8")
+        rls_down_sql = (ROOT / "infra/db/migrations/down/0010_runtime_project_rls.down.sql").read_text(encoding="utf-8")
+        db_smoke_source = (ROOT / "scripts/verify_db_smoke.py").read_text(encoding="utf-8")
+
+        self.assertIn("CREATE TABLE report_export_jobs", init_sql)
+        self.assertIn("idx_report_export_jobs_project", init_sql)
+        self.assertIn("'report_export_jobs'", rls_sql)
+        self.assertIn("'report_export_jobs'", rls_down_sql)
+        self.assertIn('"report_export_jobs"', db_smoke_source)
+
     def test_litellm_config_uses_env_secrets_and_geno_model_aliases(self) -> None:
         config = yaml.safe_load((ROOT / "infra/litellm_config.yaml").read_text(encoding="utf-8"))
         model_list = {item["model_name"]: item["litellm_params"] for item in config["model_list"]}

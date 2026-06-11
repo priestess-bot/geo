@@ -1159,6 +1159,43 @@ class RuntimeReportManagementInput:
 
 
 @dataclass(frozen=True)
+class RuntimeReportExportJob:
+    report_export_job: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeReportExportJobPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeReportExportJob, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeReportExportJobInput:
+    project_id: str
+    report_export_id: str | None
+    artifact_type: str
+    template: str = "standard"
+    filters: dict[str, Any] = field(default_factory=dict)
+    sort: str = "collected_at_desc"
+    requested_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeReportExportJobStatusInput:
+    job_id: str
+    status: str
+    updated_by: str
+    report_export_id: str | None = None
+    artifact_url: str | None = None
+    error_message: str | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeReportArtifact:
     report_export: dict[str, Any]
     artifact_type: str

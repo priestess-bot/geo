@@ -51,6 +51,7 @@ BEGIN
     'collection_run_summaries',
     'audit_events',
     'report_exports',
+    'report_export_jobs',
     'score_contributions',
     'score_snapshot_runs',
     'source_graph_evidence',

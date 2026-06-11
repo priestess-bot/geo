@@ -107,6 +107,9 @@ from geno_core.models import (
     RuntimeCollectionRunPage,
     RuntimeScoreSnapshotPage,
     RuntimeReportArtifact,
+    RuntimeReportExportJobInput,
+    RuntimeReportExportJobPage,
+    RuntimeReportExportJobStatusInput,
     RuntimeReportExportPage,
     RuntimeReportManagementInput,
     RuntimeSavedView,
@@ -5031,6 +5034,235 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(audit_insert[6], report_export_id)
         self.assertEqual(audit_insert[11], "report_export_management_v1")
         self.assertEqual(audit_insert[12], "Ready for client delivery")
+
+    def test_postgres_repository_enqueues_report_export_job_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        job_id = "8f4f2a24-d6cf-5050-96a4-942d2c337fd0"
+        report_row = {
+            "id": report_export_id,
+            "project_id": project_id,
+            "market_code": "AU",
+            "report_version": "worker-runtime-v1",
+            "report_type": "worker_runtime",
+            "score_snapshot_ids": [],
+            "answer_run_ids": [],
+            "prompt_version": "au_dtc_ecommerce_v1",
+            "scoring_formula_version": "au_visibility_v1",
+            "platform_weights_snapshot": {},
+            "method_disclosure": {},
+            "sample_size": 1,
+            "window_start": now,
+            "window_end": now,
+            "methodology_hash": "methodology-hash",
+            "markdown_url": None,
+            "pdf_url": None,
+            "csv_url": None,
+            "exported_by": "system",
+            "exported_at": now,
+        }
+        job_row = {
+            "id": job_id,
+            "project_id": project_id,
+            "report_export_id": report_export_id,
+            "status": "queued",
+            "artifact_type": "pdf",
+            "template": "white_label",
+            "filters": {"platform": "perplexity"},
+            "sort": "cost_desc",
+            "requested_by": "runtime-console",
+            "requested_at": now,
+            "started_at": None,
+            "completed_at": None,
+            "artifact_url": None,
+            "error_message": None,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "e011f214-7cf4-40e4-b73e-8cc4308cc7d9",
+            "event_type": "report_export_job_queued",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "report_export_job",
+            "target_id": job_id,
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"report_export_ids": [report_export_id], "artifact_type": ["pdf"]},
+            "output_refs": {"report_export_job_ids": [job_id], "status": ["queued"]},
+            "method_version": "runtime_report_export_job_v1",
+            "reason": "enqueue filtered white-label export",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"id": project_id}, report_row, job_row, [audit_row]])
+
+        record = PostgresEvidenceRepository(connection).enqueue_runtime_report_export_job(
+            RuntimeReportExportJobInput(
+                project_id=project_id,
+                report_export_id=report_export_id,
+                artifact_type="pdf",
+                template="white_label",
+                filters={"platform": "perplexity"},
+                sort="cost_desc",
+                requested_by="runtime-console",
+                reason="enqueue filtered white-label export",
+            )
+        )
+
+        self.assertEqual(record.report_export_job["status"], "queued")
+        self.assertEqual(record.report_export_job["template"], "white_label")
+        self.assertEqual(record.audit_events[0]["event_type"], "report_export_job_queued")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO report_export_jobs", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_lists_report_export_jobs_with_audit_events(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        job_id = "8f4f2a24-d6cf-5050-96a4-942d2c337fd0"
+        job_row = {
+            "id": job_id,
+            "project_id": project_id,
+            "report_export_id": None,
+            "status": "queued",
+            "artifact_type": "csv",
+            "template": "standard",
+            "filters": {"city": "Sydney"},
+            "sort": "collected_at_desc",
+            "requested_by": "runtime-console",
+            "requested_at": now,
+            "started_at": None,
+            "completed_at": None,
+            "artifact_url": None,
+            "error_message": None,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "e011f214-7cf4-40e4-b73e-8cc4308cc7d9",
+            "event_type": "report_export_job_queued",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "report_export_job",
+            "target_id": job_id,
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {},
+            "output_refs": {"report_export_job_ids": [job_id]},
+            "method_version": "runtime_report_export_job_v1",
+            "reason": "enqueue report export artifact job",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, [job_row], [audit_row]])
+
+        page = PostgresEvidenceRepository(connection).list_runtime_report_export_jobs(
+            project_id=project_id,
+            status="queued",
+            limit=5,
+            offset=0,
+        )
+
+        self.assertIsInstance(page, RuntimeReportExportJobPage)
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.records[0].report_export_job["artifact_type"], "csv")
+        self.assertEqual(page.records[0].audit_events[0]["event_type"], "report_export_job_queued")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM report_export_jobs WHERE project_id = %s AND status = %s", executed_sql)
+        self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_updates_report_export_job_status_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        job_id = "8f4f2a24-d6cf-5050-96a4-942d2c337fd0"
+        before_row = {
+            "id": job_id,
+            "project_id": project_id,
+            "report_export_id": None,
+            "status": "running",
+            "artifact_type": "pdf",
+            "template": "standard",
+            "filters": {},
+            "sort": "collected_at_desc",
+            "requested_by": "runtime-console",
+            "requested_at": now,
+            "started_at": now,
+            "completed_at": None,
+            "artifact_url": None,
+            "error_message": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        report_row = {
+            "id": report_export_id,
+            "project_id": project_id,
+            "market_code": "AU",
+            "report_version": "worker-runtime-v1",
+            "report_type": "worker_runtime",
+            "score_snapshot_ids": [],
+            "answer_run_ids": [],
+            "prompt_version": "au_dtc_ecommerce_v1",
+            "scoring_formula_version": "au_visibility_v1",
+            "platform_weights_snapshot": {},
+            "method_disclosure": {},
+            "sample_size": 1,
+            "window_start": now,
+            "window_end": now,
+            "methodology_hash": "methodology-hash",
+            "markdown_url": None,
+            "pdf_url": None,
+            "csv_url": None,
+            "exported_by": "system",
+            "exported_at": now,
+        }
+        after_row = {
+            **before_row,
+            "report_export_id": report_export_id,
+            "status": "succeeded",
+            "completed_at": now,
+            "artifact_url": "s3://geno-reports/report.pdf",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "e011f214-7cf4-40e4-b73e-8cc4308cc7d9",
+            "event_type": "report_export_job_status_updated",
+            "project_id": project_id,
+            "actor_type": "worker",
+            "actor_id": "runtime-worker",
+            "target_type": "report_export_job",
+            "target_id": job_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {"status": ["succeeded"], "report_export_job_ids": [job_id]},
+            "output_refs": {"artifact_url": ["s3://geno-reports/report.pdf"]},
+            "method_version": "runtime_report_export_job_status_v1",
+            "reason": "artifact archived",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[before_row, report_row, after_row, [audit_row]])
+
+        record = PostgresEvidenceRepository(connection).update_runtime_report_export_job_status(
+            RuntimeReportExportJobStatusInput(
+                job_id=job_id,
+                status="succeeded",
+                updated_by="runtime-worker",
+                report_export_id=report_export_id,
+                artifact_url="s3://geno-reports/report.pdf",
+                reason="artifact archived",
+            )
+        )
+
+        self.assertEqual(record.report_export_job["status"], "succeeded")
+        self.assertEqual(record.report_export_job["artifact_url"], "s3://geno-reports/report.pdf")
+        self.assertEqual(record.audit_events[0]["event_type"], "report_export_job_status_updated")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("UPDATE report_export_jobs SET status = %s", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
 
     def test_postgres_repository_renders_runtime_report_artifact(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

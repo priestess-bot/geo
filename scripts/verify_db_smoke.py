@@ -47,6 +47,7 @@ EXPECTED_TABLES = (
     "collection_run_summaries",
     "audit_events",
     "report_exports",
+    "report_export_jobs",
     "score_contributions",
     "source_graph_evidence",
     "score_snapshot_runs",
@@ -70,6 +71,7 @@ CRITICAL_COLUMNS = {
     "score_weight_configs": ("weights", "updated_by"),
     "human_review_records": ("target_type", "review_status", "decision"),
     "project_brand_kits": ("logo_url", "footer_text"),
+    "report_export_jobs": ("status", "artifact_type", "template", "filters", "artifact_url"),
     "llm_call_logs": ("estimated_cost", "latency_ms", "status"),
 }
 
@@ -113,6 +115,7 @@ EXPECTED_RLS_TABLES = (
     "collection_run_summaries",
     "audit_events",
     "report_exports",
+    "report_export_jobs",
     "brand_entities",
     "competitor_entities",
     "llm_call_logs",

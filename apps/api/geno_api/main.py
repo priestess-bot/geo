@@ -72,6 +72,8 @@ from geno_core.models import (
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
     RuntimePromptImportInput,
+    RuntimeReportExportJobInput,
+    RuntimeReportExportJobStatusInput,
     RuntimeReportManagementInput,
     RuntimeSavedViewInput,
     RuntimeScoreWeightConfigInput,
@@ -1150,6 +1152,26 @@ class RuntimeReportManagementEventRequest(BaseModel):
     status: str = Field(min_length=1, max_length=80)
     updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     note: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeReportExportJobRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    report_export_id: str | None = Field(default=None, min_length=1)
+    artifact_type: str = Field(default="pdf", min_length=1, max_length=40)
+    template: str = Field(default="standard", min_length=1, max_length=40)
+    filters: dict[str, object] = Field(default_factory=dict)
+    sort: str = Field(default="collected_at_desc", min_length=1, max_length=80)
+    requested_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeReportExportJobStatusRequest(BaseModel):
+    status: str = Field(min_length=1, max_length=80)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    report_export_id: str | None = Field(default=None, min_length=1)
+    artifact_url: str | None = Field(default=None, max_length=1000)
+    error_message: str | None = Field(default=None, max_length=2000)
+    reason: str | None = Field(default=None, max_length=500)
 
 
 @app.get("/health")
@@ -2590,6 +2612,116 @@ def runtime_report_artifact_signed_url(
     }
 
 
+@app.get("/v1/report-export-jobs/runtime")
+def runtime_report_export_jobs(
+    project_id: str | None = None,
+    status: str | None = None,
+    report_export_id: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        if runtime_project_access_control_enabled() and report_export_id and not project_id:
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
+            project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            if project_id is None:
+                raise HTTPException(status_code=404, detail="report_export not found")
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_report_export_jobs(
+            project_id=project_id,
+            status=status,
+            report_export_id=report_export_id,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/report-export-jobs/runtime")
+def enqueue_runtime_report_export_job(
+    payload: RuntimeReportExportJobRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        job = repository.enqueue_runtime_report_export_job(
+            RuntimeReportExportJobInput(
+                project_id=payload.project_id,
+                report_export_id=payload.report_export_id,
+                artifact_type=payload.artifact_type,
+                template=payload.template,
+                filters=payload.filters,
+                sort=payload.sort,
+                requested_by=actor_id or payload.requested_by,
+                reason=payload.reason,
+            )
+        )
+        return asdict(job)
+    except ValueError as exc:
+        status_code = 404 if str(exc) in {"project not found", "report_export not found"} else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/report-export-jobs/runtime/{job_id}/status")
+def update_runtime_report_export_job_status(
+    job_id: str,
+    payload: RuntimeReportExportJobStatusRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_id = repository.get_report_export_job_project_id(job_id=job_id)
+        if project_id is None:
+            raise HTTPException(status_code=404, detail="report_export_job not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        job = repository.update_runtime_report_export_job_status(
+            RuntimeReportExportJobStatusInput(
+                job_id=job_id,
+                status=payload.status,
+                updated_by=actor_id or payload.updated_by,
+                report_export_id=payload.report_export_id,
+                artifact_url=payload.artifact_url,
+                error_message=payload.error_message,
+                reason=payload.reason,
+            )
+        )
+        return asdict(job)
+    except ValueError as exc:
+        status_code = 404 if str(exc) in {"report_export_job not found", "report_export not found"} else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/action-plans/runtime")
 def runtime_action_plans(
     project_id: str | None = None,
@@ -3334,6 +3466,12 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeReportArtifact",
             "RuntimeReportExport",
             "RuntimeReportExportPage",
+            "RuntimeReportExportJob",
+            "RuntimeReportExportJobPage",
+            "RuntimeReportExportJobInput",
+            "RuntimeReportExportJobStatusInput",
+            "RuntimeReportExportJobRequest",
+            "RuntimeReportExportJobStatusRequest",
             "RuntimeReportManagementInput",
             "RuntimeReportManagementEventRequest",
             "RuntimeActionPlan",
@@ -3383,6 +3521,8 @@ def contracts() -> dict[str, list[str]]:
             "/v1/visibility-scores/runtime",
             "/v1/citation-graphs/runtime",
             "/v1/reports/runtime",
+            "/v1/report-export-jobs/runtime",
+            "/v1/report-export-jobs/runtime/{job_id}/status",
             "/v1/reports/runtime/{report_export_id}/management-events",
             "/v1/reports/runtime/{report_export_id}/artifact",
             "/v1/reports/runtime/{report_export_id}/artifact/signed-url",

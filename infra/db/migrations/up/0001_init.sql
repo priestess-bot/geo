@@ -482,6 +482,25 @@ CREATE TABLE report_exports (
   UNIQUE(project_id, report_version)
 );
 
+CREATE TABLE report_export_jobs (
+  id uuid PRIMARY KEY,
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  report_export_id uuid REFERENCES report_exports(id) ON DELETE SET NULL,
+  status text NOT NULL,
+  artifact_type text NOT NULL,
+  template text NOT NULL DEFAULT 'standard',
+  filters jsonb NOT NULL DEFAULT '{}'::jsonb,
+  sort text NOT NULL DEFAULT 'collected_at_desc',
+  requested_by text NOT NULL,
+  requested_at timestamptz NOT NULL DEFAULT now(),
+  started_at timestamptz,
+  completed_at timestamptz,
+  artifact_url text,
+  error_message text,
+  updated_by text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE score_contributions (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   score_snapshot_id uuid NOT NULL REFERENCES visibility_score_snapshots(id) ON DELETE CASCADE,
@@ -571,3 +590,5 @@ CREATE INDEX idx_human_review_records_target ON human_review_records(target_type
 CREATE INDEX idx_api_browser_fidelity_checks_project ON api_browser_fidelity_checks(project_id, checked_at);
 CREATE INDEX idx_api_browser_fidelity_checks_report ON api_browser_fidelity_checks(report_export_id, checked_at);
 CREATE INDEX idx_traceability_bundles_project ON traceability_bundles(project_id, subject_type);
+CREATE INDEX idx_report_export_jobs_project ON report_export_jobs(project_id, status, requested_at);
+CREATE INDEX idx_report_export_jobs_report ON report_export_jobs(report_export_id, requested_at);
