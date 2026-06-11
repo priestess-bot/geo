@@ -31,6 +31,8 @@ from geno_core.models import (
     RetestSchedule,
     RuntimeActionPlan,
     RuntimeActionPlanPage,
+    RuntimeAlertItem,
+    RuntimeAlertPage,
     RuntimeCitationGraph,
     RuntimeCitationGraphNode,
     RuntimeCitationGraphPage,
@@ -246,6 +248,32 @@ def _runtime_collection_run_row(row: dict[str, Any]) -> dict[str, Any]:
     for field in float_fields:
         normalized[field] = float(normalized.get(field) or 0.0)
     return normalized
+
+
+ALERT_SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+
+def _alert_severity(value: str) -> int:
+    return ALERT_SEVERITY_RANK.get(value, 9)
+
+
+def _score_contribution_by_name(rows: tuple[dict[str, Any], ...] | list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {str(row.get("component_name")): row for row in rows if row.get("component_name")}
+
+
+def _first_matching_action(
+    actions: tuple[dict[str, Any], ...],
+    *,
+    source_gap_type: str,
+) -> tuple[dict[str, Any], ...]:
+    matched = tuple(action for action in actions if action.get("source_gap_type") == source_gap_type)
+    return matched[:3]
+
+
+def _answer_run_refs(answer_run_ids: object) -> tuple[dict[str, Any], ...]:
+    if not isinstance(answer_run_ids, list):
+        return ()
+    return tuple({"target_type": "answer_run", "target_id": str(value)} for value in answer_run_ids[:10])
 
 
 def _frozen_method_disclosure(report_export: dict[str, Any]) -> dict[str, Any] | None:
@@ -3876,6 +3904,222 @@ class PostgresEvidenceRepository:
             offset=offset,
             records=records,
         )
+
+    def list_runtime_alerts(
+        self,
+        *,
+        project_id: str | None = None,
+        alert_type: str | None = None,
+        severity: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> RuntimeAlertPage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        alerts: list[RuntimeAlertItem] = []
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(VISIBILITY_SCORE_SNAPSHOT_COLUMNS)}
+                FROM visibility_score_snapshots
+                {"WHERE project_id = %s" if project_id else ""}
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                (_uuid(project_id),) if project_id else (),
+            )
+            snapshot = _row_dict(cursor.fetchone(), VISIBILITY_SCORE_SNAPSHOT_COLUMNS)
+            if not snapshot:
+                return RuntimeAlertPage(total_count=0, limit=limit, offset=offset, records=())
+
+            selected_project_id = str(snapshot["project_id"])
+            snapshot_id = str(snapshot["id"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(SCORE_CONTRIBUTION_COLUMNS)}
+                FROM score_contributions
+                WHERE score_snapshot_id = %s
+                ORDER BY component_name ASC, created_at ASC
+                """,
+                (_uuid(snapshot_id),),
+            )
+            contributions = _rows_dict(cursor.fetchall(), SCORE_CONTRIBUTION_COLUMNS)
+            contributions_by_name = _score_contribution_by_name(contributions)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(SOURCE_GAP_COLUMNS)}
+                FROM source_gaps
+                WHERE project_id = %s
+                ORDER BY expected_weight DESC, source_type ASC, gap_type ASC
+                """,
+                (_uuid(selected_project_id),),
+            )
+            source_gaps = _rows_dict(cursor.fetchall(), SOURCE_GAP_COLUMNS)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(COMPETITOR_BENCHMARK_COLUMNS)}
+                FROM competitor_benchmarks
+                WHERE project_id = %s
+                ORDER BY competitor_name ASC
+                """,
+                (_uuid(selected_project_id),),
+            )
+            competitor_benchmarks = _rows_dict(cursor.fetchall(), COMPETITOR_BENCHMARK_COLUMNS)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ACTION_RECOMMENDATION_COLUMNS)}
+                FROM action_recommendations
+                WHERE project_id = %s
+                ORDER BY priority ASC, next_check_date ASC, id ASC
+                """,
+                (_uuid(selected_project_id),),
+            )
+            actions = _rows_dict(cursor.fetchall(), ACTION_RECOMMENDATION_COLUMNS)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE project_id = %s
+                  AND target_type = %s
+                  AND target_id = %s
+                ORDER BY created_at DESC
+                LIMIT 5
+                """,
+                (_uuid(selected_project_id), "visibility_score_snapshot", snapshot_id),
+            )
+            score_audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+
+        mention_rate = float(snapshot.get("mention_rate") or 0.0)
+        recommendation_rate = float(snapshot.get("recommendation_rate") or 0.0)
+        snapshot_created_at = snapshot.get("created_at")
+        if mention_rate < 0.5:
+            mention_contribution = contributions_by_name.get("MentionScore", {})
+            alerts.append(
+                RuntimeAlertItem(
+                    alert={
+                        "id": _stable_id("runtime-alert", selected_project_id, snapshot_id, "brand_absent"),
+                        "project_id": selected_project_id,
+                        "alert_type": "brand_absent",
+                        "severity": "high" if mention_rate < 0.35 else "medium",
+                        "title": "Brand mention coverage is below threshold",
+                        "summary": "AI answers are not mentioning the target brand often enough for high-intent prompts.",
+                        "metric_name": "mention_rate",
+                        "metric_value": mention_rate,
+                        "threshold": 0.5,
+                        "rule_version": "runtime_alerts_v1",
+                        "source": "visibility_score_snapshot",
+                        "source_id": snapshot_id,
+                        "created_at": snapshot_created_at,
+                    },
+                    evidence_refs=(
+                        {"target_type": "visibility_score_snapshot", "target_id": snapshot_id},
+                        {"target_type": "score_contribution", "target_id": str(mention_contribution.get("id") or "")},
+                        *_answer_run_refs(snapshot.get("answer_run_ids")),
+                    ),
+                    related_actions=_first_matching_action(actions, source_gap_type="low_mention_rate"),
+                    audit_events=score_audit_events,
+                )
+            )
+        if recommendation_rate < 0.35:
+            recommendation_contribution = contributions_by_name.get("RecommendationScore", {})
+            alerts.append(
+                RuntimeAlertItem(
+                    alert={
+                        "id": _stable_id("runtime-alert", selected_project_id, snapshot_id, "low_recommendation_rate"),
+                        "project_id": selected_project_id,
+                        "alert_type": "low_recommendation_rate",
+                        "severity": "high" if recommendation_rate < 0.2 else "medium",
+                        "title": "Recommendation rate is below threshold",
+                        "summary": "The brand is present in some answers but not recommended strongly enough.",
+                        "metric_name": "recommendation_rate",
+                        "metric_value": recommendation_rate,
+                        "threshold": 0.35,
+                        "rule_version": "runtime_alerts_v1",
+                        "source": "visibility_score_snapshot",
+                        "source_id": snapshot_id,
+                        "created_at": snapshot_created_at,
+                    },
+                    evidence_refs=(
+                        {"target_type": "visibility_score_snapshot", "target_id": snapshot_id},
+                        {"target_type": "score_contribution", "target_id": str(recommendation_contribution.get("id") or "")},
+                        *_answer_run_refs(snapshot.get("answer_run_ids")),
+                    ),
+                    related_actions=_first_matching_action(actions, source_gap_type="low_recommendation_rate"),
+                    audit_events=score_audit_events,
+                )
+            )
+        for gap in source_gaps:
+            expected_weight = float(gap.get("expected_weight") or 0.0)
+            alerts.append(
+                RuntimeAlertItem(
+                    alert={
+                        "id": _stable_id("runtime-alert", selected_project_id, gap.get("id"), "source_gap"),
+                        "project_id": selected_project_id,
+                        "alert_type": "source_gap",
+                        "severity": "high" if expected_weight >= 0.9 else "medium",
+                        "title": f"{gap.get('source_type')} source gap",
+                        "summary": gap.get("recommendation"),
+                        "metric_name": "expected_source_weight",
+                        "metric_value": expected_weight,
+                        "threshold": 0.75,
+                        "rule_version": "runtime_alerts_v1",
+                        "source": "source_gap",
+                        "source_id": str(gap.get("id")),
+                        "created_at": gap.get("created_at"),
+                    },
+                    evidence_refs=(
+                        {"target_type": "source_gap", "target_id": str(gap.get("id"))},
+                        {"target_type": "visibility_score_snapshot", "target_id": snapshot_id},
+                    ),
+                    related_actions=_first_matching_action(actions, source_gap_type=str(gap.get("gap_type") or "")),
+                    audit_events=score_audit_events,
+                )
+            )
+        for benchmark in competitor_benchmarks:
+            payload = benchmark.get("payload") if isinstance(benchmark.get("payload"), dict) else {}
+            competitor_rate = float(payload.get("mention_rate") or 0.0) if isinstance(payload, dict) else 0.0
+            if competitor_rate <= mention_rate:
+                continue
+            alerts.append(
+                RuntimeAlertItem(
+                    alert={
+                        "id": _stable_id("runtime-alert", selected_project_id, benchmark.get("id"), "competitor_pressure"),
+                        "project_id": selected_project_id,
+                        "alert_type": "competitor_pressure",
+                        "severity": "critical" if competitor_rate - mention_rate >= 0.25 else "high",
+                        "title": f"{benchmark.get('competitor_name')} is out-mentioning the brand",
+                        "summary": "A tracked competitor has a higher mention rate than the target brand in the current evidence window.",
+                        "metric_name": "competitor_minus_brand_mention_rate",
+                        "metric_value": round(competitor_rate - mention_rate, 4),
+                        "threshold": 0.0,
+                        "rule_version": "runtime_alerts_v1",
+                        "source": "competitor_benchmark",
+                        "source_id": str(benchmark.get("id")),
+                        "created_at": benchmark.get("created_at"),
+                    },
+                    evidence_refs=(
+                        {"target_type": "competitor_benchmark", "target_id": str(benchmark.get("id"))},
+                        {"target_type": "visibility_score_snapshot", "target_id": snapshot_id},
+                        *_answer_run_refs(benchmark.get("answer_run_ids")),
+                    ),
+                    related_actions=(),
+                    audit_events=score_audit_events,
+                )
+            )
+        if alert_type:
+            alerts = [item for item in alerts if item.alert.get("alert_type") == alert_type]
+        if severity:
+            alerts = [item for item in alerts if item.alert.get("severity") == severity]
+        alerts.sort(
+            key=lambda item: (
+                _alert_severity(str(item.alert.get("severity"))),
+                str(item.alert.get("alert_type") or ""),
+                str(item.alert.get("source_id") or ""),
+            )
+        )
+        total_count = len(alerts)
+        paged = tuple(alerts[offset : offset + limit])
+        return RuntimeAlertPage(total_count=total_count, limit=limit, offset=offset, records=paged)
 
     def _load_runtime_action_plan(
         self,

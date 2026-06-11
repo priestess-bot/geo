@@ -1106,6 +1106,31 @@ def runtime_action_plans(
         close_repository_connection(repository)
 
 
+@app.get("/v1/runtime-alerts")
+def runtime_alerts(
+    project_id: str | None = None,
+    alert_type: str | None = None,
+    severity: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.list_runtime_alerts(
+            project_id=project_id,
+            alert_type=alert_type,
+            severity=severity,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/content-engines/runtime")
 def runtime_content_engines(
     project_id: str | None = None,
@@ -1586,6 +1611,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeHumanReviewQueuePage",
             "RuntimeFidelityCheck",
             "RuntimeFidelityTrend",
+            "RuntimeAlertItem",
+            "RuntimeAlertPage",
             "TraceabilityBundle",
         ],
         "m1_bootstrap": [
@@ -1760,6 +1787,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeReportExportPage",
             "RuntimeActionPlan",
             "RuntimeActionPlanPage",
+            "RuntimeAlertItem",
+            "RuntimeAlertPage",
             "RuntimeContentDraft",
             "RuntimeContentEngine",
             "RuntimeContentEnginePage",
@@ -1802,6 +1831,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/reports/runtime",
             "/v1/reports/runtime/{report_export_id}/artifact",
             "/v1/action-plans/runtime",
+            "/v1/runtime-alerts",
             "/v1/content-engines/runtime",
             "/v1/knowledge-facts/runtime/search",
             "/v1/traceability/runtime",

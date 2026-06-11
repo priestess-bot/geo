@@ -111,6 +111,20 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn('type="file"', page_source)
         self.assertIn("project_brand_logo_uploaded", page_source)
 
+    def test_runtime_console_surfaces_runtime_alerts(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
+
+        self.assertIn("Runtime Alerts", page_source)
+        self.assertIn("RuntimeAlert", page_source)
+        self.assertIn("/v1/runtime-alerts", page_source)
+        self.assertIn("runtime_alerts_v1", page_source)
+        self.assertIn("evidence_refs", page_source)
+        self.assertIn("related_actions", page_source)
+        self.assertIn("Alert query", page_source)
+        self.assertIn(".alertGrid", css_source)
+        self.assertIn(".alertItem", css_source)
+
     def test_runtime_console_surfaces_prompt_file_import(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
 

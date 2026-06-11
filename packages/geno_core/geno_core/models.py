@@ -1123,6 +1123,22 @@ class RuntimeActionPlanPage:
 
 
 @dataclass(frozen=True)
+class RuntimeAlertItem:
+    alert: dict[str, Any]
+    evidence_refs: tuple[dict[str, Any], ...]
+    related_actions: tuple[dict[str, Any], ...]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeAlertPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeAlertItem, ...]
+
+
+@dataclass(frozen=True)
 class RuntimeContentDraft:
     draft: dict[str, Any]
     target_questions: tuple[dict[str, Any], ...]

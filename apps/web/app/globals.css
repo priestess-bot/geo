@@ -993,6 +993,65 @@ code {
   overflow-wrap: anywhere;
 }
 
+.alertGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.alertItem {
+  background: #ffffff;
+  border: 1px solid #e0e7ef;
+  border-left: 4px solid #8aa0b3;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.alertItem.critical {
+  border-left-color: #a33d3d;
+}
+
+.alertItem.high {
+  border-left-color: #b45f35;
+}
+
+.alertItem.medium {
+  border-left-color: #9a7a1f;
+}
+
+.alertItem header {
+  align-items: flex-start;
+  border-bottom: 1px solid #edf1f5;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding-bottom: 8px;
+}
+
+.alertItem header span {
+  color: #52616f;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.alertItem p {
+  color: #27333f;
+  font-size: 13px;
+  line-height: 1.35;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.alertItem small {
+  color: #667585;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .contentDetail {
   display: grid;
   gap: 14px;
@@ -1207,6 +1266,7 @@ summary {
   .reportDetail,
   .reportHistory,
   .actionDetail,
+  .alertGrid,
   .contentDetail,
   .connectorGrid,
   .contentDraftGrid,
@@ -1264,6 +1324,7 @@ summary {
   .reportDetail,
   .reportHistory,
   .actionDetail,
+  .alertGrid,
   .contentDetail,
   .connectorGrid,
   .contentDraftGrid,

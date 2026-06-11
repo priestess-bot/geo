@@ -392,6 +392,30 @@ def _assert_project_brand_logo_upload(project_id: str) -> dict[str, Any]:
     }
 
 
+def _assert_runtime_alerts(project_id: str) -> dict[str, Any]:
+    repository = build_repository_from_env()
+    try:
+        page = repository.list_runtime_alerts(project_id=project_id, limit=10, offset=0)
+    finally:
+        close_repository_connection(repository)
+    if page.total_count < 1:
+        raise AssertionError("Expected at least one derived runtime alert")
+    alert_types = {item.alert.get("alert_type") for item in page.records}
+    if not ({"brand_absent", "low_recommendation_rate", "source_gap", "competitor_pressure"} & alert_types):
+        raise AssertionError(f"Runtime alerts did not include a known alert type: {alert_types}")
+    first = page.records[0]
+    if not first.evidence_refs:
+        raise AssertionError("Runtime alert must include evidence refs")
+    return {
+        "total_count": page.total_count,
+        "first_alert_type": first.alert.get("alert_type"),
+        "first_severity": first.alert.get("severity"),
+        "first_rule_version": first.alert.get("rule_version"),
+        "first_evidence_ref_count": len(first.evidence_refs),
+        "first_related_action_count": len(first.related_actions),
+    }
+
+
 def _run_api_snapshot_archive_slice() -> dict[str, Any]:
     bootstrap = build_au_project_bootstrap(
         tenant_name="Runtime E2E API Snapshot Tenant",
@@ -473,6 +497,7 @@ def main() -> None:
     human_review_queue = _assert_human_review_queue(project_id)
     prompt_file_import = _assert_prompt_file_import(project_id)
     project_brand_logo_upload = _assert_project_brand_logo_upload(project_id)
+    runtime_alerts = _assert_runtime_alerts(project_id)
     api_snapshot = _run_api_snapshot_archive_slice()
     summary = {
         "status": "passed",
@@ -489,6 +514,7 @@ def main() -> None:
         "human_review_queue": human_review_queue,
         "prompt_file_import": prompt_file_import,
         "project_brand_logo_upload": project_brand_logo_upload,
+        "runtime_alerts": runtime_alerts,
         "api_snapshot_archive": api_snapshot,
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2, default=str))

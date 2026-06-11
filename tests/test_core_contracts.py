@@ -88,6 +88,7 @@ from geno_core.models import (
     RuntimePromptImportInput,
     RuntimePromptImportHistoryPage,
     RuntimePromptImportResult,
+    RuntimeAlertPage,
     RuntimeActionPlanPage,
     RuntimeContentEnginePage,
     RuntimeCollectionRunPage,
@@ -4915,6 +4916,142 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM action_recommendations WHERE project_id = %s AND status = %s", executed_sql)
         self.assertIn("FROM retest_comparisons", executed_sql)
         self.assertIn("WHERE target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_builds_runtime_alerts_from_score_graph_and_actions(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        snapshot_id = "a7f7f8aa-5d40-4fdf-a2b3-b8729a9a5e2f"
+        mention_contribution_id = "1dd2957f-050b-5d02-899a-2dfe889136dd"
+        recommendation_contribution_id = "22a5f0de-f65a-59c8-8383-ed30361d68a1"
+        action_id = "e5f3964b-54d5-5d2f-9ff7-9ec9ea24eb47"
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        snapshot_row = {
+            "id": snapshot_id,
+            "project_id": project_id,
+            "scope_type": "collection_slice",
+            "scope_value": "p0a_runtime",
+            "formula_version": "au_visibility_v1",
+            "platform_weights_snapshot": {"perplexity": 0.25},
+            "final_score": 42.0,
+            "trigger_rate": 1.0,
+            "mention_rate": 0.25,
+            "recommendation_rate": 0.1,
+            "answer_run_ids": [answer_run_id],
+            "created_at": now,
+            "dispersion": 0.2,
+            "component_weights_snapshot": {"MentionScore": 0.18},
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                snapshot_row,
+                [
+                    {
+                        "id": mention_contribution_id,
+                        "score_snapshot_id": snapshot_id,
+                        "component_name": "MentionScore",
+                        "component_score": 25.0,
+                        "weight": 0.18,
+                        "weighted_contribution": 4.5,
+                        "denominator": "all_answer_runs",
+                        "evidence_answer_run_ids": [answer_run_id],
+                        "positive_evidence_summary": "few mentions",
+                        "negative_evidence_summary": "brand missing in many answers",
+                        "confidence_note": "fixture",
+                        "created_at": now,
+                    },
+                    {
+                        "id": recommendation_contribution_id,
+                        "score_snapshot_id": snapshot_id,
+                        "component_name": "RecommendationScore",
+                        "component_score": 10.0,
+                        "weight": 0.22,
+                        "weighted_contribution": 2.2,
+                        "denominator": "surface_triggered_runs",
+                        "evidence_answer_run_ids": [answer_run_id],
+                        "positive_evidence_summary": "some recs",
+                        "negative_evidence_summary": "weak recommendations",
+                        "confidence_note": "fixture",
+                        "created_at": now,
+                    },
+                ],
+                [
+                    {
+                        "id": "7cc36d44-0f20-5681-8613-3998050e3267",
+                        "project_id": project_id,
+                        "source_type": "official_site",
+                        "gap_type": "missing_high_weight_source_type",
+                        "observed_count": 0,
+                        "expected_weight": 0.95,
+                        "recommendation": "Add official AU evidence",
+                        "created_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": "8c6e21aa-5df2-558e-ad5d-220b0de78a98",
+                        "project_id": project_id,
+                        "competitor_name": "Emma Sleep",
+                        "metric_scope": "project",
+                        "payload": {"mention_count": 2, "mention_rate": 0.75},
+                        "answer_run_ids": [answer_run_id],
+                        "created_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": action_id,
+                        "project_id": project_id,
+                        "title": "Improve brand mention coverage",
+                        "description": "Create citation ready pages",
+                        "priority": "high",
+                        "status": "open",
+                        "owner_id": "system",
+                        "source_gap_type": "low_mention_rate",
+                        "evidence_answer_run_ids": [answer_run_id],
+                        "related_source_types": [],
+                        "next_check_date": now,
+                        "created_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": "9b663656-4a0e-4fda-a764-0a4d62fa15f1",
+                        "event_type": "visibility_score_snapshot_created",
+                        "project_id": project_id,
+                        "actor_type": "system",
+                        "actor_id": "geno-core.scoring",
+                        "target_type": "visibility_score_snapshot",
+                        "target_id": snapshot_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"answer_run_ids": [answer_run_id]},
+                        "output_refs": {"score_snapshot_ids": [snapshot_id]},
+                        "method_version": "au_visibility_v1",
+                        "reason": "test",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+
+        page = PostgresEvidenceRepository(connection).list_runtime_alerts(project_id=project_id, limit=10, offset=0)
+
+        self.assertIsInstance(page, RuntimeAlertPage)
+        self.assertEqual(page.total_count, 4)
+        self.assertEqual(page.records[0].alert["alert_type"], "competitor_pressure")
+        self.assertEqual(page.records[0].alert["severity"], "critical")
+        alert_types = {item.alert["alert_type"] for item in page.records}
+        self.assertEqual(alert_types, {"brand_absent", "low_recommendation_rate", "source_gap", "competitor_pressure"})
+        mention_alert = next(item for item in page.records if item.alert["alert_type"] == "brand_absent")
+        self.assertEqual(mention_alert.alert["metric_value"], 0.25)
+        self.assertEqual(mention_alert.related_actions[0]["id"], action_id)
+        self.assertTrue(any(ref["target_type"] == "score_contribution" for ref in mention_alert.evidence_refs))
+        self.assertEqual(mention_alert.audit_events[0]["event_type"], "visibility_score_snapshot_created")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM visibility_score_snapshots WHERE project_id = %s", executed_sql)
+        self.assertIn("FROM source_gaps WHERE project_id = %s", executed_sql)
+        self.assertIn("FROM competitor_benchmarks WHERE project_id = %s", executed_sql)
+        self.assertIn("FROM action_recommendations WHERE project_id = %s", executed_sql)
 
     def test_postgres_repository_reads_runtime_content_engine_page(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

@@ -381,6 +381,33 @@ type ActionPlan = {
   audit_events: Array<{ event_type?: string; target_type?: string; method_version?: string | null }>;
 };
 
+type RuntimeAlert = {
+  alert: {
+    id: string;
+    project_id: string;
+    alert_type: string;
+    severity: string;
+    title: string;
+    summary?: string;
+    metric_name?: string;
+    metric_value?: number;
+    threshold?: number;
+    rule_version?: string;
+    source?: string;
+    source_id?: string;
+    created_at?: string;
+  };
+  evidence_refs: Array<{ target_type?: string; target_id?: string }>;
+  related_actions: Array<{
+    id?: string;
+    title?: string;
+    priority?: string;
+    status?: string;
+    source_gap_type?: string | null;
+  }>;
+  audit_events: Array<{ event_type?: string; method_version?: string | null; after_hash?: string | null }>;
+};
+
 type ContentEngine = {
   project_id?: string;
   knowledge_facts: Array<{
@@ -513,6 +540,7 @@ type RuntimeData = {
   graphs: PageResponse<CitationGraph>;
   reports: PageResponse<ReportExport>;
   actions: PageResponse<ActionPlan>;
+  alerts: PageResponse<RuntimeAlert>;
   content: PageResponse<ContentEngine>;
   traceability: TraceabilityDetail | null;
 };
@@ -769,6 +797,7 @@ const endpoints = {
   graphs: "/v1/citation-graphs/runtime",
   reports: "/v1/reports/runtime",
   actions: "/v1/action-plans/runtime",
+  alerts: "/v1/runtime-alerts",
   content: "/v1/content-engines/runtime",
   traceability: "/v1/traceability/runtime"
 } as const;
@@ -1267,6 +1296,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     graphs: runtimePath(endpoints.graphs, { limit: 1 }),
     reports: runtimePath(endpoints.reports, { limit: 5 }),
     actions: runtimePath(endpoints.actions, { limit: 1 }),
+    alerts: runtimePath(endpoints.alerts, { limit: 10 }),
     content: runtimePath(endpoints.content, { limit: 1 }),
     traceability: endpoints.traceability
   };
@@ -1393,6 +1423,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     ...selectedProjectParams,
     limit: 1
   });
+  paths.alerts = runtimePath(endpoints.alerts, {
+    ...selectedProjectParams,
+    limit: 10
+  });
   paths.content = runtimePath(endpoints.content, {
     ...selectedProjectParams,
     limit: 1
@@ -1419,6 +1453,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     graphs,
     reports,
     actions,
+    alerts,
     content,
     traceability
   ] = await Promise.all([
@@ -1475,6 +1510,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<PageResponse<CitationGraph>>(baseUrl, paths.graphs, emptyPage<CitationGraph>()),
     fetchRuntimeEndpoint<PageResponse<ReportExport>>(baseUrl, paths.reports, emptyPage<ReportExport>()),
     fetchRuntimeEndpoint<PageResponse<ActionPlan>>(baseUrl, paths.actions, emptyPage<ActionPlan>()),
+    fetchRuntimeEndpoint<PageResponse<RuntimeAlert>>(baseUrl, paths.alerts, emptyPage<RuntimeAlert>()),
     fetchRuntimeEndpoint<PageResponse<ContentEngine>>(baseUrl, paths.content, emptyPage<ContentEngine>()),
     fetchRuntimeEndpoint<TraceabilityDetail | null>(baseUrl, paths.traceability, null, { optionalNotFound: true })
   ]);
@@ -1499,6 +1535,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     graphs,
     reports,
     actions,
+    alerts,
     content,
     traceability
   ]
@@ -1526,6 +1563,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       graphs: graphs.payload,
       reports: reports.payload,
       actions: actions.payload,
+      alerts: alerts.payload,
       content: content.payload,
       traceability: traceability.payload
     },
@@ -1611,6 +1649,13 @@ function savedViewHref(savedView: RuntimeSavedView["saved_view"]): string {
   }
   const query = params.toString();
   return query ? `/?${query}` : "/";
+}
+
+function alertTone(severity: string | undefined): string {
+  if (severity === "critical") return "critical";
+  if (severity === "high") return "high";
+  if (severity === "medium") return "medium";
+  return "low";
 }
 
 function anchorId(kind: string, value: string | undefined): string {
@@ -2959,6 +3004,69 @@ export default async function Home({
                   </li>
                 ))}
               </ul>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </Panel>
+
+        <Panel
+          title="Runtime Alerts"
+          subtitle={`${data.alerts.total_count} active evidence-derived alerts`}
+          wide
+        >
+          {data.alerts.records.length ? (
+            <div className="alertGrid">
+              {data.alerts.records.map((item) => (
+                <article className={`alertItem ${alertTone(item.alert.severity)}`} key={item.alert.id}>
+                  <header>
+                    <h3>{item.alert.title}</h3>
+                    <span>{item.alert.severity}</span>
+                  </header>
+                  <p>{item.alert.summary || "No alert summary"}</p>
+                  <dl className="facts contributionFacts">
+                    <Fact label="Type" value={item.alert.alert_type} />
+                    <Fact label="Metric" value={item.alert.metric_name || "unknown"} />
+                    <Fact label="Value" value={num(item.alert.metric_value)} />
+                    <Fact label="Threshold" value={num(item.alert.threshold)} />
+                    <Fact label="Source" value={item.alert.source || "derived"} />
+                    <Fact label="Rule" value={item.alert.rule_version || "runtime_alerts_v1"} />
+                  </dl>
+                  <div className="traceLinkRow">
+                    {item.evidence_refs.slice(0, 4).map((ref, index) => (
+                      <NodeLink
+                        key={`${item.alert.id}-${ref.target_type}-${ref.target_id}-${index}`}
+                        label={ref.target_type || "Evidence"}
+                        kind={ref.target_type || "evidence"}
+                        value={ref.target_id || item.alert.source_id}
+                      />
+                    ))}
+                  </div>
+                  {item.related_actions.length ? (
+                    <ul className="plainList compactList">
+                      {item.related_actions.slice(0, 2).map((action) => (
+                        <li key={action.id || action.title}>
+                          <strong>{action.title || "Related action"}</strong>
+                          <span>
+                            {action.priority || "priority"} · {action.status || "status"} ·{" "}
+                            {action.source_gap_type || "no source gap"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <small>
+                    {item.audit_events[0]?.event_type || "derived alert"} ·{" "}
+                    {item.audit_events[0]?.method_version || "runtime_alerts_v1"} ·{" "}
+                    {shortId(item.alert.source_id)}
+                  </small>
+                </article>
+              ))}
+              <dl className="facts">
+                <Fact label="Alert query" value={paths.alerts} />
+                <Fact label="Method" value="runtime_alerts_v1" />
+                <Fact label="Evidence refs" value="score/source_gap/benchmark/action" />
+              </dl>
             </div>
           ) : (
             <EmptyState />

@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 from geno_api.main import app
 from geno_core.models import (
     RuntimeCollectionRunPage,
+    RuntimeAlertItem,
+    RuntimeAlertPage,
     RuntimeFidelityCheck,
     RuntimeFidelityCheckPage,
     RuntimeFidelityTrend,
@@ -1279,6 +1281,59 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_alerts_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get("/v1/runtime-alerts")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_alerts_endpoint_passes_filters(self) -> None:
+        class FakeRepository:
+            def list_runtime_alerts(self, **kwargs: object) -> RuntimeAlertPage:
+                self.kwargs = kwargs
+                return RuntimeAlertPage(
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(
+                        RuntimeAlertItem(
+                            alert={
+                                "id": "runtime-alert-1",
+                                "project_id": kwargs["project_id"],
+                                "alert_type": kwargs["alert_type"],
+                                "severity": kwargs["severity"],
+                                "title": "Brand mention coverage is below threshold",
+                                "metric_name": "mention_rate",
+                                "metric_value": 0.25,
+                                "threshold": 0.5,
+                                "rule_version": "runtime_alerts_v1",
+                            },
+                            evidence_refs=({"target_type": "visibility_score_snapshot", "target_id": "snapshot-1"},),
+                            related_actions=({"id": "action-1", "title": "Improve brand mention coverage"},),
+                            audit_events=({"event_type": "visibility_score_snapshot_created"},),
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/runtime-alerts"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
+                "&alert_type=brand_absent&severity=high&limit=5&offset=2"
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["records"][0]["alert"]["rule_version"], "runtime_alerts_v1")
+        self.assertEqual(payload["records"][0]["evidence_refs"][0]["target_type"], "visibility_score_snapshot")
+        self.assertEqual(payload["records"][0]["related_actions"][0]["id"], "action-1")
+        self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.kwargs["alert_type"], "brand_absent")
+        self.assertEqual(fake_repository.kwargs["severity"], "high")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+        self.assertEqual(fake_repository.kwargs["offset"], 2)
+
     def test_runtime_content_engines_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/content-engines/runtime")
         self.assertEqual(response.status_code, 503)
@@ -1487,6 +1542,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("TraceabilityBundle", payload["auditability"])
         self.assertIn("RuntimeFidelityCheck", payload["auditability"])
         self.assertIn("RuntimeFidelityTrend", payload["auditability"])
+        self.assertIn("RuntimeAlertItem", payload["auditability"])
+        self.assertIn("RuntimeAlertPage", payload["auditability"])
         self.assertIn("build_traceability_bundle", payload["traceability"])
         self.assertIn("CollectionRunSummary", payload["m2a_evidence"])
         self.assertIn("BrowserFidelitySamplingPlan", payload["m2a_evidence"])
@@ -1567,6 +1624,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeReportArtifact", payload["persistence"])
         self.assertIn("RuntimeReportExport", payload["persistence"])
         self.assertIn("RuntimeActionPlan", payload["persistence"])
+        self.assertIn("RuntimeAlertItem", payload["persistence"])
+        self.assertIn("RuntimeAlertPage", payload["persistence"])
         self.assertIn("RuntimeContentEngine", payload["persistence"])
         self.assertIn("RuntimeKnowledgeSearchResult", payload["persistence"])
         self.assertIn("RuntimeKnowledgeSearchPage", payload["persistence"])
@@ -1600,6 +1659,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/reports/runtime", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/artifact", payload["persistence"])
         self.assertIn("/v1/action-plans/runtime", payload["persistence"])
+        self.assertIn("/v1/runtime-alerts", payload["persistence"])
         self.assertIn("/v1/content-engines/runtime", payload["persistence"])
         self.assertIn("/v1/knowledge-facts/runtime/search", payload["persistence"])
         self.assertIn("/v1/traceability/runtime", payload["persistence"])
