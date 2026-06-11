@@ -19,6 +19,7 @@ from geno_api.main import app, close_runtime_resources, reset_runtime_auth_cache
 from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
 from geno_core.models import (
     RuntimeCollectionRunPage,
+    RuntimeAlertEvent,
     RuntimeAlertItem,
     RuntimeAlertPage,
     RuntimeFidelityCheck,
@@ -3277,6 +3278,52 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["limit"], 5)
         self.assertEqual(fake_repository.kwargs["offset"], 2)
 
+    def test_runtime_alert_event_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def record_runtime_alert_event(self, event: object) -> RuntimeAlertEvent:
+                self.event = event
+                return RuntimeAlertEvent(
+                    alert_event={
+                        "id": "alert-event-1",
+                        "project_id": event.project_id,
+                        "alert_id": event.alert_id,
+                        "alert_type": event.alert_type,
+                        "source": event.source,
+                        "source_id": event.source_id,
+                        "status": event.status,
+                        "updated_by": event.updated_by,
+                        "note": event.note,
+                        "metadata": event.metadata,
+                        "created_at": datetime(2026, 6, 12, tzinfo=UTC),
+                    },
+                    audit_events=({"event_type": "runtime_alert_event_recorded"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/runtime-alerts/runtime-alert-1/events",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "alert_type": "brand_absent",
+                    "source": "visibility_score_snapshot",
+                    "source_id": "snapshot-1",
+                    "status": "acknowledged",
+                    "updated_by": "analyst-1",
+                    "note": "Owner assigned",
+                    "metadata": {"severity": "high"},
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["alert_event"]["status"], "acknowledged")
+        self.assertEqual(payload["audit_events"][0]["event_type"], "runtime_alert_event_recorded")
+        self.assertEqual(fake_repository.event.alert_id, "runtime-alert-1")
+        self.assertEqual(fake_repository.event.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.event.updated_by, "analyst-1")
+
     def test_runtime_content_engines_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/content-engines/runtime")
         self.assertEqual(response.status_code, 503)
@@ -3493,6 +3540,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeFidelityTrend", payload["auditability"])
         self.assertIn("RuntimeAlertItem", payload["auditability"])
         self.assertIn("RuntimeAlertPage", payload["auditability"])
+        self.assertIn("RuntimeAlertEvent", payload["auditability"])
         self.assertIn("build_traceability_bundle", payload["traceability"])
         self.assertIn("CollectionRunSummary", payload["m2a_evidence"])
         self.assertIn("BrowserFidelitySamplingPlan", payload["m2a_evidence"])
@@ -3609,6 +3657,9 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeActionPlan", payload["persistence"])
         self.assertIn("RuntimeAlertItem", payload["persistence"])
         self.assertIn("RuntimeAlertPage", payload["persistence"])
+        self.assertIn("RuntimeAlertEvent", payload["persistence"])
+        self.assertIn("RuntimeAlertEventInput", payload["persistence"])
+        self.assertIn("RuntimeAlertEventRequest", payload["persistence"])
         self.assertIn("RuntimeContentEngine", payload["persistence"])
         self.assertIn("RuntimeKnowledgeSearchResult", payload["persistence"])
         self.assertIn("RuntimeKnowledgeSearchPage", payload["persistence"])
@@ -3662,6 +3713,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/reports/runtime/{report_export_id}/artifact/signed-url", payload["persistence"])
         self.assertIn("/v1/action-plans/runtime", payload["persistence"])
         self.assertIn("/v1/runtime-alerts", payload["persistence"])
+        self.assertIn("/v1/runtime-alerts/{alert_id}/events", payload["persistence"])
         self.assertIn("/v1/content-engines/runtime", payload["persistence"])
         self.assertIn("/v1/knowledge-facts/runtime/search", payload["persistence"])
         self.assertIn("/v1/traceability/runtime", payload["persistence"])

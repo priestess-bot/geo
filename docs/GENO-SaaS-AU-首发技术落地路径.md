@@ -953,7 +953,7 @@ next_check_date
 - 不承诺强因果。
 - 用任务状态和复测窗口展示变化。
 
-当前工程落地已把 Action Plan 后的轻量预警做成 read-only runtime model：`GET /v1/runtime-alerts` 不新增事实表，而是从最新 `VisibilityScoreSnapshot`、对应 `ScoreContribution`、`AnswerAnalysis`、`SourceGap`、`CompetitorBenchmark` 和 `ActionRecommendation` 派生预警。第一版规则为 `runtime_alerts_v1`，覆盖：
+当前工程落地已把 Action Plan 后的轻量预警做成“派生 alert + append-only 管理事件”模型：`GET /v1/runtime-alerts` 不把风险判断写成可变事实表，而是从最新 `VisibilityScoreSnapshot`、对应 `ScoreContribution`、`AnswerAnalysis`、`SourceGap`、`CompetitorBenchmark` 和 `ActionRecommendation` 派生预警；人工或外部流程对预警的处理状态通过独立 `runtime_alert_events` 追加写入。第一版规则为 `runtime_alerts_v1`，覆盖：
 
 - `brand_absent`：品牌 mention rate 低于阈值，证据回指 score snapshot、MentionScore contribution 和相关 answer runs。
 - `low_recommendation_rate`：recommendation rate 低于阈值，证据回指 RecommendationScore contribution 和相关 answer runs。
@@ -961,7 +961,7 @@ next_check_date
 - `source_gap`：source gap 的 expected weight 触发风险，关联已有 source gap action。
 - `competitor_pressure`：竞品 mention rate 高于品牌 mention rate，证据回指 competitor benchmark、score snapshot 和 answer runs。
 
-每条预警返回 `severity / metric_name / metric_value / threshold / source / source_id / evidence_refs / related_actions / audit_events`，Runtime Console 的 Runtime Alerts 面板可直接展示证据链和关联 action。该能力解决“可审计、可解释地看到负面情绪、品牌缺失和竞品压制风险”，但还不是实时告警系统；当前 `runtime_notifications` inbox 与 webhook delivery queue 已先覆盖报告导出终态通知，alert 订阅通知、SLA、ack、邮件/Slack 原生渠道和 Temporal/队列化调度仍放在 P1 后续增强。
+每条预警返回 `severity / metric_name / metric_value / threshold / source / source_id / evidence_refs / related_actions / audit_events / management_events`，Runtime Console 的 Runtime Alerts 面板可直接展示证据链、关联 action、最近处理历史，并通过 `POST /v1/runtime-alerts/{alert_id}/events` 记录 `acknowledged/resolved/snoozed/reopened`。该写入只追加 `runtime_alert_events` 和 `runtime_alert_event_recorded` 审计事件，保存 actor、note、metadata、before/after hash 和输出事件 id，不改写派生 alert、评分、answer analysis、source gap 或竞品 benchmark。该能力解决“可审计、可解释地看到并处理负面情绪、品牌缺失和竞品压制风险”，但还不是实时告警系统；当前 `runtime_notifications` inbox 与 webhook delivery queue 已先覆盖报告导出终态通知，alert 订阅通知、SLA 升级、邮件/Slack 原生渠道和 Temporal/队列化调度仍放在 P1 后续增强。
 
 ### Step 12：本地化品牌知识事实
 

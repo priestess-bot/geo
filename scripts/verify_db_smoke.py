@@ -42,6 +42,7 @@ EXPECTED_TABLES = (
     "project_brand_assets",
     "score_weight_configs",
     "human_review_records",
+    "runtime_alert_events",
     "traceability_bundles",
     "visibility_score_snapshots",
     "collection_costs",
@@ -74,6 +75,7 @@ CRITICAL_COLUMNS = {
     "api_browser_fidelity_checks": ("payload_hash", "answer_run_ids"),
     "score_weight_configs": ("weights", "updated_by"),
     "human_review_records": ("target_type", "review_status", "decision"),
+    "runtime_alert_events": ("alert_id", "alert_type", "source", "source_id", "status", "metadata"),
     "project_brand_kits": ("logo_url", "footer_text"),
     "project_brand_assets": (
         "asset_type",
@@ -165,6 +167,7 @@ EXPECTED_RLS_TABLES = (
     "project_brand_assets",
     "score_weight_configs",
     "human_review_records",
+    "runtime_alert_events",
     "traceability_bundles",
     "visibility_score_snapshots",
     "collection_costs",

@@ -64,6 +64,7 @@ from geno_core.knowledge import (
 from geno_core.market import build_au_market_profile
 from geno_core.models import (
     EntityAliasInput,
+    RuntimeAlertEventInput,
     RuntimeHumanReviewInput,
     ManualBackfillInput,
     RuntimeProjectBrandAssetInput,
@@ -1180,6 +1181,17 @@ class RuntimeReportManagementEventRequest(BaseModel):
     status: str = Field(min_length=1, max_length=80)
     updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     note: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeAlertEventRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    alert_type: str = Field(min_length=1, max_length=120)
+    source: str = Field(min_length=1, max_length=120)
+    source_id: str = Field(min_length=1, max_length=240)
+    status: str = Field(default="acknowledged", min_length=1, max_length=80)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    note: str | None = Field(default=None, max_length=500)
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 
 class RuntimeReportExportJobRequest(BaseModel):
@@ -3114,6 +3126,46 @@ def runtime_alerts(
         close_repository_connection(repository)
 
 
+@app.post("/v1/runtime-alerts/{alert_id}/events")
+def record_runtime_alert_event(
+    alert_id: str,
+    payload: RuntimeAlertEventRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            record = repository.record_runtime_alert_event(
+                RuntimeAlertEventInput(
+                    project_id=payload.project_id.strip(),
+                    alert_id=alert_id.strip(),
+                    alert_type=payload.alert_type.strip(),
+                    source=payload.source.strip(),
+                    source_id=payload.source_id.strip(),
+                    status=payload.status.strip(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    note=payload.note.strip() if payload.note else None,
+                    metadata=payload.metadata,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/content-engines/runtime")
 def runtime_content_engines(
     project_id: str | None = None,
@@ -3610,6 +3662,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeFidelityTrend",
             "RuntimeAlertItem",
             "RuntimeAlertPage",
+            "RuntimeAlertEvent",
             "TraceabilityBundle",
         ],
         "m1_bootstrap": [
@@ -3834,6 +3887,9 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeActionPlanPage",
             "RuntimeAlertItem",
             "RuntimeAlertPage",
+            "RuntimeAlertEvent",
+            "RuntimeAlertEventInput",
+            "RuntimeAlertEventRequest",
             "RuntimeContentDraft",
             "RuntimeContentEngine",
             "RuntimeContentEnginePage",
@@ -3890,6 +3946,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/reports/runtime/{report_export_id}/artifact/signed-url",
             "/v1/action-plans/runtime",
             "/v1/runtime-alerts",
+            "/v1/runtime-alerts/{alert_id}/events",
             "/v1/content-engines/runtime",
             "/v1/knowledge-facts/runtime/search",
             "/v1/traceability/runtime",

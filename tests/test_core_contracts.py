@@ -114,6 +114,8 @@ from geno_core.models import (
     RuntimePromptImportResult,
     RuntimeAlertPage,
     RuntimeActionPlanPage,
+    RuntimeAlertEvent,
+    RuntimeAlertEventInput,
     RuntimeContentEnginePage,
     RuntimeCollectionRunPage,
     RuntimeScoreSnapshotPage,
@@ -6966,6 +6968,11 @@ class CoreContractsTest(unittest.TestCase):
                         "created_at": now,
                     }
                 ],
+                [],
+                [],
+                [],
+                [],
+                [],
             ]
         )
 
@@ -6995,6 +7002,78 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM competitor_benchmarks WHERE project_id = %s", executed_sql)
         self.assertIn("FROM action_recommendations WHERE project_id = %s", executed_sql)
         self.assertIn("FROM answer_analyses", executed_sql)
+        self.assertIn("FROM runtime_alert_events", executed_sql)
+
+    def test_postgres_repository_records_runtime_alert_event_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        existing_event = {
+            "id": "e7b5cf79-3fc6-4f0f-8eb4-89882d0bf212",
+            "project_id": project_id,
+            "alert_id": "runtime-alert-1",
+            "alert_type": "brand_absent",
+            "source": "visibility_score_snapshot",
+            "source_id": "snapshot-1",
+            "status": "acknowledged",
+            "updated_by": "analyst-1",
+            "note": "Investigating",
+            "metadata": {"severity": "high"},
+            "created_at": now,
+        }
+        saved_event = {
+            **existing_event,
+            "id": "75610089-4a47-45d5-9b65-21e3ced34cf1",
+            "status": "resolved",
+            "updated_by": "analyst-2",
+            "note": "Resolved in current sprint",
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                [{"id": project_id}],
+                [existing_event],
+                [saved_event],
+                [
+                    {
+                        "id": "6a7b6576-7064-44f0-85c9-9707f11c0e9c",
+                        "event_type": "runtime_alert_event_recorded",
+                        "project_id": project_id,
+                        "actor_type": "user",
+                        "actor_id": "analyst-2",
+                        "target_type": "runtime_alert",
+                        "target_id": "runtime-alert-1",
+                        "before_hash": "before",
+                        "after_hash": "after",
+                        "input_refs": {"runtime_alert_ids": ["runtime-alert-1"]},
+                        "output_refs": {"runtime_alert_event_ids": [saved_event["id"]]},
+                        "method_version": "runtime_alert_event_v1",
+                        "reason": "Resolved in current sprint",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+
+        record = PostgresEvidenceRepository(connection).record_runtime_alert_event(
+            RuntimeAlertEventInput(
+                project_id=project_id,
+                alert_id="runtime-alert-1",
+                alert_type="brand_absent",
+                source="visibility_score_snapshot",
+                source_id="snapshot-1",
+                status="resolved",
+                updated_by="analyst-2",
+                note="Resolved in current sprint",
+                metadata={"severity": "high"},
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeAlertEvent)
+        self.assertEqual(record.alert_event["status"], "resolved")
+        self.assertEqual(record.audit_events[0]["event_type"], "runtime_alert_event_recorded")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO runtime_alert_events", executed_sql)
+        self.assertIn("runtime_alert_event_recorded", str(connection.calls))
+        self.assertEqual(connection.commit_count, 1)
 
     def test_postgres_repository_reads_runtime_content_engine_page(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

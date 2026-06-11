@@ -31,6 +31,8 @@ from geno_core.models import (
     RetestSchedule,
     RuntimeActionPlan,
     RuntimeActionPlanPage,
+    RuntimeAlertEvent,
+    RuntimeAlertEventInput,
     RuntimeAlertItem,
     RuntimeAlertPage,
     RuntimeCitationGraph,
@@ -1145,6 +1147,20 @@ RUNTIME_NOTIFICATION_DELIVERY_COLUMNS = (
 )
 RUNTIME_NOTIFICATION_DELIVERY_RETURNING = ", ".join(RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
 RUNTIME_NOTIFICATION_SEVERITY_ORDER = {"info": 0, "warning": 1, "critical": 2}
+RUNTIME_ALERT_EVENT_STATUSES = {"acknowledged", "resolved", "snoozed", "reopened"}
+RUNTIME_ALERT_EVENT_COLUMNS = (
+    "id",
+    "project_id",
+    "alert_id",
+    "alert_type",
+    "source",
+    "source_id",
+    "status",
+    "updated_by",
+    "note",
+    "metadata",
+    "created_at",
+)
 ACTION_RECOMMENDATION_COLUMNS = (
     "id",
     "project_id",
@@ -6282,6 +6298,96 @@ class PostgresEvidenceRepository:
             records=records,
         )
 
+    def record_runtime_alert_event(self, event: RuntimeAlertEventInput) -> RuntimeAlertEvent:
+        project_id = event.project_id.strip()
+        alert_id = event.alert_id.strip()
+        alert_type = event.alert_type.strip()
+        source = event.source.strip()
+        source_id = event.source_id.strip()
+        status = event.status.strip().lower()
+        updated_by = event.updated_by.strip() or "runtime-console"
+        note = event.note.strip() if event.note else None
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not alert_id:
+            raise ValueError("alert_id is required")
+        if not alert_type:
+            raise ValueError("alert_type is required")
+        if not source:
+            raise ValueError("source is required")
+        if not source_id:
+            raise ValueError("source_id is required")
+        if status not in RUNTIME_ALERT_EVENT_STATUSES:
+            raise ValueError("runtime alert event status must be acknowledged, resolved, snoozed, or reopened")
+        metadata = event.metadata if isinstance(event.metadata, dict) else {}
+        event_id = str(uuid4())
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM projects WHERE id = %s LIMIT 1", (_uuid(project_id),))
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_ALERT_EVENT_COLUMNS)}
+                FROM runtime_alert_events
+                WHERE alert_id = %s
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (alert_id,),
+            )
+            before = _row_dict(cursor.fetchone(), RUNTIME_ALERT_EVENT_COLUMNS)
+            cursor.execute(
+                f"""
+                INSERT INTO runtime_alert_events (
+                  id, project_id, alert_id, alert_type, source, source_id, status,
+                  updated_by, note, metadata
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING {", ".join(RUNTIME_ALERT_EVENT_COLUMNS)}
+                """,
+                (
+                    _uuid(event_id),
+                    _uuid(project_id),
+                    alert_id,
+                    alert_type,
+                    source,
+                    source_id,
+                    status,
+                    updated_by,
+                    note,
+                    _json_payload(metadata),
+                ),
+            )
+            after = _row_dict(cursor.fetchone(), RUNTIME_ALERT_EVENT_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="runtime_alert_event_recorded",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="runtime_alert",
+                target_id=alert_id,
+                before=before or None,
+                after=after,
+                input_refs={
+                    "runtime_alert_ids": [alert_id],
+                    "alert_type": [alert_type],
+                    "source": [source],
+                    "source_id": [source_id],
+                    "status": [status],
+                },
+                output_refs={"runtime_alert_event_ids": [event_id]},
+                method_version="runtime_alert_event_v1",
+                reason=note or f"mark runtime alert {status}",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            audit_events = self._load_runtime_alert_audit_events(
+                cursor=cursor,
+                project_id=project_id,
+                alert_id=alert_id,
+                source_id=source_id,
+            )
+        self.connection.commit()
+        return RuntimeAlertEvent(alert_event=after, audit_events=audit_events)
+
     def list_runtime_alerts(
         self,
         *,
@@ -6544,6 +6650,20 @@ class PostgresEvidenceRepository:
             alerts = [item for item in alerts if item.alert.get("alert_type") == alert_type]
         if severity:
             alerts = [item for item in alerts if item.alert.get("severity") == severity]
+        alerts = [
+            RuntimeAlertItem(
+                alert=item.alert,
+                evidence_refs=item.evidence_refs,
+                related_actions=item.related_actions,
+                audit_events=item.audit_events,
+                management_events=self._load_runtime_alert_events(
+                    project_id=selected_project_id,
+                    alert_id=str(item.alert.get("id") or ""),
+                    source_id=str(item.alert.get("source_id") or ""),
+                ),
+            )
+            for item in alerts
+        ]
         alerts.sort(
             key=lambda item: (
                 _alert_severity(str(item.alert.get("severity"))),
@@ -6554,6 +6674,53 @@ class PostgresEvidenceRepository:
         total_count = len(alerts)
         paged = tuple(alerts[offset : offset + limit])
         return RuntimeAlertPage(total_count=total_count, limit=limit, offset=offset, records=paged)
+
+    def _load_runtime_alert_events(
+        self,
+        *,
+        project_id: str,
+        alert_id: str,
+        source_id: str,
+        limit: int = 5,
+    ) -> tuple[dict[str, Any], ...]:
+        if not alert_id:
+            return ()
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_ALERT_EVENT_COLUMNS)}
+                FROM runtime_alert_events
+                WHERE project_id = %s
+                  AND (alert_id = %s OR source_id = %s)
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s
+                """,
+                (_uuid(project_id), alert_id, source_id, max(1, min(limit, 20))),
+            )
+            return _rows_dict(cursor.fetchall(), RUNTIME_ALERT_EVENT_COLUMNS)
+
+    def _load_runtime_alert_audit_events(
+        self,
+        *,
+        cursor: DbCursor,
+        project_id: str,
+        alert_id: str,
+        source_id: str,
+        limit: int = 5,
+    ) -> tuple[dict[str, Any], ...]:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s
+              AND target_type = %s
+              AND (target_id = %s OR target_id = %s)
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (_uuid(project_id), "runtime_alert", alert_id, source_id, max(1, min(limit, 20))),
+        )
+        return _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
 
     def _load_runtime_action_plan(
         self,

@@ -126,6 +126,7 @@ BEGIN
     'project_brand_assets',
     'score_weight_configs',
     'human_review_records',
+    'runtime_alert_events',
     'traceability_bundles',
     'visibility_score_snapshots',
     'collection_costs',

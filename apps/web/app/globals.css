@@ -287,6 +287,42 @@ code {
   padding: 9px 10px;
 }
 
+.inlineForm {
+  align-items: center;
+  background: #f7fafc;
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(110px, 0.5fr) minmax(0, 0.6fr) minmax(0, 1fr) auto;
+  padding: 8px;
+}
+
+.inlineForm input,
+.inlineForm select {
+  appearance: none;
+  background: #ffffff;
+  border: 1px solid #cfd7e1;
+  border-radius: 4px;
+  color: #202a36;
+  font: inherit;
+  font-size: 13px;
+  min-width: 0;
+  padding: 8px 9px;
+}
+
+.inlineForm button {
+  background: #26323d;
+  border: 1px solid #26323d;
+  border-radius: 4px;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  min-height: 36px;
+  padding: 8px 10px;
+}
+
 .queueStatsGrid {
   margin-bottom: 1rem;
 }
@@ -1703,5 +1739,9 @@ summary {
 
   .panel {
     min-height: 0;
+  }
+
+  .inlineForm {
+    grid-template-columns: 1fr;
   }
 }

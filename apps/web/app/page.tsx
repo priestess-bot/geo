@@ -422,6 +422,13 @@ type RuntimeAlert = {
     status?: string;
     source_gap_type?: string | null;
   }>;
+  management_events: Array<{
+    id?: string;
+    status?: string;
+    updated_by?: string;
+    note?: string | null;
+    created_at?: string;
+  }>;
   audit_events: Array<{ event_type?: string; method_version?: string | null; after_hash?: string | null }>;
 };
 
@@ -1015,6 +1022,10 @@ function projectBrandAssetScanPath(assetId: string) {
   return `/v1/project-brand-assets/runtime/${assetId}/scan-status`;
 }
 
+function runtimeAlertEventPath(alertId: string) {
+  return `/v1/runtime-alerts/${alertId}/events`;
+}
+
 const emptyPage = <T,>(): PageResponse<T> => ({ total_count: 0, records: [] });
 
 const scoreComponentNames = [
@@ -1275,6 +1286,42 @@ async function recordRuntimeReportManagementEvent(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/reports/runtime/${reportExportId}/management-events returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function recordRuntimeAlertEvent(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const alertId = String(formData.get("alert_id") || "").trim();
+  const projectId = String(formData.get("project_id") || "").trim();
+  if (!alertId || !projectId) {
+    throw new Error("alert_id and project_id are required to record runtime alert event");
+  }
+  const payload = {
+    project_id: projectId,
+    alert_type: String(formData.get("alert_type") || "").trim(),
+    source: String(formData.get("source") || "").trim(),
+    source_id: String(formData.get("source_id") || "").trim(),
+    status: String(formData.get("status") || "acknowledged").trim(),
+    updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
+    note: String(formData.get("note") || "").trim() || undefined,
+    metadata: {
+      source: "runtime_console_alert_event",
+      severity: String(formData.get("severity") || "").trim() || undefined
+    }
+  };
+  const response = await fetch(`${baseUrl}${runtimeAlertEventPath(alertId)}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`${runtimeAlertEventPath(alertId)} returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -4491,6 +4538,36 @@ export default async function Home({
                       ))}
                     </ul>
                   ) : null}
+                  {item.management_events.length ? (
+                    <ul className="plainList compactList">
+                      {item.management_events.slice(0, 2).map((event) => (
+                        <li key={event.id || `${item.alert.id}-${event.created_at}`}>
+                          <strong>{event.status || "alert event"}</strong>
+                          <span>
+                            {event.updated_by || "runtime-console"} · {dateText(event.created_at)}
+                            {event.note ? ` · ${event.note}` : ""}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <form action={recordRuntimeAlertEvent} className="inlineForm">
+                    <input type="hidden" name="project_id" value={item.alert.project_id} />
+                    <input type="hidden" name="alert_id" value={item.alert.id} />
+                    <input type="hidden" name="alert_type" value={item.alert.alert_type} />
+                    <input type="hidden" name="source" value={item.alert.source || "runtime_alert"} />
+                    <input type="hidden" name="source_id" value={item.alert.source_id || item.alert.id} />
+                    <input type="hidden" name="severity" value={item.alert.severity} />
+                    <select name="status" defaultValue="acknowledged">
+                      <option value="acknowledged">Acknowledge</option>
+                      <option value="resolved">Resolve</option>
+                      <option value="snoozed">Snooze</option>
+                      <option value="reopened">Reopen</option>
+                    </select>
+                    <input name="updated_by" defaultValue="runtime-console" />
+                    <input name="note" placeholder="Note" />
+                    <button type="submit">Record alert event</button>
+                  </form>
                   <small>
                     {item.audit_events[0]?.event_type || "derived alert"} ·{" "}
                     {item.audit_events[0]?.method_version || "runtime_alerts_v1"} ·{" "}

@@ -413,6 +413,20 @@ CREATE TABLE human_review_records (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE runtime_alert_events (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  alert_id text NOT NULL,
+  alert_type text NOT NULL,
+  source text NOT NULL,
+  source_id text NOT NULL,
+  status text NOT NULL,
+  updated_by text NOT NULL,
+  note text,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE traceability_bundles (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id uuid NOT NULL,
@@ -672,6 +686,8 @@ CREATE INDEX idx_project_brand_assets_project ON project_brand_assets(project_id
 CREATE INDEX idx_score_weight_configs_project ON score_weight_configs(project_id, formula_version);
 CREATE INDEX idx_human_review_records_project ON human_review_records(project_id, target_type, review_status, created_at);
 CREATE INDEX idx_human_review_records_target ON human_review_records(target_type, target_id, created_at);
+CREATE INDEX idx_runtime_alert_events_project ON runtime_alert_events(project_id, created_at DESC);
+CREATE INDEX idx_runtime_alert_events_alert ON runtime_alert_events(alert_id, created_at DESC);
 CREATE INDEX idx_api_browser_fidelity_checks_project ON api_browser_fidelity_checks(project_id, checked_at);
 CREATE INDEX idx_api_browser_fidelity_checks_report ON api_browser_fidelity_checks(report_export_id, checked_at);
 CREATE INDEX idx_traceability_bundles_project ON traceability_bundles(project_id, subject_type);

@@ -1370,6 +1370,7 @@ class RuntimeAlertItem:
     evidence_refs: tuple[dict[str, Any], ...]
     related_actions: tuple[dict[str, Any], ...]
     audit_events: tuple[dict[str, Any], ...]
+    management_events: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1378,6 +1379,25 @@ class RuntimeAlertPage:
     limit: int
     offset: int
     records: tuple[RuntimeAlertItem, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeAlertEvent:
+    alert_event: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeAlertEventInput:
+    project_id: str
+    alert_id: str
+    alert_type: str
+    source: str
+    source_id: str
+    status: str
+    updated_by: str = "runtime-console"
+    note: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
