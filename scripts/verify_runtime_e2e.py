@@ -416,6 +416,74 @@ def _assert_runtime_alerts(project_id: str) -> dict[str, Any]:
     }
 
 
+def _assert_runtime_project_rls(fixture_project_id: str) -> dict[str, Any]:
+    owner = _query_one(
+        "SELECT user_id FROM project_members WHERE project_id = %s AND role = 'owner' ORDER BY created_at ASC LIMIT 1",
+        (fixture_project_id,),
+    )
+    actor_id = str(owner["user_id"])
+    isolated_bootstrap = build_au_project_bootstrap(
+        tenant_name="Runtime E2E RLS Isolated Tenant",
+        project_name="Runtime E2E RLS Isolated Project",
+        target_brand="RLSOtherBrand",
+        owner_user_id="isolated-owner",
+    )
+    repository = build_repository_from_env()
+    try:
+        repository.save_project_bootstrap(isolated_bootstrap)
+    finally:
+        close_repository_connection(repository)
+
+    with psycopg.connect(_database_url()) as connection:
+        with connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
+            cursor.execute(
+                """
+                SELECT
+                  set_config(%s, %s, true),
+                  set_config(%s, %s, true),
+                  set_config(%s, %s, true)
+                """,
+                (
+                    "geno.runtime_project_access_control",
+                    "1",
+                    "geno.runtime_actor_id",
+                    actor_id,
+                    "geno.runtime_project_id",
+                    fixture_project_id,
+                ),
+            )
+            cursor.execute("SELECT count(*)::int AS count FROM projects")
+            visible_projects = int(cursor.fetchone()["count"])
+            cursor.execute("SELECT count(*)::int AS count FROM projects WHERE id = %s", (fixture_project_id,))
+            fixture_visible = int(cursor.fetchone()["count"])
+            cursor.execute("SELECT count(*)::int AS count FROM projects WHERE id = %s", (isolated_bootstrap.project.id,))
+            isolated_visible = int(cursor.fetchone()["count"])
+            cursor.execute(
+                "SELECT count(*)::int AS count FROM prompt_questions WHERE project_id = %s",
+                (isolated_bootstrap.project.id,),
+            )
+            isolated_prompts_visible = int(cursor.fetchone()["count"])
+
+    if visible_projects != 1 or fixture_visible != 1:
+        raise AssertionError(
+            f"Expected RLS actor to see exactly the fixture project, got visible_projects={visible_projects}, fixture_visible={fixture_visible}"
+        )
+    if isolated_visible != 0 or isolated_prompts_visible != 0:
+        raise AssertionError(
+            "RLS leaked isolated project rows: "
+            f"isolated_visible={isolated_visible}, isolated_prompts_visible={isolated_prompts_visible}"
+        )
+    return {
+        "actor_id": actor_id,
+        "visible_projects": visible_projects,
+        "fixture_project_visible": fixture_visible,
+        "isolated_project_visible": isolated_visible,
+        "isolated_prompts_visible": isolated_prompts_visible,
+        "context_project_id": fixture_project_id,
+        "isolated_project_id": isolated_bootstrap.project.id,
+    }
+
+
 def _run_api_snapshot_archive_slice() -> dict[str, Any]:
     bootstrap = build_au_project_bootstrap(
         tenant_name="Runtime E2E API Snapshot Tenant",
@@ -498,6 +566,7 @@ def main() -> None:
     prompt_file_import = _assert_prompt_file_import(project_id)
     project_brand_logo_upload = _assert_project_brand_logo_upload(project_id)
     runtime_alerts = _assert_runtime_alerts(project_id)
+    runtime_project_rls = _assert_runtime_project_rls(project_id)
     api_snapshot = _run_api_snapshot_archive_slice()
     summary = {
         "status": "passed",
@@ -515,6 +584,7 @@ def main() -> None:
         "prompt_file_import": prompt_file_import,
         "project_brand_logo_upload": project_brand_logo_upload,
         "runtime_alerts": runtime_alerts,
+        "runtime_project_rls": runtime_project_rls,
         "api_snapshot_archive": api_snapshot,
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2, default=str))

@@ -50,7 +50,7 @@ services:
       context: ..
       dockerfile: apps/api/Dockerfile
     environment:
-      DATABASE_URL: postgresql://geno:geno@postgres:5432/geno
+      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
       OBJECT_STORE_ENDPOINT: http://minio:9000
       OBJECT_STORE_BUCKET: geno-reports
       OBJECT_STORE_ACCESS_KEY: minio
@@ -73,7 +73,7 @@ services:
     profiles:
       - worker
     environment:
-      DATABASE_URL: postgresql://geno:geno@postgres:5432/geno
+      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
       OBJECT_STORE_ENDPOINT: http://minio:9000
       OBJECT_STORE_BUCKET: geno-reports
       OBJECT_STORE_ACCESS_KEY: minio
@@ -103,7 +103,7 @@ services:
     profiles:
       - llm-gateway
     environment:
-      DATABASE_URL: postgresql://geno:geno@postgres:5432/geno
+      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
       OBJECT_STORE_ENDPOINT: http://minio:9000
       OBJECT_STORE_BUCKET: geno-reports
       OBJECT_STORE_ACCESS_KEY: minio
@@ -139,7 +139,7 @@ services:
     profiles:
       - scheduler
     environment:
-      DATABASE_URL: postgresql://geno:geno@postgres:5432/geno
+      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
       OBJECT_STORE_ENDPOINT: http://minio:9000
       OBJECT_STORE_BUCKET: geno-reports
       OBJECT_STORE_ACCESS_KEY: minio
@@ -176,7 +176,7 @@ services:
     profiles:
       - e2e
     environment:
-      DATABASE_URL: postgresql://geno:geno@postgres:5432/geno
+      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
       OBJECT_STORE_ENDPOINT: http://minio:9000
       OBJECT_STORE_BUCKET: geno-reports
       OBJECT_STORE_ACCESS_KEY: minio

@@ -11,6 +11,7 @@ except ImportError:  # pragma: no cover - local CI image currently provides PyYA
 
 
 ROOT = Path(__file__).resolve().parents[1]
+RUNTIME_DATABASE_URL = "postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno"
 
 
 @unittest.skipIf(yaml is None, "PyYAML is required for compose/config contract checks")
@@ -62,7 +63,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(verifier["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertIn("python", verifier["command"])
         self.assertIn("scripts/verify_runtime_e2e.py", verifier["command"])
-        self.assertEqual(verifier["environment"]["DATABASE_URL"], "postgresql://geno:geno@postgres:5432/geno")
+        self.assertEqual(verifier["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
         self.assertEqual(verifier["environment"]["OBJECT_STORE_ENDPOINT"], "http://minio:9000")
         self.assertEqual(verifier["environment"]["OBJECT_STORE_BUCKET"], "geno-reports")
         self.assertEqual(verifier["environment"]["OBJECT_STORE_ACCESS_KEY"], "minio")
@@ -77,7 +78,7 @@ class InfraContractsTest(unittest.TestCase):
 
         self.assertEqual(scheduler["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(scheduler["command"], ["python", "scripts/run_browser_fidelity_scheduler.py"])
-        self.assertEqual(scheduler["environment"]["DATABASE_URL"], "postgresql://geno:geno@postgres:5432/geno")
+        self.assertEqual(scheduler["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
         self.assertEqual(scheduler["environment"]["OBJECT_STORE_ENDPOINT"], "http://minio:9000")
         self.assertEqual(scheduler["environment"]["GENO_BROWSER_FIDELITY_EXECUTE"], "0")
         self.assertEqual(scheduler["environment"]["GENO_BROWSER_FIDELITY_PERSIST_PLAN"], "1")
@@ -99,6 +100,24 @@ class InfraContractsTest(unittest.TestCase):
 
         self.assertIn("COPY scripts ./scripts", dockerfile)
         self.assertIn("ENV PYTHONPATH=/app:/app/packages/geno_core:/app/apps/api", dockerfile)
+
+    def test_runtime_project_rls_migration_uses_guc_context_and_project_policies(self) -> None:
+        migration = (ROOT / "infra/db/migrations/up/0010_runtime_project_rls.sql").read_text(encoding="utf-8")
+        rollback = (ROOT / "infra/db/migrations/down/0010_runtime_project_rls.down.sql").read_text(encoding="utf-8")
+
+        self.assertIn("CREATE OR REPLACE FUNCTION geno_runtime_can_access_project", migration)
+        self.assertIn("CREATE ROLE geno_runtime_app LOGIN PASSWORD 'geno_runtime_app'", migration)
+        self.assertIn("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO geno_runtime_app", migration)
+        self.assertIn("current_setting('geno.runtime_actor_id', true)", migration)
+        self.assertIn("current_setting('geno.runtime_project_id', true)", migration)
+        self.assertIn("ALTER TABLE projects FORCE ROW LEVEL SECURITY", migration)
+        self.assertIn("projects_runtime_project_isolation", migration)
+        self.assertIn("project_members_runtime_project_isolation", migration)
+        self.assertIn("'collection_run_summaries'", migration)
+        self.assertIn("raw_answers_runtime_project_isolation", migration)
+        self.assertIn("entity_aliases_runtime_project_isolation", migration)
+        self.assertIn("DROP FUNCTION IF EXISTS geno_runtime_can_access_project(uuid)", rollback)
+        self.assertIn("DROP ROLE IF EXISTS geno_runtime_app", rollback)
 
     def test_browser_fidelity_plan_make_target_outputs_machine_readable_json(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")

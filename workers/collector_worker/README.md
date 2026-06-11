@@ -59,7 +59,7 @@ Temporal workflow.
 Persisted fixture slice:
 
 ```bash
-DATABASE_URL=postgresql://geno:geno@localhost:5432/geno \
+DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:5432/geno \
 PYTHONPATH=packages/geno_core:apps/api \
 python3 workers/collector_worker/run_collection_slice.py --mode fixture --persist
 ```
@@ -77,10 +77,14 @@ platform/city/access-method distributions, failure summary, and linked `answer_r
 writes a `collection_run_summarized` audit event. If `DATABASE_URL` is missing, the worker exits with code `2` and
 prints a persistence error instead of silently dropping evidence.
 
+The local Compose stack creates a non-bypass runtime database role, `geno_runtime_app`, through
+migration `0010_runtime_project_rls`. Use that role for worker/API runtime commands; keep the
+bootstrap `geno` role for database initialization and migration/admin operations only.
+
 Persisted fixture slice with analysis/scoring:
 
 ```bash
-DATABASE_URL=postgresql://geno:geno@localhost:5432/geno \
+DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:5432/geno \
 PYTHONPATH=packages/geno_core:apps/api \
 python3 workers/collector_worker/run_collection_slice.py --mode fixture --prompt-limit 1 --persist --persist-analysis
 ```
@@ -130,7 +134,7 @@ The default formula is `au_visibility_v1`. To exercise a candidate formula witho
 snapshots, pass a registered version:
 
 ```bash
-DATABASE_URL=postgresql://geno:geno@localhost:5432/geno \
+DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:5432/geno \
 PYTHONPATH=packages/geno_core:apps/api \
 python3 workers/collector_worker/run_collection_slice.py \
   --mode fixture --prompt-limit 1 --persist --persist-analysis \
@@ -141,7 +145,7 @@ LiteLLM judge adapter slice:
 
 ```bash
 LITELLM_BASE_URL=http://localhost:4000 LITELLM_API_KEY=... \
-DATABASE_URL=postgresql://geno:geno@localhost:5432/geno \
+DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:5432/geno \
 PYTHONPATH=packages/geno_core:apps/api \
 python3 workers/collector_worker/run_collection_slice.py \
   --mode fixture --prompt-limit 1 --persist --persist-analysis \
@@ -164,7 +168,7 @@ reconciliation against provider billing exports.
 Fixture API-vs-browser fidelity sample:
 
 ```bash
-DATABASE_URL=postgresql://geno:geno@localhost:5432/geno \
+DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:5432/geno \
 PYTHONPATH=packages/geno_core:apps/api \
 python3 workers/collector_worker/run_collection_slice.py \
   --mode fixture --prompt-limit 1 --cities Sydney \

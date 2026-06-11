@@ -97,6 +97,27 @@ def require_runtime_actor_id(x_geno_actor_id: str | None = None) -> str | None:
     return actor_id or None
 
 
+def apply_runtime_project_db_context(
+    repository: object,
+    *,
+    actor_id: str | None,
+    project_id: str | None = None,
+) -> None:
+    if not runtime_project_access_control_enabled():
+        return
+    if not actor_id:
+        raise HTTPException(
+            status_code=401,
+            detail=f"{RUNTIME_ACTOR_HEADER} is required when runtime project access control is enabled",
+        )
+    set_context = getattr(repository, "set_runtime_project_access_context", None)
+    if callable(set_context):
+        try:
+            set_context(actor_id=actor_id, project_id=project_id.strip() if project_id else None)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def assert_runtime_project_access(
     repository: object,
     *,
@@ -128,6 +149,11 @@ def assert_runtime_project_access(
         if allowed_roles and role not in allowed_roles:
             allowed = ", ".join(allowed_roles)
             raise HTTPException(status_code=403, detail=f"actor role {role} cannot perform this action; requires {allowed}")
+        apply_runtime_project_db_context(
+            repository,
+            actor_id=actor_id,
+            project_id=normalized_project_id,
+        )
         return
     if allowed_roles:
         raise HTTPException(
@@ -142,6 +168,11 @@ def assert_runtime_project_access(
         )
     if not user_can_access_project(project_id=normalized_project_id, actor_id=actor_id):
         raise HTTPException(status_code=403, detail="actor does not have access to project")
+    apply_runtime_project_db_context(
+        repository,
+        actor_id=actor_id,
+        project_id=normalized_project_id,
+    )
 
 
 class RuntimeSavedViewRequest(BaseModel):
@@ -319,6 +350,11 @@ def create_runtime_au_dtc_project(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        apply_runtime_project_db_context(
+            repository,
+            actor_id=actor_id,
+            project_id=bootstrap.project.id,
+        )
         repository.save_project_bootstrap(bootstrap)
         return {
             "tenant_id": bootstrap.tenant.id,
@@ -348,6 +384,11 @@ def runtime_projects(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        apply_runtime_project_db_context(
+            repository,
+            actor_id=actor_id,
+            project_id=project_id,
+        )
         page = repository.list_runtime_projects(
             project_id=project_id,
             market_code=market_code,
@@ -514,6 +555,7 @@ def confirm_runtime_entity_alias(
     try:
         try:
             if runtime_project_access_control_enabled():
+                apply_runtime_project_db_context(repository, actor_id=actor_id)
                 project_id = repository.get_entity_project_id(
                     entity_id=payload.entity_id.strip(),
                     entity_kind=payload.entity_kind.strip(),
@@ -827,6 +869,7 @@ def runtime_manual_backfill(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        apply_runtime_project_db_context(repository, actor_id=actor_id)
         prompt = repository.get_runtime_prompt(payload.prompt_question_id)
         if not prompt:
             raise HTTPException(status_code=404, detail="Prompt question not found")
@@ -1308,6 +1351,7 @@ def runtime_fidelity_checks(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         if runtime_project_access_control_enabled() and report_export_id and not project_id:
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
             project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
             if project_id is None:
                 raise HTTPException(status_code=404, detail="report_export not found")
@@ -1338,6 +1382,7 @@ def runtime_fidelity_trend(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         if runtime_project_access_control_enabled() and report_export_id and not project_id:
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
             project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
             if project_id is None:
                 raise HTTPException(status_code=404, detail="report_export not found")
@@ -1403,6 +1448,7 @@ def runtime_report_artifact(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         if runtime_project_access_control_enabled():
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
             project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
             assert_runtime_project_access(
                 repository,
@@ -1569,6 +1615,7 @@ def runtime_traceability(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         if runtime_project_access_control_enabled() and report_export_id and not project_id:
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
             project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
             if project_id is None:
                 raise HTTPException(status_code=404, detail="report_export not found")

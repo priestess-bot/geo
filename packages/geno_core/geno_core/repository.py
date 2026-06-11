@@ -1261,6 +1261,29 @@ class PostgresEvidenceRepository:
     def __init__(self, connection: DbConnection) -> None:
         self.connection = connection
 
+    def set_runtime_project_access_context(self, *, actor_id: str, project_id: str | None = None) -> None:
+        actor_id = actor_id.strip()
+        project_id = project_id.strip() if project_id else ""
+        if not actor_id:
+            raise ValueError("actor_id is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                  set_config(%s, %s, true),
+                  set_config(%s, %s, true),
+                  set_config(%s, %s, true)
+                """,
+                (
+                    "geno.runtime_project_access_control",
+                    "1",
+                    "geno.runtime_actor_id",
+                    actor_id,
+                    "geno.runtime_project_id",
+                    project_id,
+                ),
+            )
+
     def list_runtime_projects(
         self,
         *,

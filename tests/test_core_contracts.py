@@ -2944,6 +2944,29 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM project_members", executed_sql)
         self.assertEqual(connection.calls[0][1], (UUID(project_id), "agency-owner"))
 
+    def test_postgres_repository_sets_runtime_project_access_context(self) -> None:
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        connection = RecordingConnection()
+
+        PostgresEvidenceRepository(connection).set_runtime_project_access_context(
+            actor_id="agency-owner",
+            project_id=project_id,
+        )
+
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("set_config", executed_sql)
+        self.assertEqual(
+            connection.calls[0][1],
+            (
+                "geno.runtime_project_access_control",
+                "1",
+                "geno.runtime_actor_id",
+                "agency-owner",
+                "geno.runtime_project_id",
+                project_id,
+            ),
+        )
+
     def test_postgres_repository_reads_project_member_role(self) -> None:
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
         connection = RecordingConnection(result_sets=[{"role": "admin"}])

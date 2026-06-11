@@ -348,6 +348,9 @@ class ApiContractsTest(unittest.TestCase):
                 self.role_kwargs = kwargs
                 return "admin"
 
+            def set_runtime_project_access_context(self, **kwargs: object) -> None:
+                self.context_kwargs = kwargs
+
             def save_runtime_project_member(self, member: object) -> RuntimeProjectMember:
                 self.member = member
                 return RuntimeProjectMember(member={"id": "member-1", "project_id": member.project_id}, audit_events=())
@@ -369,6 +372,8 @@ class ApiContractsTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(fake_repository.role_kwargs["actor_id"], "agency-owner")
+        self.assertEqual(fake_repository.context_kwargs["actor_id"], "agency-owner")
+        self.assertEqual(fake_repository.context_kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
         self.assertEqual(fake_repository.member.updated_by, "agency-owner")
 
     def test_runtime_project_member_save_endpoint_requires_admin_or_owner_role_when_access_control_enabled(self) -> None:
