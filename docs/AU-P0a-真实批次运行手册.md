@@ -102,6 +102,7 @@ python3 scripts/build_preflight_manifest.py \
 make au-p0a-package
 make verify-au-p0a-package
 make au-p0a-status
+make verify-au-p0a-status
 ```
 
 ## 停止条件
@@ -162,10 +163,10 @@ package verifier 必须确认：
 
 status report 必须确认：
 
-- status_report_hash 可复算
+- status_report_hash 可由 `make verify-au-p0a-status` 复算
 - runbook verifier、preflight/small_batch/full_batch readiness、package verifier 均有机器可读摘要
 - completion_percent、design_ready_artifact_percent、remaining_blockers 和 next_action 能回答当前还差多少
-- 默认可用于日常进度复盘；需要硬门禁时用 `python3 scripts/build_au_p0a_status_report.py --require-design-partner-ready`
+- 默认可用于日常进度复盘；需要硬门禁时用 `python3 scripts/verify_au_p0a_status_report.py --require-design-partner-ready`
 
 ## 当前边界
 

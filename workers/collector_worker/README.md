@@ -264,6 +264,7 @@ make au-p0a-readiness
 make au-p0a-package
 make verify-au-p0a-package
 make au-p0a-status
+make verify-au-p0a-status
 ```
 
 `make api-preflight` runs `--mode api --prompt-limit 1 --cities Sydney --sample-size 3
@@ -311,6 +312,8 @@ blocking reasons match the embedded artifact entries. `make au-p0a-status` write
 `${GENO_AU_P0A_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-status-latest.json}` with a single
 machine-readable progress view across the runbook, all three readiness phases, package verifier,
 completion percentage, design-ready percentage, remaining blockers, and next action.
+`make verify-au-p0a-status` recomputes the status report hash and checks that completion, blockers,
+ready state, and next action can be derived from the embedded gate summaries.
 The default preflight JSON path is gitignored because live provider status and run context belong
 to local audit evidence, not committed project docs. This is the minimum real API smoke; it does
 not replace the full 100 prompts × 4 geo × k=3 design-partner batch.

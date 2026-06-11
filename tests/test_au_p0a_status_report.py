@@ -17,7 +17,7 @@ from scripts.build_preflight_manifest import build_preflight_manifest
 from scripts.verify_preflight_payload import compute_preflight_payload_hash, verify_preflight_payload
 
 
-class AuP0aStatusReportTest(unittest.TestCase):
+class AuP0aStatusReportFixtureMixin:
     def _payload(self, *, path: Path, planned_runs: int) -> dict[str, object]:
         prompt_limit = 1 if planned_runs == 6 else 5 if planned_runs == 30 else 100
         cities = ["Sydney"] if planned_runs in (6, 30) else ["Australia", "Sydney", "Melbourne", "Brisbane"]
@@ -123,6 +123,8 @@ class AuP0aStatusReportTest(unittest.TestCase):
         package_path.write_text(json.dumps(package), encoding="utf-8")
         return runbook_path, readiness_path, package_path
 
+
+class AuP0aStatusReportTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
     def test_status_report_records_remaining_blockers_for_incomplete_state(self) -> None:
         with TemporaryDirectory() as temp_dir:
             runbook_path, _ = self._write_runbook(temp_dir)
