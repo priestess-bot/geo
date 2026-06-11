@@ -437,7 +437,7 @@ fail_gate:
   - 客户交付主报告使用 Perplexity + OpenAI 稳定链路，Google section 明确标注为 limited coverage
 ```
 
-工程落地要求：`GoogleSpikeGateResult` 负责判断 Google AIO 成功率是否达标，`GoogleSpikeReadinessGate` 负责判断 P0b spike 是否满足“两路径对照”验收；真正进入 `VisibilityScoreSnapshot.answer_run_ids` 前还必须经过 `score_input_policy`。该策略要求两个 gate 同时通过，才允许 Google answer runs 进入主评分分母；否则 Google 记录只保留在证据附录、报告方法说明和溯源链里。browser-only fixture 可以通过 AIO 成功率 gate，但必须 fail readiness gate，因此也必须被 `score_input_policy` 排除出主分母；browser + third_party_api 或 browser + manual 等两路径组合才可通过 readiness gate。
+工程落地要求：`GoogleSpikeGateResult` 负责判断 Google AIO 成功率是否达标，`GoogleSpikeReadinessGate` 负责判断 P0b spike 是否满足“两路径对照”验收；真正进入 `VisibilityScoreSnapshot.answer_run_ids` 前还必须经过 `score_input_policy`。该策略要求两个 gate 同时通过，才允许 Google answer runs 进入主评分分母；否则 Google 记录只保留在证据附录、报告方法说明和溯源链里。browser-only fixture 可以通过 AIO 成功率 gate，但必须 fail readiness gate，因此也必须被 `score_input_policy` 排除出主分母；browser + third_party_api 或 browser + manual 等两路径组合才可通过 readiness gate。当前工程已新增真实 `google-spike` worker 模式、collector health-only 预检、`--require-google-spike-gates` 强制门禁，以及 P0b 专用 `make au-p0b-google-runbook` / `make verify-au-p0b-google-runbook` / `make au-p0b-google-runbook-dry-run` / `make verify-au-p0b-google-runbook-execution` / `make au-p0b-google-status` / `make verify-au-p0b-google-status`。这些命令会生成和校验 runbook、dry-run execution、health payload、spike payload、manifest 与 status report hash；它们证明真实 Google spike 的可审计执行路径已经固定，但不代表真实 240-run 已经完成。默认真实路径先用 browser + manual 两条 access method，第三方 SERP/API 供应商 adapter 待接入。
 
 两个采集保真度问题必须在后端处理：
 

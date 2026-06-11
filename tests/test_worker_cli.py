@@ -107,10 +107,13 @@ class WorkerCliTest(unittest.TestCase):
         self,
         *args: str,
         unset_env: tuple[str, ...] = (),
+        extra_env: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         for key in unset_env:
             env.pop(key, None)
+        if extra_env:
+            env.update(extra_env)
         env["PYTHONPATH"] = "packages/geno_core:apps/api"
         return subprocess.run(
             [sys.executable, "workers/collector_worker/run_collection_slice.py", *args],
@@ -468,6 +471,43 @@ class WorkerCliTest(unittest.TestCase):
         readiness_gate = payload["google_spike_readiness_gate"]
         self.assertEqual(readiness_gate["gate_status"], "fail")
         self.assertIn("insufficient_collection_paths=1/2", readiness_gate["failure_reasons"])
+
+    def test_google_spike_health_check_fails_before_collection_without_required_paths(self) -> None:
+        result = self._run_worker_result(
+            "--mode",
+            "google-spike",
+            "--require-ready-collectors",
+            "--health-check-only",
+            unset_env=("GOOGLE_PLAYWRIGHT_ENABLED", "MANUAL_BACKFILL_PATH"),
+        )
+        self.assertEqual(result.returncode, 3)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["record_count"], 0)
+        self.assertEqual(payload["planned_runs"], 240)
+        self.assertEqual(payload["collector_health_gate"]["gate_status"], "fail")
+        self.assertEqual(
+            payload["collector_health_gate"]["failure_reasons"],
+            ["google_aio.playwright:not_configured", "google.manual_backfill:not_configured"],
+        )
+        self.assertEqual(payload["google_spike_plan"]["planned_runs"], 240)
+
+    def test_google_spike_health_check_only_reports_ready_paths_without_collecting(self) -> None:
+        result = self._run_worker_result(
+            "--mode",
+            "google-spike",
+            "--health-check-only",
+            extra_env={
+                "GOOGLE_PLAYWRIGHT_ENABLED": "1",
+                "MANUAL_BACKFILL_PATH": "/tmp/manual-google-spike.jsonl",
+            },
+        )
+        result.check_returncode()
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["record_count"], 0)
+        self.assertEqual(payload["planned_runs"], 240)
+        self.assertEqual(payload["collector_health_gate"]["gate_status"], "pass")
+        self.assertEqual(payload["preflight_summary"]["phase"], "collector_health")
+        self.assertEqual(payload["google_spike_plan"]["geo_cities"], ["Australia", "Sydney"])
 
     def test_google_fixture_persist_analysis_skips_main_score_without_readiness_gate(self) -> None:
         repository = FakeWorkerRepository()

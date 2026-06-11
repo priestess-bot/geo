@@ -33,9 +33,11 @@ from geno_core.collectors import (
     FixtureGoogleAIOCollector,
     FixtureOpenAIWebSearchCollector,
     FixturePerplexitySonarCollector,
+    ManualBackfillCollector,
     OpenAIWebSearchCollector,
     PerplexitySonarCollector,
     PlaywrightChatGPTSearchCollector,
+    PlaywrightGoogleAIOCollector,
 )
 from geno_core.contracts import CollectorBackend
 from geno_core.graph import build_citation_graph
@@ -75,6 +77,8 @@ def _collectors(mode: str) -> tuple[CollectorBackend, ...]:
         return (PerplexitySonarCollector(), OpenAIWebSearchCollector())
     if mode == "google-fixture":
         return (FixtureGoogleAIOCollector(), FixtureGoogleAIModeCollector())
+    if mode == "google-spike":
+        return (PlaywrightGoogleAIOCollector(), ManualBackfillCollector())
     raise ValueError(f"Unsupported collector mode: {mode}")
 
 
@@ -795,7 +799,7 @@ def _persist_records(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a small AU P0a collection slice")
-    parser.add_argument("--mode", choices=["fixture", "api", "google-fixture"], default="fixture")
+    parser.add_argument("--mode", choices=["fixture", "api", "google-fixture", "google-spike"], default="fixture")
     parser.add_argument("--prompt-limit", type=int, default=2)
     parser.add_argument(
         "--prompt-ids",
@@ -834,9 +838,19 @@ def main() -> None:
         help="Exit before collection if any selected collector health is not ready.",
     )
     parser.add_argument(
+        "--health-check-only",
+        action="store_true",
+        help="Only emit collector health and audit checklist output; do not collect prompts.",
+    )
+    parser.add_argument(
         "--require-p0a-readiness",
         action="store_true",
         help="Exit non-zero when the P0a readiness gate fails after collection.",
+    )
+    parser.add_argument(
+        "--require-google-spike-gates",
+        action="store_true",
+        help="Exit non-zero when the Google spike success/readiness gates fail.",
     )
     parser.add_argument(
         "--require-no-collection-failures",
@@ -895,9 +909,12 @@ def main() -> None:
     args = parser.parse_args()
     if args.persist_analysis and not args.persist:
         parser.error("--persist-analysis requires --persist")
-    if args.require_p0a_readiness and args.mode == "google-fixture":
+    google_modes = {"google-fixture", "google-spike"}
+    if args.require_p0a_readiness and args.mode in google_modes:
         parser.error("--require-p0a-readiness is only valid for fixture/api P0a modes")
-    if args.prompt_ids and args.mode == "google-fixture":
+    if args.require_google_spike_gates and args.mode not in google_modes:
+        parser.error("--require-google-spike-gates is only valid for google-fixture/google-spike modes")
+    if args.prompt_ids and args.mode in google_modes:
         parser.error("--prompt-ids is only valid for fixture/api modes")
     try:
         execution_policy = CollectionExecutionPolicy(
@@ -957,7 +974,7 @@ def main() -> None:
 
     prompts = bootstrap.prompt_questions
     cities = tuple(city.strip() for city in args.cities.split(",") if city.strip())
-    if args.mode == "google-fixture":
+    if args.mode in google_modes:
         plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
         prompts = select_google_spike_prompts(bootstrap.prompt_questions)
         cities = plan.geo_cities
@@ -1001,6 +1018,8 @@ def main() -> None:
             "p0a_readiness_gate": None,
             "persistence": persistence,
         }
+        if plan is not None:
+            output["google_spike_plan"] = asdict(plan)
         preflight_summary = _build_preflight_summary(
             mode=args.mode,
             phase="collector_health",
@@ -1035,6 +1054,58 @@ def main() -> None:
         _emit_json_output(output, args.preflight_output_path)
         print(f"collector_preflight_failed: {', '.join(collector_health_failure_reasons)}", file=sys.stderr)
         raise SystemExit(3)
+    if args.health_check_only:
+        persistence = {"enabled": False}
+        exit_code = 0
+        output = {
+            "mode": args.mode,
+            "record_count": 0,
+            "planned_runs": planned_runs,
+            "success_count": 0,
+            "failure_count": 0,
+            "collection_execution_policy": asdict(execution_policy),
+            "answer_run_ids": [],
+            "failure_events": [],
+            "collector_health": collector_health,
+            "collector_health_gate": collector_health_gate,
+            "p0a_readiness_gate": None,
+            "persistence": persistence,
+        }
+        if plan is not None:
+            output["google_spike_plan"] = asdict(plan)
+        preflight_summary = _build_preflight_summary(
+            mode=args.mode,
+            phase="collector_health",
+            exit_code=exit_code,
+            planned_runs=planned_runs,
+            record_count=0,
+            success_count=0,
+            failure_count=0,
+            cities=cities,
+            sample_size=args.sample_size,
+            prompt_limit=args.prompt_limit,
+            collector_health_gate=collector_health_gate,
+            p0a_readiness_gate=None,
+            persistence=persistence,
+            output_path=args.preflight_output_path,
+        )
+        output["preflight_summary"] = preflight_summary
+        output["preflight_audit_checklist"] = _build_preflight_audit_checklist(
+            mode=args.mode,
+            phase="collector_health",
+            exit_code=exit_code,
+            planned_runs=planned_runs,
+            record_count=0,
+            success_count=0,
+            failure_count=0,
+            collector_health_gate=collector_health_gate,
+            p0a_readiness_gate=None,
+            preflight_summary=preflight_summary,
+            output_path=args.preflight_output_path,
+            worker_args=tuple(sys.argv[1:]),
+        )
+        _emit_json_output(output, args.preflight_output_path)
+        return
     records = run_collection_slice(
         project_id=bootstrap.project.id,
         prompts=prompts,
@@ -1047,14 +1118,20 @@ def main() -> None:
     )
     successes = tuple(record for record in records if isinstance(record, RawEvidenceRecord))
     failures = tuple(record for record in records if isinstance(record, CollectionFailureRecord))
-    p0a_readiness_gate = evaluate_p0a_collection_readiness(records=records) if args.mode != "google-fixture" else None
+    p0a_readiness_gate = evaluate_p0a_collection_readiness(records=records) if args.mode not in google_modes else None
+    google_spike_gate = evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=plan, records=records) if plan is not None else None
+    google_spike_readiness_gate = (
+        evaluate_google_spike_readiness_gate(project_id=bootstrap.project.id, plan=plan, records=records)
+        if plan is not None
+        else None
+    )
     persistence: dict[str, object] = {"enabled": False}
     if args.persist:
         try:
             persistence = _persist_records(
                 bootstrap=bootstrap,
                 mode=args.mode,
-                run_type="google_spike" if args.mode == "google-fixture" else "p0a_slice",
+                run_type="google_spike" if args.mode in google_modes else "p0a_slice",
                 planned_runs=planned_runs,
                 records=records,
                 successes=successes,
@@ -1075,6 +1152,17 @@ def main() -> None:
     elif args.require_p0a_readiness and p0a_readiness_gate is not None and p0a_readiness_gate.gate_status != "pass":
         exit_code = 4
         phase = "p0a_readiness"
+    elif (
+        args.require_google_spike_gates
+        and (
+            google_spike_gate is None
+            or google_spike_readiness_gate is None
+            or google_spike_gate.gate_status != "pass"
+            or google_spike_readiness_gate.gate_status != "pass"
+        )
+    ):
+        exit_code = 6
+        phase = "google_spike_gates"
     output = {
         "mode": args.mode,
         "record_count": len(records),
@@ -1121,11 +1209,10 @@ def main() -> None:
         worker_args=tuple(sys.argv[1:]),
     )
     if plan is not None:
-        output["google_spike_gate"] = asdict(
-            evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=plan, records=records)
-        )
-        output["google_spike_readiness_gate"] = asdict(
-            evaluate_google_spike_readiness_gate(project_id=bootstrap.project.id, plan=plan, records=records)
+        output["google_spike_plan"] = asdict(plan)
+        output["google_spike_gate"] = asdict(google_spike_gate) if google_spike_gate is not None else None
+        output["google_spike_readiness_gate"] = (
+            asdict(google_spike_readiness_gate) if google_spike_readiness_gate is not None else None
         )
     _emit_json_output(output, args.preflight_output_path)
     if args.require_no_collection_failures and failures:
@@ -1140,6 +1227,22 @@ def main() -> None:
             file=sys.stderr,
         )
         raise SystemExit(4)
+    if (
+        args.require_google_spike_gates
+        and (
+            google_spike_gate is None
+            or google_spike_readiness_gate is None
+            or google_spike_gate.gate_status != "pass"
+            or google_spike_readiness_gate.gate_status != "pass"
+        )
+    ):
+        gate_status = getattr(google_spike_gate, "gate_status", "missing")
+        readiness_status = getattr(google_spike_readiness_gate, "gate_status", "missing")
+        print(
+            f"google_spike_gates_failed: gate={gate_status}, readiness={readiness_status}",
+            file=sys.stderr,
+        )
+        raise SystemExit(6)
 
 
 if __name__ == "__main__":

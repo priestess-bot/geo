@@ -284,6 +284,18 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("ci-local:", makefile)
         self.assertIn("runtime-e2e", makefile)
         self.assertIn("browser-fidelity-plan:", makefile)
+        self.assertIn("au-p0b-google-runbook:", makefile)
+        self.assertIn("scripts/build_au_p0b_google_spike_runbook.py", makefile)
+        self.assertIn("verify-au-p0b-google-runbook:", makefile)
+        self.assertIn("scripts/verify_au_p0b_google_spike_runbook.py", makefile)
+        self.assertIn("au-p0b-google-runbook-dry-run:", makefile)
+        self.assertIn("scripts/run_au_p0b_google_spike_runbook.py", makefile)
+        self.assertIn("verify-au-p0b-google-runbook-execution:", makefile)
+        self.assertIn("scripts/verify_au_p0b_google_spike_runbook_execution.py", makefile)
+        self.assertIn("au-p0b-google-status:", makefile)
+        self.assertIn("scripts/build_au_p0b_google_spike_status_report.py", makefile)
+        self.assertIn("verify-au-p0b-google-status:", makefile)
+        self.assertIn("scripts/verify_au_p0b_google_spike_status_report.py", makefile)
         self.assertIn(
             "\t@PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --plan-browser-fidelity-sampling",
             makefile,

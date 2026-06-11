@@ -1,4 +1,4 @@
-.PHONY: install-api-deps install-dev-deps lint-python compile-python web-typecheck quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e ci-local api-preflight verify-api-preflight preflight-manifest au-p0a-runbook verify-au-p0a-runbook au-p0a-env verify-au-p0a-env au-p0a-runbook-dry-run verify-au-p0a-runbook-execution au-p0a-readiness au-p0a-package verify-au-p0a-package au-p0a-status verify-au-p0a-status browser-fidelity-plan browser-fidelity-scheduler-plan browser-fidelity-scheduler-run api-browser-fidelity-preflight report-export-worker runtime-alert-notification-worker runtime-alert-escalation-worker notification-delivery-worker worker-fixture worker-fixture-persist worker-google-fixture
+.PHONY: install-api-deps install-dev-deps lint-python compile-python web-typecheck quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e ci-local api-preflight verify-api-preflight preflight-manifest au-p0a-runbook verify-au-p0a-runbook au-p0a-env verify-au-p0a-env au-p0a-runbook-dry-run verify-au-p0a-runbook-execution au-p0a-readiness au-p0a-package verify-au-p0a-package au-p0a-status verify-au-p0a-status au-p0b-google-runbook verify-au-p0b-google-runbook au-p0b-google-runbook-dry-run verify-au-p0b-google-runbook-execution au-p0b-google-status verify-au-p0b-google-status browser-fidelity-plan browser-fidelity-scheduler-plan browser-fidelity-scheduler-run api-browser-fidelity-preflight report-export-worker runtime-alert-notification-worker runtime-alert-escalation-worker notification-delivery-worker worker-fixture worker-fixture-persist worker-google-fixture
 
 install-api-deps:
 	python3 -m pip install -r apps/api/requirements.txt
@@ -93,6 +93,24 @@ au-p0a-status:
 
 verify-au-p0a-status:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_status_report.py $${GENO_AU_P0A_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-status-latest.json}
+
+au-p0b-google-runbook:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_p0b_google_spike_runbook.py --output-path $${GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json}
+
+verify-au-p0b-google-runbook:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_spike_runbook.py $${GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json}
+
+au-p0b-google-runbook-dry-run:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/run_au_p0b_google_spike_runbook.py --runbook-path $${GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json} --output-path $${GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-spike-runbook-execution-latest.json}
+
+verify-au-p0b-google-runbook-execution:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_spike_runbook_execution.py $${GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-spike-runbook-execution-latest.json}
+
+au-p0b-google-status:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_p0b_google_spike_status_report.py --runbook-path $${GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json} --execution-path $${GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-spike-runbook-execution-latest.json} --output-path $${GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-spike-status-latest.json}
+
+verify-au-p0b-google-status:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_spike_status_report.py $${GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-spike-status-latest.json}
 
 browser-fidelity-plan:
 	@PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --plan-browser-fidelity-sampling
