@@ -1331,6 +1331,24 @@ class PostgresEvidenceRepository:
             )
             return cursor.fetchone() is not None
 
+    def get_project_member_role(self, *, project_id: str, actor_id: str) -> str | None:
+        if not actor_id:
+            return None
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT role
+                FROM project_members
+                WHERE project_id = %s AND user_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id), actor_id),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return str(row["role"] if isinstance(row, dict) else row[0])
+
     def get_entity_project_id(self, *, entity_id: str, entity_kind: str) -> str | None:
         normalized_kind = entity_kind.strip().lower()
         if normalized_kind not in {"brand", "competitor"}:

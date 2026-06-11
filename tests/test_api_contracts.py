@@ -344,8 +344,9 @@ class ApiContractsTest(unittest.TestCase):
 
     def test_runtime_project_member_save_endpoint_uses_actor_when_access_control_enabled(self) -> None:
         class FakeRepository:
-            def user_can_access_project(self, **kwargs: object) -> bool:
-                return True
+            def get_project_member_role(self, **kwargs: object) -> str:
+                self.role_kwargs = kwargs
+                return "admin"
 
             def save_runtime_project_member(self, member: object) -> RuntimeProjectMember:
                 self.member = member
@@ -367,7 +368,35 @@ class ApiContractsTest(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(fake_repository.role_kwargs["actor_id"], "agency-owner")
         self.assertEqual(fake_repository.member.updated_by, "agency-owner")
+
+    def test_runtime_project_member_save_endpoint_requires_admin_or_owner_role_when_access_control_enabled(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, **kwargs: object) -> str:
+                self.role_kwargs = kwargs
+                return "analyst"
+
+            def save_runtime_project_member(self, member: object) -> object:
+                raise AssertionError("save_runtime_project_member should not be called for analyst role")
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.post(
+                "/v1/project-members/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "user_id": "viewer@example.com",
+                    "role": "viewer",
+                },
+                headers={"X-GENO-Actor-Id": "agency-analyst"},
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("requires owner, admin", response.json()["detail"])
+        self.assertEqual(fake_repository.role_kwargs["actor_id"], "agency-analyst")
 
     def test_runtime_prompts_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/prompts/runtime")
@@ -408,6 +437,110 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(fake_repository.access_kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
         self.assertEqual(fake_repository.access_kwargs["actor_id"], "agency-owner")
+
+    def test_runtime_prompt_import_endpoint_requires_admin_or_owner_role_when_access_control_enabled(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, **kwargs: object) -> str:
+                self.role_kwargs = kwargs
+                return "viewer"
+
+            def import_runtime_prompts_csv(self, prompt_import: object) -> object:
+                raise AssertionError("import_runtime_prompts_csv should not be called for viewer role")
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.post(
+                "/v1/prompts/runtime/import.csv",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "csv_content": "text,intent_type\nIs ExampleBrand visible?,brand_awareness\n",
+                    "imported_by": "runtime-console",
+                    "max_rows": 100,
+                },
+                headers={"X-GENO-Actor-Id": "agency-viewer"},
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("requires owner, admin", response.json()["detail"])
+        self.assertEqual(fake_repository.role_kwargs["actor_id"], "agency-viewer")
+
+    def test_runtime_human_review_save_endpoint_allows_analyst_role_when_access_control_enabled(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, **kwargs: object) -> str:
+                self.role_kwargs = kwargs
+                return "analyst"
+
+            def save_human_review(self, review: object) -> RuntimeHumanReviewRecord:
+                self.review = review
+                return RuntimeHumanReviewRecord(
+                    human_review={
+                        "id": "review-1",
+                        "project_id": review.project_id,
+                        "target_type": review.target_type,
+                        "target_id": review.target_id,
+                        "review_status": review.review_status,
+                        "decision": review.decision,
+                        "reviewer_id": review.reviewer_id,
+                        "notes": review.notes,
+                        "payload": review.payload,
+                    },
+                    audit_events=({"event_type": "human_review_recorded"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.post(
+                "/v1/human-reviews/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "target_type": "visibility_score_snapshot",
+                    "target_id": "38f0251c-c380-4197-b6c9-3e630b127844",
+                    "review_status": "approved",
+                    "decision": "approved_for_report",
+                    "reviewer_id": "agency-analyst",
+                    "payload": {},
+                },
+                headers={"X-GENO-Actor-Id": "agency-analyst"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(fake_repository.role_kwargs["actor_id"], "agency-analyst")
+        self.assertEqual(fake_repository.review.decision, "approved_for_report")
+
+    def test_runtime_human_review_save_endpoint_forbids_viewer_role_when_access_control_enabled(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, **kwargs: object) -> str:
+                self.role_kwargs = kwargs
+                return "viewer"
+
+            def save_human_review(self, review: object) -> object:
+                raise AssertionError("save_human_review should not be called for viewer role")
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.post(
+                "/v1/human-reviews/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "target_type": "visibility_score_snapshot",
+                    "target_id": "38f0251c-c380-4197-b6c9-3e630b127844",
+                    "review_status": "approved",
+                    "decision": "approved_for_report",
+                    "reviewer_id": "agency-viewer",
+                    "payload": {},
+                },
+                headers={"X-GENO-Actor-Id": "agency-viewer"},
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("requires owner, admin, analyst", response.json()["detail"])
+        self.assertEqual(fake_repository.role_kwargs["actor_id"], "agency-viewer")
 
     def test_runtime_prompt_import_endpoint_requires_persistence_config(self) -> None:
         response = self.client.post(

@@ -2943,6 +2943,31 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM project_members", executed_sql)
         self.assertEqual(connection.calls[0][1], (UUID(project_id), "agency-owner"))
 
+    def test_postgres_repository_reads_project_member_role(self) -> None:
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        connection = RecordingConnection(result_sets=[{"role": "admin"}])
+
+        role = PostgresEvidenceRepository(connection).get_project_member_role(
+            project_id=project_id,
+            actor_id="agency-admin",
+        )
+
+        self.assertEqual(role, "admin")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("SELECT role FROM project_members", executed_sql)
+        self.assertEqual(connection.calls[0][1], (UUID(project_id), "agency-admin"))
+
+    def test_postgres_repository_returns_none_for_missing_project_member_role(self) -> None:
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        connection = RecordingConnection(result_sets=[None])
+
+        role = PostgresEvidenceRepository(connection).get_project_member_role(
+            project_id=project_id,
+            actor_id="missing-user",
+        )
+
+        self.assertIsNone(role)
+
     def test_postgres_repository_lists_runtime_project_members_with_audit_events(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"

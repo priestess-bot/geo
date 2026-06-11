@@ -75,6 +75,8 @@ app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
 RUNTIME_PROJECT_ACCESS_CONTROL_ENV = "GENO_RUNTIME_PROJECT_ACCESS_CONTROL"
 RUNTIME_ACTOR_HEADER = "X-GENO-Actor-Id"
 RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES = {"1", "true", "yes", "on"}
+PROJECT_MANAGE_ROLES = ("owner", "admin")
+PROJECT_ANALYZE_ROLES = ("owner", "admin", "analyst")
 
 
 def runtime_project_access_control_enabled() -> bool:
@@ -100,6 +102,7 @@ def assert_runtime_project_access(
     project_id: str | None,
     actor_id: str | None,
     require_project_id: bool = True,
+    allowed_roles: tuple[str, ...] | None = None,
 ) -> None:
     if not runtime_project_access_control_enabled():
         return
@@ -115,6 +118,20 @@ def assert_runtime_project_access(
         raise HTTPException(
             status_code=401,
             detail=f"{RUNTIME_ACTOR_HEADER} is required when runtime project access control is enabled",
+        )
+    get_project_member_role = getattr(repository, "get_project_member_role", None)
+    if callable(get_project_member_role):
+        role = get_project_member_role(project_id=normalized_project_id, actor_id=actor_id)
+        if role is None:
+            raise HTTPException(status_code=403, detail="actor does not have access to project")
+        if allowed_roles and role not in allowed_roles:
+            allowed = ", ".join(allowed_roles)
+            raise HTTPException(status_code=403, detail=f"actor role {role} cannot perform this action; requires {allowed}")
+        return
+    if allowed_roles:
+        raise HTTPException(
+            status_code=503,
+            detail="runtime project role checks require repository.get_project_member_role",
         )
     user_can_access_project = getattr(repository, "user_can_access_project", None)
     if not callable(user_can_access_project):
@@ -366,7 +383,12 @@ def save_runtime_project_member(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id)
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
         try:
             member = repository.save_runtime_project_member(
                 RuntimeProjectMemberInput(
@@ -456,7 +478,12 @@ def confirm_runtime_entity_alias(
                 )
                 if project_id is None:
                     raise ValueError("entity not found")
-                assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+                assert_runtime_project_access(
+                    repository,
+                    project_id=project_id,
+                    actor_id=actor_id,
+                    allowed_roles=PROJECT_ANALYZE_ROLES,
+                )
             record = repository.confirm_entity_alias(
                 EntityAliasInput(
                     entity_id=payload.entity_id.strip(),
@@ -545,7 +572,12 @@ def import_runtime_prompts_csv(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id)
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
         result = repository.import_runtime_prompts_csv(
             RuntimePromptImportInput(
                 project_id=payload.project_id.strip(),
@@ -585,7 +617,12 @@ async def import_runtime_prompts_file(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
         result = repository.import_runtime_prompts_csv(
             RuntimePromptImportInput(
                 project_id=project_id.strip(),
@@ -751,7 +788,12 @@ def runtime_manual_backfill(
         prompt = repository.get_runtime_prompt(payload.prompt_question_id)
         if not prompt:
             raise HTTPException(status_code=404, detail="Prompt question not found")
-        assert_runtime_project_access(repository, project_id=str(prompt["project_id"]), actor_id=actor_id)
+        assert_runtime_project_access(
+            repository,
+            project_id=str(prompt["project_id"]),
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
         citation_urls = tuple(url.strip() for url in payload.citation_urls if url.strip())
         record = build_manual_backfill_record(
             ManualBackfillInput(
@@ -827,7 +869,12 @@ def save_runtime_saved_view(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id)
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
         saved_view = repository.save_runtime_saved_view(
             RuntimeSavedViewInput(
                 project_id=payload.project_id,
@@ -876,7 +923,12 @@ def save_runtime_project_brand_kit(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id)
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
         brand_kit = repository.save_project_brand_kit(
             RuntimeProjectBrandKitInput(
                 project_id=payload.project_id.strip(),
@@ -915,7 +967,12 @@ async def upload_runtime_project_brand_logo(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
         if repository.list_runtime_projects(project_id=project_id.strip(), limit=1, offset=0).total_count == 0:
             raise HTTPException(status_code=404, detail="project not found")
         try:
@@ -996,7 +1053,12 @@ def save_runtime_score_weight_config(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id)
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
         config = repository.save_score_weight_config(
             RuntimeScoreWeightConfigInput(
                 project_id=payload.project_id.strip(),
@@ -1086,7 +1148,12 @@ def record_runtime_human_review(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id)
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
         record = repository.save_human_review(
             RuntimeHumanReviewInput(
                 project_id=payload.project_id.strip(),
@@ -1254,7 +1321,12 @@ def create_runtime_fidelity_check(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id)
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
         check = repository.create_runtime_fidelity_check(
             project_id=payload.project_id.strip(),
             report_export_id=payload.report_export_id.strip() if payload.report_export_id else None,
