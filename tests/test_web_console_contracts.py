@@ -247,6 +247,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn('value="resolved"', page_source)
         self.assertIn('value="snoozed"', page_source)
         self.assertIn('value="reopened"', page_source)
+        self.assertIn('value="escalated"', page_source)
         self.assertIn("Alert query", page_source)
         self.assertIn(".alertGrid", css_source)
         self.assertIn(".alertItem", css_source)

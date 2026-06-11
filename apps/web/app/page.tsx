@@ -4621,6 +4621,7 @@ export default async function Home({
                       <option value="resolved">Resolve</option>
                       <option value="snoozed">Snooze</option>
                       <option value="reopened">Reopen</option>
+                      <option value="escalated">Escalate</option>
                     </select>
                     <input name="updated_by" defaultValue="runtime-console" />
                     <input name="note" placeholder="Note" />

@@ -1148,7 +1148,7 @@ RUNTIME_NOTIFICATION_DELIVERY_COLUMNS = (
 )
 RUNTIME_NOTIFICATION_DELIVERY_RETURNING = ", ".join(RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
 RUNTIME_NOTIFICATION_SEVERITY_ORDER = {"info": 0, "warning": 1, "critical": 2}
-RUNTIME_ALERT_EVENT_STATUSES = {"acknowledged", "resolved", "snoozed", "reopened"}
+RUNTIME_ALERT_EVENT_STATUSES = {"acknowledged", "resolved", "snoozed", "reopened", "escalated"}
 RUNTIME_ALERT_EVENT_COLUMNS = (
     "id",
     "project_id",
@@ -6424,7 +6424,7 @@ class PostgresEvidenceRepository:
         if not source_id:
             raise ValueError("source_id is required")
         if status not in RUNTIME_ALERT_EVENT_STATUSES:
-            raise ValueError("runtime alert event status must be acknowledged, resolved, snoozed, or reopened")
+            raise ValueError("runtime alert event status must be acknowledged, resolved, snoozed, reopened, or escalated")
         metadata = event.metadata if isinstance(event.metadata, dict) else {}
         event_id = str(uuid4())
         with self.connection.cursor() as cursor:
@@ -6467,7 +6467,7 @@ class PostgresEvidenceRepository:
             audit_event = build_audit_event(
                 event_type="runtime_alert_event_recorded",
                 project_id=project_id,
-                actor_type="user",
+                actor_type="worker" if updated_by.endswith("-worker") else "user",
                 actor_id=updated_by,
                 target_type="runtime_alert",
                 target_id=alert_id,

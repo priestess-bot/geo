@@ -7076,6 +7076,68 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("runtime_alert_event_recorded", str(connection.calls))
         self.assertEqual(connection.commit_count, 1)
 
+    def test_postgres_repository_records_escalated_runtime_alert_event(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        saved_event = {
+            "id": "75610089-4a47-45d5-9b65-21e3ced34cf1",
+            "project_id": project_id,
+            "alert_id": "runtime-alert-1",
+            "alert_type": "negative_sentiment",
+            "source": "answer_analysis",
+            "source_id": "analysis-1",
+            "status": "escalated",
+            "updated_by": "runtime-alert-escalation-worker",
+            "note": "Runtime alert breached escalation threshold",
+            "metadata": {"escalation_policy_version": "runtime_alert_escalation_worker_v1"},
+            "created_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                [{"id": project_id}],
+                [],
+                [saved_event],
+                [
+                    {
+                        "id": "6a7b6576-7064-44f0-85c9-9707f11c0e9c",
+                        "event_type": "runtime_alert_event_recorded",
+                        "project_id": project_id,
+                        "actor_type": "worker",
+                        "actor_id": "runtime-alert-escalation-worker",
+                        "target_type": "runtime_alert",
+                        "target_id": "runtime-alert-1",
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"status": ["escalated"]},
+                        "output_refs": {"runtime_alert_event_ids": [saved_event["id"]]},
+                        "method_version": "runtime_alert_event_v1",
+                        "reason": "Runtime alert breached escalation threshold",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+
+        record = PostgresEvidenceRepository(connection).record_runtime_alert_event(
+            RuntimeAlertEventInput(
+                project_id=project_id,
+                alert_id="runtime-alert-1",
+                alert_type="negative_sentiment",
+                source="answer_analysis",
+                source_id="analysis-1",
+                status="escalated",
+                updated_by="runtime-alert-escalation-worker",
+                note="Runtime alert breached escalation threshold",
+                metadata={"escalation_policy_version": "runtime_alert_escalation_worker_v1"},
+            )
+        )
+
+        self.assertEqual(record.alert_event["status"], "escalated")
+        audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
+        self.assertEqual(audit_insert[3], "worker")
+        self.assertEqual(record.audit_events[0]["input_refs"]["status"], ["escalated"])
+        self.assertEqual(connection.commit_count, 1)
+
     def test_postgres_repository_enqueues_runtime_alert_notifications_with_delivery(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

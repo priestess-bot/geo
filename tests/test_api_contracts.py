@@ -3311,15 +3311,15 @@ class ApiContractsTest(unittest.TestCase):
                     "alert_type": "brand_absent",
                     "source": "visibility_score_snapshot",
                     "source_id": "snapshot-1",
-                    "status": "acknowledged",
+                    "status": "escalated",
                     "updated_by": "analyst-1",
-                    "note": "Owner assigned",
+                    "note": "SLA threshold breached",
                     "metadata": {"severity": "high"},
                 },
             )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["alert_event"]["status"], "acknowledged")
+        self.assertEqual(payload["alert_event"]["status"], "escalated")
         self.assertEqual(payload["audit_events"][0]["event_type"], "runtime_alert_event_recorded")
         self.assertEqual(fake_repository.event.alert_id, "runtime-alert-1")
         self.assertEqual(fake_repository.event.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
