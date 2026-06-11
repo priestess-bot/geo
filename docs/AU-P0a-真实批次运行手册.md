@@ -101,6 +101,7 @@ python3 scripts/build_preflight_manifest.py \
 
 make au-p0a-package
 make verify-au-p0a-package
+make au-p0a-status
 ```
 
 ## 停止条件
@@ -113,6 +114,7 @@ make verify-au-p0a-package
 - readiness verifier `status=fail`：停止，先修必需环境、上游 payload、manifest 或 design-partner gate。
 - `database.connection_check=fail`：停止，先修 `DATABASE_URL`、网络、凭证或迁移后的 PostgreSQL 服务。
 - `ready_for_design_partner=false`：停止，不进入 design partner 或 full batch。
+- status report `next_action` 不是 `ready_for_design_partner_handoff`：停止，按 `remaining_blockers` 逐项修复。
 
 ## 产物清单
 
@@ -123,6 +125,7 @@ make verify-au-p0a-package
 - `docs/runtime_preflight/au-p0a-runbook-latest.json`
 - `docs/runtime_preflight/au-p0a-readiness-latest.json`
 - `docs/runtime_preflight/au-p0a-evidence-package-latest.json`
+- `docs/runtime_preflight/au-p0a-status-latest.json`
 - `docs/runtime_preflight/au-p0a-small-batch.json`
 - `docs/runtime_preflight/au-p0a-small-batch-manifest.json`
 - `docs/runtime_preflight/au-p0a-full-batch.json`
@@ -156,6 +159,13 @@ package verifier 必须确认：
 - artifacts 至少包含 runbook、readiness、preflight/small/full JSON 与 manifest
 - summary 的 artifact_count、missing_artifacts、failed_artifacts、ready_artifacts、blocking_reasons 可由 artifacts 反推
 - `ready_for_design_partner` 与 preflight/small/full JSON 和 manifest 的 ready 状态一致
+
+status report 必须确认：
+
+- status_report_hash 可复算
+- runbook verifier、preflight/small_batch/full_batch readiness、package verifier 均有机器可读摘要
+- completion_percent、design_ready_artifact_percent、remaining_blockers 和 next_action 能回答当前还差多少
+- 默认可用于日常进度复盘；需要硬门禁时用 `python3 scripts/build_au_p0a_status_report.py --require-design-partner-ready`
 
 ## 当前边界
 

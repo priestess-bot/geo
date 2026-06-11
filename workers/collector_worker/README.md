@@ -263,6 +263,7 @@ make verify-au-p0a-runbook
 make au-p0a-readiness
 make au-p0a-package
 make verify-au-p0a-package
+make au-p0a-status
 ```
 
 `make api-preflight` runs `--mode api --prompt-limit 1 --cities Sydney --sample-size 3
@@ -306,7 +307,10 @@ PostgreSQL connection check before starting real batches. The checked-in Chinese
 with file hashes, verifier status, design-partner readiness, and missing-artifact gaps across the
 runbook, readiness file, preflight, small batch, and full batch artifacts. `make verify-au-p0a-package`
 recomputes the package hash and verifies that summary counts, missing/failed/ready artifacts, and
-blocking reasons match the embedded artifact entries.
+blocking reasons match the embedded artifact entries. `make au-p0a-status` writes
+`${GENO_AU_P0A_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-status-latest.json}` with a single
+machine-readable progress view across the runbook, all three readiness phases, package verifier,
+completion percentage, design-ready percentage, remaining blockers, and next action.
 The default preflight JSON path is gitignored because live provider status and run context belong
 to local audit evidence, not committed project docs. This is the minimum real API smoke; it does
 not replace the full 100 prompts × 4 geo × k=3 design-partner batch.
