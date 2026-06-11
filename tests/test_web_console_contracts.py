@@ -119,10 +119,18 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("primary_color", page_source)
         self.assertIn("secondary_color", page_source)
         self.assertIn("project_brand_kit_saved", page_source)
+        self.assertIn("Brand Assets", page_source)
+        self.assertIn("RuntimeProjectBrandAssetVersion", page_source)
+        self.assertIn("activateProjectBrandAssetVersion", page_source)
+        self.assertIn("/v1/project-brand-kits/runtime/assets", page_source)
+        self.assertIn("/v1/project-brand-kits/runtime/assets/activate", page_source)
+        self.assertIn('name="asset_url"', page_source)
         self.assertIn(".themeEditorPreview", css_source)
         self.assertIn(".themePreviewCard", css_source)
         self.assertIn(".themeMetricStrip", css_source)
         self.assertIn(".themeColorField", css_source)
+        self.assertIn(".brandAssetLibrary", css_source)
+        self.assertIn(".assetActivateForm", css_source)
 
     def test_runtime_console_surfaces_report_history_management(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")

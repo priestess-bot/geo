@@ -1062,6 +1062,38 @@ class RuntimeProjectBrandLogoUpload:
 
 
 @dataclass(frozen=True)
+class RuntimeProjectBrandAssetVersion:
+    version_id: str
+    project_id: str
+    asset_type: str
+    asset_url: str
+    source_filename: str | None
+    source_content_type: str | None
+    content_hash: str | None
+    uploaded_by: str | None
+    uploaded_at: datetime | None
+    is_active: bool
+    audit_event: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class RuntimeProjectBrandAssetVersionPage:
+    project_id: str
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeProjectBrandAssetVersion, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeProjectBrandAssetActivationInput:
+    project_id: str
+    asset_url: str
+    activated_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimePromptPage:
     total_count: int
     limit: int

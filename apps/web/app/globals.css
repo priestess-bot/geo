@@ -203,7 +203,8 @@ code {
 
 .projectCreateForm,
 .projectMemberForm,
-.brandKitForm {
+.brandKitForm,
+.brandAssetLibrary {
   background: #f7fafc;
   border: 1px solid #d9e2ec;
   border-radius: 6px;
@@ -227,6 +228,16 @@ code {
 
 .themeColorField input {
   cursor: pointer;
+}
+
+.brandAssetLibrary {
+  grid-template-columns: 1fr;
+}
+
+.assetActivateForm {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
 }
 
 .themeEditorPreview {

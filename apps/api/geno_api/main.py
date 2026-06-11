@@ -67,6 +67,7 @@ from geno_core.models import (
     RuntimeHumanReviewInput,
     ManualBackfillInput,
     RuntimeProjectBrandKitInput,
+    RuntimeProjectBrandAssetActivationInput,
     RuntimeProjectBrandLogoUpload,
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
@@ -1051,6 +1052,13 @@ class ProjectBrandKitRequest(BaseModel):
     updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
 
 
+class ProjectBrandAssetActivationRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    asset_url: str = Field(min_length=1, max_length=1000)
+    activated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class ScoreWeightConfigRequest(BaseModel):
     project_id: str = Field(min_length=1)
     formula_version: str = Field(default="au_visibility_v1", min_length=1, max_length=80)
@@ -1968,6 +1976,65 @@ async def upload_runtime_project_brand_logo(
         return asdict(brand_kit)
     except ValueError as exc:
         status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/project-brand-kits/runtime/assets")
+def runtime_project_brand_asset_versions(
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_project_brand_asset_versions(
+            project_id=project_id.strip(),
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-brand-kits/runtime/assets/activate")
+def activate_runtime_project_brand_asset_version(
+    payload: ProjectBrandAssetActivationRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        brand_kit = repository.activate_project_brand_logo_version(
+            RuntimeProjectBrandAssetActivationInput(
+                project_id=payload.project_id.strip(),
+                asset_url=payload.asset_url.strip(),
+                activated_by=actor_id or payload.activated_by.strip(),
+                reason=payload.reason.strip() if payload.reason else None,
+            )
+        )
+        return asdict(brand_kit)
+    except ValueError as exc:
+        status_code = 404 if str(exc) in {"project not found", "brand asset version not found"} else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     finally:
         close_repository_connection(repository)
@@ -3219,8 +3286,12 @@ def contracts() -> dict[str, list[str]]:
             "ProjectMemberDeleteRequest",
             "RuntimeProjectBrandKit",
             "RuntimeProjectBrandKitInput",
+            "RuntimeProjectBrandAssetVersion",
+            "RuntimeProjectBrandAssetVersionPage",
+            "RuntimeProjectBrandAssetActivationInput",
             "RuntimeProjectBrandLogoUpload",
             "ProjectBrandKitRequest",
+            "ProjectBrandAssetActivationRequest",
             "RuntimeScoreWeightConfig",
             "RuntimeScoreWeightConfigInput",
             "ScoreWeightConfigRequest",
@@ -3301,6 +3372,8 @@ def contracts() -> dict[str, list[str]]:
             "/v1/runtime-saved-views",
             "/v1/project-brand-kits/runtime",
             "/v1/project-brand-kits/runtime/logo",
+            "/v1/project-brand-kits/runtime/assets",
+            "/v1/project-brand-kits/runtime/assets/activate",
             "/v1/score-weight-configs/runtime",
             "/v1/score-formulas/runtime",
             "/v1/human-reviews/runtime",

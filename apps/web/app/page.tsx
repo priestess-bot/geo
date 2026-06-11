@@ -540,6 +540,7 @@ type RuntimeData = {
   projects: PageResponse<RuntimeProject>;
   projectMembers: PageResponse<RuntimeProjectMember>;
   brandKit: RuntimeProjectBrandKit | null;
+  brandAssets: PageResponse<RuntimeProjectBrandAssetVersion>;
   scoreWeights: RuntimeScoreWeightConfig | null;
   scoreFormulas: RuntimeScoreFormulaCatalog;
   humanReviews: PageResponse<RuntimeHumanReview>;
@@ -583,6 +584,20 @@ type RuntimeProjectBrandKit = {
     updated_at?: string;
   };
   audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
+};
+
+type RuntimeProjectBrandAssetVersion = {
+  version_id: string;
+  project_id: string;
+  asset_type: string;
+  asset_url: string;
+  source_filename?: string | null;
+  source_content_type?: string | null;
+  content_hash?: string | null;
+  uploaded_by?: string | null;
+  uploaded_at?: string | null;
+  is_active: boolean;
+  audit_event?: { event_type?: string; method_version?: string | null };
 };
 
 type RuntimeScoreWeightConfig = {
@@ -837,6 +852,7 @@ const endpoints = {
   entityAliasCandidates: "/v1/entity-aliases/runtime/candidates",
   savedViews: "/v1/runtime-saved-views",
   brandKit: "/v1/project-brand-kits/runtime",
+  brandAssets: "/v1/project-brand-kits/runtime/assets",
   scoreWeights: "/v1/score-weight-configs/runtime",
   scoreFormulas: "/v1/score-formulas/runtime",
   humanReviews: "/v1/human-reviews/runtime",
@@ -983,6 +999,35 @@ async function saveProjectBrandKit(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/project-brand-kits/runtime returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function activateProjectBrandAssetVersion(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const assetUrl = String(formData.get("asset_url") || "").trim();
+  if (!projectId || !assetUrl) {
+    throw new Error("project_id and asset_url are required to activate a brand asset version");
+  }
+  const payload = {
+    project_id: projectId,
+    asset_url: assetUrl,
+    activated_by: String(formData.get("activated_by") || "runtime-console").trim(),
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/project-brand-kits/runtime/assets/activate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/project-brand-kits/runtime/assets/activate returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -1436,6 +1481,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       limit: 5
     }),
     brandKit: endpoints.brandKit,
+    brandAssets: endpoints.brandAssets,
     scoreWeights: endpoints.scoreWeights,
     scoreFormulas: endpoints.scoreFormulas,
     humanReviews: runtimePath(endpoints.humanReviews, {
@@ -1550,6 +1596,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.brandKit = selectedProjectId
     ? runtimePath(endpoints.brandKit, { project_id: selectedProjectId })
     : endpoints.brandKit;
+  paths.brandAssets = selectedProjectId
+    ? runtimePath(endpoints.brandAssets, { project_id: selectedProjectId, limit: 8 })
+    : endpoints.brandAssets;
   paths.scoreWeights = selectedProjectId
     ? runtimePath(endpoints.scoreWeights, { project_id: selectedProjectId })
     : endpoints.scoreWeights;
@@ -1610,6 +1659,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasCandidates,
     savedViews,
     brandKit,
+    brandAssets,
     scoreWeights,
     scoreFormulas,
     humanReviews,
@@ -1662,6 +1712,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       ? fetchRuntimeEndpoint<RuntimeProjectBrandKit | null>(baseUrl, paths.brandKit, null, { optionalNotFound: true })
       : Promise.resolve({ payload: null, error: null }),
     selectedProjectId
+      ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectBrandAssetVersion>>(
+          baseUrl,
+          paths.brandAssets,
+          emptyPage<RuntimeProjectBrandAssetVersion>()
+        )
+      : Promise.resolve({ payload: emptyPage<RuntimeProjectBrandAssetVersion>(), error: null }),
+    selectedProjectId
       ? fetchRuntimeEndpoint<RuntimeScoreWeightConfig | null>(baseUrl, paths.scoreWeights, null)
       : Promise.resolve({ payload: null, error: null }),
     fetchRuntimeEndpoint<RuntimeScoreFormulaCatalog>(baseUrl, paths.scoreFormulas, { formulas: [] }),
@@ -1702,6 +1759,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasCandidates,
     savedViews,
     brandKit,
+    brandAssets,
     scoreWeights,
     scoreFormulas,
     humanReviews,
@@ -1722,6 +1780,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       projects: projects.payload,
       projectMembers: projectMembers.payload,
       brandKit: brandKit.payload,
+      brandAssets: brandAssets.payload,
       scoreWeights: scoreWeights.payload,
       scoreFormulas: scoreFormulas.payload,
       humanReviews: humanReviews.payload,
@@ -2714,6 +2773,39 @@ export default async function Home({
                   : "Uploaded logo URI becomes the Brand Kit default for white-label PDF artifacts."}
               </p>
             </form>
+            <section className="brandAssetLibrary" aria-label="white-label brand asset versions">
+              <div className="formHeader">
+                <h3>Brand Assets</h3>
+                <small>{data.brandAssets.total_count} versions · {paths.brandAssets}</small>
+              </div>
+              {data.brandAssets.records.length ? (
+                <ul className="plainList">
+                  {data.brandAssets.records.map((asset) => (
+                    <li key={asset.version_id}>
+                      <strong>
+                        {asset.is_active ? "Active logo" : "Logo version"} · {asset.source_filename || shortId(asset.version_id)}
+                      </strong>
+                      <span>{asset.asset_url}</span>
+                      <small>
+                        {asset.source_content_type || "content type pending"} · {shortId(asset.content_hash || asset.version_id)} ·{" "}
+                        {asset.audit_event?.event_type || "project_brand_logo_uploaded"}
+                      </small>
+                      <form action={activateProjectBrandAssetVersion} className="assetActivateForm">
+                        <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+                        <input type="hidden" name="asset_url" value={asset.asset_url} />
+                        <input type="hidden" name="activated_by" value="runtime-console" />
+                        <input type="hidden" name="reason" value="Activate brand logo asset version" />
+                        <button className="textButton" type="submit" disabled={!selectedProjectId || asset.is_active}>
+                          Activate
+                        </button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <EmptyState />
+              )}
+            </section>
             <form action={saveScoreWeightConfig} className="brandKitForm">
               <div className="formHeader">
                 <h3>Score Weights</h3>

@@ -61,6 +61,9 @@ from geno_core.models import (
     RuntimeKnowledgeSearchResult,
     RuntimeProjectBrandKit,
     RuntimeProjectBrandKitInput,
+    RuntimeProjectBrandAssetActivationInput,
+    RuntimeProjectBrandAssetVersion,
+    RuntimeProjectBrandAssetVersionPage,
     RuntimeProjectBrandLogoUpload,
     RuntimeProject,
     RuntimeProjectMember,
@@ -2825,6 +2828,221 @@ class PostgresEvidenceRepository:
         self.connection.commit()
         return record
 
+    def list_project_brand_asset_versions(
+        self,
+        *,
+        project_id: str,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> RuntimeProjectBrandAssetVersionPage:
+        if not project_id.strip():
+            raise ValueError("project_id is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_BRAND_KIT_COLUMNS)}
+                FROM project_brand_kits
+                WHERE project_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            brand_kit_row = cursor.fetchone()
+            active_logo_url = None
+            if brand_kit_row:
+                active_logo_url = _row_dict(brand_kit_row, PROJECT_BRAND_KIT_COLUMNS).get("logo_url")
+            cursor.execute(
+                """
+                SELECT count(*)
+                FROM audit_events
+                WHERE project_id = %s AND target_type = %s
+                  AND event_type IN (%s, %s)
+                  AND output_refs ? %s
+                """,
+                (
+                    _uuid(project_id),
+                    "project_brand_kit",
+                    "project_brand_logo_uploaded",
+                    "project_brand_logo_version_activated",
+                    "logo_url",
+                ),
+            )
+            total_row = cursor.fetchone()
+            total_count = int(total_row["count"] if isinstance(total_row, dict) else total_row[0])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE project_id = %s AND target_type = %s
+                  AND event_type IN (%s, %s)
+                  AND output_refs ? %s
+                ORDER BY created_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (
+                    _uuid(project_id),
+                    "project_brand_kit",
+                    "project_brand_logo_uploaded",
+                    "project_brand_logo_version_activated",
+                    "logo_url",
+                    limit,
+                    offset,
+                ),
+            )
+            audit_rows = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeProjectBrandAssetVersionPage(
+            project_id=project_id,
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=tuple(
+                self._project_brand_asset_version_from_audit_event(
+                    audit_event=row,
+                    active_logo_url=active_logo_url,
+                )
+                for row in audit_rows
+            ),
+        )
+
+    def activate_project_brand_logo_version(
+        self,
+        activation: RuntimeProjectBrandAssetActivationInput,
+    ) -> RuntimeProjectBrandKit:
+        project_id = activation.project_id.strip()
+        asset_url = activation.asset_url.strip()
+        activated_by = activation.activated_by.strip() or "runtime-console"
+        reason = activation.reason.strip() if activation.reason else None
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not asset_url:
+            raise ValueError("asset_url is required")
+        kit_id = _stable_id("project-brand-kit", project_id)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, target_brand
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            project_row = cursor.fetchone()
+            if not project_row:
+                raise ValueError("project not found")
+            project = _row_dict(project_row, ("id", "target_brand"))
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE project_id = %s AND target_type = %s
+                  AND event_type IN (%s, %s)
+                  AND output_refs ? %s
+                ORDER BY created_at DESC
+                """,
+                (
+                    _uuid(project_id),
+                    "project_brand_kit",
+                    "project_brand_logo_uploaded",
+                    "project_brand_logo_version_activated",
+                    "logo_url",
+                ),
+            )
+            version_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+            matching_event = next(
+                (
+                    row
+                    for row in version_events
+                    if asset_url in [str(value) for value in row.get("output_refs", {}).get("logo_url", [])]
+                ),
+                None,
+            )
+            if matching_event is None:
+                raise ValueError("brand asset version not found")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_BRAND_KIT_COLUMNS)}
+                FROM project_brand_kits
+                WHERE project_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            existing_row = cursor.fetchone()
+            before = _row_dict(existing_row, PROJECT_BRAND_KIT_COLUMNS) if existing_row else None
+            existing = before or {}
+            after = {
+                "id": kit_id,
+                "project_id": project_id,
+                "client_name": existing.get("client_name") or project.get("target_brand") or "Client",
+                "prepared_by": existing.get("prepared_by") or "GENO SaaS AU",
+                "logo_url": asset_url,
+                "primary_color": existing.get("primary_color"),
+                "secondary_color": existing.get("secondary_color"),
+                "footer_text": existing.get("footer_text"),
+                "updated_by": activated_by,
+            }
+            cursor.execute(
+                """
+                INSERT INTO project_brand_kits (
+                  id, project_id, client_name, prepared_by, logo_url, primary_color,
+                  secondary_color, footer_text, updated_by
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (project_id) DO UPDATE SET
+                  logo_url = EXCLUDED.logo_url,
+                  updated_by = EXCLUDED.updated_by,
+                  updated_at = now()
+                """,
+                (
+                    _uuid(kit_id),
+                    _uuid(project_id),
+                    after["client_name"],
+                    after["prepared_by"],
+                    after["logo_url"],
+                    after["primary_color"],
+                    after["secondary_color"],
+                    after["footer_text"],
+                    after["updated_by"],
+                ),
+            )
+            audit_event = build_audit_event(
+                event_type="project_brand_logo_version_activated",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=activated_by,
+                target_type="project_brand_kit",
+                target_id=kit_id,
+                before=before,
+                after=after,
+                input_refs={
+                    "project_ids": [project_id],
+                    "source_audit_event_ids": [str(matching_event["id"])],
+                },
+                output_refs={
+                    "project_brand_kit_ids": [kit_id],
+                    "logo_url": [asset_url],
+                },
+                method_version="project_brand_logo_asset_version_v1",
+                reason=reason or "activate project brand logo asset version",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_BRAND_KIT_COLUMNS)}
+                FROM project_brand_kits
+                WHERE project_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            saved_row = cursor.fetchone()
+            record = self._load_project_brand_kit(
+                cursor=cursor,
+                brand_kit=_row_dict(saved_row, PROJECT_BRAND_KIT_COLUMNS),
+            )
+        self.connection.commit()
+        return record
+
     def _load_project_brand_kit(self, *, cursor: DbCursor, brand_kit: dict[str, Any]) -> RuntimeProjectBrandKit:
         cursor.execute(
             f"""
@@ -2838,6 +3056,33 @@ class PostgresEvidenceRepository:
         )
         audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
         return RuntimeProjectBrandKit(brand_kit=brand_kit, audit_events=audit_events)
+
+    @staticmethod
+    def _project_brand_asset_version_from_audit_event(
+        *,
+        audit_event: dict[str, Any],
+        active_logo_url: str | None,
+    ) -> RuntimeProjectBrandAssetVersion:
+        output_refs = audit_event.get("output_refs", {}) or {}
+        input_refs = audit_event.get("input_refs", {}) or {}
+        logo_urls = output_refs.get("logo_url", []) or []
+        asset_url = str(logo_urls[0]) if logo_urls else ""
+        filenames = input_refs.get("source_filename", []) or []
+        content_types = input_refs.get("source_content_type", []) or []
+        content_hashes = input_refs.get("content_hash", []) or []
+        return RuntimeProjectBrandAssetVersion(
+            version_id=str(audit_event["id"]),
+            project_id=str(audit_event["project_id"]),
+            asset_type="logo",
+            asset_url=asset_url,
+            source_filename=str(filenames[0]) if filenames else None,
+            source_content_type=str(content_types[0]) if content_types else None,
+            content_hash=str(content_hashes[0]) if content_hashes else None,
+            uploaded_by=str(audit_event.get("actor_id") or "") or None,
+            uploaded_at=audit_event.get("created_at"),
+            is_active=bool(asset_url and active_logo_url == asset_url),
+            audit_event=audit_event,
+        )
 
     def get_score_weight_config(
         self,

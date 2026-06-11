@@ -90,6 +90,8 @@ from geno_core.models import (
     RuntimeHumanReviewRecord,
     RuntimeCitationGraphPage,
     RuntimeProjectBrandKit,
+    RuntimeProjectBrandAssetActivationInput,
+    RuntimeProjectBrandAssetVersionPage,
     RuntimeProjectBrandKitInput,
     RuntimeProjectBrandLogoUpload,
     RuntimeProjectMember,
@@ -6619,6 +6621,152 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("SELECT id, target_brand FROM projects", executed_sql)
         self.assertIn("ON CONFLICT (project_id) DO UPDATE SET logo_url = EXCLUDED.logo_url", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_lists_project_brand_asset_versions_from_audit_events(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        active_logo_url = f"s3://geno-reports/brand-assets/{project_id}/logo-active.png"
+        brand_kit_row = {
+            "id": "0ada83ad-b669-507e-b3c8-9d8574569a62",
+            "project_id": project_id,
+            "client_name": "Koala AU",
+            "prepared_by": "Partner Agency",
+            "logo_url": active_logo_url,
+            "primary_color": "#0f766e",
+            "secondary_color": "#111827",
+            "footer_text": "Prepared for Koala AU board review",
+            "updated_by": "agency-user",
+            "created_at": now,
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "ce333139-53e7-44c8-8c85-ce498d841391",
+            "event_type": "project_brand_logo_uploaded",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "agency-user",
+            "target_type": "project_brand_kit",
+            "target_id": brand_kit_row["id"],
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {
+                "project_ids": [project_id],
+                "source_filename": ["Client Logo.png"],
+                "source_content_type": ["image/png"],
+                "content_hash": ["25f766a3e70154aacaa073a049855d207842f9f6a743c082e693c2cadde4ed1b"],
+            },
+            "output_refs": {
+                "project_brand_kit_ids": [brand_kit_row["id"]],
+                "logo_url": [active_logo_url],
+            },
+            "method_version": "project_brand_logo_upload_v1",
+            "reason": "archive project brand logo asset and update white-label defaults",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[brand_kit_row, {"count": 1}, [audit_row]])
+
+        page = PostgresEvidenceRepository(connection).list_project_brand_asset_versions(
+            project_id=project_id,
+            limit=20,
+            offset=0,
+        )
+
+        self.assertIsInstance(page, RuntimeProjectBrandAssetVersionPage)
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.records[0].asset_url, active_logo_url)
+        self.assertEqual(page.records[0].source_filename, "Client Logo.png")
+        self.assertEqual(page.records[0].source_content_type, "image/png")
+        self.assertTrue(page.records[0].is_active)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s", executed_sql)
+        self.assertIn("output_refs ? %s", executed_sql)
+
+    def test_postgres_repository_activates_project_brand_asset_version(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        brand_kit_id = "0ada83ad-b669-507e-b3c8-9d8574569a62"
+        previous_logo_url = f"s3://geno-reports/brand-assets/{project_id}/logo-previous.png"
+        current_logo_url = f"s3://geno-reports/brand-assets/{project_id}/logo-current.png"
+        version_audit_row = {
+            "id": "ce333139-53e7-44c8-8c85-ce498d841391",
+            "event_type": "project_brand_logo_uploaded",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "agency-user",
+            "target_type": "project_brand_kit",
+            "target_id": brand_kit_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {"source_filename": ["Old Logo.png"]},
+            "output_refs": {"project_brand_kit_ids": [brand_kit_id], "logo_url": [previous_logo_url]},
+            "method_version": "project_brand_logo_upload_v1",
+            "reason": "archive project brand logo asset and update white-label defaults",
+            "created_at": now,
+        }
+        before_row = {
+            "id": brand_kit_id,
+            "project_id": project_id,
+            "client_name": "Koala AU",
+            "prepared_by": "Partner Agency",
+            "logo_url": current_logo_url,
+            "primary_color": "#0f766e",
+            "secondary_color": "#111827",
+            "footer_text": "Prepared for Koala AU board review",
+            "updated_by": "runtime-console",
+            "created_at": now,
+            "updated_at": now,
+        }
+        saved_row = {
+            **before_row,
+            "logo_url": previous_logo_url,
+            "updated_by": "agency-admin",
+        }
+        activation_audit_row = {
+            "id": "5de7d441-5d21-4f1d-a2f6-a09d2fdbef84",
+            "event_type": "project_brand_logo_version_activated",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "agency-admin",
+            "target_type": "project_brand_kit",
+            "target_id": brand_kit_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {"source_audit_event_ids": [version_audit_row["id"]]},
+            "output_refs": {"project_brand_kit_ids": [brand_kit_id], "logo_url": [previous_logo_url]},
+            "method_version": "project_brand_logo_asset_version_v1",
+            "reason": "restore previous logo",
+            "created_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                {"id": project_id, "target_brand": "Koala"},
+                [version_audit_row],
+                before_row,
+                saved_row,
+                [activation_audit_row],
+            ]
+        )
+
+        record = PostgresEvidenceRepository(connection).activate_project_brand_logo_version(
+            RuntimeProjectBrandAssetActivationInput(
+                project_id=project_id,
+                asset_url=previous_logo_url,
+                activated_by="agency-admin",
+                reason="restore previous logo",
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeProjectBrandKit)
+        self.assertEqual(record.brand_kit["logo_url"], previous_logo_url)
+        self.assertEqual(record.audit_events[0]["event_type"], "project_brand_logo_version_activated")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("event_type IN (%s, %s)", executed_sql)
+        self.assertIn("ON CONFLICT (project_id) DO UPDATE SET logo_url = EXCLUDED.logo_url", executed_sql)
+        audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
+        self.assertEqual(audit_insert[1], "project_brand_logo_version_activated")
+        self.assertEqual(audit_insert[4], "agency-admin")
+        self.assertEqual(audit_insert[12], "restore previous logo")
 
     def test_postgres_repository_reads_project_brand_kit_with_audit_events(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
