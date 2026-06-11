@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 from io import BytesIO
+import json
+import time
 import unittest
 from unittest.mock import patch
 from zipfile import ZipFile
@@ -38,6 +43,25 @@ from geno_core.models import (
 class ApiContractsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.client = TestClient(app)
+
+    def _runtime_jwt(self, *, secret: str = "test-runtime-secret", payload: dict[str, object] | None = None) -> str:
+        header = {"alg": "HS256", "typ": "JWT"}
+        claims = {"sub": "agency-owner", "exp": int(time.time()) + 300}
+        if payload:
+            claims.update(payload)
+        encoded_header = base64.urlsafe_b64encode(
+            json.dumps(header, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        ).rstrip(b"=").decode("ascii")
+        encoded_payload = base64.urlsafe_b64encode(
+            json.dumps(claims, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        ).rstrip(b"=").decode("ascii")
+        signature = hmac.new(
+            secret.encode("utf-8"),
+            f"{encoded_header}.{encoded_payload}".encode("ascii"),
+            hashlib.sha256,
+        ).digest()
+        encoded_signature = base64.urlsafe_b64encode(signature).rstrip(b"=").decode("ascii")
+        return f"{encoded_header}.{encoded_payload}.{encoded_signature}"
 
     def _xlsx_prompt_import_bytes(self) -> bytes:
         buffer = BytesIO()
@@ -224,6 +248,44 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertIn("X-GENO-Actor-Id", response.json()["detail"])
 
+    def test_runtime_projects_endpoint_requires_jwt_secret_when_jwt_auth_mode_enabled(self) -> None:
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1", "GENO_RUNTIME_AUTH_MODE": "jwt"}, clear=False):
+            response = self.client.get("/v1/projects/runtime")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("GENO_RUNTIME_JWT_SECRET", response.json()["detail"])
+
+    def test_runtime_projects_endpoint_requires_bearer_jwt_when_jwt_auth_mode_enabled(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwt",
+                "GENO_RUNTIME_JWT_SECRET": "test-runtime-secret",
+            },
+            clear=False,
+        ):
+            response = self.client.get("/v1/projects/runtime")
+
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("Authorization Bearer JWT", response.json()["detail"])
+
+    def test_runtime_projects_endpoint_rejects_invalid_jwt_signature(self) -> None:
+        token = self._runtime_jwt(secret="wrong-secret")
+        with patch.dict(
+            "os.environ",
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwt",
+                "GENO_RUNTIME_JWT_SECRET": "test-runtime-secret",
+            },
+            clear=False,
+        ):
+            response = self.client.get("/v1/projects/runtime", headers={"Authorization": f"Bearer {token}"})
+
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("invalid runtime JWT signature", response.json()["detail"])
+
     def test_runtime_projects_endpoint_filters_by_actor_when_access_control_enabled(self) -> None:
         class FakeRepository:
             def list_runtime_projects(self, **kwargs: object) -> RuntimeProjectPage:
@@ -238,6 +300,72 @@ class ApiContractsTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(fake_repository.kwargs["actor_id"], "agency-owner")
+
+    def test_runtime_projects_endpoint_filters_by_jwt_actor_when_jwt_auth_mode_enabled(self) -> None:
+        class FakeRepository:
+            def list_runtime_projects(self, **kwargs: object) -> RuntimeProjectPage:
+                self.kwargs = kwargs
+                return RuntimeProjectPage(total_count=0, limit=int(kwargs["limit"]), offset=int(kwargs["offset"]), records=())
+
+        fake_repository = FakeRepository()
+        token = self._runtime_jwt(payload={"sub": "jwt-owner"})
+        with patch.dict(
+            "os.environ",
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwt",
+                "GENO_RUNTIME_JWT_SECRET": "test-runtime-secret",
+            },
+            clear=False,
+        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(fake_repository.kwargs["actor_id"], "jwt-owner")
+
+    def test_runtime_project_member_save_endpoint_uses_jwt_actor_when_jwt_auth_mode_enabled(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, **kwargs: object) -> str:
+                self.role_kwargs = kwargs
+                return "admin"
+
+            def set_runtime_project_access_context(self, **kwargs: object) -> None:
+                self.context_kwargs = kwargs
+
+            def save_runtime_project_member(self, member: object) -> RuntimeProjectMember:
+                self.member = member
+                return RuntimeProjectMember(member={"id": "member-1", "project_id": member.project_id}, audit_events=())
+
+        fake_repository = FakeRepository()
+        token = self._runtime_jwt(payload={"sub": "jwt-admin"})
+        with patch.dict(
+            "os.environ",
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwt",
+                "GENO_RUNTIME_JWT_SECRET": "test-runtime-secret",
+            },
+            clear=False,
+        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/project-members/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "user_id": "viewer@example.com",
+                    "role": "viewer",
+                    "updated_by": "payload-user",
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(fake_repository.role_kwargs["actor_id"], "jwt-admin")
+        self.assertEqual(fake_repository.context_kwargs["actor_id"], "jwt-admin")
+        self.assertEqual(fake_repository.member.updated_by, "jwt-admin")
 
     def test_runtime_project_members_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/project-members/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c")
