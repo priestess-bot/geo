@@ -14,7 +14,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.build_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_RUNBOOK_PATH  # noqa: E402
+from scripts.build_au_p0a_env_report import DEFAULT_OUTPUT_PATH as DEFAULT_ENV_REPORT_PATH  # noqa: E402
 from scripts.build_preflight_manifest import MANIFEST_VERSION, compute_manifest_payload_hash  # noqa: E402
+from scripts.verify_au_p0a_env_report import verify_au_p0a_env_report  # noqa: E402
 from scripts.run_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_RUNBOOK_EXECUTION_PATH  # noqa: E402
 from scripts.verify_au_p0a_runbook_execution import verify_au_p0a_runbook_execution  # noqa: E402
 from scripts.verify_au_p0a_runbook import verify_au_p0a_runbook  # noqa: E402
@@ -138,6 +140,33 @@ def _readiness_artifact(path: Path) -> dict[str, Any]:
             "recommended_next_action": payload.get("recommended_next_action", ""),
             "errors": payload.get("errors", []),
             "warnings": payload.get("warnings", []),
+        }
+    )
+    return entry
+
+
+def _environment_artifact(path: Path) -> dict[str, Any]:
+    payload, entry = _load_json(
+        path,
+        missing_error="environment_report_file_missing",
+        invalid_prefix="environment_report_json_invalid",
+    )
+    if not isinstance(payload, dict):
+        entry.setdefault("status", "fail")
+        entry.setdefault("errors", ["environment_report_not_json_object"])
+        return entry
+    verifier = verify_au_p0a_env_report(payload, path=path)
+    entry.update(
+        {
+            "status": verifier["status"],
+            "errors": verifier["errors"],
+            "hash_valid": verifier["hash_valid"],
+            "environment_report_version": verifier.get("environment_report_version", ""),
+            "environment_report_hash": verifier.get("environment_report_hash", ""),
+            "ready_for_real_batch": verifier.get("ready_for_real_batch", False),
+            "missing_required": verifier.get("missing_required", []),
+            "missing_recommended": verifier.get("missing_recommended", []),
+            "next_action": verifier.get("next_action", ""),
         }
     )
     return entry
@@ -269,6 +298,7 @@ def _artifact_paths(runbook: dict[str, Any] | None) -> dict[str, str]:
 def build_au_p0a_evidence_package(
     *,
     runbook_path: Path = Path(DEFAULT_RUNBOOK_PATH),
+    environment_path: Path | None = None,
     readiness_path: Path | None = None,
     runbook_execution_path: Path | None = None,
     output_path: Path | None = None,
@@ -279,6 +309,9 @@ def build_au_p0a_evidence_package(
     effective_readiness_path = readiness_path or Path(
         os.environ.get("GENO_AU_P0A_READINESS_OUTPUT_PATH", "docs/runtime_preflight/au-p0a-readiness-latest.json")
     )
+    effective_environment_path = environment_path or Path(
+        os.environ.get("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH)
+    )
     effective_runbook_execution_path = runbook_execution_path or Path(
         os.environ.get("GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_RUNBOOK_EXECUTION_PATH)
     )
@@ -286,6 +319,7 @@ def build_au_p0a_evidence_package(
 
     artifacts: dict[str, Any] = {
         "runbook": runbook_entry,
+        "environment": _environment_artifact(effective_environment_path),
         "runbook_execution": _runbook_execution_artifact(effective_runbook_execution_path),
         "readiness": readiness_entry,
     }
@@ -310,6 +344,7 @@ def build_au_p0a_evidence_package(
         name
         for name, entry in artifacts.items()
         if entry.get("ready_for_design_partner") is True
+        or entry.get("ready_for_real_batch") is True
         or entry.get("ready_to_run_phase") is True
         or entry.get("ready_to_execute") is True
     ]
@@ -333,6 +368,7 @@ def build_au_p0a_evidence_package(
         "runbook_path": str(runbook_path),
         "output_path": str(output_path) if output_path else "",
         "artifact_paths": artifact_paths,
+        "environment_path": str(effective_environment_path),
         "runbook_execution_path": str(effective_runbook_execution_path),
         "summary": {
             "artifact_count": len(artifacts),
@@ -360,6 +396,11 @@ def parse_args() -> argparse.Namespace:
         help="Path to the latest AU P0a readiness JSON.",
     )
     parser.add_argument(
+        "--environment-path",
+        default=os.environ.get("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
+        help="Path to the latest AU P0a environment report JSON.",
+    )
+    parser.add_argument(
         "--runbook-execution-path",
         default=os.environ.get("GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_RUNBOOK_EXECUTION_PATH),
         help="Path to the latest AU P0a runbook execution dry-run JSON.",
@@ -378,6 +419,7 @@ def main() -> None:
     output_path = Path(args.output_path)
     package = build_au_p0a_evidence_package(
         runbook_path=Path(args.runbook_path),
+        environment_path=Path(args.environment_path),
         readiness_path=Path(args.readiness_path),
         runbook_execution_path=Path(args.runbook_execution_path),
         output_path=output_path,

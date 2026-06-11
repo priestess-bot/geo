@@ -20,6 +20,7 @@ from scripts.build_au_p0a_evidence_package import (  # noqa: E402
 
 REQUIRED_ARTIFACTS = (
     "runbook",
+    "environment",
     "runbook_execution",
     "readiness",
     "preflight_json",
@@ -96,6 +97,7 @@ def verify_au_p0a_evidence_package(
         name
         for name, artifact in artifacts.items()
         if _as_dict(artifact).get("ready_for_design_partner") is True
+        or _as_dict(artifact).get("ready_for_real_batch") is True
         or _as_dict(artifact).get("ready_to_run_phase") is True
         or _as_dict(artifact).get("ready_to_execute") is True
     )

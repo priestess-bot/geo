@@ -20,9 +20,6 @@
 ```bash
 make au-p0a-runbook
 make verify-au-p0a-runbook
-make au-p0a-runbook-dry-run
-make verify-au-p0a-runbook-execution
-GENO_AU_P0A_REQUIRE_DB_CHECK=1 make au-p0a-readiness
 ```
 
 2. 准备环境：
@@ -42,7 +39,18 @@ export OBJECT_STORE_ACCESS_KEY=...
 export OBJECT_STORE_SECRET_KEY=...
 ```
 
-3. 最小 provider preflight：
+3. 生成环境报告和执行预演：
+
+```bash
+make au-p0a-env
+make verify-au-p0a-env
+python3 scripts/verify_au_p0a_env_report.py --require-ready-environment
+make au-p0a-runbook-dry-run
+make verify-au-p0a-runbook-execution
+GENO_AU_P0A_REQUIRE_DB_CHECK=1 make au-p0a-readiness
+```
+
+4. 最小 provider preflight：
 
 ```bash
 make api-preflight
@@ -55,7 +63,7 @@ python3 scripts/verify_preflight_payload.py \
   --require-design-partner-ready
 ```
 
-4. 小批次真实采集（默认 5 prompts x Sydney x k=3 x 2 platforms = 30 runs）：
+5. 小批次真实采集（默认 5 prompts x Sydney x k=3 x 2 platforms = 30 runs）：
 
 ```bash
 PYTHONPATH=packages/geno_core:apps/api \
@@ -80,7 +88,7 @@ python3 scripts/build_preflight_manifest.py \
 GENO_AU_P0A_READINESS_PHASE=full_batch make au-p0a-readiness
 ```
 
-5. 完整 AU P0a 批次（默认 100 prompts x 4 geo x k=3 x 2 platforms = 2400 runs）：
+6. 完整 AU P0a 批次（默认 100 prompts x 4 geo x k=3 x 2 platforms = 2400 runs）：
 
 ```bash
 PYTHONPATH=packages/geno_core:apps/api \
@@ -128,6 +136,7 @@ make verify-au-p0a-status
 - `docs/runtime_preflight/api-preflight-latest.json`
 - `docs/runtime_preflight/api-preflight-manifest-latest.json`
 - `docs/runtime_preflight/au-p0a-runbook-latest.json`
+- `docs/runtime_preflight/au-p0a-env-latest.json`
 - `docs/runtime_preflight/au-p0a-runbook-execution-latest.json`
 - `docs/runtime_preflight/au-p0a-readiness-latest.json`
 - `docs/runtime_preflight/au-p0a-evidence-package-latest.json`
@@ -152,6 +161,13 @@ runbook verifier 必须确认：
 - small batch planned runs = 30，full batch planned runs = 2400
 - design partner gate、P0a readiness gate 和 no-collection-failures gate 未缺失
 
+environment report 必须确认：
+
+- environment_report_hash 可由 `make verify-au-p0a-env` 复算
+- `PERPLEXITY_API_KEY`、`OPENAI_API_KEY`、`DATABASE_URL` 必需变量只记录存在状态、来源、长度和 sha256 前缀，不输出原始 secret
+- `.env.au-p0a` 可作为本地模板文件，真实 `.env.au-p0a` 不提交 git
+- `ready_for_real_batch` 只在 runbook verifier 通过且必需环境存在时为 true
+
 runbook dry-run 必须确认：
 
 - execution_version 为 `au_p0a_runbook_execution_v1`
@@ -162,7 +178,7 @@ runbook dry-run 必须确认：
 
 evidence package 必须确认：
 
-- runbook、runbook execution dry-run、readiness、preflight、small batch、full batch 和对应 manifest 是否存在
+- runbook、environment report、runbook execution dry-run、readiness、preflight、small batch、full batch 和对应 manifest 是否存在
 - 每个已存在文件的 file sha256、payload hash 或 manifest hash
 - 每个 payload/manifest 的 verifier status、ready_for_design_partner 和 blocking reasons
 - missing_artifacts、failed_artifacts、blocking_reasons 和 package_payload_hash
@@ -170,14 +186,14 @@ evidence package 必须确认：
 package verifier 必须确认：
 
 - package_payload_hash 可复算
-- artifacts 至少包含 runbook、runbook_execution、readiness、preflight/small/full JSON 与 manifest
+- artifacts 至少包含 runbook、environment、runbook_execution、readiness、preflight/small/full JSON 与 manifest
 - summary 的 artifact_count、missing_artifacts、failed_artifacts、ready_artifacts、blocking_reasons 可由 artifacts 反推
 - `ready_for_design_partner` 与 preflight/small/full JSON 和 manifest 的 ready 状态一致
 
 status report 必须确认：
 
 - status_report_hash 可由 `make verify-au-p0a-status` 复算
-- runbook verifier、runbook execution dry-run、preflight/small_batch/full_batch readiness、package verifier 均有机器可读摘要
+- runbook verifier、environment report、runbook execution dry-run、preflight/small_batch/full_batch readiness、package verifier 均有机器可读摘要
 - completion_percent、design_ready_artifact_percent、remaining_blockers 和 next_action 能回答当前还差多少
 - 默认可用于日常进度复盘；需要硬门禁时用 `python3 scripts/verify_au_p0a_status_report.py --require-design-partner-ready`
 

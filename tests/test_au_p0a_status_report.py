@@ -8,6 +8,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from scripts.build_au_p0a_evidence_package import build_au_p0a_evidence_package
+from scripts.build_au_p0a_env_report import build_au_p0a_env_report
 from scripts.build_au_p0a_runbook import build_au_p0a_runbook
 from scripts.build_au_p0a_status_report import (
     build_au_p0a_status_report,
@@ -116,11 +117,36 @@ class AuP0aStatusReportFixtureMixin:
             encoding="utf-8",
         )
 
-    def _write_complete_package(self, temp_dir: str) -> tuple[Path, Path, Path, Path]:
+    def _write_env_report(self, path: Path, runbook_path: Path, *, ready: bool = True) -> None:
+        env = (
+            {
+                "PERPLEXITY_API_KEY": "perplexity-key",
+                "OPENAI_API_KEY": "openai-key",
+                "DATABASE_URL": "postgresql://user:pass@example.test/db",
+            }
+            if ready
+            else {}
+        )
+        path.write_text(
+            json.dumps(
+                build_au_p0a_env_report(
+                    runbook_path=runbook_path,
+                    env_file_path=Path(path.parent) / "missing.env",
+                    output_path=path,
+                    env=env,
+                    generated_at="2026-06-11T00:00:00Z",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+    def _write_complete_package(self, temp_dir: str) -> tuple[Path, Path, Path, Path, Path]:
         runbook_path, runbook = self._write_runbook(temp_dir)
+        environment_path = Path(temp_dir) / "environment.json"
         readiness_path = Path(temp_dir) / "readiness.json"
         execution_path = Path(temp_dir) / "execution.json"
         package_path = Path(temp_dir) / "package.json"
+        self._write_env_report(environment_path, runbook_path)
         self._write_ready_readiness(readiness_path)
         self._write_runbook_execution(execution_path, runbook_path)
         artifact_paths = runbook["artifact_paths"]  # type: ignore[index]
@@ -141,23 +167,27 @@ class AuP0aStatusReportFixtureMixin:
         )
         package = build_au_p0a_evidence_package(
             runbook_path=runbook_path,
+            environment_path=environment_path,
             readiness_path=readiness_path,
             runbook_execution_path=execution_path,
             output_path=package_path,
             generated_at="2026-06-11T00:00:00Z",
         )
         package_path.write_text(json.dumps(package), encoding="utf-8")
-        return runbook_path, readiness_path, execution_path, package_path
+        return runbook_path, environment_path, readiness_path, execution_path, package_path
 
 
 class AuP0aStatusReportTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
     def test_status_report_records_remaining_blockers_for_incomplete_state(self) -> None:
         with TemporaryDirectory() as temp_dir:
             runbook_path, _ = self._write_runbook(temp_dir)
+            environment_path = Path(temp_dir) / "environment.json"
             execution_path = Path(temp_dir) / "execution.json"
+            self._write_env_report(environment_path, runbook_path, ready=False)
             self._write_runbook_execution(execution_path, runbook_path, ready=False)
             report = build_au_p0a_status_report(
                 runbook_path=runbook_path,
+                environment_path=environment_path,
                 readiness_path=Path(temp_dir) / "missing-readiness.json",
                 runbook_execution_path=execution_path,
                 package_path=Path(temp_dir) / "missing-package.json",
@@ -172,10 +202,10 @@ class AuP0aStatusReportTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
         self.assertEqual(report["package"]["status"], "fail")
         self.assertEqual(report["package"]["package_manifest_status"], "fail")
         self.assertEqual(report["package"]["verifier_status"], "pass")
-        self.assertEqual(report["completion"]["non_failed_artifact_count"], 2)
+        self.assertEqual(report["completion"]["non_failed_artifact_count"], 3)
         self.assertEqual(report["completion"]["ready_artifact_count"], 0)
-        self.assertEqual(report["completion"]["design_ready_eligible_artifact_count"], 1)
-        self.assertEqual(report["completion"]["completion_percent"], 22.22)
+        self.assertEqual(report["completion"]["design_ready_eligible_artifact_count"], 2)
+        self.assertEqual(report["completion"]["completion_percent"], 30.0)
         self.assertEqual(report["completion"]["design_ready_artifact_percent"], 0.0)
         self.assertIn("required_env_missing:PERPLEXITY_API_KEY", report["readiness"]["preflight"]["errors"])
         self.assertIn("readiness:readiness_file_missing", report["remaining_blockers"])
@@ -183,9 +213,10 @@ class AuP0aStatusReportTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
 
     def test_status_report_passes_with_complete_package_and_env(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            runbook_path, readiness_path, execution_path, package_path = self._write_complete_package(temp_dir)
+            runbook_path, environment_path, readiness_path, execution_path, package_path = self._write_complete_package(temp_dir)
             report = build_au_p0a_status_report(
                 runbook_path=runbook_path,
+                environment_path=environment_path,
                 readiness_path=readiness_path,
                 runbook_execution_path=execution_path,
                 package_path=package_path,
@@ -204,7 +235,7 @@ class AuP0aStatusReportTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
         self.assertEqual(report["package"]["package_manifest_status"], "pass")
         self.assertEqual(report["package"]["verifier_status"], "pass")
         self.assertEqual(report["completion"]["completion_percent"], 100.0)
-        self.assertEqual(report["completion"]["design_ready_eligible_artifact_count"], 8)
+        self.assertEqual(report["completion"]["design_ready_eligible_artifact_count"], 9)
         self.assertEqual(report["completion"]["design_ready_artifact_percent"], 100.0)
         self.assertEqual(report["remaining_blockers"], [])
         self.assertEqual(report["status_report_hash"], compute_status_report_hash(report))
@@ -212,7 +243,9 @@ class AuP0aStatusReportTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
     def test_cli_writes_status_report_without_hard_gate(self) -> None:
         with TemporaryDirectory() as temp_dir:
             runbook_path, _ = self._write_runbook(temp_dir)
+            environment_path = Path(temp_dir) / "environment.json"
             execution_path = Path(temp_dir) / "execution.json"
+            self._write_env_report(environment_path, runbook_path, ready=False)
             self._write_runbook_execution(execution_path, runbook_path, ready=False)
             output_path = Path(temp_dir) / "status.json"
             result = subprocess.run(
@@ -221,6 +254,8 @@ class AuP0aStatusReportTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
                     "scripts/build_au_p0a_status_report.py",
                     "--runbook-path",
                     str(runbook_path),
+                    "--environment-path",
+                    str(environment_path),
                     "--readiness-path",
                     str(Path(temp_dir) / "missing-readiness.json"),
                     "--runbook-execution-path",
@@ -245,7 +280,9 @@ class AuP0aStatusReportTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
     def test_cli_require_design_partner_ready_exits_nonzero(self) -> None:
         with TemporaryDirectory() as temp_dir:
             runbook_path, _ = self._write_runbook(temp_dir)
+            environment_path = Path(temp_dir) / "environment.json"
             execution_path = Path(temp_dir) / "execution.json"
+            self._write_env_report(environment_path, runbook_path, ready=False)
             self._write_runbook_execution(execution_path, runbook_path, ready=False)
             result = subprocess.run(
                 [
@@ -253,6 +290,8 @@ class AuP0aStatusReportTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
                     "scripts/build_au_p0a_status_report.py",
                     "--runbook-path",
                     str(runbook_path),
+                    "--environment-path",
+                    str(environment_path),
                     "--readiness-path",
                     str(Path(temp_dir) / "missing-readiness.json"),
                     "--runbook-execution-path",

@@ -260,6 +260,8 @@ make verify-api-preflight
 make preflight-manifest
 make au-p0a-runbook
 make verify-au-p0a-runbook
+make au-p0a-env
+make verify-au-p0a-env
 make au-p0a-runbook-dry-run
 make verify-au-p0a-runbook-execution
 make au-p0a-readiness
@@ -298,7 +300,7 @@ audit indexing.
 `${GENO_AU_P0A_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-latest.json}` with the
 ordered command plan for preflight, 5-prompt Sydney small batch, and full 100 prompts × 4 geo × k=3
 batch. `make verify-au-p0a-runbook` verifies its payload hash, step order, planned runs, and required
-gate commands. `make au-p0a-runbook-dry-run` writes
+gate commands. `make au-p0a-env` writes `${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json}` with redacted required/recommended environment checks sourced from `.env.au-p0a` or process environment; `make verify-au-p0a-env` recomputes its hash and rejects raw secret fields. `make au-p0a-runbook-dry-run` writes
 `${GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-execution-latest.json}`
 with all planned steps, output paths, external provider call risk, environment gaps, zero executed
 commands by default, and an `execution_payload_hash`. `make verify-au-p0a-runbook-execution`
@@ -312,12 +314,12 @@ PostgreSQL connection check before starting real batches. The checked-in Chinese
 `docs/AU-P0a-真实批次运行手册.md`. `make au-p0a-package` writes
 `${GENO_AU_P0A_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-evidence-package-latest.json}`
 with file hashes, verifier status, design-partner readiness, and missing-artifact gaps across the
-runbook, runbook execution dry-run, readiness file, preflight, small batch, and full batch artifacts.
+runbook, environment report, runbook execution dry-run, readiness file, preflight, small batch, and full batch artifacts.
 `make verify-au-p0a-package`
 recomputes the package hash and verifies that summary counts, missing/failed/ready artifacts, and
 blocking reasons match the embedded artifact entries. `make au-p0a-status` writes
 `${GENO_AU_P0A_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-status-latest.json}` with a single
-machine-readable progress view across the runbook, runbook execution dry-run, all three readiness
+machine-readable progress view across the runbook, environment report, runbook execution dry-run, all three readiness
 phases, package verifier, completion percentage, design-ready percentage, remaining blockers, and
 next action.
 `make verify-au-p0a-status` recomputes the status report hash and checks that completion, blockers,

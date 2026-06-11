@@ -17,6 +17,7 @@ from scripts.build_au_p0a_evidence_package import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_PACKAGE_PATH,
     build_au_p0a_evidence_package,
 )
+from scripts.build_au_p0a_env_report import DEFAULT_OUTPUT_PATH as DEFAULT_ENV_REPORT_PATH  # noqa: E402
 from scripts.build_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_RUNBOOK_PATH  # noqa: E402
 from scripts.run_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_RUNBOOK_EXECUTION_PATH  # noqa: E402
 from scripts.verify_au_p0a_evidence_package import verify_au_p0a_evidence_package  # noqa: E402
@@ -66,6 +67,7 @@ def _load_or_build_package(
     *,
     package_path: Path,
     runbook_path: Path,
+    environment_path: Path,
     readiness_path: Path,
     runbook_execution_path: Path,
     generated_at: str | None,
@@ -77,6 +79,7 @@ def _load_or_build_package(
 
     built = build_au_p0a_evidence_package(
         runbook_path=runbook_path,
+        environment_path=environment_path,
         readiness_path=readiness_path,
         runbook_execution_path=runbook_execution_path,
         output_path=package_path,
@@ -157,6 +160,7 @@ def _package_status(package: dict[str, Any], package_path: Path, *, require_desi
         if isinstance(artifact, dict)
         and (
             "ready_for_design_partner" in artifact
+            or "ready_for_real_batch" in artifact
             or "ready_to_run_phase" in artifact
             or "ready_to_execute" in artifact
         )
@@ -217,6 +221,7 @@ def _next_action(readiness_statuses: dict[str, Any], package_status: dict[str, A
 def build_au_p0a_status_report(
     *,
     runbook_path: Path = Path(DEFAULT_RUNBOOK_PATH),
+    environment_path: Path = Path(DEFAULT_ENV_REPORT_PATH),
     readiness_path: Path = Path(DEFAULT_READINESS_PATH),
     runbook_execution_path: Path = Path(DEFAULT_RUNBOOK_EXECUTION_PATH),
     package_path: Path = Path(DEFAULT_PACKAGE_PATH),
@@ -229,6 +234,7 @@ def build_au_p0a_status_report(
     package, package_source = _load_or_build_package(
         package_path=package_path,
         runbook_path=runbook_path,
+        environment_path=environment_path,
         readiness_path=readiness_path,
         runbook_execution_path=runbook_execution_path,
         generated_at=generated_at,
@@ -267,6 +273,7 @@ def build_au_p0a_status_report(
         "remaining_blockers": remaining_blockers,
         "inputs": {
             "runbook_path": str(runbook_path),
+            "environment_path": str(environment_path),
             "readiness_path": str(readiness_path),
             "runbook_execution_path": str(runbook_execution_path),
             "package_path": str(package_path),
@@ -294,6 +301,11 @@ def parse_args() -> argparse.Namespace:
         "--readiness-path",
         default=os.environ.get("GENO_AU_P0A_READINESS_OUTPUT_PATH", DEFAULT_READINESS_PATH),
         help="Path to the latest AU P0a readiness JSON.",
+    )
+    parser.add_argument(
+        "--environment-path",
+        default=os.environ.get("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
+        help="Path to the latest AU P0a environment report JSON.",
     )
     parser.add_argument(
         "--runbook-execution-path",
@@ -329,6 +341,7 @@ def main() -> None:
     output_path = Path(args.output_path)
     report = build_au_p0a_status_report(
         runbook_path=Path(args.runbook_path),
+        environment_path=Path(args.environment_path),
         readiness_path=Path(args.readiness_path),
         runbook_execution_path=Path(args.runbook_execution_path),
         package_path=Path(args.package_path),

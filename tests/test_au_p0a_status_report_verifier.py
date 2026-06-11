@@ -15,10 +15,13 @@ from tests.test_au_p0a_status_report import AuP0aStatusReportFixtureMixin
 class AuP0aStatusReportVerifierTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
     def _incomplete_report(self, temp_dir: str) -> dict[str, object]:
         runbook_path, _ = self._write_runbook(temp_dir)
+        environment_path = Path(temp_dir) / "environment.json"
         execution_path = Path(temp_dir) / "execution.json"
+        self._write_env_report(environment_path, runbook_path, ready=False)
         self._write_runbook_execution(execution_path, runbook_path, ready=False)
         return build_au_p0a_status_report(
             runbook_path=runbook_path,
+            environment_path=environment_path,
             readiness_path=Path(temp_dir) / "missing-readiness.json",
             runbook_execution_path=execution_path,
             package_path=Path(temp_dir) / "missing-package.json",
@@ -27,9 +30,10 @@ class AuP0aStatusReportVerifierTest(AuP0aStatusReportFixtureMixin, unittest.Test
         )
 
     def _complete_report(self, temp_dir: str) -> dict[str, object]:
-        runbook_path, readiness_path, execution_path, package_path = self._write_complete_package(temp_dir)
+        runbook_path, environment_path, readiness_path, execution_path, package_path = self._write_complete_package(temp_dir)
         return build_au_p0a_status_report(
             runbook_path=runbook_path,
+            environment_path=environment_path,
             readiness_path=readiness_path,
             runbook_execution_path=execution_path,
             package_path=package_path,
