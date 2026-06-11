@@ -30,7 +30,9 @@ RUNTIME_JWKS_JSON_ENV = "GENO_RUNTIME_JWKS_JSON"
 RUNTIME_JWKS_URL_ENV = "GENO_RUNTIME_JWKS_URL"
 RUNTIME_OIDC_DISCOVERY_URL_ENV = "GENO_RUNTIME_OIDC_DISCOVERY_URL"
 RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV = "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS"
+RUNTIME_JWKS_STALE_IF_ERROR_SECONDS_ENV = "GENO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS"
 RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV = "GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS"
+RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS_ENV = "GENO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS"
 RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV = "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS"
 RUNTIME_JWT_ISSUER_ENV = "GENO_RUNTIME_JWT_ISSUER"
 RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES = {"1", "true", "yes", "on"}
@@ -458,9 +460,15 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
         "jwks_json": "configured" if jwks_json else "missing",
         "jwks_url": "configured" if jwks_url else "missing",
         "jwks_url_network_check": "not_run",
+        "jwks_stale_if_error_seconds": runtime_env.get(RUNTIME_JWKS_STALE_IF_ERROR_SECONDS_ENV, "0").strip() or "0",
         "oidc_discovery_url": "configured" if oidc_discovery_url else "missing",
         "oidc_discovery_source": "explicit" if oidc_discovery_url else ("jwt_issuer" if jwt_issuer else "missing"),
         "oidc_discovery_network_check": "not_run",
+        "oidc_discovery_stale_if_error_seconds": runtime_env.get(
+            RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS_ENV,
+            "0",
+        ).strip()
+        or "0",
         "jwt_issuer": "configured" if jwt_issuer else "missing",
         "jwks_key_count": jwks_key_count if jwks_key_count is not None else "unknown",
     }
@@ -488,6 +496,7 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
             )
         try:
             _non_negative_float_from_env(runtime_env, RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV, 300.0)
+            _non_negative_float_from_env(runtime_env, RUNTIME_JWKS_STALE_IF_ERROR_SECONDS_ENV, 0.0)
             _positive_float_from_env(runtime_env, RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV, 2.0)
         except RuntimePersistenceError as exc:
             return RuntimeComponentDiagnostic(
@@ -505,7 +514,10 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
                 metadata=metadata,
             )
         try:
+            _non_negative_float_from_env(runtime_env, RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV, 300.0)
+            _non_negative_float_from_env(runtime_env, RUNTIME_JWKS_STALE_IF_ERROR_SECONDS_ENV, 0.0)
             _non_negative_float_from_env(runtime_env, RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV, 300.0)
+            _non_negative_float_from_env(runtime_env, RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS_ENV, 0.0)
             _positive_float_from_env(runtime_env, RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV, 2.0)
         except RuntimePersistenceError as exc:
             return RuntimeComponentDiagnostic(
@@ -523,7 +535,10 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
                 metadata=metadata,
             )
         try:
+            _non_negative_float_from_env(runtime_env, RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV, 300.0)
+            _non_negative_float_from_env(runtime_env, RUNTIME_JWKS_STALE_IF_ERROR_SECONDS_ENV, 0.0)
             _non_negative_float_from_env(runtime_env, RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV, 300.0)
+            _non_negative_float_from_env(runtime_env, RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS_ENV, 0.0)
             _positive_float_from_env(runtime_env, RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV, 2.0)
         except RuntimePersistenceError as exc:
             return RuntimeComponentDiagnostic(

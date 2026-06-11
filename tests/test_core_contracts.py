@@ -3660,6 +3660,7 @@ class CoreContractsTest(unittest.TestCase):
                 "GENO_RUNTIME_AUTH_MODE": "jwks",
                 "GENO_RUNTIME_JWKS_URL": "https://idp.example.test/.well-known/jwks.json",
                 "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "120",
+                "GENO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS": "30",
                 "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
             }
         )
@@ -3678,14 +3679,25 @@ class CoreContractsTest(unittest.TestCase):
                 "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "-1",
             }
         )
+        invalid_stale_if_error = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_JWKS_URL": "https://idp.example.test/.well-known/jwks.json",
+                "GENO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS": "-1",
+            }
+        )
 
         self.assertEqual(diagnostic.status, "pass")
         self.assertEqual(diagnostic.metadata["jwks_url"], "configured")
         self.assertEqual(diagnostic.metadata["jwks_url_network_check"], "not_run")
+        self.assertEqual(diagnostic.metadata["jwks_stale_if_error_seconds"], "30")
         self.assertEqual(invalid_url.status, "fail")
         self.assertIn("GENO_RUNTIME_JWKS_URL", invalid_url.detail)
         self.assertEqual(invalid_ttl.status, "fail")
         self.assertIn("GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS", invalid_ttl.detail)
+        self.assertEqual(invalid_stale_if_error.status, "fail")
+        self.assertIn("GENO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS", invalid_stale_if_error.detail)
 
     def test_runtime_auth_diagnostic_accepts_oidc_discovery_without_network_check(self) -> None:
         explicit_discovery = runtime_auth_diagnostic(
@@ -3693,7 +3705,9 @@ class CoreContractsTest(unittest.TestCase):
                 "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
                 "GENO_RUNTIME_AUTH_MODE": "jwks",
                 "GENO_RUNTIME_OIDC_DISCOVERY_URL": "https://idp.example.test/.well-known/openid-configuration",
+                "GENO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS": "60",
                 "GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS": "120",
+                "GENO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS": "30",
                 "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
             }
         )
@@ -3728,11 +3742,21 @@ class CoreContractsTest(unittest.TestCase):
                 "GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS": "-1",
             }
         )
+        invalid_discovery_stale_if_error = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_OIDC_DISCOVERY_URL": "https://idp.example.test/.well-known/openid-configuration",
+                "GENO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS": "-1",
+            }
+        )
 
         self.assertEqual(explicit_discovery.status, "pass")
         self.assertEqual(explicit_discovery.metadata["oidc_discovery_url"], "configured")
         self.assertEqual(explicit_discovery.metadata["oidc_discovery_source"], "explicit")
         self.assertEqual(explicit_discovery.metadata["oidc_discovery_network_check"], "not_run")
+        self.assertEqual(explicit_discovery.metadata["jwks_stale_if_error_seconds"], "60")
+        self.assertEqual(explicit_discovery.metadata["oidc_discovery_stale_if_error_seconds"], "30")
         self.assertEqual(issuer_discovery.status, "pass")
         self.assertEqual(issuer_discovery.metadata["oidc_discovery_source"], "jwt_issuer")
         self.assertEqual(issuer_discovery.metadata["jwt_issuer"], "configured")
@@ -3742,6 +3766,11 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("GENO_RUNTIME_JWT_ISSUER", invalid_issuer_fallback.detail)
         self.assertEqual(invalid_discovery_ttl.status, "fail")
         self.assertIn("GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS", invalid_discovery_ttl.detail)
+        self.assertEqual(invalid_discovery_stale_if_error.status, "fail")
+        self.assertIn(
+            "GENO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS",
+            invalid_discovery_stale_if_error.detail,
+        )
 
     def test_runtime_auth_diagnostic_prefers_inline_jwks_over_url(self) -> None:
         diagnostic = runtime_auth_diagnostic(
