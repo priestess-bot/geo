@@ -398,6 +398,123 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("requires owner, admin", response.json()["detail"])
         self.assertEqual(fake_repository.role_kwargs["actor_id"], "agency-analyst")
 
+    def test_runtime_project_member_delete_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def delete_runtime_project_member(self, member: object) -> RuntimeProjectMember:
+                self.member = member
+                return RuntimeProjectMember(
+                    member={
+                        "id": "member-1",
+                        "project_id": member.project_id,
+                        "user_id": member.user_id,
+                        "role": "viewer",
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "project_member_deleted",
+                            "target_type": "project_member",
+                            "method_version": "project_member_delete_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.request(
+                "DELETE",
+                "/v1/project-members/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "user_id": "viewer@example.com",
+                    "deleted_by": "agency-owner",
+                    "reason": "remove viewer",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["audit_events"][0]["event_type"], "project_member_deleted")
+        self.assertEqual(fake_repository.member.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.member.user_id, "viewer@example.com")
+        self.assertEqual(fake_repository.member.deleted_by, "agency-owner")
+
+    def test_runtime_project_member_delete_endpoint_uses_actor_and_requires_admin_or_owner_role(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, **kwargs: object) -> str:
+                self.role_kwargs = kwargs
+                return "admin"
+
+            def delete_runtime_project_member(self, member: object) -> RuntimeProjectMember:
+                self.member = member
+                return RuntimeProjectMember(member={"id": "member-1", "user_id": member.user_id}, audit_events=())
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.request(
+                "DELETE",
+                "/v1/project-members/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "user_id": "viewer@example.com",
+                    "deleted_by": "payload-user",
+                },
+                headers={"X-GENO-Actor-Id": "agency-admin"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(fake_repository.role_kwargs["actor_id"], "agency-admin")
+        self.assertEqual(fake_repository.member.deleted_by, "agency-admin")
+
+    def test_runtime_project_member_delete_endpoint_forbids_viewer_role_when_access_control_enabled(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, **kwargs: object) -> str:
+                self.role_kwargs = kwargs
+                return "viewer"
+
+            def delete_runtime_project_member(self, member: object) -> object:
+                raise AssertionError("delete_runtime_project_member should not be called for viewer role")
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.request(
+                "DELETE",
+                "/v1/project-members/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "user_id": "viewer@example.com",
+                },
+                headers={"X-GENO-Actor-Id": "agency-viewer"},
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("requires owner, admin", response.json()["detail"])
+        self.assertEqual(fake_repository.role_kwargs["actor_id"], "agency-viewer")
+
+    def test_runtime_project_member_delete_endpoint_maps_last_owner_guard_to_400(self) -> None:
+        class FakeRepository:
+            def delete_runtime_project_member(self, member: object) -> RuntimeProjectMember:
+                raise ValueError("cannot remove or downgrade the last project owner")
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.request(
+                "DELETE",
+                "/v1/project-members/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "user_id": "owner@example.com",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("last project owner", response.json()["detail"])
+
     def test_runtime_prompts_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/prompts/runtime")
         self.assertEqual(response.status_code, 503)

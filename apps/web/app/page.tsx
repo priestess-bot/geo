@@ -981,6 +981,35 @@ async function saveRuntimeProjectMember(formData: FormData) {
   revalidatePath("/");
 }
 
+async function deleteRuntimeProjectMember(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const userId = String(formData.get("user_id") || "").trim();
+  if (!projectId || !userId) {
+    throw new Error("project_id and user_id are required to delete a project member");
+  }
+  const payload = {
+    project_id: projectId,
+    user_id: userId,
+    deleted_by: String(formData.get("deleted_by") || "runtime-console").trim(),
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/project-members/runtime`, {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/project-members/runtime DELETE returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
 async function uploadProjectBrandLogo(formData: FormData) {
   "use server";
   const baseUrl =
@@ -2172,7 +2201,10 @@ export default async function Home({
                 <div className="projectMembers">
                   <div className="formHeader">
                     <h3>Project Members</h3>
-                    <small>{data.projectMembers.total_count} members · project_members gate · project_member_saved</small>
+                    <small>
+                      {data.projectMembers.total_count} members · project_members gate · project_member_saved ·
+                      project_member_deleted
+                    </small>
                   </div>
                   {data.projectMembers.records.length ? (
                     <ul className="plainList">
@@ -2185,6 +2217,15 @@ export default async function Home({
                             {record.audit_events[0]?.actor_id || "system"} ·{" "}
                             {record.audit_events[0]?.after_hash || "no hash"}
                           </small>
+                          <form action={deleteRuntimeProjectMember} className="projectMemberDeleteForm">
+                            <input type="hidden" name="project_id" value={latestProject.project.id} />
+                            <input type="hidden" name="user_id" value={record.member.user_id} />
+                            <input type="hidden" name="deleted_by" value="runtime-console" />
+                            <input type="hidden" name="reason" value="Remove runtime project collaborator" />
+                            <button className="textButton" type="submit">
+                              Remove
+                            </button>
+                          </form>
                         </li>
                       ))}
                     </ul>

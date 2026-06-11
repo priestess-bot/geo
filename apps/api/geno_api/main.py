@@ -52,6 +52,7 @@ from geno_core.models import (
     ManualBackfillInput,
     RuntimeProjectBrandKitInput,
     RuntimeProjectBrandLogoUpload,
+    RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
     RuntimePromptImportInput,
     RuntimeSavedViewInput,
@@ -239,6 +240,13 @@ class ProjectMemberRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class ProjectMemberDeleteRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    user_id: str = Field(min_length=1, max_length=120)
+    deleted_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class RuntimeFidelityCheckRequest(BaseModel):
     project_id: str = Field(min_length=1)
     report_export_id: str | None = Field(default=None, min_length=1)
@@ -401,6 +409,40 @@ def save_runtime_project_member(
             )
         except ValueError as exc:
             status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(member)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.delete("/v1/project-members/runtime")
+def delete_runtime_project_member(
+    payload: ProjectMemberDeleteRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            member = repository.delete_runtime_project_member(
+                RuntimeProjectMemberDeleteInput(
+                    project_id=payload.project_id.strip(),
+                    user_id=payload.user_id.strip(),
+                    deleted_by=actor_id or payload.deleted_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project member not found" else 400
             raise HTTPException(status_code=status_code, detail=str(exc)) from exc
         return asdict(member)
     finally:
@@ -2079,6 +2121,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeProjectMemberPage",
             "RuntimeProjectMemberInput",
             "ProjectMemberRequest",
+            "RuntimeProjectMemberDeleteInput",
+            "ProjectMemberDeleteRequest",
             "RuntimeProjectBrandKit",
             "RuntimeProjectBrandKitInput",
             "RuntimeProjectBrandLogoUpload",

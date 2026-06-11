@@ -1026,6 +1026,14 @@ class RuntimeProjectMemberInput:
 
 
 @dataclass(frozen=True)
+class RuntimeProjectMemberDeleteInput:
+    project_id: str
+    user_id: str
+    deleted_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeProjectBrandKit:
     brand_kit: dict[str, Any]
     audit_events: tuple[dict[str, Any], ...]

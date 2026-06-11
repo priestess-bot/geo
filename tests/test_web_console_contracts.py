@@ -118,12 +118,17 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Project Members", page_source)
         self.assertIn("RuntimeProjectMember", page_source)
         self.assertIn("saveRuntimeProjectMember", page_source)
+        self.assertIn("deleteRuntimeProjectMember", page_source)
         self.assertIn("/v1/project-members/runtime", page_source)
+        self.assertIn('method: "DELETE"', page_source)
         self.assertIn("project_member_saved", page_source)
+        self.assertIn("project_member_deleted", page_source)
         self.assertIn('name="user_id"', page_source)
         self.assertIn('name="role"', page_source)
         self.assertIn("project_members gate", page_source)
         self.assertIn(".projectMemberForm", css_source)
+        self.assertIn(".projectMemberDeleteForm", css_source)
+        self.assertIn(".textButton", css_source)
 
     def test_runtime_console_surfaces_runtime_alerts(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")

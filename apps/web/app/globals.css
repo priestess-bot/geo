@@ -579,6 +579,26 @@ code {
   font-size: 12px;
 }
 
+.projectMemberDeleteForm {
+  margin-top: 4px;
+}
+
+.textButton {
+  background: transparent;
+  border: 0;
+  color: #8f3d38;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0;
+  text-align: left;
+}
+
+.textButton:hover {
+  color: #6f2f2a;
+  text-decoration: underline;
+}
+
 .promptList {
   max-height: 230px;
   overflow: auto;

@@ -86,6 +86,7 @@ from geno_core.models import (
     RuntimeProjectBrandKitInput,
     RuntimeProjectBrandLogoUpload,
     RuntimeProjectMember,
+    RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
     RuntimeProjectMemberPage,
     RuntimePromptImportInput,
@@ -3058,6 +3059,102 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("INSERT INTO project_members", executed_sql)
         self.assertIn("ON CONFLICT (project_id, user_id) DO UPDATE", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_deletes_runtime_project_member_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        connection = RecordingConnection(
+            result_sets=[
+                {
+                    "id": "d83a98ab-57c1-52e8-90b9-8c488f263e48",
+                    "project_id": project_id,
+                    "user_id": "viewer@example.com",
+                    "role": "viewer",
+                    "created_at": now,
+                },
+            ]
+        )
+
+        record = PostgresEvidenceRepository(connection).delete_runtime_project_member(
+            RuntimeProjectMemberDeleteInput(
+                project_id=project_id,
+                user_id="viewer@example.com",
+                deleted_by="agency-owner",
+                reason="remove viewer",
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeProjectMember)
+        self.assertEqual(record.member["user_id"], "viewer@example.com")
+        self.assertEqual(record.audit_events[0]["event_type"], "project_member_deleted")
+        self.assertEqual(record.audit_events[0]["actor_id"], "agency-owner")
+        self.assertEqual(record.audit_events[0]["method_version"], "project_member_delete_v1")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("DELETE FROM project_members", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_blocks_deleting_last_project_owner(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        connection = RecordingConnection(
+            result_sets=[
+                {
+                    "id": "d83a98ab-57c1-52e8-90b9-8c488f263e48",
+                    "project_id": project_id,
+                    "user_id": "owner@example.com",
+                    "role": "owner",
+                    "created_at": now,
+                },
+                {"count": 0},
+            ]
+        )
+
+        with self.assertRaisesRegex(ValueError, "last project owner"):
+            PostgresEvidenceRepository(connection).delete_runtime_project_member(
+                RuntimeProjectMemberDeleteInput(
+                    project_id=project_id,
+                    user_id="owner@example.com",
+                    deleted_by="agency-owner",
+                )
+            )
+
+        self.assertEqual(connection.commit_count, 0)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("role = %s AND user_id <> %s", executed_sql)
+        self.assertNotIn("DELETE FROM project_members", executed_sql)
+
+    def test_postgres_repository_blocks_downgrading_last_project_owner(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        connection = RecordingConnection(
+            result_sets=[
+                {"id": project_id},
+                {
+                    "id": "d83a98ab-57c1-52e8-90b9-8c488f263e48",
+                    "project_id": project_id,
+                    "user_id": "owner@example.com",
+                    "role": "owner",
+                    "created_at": now,
+                },
+                {"count": 0},
+            ]
+        )
+
+        with self.assertRaisesRegex(ValueError, "last project owner"):
+            PostgresEvidenceRepository(connection).save_runtime_project_member(
+                RuntimeProjectMemberInput(
+                    project_id=project_id,
+                    user_id="owner@example.com",
+                    role="admin",
+                    updated_by="agency-owner",
+                )
+            )
+
+        self.assertEqual(connection.commit_count, 0)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("role = %s AND user_id <> %s", executed_sql)
+        self.assertNotIn("ON CONFLICT (project_id, user_id) DO UPDATE", executed_sql)
 
     def test_postgres_repository_reads_runtime_prompt_page(self) -> None:
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"

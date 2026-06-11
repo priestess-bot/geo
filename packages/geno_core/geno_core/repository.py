@@ -64,6 +64,7 @@ from geno_core.models import (
     RuntimeProjectBrandLogoUpload,
     RuntimeProject,
     RuntimeProjectMember,
+    RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
     RuntimeProjectMemberPage,
     RuntimeProjectPage,
@@ -1471,6 +1472,8 @@ class PostgresEvidenceRepository:
             )
             existing = cursor.fetchone()
             before = _row_dict(existing, PROJECT_MEMBER_COLUMNS) if existing else None
+            if before and before.get("role") == "owner" and role != "owner":
+                self._assert_not_last_project_owner(cursor=cursor, project_id=project_id, user_id=user_id)
             cursor.execute(
                 """
                 INSERT INTO project_members (id, project_id, user_id, role)
@@ -1510,6 +1513,70 @@ class PostgresEvidenceRepository:
             member=_row_dict(saved_row, PROJECT_MEMBER_COLUMNS),
             audit_events=(asdict(audit_event),),
         )
+
+    def delete_runtime_project_member(self, member: RuntimeProjectMemberDeleteInput) -> RuntimeProjectMember:
+        project_id = member.project_id.strip()
+        user_id = member.user_id.strip()
+        deleted_by = member.deleted_by.strip() or "runtime-console"
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not user_id:
+            raise ValueError("user_id is required")
+        member_id = _stable_id("project-member", project_id, user_id)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_MEMBER_COLUMNS)}
+                FROM project_members
+                WHERE project_id = %s AND user_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id), user_id),
+            )
+            existing = cursor.fetchone()
+            if not existing:
+                raise ValueError("project member not found")
+            before = _row_dict(existing, PROJECT_MEMBER_COLUMNS)
+            if before.get("role") == "owner":
+                self._assert_not_last_project_owner(cursor=cursor, project_id=project_id, user_id=user_id)
+            cursor.execute(
+                """
+                DELETE FROM project_members
+                WHERE project_id = %s AND user_id = %s
+                """,
+                (_uuid(project_id), user_id),
+            )
+            audit_event = build_audit_event(
+                event_type="project_member_deleted",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=deleted_by,
+                target_type="project_member",
+                target_id=member_id,
+                before=before,
+                after=None,
+                input_refs={"project_ids": [project_id], "user_ids": [user_id]},
+                output_refs={"project_member_ids": [member_id]},
+                method_version="project_member_delete_v1",
+                reason=member.reason.strip() if member.reason else "runtime_project_member_delete",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+        self.connection.commit()
+        return RuntimeProjectMember(member=before, audit_events=(asdict(audit_event),))
+
+    def _assert_not_last_project_owner(self, *, cursor: DbCursor, project_id: str, user_id: str) -> None:
+        cursor.execute(
+            """
+            SELECT count(*)
+            FROM project_members
+            WHERE project_id = %s AND role = %s AND user_id <> %s
+            """,
+            (_uuid(project_id), "owner", user_id),
+        )
+        row = cursor.fetchone()
+        remaining_owner_count = int(row[0] if not isinstance(row, dict) else row["count"])
+        if remaining_owner_count < 1:
+            raise ValueError("cannot remove or downgrade the last project owner")
 
     def _load_runtime_project_member(self, *, cursor: DbCursor, member: dict[str, Any]) -> RuntimeProjectMember:
         cursor.execute(
