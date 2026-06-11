@@ -198,6 +198,38 @@ class ApiContractsTest(unittest.TestCase):
         self.assertNotIn("market_code", metrics)
         self.assertNotIn("limit=5", metrics)
 
+    def test_runtime_access_log_emits_request_id_and_route_template(self) -> None:
+        with self.assertLogs("geno_api.access", level="INFO") as captured:
+            response = self.client.get(
+                "/v1/projects/runtime?market_code=AU&limit=5",
+                headers={"X-GENO-Request-Id": "req-runtime-001"},
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.headers["X-GENO-Request-Id"], "req-runtime-001")
+        payload = json.loads(captured.records[0].getMessage())
+        self.assertEqual(payload["event_type"], "runtime_api_request")
+        self.assertEqual(payload["log_version"], "runtime_access_log_v1")
+        self.assertEqual(payload["request_id"], "req-runtime-001")
+        self.assertEqual(payload["method"], "GET")
+        self.assertEqual(payload["path"], "/v1/projects/runtime")
+        self.assertEqual(payload["route"], "/v1/projects/runtime")
+        self.assertEqual(payload["status_code"], 503)
+        self.assertIsInstance(payload["duration_ms"], float)
+        self.assertNotIn("market_code", captured.records[0].getMessage())
+
+    def test_runtime_access_log_sanitizes_invalid_request_id(self) -> None:
+        with self.assertLogs("geno_api.access", level="INFO") as captured:
+            response = self.client.get("/health", headers={"X-GENO-Request-Id": "bad request id"})
+
+        response_request_id = response.headers["X-GENO-Request-Id"]
+        payload = json.loads(captured.records[0].getMessage())
+        self.assertEqual(payload["status_code"], 200)
+        self.assertEqual(payload["request_id"], response_request_id)
+        self.assertNotEqual(response_request_id, "bad request id")
+        self.assertEqual(len(response_request_id), 32)
+        int(response_request_id, 16)
+
     def test_shutdown_closes_runtime_postgres_pool(self) -> None:
         with patch("geno_api.main.close_runtime_postgres_pool") as close_pool:
             close_runtime_resources()

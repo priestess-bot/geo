@@ -4,9 +4,11 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import threading
 import time
+import uuid
 from collections import defaultdict
 from contextvars import ContextVar
 from dataclasses import asdict
@@ -107,7 +109,9 @@ PROJECT_MANAGE_ROLES = ("owner", "admin")
 PROJECT_ANALYZE_ROLES = ("owner", "admin", "analyst")
 _RUNTIME_JWT_ACTOR_ID: ContextVar[str | None] = ContextVar("geno_runtime_jwt_actor_id", default=None)
 METRICS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
+REQUEST_ID_HEADER = "X-GENO-Request-Id"
 REQUEST_DURATION_BUCKETS_SECONDS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
+RUNTIME_ACCESS_LOGGER = logging.getLogger("geno_api.access")
 _METRICS_LOCK = threading.Lock()
 _REQUEST_TOTAL: defaultdict[tuple[str, str, str], int] = defaultdict(int)
 _REQUEST_DURATION_BUCKET_TOTAL: defaultdict[tuple[str, str, str, str], int] = defaultdict(int)
@@ -245,6 +249,42 @@ def _observe_api_request(*, method: str, path: str, status_code: int, duration_s
         _REQUEST_DURATION_BUCKET_TOTAL[(*label_key, "+Inf")] += 1
 
 
+def _request_id_from_headers(request: Request) -> str:
+    raw_request_id = request.headers.get(REQUEST_ID_HEADER) or request.headers.get("X-Request-Id") or ""
+    request_id = raw_request_id.strip()
+    allowed_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-")
+    if 1 <= len(request_id) <= 128 and all(char in allowed_chars for char in request_id):
+        return request_id
+    return uuid.uuid4().hex
+
+
+def _emit_runtime_access_log(
+    *,
+    request_id: str,
+    method: str,
+    path: str,
+    route: str,
+    status_code: int,
+    duration_seconds: float,
+    client_host: str | None,
+    error_type: str | None = None,
+) -> None:
+    payload: dict[str, object] = {
+        "event_type": "runtime_api_request",
+        "log_version": "runtime_access_log_v1",
+        "request_id": request_id,
+        "method": method.upper(),
+        "path": path,
+        "route": route,
+        "status_code": status_code,
+        "duration_ms": round(duration_seconds * 1000, 3),
+        "client_host": client_host or "",
+    }
+    if error_type:
+        payload["error_type"] = error_type
+    RUNTIME_ACCESS_LOGGER.info(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+
+
 def reset_runtime_metrics() -> None:
     with _METRICS_LOCK:
         _REQUEST_TOTAL.clear()
@@ -354,18 +394,36 @@ def render_runtime_metrics() -> str:
 async def runtime_metrics_middleware(request: Request, call_next):
     if request.url.path == "/metrics":
         return await call_next(request)
+    request_id = _request_id_from_headers(request)
     start_time = time.perf_counter()
     status_code = 500
+    error_type: str | None = None
     try:
         response = await call_next(request)
         status_code = response.status_code
+        response.headers[REQUEST_ID_HEADER] = request_id
         return response
+    except Exception as exc:
+        error_type = type(exc).__name__
+        raise
     finally:
+        duration_seconds = max(0.0, time.perf_counter() - start_time)
+        route_path = _route_template_for_metrics(request)
         _observe_api_request(
             method=request.method,
-            path=_route_template_for_metrics(request),
+            path=route_path,
             status_code=status_code,
-            duration_seconds=max(0.0, time.perf_counter() - start_time),
+            duration_seconds=duration_seconds,
+        )
+        _emit_runtime_access_log(
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            route=route_path,
+            status_code=status_code,
+            duration_seconds=duration_seconds,
+            client_host=request.client.host if request.client else None,
+            error_type=error_type,
         )
 
 

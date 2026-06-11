@@ -80,7 +80,7 @@ curl http://localhost:8000/ready
 curl http://localhost:8000/v1/runtime-diagnostics
 ```
 
-运行时指标导出使用 Prometheus 文本格式 `/metrics`，当前覆盖 API 请求总量、按 route template 聚合的状态码、请求延迟 histogram，以及 runtime PostgreSQL connection pool 的 enabled/max size/timeout/created/available 快照；`/metrics` 自身不计入请求指标，避免抓取放大时序。该端点是 MVP 轻量可观测入口，不替代 Prometheus/Grafana/OpenTelemetry、日志采样、慢查询追踪或告警订阅：
+运行时指标导出使用 Prometheus 文本格式 `/metrics`，当前覆盖 API 请求总量、按 route template 聚合的状态码、请求延迟 histogram，以及 runtime PostgreSQL connection pool 的 enabled/max size/timeout/created/available 快照；`/metrics` 自身不计入请求指标，避免抓取放大时序。API 还会为每个非 `/metrics` 请求回传 `X-GENO-Request-Id`，接受调用方传入的安全 request id，或自动生成 32 位 hex id，并向 `geno_api.access` logger 输出 `runtime_api_request` JSON access log，包含 request id、method、path、route、status、duration_ms 和 client_host；日志不写 query string，避免把筛选参数或潜在敏感上下文放进低层 access log。该端点与 access log 是 MVP 轻量可观测入口，不替代 Prometheus/Grafana/OpenTelemetry、集中式日志采集、慢查询追踪或告警订阅：
 
 ```bash
 curl http://localhost:8000/metrics
