@@ -260,6 +260,7 @@ make verify-api-preflight
 make preflight-manifest
 make au-p0a-runbook
 make verify-au-p0a-runbook
+make au-p0a-runbook-dry-run
 make au-p0a-readiness
 make au-p0a-package
 make verify-au-p0a-package
@@ -296,7 +297,10 @@ audit indexing.
 `${GENO_AU_P0A_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-latest.json}` with the
 ordered command plan for preflight, 5-prompt Sydney small batch, and full 100 prompts × 4 geo × k=3
 batch. `make verify-au-p0a-runbook` verifies its payload hash, step order, planned runs, and required
-gate commands. `make au-p0a-readiness` writes
+gate commands. `make au-p0a-runbook-dry-run` writes
+`${GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-execution-latest.json}`
+with all planned steps, output paths, external provider call risk, environment gaps, and zero executed
+commands by default. `make au-p0a-readiness` writes
 `${GENO_AU_P0A_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-readiness-latest.json}` and
 checks the selected phase (`GENO_AU_P0A_READINESS_PHASE=preflight|small_batch|full_batch`) against
 required environment variables, the verified runbook, and upstream design-partner-ready payload and

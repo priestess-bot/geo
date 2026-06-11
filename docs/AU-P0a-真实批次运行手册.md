@@ -1,12 +1,13 @@
 # AU P0a 真实批次运行手册
 
-本文档描述真实 Perplexity/OpenAI key 到位后，从最小 preflight 到完整 AU P0a 批次的执行顺序、产物命名和停止条件。机器可读版本由 `make au-p0a-runbook` 生成，默认写入 gitignored 的 `docs/runtime_preflight/au-p0a-runbook-latest.json`，由 `make verify-au-p0a-runbook` 校验，并由 `make au-p0a-readiness` 输出阶段性 readiness 结果。
+本文档描述真实 Perplexity/OpenAI key 到位后，从最小 preflight 到完整 AU P0a 批次的执行顺序、产物命名和停止条件。机器可读版本由 `make au-p0a-runbook` 生成，默认写入 gitignored 的 `docs/runtime_preflight/au-p0a-runbook-latest.json`，由 `make verify-au-p0a-runbook` 校验；`make au-p0a-runbook-dry-run` 会先输出不执行外部调用的执行预演，再由 `make au-p0a-readiness` 输出阶段性 readiness 结果。
 
 ## 运行原则
 
 - 先跑最小 preflight，再跑 small batch，最后跑 full batch。
 - 每一步都必须先生成 JSON，再 verify，再 manifest。
 - runbook 自身也必须先 verify，避免命令顺序、planned runs 或 gate 参数漂移。
+- 真实执行前先跑 runbook dry-run，确认步骤、产物、外部 API 调用风险和环境缺口；默认 dry-run 不执行任何命令。
 - 每个阶段开始前都先跑 readiness gate，缺 key、缺上游 manifest 或上游未达 design-partner ready 时停止。
 - readiness 默认不主动连接数据库；真实批次前建议开启 `GENO_AU_P0A_REQUIRE_DB_CHECK=1`，用只读 `SELECT 1` 验证 `DATABASE_URL` 可用。
 - “可审计”不等于“可进入 design partner”；进入下一阶段必须通过 `--require-design-partner-ready`。
@@ -19,6 +20,7 @@
 ```bash
 make au-p0a-runbook
 make verify-au-p0a-runbook
+make au-p0a-runbook-dry-run
 GENO_AU_P0A_REQUIRE_DB_CHECK=1 make au-p0a-readiness
 ```
 
@@ -112,6 +114,7 @@ make verify-au-p0a-status
 - `--require-no-collection-failures` 返回非零：停止，先复盘失败样本和重试/限流策略。
 - manifest verifier `status=fail`：停止，先修 payload 完整性、必备字段或 gate 状态。
 - runbook verifier `status=fail`：停止，先修命令计划、planned runs、gate 参数或 runbook hash。
+- runbook dry-run `status=fail` 或步骤/产物不符合预期：停止，先修 runbook 或执行参数；默认 dry-run 不会调用外部 provider。
 - readiness verifier `status=fail`：停止，先修必需环境、上游 payload、manifest 或 design-partner gate。
 - `database.connection_check=fail`：停止，先修 `DATABASE_URL`、网络、凭证或迁移后的 PostgreSQL 服务。
 - `ready_for_design_partner=false`：停止，不进入 design partner 或 full batch。
@@ -124,6 +127,7 @@ make verify-au-p0a-status
 - `docs/runtime_preflight/api-preflight-latest.json`
 - `docs/runtime_preflight/api-preflight-manifest-latest.json`
 - `docs/runtime_preflight/au-p0a-runbook-latest.json`
+- `docs/runtime_preflight/au-p0a-runbook-execution-latest.json`
 - `docs/runtime_preflight/au-p0a-readiness-latest.json`
 - `docs/runtime_preflight/au-p0a-evidence-package-latest.json`
 - `docs/runtime_preflight/au-p0a-status-latest.json`
@@ -146,6 +150,13 @@ runbook verifier 必须确认：
 - preflight、small batch、full batch 步骤顺序固定
 - small batch planned runs = 30，full batch planned runs = 2400
 - design partner gate、P0a readiness gate 和 no-collection-failures gate 未缺失
+
+runbook dry-run 必须确认：
+
+- execution_version 为 `au_p0a_runbook_execution_v1`
+- 默认 `mode=dry_run`、`executed_command_count=0`
+- 每个 command step 的 command、output_paths、stop_on_failure 和 external_call_risk 可审计
+- `ready_to_execute` 只在 runbook verifier 通过且必需环境存在时为 true
 
 evidence package 必须确认：
 
