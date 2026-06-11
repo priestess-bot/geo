@@ -1745,6 +1745,7 @@ async function saveRuntimeNotificationSubscription(formData: FormData) {
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     "http://localhost:8000";
   const projectId = String(formData.get("project_id") || "").trim();
+  const channel = String(formData.get("channel") || "webhook").trim().toLowerCase();
   const endpointUrl = String(formData.get("endpoint_url") || "").trim();
   if (!projectId || !endpointUrl) {
     throw new Error("project_id and endpoint_url are required to save notification subscription");
@@ -1755,14 +1756,16 @@ async function saveRuntimeNotificationSubscription(formData: FormData) {
     .filter(Boolean);
   const payload = {
     project_id: projectId,
-    channel: "webhook",
+    channel,
     endpoint_url: endpointUrl,
     event_types: eventTypes.length ? eventTypes : ["report_export_job", "runtime_alert"],
     severity_threshold: String(formData.get("severity_threshold") || "info").trim(),
     status: String(formData.get("status") || "active").trim(),
     metadata: {
       source: "runtime_console_notification_subscription",
-      signing_secret_env: String(formData.get("signing_secret_env") || "").trim() || undefined
+      signing_secret_env:
+        channel === "webhook" ? String(formData.get("signing_secret_env") || "").trim() || undefined : undefined,
+      slack_channel: channel === "slack" ? String(formData.get("slack_channel") || "").trim() || undefined : undefined
     },
     updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
     reason: String(formData.get("reason") || "").trim() || undefined
@@ -4257,19 +4260,30 @@ export default async function Home({
             <input
               type="hidden"
               name="reason"
-              value="Save runtime notification webhook subscription from console"
+              value="Save runtime notification subscription from console"
             />
             <label>
-              <span>Webhook URL</span>
-              <input name="endpoint_url" placeholder="https://hooks.example.com/geno-runtime" />
+              <span>Channel</span>
+              <select name="channel" defaultValue="webhook">
+                <option value="webhook">webhook</option>
+                <option value="slack">slack</option>
+              </select>
+            </label>
+            <label>
+              <span>Endpoint URL</span>
+              <input name="endpoint_url" placeholder="https://hooks.example.com/geno-runtime or Slack Incoming Webhook URL" />
             </label>
             <label>
               <span>Event types</span>
               <input name="event_types" defaultValue="report_export_job,runtime_alert" />
             </label>
             <label>
-              <span>Signing env</span>
+              <span>Signing env (webhook)</span>
               <input name="signing_secret_env" placeholder="GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET" />
+            </label>
+            <label>
+              <span>Slack channel</span>
+              <input name="slack_channel" placeholder="#geno-alerts" />
             </label>
             <label>
               <span>Severity</span>
@@ -4288,7 +4302,7 @@ export default async function Home({
               </select>
             </label>
             <button className="actionButton compactAction" type="submit" disabled={!selectedProjectId}>
-              Save webhook
+              Save subscription
             </button>
           </form>
           <dl className="facts contributionFacts">

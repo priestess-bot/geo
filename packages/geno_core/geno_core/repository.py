@@ -164,6 +164,105 @@ def _json_payload(value: object) -> object:
     return Jsonb(payload)
 
 
+def _runtime_notification_slack_payload(
+    *,
+    notification: dict[str, Any],
+    subscription: dict[str, Any],
+    threshold: str,
+) -> dict[str, Any]:
+    severity = str(notification.get("severity") or "info").strip().lower()
+    notification_type = str(notification.get("notification_type") or "runtime_notification").strip()
+    title = str(notification.get("title") or "GENO runtime notification").strip()
+    message = str(notification.get("message") or "").strip()
+    target_type = str(notification.get("target_type") or "target").strip()
+    target_id = str(notification.get("target_id") or "").strip()
+    text = f"[{severity.upper()}] {title}"
+    if message:
+        text = f"{text}: {message}"
+    fields = [
+        {"type": "mrkdwn", "text": f"*Type*\n{notification_type}"},
+        {"type": "mrkdwn", "text": f"*Severity*\n{severity}"},
+        {"type": "mrkdwn", "text": f"*Target*\n{target_type}"},
+        {"type": "mrkdwn", "text": f"*Threshold*\n{threshold}"},
+    ]
+    if target_id:
+        fields.append({"type": "mrkdwn", "text": f"*Target ID*\n`{target_id}`"})
+    return {
+        "text": text,
+        "blocks": [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*{title}*\n{message or text}"},
+            },
+            {"type": "section", "fields": fields[:10]},
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"GENO runtime · notification `{notification.get('id')}` · "
+                            f"subscription `{subscription.get('id')}`"
+                        ),
+                    }
+                ],
+            },
+        ],
+        "metadata": {
+            "event_type": "geno_runtime_notification",
+            "event_payload": {
+                "notification_id": str(notification.get("id")),
+                "notification_type": notification_type,
+                "project_id": str(notification.get("project_id")),
+                "target_type": target_type,
+                "target_id": target_id,
+            },
+        },
+    }
+
+
+def _runtime_notification_delivery_payload(
+    *,
+    notification: dict[str, Any],
+    subscription: dict[str, Any],
+    notification_type: str,
+    severity: str,
+    threshold: str,
+    channel: str,
+) -> dict[str, Any]:
+    base_payload = {
+        "notification": {
+            "id": str(notification["id"]),
+            "project_id": str(notification["project_id"]),
+            "notification_type": notification_type,
+            "severity": severity,
+            "title": notification.get("title"),
+            "message": notification.get("message"),
+            "target_type": notification.get("target_type"),
+            "target_id": notification.get("target_id"),
+            "payload": notification.get("payload") or {},
+            "created_at": notification.get("created_at"),
+        },
+        "subscription": {
+            "id": str(subscription["id"]),
+            "channel": channel,
+            "severity_threshold": threshold,
+        },
+        "delivery_version": "runtime_notification_delivery_v1",
+    }
+    if channel != "slack":
+        return base_payload
+    return {
+        **base_payload,
+        "slack": _runtime_notification_slack_payload(
+            notification=notification,
+            subscription=subscription,
+            threshold=threshold,
+        ),
+        "delivery_version": "runtime_notification_delivery_slack_v1",
+    }
+
+
 def _uuid_array(values: tuple[str, ...] | list[str]) -> list[object]:
     converted: list[object] = []
     for value in values:
@@ -1148,6 +1247,7 @@ RUNTIME_NOTIFICATION_DELIVERY_COLUMNS = (
 )
 RUNTIME_NOTIFICATION_DELIVERY_RETURNING = ", ".join(RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
 RUNTIME_NOTIFICATION_SEVERITY_ORDER = {"info": 0, "warning": 1, "critical": 2}
+RUNTIME_NOTIFICATION_SUBSCRIPTION_CHANNELS = {"webhook", "slack"}
 RUNTIME_ALERT_EVENT_STATUSES = {"acknowledged", "resolved", "snoozed", "reopened", "escalated"}
 RUNTIME_ALERT_EVENT_COLUMNS = (
     "id",
@@ -5037,8 +5137,8 @@ class PostgresEvidenceRepository:
         reason = subscription.reason.strip() if subscription.reason else None
         if not project_id:
             raise ValueError("project_id is required")
-        if channel != "webhook":
-            raise ValueError("notification subscription channel must be webhook")
+        if channel not in RUNTIME_NOTIFICATION_SUBSCRIPTION_CHANNELS:
+            raise ValueError("notification subscription channel must be webhook or slack")
         if not endpoint_url:
             raise ValueError("endpoint_url is required")
         parsed_url = urlparse(endpoint_url)
@@ -5122,7 +5222,7 @@ class PostgresEvidenceRepository:
                     "status": [status],
                 },
                 method_version="runtime_notification_subscription_v1",
-                reason=reason or "save runtime notification webhook subscription",
+                reason=reason or f"save runtime notification {channel} subscription",
             )
             self.save_audit_events((audit_event,), cursor=cursor)
             record = self._runtime_notification_subscription_from_row(cursor=cursor, row=after)
@@ -6061,10 +6161,12 @@ class PostgresEvidenceRepository:
             f"""
             SELECT {", ".join(RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)}
             FROM runtime_notification_subscriptions
-            WHERE project_id = %s AND status = %s AND channel = %s
+            WHERE project_id = %s
+              AND status = %s
+              AND channel = ANY(%s)
             ORDER BY updated_at DESC, id DESC
             """,
-            (_uuid(str(notification["project_id"])), "active", "webhook"),
+            (_uuid(str(notification["project_id"])), "active", list(RUNTIME_NOTIFICATION_SUBSCRIPTION_CHANNELS)),
         )
         subscription_rows = _rows_dict(cursor.fetchall(), RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)
         queued_deliveries: list[dict[str, Any]] = []
@@ -6077,31 +6179,20 @@ class PostgresEvidenceRepository:
                 continue
             if severity_rank < threshold_rank:
                 continue
+            channel = str(subscription.get("channel") or "webhook").strip().lower()
             delivery_id = _stable_id(
                 "runtime-notification-delivery",
                 str(notification["id"]),
                 str(subscription["id"]),
             )
-            payload = {
-                "notification": {
-                    "id": str(notification["id"]),
-                    "project_id": str(notification["project_id"]),
-                    "notification_type": notification_type,
-                    "severity": severity,
-                    "title": notification.get("title"),
-                    "message": notification.get("message"),
-                    "target_type": notification.get("target_type"),
-                    "target_id": notification.get("target_id"),
-                    "payload": notification.get("payload") or {},
-                    "created_at": notification.get("created_at"),
-                },
-                "subscription": {
-                    "id": str(subscription["id"]),
-                    "channel": subscription.get("channel"),
-                    "severity_threshold": threshold,
-                },
-                "delivery_version": "runtime_notification_delivery_v1",
-            }
+            payload = _runtime_notification_delivery_payload(
+                notification=notification,
+                subscription=subscription,
+                notification_type=notification_type,
+                severity=severity,
+                threshold=threshold,
+                channel=channel,
+            )
             cursor.execute(
                 f"""
                 INSERT INTO runtime_notification_deliveries (
@@ -6117,7 +6208,7 @@ class PostgresEvidenceRepository:
                     _uuid(str(notification["project_id"])),
                     _uuid(str(notification["id"])),
                     _uuid(str(subscription["id"])),
-                    str(subscription["channel"]),
+                    channel,
                     str(subscription["endpoint_url"]),
                     "queued",
                     3,

@@ -40,6 +40,9 @@ def _delivery_record(
     *,
     attempt_count: int = 1,
     max_attempts: int = 3,
+    channel: str = "webhook",
+    endpoint_url: str = "https://hooks.example.com/geno",
+    payload: dict[str, object] | None = None,
     subscription_metadata: dict[str, object] | None = None,
 ) -> RuntimeNotificationDelivery:
     now = datetime(2026, 6, 12, tzinfo=UTC)
@@ -49,8 +52,8 @@ def _delivery_record(
             "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
             "notification_id": "3ba5d5b7-8759-557b-a8a8-7297f98e2339",
             "subscription_id": "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8",
-            "channel": "webhook",
-            "endpoint_url": "https://hooks.example.com/geno",
+            "channel": channel,
+            "endpoint_url": endpoint_url,
             "status": "sending",
             "attempt_count": attempt_count,
             "max_attempts": max_attempts,
@@ -59,7 +62,8 @@ def _delivery_record(
             "response_status": None,
             "response_body_hash": None,
             "error_message": None,
-            "payload": {
+            "payload": payload
+            or {
                 "notification": {
                     "id": "3ba5d5b7-8759-557b-a8a8-7297f98e2339",
                     "notification_type": "report_export_job",
@@ -75,7 +79,7 @@ def _delivery_record(
         notification={"id": "3ba5d5b7-8759-557b-a8a8-7297f98e2339", "title": "Report export failed"},
         subscription={
             "id": "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8",
-            "endpoint_url": "https://hooks.example.com/geno",
+            "endpoint_url": endpoint_url,
             "metadata": subscription_metadata or {},
         },
         audit_events=(),
@@ -122,6 +126,71 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         self.assertEqual(body_payload["delivery_version"], "runtime_notification_delivery_v1")
         self.assertEqual(result["payload_hash"], requests[0][2]["x-geno-payload-sha256"])
         self.assertFalse(result["signed"])
+        self.assertEqual(result["channel"], "webhook")
+
+    def test_process_next_notification_delivery_posts_slack_payload_without_geno_signature(self) -> None:
+        repository = FakeNotificationDeliveryRepository(
+            _delivery_record(
+                channel="slack",
+                endpoint_url="https://hooks.slack.com/services/T000/B000/XXX",
+                payload={
+                    "notification": {
+                        "id": "3ba5d5b7-8759-557b-a8a8-7297f98e2339",
+                        "notification_type": "runtime_alert",
+                        "severity": "critical",
+                        "title": "Brand absent in Sydney",
+                    },
+                    "subscription": {
+                        "id": "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8",
+                        "channel": "slack",
+                        "severity_threshold": "warning",
+                    },
+                    "slack": {
+                        "text": "[CRITICAL] Brand absent in Sydney",
+                        "blocks": [
+                            {
+                                "type": "section",
+                                "text": {"type": "mrkdwn", "text": "*Brand absent in Sydney*"},
+                            }
+                        ],
+                    },
+                    "delivery_version": "runtime_notification_delivery_slack_v1",
+                },
+                subscription_metadata={"signing_secret_env": "GENO_TEST_WEBHOOK_SECRET"},
+            )
+        )
+        os.environ["GENO_TEST_WEBHOOK_SECRET"] = "should-not-be-used-for-slack"
+        requests: list[tuple[str, str, dict[str, str], bytes, float]] = []
+
+        def requester(
+            method: str,
+            url: str,
+            headers: dict[str, str],
+            body: bytes,
+            timeout_seconds: float,
+        ) -> tuple[int, bytes]:
+            requests.append((method, url, dict(headers), body, timeout_seconds))
+            return 200, b"ok"
+
+        try:
+            result = process_next_notification_delivery(
+                repository=repository,
+                default_signing_secret_env=None,
+                requester=requester,
+            )
+        finally:
+            os.environ.pop("GENO_TEST_WEBHOOK_SECRET", None)
+
+        self.assertEqual(result["status"], "delivered")
+        self.assertEqual(result["channel"], "slack")
+        self.assertFalse(result["signed"])
+        self.assertEqual(requests[0][1], "https://hooks.slack.com/services/T000/B000/XXX")
+        self.assertEqual(requests[0][2], {"content-type": "application/json"})
+        body_payload = json.loads(requests[0][3].decode("utf-8"))
+        self.assertEqual(body_payload["text"], "[CRITICAL] Brand absent in Sydney")
+        self.assertEqual(body_payload["blocks"][0]["type"], "section")
+        self.assertNotIn("notification", body_payload)
+        self.assertEqual(repository.status_updates[-1].reason, "runtime notification webhook delivered")
 
     def test_process_next_notification_delivery_signs_webhook_from_subscription_secret_env(self) -> None:
         repository = FakeNotificationDeliveryRepository(

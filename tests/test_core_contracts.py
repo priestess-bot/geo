@@ -5728,6 +5728,65 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("ON CONFLICT (project_id, channel, endpoint_url) DO UPDATE", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
 
+    def test_postgres_repository_saves_slack_notification_subscription_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        subscription_row = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "slack",
+            "endpoint_url": "https://hooks.slack.com/services/T000/B000/XXX",
+            "event_types": ["runtime_alert"],
+            "severity_threshold": "warning",
+            "status": "active",
+            "metadata": {"source": "contract", "slack_channel": "#geno-alerts"},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "de6e0fec-0084-43c7-8f64-b16e412aab9e",
+            "event_type": "runtime_notification_subscription_saved",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "runtime_notification_subscription",
+            "target_id": subscription_id,
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"event_types": ["runtime_alert"]},
+            "output_refs": {"runtime_notification_subscription_ids": [subscription_id]},
+            "method_version": "runtime_notification_subscription_v1",
+            "reason": "save slack subscription",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"id": project_id}, None, subscription_row, [audit_row]])
+
+        record = PostgresEvidenceRepository(connection).save_runtime_notification_subscription(
+            RuntimeNotificationSubscriptionInput(
+                project_id=project_id,
+                channel="slack",
+                endpoint_url="https://hooks.slack.com/services/T000/B000/XXX",
+                event_types=("runtime_alert",),
+                severity_threshold="warning",
+                metadata={"source": "contract", "slack_channel": "#geno-alerts"},
+                updated_by="runtime-console",
+                reason="save slack subscription",
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeNotificationSubscription)
+        self.assertEqual(record.subscription["channel"], "slack")
+        self.assertEqual(record.subscription["metadata"]["slack_channel"], "#geno-alerts")
+        self.assertEqual(record.audit_events[0]["event_type"], "runtime_notification_subscription_saved")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO runtime_notification_subscriptions", executed_sql)
+        self.assertIn("ON CONFLICT (project_id, channel, endpoint_url) DO UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+
     def test_postgres_repository_queues_notification_delivery_for_matching_subscription(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
@@ -5869,6 +5928,87 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("INSERT INTO runtime_notification_deliveries", executed_sql)
         inserted_audit_params = [params for sql, params in connection.calls if "INSERT INTO audit_events" in sql][-1]
         self.assertIn("runtime_notification_delivery_queued", str(inserted_audit_params))
+
+    def test_postgres_repository_queues_slack_notification_delivery_payload(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        delivery_id = "118e5c66-7bb4-558e-ab97-e74ef9928b46"
+        notification_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "runtime_alert",
+            "severity": "critical",
+            "title": "Brand absent in Sydney",
+            "message": "Brand was absent from critical AI search prompts.",
+            "target_type": "runtime_alert",
+            "target_id": "brand_absent:project-1",
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {"alert_type": "brand_absent"},
+            "created_by": "runtime-worker",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        subscription_row = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "slack",
+            "endpoint_url": "https://hooks.slack.com/services/T000/B000/XXX",
+            "event_types": ["runtime_alert"],
+            "severity_threshold": "warning",
+            "status": "active",
+            "metadata": {"slack_channel": "#geno-alerts"},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        delivery_row = {
+            "id": delivery_id,
+            "project_id": project_id,
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "channel": "slack",
+            "endpoint_url": "https://hooks.slack.com/services/T000/B000/XXX",
+            "status": "queued",
+            "attempt_count": 0,
+            "max_attempts": 3,
+            "lease_expires_at": None,
+            "next_attempt_at": None,
+            "response_status": None,
+            "response_body_hash": None,
+            "error_message": None,
+            "payload": {"delivery_version": "runtime_notification_delivery_slack_v1"},
+            "created_at": now,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        connection = RecordingConnection(result_sets=[[subscription_row], delivery_row])
+        repository = PostgresEvidenceRepository(connection)
+
+        with connection.cursor() as cursor:
+            deliveries, audit_events = repository._enqueue_runtime_notification_deliveries(
+                cursor=cursor,
+                notification=notification_row,
+                updated_by="runtime-worker",
+            )
+
+        self.assertEqual(deliveries[0]["channel"], "slack")
+        self.assertEqual(audit_events[0].event_type, "runtime_notification_delivery_queued")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("channel = ANY(%s)", executed_sql)
+        delivery_insert_params = next(
+            params for sql, params in connection.calls if "INSERT INTO runtime_notification_deliveries" in sql
+        )
+        self.assertEqual(delivery_insert_params[4], "slack")
+        self.assertIn("https://hooks.slack.com/services/T000/B000/XXX", str(delivery_insert_params[5]))
+        self.assertIn("runtime_notification_delivery_slack_v1", str(delivery_insert_params[8]))
+        self.assertIn("Brand absent in Sydney", str(delivery_insert_params[8]))
+        self.assertIn("blocks", str(delivery_insert_params[8]))
 
     def test_postgres_repository_lists_runtime_notification_deliveries_with_context(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)

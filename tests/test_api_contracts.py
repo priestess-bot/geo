@@ -2893,20 +2893,23 @@ class ApiContractsTest(unittest.TestCase):
                 "/v1/runtime-notification-subscriptions",
                 json={
                     "project_id": "project-1",
-                    "endpoint_url": "https://hooks.example.com/geno",
+                    "channel": "slack",
+                    "endpoint_url": "https://hooks.slack.com/services/T000/B000/XXX",
                     "event_types": ["report_export_job"],
                     "severity_threshold": "critical",
                     "status": "active",
-                    "metadata": {"source": "api-test"},
+                    "metadata": {"source": "api-test", "slack_channel": "#geno-alerts"},
                     "updated_by": "runtime-console",
-                    "reason": "save webhook",
+                    "reason": "save slack subscription",
                 },
             )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
+        self.assertEqual(payload["subscription"]["channel"], "slack")
         self.assertEqual(payload["subscription"]["severity_threshold"], "critical")
-        self.assertEqual(fake_repository.subscription.endpoint_url, "https://hooks.example.com/geno")
-        self.assertEqual(fake_repository.subscription.reason, "save webhook")
+        self.assertEqual(fake_repository.subscription.endpoint_url, "https://hooks.slack.com/services/T000/B000/XXX")
+        self.assertEqual(fake_repository.subscription.metadata["slack_channel"], "#geno-alerts")
+        self.assertEqual(fake_repository.subscription.reason, "save slack subscription")
 
     def test_runtime_notification_deliveries_endpoint_returns_page(self) -> None:
         class FakeRepository:

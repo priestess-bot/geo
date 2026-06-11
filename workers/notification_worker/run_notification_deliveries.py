@@ -63,6 +63,18 @@ def _subscription_metadata(delivery_record: object) -> dict[str, Any]:
     return metadata if isinstance(metadata, dict) else {}
 
 
+def _delivery_channel(delivery: dict[str, Any]) -> str:
+    return str(delivery.get("channel") or "webhook").strip().lower() or "webhook"
+
+
+def _delivery_body_payload(*, channel: str, payload: dict[str, Any]) -> dict[str, Any]:
+    if channel == "slack":
+        slack_payload = payload.get("slack")
+        if isinstance(slack_payload, dict):
+            return slack_payload
+    return payload
+
+
 def _webhook_signing_secret(
     *,
     subscription_metadata: dict[str, Any],
@@ -138,30 +150,36 @@ def process_next_notification_delivery(
     delivery_max_attempts = max(max_attempts, int(delivery.get("max_attempts") or max_attempts))
     endpoint_url = str(delivery["endpoint_url"])
     payload = delivery.get("payload") if isinstance(delivery.get("payload"), dict) else {}
-    body = _canonical_json_bytes(payload)
+    channel = _delivery_channel(delivery)
+    outbound_payload = _delivery_body_payload(channel=channel, payload=payload)
+    body = _canonical_json_bytes(outbound_payload)
     body_hash = runtime_notification_webhook_payload_hash(body)
-    headers = {
-        "content-type": "application/json",
-        RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER: delivery_id,
-        RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER: str(delivery["notification_id"]),
-        RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER: body_hash,
-    }
+    headers = {"content-type": "application/json"}
+    if channel != "slack":
+        headers.update(
+            {
+                RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER: delivery_id,
+                RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER: str(delivery["notification_id"]),
+                RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER: body_hash,
+            }
+        )
     signed = False
 
     try:
-        signing_secret, _ = _webhook_signing_secret(
-            subscription_metadata=_subscription_metadata(delivery_record),
-            default_signing_secret_env=default_signing_secret_env,
-        )
-        if signing_secret:
-            headers = _apply_webhook_signature_headers(
-                headers=headers,
-                secret=signing_secret,
-                delivery_id=delivery_id,
-                notification_id=str(delivery["notification_id"]),
-                payload_hash=body_hash,
+        if channel != "slack":
+            signing_secret, _ = _webhook_signing_secret(
+                subscription_metadata=_subscription_metadata(delivery_record),
+                default_signing_secret_env=default_signing_secret_env,
             )
-            signed = True
+            if signing_secret:
+                headers = _apply_webhook_signature_headers(
+                    headers=headers,
+                    secret=signing_secret,
+                    delivery_id=delivery_id,
+                    notification_id=str(delivery["notification_id"]),
+                    payload_hash=body_hash,
+                )
+                signed = True
         if requester is None:
             response = httpx.post(endpoint_url, content=body, headers=headers, timeout=timeout_seconds)
             response_status = response.status_code
@@ -190,6 +208,7 @@ def process_next_notification_delivery(
                 "response_status": int(response_status),
                 "payload_hash": body_hash,
                 "signed": signed,
+                "channel": channel,
             }
         failed_status = _failed_status(attempt_count=attempt_count, max_attempts=delivery_max_attempts)
         next_attempt_at = _next_attempt_at(
@@ -220,6 +239,7 @@ def process_next_notification_delivery(
             "next_attempt_at": next_attempt_at.isoformat() if next_attempt_at else None,
             "payload_hash": body_hash,
             "signed": signed,
+            "channel": channel,
         }
     except Exception as exc:
         failed_status = _failed_status(attempt_count=attempt_count, max_attempts=delivery_max_attempts)
@@ -249,6 +269,7 @@ def process_next_notification_delivery(
             "error_message": str(exc),
             "payload_hash": body_hash,
             "signed": signed,
+            "channel": channel,
         }
 
 
