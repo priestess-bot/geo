@@ -109,6 +109,98 @@ def _collector_health_failure_reasons(collector_health: tuple[dict[str, object],
     )
 
 
+def _gate_field(gate: object | None, field: str) -> object | None:
+    if gate is None:
+        return None
+    if isinstance(gate, dict):
+        return gate.get(field)
+    return getattr(gate, field, None)
+
+
+def _string_tuple(value: object | None) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, tuple | list):
+        return tuple(str(item) for item in value)
+    return (str(value),)
+
+
+def _provider_preflight_next_action(
+    *,
+    collector_health_status: str,
+    p0a_readiness_status: str | None,
+    failure_count: int,
+    exit_code: int,
+    ready_for_design_partner: bool,
+) -> str:
+    if ready_for_design_partner:
+        return "promote_to_small_real_au_batch"
+    if collector_health_status != "pass":
+        return "configure_missing_provider_credentials_or_collectors"
+    if exit_code == 5 or failure_count:
+        return "inspect_collection_failures_before_design_partner"
+    if exit_code == 4 or p0a_readiness_status == "fail":
+        return "inspect_p0a_readiness_failure_reasons_before_design_partner"
+    return "inspect_preflight_output"
+
+
+def _build_preflight_summary(
+    *,
+    mode: str,
+    phase: str,
+    exit_code: int,
+    planned_runs: int,
+    record_count: int,
+    success_count: int,
+    failure_count: int,
+    cities: tuple[str, ...],
+    sample_size: int,
+    prompt_limit: int,
+    collector_health_gate: dict[str, object],
+    p0a_readiness_gate: object | None,
+    persistence: dict[str, object],
+    output_path: str | None,
+) -> dict[str, object]:
+    collector_health_status = str(collector_health_gate.get("gate_status", "unknown"))
+    p0a_readiness_status_value = _gate_field(p0a_readiness_gate, "gate_status")
+    p0a_readiness_status = str(p0a_readiness_status_value) if p0a_readiness_status_value is not None else None
+    ready_for_design_partner = (
+        mode in {"fixture", "api"}
+        and exit_code == 0
+        and collector_health_status == "pass"
+        and p0a_readiness_status == "pass"
+        and failure_count == 0
+    )
+    recommended_next_action = _provider_preflight_next_action(
+        collector_health_status=collector_health_status,
+        p0a_readiness_status=p0a_readiness_status,
+        failure_count=failure_count,
+        exit_code=exit_code,
+        ready_for_design_partner=ready_for_design_partner,
+    )
+    return {
+        "summary_version": "provider_preflight_v1",
+        "mode": mode,
+        "phase": phase,
+        "exit_code": exit_code,
+        "ready_for_design_partner": ready_for_design_partner,
+        "planned_runs": planned_runs,
+        "record_count": record_count,
+        "success_count": success_count,
+        "failure_count": failure_count,
+        "cities": cities,
+        "sample_size": sample_size,
+        "prompt_limit": prompt_limit,
+        "collector_health_status": collector_health_status,
+        "collector_health_failure_reasons": _string_tuple(collector_health_gate.get("failure_reasons")),
+        "p0a_readiness_status": p0a_readiness_status,
+        "p0a_readiness_failure_reasons": _string_tuple(_gate_field(p0a_readiness_gate, "failure_reasons")),
+        "persistence_enabled": bool(persistence.get("enabled")),
+        "audit_output_path": str(Path(output_path)) if output_path else "",
+        "recommended_next_action": recommended_next_action,
+    }
+
+
 def _emit_json_output(output: dict[str, object], output_path: str | None = None) -> None:
     if output_path:
         path = Path(output_path)
@@ -762,6 +854,7 @@ def main() -> None:
         else len(prompts[: args.prompt_limit]) * len(collectors) * len(cities) * args.sample_size
     )
     if args.require_ready_collectors and collector_health_failure_reasons:
+        persistence: dict[str, object] = {"enabled": False}
         output = {
             "mode": args.mode,
             "record_count": 0,
@@ -772,8 +865,24 @@ def main() -> None:
             "collector_health": collector_health,
             "collector_health_gate": collector_health_gate,
             "p0a_readiness_gate": None,
-            "persistence": {"enabled": False},
+            "persistence": persistence,
         }
+        output["preflight_summary"] = _build_preflight_summary(
+            mode=args.mode,
+            phase="collector_health",
+            exit_code=3,
+            planned_runs=planned_runs,
+            record_count=0,
+            success_count=0,
+            failure_count=0,
+            cities=cities,
+            sample_size=args.sample_size,
+            prompt_limit=args.prompt_limit,
+            collector_health_gate=collector_health_gate,
+            p0a_readiness_gate=None,
+            persistence=persistence,
+            output_path=args.preflight_output_path,
+        )
         _emit_json_output(output, args.preflight_output_path)
         print(f"collector_preflight_failed: {', '.join(collector_health_failure_reasons)}", file=sys.stderr)
         raise SystemExit(3)
@@ -809,6 +918,14 @@ def main() -> None:
         except RuntimePersistenceError as exc:
             print(f"persistence_error: {exc}", file=sys.stderr)
             raise SystemExit(2) from exc
+    exit_code = 0
+    phase = "collection_completed"
+    if args.require_no_collection_failures and failures:
+        exit_code = 5
+        phase = "collection_failures"
+    elif args.require_p0a_readiness and p0a_readiness_gate is not None and p0a_readiness_gate.gate_status != "pass":
+        exit_code = 4
+        phase = "p0a_readiness"
     output = {
         "mode": args.mode,
         "record_count": len(records),
@@ -823,6 +940,22 @@ def main() -> None:
         "p0a_readiness_gate": asdict(p0a_readiness_gate) if p0a_readiness_gate is not None else None,
         "persistence": persistence,
     }
+    output["preflight_summary"] = _build_preflight_summary(
+        mode=args.mode,
+        phase=phase,
+        exit_code=exit_code,
+        planned_runs=planned_runs,
+        record_count=len(records),
+        success_count=len(successes),
+        failure_count=len(failures),
+        cities=cities,
+        sample_size=args.sample_size,
+        prompt_limit=args.prompt_limit,
+        collector_health_gate=collector_health_gate,
+        p0a_readiness_gate=p0a_readiness_gate,
+        persistence=persistence,
+        output_path=args.preflight_output_path,
+    )
     if plan is not None:
         output["google_spike_gate"] = asdict(
             evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=plan, records=records)

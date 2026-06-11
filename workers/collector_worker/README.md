@@ -266,6 +266,9 @@ collector health is not `ready`; the JSON output still includes `collector_healt
 `collector_health_gate` for audit, and the same payload is written to `--preflight-output-path`.
 `--require-p0a-readiness` exits with worker exit code `4` after collection if the P0a gate fails,
 for example because k=3, required platforms, citations, or HTML snapshot evidence are missing.
+Every preflight payload also includes `preflight_summary`, a stable audit summary with phase,
+exit code, `ready_for_design_partner`, gate failure reasons, `audit_output_path`, and
+`recommended_next_action`.
 The default preflight JSON path is gitignored because live provider status and run context belong
 to local audit evidence, not committed project docs. This is the minimum real API smoke; it does
 not replace the full 100 prompts × 4 geo × k=3 design-partner batch.

@@ -154,6 +154,14 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(gate["required_sample_size"], 3)
         self.assertEqual(gate["observed_sample_sizes"], [3])
         self.assertEqual(gate["failure_reasons"], [])
+        summary = payload["preflight_summary"]
+        self.assertEqual(summary["summary_version"], "provider_preflight_v1")
+        self.assertEqual(summary["exit_code"], 0)
+        self.assertEqual(summary["phase"], "collection_completed")
+        self.assertTrue(summary["ready_for_design_partner"])
+        self.assertEqual(summary["collector_health_status"], "pass")
+        self.assertEqual(summary["p0a_readiness_status"], "pass")
+        self.assertEqual(summary["recommended_next_action"], "promote_to_small_real_au_batch")
 
     def test_api_worker_slice_without_keys_is_audited_failure(self) -> None:
         payload = self._run_worker("--mode", "api", "--prompt-limit", "1", "--cities", "Australia")
@@ -165,6 +173,17 @@ class WorkerCliTest(unittest.TestCase):
             payload["collector_health_gate"]["failure_reasons"],
             ["perplexity.sonar.api:not_configured", "openai.web_search.api:not_configured"],
         )
+        summary = payload["preflight_summary"]
+        self.assertEqual(summary["summary_version"], "provider_preflight_v1")
+        self.assertEqual(summary["exit_code"], 0)
+        self.assertEqual(summary["phase"], "collection_completed")
+        self.assertFalse(summary["ready_for_design_partner"])
+        self.assertEqual(summary["collector_health_status"], "fail")
+        self.assertEqual(
+            summary["collector_health_failure_reasons"],
+            ["perplexity.sonar.api:not_configured", "openai.web_search.api:not_configured"],
+        )
+        self.assertEqual(summary["recommended_next_action"], "configure_missing_provider_credentials_or_collectors")
         gate = payload["p0a_readiness_gate"]
         self.assertEqual(gate["gate_status"], "fail")
         self.assertIn("collection_failures=2", gate["failure_reasons"])
@@ -201,6 +220,18 @@ class WorkerCliTest(unittest.TestCase):
             payload["collector_health_gate"]["failure_reasons"],
             ["perplexity.sonar.api:not_configured", "openai.web_search.api:not_configured"],
         )
+        summary = payload["preflight_summary"]
+        self.assertEqual(summary["summary_version"], "provider_preflight_v1")
+        self.assertEqual(summary["exit_code"], 3)
+        self.assertEqual(summary["phase"], "collector_health")
+        self.assertFalse(summary["ready_for_design_partner"])
+        self.assertEqual(summary["collector_health_status"], "fail")
+        self.assertEqual(
+            summary["collector_health_failure_reasons"],
+            ["perplexity.sonar.api:not_configured", "openai.web_search.api:not_configured"],
+        )
+        self.assertEqual(summary["audit_output_path"], output_path)
+        self.assertEqual(summary["recommended_next_action"], "configure_missing_provider_credentials_or_collectors")
 
     def test_api_preflight_with_browser_fidelity_requires_browser_collector_ready(self) -> None:
         with patch.dict(
@@ -238,6 +269,12 @@ class WorkerCliTest(unittest.TestCase):
             payload["collector_health_gate"]["failure_reasons"],
             ["chatgpt_search.browser.playwright:not_configured"],
         )
+        summary = payload["preflight_summary"]
+        self.assertEqual(summary["exit_code"], 3)
+        self.assertEqual(summary["planned_runs"], 9)
+        self.assertEqual(summary["phase"], "collector_health")
+        self.assertFalse(summary["ready_for_design_partner"])
+        self.assertEqual(summary["recommended_next_action"], "configure_missing_provider_credentials_or_collectors")
 
     def test_browser_fidelity_sampling_plan_outputs_replayable_worker_args(self) -> None:
         payload = self._run_worker(
@@ -295,6 +332,16 @@ class WorkerCliTest(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["p0a_readiness_gate"]["gate_status"], "fail")
         self.assertIn("below_required_sample_size=4", payload["p0a_readiness_gate"]["failure_reasons"])
+        summary = payload["preflight_summary"]
+        self.assertEqual(summary["exit_code"], 4)
+        self.assertEqual(summary["phase"], "p0a_readiness")
+        self.assertFalse(summary["ready_for_design_partner"])
+        self.assertEqual(summary["p0a_readiness_status"], "fail")
+        self.assertIn("below_required_sample_size=4", summary["p0a_readiness_failure_reasons"])
+        self.assertEqual(
+            summary["recommended_next_action"],
+            "inspect_p0a_readiness_failure_reasons_before_design_partner",
+        )
 
     def test_require_no_collection_failures_fails_nonzero_after_collection(self) -> None:
         result = self._run_worker_result(

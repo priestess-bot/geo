@@ -1661,7 +1661,7 @@ ReportEvidence
 - 可创建 `market = AU` 的 GEO 项目。
 - 可选择 1 个行业模板并生成 100 条澳洲问题集。
 - 可配置 3-5 个竞品。
-- **P0a 稳定链路**：可完成 Perplexity Sonar 与 OpenAI web search 两个平台采集，每条有 answer、citation、screenshot 或 HTML 快照；真实 key 上线前先跑 `make api-preflight`，并把成功/失败 JSON 固定落到 `docs/runtime_preflight/api-preflight-latest.json` 或 `GENO_API_PREFLIGHT_OUTPUT_PATH` 指定路径，供审计复盘。
+- **P0a 稳定链路**：可完成 Perplexity Sonar 与 OpenAI web search 两个平台采集，每条有 answer、citation、screenshot 或 HTML 快照；真实 key 上线前先跑 `make api-preflight`，并把成功/失败 JSON 固定落到 `docs/runtime_preflight/api-preflight-latest.json` 或 `GENO_API_PREFLIGHT_OUTPUT_PATH` 指定路径，供审计复盘。预检 JSON 必须包含 `preflight_summary`，用 `phase`、`exit_code`、`ready_for_design_partner`、gate failure reasons 和 `recommended_next_action` 明确说明当前是否可扩大到真实 AU design-partner 批次。
 - **P0b Google spike**：可完成 Google AIO / AI Mode 的限时采集验证，输出 pass/fail gate、触发率、失败原因、成本/耗时估算和样本证据。
 - `GoogleSpikeReadinessGate` 必须在 worker/API 合同中可见，明确区分“Google 是否可进主评分分母”和“P0b 是否完成两路径对照”。
 - `score_input_policy` 必须冻结在评分审计和 Report Method Disclosure 中，列出 all/score-input/excluded answer_run_ids，证明未过双 gate 的 Google 证据没有进入主评分分母。
