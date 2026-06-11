@@ -35,5 +35,9 @@ jobs:
         run: make docker-config-scheduler
       - name: Validate Compose observability config
         run: make docker-config-observability
+      - name: Validate Compose DB smoke config
+        run: make docker-config-db-smoke
+      - name: Run DB schema smoke
+        run: make db-smoke
       - name: Run runtime E2E
         run: make runtime-e2e

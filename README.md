@@ -50,7 +50,7 @@
 make ci-local
 ```
 
-该目标会依次执行静态质量门禁、Python 合约/运行时测试、Runtime Console production build、默认/LLM/scheduler/observability 四组 Compose config 静态校验，以及 Postgres+MinIO runtime E2E。需要拆开排障时可单独执行：
+该目标会依次执行静态质量门禁、Python 合约/运行时测试、Runtime Console production build、默认/LLM/scheduler/observability/db-smoke 五组 Compose config 静态校验、临时 PostgreSQL schema smoke，以及 Postgres+MinIO runtime E2E。需要拆开排障时可单独执行：
 
 ```bash
 make quality
@@ -60,8 +60,12 @@ make docker-config
 make docker-config-llm
 make docker-config-scheduler
 make docker-config-observability
+make docker-config-db-smoke
+make db-smoke
 make runtime-e2e
 ```
+
+`make db-smoke` 会用独立 Compose project 启动临时 PostgreSQL+pgvector 新卷，让 `/docker-entrypoint-initdb.d` 执行全部 `infra/db/migrations/up/`，随后运行 `scripts/verify_db_smoke.py` 检查 `uuid-ossp`/`vector` 扩展、核心表和关键列、`geno_runtime_app` 非 bypass runtime role、RLS helper functions/policies，并用 admin/runtime 两个连接证明开启 `geno.runtime_*` GUC 后 actor 只能读取授权项目；结束时自动 `down -v` 清理容器和卷。
 
 `make runtime-e2e` 会用独立 Compose project 启动临时 PostgreSQL+pgvector 与 MinIO，构建 `runtime-e2e` 容器，跑 fixture worker `--persist --persist-analysis`，验证 Postgres 中的 answer/score/report/traceability 行、MinIO 中的 Markdown/PDF/CSV report artifact，并用 fake official API response 验证 `geno-api-snapshot://...` 会归档为 `s3://...` EvidenceAsset 和 `api_snapshot_assets_archived` 审计事件；结束时自动 `down -v` 清理容器和卷。
 

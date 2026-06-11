@@ -228,6 +228,22 @@ services:
       minio:
         condition: service_started
 
+  db-smoke:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    profiles:
+      - db-smoke
+    environment:
+      DATABASE_URL: postgresql://geno:geno@postgres:5432/geno
+      RUNTIME_DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+    command:
+      - python
+      - scripts/verify_db_smoke.py
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   web:
     build:
       context: ..

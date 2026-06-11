@@ -73,6 +73,20 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("postgres", verifier["depends_on"])
         self.assertIn("minio", verifier["depends_on"])
 
+    def test_db_smoke_profile_wires_verifier_to_admin_and_runtime_postgres_roles(self) -> None:
+        config = self._compose_config("db-smoke")
+        services = config["services"]
+        verifier = services["db-smoke"]
+
+        self.assertEqual(verifier["build"]["dockerfile"], "apps/api/Dockerfile")
+        self.assertIn("python", verifier["command"])
+        self.assertIn("scripts/verify_db_smoke.py", verifier["command"])
+        self.assertEqual(verifier["environment"]["DATABASE_URL"], "postgresql://geno:geno@postgres:5432/geno")
+        self.assertEqual(verifier["environment"]["RUNTIME_DATABASE_URL"], RUNTIME_DATABASE_URL)
+        self.assertNotIn("OBJECT_STORE_ENDPOINT", verifier["environment"])
+        self.assertIn("postgres", verifier["depends_on"])
+        self.assertNotIn("minio", verifier["depends_on"])
+
     def test_scheduler_profile_wires_browser_fidelity_scheduler(self) -> None:
         config = self._compose_config("scheduler")
         services = config["services"]
@@ -198,6 +212,10 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("browser-fidelity-scheduler-run:", makefile)
         self.assertIn("docker-config-scheduler:", makefile)
         self.assertIn("docker-config-observability:", makefile)
+        self.assertIn("docker-config-db-smoke:", makefile)
+        self.assertIn("db-smoke:", makefile)
+        self.assertIn("docker compose -p geno-db-smoke -f infra/docker-compose.yml --profile db-smoke run --rm db-smoke", makefile)
+        self.assertIn("ci-local: quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e", makefile)
 
     def test_github_ci_runs_runtime_contract_build_compose_and_e2e_gates(self) -> None:
         workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
@@ -213,6 +231,8 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("make docker-config-llm", run_steps)
         self.assertIn("make docker-config-scheduler", run_steps)
         self.assertIn("make docker-config-observability", run_steps)
+        self.assertIn("make docker-config-db-smoke", run_steps)
+        self.assertIn("make db-smoke", run_steps)
         self.assertIn("make runtime-e2e", run_steps)
 
 
