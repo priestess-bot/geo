@@ -1807,6 +1807,11 @@ function clipText(value: string | undefined, maxLength: number): string {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
 }
 
+function safeHexColor(value: string | null | undefined, fallback: string): string {
+  const color = (value || "").trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
+}
+
 function countBy<T>(items: T[], selector: (item: T) => string | undefined): Record<string, number> {
   return items.reduce<Record<string, number>>((counts, item) => {
     const key = selector(item) || "unknown";
@@ -2099,6 +2104,11 @@ export default async function Home({
   const whiteLabelClientName =
     projectBrandKit?.client_name || latestProject?.brand?.canonical_name || latestProject?.project.target_brand || "Client";
   const whiteLabelPreparedBy = projectBrandKit?.prepared_by || "GENO SaaS AU";
+  const whiteLabelLogoUrl = projectBrandKit?.logo_url || "https://examplebrand.example/logo.png";
+  const whiteLabelPrimaryColor = safeHexColor(projectBrandKit?.primary_color, "#0f766e");
+  const whiteLabelSecondaryColor = safeHexColor(projectBrandKit?.secondary_color, "#111827");
+  const whiteLabelFooterText = projectBrandKit?.footer_text || "Prepared for AU GEO visibility review";
+  const brandKitAudit = data.brandKit?.audit_events[0];
   const reportWhiteLabelPdfUrl = reportArtifactPath(
     reportArtifactBase,
     "pdf",
@@ -2541,7 +2551,7 @@ export default async function Home({
                 <h3>Brand Kit</h3>
                 <small>
                   {projectBrandKit
-                    ? `${projectBrandKit.updated_by} · ${data.brandKit?.audit_events[0]?.event_type || "saved"}`
+                    ? `${projectBrandKit.updated_by} · ${brandKitAudit?.event_type || "saved"}`
                     : "project-level white-label defaults"}
                 </small>
               </div>
@@ -2564,21 +2574,21 @@ export default async function Home({
               </label>
               <label className="wideField">
                 <span>Logo URL</span>
-                <input name="logo_url" defaultValue={projectBrandKit?.logo_url || "https://examplebrand.example/logo.png"} />
+                <input name="logo_url" defaultValue={whiteLabelLogoUrl} />
               </label>
-              <label>
+              <label className="themeColorField">
                 <span>Primary color</span>
-                <input name="primary_color" defaultValue={projectBrandKit?.primary_color || "#0f766e"} />
+                <input name="primary_color" type="color" defaultValue={whiteLabelPrimaryColor} />
               </label>
-              <label>
+              <label className="themeColorField">
                 <span>Secondary color</span>
-                <input name="secondary_color" defaultValue={projectBrandKit?.secondary_color || "#111827"} />
+                <input name="secondary_color" type="color" defaultValue={whiteLabelSecondaryColor} />
               </label>
               <label className="wideField">
                 <span>Footer text</span>
                 <textarea
                   name="footer_text"
-                  defaultValue={projectBrandKit?.footer_text || "Prepared for AU GEO visibility review"}
+                  defaultValue={whiteLabelFooterText}
                   rows={2}
                 />
               </label>
@@ -2586,6 +2596,50 @@ export default async function Home({
                 Save brand kit
               </button>
             </form>
+            <section className="themeEditorPreview" aria-label="advanced white-label theme editor">
+              <div className="formHeader">
+                <h3>Theme Editor</h3>
+                <small>
+                  {brandKitAudit?.method_version || "project_brand_kit_v1"} ·{" "}
+                  {brandKitAudit?.after_hash ? `hash ${clipText(brandKitAudit.after_hash, 18)}` : "not saved"}
+                </small>
+              </div>
+              <div className="themePreviewCard">
+                <div className="themePreviewHeader" style={{ backgroundColor: whiteLabelPrimaryColor }}>
+                  <span className="themeLogoMark" style={{ borderColor: whiteLabelSecondaryColor }}>
+                    {whiteLabelClientName.slice(0, 2).toUpperCase()}
+                  </span>
+                  <div>
+                    <strong>{whiteLabelClientName}</strong>
+                    <span>{whiteLabelPreparedBy}</span>
+                  </div>
+                </div>
+                <div className="themePreviewBody">
+                  <h3>AU GEO Visibility Report</h3>
+                  <p>{filterLabel} · {evidenceSort}</p>
+                  <div className="themeMetricStrip">
+                    <span style={{ borderColor: whiteLabelPrimaryColor }}>
+                      Score {num(latestScore?.snapshot.final_score)}
+                    </span>
+                    <span style={{ borderColor: whiteLabelSecondaryColor }}>
+                      Evidence {latestReport?.answer_runs.length || data.evidence.total_count}
+                    </span>
+                  </div>
+                  <small>{whiteLabelFooterText}</small>
+                </div>
+              </div>
+              <dl className="facts themePreviewFacts">
+                <Fact label="Primary color" value={whiteLabelPrimaryColor} />
+                <Fact label="Secondary color" value={whiteLabelSecondaryColor} />
+                <Fact label="Logo source" value={whiteLabelLogoUrl} />
+                <Fact
+                  label="White-label path"
+                  value={reportWhiteLabelPdfUrl?.replace(displayUrl, "") || "No white-label artifact"}
+                />
+                <Fact label="Template payload" value="client_name/prepared_by/logo_url/primary_color/secondary_color/footer_text" />
+                <Fact label="Audit event" value={brandKitAudit?.event_type || "project_brand_kit_saved pending"} />
+              </dl>
+            </section>
             <form action={uploadProjectBrandLogo} className="brandKitForm">
               <div className="formHeader">
                 <h3>Logo Upload</h3>

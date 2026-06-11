@@ -1044,6 +1044,8 @@ monthly_snapshot
 export_history
 ```
 
+当前工程已把代理商白标工作流拆成一条可演示的最小闭环：`Project Bootstrap` 创建 AU/DTC 客户项目；`Project Members` 维护 owner/admin/analyst/viewer；`Brand Kit` 保存 `client_name / prepared_by / logo_url / primary_color / secondary_color / footer_text` 并写 `project_brand_kit_saved`；`Logo Upload` 把品牌图片归档到 MinIO/S3-compatible `brand-assets/<project_id>/...`，写回 Brand Kit 的 `logo_url` 并生成 `project_brand_logo_uploaded`；`Theme Editor` 不新增 schema，而是复用同一组 Brand Kit 字段，在 Runtime Console 中提供颜色输入、客户/服务商/页脚预览、white-label artifact path 和最近 Brand Kit 审计摘要。这样白标 PDF 的 runtime artifact、控制台预览和审计链共用同一份项目级默认值，避免在 MVP 阶段引入独立主题配置表和报告模板版本管理。
+
 报告必须展示：
 
 - 采集时间窗口。

@@ -103,6 +103,7 @@ class WebConsoleContractsTest(unittest.TestCase):
 
     def test_runtime_console_surfaces_brand_logo_upload(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
 
         self.assertIn("Logo Upload", page_source)
         self.assertIn("uploadProjectBrandLogo", page_source)
@@ -110,6 +111,18 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn('name="brand_logo"', page_source)
         self.assertIn('type="file"', page_source)
         self.assertIn("project_brand_logo_uploaded", page_source)
+        self.assertIn("Theme Editor", page_source)
+        self.assertIn("themeEditorPreview", page_source)
+        self.assertIn("advanced white-label theme editor", page_source)
+        self.assertIn("Template payload", page_source)
+        self.assertIn('type="color"', page_source)
+        self.assertIn("primary_color", page_source)
+        self.assertIn("secondary_color", page_source)
+        self.assertIn("project_brand_kit_saved", page_source)
+        self.assertIn(".themeEditorPreview", css_source)
+        self.assertIn(".themePreviewCard", css_source)
+        self.assertIn(".themeMetricStrip", css_source)
+        self.assertIn(".themeColorField", css_source)
 
     def test_runtime_console_surfaces_project_member_management(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")

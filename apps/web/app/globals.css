@@ -220,6 +220,116 @@ code {
   resize: vertical;
 }
 
+.brandKitForm input[type="color"] {
+  height: 38px;
+  padding: 4px 5px;
+}
+
+.themeColorField input {
+  cursor: pointer;
+}
+
+.themeEditorPreview {
+  background: #fbfcfd;
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.themePreviewCard {
+  background: #ffffff;
+  border: 1px solid #d5dde6;
+  border-radius: 6px;
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.themePreviewHeader {
+  align-items: center;
+  color: #ffffff;
+  display: flex;
+  gap: 10px;
+  min-height: 72px;
+  padding: 14px;
+}
+
+.themePreviewHeader div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.themePreviewHeader strong,
+.themePreviewHeader span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.themePreviewHeader strong {
+  font-size: 15px;
+}
+
+.themePreviewHeader div span {
+  font-size: 12px;
+  opacity: 0.86;
+}
+
+.themeLogoMark {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.16);
+  border: 2px solid #ffffff;
+  border-radius: 6px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+
+.themePreviewBody {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.themePreviewBody h3 {
+  color: #202a36;
+  font-size: 15px;
+}
+
+.themePreviewBody p,
+.themePreviewBody small {
+  color: #667585;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.themeMetricStrip {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.themeMetricStrip span {
+  background: #f7fafc;
+  border-left: 4px solid #245d61;
+  border-radius: 4px;
+  color: #334453;
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  padding: 8px;
+}
+
+.themePreviewFacts {
+  grid-template-columns: minmax(118px, 0.35fr) minmax(0, 1fr);
+}
+
 .manualBackfillForm,
 .promptImportForm,
 .entityAliasForm,
