@@ -85,6 +85,9 @@ from geno_core.models import (
     RuntimeProjectBrandKit,
     RuntimeProjectBrandKitInput,
     RuntimeProjectBrandLogoUpload,
+    RuntimeProjectMember,
+    RuntimeProjectMemberInput,
+    RuntimeProjectMemberPage,
     RuntimePromptImportInput,
     RuntimePromptImportHistoryPage,
     RuntimePromptImportResult,
@@ -2939,6 +2942,97 @@ class CoreContractsTest(unittest.TestCase):
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FROM project_members", executed_sql)
         self.assertEqual(connection.calls[0][1], (UUID(project_id), "agency-owner"))
+
+    def test_postgres_repository_lists_runtime_project_members_with_audit_events(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        member_id = "d83a98ab-57c1-52e8-90b9-8c488f263e48"
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [
+                    {
+                        "id": member_id,
+                        "project_id": project_id,
+                        "user_id": "analyst@example.com",
+                        "role": "analyst",
+                        "created_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": "2782a901-8cdf-47e7-bbdb-345d9ca66efe",
+                        "event_type": "project_member_saved",
+                        "project_id": project_id,
+                        "actor_type": "user",
+                        "actor_id": "agency-owner",
+                        "target_type": "project_member",
+                        "target_id": member_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"project_ids": [project_id], "user_ids": ["analyst@example.com"]},
+                        "output_refs": {"project_member_ids": [member_id]},
+                        "method_version": "project_member_v1",
+                        "reason": "add analyst",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+
+        page = PostgresEvidenceRepository(connection).list_runtime_project_members(
+            project_id=project_id,
+            limit=10,
+            offset=0,
+        )
+
+        self.assertIsInstance(page, RuntimeProjectMemberPage)
+        self.assertEqual(page.total_count, 1)
+        self.assertIsInstance(page.records[0], RuntimeProjectMember)
+        self.assertEqual(page.records[0].member["user_id"], "analyst@example.com")
+        self.assertEqual(page.records[0].audit_events[0]["event_type"], "project_member_saved")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM project_members WHERE project_id = %s", executed_sql)
+        self.assertIn("target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_saves_runtime_project_member_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        connection = RecordingConnection(
+            result_sets=[
+                {"id": project_id},
+                None,
+                {
+                    "id": "d83a98ab-57c1-52e8-90b9-8c488f263e48",
+                    "project_id": project_id,
+                    "user_id": "analyst@example.com",
+                    "role": "analyst",
+                    "created_at": now,
+                },
+            ]
+        )
+
+        record = PostgresEvidenceRepository(connection).save_runtime_project_member(
+            RuntimeProjectMemberInput(
+                project_id=project_id,
+                user_id="analyst@example.com",
+                role="analyst",
+                updated_by="agency-owner",
+                reason="add analyst",
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeProjectMember)
+        self.assertEqual(record.member["user_id"], "analyst@example.com")
+        self.assertEqual(record.member["role"], "analyst")
+        self.assertEqual(record.audit_events[0]["event_type"], "project_member_saved")
+        self.assertEqual(record.audit_events[0]["actor_id"], "agency-owner")
+        self.assertEqual(record.audit_events[0]["method_version"], "project_member_v1")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO project_members", executed_sql)
+        self.assertIn("ON CONFLICT (project_id, user_id) DO UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
 
     def test_postgres_repository_reads_runtime_prompt_page(self) -> None:
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"

@@ -24,6 +24,8 @@ from geno_core.models import (
     RuntimeKnowledgeSearchResult,
     RuntimeProjectBrandKit,
     RuntimeProjectBrandLogoUpload,
+    RuntimeProjectMember,
+    RuntimeProjectMemberPage,
     RuntimePromptImportHistoryItem,
     RuntimePromptImportHistoryPage,
     RuntimePromptImportResult,
@@ -236,6 +238,136 @@ class ApiContractsTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(fake_repository.kwargs["actor_id"], "agency-owner")
+
+    def test_runtime_project_members_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get("/v1/project-members/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_project_members_endpoint_passes_project_filter(self) -> None:
+        class FakeRepository:
+            def list_runtime_project_members(self, **kwargs: object) -> RuntimeProjectMemberPage:
+                self.kwargs = kwargs
+                return RuntimeProjectMemberPage(
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(
+                        RuntimeProjectMember(
+                            member={
+                                "id": "member-1",
+                                "project_id": kwargs["project_id"],
+                                "user_id": "analyst@example.com",
+                                "role": "analyst",
+                            },
+                            audit_events=(),
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/project-members/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c&limit=5&offset=1"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["records"][0]["member"]["user_id"], "analyst@example.com")
+        self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+        self.assertEqual(fake_repository.kwargs["offset"], 1)
+
+    def test_runtime_project_members_endpoint_checks_access_control_when_enabled(self) -> None:
+        class FakeRepository:
+            def user_can_access_project(self, **kwargs: object) -> bool:
+                self.access_kwargs = kwargs
+                return False
+
+            def list_runtime_project_members(self, **kwargs: object) -> object:
+                raise AssertionError("list_runtime_project_members should not be called when access is denied")
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.get(
+                "/v1/project-members/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(fake_repository.access_kwargs["actor_id"], "agency-owner")
+
+    def test_runtime_project_member_save_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def save_runtime_project_member(self, member: object) -> RuntimeProjectMember:
+                self.member = member
+                return RuntimeProjectMember(
+                    member={
+                        "id": "member-1",
+                        "project_id": member.project_id,
+                        "user_id": member.user_id,
+                        "role": member.role,
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "project_member_saved",
+                            "target_type": "project_member",
+                            "method_version": "project_member_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/project-members/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "user_id": "analyst@example.com",
+                    "role": "analyst",
+                    "updated_by": "agency-owner",
+                    "reason": "add analyst",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["member"]["role"], "analyst")
+        self.assertEqual(response.json()["audit_events"][0]["event_type"], "project_member_saved")
+        self.assertEqual(fake_repository.member.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.member.user_id, "analyst@example.com")
+        self.assertEqual(fake_repository.member.role, "analyst")
+
+    def test_runtime_project_member_save_endpoint_uses_actor_when_access_control_enabled(self) -> None:
+        class FakeRepository:
+            def user_can_access_project(self, **kwargs: object) -> bool:
+                return True
+
+            def save_runtime_project_member(self, member: object) -> RuntimeProjectMember:
+                self.member = member
+                return RuntimeProjectMember(member={"id": "member-1", "project_id": member.project_id}, audit_events=())
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.post(
+                "/v1/project-members/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "user_id": "viewer@example.com",
+                    "role": "viewer",
+                    "updated_by": "payload-user",
+                },
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(fake_repository.member.updated_by, "agency-owner")
 
     def test_runtime_prompts_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/prompts/runtime")
@@ -1679,6 +1811,10 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeSavedViewPage", payload["persistence"])
         self.assertIn("RuntimeProject", payload["persistence"])
         self.assertIn("RuntimeProjectPage", payload["persistence"])
+        self.assertIn("RuntimeProjectMember", payload["persistence"])
+        self.assertIn("RuntimeProjectMemberPage", payload["persistence"])
+        self.assertIn("RuntimeProjectMemberInput", payload["persistence"])
+        self.assertIn("ProjectMemberRequest", payload["persistence"])
         self.assertIn("RuntimeProjectBrandKit", payload["persistence"])
         self.assertIn("RuntimeProjectBrandKitInput", payload["persistence"])
         self.assertIn("RuntimeProjectBrandLogoUpload", payload["persistence"])
@@ -1714,6 +1850,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("archive_project_brand_logo", payload["persistence"])
         self.assertIn("/v1/projects/runtime", payload["persistence"])
         self.assertIn("/v1/projects/runtime/au/dtc-ecommerce", payload["persistence"])
+        self.assertIn("/v1/project-members/runtime", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/confirm", payload["persistence"])

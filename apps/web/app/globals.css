@@ -142,6 +142,7 @@ code {
 .filterForm label,
 .saveViewForm label,
 .projectCreateForm label,
+.projectMemberForm label,
 .brandKitForm label,
 .promptImportForm label,
 .manualBackfillForm label,
@@ -155,6 +156,7 @@ code {
 .filterForm label span,
 .saveViewForm label span,
 .projectCreateForm label span,
+.projectMemberForm label span,
 .brandKitForm label span,
 .promptImportForm label span,
 .manualBackfillForm label span,
@@ -168,6 +170,8 @@ code {
 .saveViewForm input,
 .projectCreateForm input,
 .projectCreateForm textarea,
+.projectMemberForm input,
+.projectMemberForm select,
 .brandKitForm input,
 .brandKitForm textarea,
 .promptImportForm textarea,
@@ -198,6 +202,7 @@ code {
 }
 
 .projectCreateForm,
+.projectMemberForm,
 .brandKitForm {
   background: #f7fafc;
   border: 1px solid #d9e2ec;
@@ -209,6 +214,7 @@ code {
 }
 
 .projectCreateForm textarea,
+.projectMemberForm textarea,
 .brandKitForm textarea {
   line-height: 1.45;
   resize: vertical;
@@ -1254,6 +1260,7 @@ summary {
   .filterForm,
   .savedViews,
   .projectCreateForm,
+  .projectMemberForm,
   .brandKitForm,
   .promptImportForm,
   .manualBackfillForm,
@@ -1308,6 +1315,7 @@ summary {
   .savedViews,
   .saveViewForm,
   .projectCreateForm,
+  .projectMemberForm,
   .brandKitForm,
   .promptImportForm,
   .manualBackfillForm,

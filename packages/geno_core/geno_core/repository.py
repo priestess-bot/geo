@@ -63,6 +63,9 @@ from geno_core.models import (
     RuntimeProjectBrandKitInput,
     RuntimeProjectBrandLogoUpload,
     RuntimeProject,
+    RuntimeProjectMember,
+    RuntimeProjectMemberInput,
+    RuntimeProjectMemberPage,
     RuntimeProjectPage,
     RuntimePromptImportHistoryItem,
     RuntimePromptImportHistoryPage,
@@ -832,6 +835,13 @@ PROJECT_COLUMNS = (
     "status",
     "created_at",
 )
+PROJECT_MEMBER_COLUMNS = (
+    "id",
+    "project_id",
+    "user_id",
+    "role",
+    "created_at",
+)
 BRAND_ENTITY_COLUMNS = (
     "id",
     "project_id",
@@ -1356,6 +1366,145 @@ class PostgresEvidenceRepository:
         if not row:
             return None
         return str(row["project_id"] if isinstance(row, dict) else row[0])
+
+    def list_runtime_project_members(
+        self,
+        *,
+        project_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeProjectMemberPage:
+        project_id = project_id.strip()
+        if not project_id:
+            raise ValueError("project_id is required")
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT count(*)
+                FROM project_members
+                WHERE project_id = %s
+                """,
+                (_uuid(project_id),),
+            )
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_MEMBER_COLUMNS)}
+                FROM project_members
+                WHERE project_id = %s
+                ORDER BY
+                  CASE role
+                    WHEN 'owner' THEN 1
+                    WHEN 'admin' THEN 2
+                    WHEN 'analyst' THEN 3
+                    WHEN 'viewer' THEN 4
+                    ELSE 5
+                  END,
+                  user_id ASC
+                LIMIT %s OFFSET %s
+                """,
+                (_uuid(project_id), limit, offset),
+            )
+            rows = _rows_dict(cursor.fetchall(), PROJECT_MEMBER_COLUMNS)
+            records = tuple(self._load_runtime_project_member(cursor=cursor, member=row) for row in rows)
+        return RuntimeProjectMemberPage(total_count=total_count, limit=limit, offset=offset, records=records)
+
+    def save_runtime_project_member(self, member: RuntimeProjectMemberInput) -> RuntimeProjectMember:
+        project_id = member.project_id.strip()
+        user_id = member.user_id.strip()
+        role = member.role.strip().lower()
+        updated_by = member.updated_by.strip() or "runtime-console"
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not user_id:
+            raise ValueError("user_id is required")
+        if role not in {"owner", "admin", "analyst", "viewer"}:
+            raise ValueError("role must be owner, admin, analyst, or viewer")
+        member_id = _stable_id("project-member", project_id, user_id)
+        after = {
+            "id": member_id,
+            "project_id": project_id,
+            "user_id": user_id,
+            "role": role,
+        }
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_MEMBER_COLUMNS)}
+                FROM project_members
+                WHERE project_id = %s AND user_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id), user_id),
+            )
+            existing = cursor.fetchone()
+            before = _row_dict(existing, PROJECT_MEMBER_COLUMNS) if existing else None
+            cursor.execute(
+                """
+                INSERT INTO project_members (id, project_id, user_id, role)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (project_id, user_id) DO UPDATE SET
+                  role = EXCLUDED.role
+                """,
+                (_uuid(member_id), _uuid(project_id), user_id, role),
+            )
+            audit_event = build_audit_event(
+                event_type="project_member_saved",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="project_member",
+                target_id=member_id,
+                before=before,
+                after=after,
+                input_refs={"project_ids": [project_id], "user_ids": [user_id]},
+                output_refs={"project_member_ids": [member_id]},
+                method_version="project_member_v1",
+                reason=member.reason.strip() if member.reason else "runtime_project_member_upsert",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_MEMBER_COLUMNS)}
+                FROM project_members
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(member_id),),
+            )
+            saved_row = cursor.fetchone()
+        self.connection.commit()
+        return RuntimeProjectMember(
+            member=_row_dict(saved_row, PROJECT_MEMBER_COLUMNS),
+            audit_events=(asdict(audit_event),),
+        )
+
+    def _load_runtime_project_member(self, *, cursor: DbCursor, member: dict[str, Any]) -> RuntimeProjectMember:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            """,
+            (_uuid(member["project_id"]), "project_member", str(member["id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeProjectMember(member=member, audit_events=audit_events)
 
     def _load_runtime_project(self, *, cursor: DbCursor, project: dict[str, Any]) -> RuntimeProject:
         cursor.execute(

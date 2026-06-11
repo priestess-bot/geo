@@ -52,6 +52,7 @@ from geno_core.models import (
     ManualBackfillInput,
     RuntimeProjectBrandKitInput,
     RuntimeProjectBrandLogoUpload,
+    RuntimeProjectMemberInput,
     RuntimePromptImportInput,
     RuntimeSavedViewInput,
     RuntimeScoreWeightConfigInput,
@@ -213,6 +214,14 @@ class RuntimeProjectCreateRequest(BaseModel):
     owner_user_id: str = Field(default="runtime-console", min_length=1, max_length=120)
 
 
+class ProjectMemberRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    user_id: str = Field(min_length=1, max_length=120)
+    role: str = Field(default="viewer", min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class RuntimeFidelityCheckRequest(BaseModel):
     project_id: str = Field(min_length=1)
     report_export_id: str | None = Field(default=None, min_length=1)
@@ -322,6 +331,56 @@ def runtime_projects(
             offset=offset,
         )
         return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/project-members/runtime")
+def runtime_project_members(
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_project_members(project_id=project_id, limit=limit, offset=offset)
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-members/runtime")
+def save_runtime_project_member(
+    payload: ProjectMemberRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id)
+        try:
+            member = repository.save_runtime_project_member(
+                RuntimeProjectMemberInput(
+                    project_id=payload.project_id.strip(),
+                    user_id=payload.user_id.strip(),
+                    role=payload.role.strip().lower(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(member)
     finally:
         close_repository_connection(repository)
 
@@ -1944,6 +2003,10 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeProject",
             "RuntimeProjectPage",
             "RuntimeProjectCreateRequest",
+            "RuntimeProjectMember",
+            "RuntimeProjectMemberPage",
+            "RuntimeProjectMemberInput",
+            "ProjectMemberRequest",
             "RuntimeProjectBrandKit",
             "RuntimeProjectBrandKitInput",
             "RuntimeProjectBrandLogoUpload",
@@ -2009,6 +2072,7 @@ def contracts() -> dict[str, list[str]]:
             "TraceabilityBundle",
             "/v1/projects/runtime",
             "/v1/projects/runtime/au/dtc-ecommerce",
+            "/v1/project-members/runtime",
             "/v1/entity-aliases/runtime",
             "/v1/entity-aliases/runtime/candidates",
             "/v1/entity-aliases/runtime/confirm",

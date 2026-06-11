@@ -180,7 +180,7 @@ P0a 这四个主链路接口必须是可测试的运行时契约，而不是仅�
 
 > 选型纪律：MVP 阶段能用一个组件覆盖就不引第二个（如向量先用 pgvector、图先用 PG 邻接表）；但**接口必须按"将来要换"来设计**，这样换 Qdrant、换 Neo4j、换第三方采集后端时只新增一个适配器实现，不动业务代码。许可证（如 MinIO AGPLv3、Redis/Valkey、n8n 商用条款）在选定时逐项核查。
 
-工程当前已先落一层默认关闭的 API 级运行时项目访问控制，用于补齐澳洲首发的最小多客户隔离验证：设置 `GENO_RUNTIME_PROJECT_ACCESS_CONTROL=1` 后，runtime API 要求 `X-GENO-Actor-Id`，项目列表按 `project_members.user_id` 过滤，项目创建把当前 actor 写为 owner/member，主要项目级读写接口必须带 `project_id` 并校验 actor 是项目成员；报告 artifact、traceability、fidelity trend/check 和 alias confirm 这类对象级入口会先从 `report_exports` 或品牌/竞品实体反查所属项目再校验。该层是 MVP 门禁和可审计隔离证明，不替代 Keycloak/JWT、PostgreSQL RLS、细粒度角色矩阵、客户授权流转或账单隔离。
+工程当前已先落一层默认关闭的 API 级运行时项目访问控制，用于补齐澳洲首发的最小多客户隔离验证：设置 `GENO_RUNTIME_PROJECT_ACCESS_CONTROL=1` 后，runtime API 要求 `X-GENO-Actor-Id`，项目列表按 `project_members.user_id` 过滤，项目创建把当前 actor 写为 owner/member，主要项目级读写接口必须带 `project_id` 并校验 actor 是项目成员；报告 artifact、traceability、fidelity trend/check 和 alias confirm 这类对象级入口会先从 `report_exports` 或品牌/竞品实体反查所属项目再校验。成员管理也已落到最小可审计路径：`GET /v1/project-members/runtime?project_id=...` 读取成员和审计历史，`POST /v1/project-members/runtime` 按 `project_id + user_id` 幂等 upsert `owner/admin/analyst/viewer` 角色并写入 `project_member_saved` 审计事件，Runtime Console 的 Project Members 面板可展示和维护这些成员。该层是 MVP 门禁和可审计隔离证明，不替代 Keycloak/JWT、PostgreSQL RLS、细粒度角色矩阵、成员邀请/删除、客户授权流转或账单隔离。
 
 ### 3.4 必须可插拔的关键点清单
 

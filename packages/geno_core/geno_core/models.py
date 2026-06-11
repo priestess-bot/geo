@@ -1003,6 +1003,29 @@ class RuntimeProjectPage:
 
 
 @dataclass(frozen=True)
+class RuntimeProjectMember:
+    member: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeProjectMemberPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeProjectMember, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeProjectMemberInput:
+    project_id: str
+    user_id: str
+    role: ProjectRole
+    updated_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeProjectBrandKit:
     brand_kit: dict[str, Any]
     audit_events: tuple[dict[str, Any], ...]

@@ -111,6 +111,20 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn('type="file"', page_source)
         self.assertIn("project_brand_logo_uploaded", page_source)
 
+    def test_runtime_console_surfaces_project_member_management(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
+
+        self.assertIn("Project Members", page_source)
+        self.assertIn("RuntimeProjectMember", page_source)
+        self.assertIn("saveRuntimeProjectMember", page_source)
+        self.assertIn("/v1/project-members/runtime", page_source)
+        self.assertIn("project_member_saved", page_source)
+        self.assertIn('name="user_id"', page_source)
+        self.assertIn('name="role"', page_source)
+        self.assertIn("project_members gate", page_source)
+        self.assertIn(".projectMemberForm", css_source)
+
     def test_runtime_console_surfaces_runtime_alerts(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")

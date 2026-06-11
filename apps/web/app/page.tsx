@@ -25,6 +25,17 @@ type RuntimeProject = {
   audit_events: Array<{ event_type: string; method_version?: string | null }>;
 };
 
+type RuntimeProjectMember = {
+  member: {
+    id: string;
+    project_id: string;
+    user_id: string;
+    role: string;
+    created_at?: string;
+  };
+  audit_events: Array<{ event_type?: string; actor_id?: string; method_version?: string | null; after_hash?: string | null }>;
+};
+
 type RuntimePrompt = {
   id: string;
   market_code: string;
@@ -521,6 +532,7 @@ type TraceabilityDetail = {
 
 type RuntimeData = {
   projects: PageResponse<RuntimeProject>;
+  projectMembers: PageResponse<RuntimeProjectMember>;
   brandKit: RuntimeProjectBrandKit | null;
   scoreWeights: RuntimeScoreWeightConfig | null;
   scoreFormulas: RuntimeScoreFormulaCatalog;
@@ -777,6 +789,7 @@ type RuntimeSavedView = {
 
 const endpoints = {
   projects: "/v1/projects/runtime",
+  projectMembers: "/v1/project-members/runtime",
   prompts: "/v1/prompts/runtime",
   promptImports: "/v1/prompts/runtime/imports",
   evidence: "/v1/evidence-runs/runtime",
@@ -934,6 +947,36 @@ async function saveProjectBrandKit(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/project-brand-kits/runtime returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function saveRuntimeProjectMember(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const userId = String(formData.get("user_id") || "").trim();
+  if (!projectId || !userId) {
+    throw new Error("project_id and user_id are required to save a project member");
+  }
+  const payload = {
+    project_id: projectId,
+    user_id: userId,
+    role: String(formData.get("role") || "viewer").trim(),
+    updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/project-members/runtime`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/project-members/runtime returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -1241,6 +1284,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   const projectListParams = { market_code: "AU", limit: 20 };
   const paths: Record<keyof typeof endpoints, string> = {
     projects: runtimePath(endpoints.projects, projectListParams),
+    projectMembers: endpoints.projectMembers,
     prompts: runtimePath(endpoints.prompts, {
       market_code: "AU",
       intent_type: filters.intent_type,
@@ -1330,6 +1374,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       ? filters.project_id
       : undefined) || projectRecords[0]?.project.id;
   const selectedProjectParams = selectedProjectId ? { project_id: selectedProjectId } : {};
+  paths.projectMembers = selectedProjectId
+    ? runtimePath(endpoints.projectMembers, { project_id: selectedProjectId, limit: 20 })
+    : endpoints.projectMembers;
   paths.prompts = runtimePath(endpoints.prompts, {
     ...selectedProjectParams,
     market_code: "AU",
@@ -1435,6 +1482,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
 
   const [
     prompts,
+    projectMembers,
     promptImports,
     evidence,
     collectionRuns,
@@ -1458,6 +1506,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     traceability
   ] = await Promise.all([
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
+    selectedProjectId
+      ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectMember>>(
+          baseUrl,
+          paths.projectMembers,
+          emptyPage<RuntimeProjectMember>()
+        )
+      : Promise.resolve({ payload: emptyPage<RuntimeProjectMember>(), error: null }),
     fetchRuntimeEndpoint<PageResponse<RuntimePromptImportHistoryItem>>(
       baseUrl,
       paths.promptImports,
@@ -1517,6 +1572,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   const errors = [
     projects,
     prompts,
+    projectMembers,
     promptImports,
     evidence,
     collectionRuns,
@@ -1544,6 +1600,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   return {
     data: {
       projects: projects.payload,
+      projectMembers: projectMembers.payload,
       brandKit: brandKit.payload,
       scoreWeights: scoreWeights.payload,
       scoreFormulas: scoreFormulas.payload,
@@ -2112,6 +2169,53 @@ export default async function Home({
                   {latestProject.audit_events[0]?.event_type || "no bootstrap audit"} ·{" "}
                   {latestProject.audit_events[0]?.method_version || "no method version"}
                 </small>
+                <div className="projectMembers">
+                  <div className="formHeader">
+                    <h3>Project Members</h3>
+                    <small>{data.projectMembers.total_count} members · project_members gate · project_member_saved</small>
+                  </div>
+                  {data.projectMembers.records.length ? (
+                    <ul className="plainList">
+                      {data.projectMembers.records.slice(0, 6).map((record) => (
+                        <li key={record.member.id}>
+                          <strong>{record.member.role}</strong>
+                          <span>{record.member.user_id}</span>
+                          <small>
+                            {record.audit_events[0]?.event_type || "bootstrap member"} ·{" "}
+                            {record.audit_events[0]?.actor_id || "system"} ·{" "}
+                            {record.audit_events[0]?.after_hash || "no hash"}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <small>No runtime project members found.</small>
+                  )}
+                  <form action={saveRuntimeProjectMember} className="projectMemberForm">
+                    <input type="hidden" name="project_id" value={latestProject.project.id} />
+                    <label>
+                      <span>User ID</span>
+                      <input name="user_id" defaultValue="analyst@example.com" />
+                    </label>
+                    <label>
+                      <span>Role</span>
+                      <select name="role" defaultValue="analyst">
+                        <option value="owner">owner</option>
+                        <option value="admin">admin</option>
+                        <option value="analyst">analyst</option>
+                        <option value="viewer">viewer</option>
+                      </select>
+                    </label>
+                    <label className="wideField">
+                      <span>Reason</span>
+                      <input name="reason" defaultValue="Add runtime project collaborator" />
+                    </label>
+                    <input type="hidden" name="updated_by" value="runtime-console" />
+                    <button className="actionButton" type="submit">
+                      Save member
+                    </button>
+                  </form>
+                </div>
                 <form action={confirmEntityAlias} className="entityAliasForm">
                   <div className="formHeader">
                     <h3>Entity Alias</h3>
