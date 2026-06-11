@@ -259,12 +259,16 @@ PERPLEXITY_API_KEY=... OPENAI_API_KEY=... make api-preflight
 ```
 
 `make api-preflight` runs `--mode api --prompt-limit 1 --cities Sydney --sample-size 3
---require-ready-collectors --require-p0a-readiness`. `--require-ready-collectors` exits before
-collection with worker exit code `3` if a selected collector health is not `ready`; the JSON output
-still includes `collector_health` and `collector_health_gate` for audit. `--require-p0a-readiness`
-exits with worker exit code `4` after collection if the P0a gate fails, for example because k=3,
-required platforms, citations, or HTML snapshot evidence are missing. This is the minimum real API
-smoke; it does not replace the full 100 prompts × 4 geo × k=3 design-partner batch.
+--require-ready-collectors --require-p0a-readiness --preflight-output-path
+${GENO_API_PREFLIGHT_OUTPUT_PATH:-docs/runtime_preflight/api-preflight-latest.json}`.
+`--require-ready-collectors` exits before collection with worker exit code `3` if a selected
+collector health is not `ready`; the JSON output still includes `collector_health` and
+`collector_health_gate` for audit, and the same payload is written to `--preflight-output-path`.
+`--require-p0a-readiness` exits with worker exit code `4` after collection if the P0a gate fails,
+for example because k=3, required platforms, citations, or HTML snapshot evidence are missing.
+The default preflight JSON path is gitignored because live provider status and run context belong
+to local audit evidence, not committed project docs. This is the minimum real API smoke; it does
+not replace the full 100 prompts × 4 geo × k=3 design-partner batch.
 
 Google spike fixture:
 

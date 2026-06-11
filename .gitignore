@@ -49,3 +49,4 @@ coverage/
 htmlcov/
 
 # 注意：docs/ 下的 .md / .html / .pdf 均为可审计证据链的一部分，应纳入版本管理，不在此忽略。
+docs/runtime_preflight/*.json

@@ -173,19 +173,27 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(failure_events[0]["audit_events"][0]["event_type"], "answer_run_failed")
 
     def test_api_preflight_without_keys_fails_before_collection(self) -> None:
-        result = self._run_worker_result(
-            "--mode",
-            "api",
-            "--prompt-limit",
-            "1",
-            "--cities",
-            "Sydney",
-            "--require-ready-collectors",
-            unset_env=("PERPLEXITY_API_KEY", "OPENAI_API_KEY"),
-        )
+        with TemporaryDirectory() as output_dir:
+            output_path = os.path.join(output_dir, "api-preflight.json")
+            result = self._run_worker_result(
+                "--mode",
+                "api",
+                "--prompt-limit",
+                "1",
+                "--cities",
+                "Sydney",
+                "--require-ready-collectors",
+                "--preflight-output-path",
+                output_path,
+                unset_env=("PERPLEXITY_API_KEY", "OPENAI_API_KEY"),
+            )
+            with open(output_path, encoding="utf-8") as output_file:
+                written_payload = json.loads(output_file.read())
         self.assertEqual(result.returncode, 3)
         self.assertIn("collector_preflight_failed", result.stderr)
         payload = json.loads(result.stdout)
+        self.assertEqual(payload, written_payload)
+        self.assertEqual(payload["preflight_output_path"], output_path)
         self.assertEqual(payload["record_count"], 0)
         self.assertEqual(payload["planned_runs"], 2)
         self.assertEqual(payload["collector_health_gate"]["gate_status"], "fail")

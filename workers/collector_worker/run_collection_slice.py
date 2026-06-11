@@ -6,6 +6,7 @@ import os
 import sys
 from dataclasses import asdict
 from datetime import date, datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from geno_core.audit import build_audit_event
@@ -106,6 +107,15 @@ def _collector_health_failure_reasons(collector_health: tuple[dict[str, object],
         for item in collector_health
         if item["health"] not in ready_statuses
     )
+
+
+def _emit_json_output(output: dict[str, object], output_path: str | None = None) -> None:
+    if output_path:
+        path = Path(output_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        output = {**output, "preflight_output_path": str(path)}
+        path.write_text(json.dumps(output, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
+    print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
 
 
 def _analysis_parser(*, judge_gateway: str, judge_model: str) -> ComparativeAnswerParser:
@@ -651,6 +661,11 @@ def main() -> None:
         default="local-fixture-judge",
         help="Judge model name passed to the selected LLMGateway.",
     )
+    parser.add_argument(
+        "--preflight-output-path",
+        default=None,
+        help="Write the final worker JSON output to this path for preflight audit replay.",
+    )
     args = parser.parse_args()
     if args.persist_analysis and not args.persist:
         parser.error("--persist-analysis requires --persist")
@@ -711,7 +726,7 @@ def main() -> None:
             "recommended_worker_args": list(sampling_plan.recommended_worker_args),
             "persistence": persistence,
         }
-        print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
+        _emit_json_output(output, args.preflight_output_path)
         return
 
     prompts = bootstrap.prompt_questions
@@ -759,7 +774,7 @@ def main() -> None:
             "p0a_readiness_gate": None,
             "persistence": {"enabled": False},
         }
-        print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
+        _emit_json_output(output, args.preflight_output_path)
         print(f"collector_preflight_failed: {', '.join(collector_health_failure_reasons)}", file=sys.stderr)
         raise SystemExit(3)
     records = run_collection_slice(
@@ -815,7 +830,7 @@ def main() -> None:
         output["google_spike_readiness_gate"] = asdict(
             evaluate_google_spike_readiness_gate(project_id=bootstrap.project.id, plan=plan, records=records)
         )
-    print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
+    _emit_json_output(output, args.preflight_output_path)
     if args.require_no_collection_failures and failures:
         print(
             f"collection_failures_found: {len(failures)}",
