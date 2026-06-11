@@ -91,6 +91,7 @@ class InfraContractsTest(unittest.TestCase):
         config = self._compose_config("scheduler")
         services = config["services"]
         scheduler = services["browser-fidelity-scheduler"]
+        alert_worker = services["runtime-alert-notification-worker"]
 
         self.assertEqual(scheduler["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(scheduler["command"], ["python", "scripts/run_browser_fidelity_scheduler.py"])
@@ -101,6 +102,17 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(scheduler["environment"]["GENO_BROWSER_FIDELITY_PERSIST_PLAN"], "1")
         self.assertIn("postgres", scheduler["depends_on"])
         self.assertIn("minio", scheduler["depends_on"])
+
+        self.assertEqual(alert_worker["build"]["dockerfile"], "apps/api/Dockerfile")
+        self.assertEqual(alert_worker["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
+        self.assertEqual(alert_worker["environment"]["GENO_RUNTIME_ALERT_MARKET_CODE"], "AU")
+        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", alert_worker["environment"])
+        self.assertIn("workers/notification_worker/run_runtime_alert_notifications.py", alert_worker["command"])
+        self.assertIn("--market-code", alert_worker["command"])
+        self.assertIn("AU", alert_worker["command"])
+        self.assertIn("--max-projects", alert_worker["command"])
+        self.assertIn("50", alert_worker["command"])
+        self.assertIn("postgres", alert_worker["depends_on"])
 
     def test_observability_profile_wires_prometheus_and_grafana(self) -> None:
         config = self._compose_config("observability")
@@ -264,6 +276,11 @@ class InfraContractsTest(unittest.TestCase):
         )
         self.assertIn("browser-fidelity-scheduler-plan:", makefile)
         self.assertIn("browser-fidelity-scheduler-run:", makefile)
+        self.assertIn("runtime-alert-notification-worker:", makefile)
+        self.assertIn(
+            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_runtime_alert_notifications.py --market-code $${GENO_RUNTIME_ALERT_MARKET_CODE:-AU}",
+            makefile,
+        )
         self.assertIn("docker-config-scheduler:", makefile)
         self.assertIn("docker-config-observability:", makefile)
         self.assertIn("docker-config-db-smoke:", makefile)
