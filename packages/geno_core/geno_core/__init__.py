@@ -60,6 +60,7 @@ from geno_core.runtime import (
     RuntimePersistenceError,
     build_object_store_from_env,
     build_repository_from_env,
+    close_runtime_postgres_pool,
     close_repository_connection,
     connect_postgres_from_env,
 )
@@ -126,6 +127,7 @@ __all__ = [
     "evaluate_p0a_collection_readiness",
     "get_score_formula",
     "build_repository_from_env",
+    "close_runtime_postgres_pool",
     "close_repository_connection",
     "connect_postgres_from_env",
     "FixtureChatGPTSearchBrowserCollector",

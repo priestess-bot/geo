@@ -1270,9 +1270,9 @@ class PostgresEvidenceRepository:
             cursor.execute(
                 """
                 SELECT
-                  set_config(%s, %s, true),
-                  set_config(%s, %s, true),
-                  set_config(%s, %s, true)
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false)
                 """,
                 (
                     "geno.runtime_project_access_control",

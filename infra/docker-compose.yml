@@ -51,6 +51,9 @@ services:
       dockerfile: apps/api/Dockerfile
     environment:
       DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      GENO_RUNTIME_DB_POOL_ENABLED: ${GENO_RUNTIME_DB_POOL_ENABLED:-1}
+      GENO_RUNTIME_DB_POOL_MAX_SIZE: ${GENO_RUNTIME_DB_POOL_MAX_SIZE:-10}
+      GENO_RUNTIME_DB_POOL_TIMEOUT_SECONDS: ${GENO_RUNTIME_DB_POOL_TIMEOUT_SECONDS:-5}
       OBJECT_STORE_ENDPOINT: http://minio:9000
       OBJECT_STORE_BUCKET: geno-reports
       OBJECT_STORE_ACCESS_KEY: minio

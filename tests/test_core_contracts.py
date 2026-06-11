@@ -118,7 +118,12 @@ from geno_core.prompt_import import prompt_import_file_to_csv
 from geno_core.parser import ComparativeAnswerParser, LLMJudgeAnswerParser, RuleBasedAnswerParser
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.repository import PostgresEvidenceRepository
-from geno_core.runtime import RuntimePersistenceError, build_repository_from_env
+from geno_core.runtime import (
+    RuntimePersistenceError,
+    build_repository_from_env,
+    close_repository_connection,
+    close_runtime_postgres_pool,
+)
 from geno_core.scoring import (
     AU_VISIBILITY_V1,
     AU_VISIBILITY_V1_1_LOCAL_BOOST,
@@ -171,6 +176,8 @@ class RecordingConnection:
     def __init__(self, result_sets: list[object] | None = None) -> None:
         self.calls: list[tuple[str, tuple[object, ...]]] = []
         self.commit_count = 0
+        self.rollback_count = 0
+        self.close_count = 0
         self.result_sets = result_sets or []
 
     def cursor(self) -> RecordingCursor:
@@ -178,6 +185,12 @@ class RecordingConnection:
 
     def commit(self) -> None:
         self.commit_count += 1
+
+    def rollback(self) -> None:
+        self.rollback_count += 1
+
+    def close(self) -> None:
+        self.close_count += 1
 
 
 class CoreContractsTest(unittest.TestCase):
@@ -2955,6 +2968,7 @@ class CoreContractsTest(unittest.TestCase):
 
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("set_config", executed_sql)
+        self.assertIn("set_config(%s, %s, false)", executed_sql)
         self.assertEqual(
             connection.calls[0][1],
             (
@@ -3375,6 +3389,86 @@ class CoreContractsTest(unittest.TestCase):
         )
         self.assertIsInstance(repository, PostgresEvidenceRepository)
         self.assertEqual(seen_urls, ["postgresql://geno:geno@localhost:5432/geno"])
+
+    def test_runtime_repository_pool_reuses_connection_and_resets_on_return(self) -> None:
+        connections: list[RecordingConnection] = []
+
+        def connector(database_url: str) -> RecordingConnection:
+            connections.append(RecordingConnection())
+            return connections[-1]
+
+        env = {
+            "DATABASE_URL": "postgresql://geno:geno@localhost:5432/geno",
+            "GENO_RUNTIME_DB_POOL_ENABLED": "1",
+            "GENO_RUNTIME_DB_POOL_MAX_SIZE": "2",
+            "GENO_RUNTIME_DB_POOL_TIMEOUT_SECONDS": "0",
+        }
+        try:
+            repository = build_repository_from_env(env, connector=connector)
+            self.assertIsInstance(repository, PostgresEvidenceRepository)
+            close_repository_connection(repository)
+            self.assertEqual(len(connections), 1)
+            self.assertEqual(connections[0].rollback_count, 1)
+            self.assertEqual(connections[0].commit_count, 1)
+            self.assertEqual(connections[0].close_count, 0)
+            reset_sql = "\n".join(sql for sql, _ in connections[0].calls)
+            self.assertIn("set_config(%s, %s, false)", reset_sql)
+            self.assertEqual(
+                connections[0].calls[0][1],
+                (
+                    "geno.runtime_project_access_control",
+                    "",
+                    "geno.runtime_actor_id",
+                    "",
+                    "geno.runtime_project_id",
+                    "",
+                ),
+            )
+
+            second_repository = build_repository_from_env(env, connector=connector)
+            close_repository_connection(second_repository)
+            self.assertEqual(len(connections), 1)
+            self.assertEqual(connections[0].rollback_count, 2)
+            self.assertEqual(connections[0].commit_count, 2)
+        finally:
+            close_runtime_postgres_pool()
+        self.assertEqual(connections[0].close_count, 1)
+
+    def test_runtime_repository_pool_times_out_when_exhausted(self) -> None:
+        connections: list[RecordingConnection] = []
+
+        def connector(database_url: str) -> RecordingConnection:
+            connections.append(RecordingConnection())
+            return connections[-1]
+
+        env = {
+            "DATABASE_URL": "postgresql://geno:geno@localhost:5432/geno",
+            "GENO_RUNTIME_DB_POOL_ENABLED": "1",
+            "GENO_RUNTIME_DB_POOL_MAX_SIZE": "1",
+            "GENO_RUNTIME_DB_POOL_TIMEOUT_SECONDS": "0",
+        }
+        repository = build_repository_from_env(env, connector=connector)
+        try:
+            with self.assertRaises(RuntimePersistenceError):
+                build_repository_from_env(env, connector=connector)
+        finally:
+            close_repository_connection(repository)
+            close_runtime_postgres_pool()
+        self.assertEqual(len(connections), 1)
+        self.assertEqual(connections[0].rollback_count, 1)
+        self.assertEqual(connections[0].commit_count, 1)
+        self.assertEqual(connections[0].close_count, 1)
+
+    def test_runtime_repository_pool_validates_config(self) -> None:
+        with self.assertRaises(RuntimePersistenceError):
+            build_repository_from_env(
+                {
+                    "DATABASE_URL": "postgresql://geno:geno@localhost:5432/geno",
+                    "GENO_RUNTIME_DB_POOL_ENABLED": "1",
+                    "GENO_RUNTIME_DB_POOL_MAX_SIZE": "0",
+                },
+                connector=lambda database_url: RecordingConnection(),
+            )
 
     def test_postgres_repository_maps_collection_failures_to_audit_tables(self) -> None:
         bootstrap = build_au_project_bootstrap()

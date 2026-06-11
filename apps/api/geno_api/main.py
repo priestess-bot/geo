@@ -72,11 +72,17 @@ from geno_core.runtime import (
     build_object_store_from_env,
     build_repository_from_env,
     close_repository_connection,
+    close_runtime_postgres_pool,
 )
 from geno_core.scoring import get_score_formula, list_score_formulas, normalize_score_weights
 from geno_core.traceability import build_traceability_bundle
 
 app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
+
+
+@app.on_event("shutdown")
+def close_runtime_resources() -> None:
+    close_runtime_postgres_pool()
 
 RUNTIME_PROJECT_ACCESS_CONTROL_ENV = "GENO_RUNTIME_PROJECT_ACCESS_CONTROL"
 RUNTIME_ACTOR_HEADER = "X-GENO-Actor-Id"

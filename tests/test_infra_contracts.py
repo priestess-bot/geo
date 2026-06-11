@@ -49,6 +49,7 @@ class InfraContractsTest(unittest.TestCase):
 
         self.assertEqual(worker["environment"]["LITELLM_BASE_URL"], "http://litellm:4000")
         self.assertEqual(worker["environment"]["LITELLM_API_KEY"], "sk-geno-local")
+        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", worker["environment"])
         self.assertIn("--judge-gateway", worker["command"])
         self.assertIn("litellm", worker["command"])
         self.assertIn("--judge-model", worker["command"])
@@ -64,6 +65,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("python", verifier["command"])
         self.assertIn("scripts/verify_runtime_e2e.py", verifier["command"])
         self.assertEqual(verifier["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
+        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", verifier["environment"])
         self.assertEqual(verifier["environment"]["OBJECT_STORE_ENDPOINT"], "http://minio:9000")
         self.assertEqual(verifier["environment"]["OBJECT_STORE_BUCKET"], "geno-reports")
         self.assertEqual(verifier["environment"]["OBJECT_STORE_ACCESS_KEY"], "minio")
@@ -79,6 +81,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(scheduler["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(scheduler["command"], ["python", "scripts/run_browser_fidelity_scheduler.py"])
         self.assertEqual(scheduler["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
+        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", scheduler["environment"])
         self.assertEqual(scheduler["environment"]["OBJECT_STORE_ENDPOINT"], "http://minio:9000")
         self.assertEqual(scheduler["environment"]["GENO_BROWSER_FIDELITY_EXECUTE"], "0")
         self.assertEqual(scheduler["environment"]["GENO_BROWSER_FIDELITY_PERSIST_PLAN"], "1")
@@ -94,6 +97,15 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(model_list["geno-text-embedding-3-small"]["model"], "openai/text-embedding-3-small")
         self.assertEqual(model_list["geno-text-embedding-3-small"]["api_key"], "os.environ/OPENAI_API_KEY")
         self.assertEqual(config["general_settings"]["master_key"], "os.environ/LITELLM_MASTER_KEY")
+
+    def test_api_service_enables_runtime_database_pool(self) -> None:
+        config = self._compose_config()
+        api = config["services"]["api"]
+
+        self.assertEqual(api["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
+        self.assertEqual(api["environment"]["GENO_RUNTIME_DB_POOL_ENABLED"], "1")
+        self.assertEqual(api["environment"]["GENO_RUNTIME_DB_POOL_MAX_SIZE"], "10")
+        self.assertEqual(api["environment"]["GENO_RUNTIME_DB_POOL_TIMEOUT_SECONDS"], "5")
 
     def test_api_image_includes_runtime_e2e_verifier(self) -> None:
         dockerfile = (ROOT / "apps/api/Dockerfile").read_text(encoding="utf-8")

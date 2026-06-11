@@ -12,7 +12,7 @@ from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
 
-from geno_api.main import app
+from geno_api.main import app, close_runtime_resources
 from geno_core.models import (
     RuntimeCollectionRunPage,
     RuntimeAlertItem,
@@ -97,6 +97,11 @@ class ApiContractsTest(unittest.TestCase):
         response = self.client.get("/health")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "ok")
+
+    def test_shutdown_closes_runtime_postgres_pool(self) -> None:
+        with patch("geno_api.main.close_runtime_postgres_pool") as close_pool:
+            close_runtime_resources()
+        close_pool.assert_called_once_with()
 
     def test_m1_project_bootstrap_endpoint(self) -> None:
         response = self.client.get("/v1/project-bootstraps/au/dtc-ecommerce")
