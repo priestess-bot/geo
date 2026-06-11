@@ -76,6 +76,7 @@ from geno_core.models import (
     RuntimeReportArtifact,
     RuntimeReportExport,
     RuntimeReportExportPage,
+    RuntimeReportManagementInput,
     RuntimeSavedView,
     RuntimeSavedViewInput,
     RuntimeSavedViewPage,
@@ -3926,6 +3927,90 @@ class PostgresEvidenceRepository:
             total_count=len(runtime_report.answer_runs),
             row_count=len(filtered_report.answer_runs),
         )
+
+    def record_runtime_report_management_event(
+        self,
+        event: RuntimeReportManagementInput,
+    ) -> RuntimeReportExport:
+        report_export_id = event.report_export_id.strip()
+        status = event.status.strip().lower()
+        updated_by = event.updated_by.strip()
+        note = event.note.strip() if event.note else None
+        allowed_statuses = {"internal_review", "client_ready", "archived"}
+        if not report_export_id:
+            raise ValueError("report_export_id is required")
+        if status not in allowed_statuses:
+            raise ValueError("status must be internal_review, client_ready, or archived")
+        if not updated_by:
+            raise ValueError("updated_by is required")
+        with self.connection.cursor() as cursor:
+            report_export = self._load_report_export_by_id(
+                cursor=cursor,
+                report_export_id=report_export_id,
+            )
+            if not report_export:
+                raise ValueError("report_export not found")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE target_type = %s AND target_id = %s
+                  AND event_type = %s
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                ("report_export", report_export_id, "report_export_management_recorded"),
+            )
+            previous_management_event = _row_dict(cursor.fetchone(), AUDIT_EVENT_COLUMNS)
+            before = previous_management_event or None
+            after = {
+                "report_export_id": report_export_id,
+                "status": status,
+                "note": note,
+                "updated_by": updated_by,
+                "report_version": report_export.get("report_version"),
+                "methodology_hash": report_export.get("methodology_hash"),
+            }
+            audit_event = build_audit_event(
+                event_type="report_export_management_recorded",
+                project_id=str(report_export["project_id"]),
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="report_export",
+                target_id=report_export_id,
+                before=before,
+                after=after,
+                input_refs={
+                    "report_export_ids": [report_export_id],
+                    "status": [status],
+                },
+                output_refs={"audit_event_ids": []},
+                method_version="report_export_management_v1",
+                reason=note or f"mark report export {status}",
+            )
+            audit_event = AuditEvent(
+                id=audit_event.id,
+                event_type=audit_event.event_type,
+                project_id=audit_event.project_id,
+                actor_type=audit_event.actor_type,
+                actor_id=audit_event.actor_id,
+                target_type=audit_event.target_type,
+                target_id=audit_event.target_id,
+                before_hash=audit_event.before_hash,
+                after_hash=audit_event.after_hash,
+                input_refs=audit_event.input_refs,
+                output_refs={"audit_event_ids": [audit_event.id]},
+                method_version=audit_event.method_version,
+                reason=audit_event.reason,
+                created_at=audit_event.created_at,
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            record = self._load_runtime_report_export(
+                cursor=cursor,
+                report_export=report_export,
+            )
+        self.connection.commit()
+        return record
 
     def get_runtime_traceability_detail(
         self,

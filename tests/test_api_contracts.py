@@ -39,6 +39,7 @@ from geno_core.models import (
     RuntimePromptImportResult,
     RuntimeProjectPage,
     RuntimeReportArtifact,
+    RuntimeReportExport,
     RuntimeScoreWeightConfig,
 )
 
@@ -2315,6 +2316,52 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_report_management_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.post(
+            "/v1/reports/runtime/report-1/management-events",
+            json={"status": "client_ready", "updated_by": "runtime-console"},
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_report_management_endpoint_records_status_event(self) -> None:
+        class FakeRepository:
+            def record_runtime_report_management_event(self, event: object) -> RuntimeReportExport:
+                self.event = event
+                return RuntimeReportExport(
+                    report_export={"id": event.report_export_id, "project_id": "project-1", "report_version": "worker-runtime-v1"},
+                    score_snapshots=(),
+                    answer_runs=(),
+                    citation_graph=None,
+                    audit_events=(
+                        {
+                            "event_type": "report_export_management_recorded",
+                            "target_type": "report_export",
+                            "target_id": event.report_export_id,
+                            "actor_id": event.updated_by,
+                            "method_version": "report_export_management_v1",
+                            "reason": event.note,
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/reports/runtime/report-1/management-events",
+                json={"status": "client_ready", "updated_by": "runtime-console", "note": "Ready for client"},
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["report_export"]["id"], "report-1")
+        self.assertEqual(payload["audit_events"][0]["event_type"], "report_export_management_recorded")
+        self.assertEqual(fake_repository.event.report_export_id, "report-1")
+        self.assertEqual(fake_repository.event.status, "client_ready")
+        self.assertEqual(fake_repository.event.updated_by, "runtime-console")
+        self.assertEqual(fake_repository.event.note, "Ready for client")
+
     def test_runtime_report_artifact_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get(
             "/v1/reports/runtime/report-1/artifact?type=markdown&platform=perplexity&city=Sydney&intent_type=brand_awareness&sort=cost_desc"
@@ -2732,6 +2779,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeCitationGraph", payload["persistence"])
         self.assertIn("RuntimeReportArtifact", payload["persistence"])
         self.assertIn("RuntimeReportExport", payload["persistence"])
+        self.assertIn("RuntimeReportManagementInput", payload["persistence"])
+        self.assertIn("RuntimeReportManagementEventRequest", payload["persistence"])
         self.assertIn("RuntimeActionPlan", payload["persistence"])
         self.assertIn("RuntimeAlertItem", payload["persistence"])
         self.assertIn("RuntimeAlertPage", payload["persistence"])
@@ -2773,6 +2822,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/visibility-scores/runtime", payload["persistence"])
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])
         self.assertIn("/v1/reports/runtime", payload["persistence"])
+        self.assertIn("/v1/reports/runtime/{report_export_id}/management-events", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/artifact", payload["persistence"])
         self.assertIn("/v1/action-plans/runtime", payload["persistence"])
         self.assertIn("/v1/runtime-alerts", payload["persistence"])

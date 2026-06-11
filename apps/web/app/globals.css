@@ -1182,6 +1182,41 @@ code {
   text-align: center;
 }
 
+.reportManagementForm {
+  align-items: end;
+  background: #ffffff;
+  border: 1px solid #e0e7ef;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(130px, 0.4fr) minmax(0, 1fr) auto;
+  padding: 10px;
+}
+
+.reportManagementForm label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.reportManagementForm label span {
+  color: #667585;
+  font-size: 12px;
+}
+
+.reportManagementForm input,
+.reportManagementForm select {
+  appearance: none;
+  background: #f7fafc;
+  border: 1px solid #cfd7e1;
+  border-radius: 4px;
+  color: #202a36;
+  font: inherit;
+  font-size: 13px;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
 .actionDetail {
   display: grid;
   gap: 14px;
@@ -1521,6 +1556,7 @@ summary {
   .contentDetail,
   .connectorGrid,
   .contentDraftGrid,
+  .reportManagementForm,
   .traceGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1577,6 +1613,7 @@ summary {
   .benchmarkGrid,
   .reportDetail,
   .reportHistory,
+  .reportManagementForm,
   .actionDetail,
   .alertGrid,
   .contentDetail,

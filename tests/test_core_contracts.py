@@ -106,6 +106,7 @@ from geno_core.models import (
     RuntimeScoreSnapshotPage,
     RuntimeReportArtifact,
     RuntimeReportExportPage,
+    RuntimeReportManagementInput,
     RuntimeSavedView,
     RuntimeSavedViewInput,
     RuntimeSavedViewPage,
@@ -4921,6 +4922,113 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM report_exports WHERE project_id = %s AND report_type = %s", executed_sql)
         self.assertIn("FROM report_evidence re JOIN answer_runs ar ON ar.id = re.answer_run_id", executed_sql)
         self.assertIn("SELECT count(*) FROM source_graphs WHERE project_id = %s", executed_sql)
+
+    def test_postgres_repository_records_report_management_event_without_mutating_report(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        snapshot_id = "a7f7f8aa-5d40-4fdf-a2b3-b8729a9a5e2f"
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        report_row = {
+            "id": report_export_id,
+            "project_id": project_id,
+            "market_code": "AU",
+            "report_version": "worker-runtime-v1",
+            "report_type": "worker_runtime",
+            "score_snapshot_ids": [snapshot_id],
+            "answer_run_ids": [answer_run_id],
+            "prompt_version": "au_dtc_ecommerce_v1",
+            "scoring_formula_version": "au_visibility_v1",
+            "platform_weights_snapshot": {"chatgpt": 0.30, "perplexity": 0.25},
+            "method_disclosure": {},
+            "sample_size": 1,
+            "window_start": now,
+            "window_end": now,
+            "methodology_hash": "methodology-hash",
+            "markdown_url": "s3://geno-reports/report.md",
+            "pdf_url": "s3://geno-reports/report.pdf",
+            "csv_url": "s3://geno-reports/report.csv",
+            "exported_by": "system",
+            "exported_at": now,
+        }
+        answer_run_row = {
+            "id": answer_run_id,
+            "project_id": project_id,
+            "prompt_question_id": "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0",
+            "platform": "perplexity",
+            "surface": "sonar",
+            "access_method": "official_api",
+            "market_code": "AU",
+            "city": "Sydney",
+            "language": "en-AU",
+            "device": "desktop",
+            "answer_present": True,
+            "surface_triggered": True,
+            "sample_index": 1,
+            "sample_size": 1,
+            "model_or_surface": "sonar",
+            "account_state": "api_key",
+            "collector_backend_id": "fixture_perplexity_sonar",
+            "collector_version": "fixture-v1",
+            "collected_at": now,
+            "status": "completed",
+            "prompt_text": "Is ExampleBrand good in Australia?",
+            "prompt_intent_type": "brand_awareness",
+            "prompt_priority": 1,
+            "prompt_version": "au_dtc_ecommerce_v1",
+            "total_cost": 0.04,
+            "citation_count": 1,
+            "audit_event_count": 1,
+        }
+        existing_management_event = {
+            "id": "2778aa22-c350-5d59-a52a-946e5fbdeee1",
+            "event_type": "report_export_management_recorded",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "report_export",
+            "target_id": report_export_id,
+            "before_hash": None,
+            "after_hash": "old-hash",
+            "input_refs": {"status": ["internal_review"]},
+            "output_refs": {},
+            "method_version": "report_export_management_v1",
+            "reason": "Internal review started",
+            "created_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                report_row,
+                existing_management_event,
+                {"id": snapshot_id, "project_id": project_id, "final_score": 87.35},
+                answer_run_row,
+                [existing_management_event],
+                {"count": 0},
+            ]
+        )
+
+        record = PostgresEvidenceRepository(connection).record_runtime_report_management_event(
+            RuntimeReportManagementInput(
+                report_export_id=report_export_id,
+                status="client_ready",
+                updated_by="runtime-console",
+                note="Ready for client delivery",
+            )
+        )
+
+        self.assertEqual(record.report_export["id"], report_export_id)
+        self.assertEqual(record.audit_events[0]["event_type"], "report_export_management_recorded")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+        self.assertNotIn("UPDATE report_exports", executed_sql)
+        audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
+        self.assertEqual(audit_insert[1], "report_export_management_recorded")
+        self.assertEqual(audit_insert[4], "runtime-console")
+        self.assertEqual(audit_insert[5], "report_export")
+        self.assertEqual(audit_insert[6], report_export_id)
+        self.assertEqual(audit_insert[11], "report_export_management_v1")
+        self.assertEqual(audit_insert[12], "Ready for client delivery")
 
     def test_postgres_repository_renders_runtime_report_artifact(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

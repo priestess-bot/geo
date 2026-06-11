@@ -71,6 +71,7 @@ from geno_core.models import (
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
     RuntimePromptImportInput,
+    RuntimeReportManagementInput,
     RuntimeSavedViewInput,
     RuntimeScoreWeightConfigInput,
 )
@@ -1041,6 +1042,12 @@ class RuntimeFidelityCheckRequest(BaseModel):
     project_id: str = Field(min_length=1)
     report_export_id: str | None = Field(default=None, min_length=1)
     checked_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+
+
+class RuntimeReportManagementEventRequest(BaseModel):
+    status: str = Field(min_length=1, max_length=80)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    note: str | None = Field(default=None, max_length=500)
 
 
 @app.get("/health")
@@ -2118,6 +2125,48 @@ def runtime_reports(
         close_repository_connection(repository)
 
 
+@app.post("/v1/reports/runtime/{report_export_id}/management-events")
+def record_runtime_report_management_event(
+    report_export_id: str,
+    payload: RuntimeReportManagementEventRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_id: str | None = None
+        if runtime_project_access_control_enabled():
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
+            project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            if project_id is None:
+                raise HTTPException(status_code=404, detail="report_export not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            require_project_id=project_id is not None,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            report = repository.record_runtime_report_management_event(
+                RuntimeReportManagementInput(
+                    report_export_id=report_export_id,
+                    status=payload.status.strip(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    note=payload.note.strip() if payload.note else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "report_export not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(report)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/fidelity-checks/runtime")
 def runtime_fidelity_checks(
     project_id: str | None = None,
@@ -3011,6 +3060,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeReportArtifact",
             "RuntimeReportExport",
             "RuntimeReportExportPage",
+            "RuntimeReportManagementInput",
+            "RuntimeReportManagementEventRequest",
             "RuntimeActionPlan",
             "RuntimeActionPlanPage",
             "RuntimeAlertItem",
@@ -3056,6 +3107,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/visibility-scores/runtime",
             "/v1/citation-graphs/runtime",
             "/v1/reports/runtime",
+            "/v1/reports/runtime/{report_export_id}/management-events",
             "/v1/reports/runtime/{report_export_id}/artifact",
             "/v1/action-plans/runtime",
             "/v1/runtime-alerts",

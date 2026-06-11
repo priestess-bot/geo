@@ -1119,6 +1119,14 @@ class RuntimeReportExportPage:
 
 
 @dataclass(frozen=True)
+class RuntimeReportManagementInput:
+    report_export_id: str
+    status: str
+    updated_by: str
+    note: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeReportArtifact:
     report_export: dict[str, Any]
     artifact_type: str

@@ -338,7 +338,13 @@ type ReportExport = {
     status?: string;
   }>;
   citation_graph?: CitationGraph | null;
-  audit_events: Array<{ event_type?: string; target_type?: string; method_version?: string | null }>;
+  audit_events: Array<{
+    event_type?: string;
+    target_type?: string;
+    actor_id?: string;
+    method_version?: string | null;
+    reason?: string | null;
+  }>;
 };
 
 type ActionPlan = {
@@ -977,6 +983,33 @@ async function saveProjectBrandKit(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/project-brand-kits/runtime returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function recordRuntimeReportManagementEvent(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const reportExportId = String(formData.get("report_export_id") || "").trim();
+  if (!reportExportId) {
+    throw new Error("report_export_id is required to record report management event");
+  }
+  const payload = {
+    status: String(formData.get("status") || "internal_review").trim(),
+    updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
+    note: String(formData.get("note") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/reports/runtime/${reportExportId}/management-events`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/reports/runtime/${reportExportId}/management-events returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -3228,6 +3261,9 @@ export default async function Home({
                   prepared_by: whiteLabelPreparedBy
                 });
                 const scoreSnapshot = report.score_snapshots[0];
+                const managementEvent = report.audit_events.find(
+                  (event) => event.event_type === "report_export_management_recorded",
+                );
                 return (
                   <article className="reportHistoryItem" key={report.report_export.id}>
                     <header>
@@ -3253,7 +3289,31 @@ export default async function Home({
                       {pdfUrl ? <a href={pdfUrl}>PDF</a> : null}
                       {whiteLabelPdfUrl ? <a href={whiteLabelPdfUrl}>White-label PDF</a> : null}
                     </div>
+                    <form action={recordRuntimeReportManagementEvent} className="reportManagementForm">
+                      <input type="hidden" name="report_export_id" value={report.report_export.id} />
+                      <input type="hidden" name="updated_by" value="runtime-console" />
+                      <label>
+                        <span>Status</span>
+                        <select name="status" defaultValue="internal_review">
+                          <option value="internal_review">Internal review</option>
+                          <option value="client_ready">Client ready</option>
+                          <option value="archived">Archived</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Note</span>
+                        <input name="note" defaultValue="Report history management update" />
+                      </label>
+                      <button className="actionButton compactAction" type="submit">
+                        Record status
+                      </button>
+                    </form>
                     <ul className="plainList">
+                      <li>
+                        <strong>{managementEvent?.event_type || "management status pending"}</strong>
+                        <span>{managementEvent?.reason || "No report management event recorded"}</span>
+                        <small>{managementEvent?.actor_id || "runtime-console"} · {managementEvent?.method_version || "report_export_management_v1"}</small>
+                      </li>
                       <li>
                         <strong>Frozen artifact URLs</strong>
                         <span>{report.report_export.markdown_url || "markdown pending"}</span>

@@ -124,6 +124,20 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".themeMetricStrip", css_source)
         self.assertIn(".themeColorField", css_source)
 
+    def test_runtime_console_surfaces_report_history_management(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
+
+        self.assertIn("Report History", page_source)
+        self.assertIn("recordRuntimeReportManagementEvent", page_source)
+        self.assertIn("/v1/reports/runtime/${reportExportId}/management-events", page_source)
+        self.assertIn("report_export_management_recorded", page_source)
+        self.assertIn('name="report_export_id"', page_source)
+        self.assertIn('name="status"', page_source)
+        self.assertIn("client_ready", page_source)
+        self.assertIn("Record status", page_source)
+        self.assertIn(".reportManagementForm", css_source)
+
     def test_runtime_console_surfaces_project_member_management(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
