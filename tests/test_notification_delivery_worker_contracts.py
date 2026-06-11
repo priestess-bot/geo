@@ -192,6 +192,86 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         self.assertNotIn("notification", body_payload)
         self.assertEqual(repository.status_updates[-1].reason, "runtime notification webhook delivered")
 
+    def test_process_next_notification_delivery_sends_email_payload_with_smtp_config(self) -> None:
+        repository = FakeNotificationDeliveryRepository(
+            _delivery_record(
+                channel="email",
+                endpoint_url="mailto:ops@example.com",
+                payload={
+                    "notification": {
+                        "id": "3ba5d5b7-8759-557b-a8a8-7297f98e2339",
+                        "notification_type": "runtime_alert",
+                        "severity": "critical",
+                        "title": "Brand absent in Sydney",
+                    },
+                    "email": {
+                        "to": ["ops@example.com"],
+                        "subject": "[GENO CRITICAL] Brand absent in Sydney",
+                        "text": "Brand was absent from critical AI search prompts.",
+                        "headers": {"X-GENO-Severity": "critical"},
+                    },
+                    "delivery_version": "runtime_notification_delivery_email_v1",
+                },
+            )
+        )
+        os.environ["GENO_TEST_SMTP_HOST"] = "smtp.example.com"
+        os.environ["GENO_TEST_SMTP_PORT"] = "2525"
+        os.environ["GENO_TEST_SMTP_TLS"] = "0"
+        os.environ["GENO_TEST_SMTP_FROM"] = "geno@example.com"
+        sent: list[tuple[dict[str, object], object, list[str]]] = []
+
+        def email_sender(config: dict[str, object], message: object, recipients: list[str]) -> tuple[int, bytes]:
+            sent.append((config, message, recipients))
+            return 250, b"queued"
+
+        try:
+            result = process_next_notification_delivery(
+                repository=repository,
+                default_signing_secret_env=None,
+                smtp_env_prefix="GENO_TEST_SMTP",
+                email_sender=email_sender,
+            )
+        finally:
+            for name in ("HOST", "PORT", "TLS", "FROM"):
+                os.environ.pop(f"GENO_TEST_SMTP_{name}", None)
+
+        self.assertEqual(result["status"], "delivered")
+        self.assertEqual(result["channel"], "email")
+        self.assertFalse(result["signed"])
+        self.assertEqual(sent[0][0]["host"], "smtp.example.com")
+        self.assertEqual(sent[0][0]["port"], 2525)
+        self.assertEqual(sent[0][2], ["ops@example.com"])
+        self.assertEqual(sent[0][1]["Subject"], "[GENO CRITICAL] Brand absent in Sydney")
+        self.assertEqual(sent[0][1]["X-GENO-Severity"], "critical")
+        self.assertEqual(repository.status_updates[-1].status, "delivered")
+
+    def test_process_next_notification_delivery_requeues_email_when_smtp_is_missing(self) -> None:
+        repository = FakeNotificationDeliveryRepository(
+            _delivery_record(
+                channel="email",
+                endpoint_url="mailto:ops@example.com",
+                payload={
+                    "email": {
+                        "to": ["ops@example.com"],
+                        "subject": "[GENO WARNING] Report export failed",
+                        "text": "Report export failed.",
+                    },
+                    "delivery_version": "runtime_notification_delivery_email_v1",
+                },
+            )
+        )
+
+        result = process_next_notification_delivery(
+            repository=repository,
+            default_signing_secret_env=None,
+            smtp_env_prefix="GENO_MISSING_SMTP",
+            email_sender=lambda *args: (250, b"queued"),
+        )
+
+        self.assertEqual(result["status"], "queued")
+        self.assertEqual(result["channel"], "email")
+        self.assertIn("GENO_MISSING_SMTP_HOST", repository.status_updates[-1].error_message or "")
+
     def test_process_next_notification_delivery_signs_webhook_from_subscription_secret_env(self) -> None:
         repository = FakeNotificationDeliveryRepository(
             _delivery_record(subscription_metadata={"signing_secret_env": "GENO_TEST_WEBHOOK_SECRET"})

@@ -1765,7 +1765,8 @@ async function saveRuntimeNotificationSubscription(formData: FormData) {
       source: "runtime_console_notification_subscription",
       signing_secret_env:
         channel === "webhook" ? String(formData.get("signing_secret_env") || "").trim() || undefined : undefined,
-      slack_channel: channel === "slack" ? String(formData.get("slack_channel") || "").trim() || undefined : undefined
+      slack_channel: channel === "slack" ? String(formData.get("slack_channel") || "").trim() || undefined : undefined,
+      email_reply_to: channel === "email" ? String(formData.get("email_reply_to") || "").trim() || undefined : undefined
     },
     updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
     reason: String(formData.get("reason") || "").trim() || undefined
@@ -4267,11 +4268,12 @@ export default async function Home({
               <select name="channel" defaultValue="webhook">
                 <option value="webhook">webhook</option>
                 <option value="slack">slack</option>
+                <option value="email">email</option>
               </select>
             </label>
             <label>
               <span>Endpoint URL</span>
-              <input name="endpoint_url" placeholder="https://hooks.example.com/geno-runtime or Slack Incoming Webhook URL" />
+              <input name="endpoint_url" placeholder="https://hooks.example.com/geno-runtime, Slack Incoming Webhook URL, or mailto:ops@example.com" />
             </label>
             <label>
               <span>Event types</span>
@@ -4284,6 +4286,10 @@ export default async function Home({
             <label>
               <span>Slack channel</span>
               <input name="slack_channel" placeholder="#geno-alerts" />
+            </label>
+            <label>
+              <span>Email reply-to</span>
+              <input name="email_reply_to" placeholder="reports@example.com" />
             </label>
             <label>
               <span>Severity</span>

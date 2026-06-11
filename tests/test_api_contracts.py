@@ -2893,23 +2893,23 @@ class ApiContractsTest(unittest.TestCase):
                 "/v1/runtime-notification-subscriptions",
                 json={
                     "project_id": "project-1",
-                    "channel": "slack",
-                    "endpoint_url": "https://hooks.slack.com/services/T000/B000/XXX",
+                    "channel": "email",
+                    "endpoint_url": "mailto:ops@example.com",
                     "event_types": ["report_export_job"],
                     "severity_threshold": "critical",
                     "status": "active",
-                    "metadata": {"source": "api-test", "slack_channel": "#geno-alerts"},
+                    "metadata": {"source": "api-test", "email_reply_to": "reports@example.com"},
                     "updated_by": "runtime-console",
-                    "reason": "save slack subscription",
+                    "reason": "save email subscription",
                 },
             )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["subscription"]["channel"], "slack")
+        self.assertEqual(payload["subscription"]["channel"], "email")
         self.assertEqual(payload["subscription"]["severity_threshold"], "critical")
-        self.assertEqual(fake_repository.subscription.endpoint_url, "https://hooks.slack.com/services/T000/B000/XXX")
-        self.assertEqual(fake_repository.subscription.metadata["slack_channel"], "#geno-alerts")
-        self.assertEqual(fake_repository.subscription.reason, "save slack subscription")
+        self.assertEqual(fake_repository.subscription.endpoint_url, "mailto:ops@example.com")
+        self.assertEqual(fake_repository.subscription.metadata["email_reply_to"], "reports@example.com")
+        self.assertEqual(fake_repository.subscription.reason, "save email subscription")
 
     def test_runtime_notification_deliveries_endpoint_returns_page(self) -> None:
         class FakeRepository:

@@ -8,7 +8,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 from typing import Any, Protocol
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from geno_core.audit import build_audit_event
@@ -221,6 +221,69 @@ def _runtime_notification_slack_payload(
     }
 
 
+def _runtime_notification_email_recipients(endpoint_url: str) -> list[str]:
+    parsed = urlparse(endpoint_url)
+    if parsed.scheme != "mailto":
+        return []
+    return [
+        unquote(recipient.strip())
+        for recipient in parsed.path.split(",")
+        if recipient and recipient.strip()
+    ]
+
+
+def _runtime_notification_email_payload(
+    *,
+    notification: dict[str, Any],
+    subscription: dict[str, Any],
+    threshold: str,
+) -> dict[str, Any]:
+    severity = str(notification.get("severity") or "info").strip().lower()
+    notification_type = str(notification.get("notification_type") or "runtime_notification").strip()
+    title = str(notification.get("title") or "GENO runtime notification").strip()
+    message = str(notification.get("message") or "").strip()
+    target_type = str(notification.get("target_type") or "target").strip()
+    target_id = str(notification.get("target_id") or "").strip()
+    subject = f"[GENO {severity.upper()}] {title}"
+    lines = [
+        title,
+        "",
+        message or "A GENO runtime notification was generated.",
+        "",
+        f"Type: {notification_type}",
+        f"Severity: {severity}",
+        f"Threshold: {threshold}",
+        f"Target: {target_type}",
+    ]
+    if target_id:
+        lines.append(f"Target ID: {target_id}")
+    lines.extend(
+        [
+            f"Notification ID: {notification.get('id')}",
+            f"Project ID: {notification.get('project_id')}",
+            f"Subscription ID: {subscription.get('id')}",
+        ]
+    )
+    return {
+        "to": _runtime_notification_email_recipients(str(subscription.get("endpoint_url") or "")),
+        "subject": subject,
+        "text": "\n".join(lines),
+        "headers": {
+            "X-GENO-Notification-Id": str(notification.get("id")),
+            "X-GENO-Project-Id": str(notification.get("project_id")),
+            "X-GENO-Notification-Type": notification_type,
+            "X-GENO-Severity": severity,
+        },
+        "metadata": {
+            "notification_id": str(notification.get("id")),
+            "notification_type": notification_type,
+            "project_id": str(notification.get("project_id")),
+            "target_type": target_type,
+            "target_id": target_id,
+        },
+    }
+
+
 def _runtime_notification_delivery_payload(
     *,
     notification: dict[str, Any],
@@ -250,17 +313,27 @@ def _runtime_notification_delivery_payload(
         },
         "delivery_version": "runtime_notification_delivery_v1",
     }
-    if channel != "slack":
-        return base_payload
-    return {
-        **base_payload,
-        "slack": _runtime_notification_slack_payload(
-            notification=notification,
-            subscription=subscription,
-            threshold=threshold,
-        ),
-        "delivery_version": "runtime_notification_delivery_slack_v1",
-    }
+    if channel == "slack":
+        return {
+            **base_payload,
+            "slack": _runtime_notification_slack_payload(
+                notification=notification,
+                subscription=subscription,
+                threshold=threshold,
+            ),
+            "delivery_version": "runtime_notification_delivery_slack_v1",
+        }
+    if channel == "email":
+        return {
+            **base_payload,
+            "email": _runtime_notification_email_payload(
+                notification=notification,
+                subscription=subscription,
+                threshold=threshold,
+            ),
+            "delivery_version": "runtime_notification_delivery_email_v1",
+        }
+    return base_payload
 
 
 def _uuid_array(values: tuple[str, ...] | list[str]) -> list[object]:
@@ -1247,7 +1320,7 @@ RUNTIME_NOTIFICATION_DELIVERY_COLUMNS = (
 )
 RUNTIME_NOTIFICATION_DELIVERY_RETURNING = ", ".join(RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
 RUNTIME_NOTIFICATION_SEVERITY_ORDER = {"info": 0, "warning": 1, "critical": 2}
-RUNTIME_NOTIFICATION_SUBSCRIPTION_CHANNELS = {"webhook", "slack"}
+RUNTIME_NOTIFICATION_SUBSCRIPTION_CHANNELS = {"webhook", "slack", "email"}
 RUNTIME_ALERT_EVENT_STATUSES = {"acknowledged", "resolved", "snoozed", "reopened", "escalated"}
 RUNTIME_ALERT_EVENT_COLUMNS = (
     "id",
@@ -5138,11 +5211,14 @@ class PostgresEvidenceRepository:
         if not project_id:
             raise ValueError("project_id is required")
         if channel not in RUNTIME_NOTIFICATION_SUBSCRIPTION_CHANNELS:
-            raise ValueError("notification subscription channel must be webhook or slack")
+            raise ValueError("notification subscription channel must be webhook, slack, or email")
         if not endpoint_url:
             raise ValueError("endpoint_url is required")
         parsed_url = urlparse(endpoint_url)
-        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+        if channel == "email":
+            if parsed_url.scheme != "mailto" or not _runtime_notification_email_recipients(endpoint_url):
+                raise ValueError("email notification endpoint_url must be a mailto URL with at least one recipient")
+        elif parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
             raise ValueError("endpoint_url must be an http or https URL")
         if not event_types:
             raise ValueError("event_types must contain at least one event type")
