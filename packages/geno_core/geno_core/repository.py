@@ -61,6 +61,8 @@ from geno_core.models import (
     RuntimeProjectBrandKitInput,
     RuntimeProject,
     RuntimeProjectPage,
+    RuntimePromptImportHistoryItem,
+    RuntimePromptImportHistoryPage,
     RuntimePromptImportInput,
     RuntimePromptImportResult,
     RuntimePromptPage,
@@ -190,6 +192,35 @@ def _row_dict(row: Any, columns: tuple[str, ...]) -> dict[str, Any]:
 
 def _rows_dict(rows: Any, columns: tuple[str, ...]) -> tuple[dict[str, Any], ...]:
     return tuple(_row_dict(row, columns) for row in rows)
+
+
+def _first_ref(value: object, default: object = None) -> object:
+    if isinstance(value, list):
+        return value[0] if value else default
+    return value if value is not None else default
+
+
+def _prompt_import_history(audit_event: dict[str, Any]) -> dict[str, Any]:
+    input_refs = audit_event.get("input_refs") or {}
+    output_refs = audit_event.get("output_refs") or {}
+    prompt_question_ids = output_refs.get("prompt_question_ids") or []
+    if not isinstance(prompt_question_ids, list):
+        prompt_question_ids = [prompt_question_ids]
+    source_format = str(_first_ref(input_refs.get("source_format"), "csv") or "csv")
+    return {
+        "id": audit_event.get("target_id"),
+        "project_id": audit_event.get("project_id"),
+        "actor_id": audit_event.get("actor_id"),
+        "source_format": source_format,
+        "source_filename": _first_ref(input_refs.get("source_filename")),
+        "source_content_type": _first_ref(input_refs.get("source_content_type")),
+        "csv_sha256": _first_ref(input_refs.get("csv_sha256")),
+        "prompt_count": len(prompt_question_ids),
+        "prompt_question_ids": prompt_question_ids,
+        "method_version": audit_event.get("method_version"),
+        "after_hash": audit_event.get("after_hash"),
+        "created_at": audit_event.get("created_at"),
+    }
 
 
 def _runtime_collection_run_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -1685,6 +1716,50 @@ class PostgresEvidenceRepository:
             )
             row = cursor.fetchone()
         return _row_dict(row, PROMPT_QUESTION_READ_COLUMNS) if row else None
+
+    def list_runtime_prompt_imports(
+        self,
+        *,
+        project_id: str | None = None,
+        source_format: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> RuntimePromptImportHistoryPage:
+        limit = max(1, min(limit, 100))
+        offset = max(0, offset)
+        filters = ["event_type = %s", "target_type = %s"]
+        params: list[object] = ["runtime_prompts_imported", "prompt_import"]
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id))
+        if source_format:
+            filters.append("COALESCE(input_refs ->> 'source_format', 'csv') = %s")
+            params.append(source_format.strip().lower())
+        where_clause = f"WHERE {' AND '.join(filters)}"
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT count(*)
+                FROM audit_events
+                {where_clause}
+                """,
+                tuple(params),
+            )
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                {where_clause}
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            audit_rows = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        records = tuple(RuntimePromptImportHistoryItem(prompt_import=_prompt_import_history(row), audit_events=(row,)) for row in audit_rows)
+        return RuntimePromptImportHistoryPage(total_count=total_count, limit=limit, offset=offset, records=records)
 
     def import_runtime_prompts_csv(self, prompt_import: RuntimePromptImportInput) -> RuntimePromptImportResult:
         project_id = prompt_import.project_id.strip()

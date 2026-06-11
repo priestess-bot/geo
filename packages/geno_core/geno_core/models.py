@@ -1047,6 +1047,20 @@ class RuntimePromptImportResult:
 
 
 @dataclass(frozen=True)
+class RuntimePromptImportHistoryItem:
+    prompt_import: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimePromptImportHistoryPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimePromptImportHistoryItem, ...]
+
+
+@dataclass(frozen=True)
 class RuntimeReportExport:
     report_export: dict[str, Any]
     score_snapshots: tuple[dict[str, Any], ...]

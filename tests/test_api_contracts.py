@@ -21,6 +21,8 @@ from geno_core.models import (
     RuntimeKnowledgeSearchPage,
     RuntimeKnowledgeSearchResult,
     RuntimeProjectBrandKit,
+    RuntimePromptImportHistoryItem,
+    RuntimePromptImportHistoryPage,
     RuntimePromptImportResult,
     RuntimeProjectPage,
     RuntimeReportArtifact,
@@ -212,6 +214,60 @@ class ApiContractsTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_prompt_import_history_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get(
+            "/v1/prompts/runtime/imports?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c&limit=5"
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_prompt_import_history_endpoint_passes_filters(self) -> None:
+        class FakeRepository:
+            def list_runtime_prompt_imports(self, **kwargs: object) -> RuntimePromptImportHistoryPage:
+                self.kwargs = kwargs
+                return RuntimePromptImportHistoryPage(
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(
+                        RuntimePromptImportHistoryItem(
+                            prompt_import={
+                                "id": "prompt-import-1",
+                                "project_id": kwargs["project_id"],
+                                "source_format": kwargs["source_format"],
+                                "source_filename": "prompts.xlsx",
+                                "prompt_count": 1,
+                                "csv_sha256": "hash",
+                            },
+                            audit_events=(
+                                {
+                                    "event_type": "runtime_prompts_imported",
+                                    "method_version": "runtime_prompt_import_xlsx_v1",
+                                },
+                            ),
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/prompts/runtime/imports"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c&source_format=xlsx&limit=5&offset=1"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_count"], 1)
+        self.assertEqual(payload["records"][0]["prompt_import"]["source_format"], "xlsx")
+        self.assertEqual(payload["records"][0]["audit_events"][0]["method_version"], "runtime_prompt_import_xlsx_v1")
+        self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.kwargs["source_format"], "xlsx")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+        self.assertEqual(fake_repository.kwargs["offset"], 1)
 
     def test_runtime_prompt_import_endpoint_passes_csv_payload(self) -> None:
         class FakeRepository:
@@ -1410,6 +1466,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeHumanReviewInput", payload["persistence"])
         self.assertIn("HumanReviewRequest", payload["persistence"])
         self.assertIn("RuntimePromptPage", payload["persistence"])
+        self.assertIn("RuntimePromptImportHistoryItem", payload["persistence"])
+        self.assertIn("RuntimePromptImportHistoryPage", payload["persistence"])
         self.assertIn("RuntimePromptImportInput", payload["persistence"])
         self.assertIn("RuntimePromptImportResult", payload["persistence"])
         self.assertIn("RuntimePromptImportRequest", payload["persistence"])
@@ -1429,6 +1487,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/entity-aliases/runtime/candidates", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/confirm", payload["persistence"])
         self.assertIn("/v1/prompts/runtime", payload["persistence"])
+        self.assertIn("/v1/prompts/runtime/imports", payload["persistence"])
         self.assertIn("/v1/prompts/runtime/import.csv", payload["persistence"])
         self.assertIn("/v1/prompts/runtime/import.file", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])

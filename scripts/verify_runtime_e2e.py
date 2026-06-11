@@ -317,6 +317,20 @@ def _assert_prompt_file_import(project_id: str) -> dict[str, Any]:
     input_refs = audit.get("input_refs") or {}
     if input_refs.get("source_format") != "xlsx":
         raise AssertionError(f"Expected xlsx source format in audit input refs, got {input_refs}")
+    repository = build_repository_from_env()
+    try:
+        history = repository.list_runtime_prompt_imports(
+            project_id=project_id,
+            source_format="xlsx",
+            limit=5,
+        )
+    finally:
+        close_repository_connection(repository)
+    if history.total_count < 1:
+        raise AssertionError("Expected at least one xlsx prompt import history item")
+    history_item = history.records[0].prompt_import
+    if history_item.get("source_filename") != "runtime-e2e-prompts.xlsx":
+        raise AssertionError(f"Expected prompt import history to include source filename, got {history_item}")
     return {
         "source_format": source_format,
         "source_filename": result.prompt_import["source_filename"],
@@ -325,6 +339,8 @@ def _assert_prompt_file_import(project_id: str) -> dict[str, Any]:
         "audit_event_type": audit.get("event_type"),
         "audit_method_version": audit.get("method_version"),
         "audit_source_format": input_refs.get("source_format"),
+        "history_count": history.total_count,
+        "history_source_filename": history_item.get("source_filename"),
     }
 
 

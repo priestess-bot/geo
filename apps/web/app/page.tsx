@@ -41,6 +41,24 @@ type RuntimePrompt = {
   status: string;
 };
 
+type RuntimePromptImportHistoryItem = {
+  prompt_import: {
+    id?: string;
+    project_id?: string;
+    actor_id?: string;
+    source_format?: string;
+    source_filename?: string | null;
+    source_content_type?: string | null;
+    csv_sha256?: string | null;
+    prompt_count?: number;
+    prompt_question_ids?: string[];
+    method_version?: string | null;
+    after_hash?: string | null;
+    created_at?: string | null;
+  };
+  audit_events: Array<{ event_type?: string; method_version?: string | null; after_hash?: string | null; created_at?: string | null }>;
+};
+
 type EvidenceRun = {
   answer_run: {
     id: string;
@@ -483,6 +501,7 @@ type RuntimeData = {
   humanReviewQueue: PageResponse<RuntimeHumanReviewQueueItem>;
   knowledgeSearch: RuntimeKnowledgeSearch | null;
   prompts: PageResponse<RuntimePrompt>;
+  promptImports: PageResponse<RuntimePromptImportHistoryItem>;
   evidence: PageResponse<EvidenceRun>;
   collectionRuns: PageResponse<CollectionRun>;
   fidelityChecks: PageResponse<RuntimeFidelityCheck>;
@@ -731,6 +750,7 @@ type RuntimeSavedView = {
 const endpoints = {
   projects: "/v1/projects/runtime",
   prompts: "/v1/prompts/runtime",
+  promptImports: "/v1/prompts/runtime/imports",
   evidence: "/v1/evidence-runs/runtime",
   collectionRuns: "/v1/collection-runs/runtime",
   fidelityChecks: "/v1/fidelity-checks/runtime",
@@ -1166,6 +1186,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       intent_type: filters.intent_type,
       limit: 20
     }),
+    promptImports: runtimePath(endpoints.promptImports, {
+      limit: 5
+    }),
     evidence: runtimePath(endpoints.evidence, {
       platform: filters.platform,
       city: filters.city,
@@ -1251,6 +1274,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     market_code: "AU",
     intent_type: filters.intent_type,
     limit: 20
+  });
+  paths.promptImports = runtimePath(endpoints.promptImports, {
+    ...selectedProjectParams,
+    limit: 5
   });
   paths.evidence = runtimePath(endpoints.evidence, {
     ...selectedProjectParams,
@@ -1343,6 +1370,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
 
   const [
     prompts,
+    promptImports,
     evidence,
     collectionRuns,
     fidelityChecks,
@@ -1364,6 +1392,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     traceability
   ] = await Promise.all([
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
+    fetchRuntimeEndpoint<PageResponse<RuntimePromptImportHistoryItem>>(
+      baseUrl,
+      paths.promptImports,
+      emptyPage<RuntimePromptImportHistoryItem>()
+    ),
     fetchRuntimeEndpoint<PageResponse<EvidenceRun>>(baseUrl, paths.evidence, emptyPage<EvidenceRun>()),
     fetchRuntimeEndpoint<PageResponse<CollectionRun>>(baseUrl, paths.collectionRuns, emptyPage<CollectionRun>()),
     fetchRuntimeEndpoint<PageResponse<RuntimeFidelityCheck>>(
@@ -1417,6 +1450,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   const errors = [
     projects,
     prompts,
+    promptImports,
     evidence,
     collectionRuns,
     fidelityChecks,
@@ -1449,6 +1483,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       humanReviewQueue: humanReviewQueue.payload,
       knowledgeSearch: knowledgeSearch.payload,
       prompts: prompts.payload,
+      promptImports: promptImports.payload,
       evidence: evidence.payload,
       collectionRuns: collectionRuns.payload,
       fidelityChecks: fidelityChecks.payload,
@@ -2311,6 +2346,38 @@ export default async function Home({
                   Import file
                 </button>
               </form>
+              <div className="detailBlock">
+                <div className="sectionHeader">
+                  <h3>Prompt Import History</h3>
+                  <small>Import query {paths.promptImports}</small>
+                </div>
+                {data.promptImports.records.length ? (
+                  <ul className="plainList">
+                    {data.promptImports.records.map((record) => {
+                      const item = record.prompt_import;
+                      const audit = record.audit_events[0];
+                      return (
+                        <li key={item.id || `${item.source_format}-${item.created_at}`}>
+                          <strong>
+                            {item.source_format || "csv"} · {item.prompt_count || 0} prompts ·{" "}
+                            {dateText(item.created_at || undefined)}
+                          </strong>
+                          <span>
+                            {item.source_filename || "inline CSV"} · {item.source_content_type || "no content type"}
+                          </span>
+                          <small>
+                            {audit?.event_type || "runtime_prompts_imported"} ·{" "}
+                            {audit?.method_version || item.method_version || "no method version"} · hash{" "}
+                            {clipText(item.csv_sha256 || item.after_hash || audit?.after_hash || "no hash", 16)}
+                          </small>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="mutedText">No prompt imports recorded for this project.</p>
+                )}
+              </div>
               <form action={submitManualBackfill} className="manualBackfillForm">
                 <input type="hidden" name="prompt_question_id" value={latestPrompt?.id || ""} />
                 <div className="formHeader">

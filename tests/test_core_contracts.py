@@ -85,6 +85,7 @@ from geno_core.models import (
     RuntimeProjectBrandKit,
     RuntimeProjectBrandKitInput,
     RuntimePromptImportInput,
+    RuntimePromptImportHistoryPage,
     RuntimePromptImportResult,
     RuntimeActionPlanPage,
     RuntimeContentEnginePage,
@@ -2996,6 +2997,54 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("INSERT INTO prompt_questions", executed_sql)
         self.assertIn("ON CONFLICT (id) DO UPDATE", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_lists_runtime_prompt_import_history(self) -> None:
+        now = datetime(2026, 6, 11, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        audit_id = "f858da95-fb57-4086-9fa2-eac9e13c0d19"
+        prompt_id = "c5070b70-1c9b-55a1-aad1-457ed04b9707"
+        audit_row = {
+            "id": audit_id,
+            "event_type": "runtime_prompts_imported",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "prompt_import",
+            "target_id": "prompt-import-1",
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {
+                "csv_sha256": ["hash"],
+                "source_format": "xlsx",
+                "source_filename": "prompts.xlsx",
+                "source_content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            },
+            "output_refs": {"prompt_question_ids": [prompt_id]},
+            "method_version": "runtime_prompt_import_xlsx_v1",
+            "reason": "import runtime prompts from xlsx",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, [audit_row]])
+
+        page = PostgresEvidenceRepository(connection).list_runtime_prompt_imports(
+            project_id=project_id,
+            source_format="xlsx",
+            limit=5,
+            offset=0,
+        )
+
+        self.assertIsInstance(page, RuntimePromptImportHistoryPage)
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.records[0].prompt_import["source_format"], "xlsx")
+        self.assertEqual(page.records[0].prompt_import["source_filename"], "prompts.xlsx")
+        self.assertEqual(page.records[0].prompt_import["csv_sha256"], "hash")
+        self.assertEqual(page.records[0].prompt_import["prompt_count"], 1)
+        self.assertEqual(page.records[0].audit_events[0]["method_version"], "runtime_prompt_import_xlsx_v1")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM audit_events", executed_sql)
+        self.assertIn("event_type = %s", executed_sql)
+        self.assertIn("COALESCE(input_refs ->> 'source_format', 'csv') = %s", executed_sql)
+        self.assertIn("ORDER BY created_at DESC, id DESC", executed_sql)
 
     def test_runtime_repository_requires_database_url(self) -> None:
         with self.assertRaises(RuntimePersistenceError):

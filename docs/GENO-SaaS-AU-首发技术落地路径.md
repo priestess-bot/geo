@@ -324,7 +324,7 @@ report_template
 
 一期每个项目 P0 固定配置 100 条 prompt（上限 200），不做国内问题集直译。
 
-工程当前已支持两条 prompt 运营导入路径：`POST /v1/prompts/runtime/import.csv` 接收 JSON body 中的 CSV 文本，`POST /v1/prompts/runtime/import.file` 接收 raw-body 文件并支持 `.csv/.txt` UTF-8 和 `.xlsx` 第一工作表。两条路径最终复用同一个 `PromptQuestion` upsert 与 `runtime_prompts_imported` 审计事件，审计 `input_refs` 会记录 `csv_sha256/source_format/source_filename/source_content_type`，用于复盘“这批 prompt 从哪个文件、哪个格式导入”。Runtime Console 的 Prompt Pack 面板已同时提供 Prompt CSV Import 和 Prompt File Import 表单；复杂多工作表、公式求值、导入前 diff 预览、错误行下载和权限/RLS 仍放到 P1 产品化增强。
+工程当前已支持两条 prompt 运营导入路径：`POST /v1/prompts/runtime/import.csv` 接收 JSON body 中的 CSV 文本，`POST /v1/prompts/runtime/import.file` 接收 raw-body 文件并支持 `.csv/.txt` UTF-8 和 `.xlsx` 第一工作表。两条路径最终复用同一个 `PromptQuestion` upsert 与 `runtime_prompts_imported` 审计事件，审计 `input_refs` 会记录 `csv_sha256/source_format/source_filename/source_content_type`，用于复盘“这批 prompt 从哪个文件、哪个格式导入”。`GET /v1/prompts/runtime/imports` 会从同一批 `AuditEvent` 读回项目级导入历史，不新增表，返回 source、hash、prompt count、method version 和审计行。Runtime Console 的 Prompt Pack 面板已同时提供 Prompt CSV Import、Prompt File Import 和 Prompt Import History；复杂多工作表、公式求值、导入前 diff 预览、错误行下载和权限/RLS 仍放到 P1 产品化增强。
 
 问题类型：
 

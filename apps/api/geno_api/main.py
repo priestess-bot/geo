@@ -359,6 +359,29 @@ def runtime_prompts(
         close_repository_connection(repository)
 
 
+@app.get("/v1/prompts/runtime/imports")
+def runtime_prompt_imports(
+    project_id: str | None = None,
+    source_format: str | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        page = repository.list_runtime_prompt_imports(
+            project_id=project_id,
+            source_format=source_format,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/prompts/runtime/import.csv")
 def import_runtime_prompts_csv(payload: RuntimePromptImportRequest) -> dict[str, object]:
     try:
@@ -1648,6 +1671,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeHumanReviewInput",
             "HumanReviewRequest",
             "RuntimePromptPage",
+            "RuntimePromptImportHistoryItem",
+            "RuntimePromptImportHistoryPage",
             "RuntimePromptImportInput",
             "RuntimePromptImportResult",
             "RuntimePromptImportRequest",
@@ -1698,6 +1723,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/entity-aliases/runtime/candidates",
             "/v1/entity-aliases/runtime/confirm",
             "/v1/prompts/runtime",
+            "/v1/prompts/runtime/imports",
             "/v1/prompts/runtime/import.csv",
             "/v1/prompts/runtime/import.file",
             "/v1/evidence-runs/runtime",
