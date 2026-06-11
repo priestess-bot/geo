@@ -541,6 +541,7 @@ type RuntimeData = {
   projectMembers: PageResponse<RuntimeProjectMember>;
   brandKit: RuntimeProjectBrandKit | null;
   brandAssets: PageResponse<RuntimeProjectBrandAssetVersion>;
+  brandAssetLibrary: PageResponse<RuntimeProjectBrandAsset>;
   scoreWeights: RuntimeScoreWeightConfig | null;
   scoreFormulas: RuntimeScoreFormulaCatalog;
   humanReviews: PageResponse<RuntimeHumanReview>;
@@ -600,6 +601,26 @@ type RuntimeProjectBrandAssetVersion = {
   uploaded_at?: string | null;
   is_active: boolean;
   audit_event?: { event_type?: string; method_version?: string | null };
+};
+
+type RuntimeProjectBrandAsset = {
+  asset: {
+    id: string;
+    project_id: string;
+    asset_type: string;
+    asset_url: string;
+    category: string;
+    source_filename?: string | null;
+    source_content_type?: string | null;
+    content_hash?: string | null;
+    storage_version?: string | null;
+    status: string;
+    uploaded_by: string;
+    metadata?: Record<string, unknown>;
+    created_at?: string;
+    updated_at?: string;
+  };
+  audit_events: Array<{ event_type?: string; actor_id?: string; method_version?: string | null; after_hash?: string | null }>;
 };
 
 type RuntimeReportExportJob = {
@@ -891,6 +912,7 @@ const endpoints = {
   savedViews: "/v1/runtime-saved-views",
   brandKit: "/v1/project-brand-kits/runtime",
   brandAssets: "/v1/project-brand-kits/runtime/assets",
+  brandAssetLibrary: "/v1/project-brand-assets/runtime",
   scoreWeights: "/v1/score-weight-configs/runtime",
   scoreFormulas: "/v1/score-formulas/runtime",
   humanReviews: "/v1/human-reviews/runtime",
@@ -1068,6 +1090,48 @@ async function activateProjectBrandAssetVersion(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/project-brand-kits/runtime/assets/activate returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function saveProjectBrandAsset(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const assetUrl = String(formData.get("asset_url") || "").trim();
+  if (!projectId || !assetUrl) {
+    throw new Error("project_id and asset_url are required to register a brand asset");
+  }
+  const optionalText = (field: string): string | undefined =>
+    String(formData.get(field) || "").trim() || undefined;
+  const payload = {
+    project_id: projectId,
+    asset_type: String(formData.get("asset_type") || "image").trim(),
+    asset_url: assetUrl,
+    category: String(formData.get("category") || "uncategorized").trim(),
+    source_filename: optionalText("source_filename"),
+    source_content_type: optionalText("source_content_type"),
+    content_hash: optionalText("content_hash"),
+    storage_version: optionalText("storage_version"),
+    status: String(formData.get("status") || "active").trim(),
+    uploaded_by: String(formData.get("uploaded_by") || "runtime-console").trim(),
+    metadata: {
+      source: "runtime_console_asset_register",
+      preview_hint: optionalText("preview_hint")
+    },
+    reason: optionalText("reason")
+  };
+  const response = await fetch(`${baseUrl}/v1/project-brand-assets/runtime`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/project-brand-assets/runtime returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -1590,6 +1654,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     }),
     brandKit: endpoints.brandKit,
     brandAssets: endpoints.brandAssets,
+    brandAssetLibrary: endpoints.brandAssetLibrary,
     scoreWeights: endpoints.scoreWeights,
     scoreFormulas: endpoints.scoreFormulas,
     humanReviews: runtimePath(endpoints.humanReviews, {
@@ -1709,6 +1774,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.brandAssets = selectedProjectId
     ? runtimePath(endpoints.brandAssets, { project_id: selectedProjectId, limit: 8 })
     : endpoints.brandAssets;
+  paths.brandAssetLibrary = selectedProjectId
+    ? runtimePath(endpoints.brandAssetLibrary, { project_id: selectedProjectId, limit: 8 })
+    : endpoints.brandAssetLibrary;
   paths.scoreWeights = selectedProjectId
     ? runtimePath(endpoints.scoreWeights, { project_id: selectedProjectId })
     : endpoints.scoreWeights;
@@ -1777,6 +1845,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     savedViews,
     brandKit,
     brandAssets,
+    brandAssetLibrary,
     scoreWeights,
     scoreFormulas,
     humanReviews,
@@ -1838,6 +1907,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
         )
       : Promise.resolve({ payload: emptyPage<RuntimeProjectBrandAssetVersion>(), error: null }),
     selectedProjectId
+      ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectBrandAsset>>(
+          baseUrl,
+          paths.brandAssetLibrary,
+          emptyPage<RuntimeProjectBrandAsset>()
+        )
+      : Promise.resolve({ payload: emptyPage<RuntimeProjectBrandAsset>(), error: null }),
+    selectedProjectId
       ? fetchRuntimeEndpoint<RuntimeScoreWeightConfig | null>(baseUrl, paths.scoreWeights, null)
       : Promise.resolve({ payload: null, error: null }),
     fetchRuntimeEndpoint<RuntimeScoreFormulaCatalog>(baseUrl, paths.scoreFormulas, { formulas: [] }),
@@ -1892,6 +1968,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     savedViews,
     brandKit,
     brandAssets,
+    brandAssetLibrary,
     scoreWeights,
     scoreFormulas,
     humanReviews,
@@ -1915,6 +1992,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       projectMembers: projectMembers.payload,
       brandKit: brandKit.payload,
       brandAssets: brandAssets.payload,
+      brandAssetLibrary: brandAssetLibrary.payload,
       scoreWeights: scoreWeights.payload,
       scoreFormulas: scoreFormulas.payload,
       humanReviews: humanReviews.payload,
@@ -2937,6 +3015,96 @@ export default async function Home({
                       </form>
                     </li>
                   ))}
+                </ul>
+              ) : (
+                <EmptyState />
+              )}
+            </section>
+            <form action={saveProjectBrandAsset} className="brandAssetForm">
+              <div className="formHeader">
+                <h3>Asset Register</h3>
+                <small>project_brand_asset_library_v1 · {paths.brandAssetLibrary}</small>
+              </div>
+              <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+              <input type="hidden" name="uploaded_by" value="runtime-console" />
+              <label>
+                <span>Asset type</span>
+                <select name="asset_type" defaultValue="image">
+                  <option value="image">image</option>
+                  <option value="logo">logo</option>
+                  <option value="pdf">pdf</option>
+                  <option value="document">document</option>
+                  <option value="template">template</option>
+                </select>
+              </label>
+              <label>
+                <span>Category</span>
+                <input name="category" defaultValue="brand_creative" />
+              </label>
+              <label className="wideField">
+                <span>Asset URL</span>
+                <input name="asset_url" defaultValue={projectBrandKit?.logo_url || ""} />
+              </label>
+              <label>
+                <span>Filename</span>
+                <input name="source_filename" defaultValue="client-asset" />
+              </label>
+              <label>
+                <span>Content type</span>
+                <input name="source_content_type" defaultValue="image/png" />
+              </label>
+              <label>
+                <span>Content hash</span>
+                <input name="content_hash" placeholder="sha256 or object hash" />
+              </label>
+              <label>
+                <span>Storage version</span>
+                <input name="storage_version" placeholder="etag/version/content hash" />
+              </label>
+              <label>
+                <span>Status</span>
+                <select name="status" defaultValue="active">
+                  <option value="active">active</option>
+                  <option value="draft">draft</option>
+                  <option value="archived">archived</option>
+                </select>
+              </label>
+              <label className="wideField">
+                <span>Reason</span>
+                <input name="reason" defaultValue="Register project brand asset for white-label delivery" />
+              </label>
+              <button className="actionButton" type="submit" disabled={!selectedProjectId}>
+                Register asset
+              </button>
+            </form>
+            <section className="brandAssetLibrary" aria-label="project brand asset library">
+              <div className="formHeader">
+                <h3>Asset Library</h3>
+                <small>{data.brandAssetLibrary.total_count} assets · table project_brand_assets</small>
+              </div>
+              {data.brandAssetLibrary.records.length ? (
+                <ul className="plainList">
+                  {data.brandAssetLibrary.records.map((record) => {
+                    const assetAudit = record.audit_events[0];
+                    return (
+                      <li key={record.asset.id}>
+                        <strong>
+                          {record.asset.asset_type} · {record.asset.category} · {record.asset.status}
+                        </strong>
+                        <span>{record.asset.asset_url}</span>
+                        <small>
+                          {record.asset.source_filename || "filename pending"} ·{" "}
+                          {record.asset.source_content_type || "content type pending"} ·{" "}
+                          {shortId(record.asset.content_hash || record.asset.storage_version || record.asset.id)}
+                        </small>
+                        <small>
+                          {assetAudit?.event_type || "project_brand_asset_registered pending"} ·{" "}
+                          {assetAudit?.method_version || "project_brand_asset_library_v1"} ·{" "}
+                          {dateText(record.asset.updated_at)}
+                        </small>
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <EmptyState />

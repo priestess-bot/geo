@@ -39,6 +39,7 @@ EXPECTED_TABLES = (
     "evidence_links",
     "runtime_saved_views",
     "project_brand_kits",
+    "project_brand_assets",
     "score_weight_configs",
     "human_review_records",
     "traceability_bundles",
@@ -71,6 +72,7 @@ CRITICAL_COLUMNS = {
     "score_weight_configs": ("weights", "updated_by"),
     "human_review_records": ("target_type", "review_status", "decision"),
     "project_brand_kits": ("logo_url", "footer_text"),
+    "project_brand_assets": ("asset_type", "asset_url", "category", "content_hash", "storage_version", "status"),
     "report_export_jobs": (
         "status",
         "artifact_type",
@@ -117,6 +119,7 @@ EXPECTED_RLS_TABLES = (
     "evidence_links",
     "runtime_saved_views",
     "project_brand_kits",
+    "project_brand_assets",
     "score_weight_configs",
     "human_review_records",
     "traceability_bundles",

@@ -89,6 +89,9 @@ from geno_core.models import (
     RuntimeHumanReviewQueuePage,
     RuntimeHumanReviewRecord,
     RuntimeCitationGraphPage,
+    RuntimeProjectBrandAsset,
+    RuntimeProjectBrandAssetInput,
+    RuntimeProjectBrandAssetPage,
     RuntimeProjectBrandKit,
     RuntimeProjectBrandAssetActivationInput,
     RuntimeProjectBrandAssetVersionPage,
@@ -6965,6 +6968,23 @@ class CoreContractsTest(unittest.TestCase):
             "logo_url": f"s3://geno-reports/brand-assets/{project_id}/logo-25f766a3e701-Client-Logo.png",
             "updated_by": "agency-user",
         }
+        brand_asset_id = "ddc23a34-2ffb-5a56-a81a-3b98aaf843b4"
+        brand_asset_row = {
+            "id": brand_asset_id,
+            "project_id": project_id,
+            "asset_type": "logo",
+            "asset_url": saved_row["logo_url"],
+            "category": "brand_logo",
+            "source_filename": "Client Logo.png",
+            "source_content_type": "image/png",
+            "content_hash": "25f766a3e70154aacaa073a049855d207842f9f6a743c082e693c2cadde4ed1b",
+            "storage_version": "25f766a3e70154aacaa073a049855d207842f9f6a743c082e693c2cadde4ed1b",
+            "status": "active",
+            "uploaded_by": "agency-user",
+            "metadata": {"source": "logo_upload", "brand_kit_id": brand_kit_id},
+            "created_at": now,
+            "updated_at": now,
+        }
         audit_row = {
             "id": "ce333139-53e7-44c8-8c85-ce498d841391",
             "event_type": "project_brand_logo_uploaded",
@@ -6993,6 +7013,8 @@ class CoreContractsTest(unittest.TestCase):
             result_sets=[
                 {"id": project_id, "target_brand": "Koala"},
                 before_row,
+                None,
+                brand_asset_row,
                 saved_row,
                 [audit_row],
             ]
@@ -7017,6 +7039,8 @@ class CoreContractsTest(unittest.TestCase):
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("SELECT id, target_brand FROM projects", executed_sql)
         self.assertIn("ON CONFLICT (project_id) DO UPDATE SET logo_url = EXCLUDED.logo_url", executed_sql)
+        self.assertIn("INSERT INTO project_brand_assets", executed_sql)
+        self.assertIn("ON CONFLICT (project_id, asset_url) DO UPDATE", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
 
     def test_postgres_repository_lists_project_brand_asset_versions_from_audit_events(self) -> None:
@@ -7077,6 +7101,137 @@ class CoreContractsTest(unittest.TestCase):
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s", executed_sql)
         self.assertIn("output_refs ? %s", executed_sql)
+
+    def test_postgres_repository_saves_project_brand_asset_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        asset_id = "ddc23a34-2ffb-5a56-a81a-3b98aaf843b4"
+        asset_url = f"s3://geno-reports/brand-assets/{project_id}/hero.png"
+        asset_row = {
+            "id": asset_id,
+            "project_id": project_id,
+            "asset_type": "image",
+            "asset_url": asset_url,
+            "category": "brand_creative",
+            "source_filename": "hero.png",
+            "source_content_type": "image/png",
+            "content_hash": "4d8f0cfa7e4b8f76dd5bce99d403d9fa",
+            "storage_version": "etag-hero-v1",
+            "status": "active",
+            "uploaded_by": "agency-user",
+            "metadata": {"source": "runtime_console_asset_register"},
+            "created_at": now,
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "a1305659-1540-4529-86d8-8e90c6b5d446",
+            "event_type": "project_brand_asset_registered",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "agency-user",
+            "target_type": "project_brand_asset",
+            "target_id": asset_id,
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {
+                "project_ids": [project_id],
+                "asset_url": [asset_url],
+                "source_filename": ["hero.png"],
+                "source_content_type": ["image/png"],
+                "content_hash": ["4d8f0cfa7e4b8f76dd5bce99d403d9fa"],
+            },
+            "output_refs": {
+                "project_brand_asset_ids": [asset_id],
+                "asset_url": [asset_url],
+                "storage_version": ["etag-hero-v1"],
+            },
+            "method_version": "project_brand_asset_library_v1",
+            "reason": "register project brand asset in library",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"id": project_id}, None, asset_row, [audit_row]])
+
+        record = PostgresEvidenceRepository(connection).save_project_brand_asset(
+            RuntimeProjectBrandAssetInput(
+                project_id=project_id,
+                asset_type="image",
+                asset_url=asset_url,
+                category="brand_creative",
+                source_filename="hero.png",
+                source_content_type="image/png",
+                content_hash="4d8f0cfa7e4b8f76dd5bce99d403d9fa",
+                storage_version="etag-hero-v1",
+                status="active",
+                uploaded_by="agency-user",
+                metadata={"source": "runtime_console_asset_register"},
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeProjectBrandAsset)
+        self.assertEqual(record.asset["asset_url"], asset_url)
+        self.assertEqual(record.asset["category"], "brand_creative")
+        self.assertEqual(record.audit_events[0]["event_type"], "project_brand_asset_registered")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO project_brand_assets", executed_sql)
+        self.assertIn("ON CONFLICT (project_id, asset_url) DO UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_lists_project_brand_assets(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        asset_id = "ddc23a34-2ffb-5a56-a81a-3b98aaf843b4"
+        asset_url = f"s3://geno-reports/brand-assets/{project_id}/hero.png"
+        asset_row = {
+            "id": asset_id,
+            "project_id": project_id,
+            "asset_type": "image",
+            "asset_url": asset_url,
+            "category": "brand_creative",
+            "source_filename": "hero.png",
+            "source_content_type": "image/png",
+            "content_hash": "4d8f0cfa7e4b8f76dd5bce99d403d9fa",
+            "storage_version": "etag-hero-v1",
+            "status": "active",
+            "uploaded_by": "agency-user",
+            "metadata": {"source": "runtime_console_asset_register"},
+            "created_at": now,
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "a1305659-1540-4529-86d8-8e90c6b5d446",
+            "event_type": "project_brand_asset_registered",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "agency-user",
+            "target_type": "project_brand_asset",
+            "target_id": asset_id,
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"project_ids": [project_id], "asset_url": [asset_url]},
+            "output_refs": {"project_brand_asset_ids": [asset_id], "asset_url": [asset_url]},
+            "method_version": "project_brand_asset_library_v1",
+            "reason": "register project brand asset in library",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, [asset_row], [audit_row]])
+
+        page = PostgresEvidenceRepository(connection).list_project_brand_assets(
+            project_id=project_id,
+            asset_type="image",
+            category="brand_creative",
+            status="active",
+            limit=20,
+            offset=0,
+        )
+
+        self.assertIsInstance(page, RuntimeProjectBrandAssetPage)
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.records[0].asset["asset_url"], asset_url)
+        self.assertEqual(page.records[0].audit_events[0]["event_type"], "project_brand_asset_registered")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM project_brand_assets WHERE project_id = %s AND asset_type = %s", executed_sql)
+        self.assertIn("ORDER BY updated_at DESC, created_at DESC, id DESC", executed_sql)
 
     def test_postgres_repository_activates_project_brand_asset_version(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

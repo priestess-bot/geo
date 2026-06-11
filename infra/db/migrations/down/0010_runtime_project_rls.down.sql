@@ -43,6 +43,7 @@ BEGIN
     'evidence_links',
     'runtime_saved_views',
     'project_brand_kits',
+    'project_brand_assets',
     'score_weight_configs',
     'human_review_records',
     'traceability_bundles',

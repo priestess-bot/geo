@@ -31,6 +31,9 @@ from geno_core.models import (
     RuntimeHumanReviewRecord,
     RuntimeKnowledgeSearchPage,
     RuntimeKnowledgeSearchResult,
+    RuntimeProjectBrandAsset,
+    RuntimeProjectBrandAssetInput,
+    RuntimeProjectBrandAssetPage,
     RuntimeProjectBrandKit,
     RuntimeProjectBrandAssetVersion,
     RuntimeProjectBrandAssetVersionPage,
@@ -2011,6 +2014,124 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(payload["records"][0]["is_active"])
         self.assertEqual(fake_repository.kwargs["limit"], 5)
 
+    def test_runtime_project_brand_assets_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get(
+            "/v1/project-brand-assets/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_project_brand_assets_endpoint_returns_assets(self) -> None:
+        class FakeRepository:
+            def list_project_brand_assets(self, **kwargs: object) -> RuntimeProjectBrandAssetPage:
+                self.kwargs = kwargs
+                return RuntimeProjectBrandAssetPage(
+                    project_id=str(kwargs["project_id"]),
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(
+                        RuntimeProjectBrandAsset(
+                            asset={
+                                "id": "ddc23a34-2ffb-5a56-a81a-3b98aaf843b4",
+                                "project_id": str(kwargs["project_id"]),
+                                "asset_type": "image",
+                                "asset_url": "s3://geno-reports/brand-assets/project/hero.png",
+                                "category": "brand_creative",
+                                "source_filename": "hero.png",
+                                "source_content_type": "image/png",
+                                "content_hash": "4d8f0cfa7e4b8f76dd5bce99d403d9fa",
+                                "storage_version": "etag-hero-v1",
+                                "status": "active",
+                                "uploaded_by": "agency-user",
+                                "metadata": {"source": "runtime_console_asset_register"},
+                            },
+                            audit_events=(
+                                {
+                                    "event_type": "project_brand_asset_registered",
+                                    "target_type": "project_brand_asset",
+                                    "method_version": "project_brand_asset_library_v1",
+                                },
+                            ),
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/project-brand-assets/runtime"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c&asset_type=image&category=brand_creative&status=active&limit=5&offset=0"
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_count"], 1)
+        self.assertEqual(payload["records"][0]["asset"]["asset_type"], "image")
+        self.assertEqual(payload["records"][0]["audit_events"][0]["event_type"], "project_brand_asset_registered")
+        self.assertEqual(fake_repository.kwargs["asset_type"], "image")
+        self.assertEqual(fake_repository.kwargs["category"], "brand_creative")
+        self.assertEqual(fake_repository.kwargs["status"], "active")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+
+    def test_runtime_project_brand_asset_save_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def save_project_brand_asset(self, asset: RuntimeProjectBrandAssetInput) -> RuntimeProjectBrandAsset:
+                self.asset = asset
+                return RuntimeProjectBrandAsset(
+                    asset={
+                        "id": "ddc23a34-2ffb-5a56-a81a-3b98aaf843b4",
+                        "project_id": asset.project_id,
+                        "asset_type": asset.asset_type,
+                        "asset_url": asset.asset_url,
+                        "category": asset.category,
+                        "source_filename": asset.source_filename,
+                        "source_content_type": asset.source_content_type,
+                        "content_hash": asset.content_hash,
+                        "storage_version": asset.storage_version,
+                        "status": asset.status,
+                        "uploaded_by": asset.uploaded_by,
+                        "metadata": asset.metadata,
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "project_brand_asset_registered",
+                            "target_type": "project_brand_asset",
+                            "method_version": "project_brand_asset_library_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/project-brand-assets/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "asset_type": "image",
+                    "asset_url": "s3://geno-reports/brand-assets/project/hero.png",
+                    "category": "brand_creative",
+                    "source_filename": "hero.png",
+                    "source_content_type": "image/png",
+                    "content_hash": "4d8f0cfa7e4b8f76dd5bce99d403d9fa",
+                    "storage_version": "etag-hero-v1",
+                    "status": "active",
+                    "uploaded_by": "agency-user",
+                    "metadata": {"source": "runtime_console_asset_register"},
+                    "reason": "register project asset",
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["asset"]["asset_url"], "s3://geno-reports/brand-assets/project/hero.png")
+        self.assertEqual(payload["audit_events"][0]["event_type"], "project_brand_asset_registered")
+        self.assertIsInstance(fake_repository.asset, RuntimeProjectBrandAssetInput)
+        self.assertEqual(fake_repository.asset.category, "brand_creative")
+        self.assertEqual(fake_repository.asset.reason, "register project asset")
+
     def test_runtime_project_brand_asset_activation_endpoint_passes_payload(self) -> None:
         class FakeRepository:
             def activate_project_brand_logo_version(self, activation: object) -> RuntimeProjectBrandKit:
@@ -3136,11 +3257,15 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("ProjectMemberRequest", payload["persistence"])
         self.assertIn("RuntimeProjectBrandKit", payload["persistence"])
         self.assertIn("RuntimeProjectBrandKitInput", payload["persistence"])
+        self.assertIn("RuntimeProjectBrandAsset", payload["persistence"])
+        self.assertIn("RuntimeProjectBrandAssetPage", payload["persistence"])
+        self.assertIn("RuntimeProjectBrandAssetInput", payload["persistence"])
         self.assertIn("RuntimeProjectBrandAssetVersion", payload["persistence"])
         self.assertIn("RuntimeProjectBrandAssetVersionPage", payload["persistence"])
         self.assertIn("RuntimeProjectBrandAssetActivationInput", payload["persistence"])
         self.assertIn("RuntimeProjectBrandLogoUpload", payload["persistence"])
         self.assertIn("ProjectBrandKitRequest", payload["persistence"])
+        self.assertIn("ProjectBrandAssetRequest", payload["persistence"])
         self.assertIn("ProjectBrandAssetActivationRequest", payload["persistence"])
         self.assertIn("RuntimeScoreWeightConfig", payload["persistence"])
         self.assertIn("RuntimeScoreWeightConfigInput", payload["persistence"])
@@ -3207,6 +3332,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/project-brand-kits/runtime/logo", payload["persistence"])
         self.assertIn("/v1/project-brand-kits/runtime/assets", payload["persistence"])
         self.assertIn("/v1/project-brand-kits/runtime/assets/activate", payload["persistence"])
+        self.assertIn("/v1/project-brand-assets/runtime", payload["persistence"])
         self.assertIn("/v1/score-weight-configs/runtime", payload["persistence"])
         self.assertIn("/v1/score-formulas/runtime", payload["persistence"])
         self.assertIn("/v1/human-reviews/runtime", payload["persistence"])

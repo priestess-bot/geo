@@ -59,8 +59,11 @@ from geno_core.models import (
     RuntimeHumanReviewRecord,
     RuntimeKnowledgeSearchPage,
     RuntimeKnowledgeSearchResult,
+    RuntimeProjectBrandAsset,
     RuntimeProjectBrandKit,
     RuntimeProjectBrandKitInput,
+    RuntimeProjectBrandAssetInput,
+    RuntimeProjectBrandAssetPage,
     RuntimeProjectBrandAssetActivationInput,
     RuntimeProjectBrandAssetVersion,
     RuntimeProjectBrandAssetVersionPage,
@@ -1260,6 +1263,22 @@ PROJECT_BRAND_KIT_COLUMNS = (
     "secondary_color",
     "footer_text",
     "updated_by",
+    "created_at",
+    "updated_at",
+)
+PROJECT_BRAND_ASSET_COLUMNS = (
+    "id",
+    "project_id",
+    "asset_type",
+    "asset_url",
+    "category",
+    "source_filename",
+    "source_content_type",
+    "content_hash",
+    "storage_version",
+    "status",
+    "uploaded_by",
+    "metadata",
     "created_at",
     "updated_at",
 )
@@ -2854,7 +2873,27 @@ class PostgresEvidenceRepository:
                 method_version="project_brand_logo_upload_v1",
                 reason="archive project brand logo asset and update white-label defaults",
             )
-            self.save_audit_events((audit_event,), cursor=cursor)
+            asset_input = RuntimeProjectBrandAssetInput(
+                project_id=project_id,
+                asset_type="logo",
+                asset_url=logo_url,
+                category="brand_logo",
+                source_filename=filename,
+                source_content_type=content_type,
+                content_hash=content_hash,
+                storage_version=content_hash,
+                status="active",
+                uploaded_by=uploaded_by,
+                metadata={"source": "logo_upload", "brand_kit_id": kit_id},
+                reason="register archived project brand logo in asset library",
+            )
+            asset_before, asset_after = self._upsert_project_brand_asset(cursor=cursor, asset=asset_input)
+            asset_audit_event = self._build_project_brand_asset_audit_event(
+                before=asset_before,
+                after=asset_after,
+                asset=asset_input,
+            )
+            self.save_audit_events((audit_event, asset_audit_event), cursor=cursor)
             cursor.execute(
                 f"""
                 SELECT {", ".join(PROJECT_BRAND_KIT_COLUMNS)}
@@ -2871,6 +2910,89 @@ class PostgresEvidenceRepository:
             )
         self.connection.commit()
         return record
+
+    def save_project_brand_asset(self, asset: RuntimeProjectBrandAssetInput) -> RuntimeProjectBrandAsset:
+        project_id = asset.project_id.strip()
+        if not project_id:
+            raise ValueError("project_id is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            before, after = self._upsert_project_brand_asset(cursor=cursor, asset=asset)
+            audit_event = self._build_project_brand_asset_audit_event(
+                before=before,
+                after=after,
+                asset=asset,
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            record = self._load_project_brand_asset(cursor=cursor, asset=after)
+        self.connection.commit()
+        return record
+
+    def list_project_brand_assets(
+        self,
+        *,
+        project_id: str,
+        asset_type: str | None = None,
+        category: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeProjectBrandAssetPage:
+        project_id = project_id.strip()
+        if not project_id:
+            raise ValueError("project_id is required")
+        filters = ["project_id = %s"]
+        params: list[object] = [_uuid(project_id)]
+        if asset_type and asset_type.strip():
+            filters.append("asset_type = %s")
+            params.append(asset_type.strip().lower())
+        if category and category.strip():
+            filters.append("category = %s")
+            params.append(category.strip().lower())
+        if status and status.strip():
+            filters.append("status = %s")
+            params.append(status.strip().lower())
+        where_clause = " AND ".join(filters)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT count(*)
+                FROM project_brand_assets
+                WHERE {where_clause}
+                """,
+                tuple(params),
+            )
+            total_row = cursor.fetchone()
+            total_count = int(total_row["count"] if isinstance(total_row, dict) else total_row[0])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_BRAND_ASSET_COLUMNS)}
+                FROM project_brand_assets
+                WHERE {where_clause}
+                ORDER BY updated_at DESC, created_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                tuple([*params, limit, offset]),
+            )
+            rows = _rows_dict(cursor.fetchall(), PROJECT_BRAND_ASSET_COLUMNS)
+            records = tuple(self._load_project_brand_asset(cursor=cursor, asset=row) for row in rows)
+        return RuntimeProjectBrandAssetPage(
+            project_id=project_id,
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=records,
+        )
 
     def list_project_brand_asset_versions(
         self,
@@ -3100,6 +3222,143 @@ class PostgresEvidenceRepository:
         )
         audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
         return RuntimeProjectBrandKit(brand_kit=brand_kit, audit_events=audit_events)
+
+    def _upsert_project_brand_asset(
+        self,
+        *,
+        cursor: DbCursor,
+        asset: RuntimeProjectBrandAssetInput,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        project_id = asset.project_id.strip()
+        asset_url = asset.asset_url.strip()
+        asset_type = asset.asset_type.strip().lower()
+        category = asset.category.strip().lower() if asset.category else "uncategorized"
+        status = asset.status.strip().lower() if asset.status else "active"
+        uploaded_by = asset.uploaded_by.strip() or "runtime-console"
+        source_filename = asset.source_filename.strip() if asset.source_filename else None
+        source_content_type = asset.source_content_type.strip() if asset.source_content_type else None
+        content_hash = asset.content_hash.strip() if asset.content_hash else None
+        storage_version = asset.storage_version.strip() if asset.storage_version else content_hash
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not asset_type:
+            raise ValueError("asset_type is required")
+        if not asset_url:
+            raise ValueError("asset_url is required")
+        if status not in {"active", "draft", "archived"}:
+            raise ValueError("asset status must be active, draft, or archived")
+        asset_id = _stable_id("project-brand-asset", project_id, asset_url)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(PROJECT_BRAND_ASSET_COLUMNS)}
+            FROM project_brand_assets
+            WHERE project_id = %s AND asset_url = %s
+            LIMIT 1
+            """,
+            (_uuid(project_id), asset_url),
+        )
+        existing_row = cursor.fetchone()
+        before = _row_dict(existing_row, PROJECT_BRAND_ASSET_COLUMNS) if existing_row else None
+        cursor.execute(
+            """
+            INSERT INTO project_brand_assets (
+              id, project_id, asset_type, asset_url, category, source_filename,
+              source_content_type, content_hash, storage_version, status, uploaded_by, metadata
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (project_id, asset_url) DO UPDATE SET
+              asset_type = EXCLUDED.asset_type,
+              category = EXCLUDED.category,
+              source_filename = EXCLUDED.source_filename,
+              source_content_type = EXCLUDED.source_content_type,
+              content_hash = EXCLUDED.content_hash,
+              storage_version = EXCLUDED.storage_version,
+              status = EXCLUDED.status,
+              uploaded_by = EXCLUDED.uploaded_by,
+              metadata = EXCLUDED.metadata,
+              updated_at = now()
+            """,
+            (
+                _uuid(asset_id),
+                _uuid(project_id),
+                asset_type,
+                asset_url,
+                category,
+                source_filename,
+                source_content_type,
+                content_hash,
+                storage_version,
+                status,
+                uploaded_by,
+                _json_payload(asset.metadata),
+            ),
+        )
+        cursor.execute(
+            f"""
+            SELECT {", ".join(PROJECT_BRAND_ASSET_COLUMNS)}
+            FROM project_brand_assets
+            WHERE id = %s
+            LIMIT 1
+            """,
+            (_uuid(asset_id),),
+        )
+        after = _row_dict(cursor.fetchone(), PROJECT_BRAND_ASSET_COLUMNS)
+        return before, after
+
+    @staticmethod
+    def _build_project_brand_asset_audit_event(
+        *,
+        before: dict[str, Any] | None,
+        after: dict[str, Any],
+        asset: RuntimeProjectBrandAssetInput,
+    ) -> AuditEvent:
+        content_hash = after.get("content_hash")
+        storage_version = after.get("storage_version")
+        input_refs: dict[str, list[str]] = {
+            "project_ids": [str(after["project_id"])],
+            "asset_url": [str(after["asset_url"])],
+        }
+        if after.get("source_filename"):
+            input_refs["source_filename"] = [str(after["source_filename"])]
+        if after.get("source_content_type"):
+            input_refs["source_content_type"] = [str(after["source_content_type"])]
+        if content_hash:
+            input_refs["content_hash"] = [str(content_hash)]
+        output_refs: dict[str, list[str]] = {
+            "project_brand_asset_ids": [str(after["id"])],
+            "asset_url": [str(after["asset_url"])],
+        }
+        if storage_version:
+            output_refs["storage_version"] = [str(storage_version)]
+        uploaded_by = asset.uploaded_by.strip() or str(after.get("uploaded_by") or "runtime-console")
+        reason = asset.reason.strip() if asset.reason else None
+        return build_audit_event(
+            event_type="project_brand_asset_registered",
+            project_id=str(after["project_id"]),
+            actor_type="user",
+            actor_id=uploaded_by,
+            target_type="project_brand_asset",
+            target_id=str(after["id"]),
+            before=before,
+            after=after,
+            input_refs=input_refs,
+            output_refs=output_refs,
+            method_version="project_brand_asset_library_v1",
+            reason=reason or "register project brand asset in library",
+        )
+
+    def _load_project_brand_asset(self, *, cursor: DbCursor, asset: dict[str, Any]) -> RuntimeProjectBrandAsset:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            LIMIT 5
+            """,
+            (_uuid(asset["project_id"]), "project_brand_asset", str(asset["id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeProjectBrandAsset(asset=asset, audit_events=audit_events)
 
     @staticmethod
     def _project_brand_asset_version_from_audit_event(

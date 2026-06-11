@@ -144,6 +144,7 @@ code {
 .projectCreateForm label,
 .projectMemberForm label,
 .brandKitForm label,
+.brandAssetForm label,
 .promptImportForm label,
 .manualBackfillForm label,
 .entityAliasForm label,
@@ -158,6 +159,7 @@ code {
 .projectCreateForm label span,
 .projectMemberForm label span,
 .brandKitForm label span,
+.brandAssetForm label span,
 .promptImportForm label span,
 .manualBackfillForm label span,
 .entityAliasForm label span,
@@ -173,7 +175,10 @@ code {
 .projectMemberForm input,
 .projectMemberForm select,
 .brandKitForm input,
+.brandAssetForm input,
+.brandAssetForm select,
 .brandKitForm textarea,
+.brandAssetForm textarea,
 .promptImportForm textarea,
 .manualBackfillForm input,
 .manualBackfillForm select,
@@ -204,6 +209,7 @@ code {
 .projectCreateForm,
 .projectMemberForm,
 .brandKitForm,
+.brandAssetForm,
 .brandAssetLibrary {
   background: #f7fafc;
   border: 1px solid #d9e2ec;
@@ -216,7 +222,8 @@ code {
 
 .projectCreateForm textarea,
 .projectMemberForm textarea,
-.brandKitForm textarea {
+.brandKitForm textarea,
+.brandAssetForm textarea {
   line-height: 1.45;
   resize: vertical;
 }
@@ -1589,6 +1596,7 @@ summary {
   .projectCreateForm,
   .projectMemberForm,
   .brandKitForm,
+  .brandAssetForm,
   .promptImportForm,
   .manualBackfillForm,
   .entityAliasForm,
@@ -1648,6 +1656,7 @@ summary {
   .projectCreateForm,
   .projectMemberForm,
   .brandKitForm,
+  .brandAssetForm,
   .promptImportForm,
   .manualBackfillForm,
   .entityAliasForm,

@@ -66,6 +66,7 @@ from geno_core.models import (
     EntityAliasInput,
     RuntimeHumanReviewInput,
     ManualBackfillInput,
+    RuntimeProjectBrandAssetInput,
     RuntimeProjectBrandKitInput,
     RuntimeProjectBrandAssetActivationInput,
     RuntimeProjectBrandLogoUpload,
@@ -1061,6 +1062,21 @@ class ProjectBrandAssetActivationRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class ProjectBrandAssetRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    asset_type: str = Field(default="image", min_length=1, max_length=80)
+    asset_url: str = Field(min_length=1, max_length=1000)
+    category: str = Field(default="uncategorized", min_length=1, max_length=120)
+    source_filename: str | None = Field(default=None, max_length=240)
+    source_content_type: str | None = Field(default=None, max_length=160)
+    content_hash: str | None = Field(default=None, max_length=160)
+    storage_version: str | None = Field(default=None, max_length=240)
+    status: str = Field(default="active", min_length=1, max_length=40)
+    uploaded_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class ScoreWeightConfigRequest(BaseModel):
     project_id: str = Field(min_length=1)
     formula_version: str = Field(default="au_visibility_v1", min_length=1, max_length=80)
@@ -2025,6 +2041,79 @@ def runtime_project_brand_asset_versions(
         return asdict(page)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/project-brand-assets/runtime")
+def runtime_project_brand_assets(
+    project_id: str = Query(min_length=1),
+    asset_type: str | None = Query(default=None, min_length=1, max_length=80),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
+    status: str | None = Query(default=None, min_length=1, max_length=40),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_project_brand_assets(
+            project_id=project_id.strip(),
+            asset_type=asset_type.strip() if asset_type else None,
+            category=category.strip() if category else None,
+            status=status.strip() if status else None,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-brand-assets/runtime")
+def save_runtime_project_brand_asset(
+    payload: ProjectBrandAssetRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        record = repository.save_project_brand_asset(
+            RuntimeProjectBrandAssetInput(
+                project_id=payload.project_id.strip(),
+                asset_type=payload.asset_type.strip(),
+                asset_url=payload.asset_url.strip(),
+                category=payload.category.strip(),
+                source_filename=payload.source_filename.strip() if payload.source_filename else None,
+                source_content_type=payload.source_content_type.strip() if payload.source_content_type else None,
+                content_hash=payload.content_hash.strip() if payload.content_hash else None,
+                storage_version=payload.storage_version.strip() if payload.storage_version else None,
+                status=payload.status.strip(),
+                uploaded_by=actor_id or payload.uploaded_by.strip(),
+                metadata=payload.metadata,
+                reason=payload.reason.strip() if payload.reason else None,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     finally:
         close_repository_connection(repository)
 
@@ -3436,11 +3525,15 @@ def contracts() -> dict[str, list[str]]:
             "ProjectMemberDeleteRequest",
             "RuntimeProjectBrandKit",
             "RuntimeProjectBrandKitInput",
+            "RuntimeProjectBrandAsset",
+            "RuntimeProjectBrandAssetPage",
+            "RuntimeProjectBrandAssetInput",
             "RuntimeProjectBrandAssetVersion",
             "RuntimeProjectBrandAssetVersionPage",
             "RuntimeProjectBrandAssetActivationInput",
             "RuntimeProjectBrandLogoUpload",
             "ProjectBrandKitRequest",
+            "ProjectBrandAssetRequest",
             "ProjectBrandAssetActivationRequest",
             "RuntimeScoreWeightConfig",
             "RuntimeScoreWeightConfigInput",
@@ -3531,6 +3624,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/project-brand-kits/runtime/logo",
             "/v1/project-brand-kits/runtime/assets",
             "/v1/project-brand-kits/runtime/assets/activate",
+            "/v1/project-brand-assets/runtime",
             "/v1/score-weight-configs/runtime",
             "/v1/score-formulas/runtime",
             "/v1/human-reviews/runtime",
