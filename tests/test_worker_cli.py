@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import runpy
@@ -89,6 +90,19 @@ class FakeWorkerRepository:
 
 
 class WorkerCliTest(unittest.TestCase):
+    def _preflight_payload_hash(self, payload: dict[str, object]) -> str:
+        payload_for_hash = dict(payload)
+        payload_for_hash.pop("preflight_payload_hash", None)
+        return hashlib.sha256(
+            json.dumps(
+                payload_for_hash,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+
     def _run_worker_result(
         self,
         *args: str,
@@ -179,6 +193,8 @@ class WorkerCliTest(unittest.TestCase):
                 "replay_context": "pass",
             },
         )
+        self.assertRegex(payload["preflight_payload_hash"], r"^[0-9a-f]{64}$")
+        self.assertEqual(payload["preflight_payload_hash"], self._preflight_payload_hash(payload))
 
     def test_api_worker_slice_without_keys_is_audited_failure(self) -> None:
         payload = self._run_worker("--mode", "api", "--prompt-limit", "1", "--cities", "Australia")
@@ -266,6 +282,9 @@ class WorkerCliTest(unittest.TestCase):
                 "replay_context": "pass",
             },
         )
+        self.assertRegex(payload["preflight_payload_hash"], r"^[0-9a-f]{64}$")
+        self.assertEqual(payload["preflight_payload_hash"], self._preflight_payload_hash(payload))
+        self.assertEqual(written_payload["preflight_payload_hash"], self._preflight_payload_hash(written_payload))
 
     def test_api_preflight_with_browser_fidelity_requires_browser_collector_ready(self) -> None:
         with patch.dict(
@@ -334,6 +353,8 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(payload["audit_event"]["event_type"], "browser_fidelity_sampling_planned")
         self.assertIn("--prompt-ids", payload["recommended_worker_args"])
         self.assertIn("--include-browser-fidelity-playwright", payload["recommended_worker_args"])
+        self.assertRegex(payload["preflight_payload_hash"], r"^[0-9a-f]{64}$")
+        self.assertEqual(payload["preflight_payload_hash"], self._preflight_payload_hash(payload))
 
     def test_prompt_ids_limit_collection_to_scheduled_sample(self) -> None:
         bootstrap = build_au_project_bootstrap()

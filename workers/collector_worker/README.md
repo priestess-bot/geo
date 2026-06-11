@@ -270,6 +270,9 @@ Every preflight payload also includes `preflight_summary`, a stable audit summar
 exit code, `ready_for_design_partner`, gate failure reasons, `audit_output_path`, and
 `recommended_next_action`. It also includes `preflight_audit_checklist`, which records blocking
 reasons, evidence field references, run totals, output path status, and replayable worker args.
+`preflight_payload_hash` is a sha256 over the canonical JSON payload after removing only the
+`preflight_payload_hash` field itself; when `--preflight-output-path` is set, the hash includes
+that top-level path so stdout and the written file can be recomputed against the same payload.
 The default preflight JSON path is gitignored because live provider status and run context belong
 to local audit evidence, not committed project docs. This is the minimum real API smoke; it does
 not replace the full 100 prompts × 4 geo × k=3 design-partner batch.

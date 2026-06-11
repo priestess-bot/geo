@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -311,13 +312,36 @@ def _build_preflight_audit_checklist(
     }
 
 
+def _stable_preflight_payload_bytes(output: dict[str, object]) -> bytes:
+    return json.dumps(
+        output,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+
+
+def _with_preflight_payload_hash(output: dict[str, object]) -> dict[str, object]:
+    output_with_hash = dict(output)
+    payload_for_hash = dict(output_with_hash)
+    payload_for_hash.pop("preflight_payload_hash", None)
+    output_with_hash["preflight_payload_hash"] = hashlib.sha256(
+        _stable_preflight_payload_bytes(payload_for_hash)
+    ).hexdigest()
+    return output_with_hash
+
+
 def _emit_json_output(output: dict[str, object], output_path: str | None = None) -> None:
     if output_path:
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         output = {**output, "preflight_output_path": str(path)}
-        path.write_text(json.dumps(output, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
-    print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
+    output = _with_preflight_payload_hash(output)
+    text_output = json.dumps(output, ensure_ascii=False, indent=2, default=str)
+    if output_path:
+        path.write_text(text_output + "\n", encoding="utf-8")
+    print(text_output)
 
 
 def _analysis_parser(*, judge_gateway: str, judge_model: str) -> ComparativeAnswerParser:
