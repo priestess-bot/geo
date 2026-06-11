@@ -4925,6 +4925,7 @@ class CoreContractsTest(unittest.TestCase):
         recommendation_contribution_id = "22a5f0de-f65a-59c8-8383-ed30361d68a1"
         action_id = "e5f3964b-54d5-5d2f-9ff7-9ec9ea24eb47"
         answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        analysis_id = "78ec34ba-1077-5d23-9834-c9c0284f9633"
         snapshot_row = {
             "id": snapshot_id,
             "project_id": project_id,
@@ -5015,6 +5016,20 @@ class CoreContractsTest(unittest.TestCase):
                 ],
                 [
                     {
+                        "id": analysis_id,
+                        "answer_run_id": answer_run_id,
+                        "parser_engine_id": "rule_based_v2_aliases",
+                        "analysis_version": "rule_based_v2_aliases",
+                        "payload": {
+                            "sentiment_score": 18.0,
+                            "uncertainty_flags": ["negative_terms_detected"],
+                        },
+                        "confidence": 0.82,
+                        "created_at": now,
+                    }
+                ],
+                [
+                    {
                         "id": "9b663656-4a0e-4fda-a764-0a4d62fa15f1",
                         "event_type": "visibility_score_snapshot_created",
                         "project_id": project_id,
@@ -5037,21 +5052,29 @@ class CoreContractsTest(unittest.TestCase):
         page = PostgresEvidenceRepository(connection).list_runtime_alerts(project_id=project_id, limit=10, offset=0)
 
         self.assertIsInstance(page, RuntimeAlertPage)
-        self.assertEqual(page.total_count, 4)
+        self.assertEqual(page.total_count, 5)
         self.assertEqual(page.records[0].alert["alert_type"], "competitor_pressure")
         self.assertEqual(page.records[0].alert["severity"], "critical")
         alert_types = {item.alert["alert_type"] for item in page.records}
-        self.assertEqual(alert_types, {"brand_absent", "low_recommendation_rate", "source_gap", "competitor_pressure"})
+        self.assertEqual(
+            alert_types,
+            {"brand_absent", "low_recommendation_rate", "source_gap", "competitor_pressure", "negative_sentiment"},
+        )
         mention_alert = next(item for item in page.records if item.alert["alert_type"] == "brand_absent")
         self.assertEqual(mention_alert.alert["metric_value"], 0.25)
         self.assertEqual(mention_alert.related_actions[0]["id"], action_id)
         self.assertTrue(any(ref["target_type"] == "score_contribution" for ref in mention_alert.evidence_refs))
         self.assertEqual(mention_alert.audit_events[0]["event_type"], "visibility_score_snapshot_created")
+        negative_alert = next(item for item in page.records if item.alert["alert_type"] == "negative_sentiment")
+        self.assertEqual(negative_alert.alert["metric_value"], 18.0)
+        self.assertEqual(negative_alert.alert["severity"], "critical")
+        self.assertTrue(any(ref["target_type"] == "answer_analysis" and ref["target_id"] == analysis_id for ref in negative_alert.evidence_refs))
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FROM visibility_score_snapshots WHERE project_id = %s", executed_sql)
         self.assertIn("FROM source_gaps WHERE project_id = %s", executed_sql)
         self.assertIn("FROM competitor_benchmarks WHERE project_id = %s", executed_sql)
         self.assertIn("FROM action_recommendations WHERE project_id = %s", executed_sql)
+        self.assertIn("FROM answer_analyses", executed_sql)
 
     def test_postgres_repository_reads_runtime_content_engine_page(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

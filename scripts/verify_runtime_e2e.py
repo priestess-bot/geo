@@ -401,7 +401,7 @@ def _assert_runtime_alerts(project_id: str) -> dict[str, Any]:
     if page.total_count < 1:
         raise AssertionError("Expected at least one derived runtime alert")
     alert_types = {item.alert.get("alert_type") for item in page.records}
-    if not ({"brand_absent", "low_recommendation_rate", "source_gap", "competitor_pressure"} & alert_types):
+    if not ({"brand_absent", "low_recommendation_rate", "source_gap", "competitor_pressure", "negative_sentiment"} & alert_types):
         raise AssertionError(f"Runtime alerts did not include a known alert type: {alert_types}")
     first = page.records[0]
     if not first.evidence_refs:

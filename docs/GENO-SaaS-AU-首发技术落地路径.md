@@ -945,14 +945,15 @@ next_check_date
 - 不承诺强因果。
 - 用任务状态和复测窗口展示变化。
 
-当前工程落地已把 Action Plan 后的轻量预警做成 read-only runtime model：`GET /v1/runtime-alerts` 不新增事实表，而是从最新 `VisibilityScoreSnapshot`、对应 `ScoreContribution`、`SourceGap`、`CompetitorBenchmark` 和 `ActionRecommendation` 派生预警。第一版规则为 `runtime_alerts_v1`，覆盖：
+当前工程落地已把 Action Plan 后的轻量预警做成 read-only runtime model：`GET /v1/runtime-alerts` 不新增事实表，而是从最新 `VisibilityScoreSnapshot`、对应 `ScoreContribution`、`AnswerAnalysis`、`SourceGap`、`CompetitorBenchmark` 和 `ActionRecommendation` 派生预警。第一版规则为 `runtime_alerts_v1`，覆盖：
 
 - `brand_absent`：品牌 mention rate 低于阈值，证据回指 score snapshot、MentionScore contribution 和相关 answer runs。
 - `low_recommendation_rate`：recommendation rate 低于阈值，证据回指 RecommendationScore contribution 和相关 answer runs。
+- `negative_sentiment`：answer analysis 的 sentiment score 低于阈值，证据回指 answer analysis、score snapshot 和相关 answer runs。
 - `source_gap`：source gap 的 expected weight 触发风险，关联已有 source gap action。
 - `competitor_pressure`：竞品 mention rate 高于品牌 mention rate，证据回指 competitor benchmark、score snapshot 和 answer runs。
 
-每条预警返回 `severity / metric_name / metric_value / threshold / source / source_id / evidence_refs / related_actions / audit_events`，Runtime Console 的 Runtime Alerts 面板可直接展示证据链和关联 action。该能力解决“可审计、可解释地看到品牌缺失和竞品压制风险”，但还不是实时告警系统；负面情绪专用规则、订阅通知、SLA、推送渠道、Temporal/队列化调度仍放在 P1 后续增强。
+每条预警返回 `severity / metric_name / metric_value / threshold / source / source_id / evidence_refs / related_actions / audit_events`，Runtime Console 的 Runtime Alerts 面板可直接展示证据链和关联 action。该能力解决“可审计、可解释地看到负面情绪、品牌缺失和竞品压制风险”，但还不是实时告警系统；订阅通知、SLA、推送渠道、Temporal/队列化调度仍放在 P1 后续增强。
 
 ### Step 12：本地化品牌知识事实
 

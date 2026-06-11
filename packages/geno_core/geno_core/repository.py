@@ -276,6 +276,19 @@ def _answer_run_refs(answer_run_ids: object) -> tuple[dict[str, Any], ...]:
     return tuple({"target_type": "answer_run", "target_id": str(value)} for value in answer_run_ids[:10])
 
 
+def _analysis_sentiment_score(analysis: dict[str, Any]) -> float | None:
+    payload = analysis.get("payload")
+    if not isinstance(payload, dict):
+        return None
+    raw_score = payload.get("sentiment_score")
+    if raw_score is None:
+        return None
+    try:
+        return float(raw_score)
+    except (TypeError, ValueError):
+        return None
+
+
 def _frozen_method_disclosure(report_export: dict[str, Any]) -> dict[str, Any] | None:
     disclosure = report_export.get("method_disclosure")
     return dict(disclosure) if isinstance(disclosure, dict) else None
@@ -3975,6 +3988,22 @@ class PostgresEvidenceRepository:
                 (_uuid(selected_project_id),),
             )
             actions = _rows_dict(cursor.fetchall(), ACTION_RECOMMENDATION_COLUMNS)
+            answer_run_ids = tuple(str(value) for value in snapshot.get("answer_run_ids") or ())
+            analyses: tuple[dict[str, Any], ...] = ()
+            if answer_run_ids:
+                cursor.execute(
+                    f"""
+                    SELECT {", ".join(ANSWER_ANALYSIS_READ_COLUMNS)}
+                    FROM answer_analyses
+                    WHERE answer_run_id = ANY(%s::uuid[])
+                    ORDER BY created_at DESC, id DESC
+                    """,
+                    (_uuid_array(answer_run_ids),),
+                )
+                latest_by_answer_run: dict[str, dict[str, Any]] = {}
+                for analysis in _rows_dict(cursor.fetchall(), ANSWER_ANALYSIS_READ_COLUMNS):
+                    latest_by_answer_run.setdefault(str(analysis.get("answer_run_id")), analysis)
+                analyses = tuple(latest_by_answer_run.values())
             cursor.execute(
                 f"""
                 SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
@@ -4101,6 +4130,47 @@ class PostgresEvidenceRepository:
                         {"target_type": "competitor_benchmark", "target_id": str(benchmark.get("id"))},
                         {"target_type": "visibility_score_snapshot", "target_id": snapshot_id},
                         *_answer_run_refs(benchmark.get("answer_run_ids")),
+                    ),
+                    related_actions=(),
+                    audit_events=score_audit_events,
+                )
+            )
+        negative_analyses = tuple(
+            analysis
+            for analysis in analyses
+            if (sentiment_score := _analysis_sentiment_score(analysis)) is not None and sentiment_score < 40.0
+        )
+        if negative_analyses:
+            lowest_negative = min(negative_analyses, key=lambda item: _analysis_sentiment_score(item) or 100.0)
+            lowest_score = float(_analysis_sentiment_score(lowest_negative) or 0.0)
+            related_answer_run_ids = [str(analysis.get("answer_run_id")) for analysis in negative_analyses if analysis.get("answer_run_id")]
+            alerts.append(
+                RuntimeAlertItem(
+                    alert={
+                        "id": _stable_id(
+                            "runtime-alert",
+                            selected_project_id,
+                            snapshot_id,
+                            "negative_sentiment",
+                            str(lowest_negative.get("id")),
+                        ),
+                        "project_id": selected_project_id,
+                        "alert_type": "negative_sentiment",
+                        "severity": "critical" if lowest_score < 25.0 else "high",
+                        "title": "Negative sentiment detected in AI answers",
+                        "summary": f"{len(negative_analyses)} answer analysis record(s) have sentiment below the risk threshold.",
+                        "metric_name": "minimum_sentiment_score",
+                        "metric_value": lowest_score,
+                        "threshold": 40.0,
+                        "rule_version": "runtime_alerts_v1",
+                        "source": "answer_analysis",
+                        "source_id": str(lowest_negative.get("id")),
+                        "created_at": lowest_negative.get("created_at") or snapshot_created_at,
+                    },
+                    evidence_refs=(
+                        {"target_type": "visibility_score_snapshot", "target_id": snapshot_id},
+                        {"target_type": "answer_analysis", "target_id": str(lowest_negative.get("id"))},
+                        *_answer_run_refs(related_answer_run_ids),
                     ),
                     related_actions=(),
                     audit_events=score_audit_events,
