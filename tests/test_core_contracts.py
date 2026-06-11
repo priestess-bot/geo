@@ -116,6 +116,7 @@ from geno_core.models import (
     RuntimeActionPlanPage,
     RuntimeAlertEvent,
     RuntimeAlertEventInput,
+    RuntimeAlertNotificationResult,
     RuntimeContentEnginePage,
     RuntimeCollectionRunPage,
     RuntimeScoreSnapshotPage,
@@ -7074,6 +7075,147 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("INSERT INTO runtime_alert_events", executed_sql)
         self.assertIn("runtime_alert_event_recorded", str(connection.calls))
         self.assertEqual(connection.commit_count, 1)
+
+    def test_postgres_repository_enqueues_runtime_alert_notifications_with_delivery(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        snapshot_id = "a7f7f8aa-5d40-4fdf-a2b3-b8729a9a5e2f"
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        notification_id = "dfaa703e-e168-58d1-b951-6853a7ba0810"
+        delivery_id = "f204f229-b9af-5525-8a87-f0c6b79edc12"
+        snapshot_row = {
+            "id": snapshot_id,
+            "project_id": project_id,
+            "scope_type": "collection_slice",
+            "scope_value": "p0a_runtime",
+            "formula_version": "au_visibility_v1",
+            "platform_weights_snapshot": {"perplexity": 0.25},
+            "final_score": 42.0,
+            "trigger_rate": 1.0,
+            "mention_rate": 0.25,
+            "recommendation_rate": 0.8,
+            "answer_run_ids": [answer_run_id],
+            "created_at": now,
+            "dispersion": 0.2,
+            "component_weights_snapshot": {"MentionScore": 0.18},
+        }
+        contribution_row = {
+            "id": "1dd2957f-050b-5d02-899a-2dfe889136dd",
+            "score_snapshot_id": snapshot_id,
+            "component_name": "MentionScore",
+            "component_score": 25.0,
+            "weight": 0.18,
+            "weighted_contribution": 4.5,
+            "denominator": "all_answer_runs",
+            "evidence_answer_run_ids": [answer_run_id],
+            "positive_evidence_summary": "few mentions",
+            "negative_evidence_summary": "brand missing in many answers",
+            "confidence_note": "fixture",
+            "created_at": now,
+        }
+        notification_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "runtime_alert",
+            "severity": "warning",
+            "title": "Runtime alert: Brand mention coverage is below threshold",
+            "message": "brand_absent alert from visibility_score_snapshot. mention_rate=0.25. threshold=0.5.",
+            "target_type": "runtime_alert",
+            "target_id": "runtime-alert-1",
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {"alert_type": "brand_absent"},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        subscription_row = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "webhook",
+            "endpoint_url": "https://hooks.example.com/geno",
+            "event_types": ["runtime_alert"],
+            "severity_threshold": "warning",
+            "status": "active",
+            "metadata": {},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        delivery_row = {
+            "id": delivery_id,
+            "project_id": project_id,
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "channel": "webhook",
+            "endpoint_url": "https://hooks.example.com/geno",
+            "status": "queued",
+            "attempt_count": 0,
+            "max_attempts": 3,
+            "lease_expires_at": None,
+            "next_attempt_at": None,
+            "response_status": None,
+            "response_body_hash": None,
+            "error_message": None,
+            "payload": {"delivery_version": "runtime_notification_delivery_v1"},
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                [{"id": project_id}],
+                snapshot_row,
+                [contribution_row],
+                [],
+                [],
+                [],
+                [],
+                [
+                    {
+                        "id": "9b663656-4a0e-4fda-a764-0a4d62fa15f1",
+                        "event_type": "visibility_score_snapshot_created",
+                        "project_id": project_id,
+                        "actor_type": "system",
+                        "actor_id": "geno-core.scoring",
+                        "target_type": "visibility_score_snapshot",
+                        "target_id": snapshot_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"answer_run_ids": [answer_run_id]},
+                        "output_refs": {"score_snapshot_ids": [snapshot_id]},
+                        "method_version": "au_visibility_v1",
+                        "reason": "test",
+                        "created_at": now,
+                    }
+                ],
+                [],
+                notification_row,
+                [subscription_row],
+                delivery_row,
+            ]
+        )
+
+        result = PostgresEvidenceRepository(connection).enqueue_runtime_alert_notifications(
+            project_id=project_id,
+            created_by="runtime-console",
+            reason="queue runtime alert notification",
+        )
+
+        self.assertIsInstance(result, RuntimeAlertNotificationResult)
+        self.assertEqual(result.notification_count, 1)
+        self.assertEqual(result.delivery_count, 1)
+        self.assertEqual(result.notifications[0]["notification_type"], "runtime_alert")
+        self.assertTrue(any(event["event_type"] == "runtime_notification_created" for event in result.audit_events))
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO runtime_notifications", executed_sql)
+        self.assertIn("INSERT INTO runtime_notification_deliveries", executed_sql)
+        self.assertIn("runtime_notification_delivery_queued", str(connection.calls))
 
     def test_postgres_repository_reads_runtime_content_engine_page(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

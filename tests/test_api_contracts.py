@@ -21,6 +21,7 @@ from geno_core.models import (
     RuntimeCollectionRunPage,
     RuntimeAlertEvent,
     RuntimeAlertItem,
+    RuntimeAlertNotificationResult,
     RuntimeAlertPage,
     RuntimeFidelityCheck,
     RuntimeFidelityCheckPage,
@@ -3324,6 +3325,55 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.event.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
         self.assertEqual(fake_repository.event.updated_by, "analyst-1")
 
+    def test_runtime_alert_notifications_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def enqueue_runtime_alert_notifications(self, **kwargs: object) -> RuntimeAlertNotificationResult:
+                self.kwargs = kwargs
+                return RuntimeAlertNotificationResult(
+                    project_id=str(kwargs["project_id"]),
+                    notification_count=2,
+                    delivery_count=1,
+                    skipped_count=1,
+                    notifications=(
+                        {
+                            "id": "notification-1",
+                            "notification_type": "runtime_alert",
+                            "severity": "warning",
+                            "target_type": "runtime_alert",
+                        },
+                    ),
+                    audit_events=(
+                        {"event_type": "runtime_notification_created"},
+                        {"event_type": "runtime_notification_delivery_queued"},
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/runtime-alerts/notifications",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "alert_type": "brand_absent",
+                    "severity": "high",
+                    "created_by": "analyst-1",
+                    "reason": "notify owner",
+                    "include_resolved": True,
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["notification_count"], 2)
+        self.assertEqual(payload["delivery_count"], 1)
+        self.assertEqual(payload["audit_events"][1]["event_type"], "runtime_notification_delivery_queued")
+        self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.kwargs["alert_type"], "brand_absent")
+        self.assertEqual(fake_repository.kwargs["severity"], "high")
+        self.assertEqual(fake_repository.kwargs["created_by"], "analyst-1")
+        self.assertTrue(fake_repository.kwargs["include_resolved"])
+
     def test_runtime_content_engines_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/content-engines/runtime")
         self.assertEqual(response.status_code, 503)
@@ -3660,6 +3710,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeAlertEvent", payload["persistence"])
         self.assertIn("RuntimeAlertEventInput", payload["persistence"])
         self.assertIn("RuntimeAlertEventRequest", payload["persistence"])
+        self.assertIn("RuntimeAlertNotificationRequest", payload["persistence"])
+        self.assertIn("RuntimeAlertNotificationResult", payload["persistence"])
         self.assertIn("RuntimeContentEngine", payload["persistence"])
         self.assertIn("RuntimeKnowledgeSearchResult", payload["persistence"])
         self.assertIn("RuntimeKnowledgeSearchPage", payload["persistence"])
@@ -3713,6 +3765,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/reports/runtime/{report_export_id}/artifact/signed-url", payload["persistence"])
         self.assertIn("/v1/action-plans/runtime", payload["persistence"])
         self.assertIn("/v1/runtime-alerts", payload["persistence"])
+        self.assertIn("/v1/runtime-alerts/notifications", payload["persistence"])
         self.assertIn("/v1/runtime-alerts/{alert_id}/events", payload["persistence"])
         self.assertIn("/v1/content-engines/runtime", payload["persistence"])
         self.assertIn("/v1/knowledge-facts/runtime/search", payload["persistence"])

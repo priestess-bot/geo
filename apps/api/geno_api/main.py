@@ -1194,6 +1194,15 @@ class RuntimeAlertEventRequest(BaseModel):
     metadata: dict[str, object] = Field(default_factory=dict)
 
 
+class RuntimeAlertNotificationRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    alert_type: str | None = Field(default=None, min_length=1, max_length=120)
+    severity: str | None = Field(default=None, min_length=1, max_length=80)
+    created_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+    include_resolved: bool = False
+
+
 class RuntimeReportExportJobRequest(BaseModel):
     project_id: str = Field(min_length=1)
     report_export_id: str | None = Field(default=None, min_length=1)
@@ -3126,6 +3135,40 @@ def runtime_alerts(
         close_repository_connection(repository)
 
 
+@app.post("/v1/runtime-alerts/notifications")
+def enqueue_runtime_alert_notifications(
+    payload: RuntimeAlertNotificationRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            record = repository.enqueue_runtime_alert_notifications(
+                project_id=payload.project_id.strip(),
+                alert_type=payload.alert_type.strip() if payload.alert_type else None,
+                severity=payload.severity.strip() if payload.severity else None,
+                created_by=actor_id or payload.created_by.strip(),
+                reason=payload.reason.strip() if payload.reason else None,
+                include_resolved=payload.include_resolved,
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/runtime-alerts/{alert_id}/events")
 def record_runtime_alert_event(
     alert_id: str,
@@ -3890,6 +3933,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeAlertEvent",
             "RuntimeAlertEventInput",
             "RuntimeAlertEventRequest",
+            "RuntimeAlertNotificationRequest",
+            "RuntimeAlertNotificationResult",
             "RuntimeContentDraft",
             "RuntimeContentEngine",
             "RuntimeContentEnginePage",
@@ -3946,6 +3991,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/reports/runtime/{report_export_id}/artifact/signed-url",
             "/v1/action-plans/runtime",
             "/v1/runtime-alerts",
+            "/v1/runtime-alerts/notifications",
             "/v1/runtime-alerts/{alert_id}/events",
             "/v1/content-engines/runtime",
             "/v1/knowledge-facts/runtime/search",

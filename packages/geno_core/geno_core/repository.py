@@ -34,6 +34,7 @@ from geno_core.models import (
     RuntimeAlertEvent,
     RuntimeAlertEventInput,
     RuntimeAlertItem,
+    RuntimeAlertNotificationResult,
     RuntimeAlertPage,
     RuntimeCitationGraph,
     RuntimeCitationGraphNode,
@@ -5870,6 +5871,108 @@ class PostgresEvidenceRepository:
             "attempt_count": job.get("attempt_count"),
             "max_attempts": job.get("max_attempts"),
         }
+        return self._insert_runtime_notification(
+            cursor=cursor,
+            notification_id=notification_id,
+            project_id=project_id,
+            notification_type="report_export_job",
+            severity=severity_by_status.get(status, "info"),
+            title=title,
+            message=message,
+            target_type="report_export_job",
+            target_id=job_id,
+            payload=payload,
+            created_by=updated_by,
+            reason=reason,
+            input_refs={
+                "report_export_job_ids": [job_id],
+                "status": [status],
+            },
+        )
+
+    def _insert_runtime_alert_notification(
+        self,
+        *,
+        cursor: DbCursor,
+        alert: dict[str, Any],
+        evidence_refs: tuple[dict[str, Any], ...],
+        related_actions: tuple[dict[str, Any], ...],
+        latest_management_status: str | None,
+        created_by: str,
+        reason: str,
+    ) -> tuple[dict[str, Any], tuple[AuditEvent, ...]]:
+        alert_id = str(alert.get("id") or "").strip()
+        project_id = str(alert.get("project_id") or "").strip()
+        alert_type = str(alert.get("alert_type") or "runtime_alert").strip().lower()
+        severity = str(alert.get("severity") or "warning").strip().lower()
+        severity = "critical" if severity == "critical" else "warning"
+        source = str(alert.get("source") or "runtime_alert").strip()
+        source_id = str(alert.get("source_id") or alert_id).strip()
+        title = f"Runtime alert: {alert.get('title') or alert_type}"
+        metric_name = str(alert.get("metric_name") or "metric")
+        metric_value = alert.get("metric_value")
+        threshold = alert.get("threshold")
+        message = f"{alert_type} alert from {source}."
+        if metric_value is not None:
+            message = f"{message} {metric_name}={metric_value}."
+        if threshold is not None:
+            message = f"{message} threshold={threshold}."
+        payload = {
+            "alert_id": alert_id,
+            "alert_type": alert_type,
+            "severity": severity,
+            "title": alert.get("title"),
+            "summary": alert.get("summary"),
+            "metric_name": alert.get("metric_name"),
+            "metric_value": metric_value,
+            "threshold": threshold,
+            "source": source,
+            "source_id": source_id,
+            "rule_version": alert.get("rule_version"),
+            "latest_management_status": latest_management_status,
+            "evidence_refs": tuple(evidence_refs),
+            "related_action_ids": [str(action.get("id")) for action in related_actions if action.get("id")],
+        }
+        notification_id = _stable_id("runtime-notification", "runtime-alert", project_id, alert_id, source_id)
+        return self._insert_runtime_notification(
+            cursor=cursor,
+            notification_id=notification_id,
+            project_id=project_id,
+            notification_type="runtime_alert",
+            severity=severity,
+            title=title,
+            message=message,
+            target_type="runtime_alert",
+            target_id=alert_id,
+            payload=payload,
+            created_by=created_by,
+            reason=reason,
+            input_refs={
+                "runtime_alert_ids": [alert_id],
+                "alert_type": [alert_type],
+                "source": [source],
+                "source_id": [source_id],
+            },
+        )
+
+    def _insert_runtime_notification(
+        self,
+        *,
+        cursor: DbCursor,
+        notification_id: str,
+        project_id: str,
+        notification_type: str,
+        severity: str,
+        title: str,
+        message: str,
+        target_type: str,
+        target_id: str,
+        payload: dict[str, Any],
+        created_by: str,
+        reason: str,
+        input_refs: dict[str, Any],
+    ) -> tuple[dict[str, Any], tuple[AuditEvent, ...]]:
+        now = datetime.now(UTC)
         cursor.execute(
             f"""
             INSERT INTO runtime_notifications (
@@ -5884,22 +5987,23 @@ class PostgresEvidenceRepository:
             (
                 _uuid(notification_id),
                 _uuid(project_id),
-                "report_export_job",
-                severity_by_status.get(status, "info"),
+                notification_type,
+                severity,
                 title,
                 message,
-                "report_export_job",
-                job_id,
+                target_type,
+                target_id,
                 "project_member",
                 "unread",
                 _json_payload(payload),
-                updated_by,
-                datetime.now(UTC),
-                updated_by,
-                datetime.now(UTC),
+                created_by,
+                now,
+                created_by,
+                now,
             ),
         )
         inserted_row = cursor.fetchone()
+        created = inserted_row is not None
         if inserted_row:
             notification = _row_dict(inserted_row, RUNTIME_NOTIFICATION_COLUMNS)
         else:
@@ -5913,33 +6017,35 @@ class PostgresEvidenceRepository:
                 (_uuid(notification_id),),
             )
             notification = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_COLUMNS)
-        audit_event = build_audit_event(
-            event_type="runtime_notification_created",
-            project_id=project_id,
-            actor_type="worker" if updated_by == "runtime-worker" else "user",
-            actor_id=updated_by,
-            target_type="runtime_notification",
-            target_id=notification_id,
-            before=None,
-            after=notification,
-            input_refs={
-                "report_export_job_ids": [job_id],
-                "status": [status],
-            },
-            output_refs={
-                "runtime_notification_ids": [notification_id],
-                "notification_type": ["report_export_job"],
-                "severity": [str(notification.get("severity") or "info")],
-            },
-            method_version="runtime_notification_v1",
-            reason=reason,
-        )
+        audit_events: list[AuditEvent] = []
+        if created:
+            audit_events.append(
+                build_audit_event(
+                    event_type="runtime_notification_created",
+                    project_id=project_id,
+                    actor_type="worker" if created_by == "runtime-worker" else "user",
+                    actor_id=created_by,
+                    target_type="runtime_notification",
+                    target_id=notification_id,
+                    before=None,
+                    after=notification,
+                    input_refs=input_refs,
+                    output_refs={
+                        "runtime_notification_ids": [notification_id],
+                        "notification_type": [notification_type],
+                        "severity": [str(notification.get("severity") or "info")],
+                    },
+                    method_version="runtime_notification_v1",
+                    reason=reason,
+                )
+            )
         _, delivery_audit_events = self._enqueue_runtime_notification_deliveries(
             cursor=cursor,
             notification=notification,
-            updated_by=updated_by,
+            updated_by=created_by,
         )
-        return notification, (audit_event, *delivery_audit_events)
+        audit_events.extend(delivery_audit_events)
+        return notification, tuple(audit_events)
 
     def _enqueue_runtime_notification_deliveries(
         self,
@@ -6387,6 +6493,67 @@ class PostgresEvidenceRepository:
             )
         self.connection.commit()
         return RuntimeAlertEvent(alert_event=after, audit_events=audit_events)
+
+    def enqueue_runtime_alert_notifications(
+        self,
+        *,
+        project_id: str,
+        alert_type: str | None = None,
+        severity: str | None = None,
+        created_by: str = "runtime-console",
+        reason: str | None = None,
+        include_resolved: bool = False,
+    ) -> RuntimeAlertNotificationResult:
+        project_id = project_id.strip()
+        created_by = created_by.strip() or "runtime-console"
+        reason = reason.strip() if reason else None
+        if not project_id:
+            raise ValueError("project_id is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM projects WHERE id = %s LIMIT 1", (_uuid(project_id),))
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+        page = self.list_runtime_alerts(
+            project_id=project_id,
+            alert_type=alert_type.strip() if alert_type else None,
+            severity=severity.strip().lower() if severity else None,
+            limit=200,
+            offset=0,
+        )
+        inserted_notifications: list[dict[str, Any]] = []
+        audit_events: list[AuditEvent] = []
+        delivery_count = 0
+        skipped_count = 0
+        with self.connection.cursor() as cursor:
+            for item in page.records:
+                latest_status = str(item.management_events[0].get("status") or "").strip().lower() if item.management_events else ""
+                if not include_resolved and latest_status in {"resolved", "snoozed"}:
+                    skipped_count += 1
+                    continue
+                alert = dict(item.alert)
+                notification, events = self._insert_runtime_alert_notification(
+                    cursor=cursor,
+                    alert=alert,
+                    evidence_refs=item.evidence_refs,
+                    related_actions=item.related_actions,
+                    latest_management_status=latest_status or None,
+                    created_by=created_by,
+                    reason=reason or "queue runtime alert notification",
+                )
+                inserted_notifications.append(notification)
+                audit_events.extend(events)
+                delivery_count += sum(1 for event in events if event.event_type == "runtime_notification_delivery_queued")
+            if audit_events:
+                self.save_audit_events(tuple(audit_events), cursor=cursor)
+        self.connection.commit()
+        return RuntimeAlertNotificationResult(
+            project_id=project_id,
+            notification_count=len(inserted_notifications),
+            delivery_count=delivery_count,
+            skipped_count=skipped_count,
+            notifications=tuple(inserted_notifications),
+            audit_events=tuple(asdict(event) for event in audit_events),
+        )
 
     def list_runtime_alerts(
         self,

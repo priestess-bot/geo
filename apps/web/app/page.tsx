@@ -1012,6 +1012,7 @@ const endpoints = {
   notificationDeliveries: "/v1/runtime-notification-deliveries",
   actions: "/v1/action-plans/runtime",
   alerts: "/v1/runtime-alerts",
+  alertNotifications: "/v1/runtime-alerts/notifications",
   content: "/v1/content-engines/runtime",
   traceability: "/v1/traceability/runtime"
 } as const;
@@ -1322,6 +1323,36 @@ async function recordRuntimeAlertEvent(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`${runtimeAlertEventPath(alertId)} returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function enqueueRuntimeAlertNotifications(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  if (!projectId) {
+    throw new Error("project_id is required to enqueue runtime alert notifications");
+  }
+  const payload = {
+    project_id: projectId,
+    alert_type: String(formData.get("alert_type") || "").trim() || undefined,
+    severity: String(formData.get("severity") || "").trim() || undefined,
+    created_by: String(formData.get("created_by") || "runtime-console").trim(),
+    reason: String(formData.get("reason") || "").trim() || undefined,
+    include_resolved: String(formData.get("include_resolved") || "") === "on"
+  };
+  const response = await fetch(`${baseUrl}${endpoints.alertNotifications}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`${endpoints.alertNotifications} returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -1718,7 +1749,7 @@ async function saveRuntimeNotificationSubscription(formData: FormData) {
   if (!projectId || !endpointUrl) {
     throw new Error("project_id and endpoint_url are required to save notification subscription");
   }
-  const eventTypes = String(formData.get("event_types") || "report_export_job")
+  const eventTypes = String(formData.get("event_types") || "report_export_job,runtime_alert")
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
@@ -1726,7 +1757,7 @@ async function saveRuntimeNotificationSubscription(formData: FormData) {
     project_id: projectId,
     channel: "webhook",
     endpoint_url: endpointUrl,
-    event_types: eventTypes.length ? eventTypes : ["report_export_job"],
+    event_types: eventTypes.length ? eventTypes : ["report_export_job", "runtime_alert"],
     severity_threshold: String(formData.get("severity_threshold") || "info").trim(),
     status: String(formData.get("status") || "active").trim(),
     metadata: {
@@ -1905,6 +1936,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     notificationDeliveries: runtimePath(endpoints.notificationDeliveries, { limit: 5 }),
     actions: runtimePath(endpoints.actions, { limit: 1 }),
     alerts: runtimePath(endpoints.alerts, { limit: 10 }),
+    alertNotifications: endpoints.alertNotifications,
     content: runtimePath(endpoints.content, { limit: 1 }),
     traceability: endpoints.traceability
   };
@@ -2071,6 +2103,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     ...selectedProjectParams,
     limit: 10
   });
+  paths.alertNotifications = endpoints.alertNotifications;
   paths.content = runtimePath(endpoints.content, {
     ...selectedProjectParams,
     limit: 1
@@ -4232,7 +4265,7 @@ export default async function Home({
             </label>
             <label>
               <span>Event types</span>
-              <input name="event_types" defaultValue="report_export_job" />
+              <input name="event_types" defaultValue="report_export_job,runtime_alert" />
             </label>
             <label>
               <span>Signing env</span>
@@ -4498,6 +4531,31 @@ export default async function Home({
           subtitle={`${data.alerts.total_count} active evidence-derived alerts`}
           wide
         >
+          <form action={enqueueRuntimeAlertNotifications} className="reportManagementForm">
+            <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+            <input type="hidden" name="created_by" value="runtime-console" />
+            <input type="hidden" name="reason" value="Queue runtime alert notifications from console" />
+            <label>
+              <span>Alert type</span>
+              <input name="alert_type" placeholder="All alert types" />
+            </label>
+            <label>
+              <span>Severity</span>
+              <select name="severity" defaultValue="">
+                <option value="">all</option>
+                <option value="critical">critical</option>
+                <option value="high">high</option>
+                <option value="medium">medium</option>
+              </select>
+            </label>
+            <label className="checkboxLabel">
+              <input type="checkbox" name="include_resolved" />
+              <span>Include resolved or snoozed</span>
+            </label>
+            <button className="actionButton compactAction" type="submit" disabled={!selectedProjectId}>
+              Queue alert notifications
+            </button>
+          </form>
           {data.alerts.records.length ? (
             <div className="alertGrid">
               {data.alerts.records.map((item) => (
@@ -4577,6 +4635,7 @@ export default async function Home({
               ))}
               <dl className="facts">
                 <Fact label="Alert query" value={paths.alerts} />
+                <Fact label="Alert notification API" value={paths.alertNotifications} />
                 <Fact label="Method" value="runtime_alerts_v1" />
                 <Fact label="Evidence refs" value="score/source_gap/benchmark/action" />
               </dl>
