@@ -29,8 +29,14 @@ class FakeReportExportJobRepository:
         self.artifact_kwargs: dict[str, object] | None = None
         self.status_updates: list[RuntimeReportExportJobStatusInput] = []
 
-    def claim_next_runtime_report_export_job(self, *, updated_by: str = "runtime-worker") -> RuntimeReportExportJob | None:
+    def claim_next_runtime_report_export_job(
+        self,
+        *,
+        updated_by: str = "runtime-worker",
+        lease_seconds: int = 900,
+    ) -> RuntimeReportExportJob | None:
         self.claimed_by = updated_by
+        self.lease_seconds = lease_seconds
         return self.job
 
     def list_runtime_report_exports(
@@ -88,6 +94,10 @@ class ReportExportWorkerContractsTest(unittest.TestCase):
                 "requested_at": now,
                 "started_at": now,
                 "completed_at": None,
+                "attempt_count": 1,
+                "max_attempts": 3,
+                "lease_expires_at": now,
+                "next_attempt_at": None,
                 "artifact_url": None,
                 "error_message": None,
                 "updated_by": "runtime-worker",
@@ -137,6 +147,7 @@ class ReportExportWorkerContractsTest(unittest.TestCase):
         self.assertEqual(result["report_export_id"], report_export_id)
         self.assertTrue(str(result["artifact_url"]).startswith("s3://geno-reports/report-artifacts/"))
         self.assertEqual(repository.claimed_by, "runtime-worker")
+        self.assertEqual(repository.lease_seconds, 900)
         self.assertEqual(repository.artifact_kwargs["platform"], "perplexity")
         self.assertEqual(repository.artifact_kwargs["city"], "Sydney")
         self.assertEqual(repository.artifact_kwargs["client_name"], "Client AU")
@@ -146,7 +157,7 @@ class ReportExportWorkerContractsTest(unittest.TestCase):
         object_puts = [item for item in requests if item[0] == "PUT" and "report-artifacts" in item[1]]
         self.assertEqual(len(object_puts), 1)
 
-    def test_process_next_report_export_job_marks_failed_when_no_report_exists(self) -> None:
+    def test_process_next_report_export_job_requeues_when_no_report_exists_before_max_attempts(self) -> None:
         now = datetime(2026, 6, 11, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         job_id = "8f4f2a24-d6cf-5050-96a4-942d2c337fd0"
@@ -164,6 +175,49 @@ class ReportExportWorkerContractsTest(unittest.TestCase):
                 "requested_at": now,
                 "started_at": now,
                 "completed_at": None,
+                "attempt_count": 1,
+                "max_attempts": 3,
+                "lease_expires_at": now,
+                "next_attempt_at": None,
+                "artifact_url": None,
+                "error_message": None,
+                "updated_by": "runtime-worker",
+                "updated_at": now,
+            },
+            audit_events=(),
+        )
+        repository = FakeReportExportJobRepository(job=job, latest_report_id=None, artifact=None)
+
+        result = process_next_report_export_job(repository=repository, object_store=None, retry_backoff_seconds=60)
+
+        self.assertEqual(result["status"], "queued")
+        self.assertEqual(repository.status_updates[-1].status, "queued")
+        self.assertIsNotNone(repository.status_updates[-1].next_attempt_at)
+        self.assertIn("No report_export_id supplied", repository.status_updates[-1].error_message or "")
+        self.assertIsNone(repository.artifact_kwargs)
+
+    def test_process_next_report_export_job_dead_letters_after_max_attempts(self) -> None:
+        now = datetime(2026, 6, 11, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        job_id = "8f4f2a24-d6cf-5050-96a4-942d2c337fd0"
+        job = RuntimeReportExportJob(
+            report_export_job={
+                "id": job_id,
+                "project_id": project_id,
+                "report_export_id": None,
+                "status": "running",
+                "artifact_type": "csv",
+                "template": "standard",
+                "filters": {},
+                "sort": "collected_at_desc",
+                "requested_by": "runtime-console",
+                "requested_at": now,
+                "started_at": now,
+                "completed_at": None,
+                "attempt_count": 3,
+                "max_attempts": 3,
+                "lease_expires_at": now,
+                "next_attempt_at": None,
                 "artifact_url": None,
                 "error_message": None,
                 "updated_by": "runtime-worker",
@@ -175,10 +229,9 @@ class ReportExportWorkerContractsTest(unittest.TestCase):
 
         result = process_next_report_export_job(repository=repository, object_store=None)
 
-        self.assertEqual(result["status"], "failed")
-        self.assertEqual(repository.status_updates[-1].status, "failed")
-        self.assertIn("No report_export_id supplied", repository.status_updates[-1].error_message or "")
-        self.assertIsNone(repository.artifact_kwargs)
+        self.assertEqual(result["status"], "dead_letter")
+        self.assertEqual(repository.status_updates[-1].status, "dead_letter")
+        self.assertIsNone(repository.status_updates[-1].next_attempt_at)
 
 
 if __name__ == "__main__":

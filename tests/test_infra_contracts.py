@@ -149,6 +149,11 @@ class InfraContractsTest(unittest.TestCase):
 
         self.assertIn("CREATE TABLE report_export_jobs", init_sql)
         self.assertIn("idx_report_export_jobs_project", init_sql)
+        self.assertIn("idx_report_export_jobs_claim", init_sql)
+        self.assertIn("attempt_count integer NOT NULL DEFAULT 0", init_sql)
+        self.assertIn("max_attempts integer NOT NULL DEFAULT 3", init_sql)
+        self.assertIn("lease_expires_at timestamptz", init_sql)
+        self.assertIn("next_attempt_at timestamptz", init_sql)
         self.assertIn("'report_export_jobs'", rls_sql)
         self.assertIn("'report_export_jobs'", rls_down_sql)
         self.assertIn('"report_export_jobs"', db_smoke_source)

@@ -2645,6 +2645,24 @@ def runtime_report_export_jobs(
         close_repository_connection(repository)
 
 
+@app.get("/v1/report-export-jobs/runtime/stats")
+def runtime_report_export_job_stats(
+    project_id: str | None = None,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        stats = repository.get_runtime_report_export_job_queue_stats(project_id=project_id)
+        return asdict(stats)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/report-export-jobs/runtime")
 def enqueue_runtime_report_export_job(
     payload: RuntimeReportExportJobRequest,
@@ -3468,6 +3486,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeReportExportPage",
             "RuntimeReportExportJob",
             "RuntimeReportExportJobPage",
+            "RuntimeReportExportJobQueueStats",
             "RuntimeReportExportJobInput",
             "RuntimeReportExportJobStatusInput",
             "RuntimeReportExportJobRequest",
@@ -3522,6 +3541,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/citation-graphs/runtime",
             "/v1/reports/runtime",
             "/v1/report-export-jobs/runtime",
+            "/v1/report-export-jobs/runtime/stats",
             "/v1/report-export-jobs/runtime/{job_id}/status",
             "/v1/reports/runtime/{report_export_id}/management-events",
             "/v1/reports/runtime/{report_export_id}/artifact",

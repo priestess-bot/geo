@@ -71,7 +71,17 @@ CRITICAL_COLUMNS = {
     "score_weight_configs": ("weights", "updated_by"),
     "human_review_records": ("target_type", "review_status", "decision"),
     "project_brand_kits": ("logo_url", "footer_text"),
-    "report_export_jobs": ("status", "artifact_type", "template", "filters", "artifact_url"),
+    "report_export_jobs": (
+        "status",
+        "artifact_type",
+        "template",
+        "filters",
+        "attempt_count",
+        "max_attempts",
+        "lease_expires_at",
+        "next_attempt_at",
+        "artifact_url",
+    ),
     "llm_call_logs": ("estimated_cost", "latency_ms", "status"),
 }
 

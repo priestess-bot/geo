@@ -495,6 +495,10 @@ CREATE TABLE report_export_jobs (
   requested_at timestamptz NOT NULL DEFAULT now(),
   started_at timestamptz,
   completed_at timestamptz,
+  attempt_count integer NOT NULL DEFAULT 0,
+  max_attempts integer NOT NULL DEFAULT 3,
+  lease_expires_at timestamptz,
+  next_attempt_at timestamptz,
   artifact_url text,
   error_message text,
   updated_by text NOT NULL,
@@ -591,4 +595,5 @@ CREATE INDEX idx_api_browser_fidelity_checks_project ON api_browser_fidelity_che
 CREATE INDEX idx_api_browser_fidelity_checks_report ON api_browser_fidelity_checks(report_export_id, checked_at);
 CREATE INDEX idx_traceability_bundles_project ON traceability_bundles(project_id, subject_type);
 CREATE INDEX idx_report_export_jobs_project ON report_export_jobs(project_id, status, requested_at);
+CREATE INDEX idx_report_export_jobs_claim ON report_export_jobs(status, next_attempt_at, lease_expires_at, requested_at);
 CREATE INDEX idx_report_export_jobs_report ON report_export_jobs(report_export_id, requested_at);

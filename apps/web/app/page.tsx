@@ -560,6 +560,7 @@ type RuntimeData = {
   graphs: PageResponse<CitationGraph>;
   reports: PageResponse<ReportExport>;
   reportJobs: PageResponse<RuntimeReportExportJob>;
+  reportJobStats: RuntimeReportExportJobQueueStats;
   actions: PageResponse<ActionPlan>;
   alerts: PageResponse<RuntimeAlert>;
   content: PageResponse<ContentEngine>;
@@ -615,12 +616,26 @@ type RuntimeReportExportJob = {
     requested_at?: string;
     started_at?: string | null;
     completed_at?: string | null;
+    attempt_count?: number;
+    max_attempts?: number;
+    lease_expires_at?: string | null;
+    next_attempt_at?: string | null;
     artifact_url?: string | null;
     error_message?: string | null;
     updated_by: string;
     updated_at?: string;
   };
   audit_events: Array<{ event_type?: string; actor_id?: string; reason?: string | null; method_version?: string | null }>;
+};
+
+type RuntimeReportExportJobQueueStats = {
+  total_count: number;
+  status_counts: Record<string, number>;
+  retryable_count: number;
+  expired_running_count: number;
+  max_attempts_reached_count: number;
+  oldest_queued_at?: string | null;
+  generated_at?: string;
 };
 
 type RuntimeScoreWeightConfig = {
@@ -885,6 +900,7 @@ const endpoints = {
   graphs: "/v1/citation-graphs/runtime",
   reports: "/v1/reports/runtime",
   reportJobs: "/v1/report-export-jobs/runtime",
+  reportJobStats: "/v1/report-export-jobs/runtime/stats",
   actions: "/v1/action-plans/runtime",
   alerts: "/v1/runtime-alerts",
   content: "/v1/content-engines/runtime",
@@ -1587,6 +1603,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     graphs: runtimePath(endpoints.graphs, { limit: 1 }),
     reports: runtimePath(endpoints.reports, { limit: 5 }),
     reportJobs: runtimePath(endpoints.reportJobs, { limit: 5 }),
+    reportJobStats: endpoints.reportJobStats,
     actions: runtimePath(endpoints.actions, { limit: 1 }),
     alerts: runtimePath(endpoints.alerts, { limit: 10 }),
     content: runtimePath(endpoints.content, { limit: 1 }),
@@ -1729,6 +1746,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     ...selectedProjectParams,
     limit: 5
   });
+  paths.reportJobStats = runtimePath(endpoints.reportJobStats, {
+    ...selectedProjectParams
+  });
   paths.actions = runtimePath(endpoints.actions, {
     ...selectedProjectParams,
     limit: 1
@@ -1766,6 +1786,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     graphs,
     reports,
     reportJobs,
+    reportJobStats,
     actions,
     alerts,
     content,
@@ -1843,6 +1864,14 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       paths.reportJobs,
       emptyPage<RuntimeReportExportJob>()
     ),
+    fetchRuntimeEndpoint<RuntimeReportExportJobQueueStats>(baseUrl, paths.reportJobStats, {
+      total_count: 0,
+      status_counts: {},
+      retryable_count: 0,
+      expired_running_count: 0,
+      max_attempts_reached_count: 0,
+      oldest_queued_at: null
+    }),
     fetchRuntimeEndpoint<PageResponse<ActionPlan>>(baseUrl, paths.actions, emptyPage<ActionPlan>()),
     fetchRuntimeEndpoint<PageResponse<RuntimeAlert>>(baseUrl, paths.alerts, emptyPage<RuntimeAlert>()),
     fetchRuntimeEndpoint<PageResponse<ContentEngine>>(baseUrl, paths.content, emptyPage<ContentEngine>()),
@@ -1872,6 +1901,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     graphs,
     reports,
     reportJobs,
+    reportJobStats,
     actions,
     alerts,
     content,
@@ -1904,6 +1934,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       graphs: graphs.payload,
       reports: reports.payload,
       reportJobs: reportJobs.payload,
+      reportJobStats: reportJobStats.payload,
       actions: actions.payload,
       alerts: alerts.payload,
       content: content.payload,
@@ -3614,7 +3645,15 @@ export default async function Home({
           )}
         </Panel>
 
-        <Panel title="Report Export Queue" subtitle={`${data.reportJobs.total_count} queued jobs`} wide>
+        <Panel title="Report Export Queue" subtitle={`${data.reportJobStats.total_count} tracked jobs`} wide>
+          <div className="metricGrid queueStatsGrid">
+            <Metric label="Queued" value={String(data.reportJobStats.status_counts.queued || 0)} />
+            <Metric label="Running" value={String(data.reportJobStats.status_counts.running || 0)} />
+            <Metric label="Retryable" value={String(data.reportJobStats.retryable_count)} />
+            <Metric label="Expired leases" value={String(data.reportJobStats.expired_running_count)} />
+            <Metric label="Dead letter" value={String(data.reportJobStats.status_counts.dead_letter || 0)} />
+            <Metric label="Oldest queued" value={dateText(data.reportJobStats.oldest_queued_at || undefined)} />
+          </div>
           {data.reportJobs.records.length ? (
             <div className="reportHistory">
               {data.reportJobs.records.map((jobRecord) => {
@@ -3633,6 +3672,9 @@ export default async function Home({
                       <Fact label="Job ID" value={shortId(job.id)} />
                       <Fact label="Report ID" value={shortId(job.report_export_id || undefined)} />
                       <Fact label="Sort" value={job.sort} />
+                      <Fact label="Attempts" value={`${job.attempt_count || 0} / ${job.max_attempts || 3}`} />
+                      <Fact label="Next attempt" value={dateText(job.next_attempt_at || undefined)} />
+                      <Fact label="Lease expires" value={dateText(job.lease_expires_at || undefined)} />
                       <Fact label="Requested by" value={job.requested_by} />
                       <Fact label="Updated by" value={job.updated_by} />
                       <Fact label="Completed" value={dateText(job.completed_at || undefined)} />
@@ -3647,6 +3689,7 @@ export default async function Home({
                           <option value="running">Running</option>
                           <option value="succeeded">Succeeded</option>
                           <option value="failed">Failed</option>
+                          <option value="dead_letter">Dead letter</option>
                           <option value="cancelled">Cancelled</option>
                         </select>
                       </label>
@@ -3674,7 +3717,7 @@ export default async function Home({
                       <li>
                         <strong>Queued filters</strong>
                         <span>{JSON.stringify(job.filters || {})}</span>
-                        <small>{paths.reportJobs}</small>
+                        <small>{paths.reportJobs} · {paths.reportJobStats}</small>
                       </li>
                       <li>
                         <strong>Artifact output</strong>

@@ -5133,6 +5133,10 @@ class CoreContractsTest(unittest.TestCase):
             "requested_at": now,
             "started_at": None,
             "completed_at": None,
+            "attempt_count": 0,
+            "max_attempts": 3,
+            "lease_expires_at": None,
+            "next_attempt_at": None,
             "artifact_url": None,
             "error_message": None,
             "updated_by": "runtime-console",
@@ -5194,6 +5198,10 @@ class CoreContractsTest(unittest.TestCase):
             "requested_at": now,
             "started_at": None,
             "completed_at": None,
+            "attempt_count": 0,
+            "max_attempts": 3,
+            "lease_expires_at": None,
+            "next_attempt_at": None,
             "artifact_url": None,
             "error_message": None,
             "updated_by": "runtime-console",
@@ -5249,6 +5257,10 @@ class CoreContractsTest(unittest.TestCase):
             "requested_at": now,
             "started_at": None,
             "completed_at": None,
+            "attempt_count": 0,
+            "max_attempts": 3,
+            "lease_expires_at": None,
+            "next_attempt_at": None,
             "artifact_url": None,
             "error_message": None,
             "updated_by": "runtime-console",
@@ -5258,6 +5270,8 @@ class CoreContractsTest(unittest.TestCase):
             **before_row,
             "status": "running",
             "started_at": now,
+            "attempt_count": 1,
+            "lease_expires_at": now,
             "updated_by": "runtime-worker",
             "updated_at": now,
         }
@@ -5284,12 +5298,42 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIsInstance(record, RuntimeReportExportJob)
         assert record is not None
         self.assertEqual(record.report_export_job["status"], "running")
+        self.assertEqual(record.report_export_job["attempt_count"], 1)
         self.assertEqual(record.audit_events[0]["method_version"], "runtime_report_export_job_claim_v1")
         self.assertEqual(connection.commit_count, 1)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FOR UPDATE SKIP LOCKED", executed_sql)
         self.assertIn("UPDATE report_export_jobs SET status = %s", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_reads_report_export_job_queue_stats(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 4},
+                [{"status": "queued", "count": 2}, {"status": "running", "count": 1}, {"status": "dead_letter", "count": 1}],
+                {
+                    "retryable_count": 2,
+                    "expired_running_count": 1,
+                    "max_attempts_reached_count": 1,
+                    "oldest_queued_at": now,
+                },
+            ]
+        )
+
+        stats = PostgresEvidenceRepository(connection).get_runtime_report_export_job_queue_stats(project_id=project_id)
+
+        self.assertEqual(stats.total_count, 4)
+        self.assertEqual(stats.status_counts["dead_letter"], 1)
+        self.assertEqual(stats.retryable_count, 2)
+        self.assertEqual(stats.expired_running_count, 1)
+        self.assertEqual(stats.max_attempts_reached_count, 1)
+        self.assertEqual(stats.oldest_queued_at, str(now))
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("GROUP BY status", executed_sql)
+        self.assertIn("lease_expires_at <= now()", executed_sql)
+        self.assertIn("attempt_count >= max_attempts", executed_sql)
 
     def test_postgres_repository_updates_report_export_job_status_with_audit_event(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
@@ -5309,6 +5353,10 @@ class CoreContractsTest(unittest.TestCase):
             "requested_at": now,
             "started_at": now,
             "completed_at": None,
+            "attempt_count": 1,
+            "max_attempts": 3,
+            "lease_expires_at": now,
+            "next_attempt_at": None,
             "artifact_url": None,
             "error_message": None,
             "updated_by": "runtime-worker",

@@ -5,7 +5,7 @@ import hashlib
 import json
 from contextlib import nullcontext
 from dataclasses import asdict, is_dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from typing import Any, Protocol
 from urllib.parse import urlparse
@@ -80,6 +80,7 @@ from geno_core.models import (
     RuntimeReportExportJob,
     RuntimeReportExportJobInput,
     RuntimeReportExportJobPage,
+    RuntimeReportExportJobQueueStats,
     RuntimeReportExportJobStatusInput,
     RuntimeReportExport,
     RuntimeReportExportPage,
@@ -1067,11 +1068,16 @@ REPORT_EXPORT_JOB_COLUMNS = (
     "requested_at",
     "started_at",
     "completed_at",
+    "attempt_count",
+    "max_attempts",
+    "lease_expires_at",
+    "next_attempt_at",
     "artifact_url",
     "error_message",
     "updated_by",
     "updated_at",
 )
+REPORT_EXPORT_JOB_RETURNING = ", ".join(REPORT_EXPORT_JOB_COLUMNS)
 ACTION_RECOMMENDATION_COLUMNS = (
     "id",
     "project_id",
@@ -4264,15 +4270,13 @@ class PostgresEvidenceRepository:
                 if str(report_export["project_id"]) != project_id:
                     raise ValueError("report_export does not belong to project")
             cursor.execute(
-                """
+                f"""
                 INSERT INTO report_export_jobs (
                   id, project_id, report_export_id, status, artifact_type, template,
-                  filters, sort, requested_by, requested_at, updated_by, updated_at
+                  filters, sort, requested_by, requested_at, max_attempts, updated_by, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, project_id, report_export_id, status, artifact_type, template,
-                          filters, sort, requested_by, requested_at, started_at, completed_at,
-                          artifact_url, error_message, updated_by, updated_at
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING {REPORT_EXPORT_JOB_RETURNING}
                 """,
                 (
                     _uuid(job_id),
@@ -4285,6 +4289,7 @@ class PostgresEvidenceRepository:
                     sort,
                     requested_by,
                     datetime.now(UTC),
+                    3,
                     requested_by,
                     datetime.now(UTC),
                 ),
@@ -4365,43 +4370,124 @@ class PostgresEvidenceRepository:
             records=records,
         )
 
+    def get_runtime_report_export_job_queue_stats(
+        self,
+        *,
+        project_id: str | None = None,
+    ) -> RuntimeReportExportJobQueueStats:
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id.strip()))
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM report_export_jobs {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT status, count(*)::int AS count
+                FROM report_export_jobs
+                {where_clause}
+                GROUP BY status
+                ORDER BY status ASC
+                """,
+                tuple(params),
+            )
+            status_rows = _rows_dict(cursor.fetchall(), ("status", "count"))
+            status_counts = {str(row["status"]): int(row["count"]) for row in status_rows}
+            cursor.execute(
+                f"""
+                SELECT
+                  count(*) FILTER (
+                    WHERE status = 'queued'
+                      AND attempt_count < max_attempts
+                      AND (next_attempt_at IS NULL OR next_attempt_at <= now())
+                  )::int AS retryable_count,
+                  count(*) FILTER (
+                    WHERE status = 'running'
+                      AND lease_expires_at IS NOT NULL
+                      AND lease_expires_at <= now()
+                  )::int AS expired_running_count,
+                  count(*) FILTER (
+                    WHERE status IN ('queued', 'running', 'failed', 'dead_letter')
+                      AND attempt_count >= max_attempts
+                  )::int AS max_attempts_reached_count,
+                  min(requested_at) FILTER (WHERE status = 'queued') AS oldest_queued_at
+                FROM report_export_jobs
+                {where_clause}
+                """,
+                tuple(params),
+            )
+            stats_row = _row_dict(
+                cursor.fetchone(),
+                (
+                    "retryable_count",
+                    "expired_running_count",
+                    "max_attempts_reached_count",
+                    "oldest_queued_at",
+                ),
+            )
+        return RuntimeReportExportJobQueueStats(
+            total_count=total_count,
+            status_counts=status_counts,
+            retryable_count=int(stats_row.get("retryable_count") or 0),
+            expired_running_count=int(stats_row.get("expired_running_count") or 0),
+            max_attempts_reached_count=int(stats_row.get("max_attempts_reached_count") or 0),
+            oldest_queued_at=stats_row.get("oldest_queued_at"),
+            generated_at=datetime.now(UTC),
+        )
+
     def claim_next_runtime_report_export_job(
         self,
         *,
         updated_by: str = "runtime-worker",
+        lease_seconds: int = 900,
     ) -> RuntimeReportExportJob | None:
         updated_by = updated_by.strip()
         if not updated_by:
             raise ValueError("updated_by is required")
+        lease_seconds = max(1, int(lease_seconds))
         with self.connection.cursor() as cursor:
             cursor.execute(
                 f"""
                 SELECT {", ".join(REPORT_EXPORT_JOB_COLUMNS)}
                 FROM report_export_jobs
-                WHERE status = %s
-                ORDER BY requested_at ASC, id ASC
+                WHERE (
+                  (status = %s AND (next_attempt_at IS NULL OR next_attempt_at <= now()))
+                  OR (status = %s AND lease_expires_at IS NOT NULL AND lease_expires_at <= now())
+                )
+                  AND attempt_count < max_attempts
+                ORDER BY
+                  CASE WHEN status = %s THEN 0 ELSE 1 END,
+                  COALESCE(next_attempt_at, requested_at) ASC,
+                  requested_at ASC,
+                  id ASC
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED
                 """,
-                ("queued",),
+                ("queued", "running", "queued"),
             )
             before = _row_dict(cursor.fetchone(), REPORT_EXPORT_JOB_COLUMNS)
             if not before:
                 return None
             now = datetime.now(UTC)
+            lease_expires_at = now + timedelta(seconds=lease_seconds)
             cursor.execute(
-                """
+                f"""
                 UPDATE report_export_jobs
                 SET status = %s,
                     started_at = COALESCE(started_at, %s),
+                    attempt_count = attempt_count + 1,
+                    lease_expires_at = %s,
+                    next_attempt_at = NULL,
                     updated_by = %s,
                     updated_at = %s
                 WHERE id = %s AND status = %s
-                RETURNING id, project_id, report_export_id, status, artifact_type, template,
-                          filters, sort, requested_by, requested_at, started_at, completed_at,
-                          artifact_url, error_message, updated_by, updated_at
+                RETURNING {REPORT_EXPORT_JOB_RETURNING}
                 """,
-                ("running", now, updated_by, now, _uuid(str(before["id"])), "queued"),
+                ("running", now, lease_expires_at, updated_by, now, _uuid(str(before["id"])), str(before["status"])),
             )
             after = _row_dict(cursor.fetchone(), REPORT_EXPORT_JOB_COLUMNS)
             if not after:
@@ -4443,12 +4529,14 @@ class PostgresEvidenceRepository:
         report_export_id = update.report_export_id.strip() if update.report_export_id else None
         artifact_url = update.artifact_url.strip() if update.artifact_url else None
         error_message = update.error_message.strip() if update.error_message else None
+        next_attempt_at = update.next_attempt_at
+        lease_expires_at = update.lease_expires_at
         reason = update.reason.strip() if update.reason else None
-        allowed_statuses = {"queued", "running", "succeeded", "failed", "cancelled"}
+        allowed_statuses = {"queued", "running", "succeeded", "failed", "cancelled", "dead_letter"}
         if not job_id:
             raise ValueError("job_id is required")
         if status not in allowed_statuses:
-            raise ValueError("status must be queued, running, succeeded, failed, or cancelled")
+            raise ValueError("status must be queued, running, succeeded, failed, cancelled, or dead_letter")
         if not updated_by:
             raise ValueError("updated_by is required")
         with self.connection.cursor() as cursor:
@@ -4475,20 +4563,20 @@ class PostgresEvidenceRepository:
                     raise ValueError("report_export does not belong to project")
             now = datetime.now(UTC)
             cursor.execute(
-                """
+                f"""
                 UPDATE report_export_jobs
                 SET status = %s,
                     report_export_id = COALESCE(%s, report_export_id),
                     started_at = CASE WHEN %s = 'running' AND started_at IS NULL THEN %s ELSE started_at END,
-                    completed_at = CASE WHEN %s IN ('succeeded', 'failed', 'cancelled') THEN %s ELSE completed_at END,
+                    completed_at = CASE WHEN %s IN ('succeeded', 'failed', 'cancelled', 'dead_letter') THEN %s ELSE completed_at END,
+                    lease_expires_at = CASE WHEN %s = 'running' THEN COALESCE(%s, lease_expires_at) ELSE NULL END,
+                    next_attempt_at = %s,
                     artifact_url = COALESCE(%s, artifact_url),
                     error_message = %s,
                     updated_by = %s,
                     updated_at = %s
                 WHERE id = %s
-                RETURNING id, project_id, report_export_id, status, artifact_type, template,
-                          filters, sort, requested_by, requested_at, started_at, completed_at,
-                          artifact_url, error_message, updated_by, updated_at
+                RETURNING {REPORT_EXPORT_JOB_RETURNING}
                 """,
                 (
                     status,
@@ -4497,6 +4585,9 @@ class PostgresEvidenceRepository:
                     now,
                     status,
                     now,
+                    status,
+                    lease_expires_at,
+                    next_attempt_at,
                     artifact_url,
                     error_message,
                     updated_by,
@@ -4518,6 +4609,7 @@ class PostgresEvidenceRepository:
                     "report_export_job_ids": [job_id],
                     "report_export_ids": [report_export_id] if report_export_id else [],
                     "status": [status],
+                    "next_attempt_at": [next_attempt_at.isoformat()] if next_attempt_at else [],
                 },
                 output_refs={
                     "report_export_job_ids": [job_id],

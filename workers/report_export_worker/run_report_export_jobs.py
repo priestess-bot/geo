@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from dataclasses import asdict
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 from geno_core.models import RuntimeReportExportJobStatusInput
@@ -16,7 +17,12 @@ WORKER_ID = "runtime-worker"
 
 
 class ReportExportJobRepository(Protocol):
-    def claim_next_runtime_report_export_job(self, *, updated_by: str = WORKER_ID) -> object | None:
+    def claim_next_runtime_report_export_job(
+        self,
+        *,
+        updated_by: str = WORKER_ID,
+        lease_seconds: int = 900,
+    ) -> object | None:
         ...
 
     def list_runtime_report_exports(
@@ -73,8 +79,14 @@ def process_next_report_export_job(
     object_store: S3CompatibleObjectStore | None,
     updated_by: str = WORKER_ID,
     require_object_store: bool = False,
+    max_attempts: int = 3,
+    retry_backoff_seconds: int = 300,
+    lease_seconds: int = 900,
 ) -> dict[str, Any]:
-    job_record = repository.claim_next_runtime_report_export_job(updated_by=updated_by)
+    max_attempts = max(1, int(max_attempts))
+    retry_backoff_seconds = max(0, int(retry_backoff_seconds))
+    lease_seconds = max(1, int(lease_seconds))
+    job_record = repository.claim_next_runtime_report_export_job(updated_by=updated_by, lease_seconds=lease_seconds)
     if job_record is None:
         return {
             "processed": False,
@@ -85,6 +97,8 @@ def process_next_report_export_job(
     job = dict(getattr(job_record, "report_export_job"))
     job_id = str(job["id"])
     project_id = str(job["project_id"])
+    attempt_count = int(job.get("attempt_count") or 0)
+    job_max_attempts = max(max_attempts, int(job.get("max_attempts") or max_attempts))
     report_export_id = str(job["report_export_id"] or "").strip()
     if not report_export_id:
         report_export_id = _latest_report_export_id(repository, project_id=project_id) or ""
@@ -92,17 +106,24 @@ def process_next_report_export_job(
         repository.update_runtime_report_export_job_status(
             RuntimeReportExportJobStatusInput(
                 job_id=job_id,
-                status="failed",
+                status=_failed_status(attempt_count=attempt_count, max_attempts=job_max_attempts),
                 updated_by=updated_by,
                 error_message="No report_export_id supplied and no report_exports exist for project",
+                next_attempt_at=_next_attempt_at(
+                    attempt_count=attempt_count,
+                    max_attempts=job_max_attempts,
+                    retry_backoff_seconds=retry_backoff_seconds,
+                ),
                 reason="report export job has no renderable report",
             )
         )
         return {
             "processed": True,
-            "status": "failed",
+            "status": _failed_status(attempt_count=attempt_count, max_attempts=job_max_attempts),
             "job_id": job_id,
             "project_id": project_id,
+            "attempt_count": attempt_count,
+            "max_attempts": job_max_attempts,
             "error_message": "No report_export_id supplied and no report_exports exist for project",
         }
 
@@ -150,6 +171,8 @@ def process_next_report_export_job(
             "job_id": job_id,
             "project_id": project_id,
             "report_export_id": report_export_id,
+            "attempt_count": attempt_count,
+            "max_attempts": job_max_attempts,
             "artifact_type": artifact.artifact_type,
             "template": artifact.template,
             "artifact_url": artifact_url,
@@ -157,30 +180,54 @@ def process_next_report_export_job(
             "stored_object": asdict(stored_object) if stored_object else None,
         }
     except Exception as exc:
+        failed_status = _failed_status(attempt_count=attempt_count, max_attempts=job_max_attempts)
+        next_attempt_at = _next_attempt_at(
+            attempt_count=attempt_count,
+            max_attempts=job_max_attempts,
+            retry_backoff_seconds=retry_backoff_seconds,
+        )
         repository.update_runtime_report_export_job_status(
             RuntimeReportExportJobStatusInput(
                 job_id=job_id,
-                status="failed",
+                status=failed_status,
                 updated_by=updated_by,
                 report_export_id=report_export_id or None,
                 error_message=str(exc),
+                next_attempt_at=next_attempt_at,
                 reason="report export artifact rendering failed",
             )
         )
         return {
             "processed": True,
-            "status": "failed",
+            "status": failed_status,
             "job_id": job_id,
             "project_id": project_id,
             "report_export_id": report_export_id or None,
+            "attempt_count": attempt_count,
+            "max_attempts": job_max_attempts,
+            "next_attempt_at": next_attempt_at.isoformat() if next_attempt_at else None,
             "error_message": str(exc),
         }
+
+
+def _failed_status(*, attempt_count: int, max_attempts: int) -> str:
+    return "dead_letter" if attempt_count >= max_attempts else "queued"
+
+
+def _next_attempt_at(*, attempt_count: int, max_attempts: int, retry_backoff_seconds: int) -> datetime | None:
+    if attempt_count >= max_attempts:
+        return None
+    delay = retry_backoff_seconds * max(1, attempt_count)
+    return datetime.now(UTC) + timedelta(seconds=delay)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Process queued GENO runtime report export jobs")
     parser.add_argument("--max-jobs", type=int, default=1, help="Maximum queued jobs to process before exiting.")
     parser.add_argument("--worker-id", default=WORKER_ID, help="Actor id used in report export job audit events.")
+    parser.add_argument("--max-attempts", type=int, default=3, help="Dead-letter a job after this many claimed attempts.")
+    parser.add_argument("--retry-backoff-seconds", type=int, default=300, help="Base delay before retrying failed jobs.")
+    parser.add_argument("--lease-seconds", type=int, default=900, help="Running job lease duration before it can be reclaimed.")
     parser.add_argument(
         "--require-object-store",
         action="store_true",
@@ -203,6 +250,9 @@ def main() -> None:
                 object_store=object_store,
                 updated_by=args.worker_id,
                 require_object_store=args.require_object_store,
+                max_attempts=args.max_attempts,
+                retry_backoff_seconds=args.retry_backoff_seconds,
+                lease_seconds=args.lease_seconds,
             )
             results.append(result)
             if result["status"] == "idle":

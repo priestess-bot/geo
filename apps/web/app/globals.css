@@ -273,6 +273,10 @@ code {
   padding: 9px 10px;
 }
 
+.queueStatsGrid {
+  margin-bottom: 1rem;
+}
+
 .themeEditorPreview {
   background: #fbfcfd;
   border: 1px solid #d9e2ec;

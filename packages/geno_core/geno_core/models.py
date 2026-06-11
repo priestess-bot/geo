@@ -1192,7 +1192,20 @@ class RuntimeReportExportJobStatusInput:
     report_export_id: str | None = None
     artifact_url: str | None = None
     error_message: str | None = None
+    next_attempt_at: datetime | None = None
+    lease_expires_at: datetime | None = None
     reason: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeReportExportJobQueueStats:
+    total_count: int
+    status_counts: dict[str, int]
+    retryable_count: int
+    expired_running_count: int
+    max_attempts_reached_count: int
+    oldest_queued_at: datetime | None
+    generated_at: datetime
 
 
 @dataclass(frozen=True)

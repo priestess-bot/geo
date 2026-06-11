@@ -7,6 +7,7 @@ from io import BytesIO
 import json
 import time
 import unittest
+from datetime import UTC, datetime
 from unittest.mock import patch
 from zipfile import ZipFile
 
@@ -44,6 +45,7 @@ from geno_core.models import (
     RuntimeReportExport,
     RuntimeReportExportJob,
     RuntimeReportExportJobPage,
+    RuntimeReportExportJobQueueStats,
     RuntimeScoreWeightConfig,
 )
 
@@ -2505,6 +2507,32 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["records"][0]["audit_events"][0]["event_type"], "report_export_job_queued")
         self.assertEqual(fake_repository.kwargs["status"], "queued")
 
+    def test_runtime_report_export_job_stats_endpoint_returns_queue_metrics(self) -> None:
+        class FakeRepository:
+            def get_runtime_report_export_job_queue_stats(self, **kwargs: object) -> RuntimeReportExportJobQueueStats:
+                self.kwargs = kwargs
+                return RuntimeReportExportJobQueueStats(
+                    total_count=4,
+                    status_counts={"queued": 2, "running": 1, "dead_letter": 1},
+                    retryable_count=2,
+                    expired_running_count=1,
+                    max_attempts_reached_count=1,
+                    oldest_queued_at=None,
+                    generated_at=datetime.now(UTC),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get("/v1/report-export-jobs/runtime/stats?project_id=project-1")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_count"], 4)
+        self.assertEqual(payload["status_counts"]["dead_letter"], 1)
+        self.assertEqual(payload["retryable_count"], 2)
+        self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
+
     def test_runtime_report_export_job_enqueue_and_status_endpoints_pass_payload(self) -> None:
         class FakeRepository:
             def __init__(self) -> None:
@@ -3136,6 +3164,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeReportExport", payload["persistence"])
         self.assertIn("RuntimeReportExportJob", payload["persistence"])
         self.assertIn("RuntimeReportExportJobPage", payload["persistence"])
+        self.assertIn("RuntimeReportExportJobQueueStats", payload["persistence"])
         self.assertIn("RuntimeReportExportJobInput", payload["persistence"])
         self.assertIn("RuntimeReportExportJobStatusInput", payload["persistence"])
         self.assertIn("RuntimeReportExportJobRequest", payload["persistence"])
@@ -3186,6 +3215,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])
         self.assertIn("/v1/reports/runtime", payload["persistence"])
         self.assertIn("/v1/report-export-jobs/runtime", payload["persistence"])
+        self.assertIn("/v1/report-export-jobs/runtime/stats", payload["persistence"])
         self.assertIn("/v1/report-export-jobs/runtime/{job_id}/status", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/management-events", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/artifact", payload["persistence"])
