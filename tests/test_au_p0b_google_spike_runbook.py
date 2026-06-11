@@ -23,6 +23,8 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
         self.assertEqual(runbook["scope"]["surfaces"], ("google_aio", "google_ai_mode"))
         self.assertEqual(runbook["scope"]["collection_paths"], ("browser", "manual"))
         self.assertEqual(runbook["required_env"], ("GOOGLE_PLAYWRIGHT_ENABLED", "MANUAL_BACKFILL_PATH", "DATABASE_URL"))
+        self.assertIn("SERP_API_KEY", runbook["recommended_env"])
+        self.assertIn("SERP_API_ENDPOINT", runbook["recommended_env"])
         steps = {step["id"]: step for step in runbook["steps"]}
         self.assertEqual(
             list(steps),

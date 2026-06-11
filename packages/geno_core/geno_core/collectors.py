@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
-import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -48,15 +48,21 @@ def _extract_domain(url: str) -> str:
 
 
 def _citation_dicts(urls: list[str]) -> list[dict[str, object]]:
-    return [
-        {
-            "url": url,
-            "domain": _extract_domain(url),
-            "position": index,
-            "source_type": None,
-        }
-        for index, url in enumerate(urls, start=1)
-    ]
+    citations: list[dict[str, object]] = []
+    seen_urls: set[str] = set()
+    for url in urls:
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        citations.append(
+            {
+                "url": url,
+                "domain": _extract_domain(url),
+                "position": len(citations) + 1,
+                "source_type": None,
+            }
+        )
+    return citations
 
 
 def _api_snapshot_payload(
@@ -593,13 +599,176 @@ class PlaywrightAIModeCollector(GoogleSpikeCollectorShell):
 
 
 class ThirdPartySerpCollector(GoogleSpikeCollectorShell):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        endpoint: str | None = None,
+        engine: str | None = None,
+        http_client: JsonHttpClient | None = None,
+        timeout_seconds: float | None = None,
+    ) -> None:
         super().__init__(
             backend_id="google.third_party_serp",
             surface="google_aio",
             access_method="third_party_api",
             required_env_var="SERP_API_KEY",
         )
+        self._api_key = api_key if api_key is not None else os.getenv("SERP_API_KEY")
+        self._endpoint = (
+            _optional_env(endpoint)
+            or _optional_env(os.getenv("SERP_API_ENDPOINT"))
+            or _optional_env(os.getenv("GOOGLE_SERP_API_ENDPOINT"))
+        )
+        self._engine = (
+            _optional_env(engine)
+            or _optional_env(os.getenv("SERP_API_ENGINE"))
+            or "google_ai_overview"
+        )
+        self._gl = _optional_env(os.getenv("SERP_API_GL")) or "au"
+        self._hl = _optional_env(os.getenv("SERP_API_HL")) or "en"
+        self._location = _optional_env(os.getenv("SERP_API_LOCATION")) or "Australia"
+        self._http_client = http_client or JsonHttpClient()
+        self._timeout_seconds = timeout_seconds or float(os.getenv("SERP_API_TIMEOUT_SECONDS") or "30")
+        self.vendor_cost = float(os.getenv("SERP_API_VENDOR_COST") or "0.006")
+
+    def capabilities(self) -> dict[str, object]:
+        capabilities = super().capabilities()
+        capabilities.update(
+            {
+                "supports_screenshot": False,
+                "requires_enable_env": "SERP_API_KEY",
+                "endpoint_env": "SERP_API_ENDPOINT",
+                "engine_env": "SERP_API_ENGINE",
+            }
+        )
+        return capabilities
+
+    def health(self) -> str:
+        if not self._api_key:
+            return "not_configured"
+        if not self._endpoint:
+            return "endpoint_missing"
+        return "ready"
+
+    def build_payload(self, *, prompt: str, market: MarketProfile, city: str, language: str) -> dict[str, object]:
+        return {
+            "engine": self._engine,
+            "q": prompt,
+            "google_domain": "google.com.au",
+            "gl": self._gl,
+            "hl": self._hl,
+            "location": city if city != "Australia" else self._location,
+            "market_code": market.market_code,
+            "language": language,
+        }
+
+    def _ensure_ready(self) -> None:
+        health = self.health()
+        if health == "ready":
+            return
+        if health == "endpoint_missing":
+            raise CollectorConfigurationError("SERP_API_ENDPOINT is required for google.third_party_serp")
+        raise CollectorConfigurationError("SERP_API_KEY is required for google.third_party_serp")
+
+    def _collect_text_fields(self, value: object, keys: tuple[str, ...]) -> list[str]:
+        texts: list[str] = []
+        if isinstance(value, dict):
+            for key in keys:
+                item = value.get(key)
+                if isinstance(item, str) and item.strip():
+                    texts.append(item.strip())
+            for item in value.values():
+                texts.extend(self._collect_text_fields(item, keys))
+        elif isinstance(value, list):
+            for item in value:
+                texts.extend(self._collect_text_fields(item, keys))
+        return texts
+
+    def _collect_urls(self, value: object) -> list[str]:
+        urls: list[str] = []
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key in {"link", "url", "source", "displayed_link"} and isinstance(item, str):
+                    if item.startswith("http"):
+                        urls.append(item)
+                else:
+                    urls.extend(self._collect_urls(item))
+        elif isinstance(value, list):
+            for item in value:
+                urls.extend(self._collect_urls(item))
+        return urls
+
+    def parse_response(self, payload: dict[str, object]) -> RawCollectResult:
+        ai_overview = payload.get("ai_overview")
+        answer_box = payload.get("answer_box")
+        answer_sections = [
+            ai_overview,
+            answer_box,
+            payload.get("knowledge_graph"),
+            payload.get("organic_results"),
+            payload.get("inline_results"),
+        ]
+        text_keys = ("text", "snippet", "answer", "title", "description", "summary")
+        text_parts: list[str] = []
+        citation_urls: list[str] = []
+        for section in answer_sections:
+            text_parts.extend(self._collect_text_fields(section, text_keys))
+            citation_urls.extend(self._collect_urls(section))
+        if not text_parts:
+            text_parts.extend(self._collect_text_fields(payload, ("answer", "snippet", "text")))
+        if not citation_urls:
+            citation_urls.extend(self._collect_urls(payload))
+        answer_text = "\n".join(dict.fromkeys(part for part in text_parts if part)).strip()
+        citations = _citation_dicts(citation_urls)
+        snapshot_payload, snapshot_url, snapshot_hash = _api_snapshot_payload(
+            collector_backend_id=self.id(),
+            payload={
+                "_geno_third_party_serp": {
+                    "engine": self._engine,
+                    "gl": self._gl,
+                    "hl": self._hl,
+                    "location": self._location,
+                    "answer_text_length": len(answer_text),
+                    "citation_count": len(citations),
+                },
+                **payload,
+            },
+            answer_text=answer_text,
+            citation_count=len(citations),
+        )
+        return RawCollectResult(
+            answer_present=bool(answer_text),
+            surface_triggered=bool(ai_overview or answer_box),
+            answer_text=answer_text,
+            citations=citations,
+            screenshot_url=None,
+            html_snapshot_url=snapshot_url,
+            raw_payload=snapshot_payload,
+            model_or_surface=self._engine,
+            account_state=None,
+            collector_version="google-third-party-serp-api-v1",
+            evidence_asset_hashes={"html_snapshot": snapshot_hash},
+        )
+
+    def collect(
+        self,
+        *,
+        prompt: str,
+        market: MarketProfile,
+        city: str,
+        language: str,
+        device: str,
+    ) -> RawCollectResult:
+        self._ensure_ready()
+        assert self._endpoint is not None
+        response = self._http_client.post_json(
+            url=self._endpoint,
+            headers={"Authorization": f"Bearer {self._api_key}"},
+            payload=self.build_payload(prompt=prompt, market=market, city=city, language=language),
+            timeout_seconds=self._timeout_seconds,
+        )
+        return self.parse_response(response.payload)
 
 
 class ManualBackfillCollector(GoogleSpikeCollectorShell):

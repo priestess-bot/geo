@@ -42,6 +42,7 @@ from geno_core.collectors import (
     PerplexitySonarCollector,
     PlaywrightChatGPTSearchCollector,
     JsonHttpResponse,
+    ThirdPartySerpCollector,
 )
 from geno_core.geo import StaticAUGeoProvider
 from geno_core.fidelity import build_runtime_fidelity_check
@@ -1108,6 +1109,92 @@ class CoreContractsTest(unittest.TestCase):
         gate = evaluate_p0a_collection_readiness(records=(perplexity_record, openai_record))
         self.assertNotIn("records_without_evidence_assets=2", gate.failure_reasons)
         self.assertEqual(gate.records_without_evidence_assets, ())
+
+    def test_m2b_third_party_serp_collector_parses_ai_overview_payload(self) -> None:
+        class FakeSerpHttpClient:
+            def __init__(self) -> None:
+                self.requests: list[dict[str, object]] = []
+
+            def post_json(self, **kwargs: object) -> JsonHttpResponse:
+                self.requests.append(kwargs)
+                return JsonHttpResponse(
+                    status_code=200,
+                    payload={
+                        "ai_overview": {
+                            "text": "Koala is often recommended for Australian mattress buyers.",
+                            "sources": [
+                                {"title": "Koala", "link": "https://koala.example/au"},
+                                {"title": "Reviews", "url": "https://reviews.example/koala"},
+                            ],
+                        },
+                        "organic_results": [
+                            {
+                                "title": "Best mattresses Australia",
+                                "snippet": "Koala, Emma Sleep and Ecosa appear in comparison lists.",
+                                "link": "https://compare.example/best-mattress-au",
+                            }
+                        ],
+                    },
+                )
+
+        bootstrap = build_au_project_bootstrap(target_brand="Koala")
+        http_client = FakeSerpHttpClient()
+        collector = ThirdPartySerpCollector(
+            api_key="test-serp-key",
+            endpoint="https://serp.example/search",
+            http_client=http_client,
+        )
+
+        self.assertEqual(collector.health(), "ready")
+        record = collect_prompt_once(
+            project_id=bootstrap.project.id,
+            prompt=bootstrap.prompt_questions[0],
+            market_profile=bootstrap.market_profile,
+            collector=collector,
+            city="Sydney",
+            sample_index=1,
+            sample_size=2,
+        )
+
+        self.assertEqual(record.answer_run.platform, "google")
+        self.assertEqual(record.answer_run.surface, "google_aio")
+        self.assertEqual(record.answer_run.access_method, "third_party_api")
+        self.assertEqual(record.answer_run.collector_backend_id, "google.third_party_serp")
+        self.assertTrue(record.answer_run.answer_present)
+        self.assertTrue(record.answer_run.surface_triggered)
+        self.assertIn("Koala", record.raw_answer.answer_text)
+        self.assertEqual(len(record.citations), 3)
+        self.assertEqual(record.citations[0].domain, "koala.example")
+        self.assertEqual(record.evidence_assets[0].asset_type, "html_snapshot")
+        self.assertTrue(record.evidence_assets[0].url.startswith("geno-api-snapshot://google.third_party_serp/"))
+        self.assertEqual(len(record.evidence_assets[0].content_hash or ""), 64)
+        request = http_client.requests[0]
+        self.assertEqual(request["url"], "https://serp.example/search")
+        self.assertEqual(request["headers"], {"Authorization": "Bearer test-serp-key"})
+        self.assertEqual(request["payload"]["gl"], "au")  # type: ignore[index]
+        self.assertEqual(request["payload"]["location"], "Sydney")  # type: ignore[index]
+
+    def test_m2b_third_party_serp_collector_health_requires_endpoint(self) -> None:
+        self.assertEqual(ThirdPartySerpCollector(api_key=None, endpoint="https://serp.example").health(), "not_configured")
+        self.assertEqual(ThirdPartySerpCollector(api_key="key", endpoint=None).health(), "endpoint_missing")
+
+    def test_m2b_third_party_serp_collector_does_not_mark_organic_only_as_aio_triggered(self) -> None:
+        collector = ThirdPartySerpCollector(api_key="test-serp-key", endpoint="https://serp.example/search")
+        result = collector.parse_response(
+            {
+                "organic_results": [
+                    {
+                        "title": "Koala mattress review",
+                        "snippet": "Koala appears in regular organic search results.",
+                        "link": "https://reviews.example/koala-organic",
+                    }
+                ]
+            }
+        )
+
+        self.assertTrue(result.answer_present)
+        self.assertFalse(result.surface_triggered)
+        self.assertEqual(result.citations[0]["domain"], "reviews.example")
 
     def test_m2a_unconfigured_real_collector_returns_failure_record(self) -> None:
         bootstrap = build_au_project_bootstrap()

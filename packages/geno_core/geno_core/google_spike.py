@@ -30,6 +30,9 @@ GOOGLE_SPIKE_CANDIDATE_BACKENDS = (
     "google_ai_mode.playwright.fixture",
     "google.third_party_serp.fixture",
     "google.manual_backfill.fixture",
+    "google_aio.playwright",
+    "google.third_party_serp",
+    "google.manual_backfill",
 )
 GOOGLE_SPIKE_REQUIRED_PATH_COUNT = 2
 

@@ -126,6 +126,12 @@ def build_au_p0b_google_spike_runbook(
         "required_env": ("GOOGLE_PLAYWRIGHT_ENABLED", "MANUAL_BACKFILL_PATH", "DATABASE_URL"),
         "recommended_env": (
             "SERP_API_KEY",
+            "SERP_API_ENDPOINT",
+            "SERP_API_ENGINE",
+            "SERP_API_GL",
+            "SERP_API_HL",
+            "SERP_API_LOCATION",
+            "SERP_API_VENDOR_COST",
             "OBJECT_STORE_ENDPOINT",
             "OBJECT_STORE_BUCKET",
             "OBJECT_STORE_ACCESS_KEY",
@@ -146,11 +152,17 @@ def build_au_p0b_google_spike_runbook(
         "steps": (
             {
                 "id": "prepare_environment",
-                "title": "Prepare Google browser capture, manual backfill, database, and optional object storage",
+                "title": "Prepare Google browser capture, third-party SERP API, manual backfill, database, and optional object storage",
                 "type": "manual",
                 "required_env": ("GOOGLE_PLAYWRIGHT_ENABLED", "MANUAL_BACKFILL_PATH", "DATABASE_URL"),
                 "recommended_env": (
                     "SERP_API_KEY",
+                    "SERP_API_ENDPOINT",
+                    "SERP_API_ENGINE",
+                    "SERP_API_GL",
+                    "SERP_API_HL",
+                    "SERP_API_LOCATION",
+                    "SERP_API_VENDOR_COST",
                     "OBJECT_STORE_ENDPOINT",
                     "OBJECT_STORE_BUCKET",
                     "OBJECT_STORE_ACCESS_KEY",
@@ -160,7 +172,8 @@ def build_au_p0b_google_spike_runbook(
                 "stop_on_failure": True,
                 "notes": (
                     "The first real Google spike path is browser capture for google_aio.",
-                    "The second path is manual backfill for google_ai_mode until a third-party SERP/API adapter is selected.",
+                    "The second path is manual backfill for google_ai_mode until AI Mode browser capture is implemented.",
+                    "Third-party SERP JSON capture is implemented as an alternate google_aio backend, but not part of the default 240-run matrix.",
                     "Do not persist secrets in generated JSON artifacts.",
                 ),
             },
@@ -194,7 +207,7 @@ def build_au_p0b_google_spike_runbook(
                 planned_runs=planned_runs,
                 notes=(
                     "The worker exits non-zero if collection failures occur or either Google spike gate fails.",
-                    "Default matrix is 30 prompts x 2 geo cities x k=2 x 2 collection paths/surfaces.",
+                    "Default matrix is 30 prompts x 2 geo cities x k=2 x 2 Google surfaces/paths. Third-party SERP can be run as a separate comparison slice.",
                 ),
             ),
             _command_step(

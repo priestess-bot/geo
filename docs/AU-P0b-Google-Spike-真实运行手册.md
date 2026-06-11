@@ -20,7 +20,7 @@ google_aio     -> PlaywrightGoogleAIOCollector -> access_method=browser
 google_ai_mode -> ManualBackfillCollector      -> access_method=manual
 ```
 
-第三方 SERP/API 供应商暂作为候选路径，选定供应商并接入 adapter 后可替换 manual 或作为第三条对照路径。
+`ThirdPartySerpCollector` 已作为 provider-neutral JSON adapter 落地，但不进入默认 240-run 核心矩阵。它可通过 `SERP_API_KEY` / `SERP_API_ENDPOINT` 调用第三方 SERP/AI-answer 服务，解析常见 `ai_overview`、`answer_box`、`organic_results`、`inline_results` 字段，生成 HTML snapshot hash。普通 organic-only 响应只算 `answer_present`，不算 AIO `surface_triggered`。后续应把它作为独立对照切片或可替换 AIO backend 编排，避免同一 prompt/city/sample 多后端结果重复进入主评分分母。
 
 ## 2. 运行前环境
 
@@ -35,7 +35,13 @@ export DATABASE_URL=postgresql://...
 推荐变量：
 
 ```bash
+export SERP_API_ENGINE=google_ai_overview
 export SERP_API_KEY=...
+export SERP_API_ENDPOINT=https://your-serp-provider.example/search
+export SERP_API_GL=au
+export SERP_API_HL=en
+export SERP_API_LOCATION=Australia
+export SERP_API_VENDOR_COST=0.006
 export OBJECT_STORE_ENDPOINT=...
 export OBJECT_STORE_BUCKET=...
 export OBJECT_STORE_ACCESS_KEY=...
@@ -115,7 +121,7 @@ python3 scripts/verify_au_p0b_google_spike_status_report.py \
 
 - `verify-au-p0b-google-runbook` 失败：停止，先修步骤顺序、planned runs、gate 参数或 runbook hash。
 - dry-run verifier 失败：停止，先修 runbook execution payload 或环境判断。
-- health-only collector gate 失败：停止，先修 `GOOGLE_PLAYWRIGHT_ENABLED`、`MANUAL_BACKFILL_PATH`、浏览器账号/selector 或人工补录文件。
+- health-only collector gate 失败：停止，先修 `GOOGLE_PLAYWRIGHT_ENABLED`、`MANUAL_BACKFILL_PATH`、浏览器账号/selector 或人工补录文件。第三方对照切片另需检查 `SERP_API_KEY` 与 `SERP_API_ENDPOINT`。
 - 真实 spike 出现 collection failure：停止，先复盘 `failure_events` 和 `CollectionRunSummary`。
 - `google_spike_gate` 失败：Google 不进入主评分，只进入 limited coverage 附录。
 - `google_spike_readiness_gate` 失败：即使 AIO 成功率达标，也不能进入主评分。
@@ -135,4 +141,4 @@ python3 scripts/verify_au_p0b_google_spike_status_report.py \
 
 ## 6. 当前边界
 
-本手册固定真实 Google spike 的可审计执行路径，不代表已经完成真实 Playwright 采集、真实 AI Mode 浏览器采集、第三方 SERP/API 接入或 240-run 真实样本。当前默认第二路径是 manual backfill；接入第三方供应商后，应更新 runbook 的 collection paths 和停止条件。
+本手册固定真实 Google spike 的可审计执行路径，不代表已经完成真实 Playwright 采集、真实 AI Mode 浏览器采集、真实第三方供应商凭证联调或 240-run 真实样本。当前第三方路径是通用 JSON adapter，不绑定单一供应商私有 schema；若选定供应商有更稳定的专用字段，应在保持 `RawCollectResult`、snapshot hash、`answer_present/surface_triggered` 语义不变的前提下新增轻量 mapping，并通过独立对照切片进入 `GoogleSpikeReadinessGate` 复盘。
