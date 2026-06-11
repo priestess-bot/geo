@@ -1,12 +1,13 @@
 # AU P0a 真实批次运行手册
 
-本文档描述真实 Perplexity/OpenAI key 到位后，从最小 preflight 到完整 AU P0a 批次的执行顺序、产物命名和停止条件。机器可读版本由 `make au-p0a-runbook` 生成，默认写入 gitignored 的 `docs/runtime_preflight/au-p0a-runbook-latest.json`，并由 `make verify-au-p0a-runbook` 校验。
+本文档描述真实 Perplexity/OpenAI key 到位后，从最小 preflight 到完整 AU P0a 批次的执行顺序、产物命名和停止条件。机器可读版本由 `make au-p0a-runbook` 生成，默认写入 gitignored 的 `docs/runtime_preflight/au-p0a-runbook-latest.json`，由 `make verify-au-p0a-runbook` 校验，并由 `make au-p0a-readiness` 输出阶段性 readiness 结果。
 
 ## 运行原则
 
 - 先跑最小 preflight，再跑 small batch，最后跑 full batch。
 - 每一步都必须先生成 JSON，再 verify，再 manifest。
 - runbook 自身也必须先 verify，避免命令顺序、planned runs 或 gate 参数漂移。
+- 每个阶段开始前都先跑 readiness gate，缺 key、缺上游 manifest 或上游未达 design-partner ready 时停止。
 - “可审计”不等于“可进入 design partner”；进入下一阶段必须通过 `--require-design-partner-ready`。
 - live 运行产物位于 `docs/runtime_preflight/*.json`，默认不提交，避免把 provider 状态、错误上下文或潜在敏感配置写入仓库。
 
@@ -17,6 +18,7 @@
 ```bash
 make au-p0a-runbook
 make verify-au-p0a-runbook
+make au-p0a-readiness
 ```
 
 2. 准备环境：
@@ -42,6 +44,7 @@ export OBJECT_STORE_SECRET_KEY=...
 make api-preflight
 make verify-api-preflight
 make preflight-manifest
+GENO_AU_P0A_READINESS_PHASE=small_batch make au-p0a-readiness
 PYTHONPATH=packages/geno_core:apps/api \
 python3 scripts/verify_preflight_payload.py \
   docs/runtime_preflight/api-preflight-latest.json \
@@ -69,6 +72,8 @@ python3 scripts/build_preflight_manifest.py \
   docs/runtime_preflight/au-p0a-small-batch.json \
   --manifest-path docs/runtime_preflight/au-p0a-small-batch-manifest.json \
   --require-design-partner-ready
+
+GENO_AU_P0A_READINESS_PHASE=full_batch make au-p0a-readiness
 ```
 
 5. 完整 AU P0a 批次（默认 100 prompts x 4 geo x k=3 x 2 platforms = 2400 runs）：
@@ -101,6 +106,7 @@ python3 scripts/build_preflight_manifest.py \
 - `--require-no-collection-failures` 返回非零：停止，先复盘失败样本和重试/限流策略。
 - manifest verifier `status=fail`：停止，先修 payload 完整性、必备字段或 gate 状态。
 - runbook verifier `status=fail`：停止，先修命令计划、planned runs、gate 参数或 runbook hash。
+- readiness verifier `status=fail`：停止，先修必需环境、上游 payload、manifest 或 design-partner gate。
 - `ready_for_design_partner=false`：停止，不进入 design partner 或 full batch。
 
 ## 产物清单
@@ -110,6 +116,7 @@ python3 scripts/build_preflight_manifest.py \
 - `docs/runtime_preflight/api-preflight-latest.json`
 - `docs/runtime_preflight/api-preflight-manifest-latest.json`
 - `docs/runtime_preflight/au-p0a-runbook-latest.json`
+- `docs/runtime_preflight/au-p0a-readiness-latest.json`
 - `docs/runtime_preflight/au-p0a-small-batch.json`
 - `docs/runtime_preflight/au-p0a-small-batch-manifest.json`
 - `docs/runtime_preflight/au-p0a-full-batch.json`
