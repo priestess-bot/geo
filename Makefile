@@ -1,4 +1,4 @@
-.PHONY: install-api-deps test docker-config docker-config-llm docker-config-scheduler runtime-e2e api-preflight browser-fidelity-plan browser-fidelity-scheduler-plan browser-fidelity-scheduler-run api-browser-fidelity-preflight worker-fixture worker-fixture-persist worker-google-fixture
+.PHONY: install-api-deps test docker-config docker-config-llm docker-config-scheduler docker-config-observability runtime-e2e api-preflight browser-fidelity-plan browser-fidelity-scheduler-plan browser-fidelity-scheduler-run api-browser-fidelity-preflight worker-fixture worker-fixture-persist worker-google-fixture
 
 install-api-deps:
 	python3 -m pip install -r apps/api/requirements.txt
@@ -14,6 +14,9 @@ docker-config-llm:
 
 docker-config-scheduler:
 	docker compose -f infra/docker-compose.yml --profile scheduler config
+
+docker-config-observability:
+	docker compose -f infra/docker-compose.yml --profile observability config
 
 runtime-e2e:
 	set -e; \

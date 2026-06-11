@@ -86,6 +86,12 @@ curl http://localhost:8000/v1/runtime-diagnostics
 curl http://localhost:8000/metrics
 ```
 
+可选 `observability` profile 会启动 Prometheus `http://localhost:9090` 和 Grafana `http://localhost:3001`，Prometheus 通过 `infra/prometheus/prometheus.yml` 抓取 `api:8000/metrics`，Grafana 通过 provisioning 自动配置 `GENO Prometheus` datasource。默认账号密码为 `admin/admin`，可用 `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` 覆盖：
+
+```bash
+docker compose -f infra/docker-compose.yml --profile observability up --build prometheus grafana
+```
+
 采集 worker 默认只输出 JSON；显式启用持久化时会先把 AU `ProjectBootstrap`、品牌/竞品和 100 条 `PromptQuestion` 写入 PostgreSQL，再把成功的 `RawEvidenceRecord`、失败的 `CollectionFailureRecord` 和本次批次级 `CollectionRunSummary` 写入 PostgreSQL。`CollectionCost.duration_ms` 会记录每条采集的 collector wall-clock 耗时；`CollectionRunSummary` 会记录 planned/attempted/success/failure、success rate、trigger rate、answer rate、总成本、单次平均成本、总耗时、单次平均耗时、平台/城市/access method 分布、失败原因分布和关联 `answer_run_ids`，并追加 `collection_run_summarized` 审计事件。`make worker-fixture-persist` 还会启用 `--persist-analysis`，继续写入分析、评分、图谱、报告、action/content/traceability，并在配置 `OBJECT_STORE_ENDPOINT` 时把 Markdown/CSV/PDF 报告 artifact 归档到 MinIO/S3-compatible bucket；若成功记录包含官方 API `geno-api-snapshot://...` HTML snapshot，也会在落库前归档到 `evidence/<project_id>/<answer_run_id>/<asset_id>.html`，用实际 `s3://...` 与 content hash 更新 `EvidenceAsset`，并追加 `api_snapshot_assets_archived` 审计事件：
 
 ```bash

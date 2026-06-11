@@ -88,6 +88,45 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("postgres", scheduler["depends_on"])
         self.assertIn("minio", scheduler["depends_on"])
 
+    def test_observability_profile_wires_prometheus_and_grafana(self) -> None:
+        config = self._compose_config("observability")
+        services = config["services"]
+        prometheus = services["prometheus"]
+        grafana = services["grafana"]
+
+        self.assertEqual(prometheus["image"], "prom/prometheus:v3.0.1")
+        self.assertIn("--config.file=/etc/prometheus/prometheus.yml", prometheus["command"])
+        self.assertIn("9090", {str(port["published"]) for port in prometheus["ports"]})
+        self.assertTrue(
+            any(volume["target"] == "/etc/prometheus/prometheus.yml" and volume["read_only"] for volume in prometheus["volumes"])
+        )
+        self.assertIn("api", prometheus["depends_on"])
+
+        self.assertEqual(grafana["image"], "grafana/grafana:11.4.0")
+        self.assertEqual(grafana["environment"]["GF_SECURITY_ADMIN_USER"], "admin")
+        self.assertEqual(grafana["environment"]["GF_SECURITY_ADMIN_PASSWORD"], "admin")
+        self.assertIn("3001", {str(port["published"]) for port in grafana["ports"]})
+        self.assertTrue(
+            any(volume["target"] == "/etc/grafana/provisioning" and volume["read_only"] for volume in grafana["volumes"])
+        )
+        self.assertIn("prometheus", grafana["depends_on"])
+
+    def test_observability_config_scrapes_api_metrics_and_provisions_datasource(self) -> None:
+        prometheus_config = yaml.safe_load((ROOT / "infra/prometheus/prometheus.yml").read_text(encoding="utf-8"))
+        scrape_configs = {item["job_name"]: item for item in prometheus_config["scrape_configs"]}
+        api_scrape = scrape_configs["geno-api"]
+        self.assertEqual(api_scrape["metrics_path"], "/metrics")
+        self.assertEqual(api_scrape["static_configs"][0]["targets"], ["api:8000"])
+
+        grafana_datasource = yaml.safe_load(
+            (ROOT / "infra/grafana/provisioning/datasources/prometheus.yml").read_text(encoding="utf-8")
+        )
+        datasource = grafana_datasource["datasources"][0]
+        self.assertEqual(datasource["name"], "GENO Prometheus")
+        self.assertEqual(datasource["type"], "prometheus")
+        self.assertEqual(datasource["url"], "http://prometheus:9090")
+        self.assertTrue(datasource["isDefault"])
+
     def test_litellm_config_uses_env_secrets_and_geno_model_aliases(self) -> None:
         config = yaml.safe_load((ROOT / "infra/litellm_config.yaml").read_text(encoding="utf-8"))
         model_list = {item["model_name"]: item["litellm_params"] for item in config["model_list"]}
@@ -142,6 +181,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("browser-fidelity-scheduler-plan:", makefile)
         self.assertIn("browser-fidelity-scheduler-run:", makefile)
         self.assertIn("docker-config-scheduler:", makefile)
+        self.assertIn("docker-config-observability:", makefile)
 
 
 if __name__ == "__main__":
