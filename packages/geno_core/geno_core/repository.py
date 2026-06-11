@@ -60,7 +60,13 @@ from geno_core.models import (
     RuntimeKnowledgeSearchPage,
     RuntimeKnowledgeSearchResult,
     RuntimeNotification,
+    RuntimeNotificationDelivery,
+    RuntimeNotificationDeliveryPage,
+    RuntimeNotificationDeliveryStatusInput,
     RuntimeNotificationPage,
+    RuntimeNotificationSubscription,
+    RuntimeNotificationSubscriptionInput,
+    RuntimeNotificationSubscriptionPage,
     RuntimeNotificationStatusInput,
     RuntimeProjectBrandAsset,
     RuntimeProjectBrandKit,
@@ -1103,6 +1109,42 @@ RUNTIME_NOTIFICATION_COLUMNS = (
     "updated_by",
     "updated_at",
 )
+RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS = (
+    "id",
+    "project_id",
+    "channel",
+    "endpoint_url",
+    "event_types",
+    "severity_threshold",
+    "status",
+    "metadata",
+    "created_by",
+    "created_at",
+    "updated_by",
+    "updated_at",
+)
+RUNTIME_NOTIFICATION_DELIVERY_COLUMNS = (
+    "id",
+    "project_id",
+    "notification_id",
+    "subscription_id",
+    "channel",
+    "endpoint_url",
+    "status",
+    "attempt_count",
+    "max_attempts",
+    "lease_expires_at",
+    "next_attempt_at",
+    "response_status",
+    "response_body_hash",
+    "error_message",
+    "payload",
+    "created_at",
+    "updated_by",
+    "updated_at",
+)
+RUNTIME_NOTIFICATION_DELIVERY_RETURNING = ", ".join(RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
+RUNTIME_NOTIFICATION_SEVERITY_ORDER = {"info": 0, "warning": 1, "critical": 2}
 ACTION_RECOMMENDATION_COLUMNS = (
     "id",
     "project_id",
@@ -4960,6 +5002,367 @@ class PostgresEvidenceRepository:
         self.connection.commit()
         return record
 
+    def save_runtime_notification_subscription(
+        self,
+        subscription: RuntimeNotificationSubscriptionInput,
+    ) -> RuntimeNotificationSubscription:
+        project_id = subscription.project_id.strip()
+        channel = subscription.channel.strip().lower() if subscription.channel else "webhook"
+        endpoint_url = subscription.endpoint_url.strip()
+        event_types = tuple(
+            event_type.strip().lower()
+            for event_type in subscription.event_types
+            if event_type and event_type.strip()
+        )
+        severity_threshold = subscription.severity_threshold.strip().lower() if subscription.severity_threshold else "info"
+        status = subscription.status.strip().lower() if subscription.status else "active"
+        updated_by = subscription.updated_by.strip() or "runtime-console"
+        reason = subscription.reason.strip() if subscription.reason else None
+        if not project_id:
+            raise ValueError("project_id is required")
+        if channel != "webhook":
+            raise ValueError("notification subscription channel must be webhook")
+        if not endpoint_url:
+            raise ValueError("endpoint_url is required")
+        parsed_url = urlparse(endpoint_url)
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            raise ValueError("endpoint_url must be an http or https URL")
+        if not event_types:
+            raise ValueError("event_types must contain at least one event type")
+        if severity_threshold not in RUNTIME_NOTIFICATION_SEVERITY_ORDER:
+            raise ValueError("severity_threshold must be info, warning, or critical")
+        if status not in {"active", "paused", "disabled"}:
+            raise ValueError("subscription status must be active, paused, or disabled")
+        subscription_id = _stable_id("runtime-notification-subscription", project_id, channel, endpoint_url)
+        metadata = _json_compatible(subscription.metadata or {})
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be an object")
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM projects WHERE id = %s LIMIT 1", (_uuid(project_id),))
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)}
+                FROM runtime_notification_subscriptions
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(subscription_id),),
+            )
+            existing_row = cursor.fetchone()
+            before = (
+                _row_dict(existing_row, RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)
+                if existing_row
+                else None
+            )
+            cursor.execute(
+                f"""
+                INSERT INTO runtime_notification_subscriptions (
+                  id, project_id, channel, endpoint_url, event_types, severity_threshold,
+                  status, metadata, created_by, updated_by
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (project_id, channel, endpoint_url) DO UPDATE SET
+                  event_types = EXCLUDED.event_types,
+                  severity_threshold = EXCLUDED.severity_threshold,
+                  status = EXCLUDED.status,
+                  metadata = EXCLUDED.metadata,
+                  updated_by = EXCLUDED.updated_by,
+                  updated_at = now()
+                RETURNING {", ".join(RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)}
+                """,
+                (
+                    _uuid(subscription_id),
+                    _uuid(project_id),
+                    channel,
+                    endpoint_url,
+                    list(event_types),
+                    severity_threshold,
+                    status,
+                    _json_payload(metadata),
+                    updated_by,
+                    updated_by,
+                ),
+            )
+            after = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="runtime_notification_subscription_saved",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="runtime_notification_subscription",
+                target_id=str(after["id"]),
+                before=before,
+                after=after,
+                input_refs={
+                    "project_ids": [project_id],
+                    "channel": [channel],
+                    "event_types": list(event_types),
+                },
+                output_refs={
+                    "runtime_notification_subscription_ids": [str(after["id"])],
+                    "status": [status],
+                },
+                method_version="runtime_notification_subscription_v1",
+                reason=reason or "save runtime notification webhook subscription",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            record = self._runtime_notification_subscription_from_row(cursor=cursor, row=after)
+        self.connection.commit()
+        return record
+
+    def list_runtime_notification_subscriptions(
+        self,
+        *,
+        project_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeNotificationSubscriptionPage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id.strip()))
+        if status:
+            filters.append("status = %s")
+            params.append(status.strip().lower())
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM runtime_notification_subscriptions {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)}
+                FROM runtime_notification_subscriptions
+                {where_clause}
+                ORDER BY updated_at DESC, created_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            rows = _rows_dict(cursor.fetchall(), RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)
+            records = tuple(self._runtime_notification_subscription_from_row(cursor=cursor, row=row) for row in rows)
+        return RuntimeNotificationSubscriptionPage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=records,
+        )
+
+    def list_runtime_notification_deliveries(
+        self,
+        *,
+        project_id: str | None = None,
+        notification_id: str | None = None,
+        subscription_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeNotificationDeliveryPage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id.strip()))
+        if notification_id:
+            filters.append("notification_id = %s")
+            params.append(_uuid(notification_id.strip()))
+        if subscription_id:
+            filters.append("subscription_id = %s")
+            params.append(_uuid(subscription_id.strip()))
+        if status:
+            filters.append("status = %s")
+            params.append(status.strip().lower())
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM runtime_notification_deliveries {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)}
+                FROM runtime_notification_deliveries
+                {where_clause}
+                ORDER BY updated_at DESC, created_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            rows = _rows_dict(cursor.fetchall(), RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
+            records = tuple(self._runtime_notification_delivery_from_row(cursor=cursor, row=row) for row in rows)
+        return RuntimeNotificationDeliveryPage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=records,
+        )
+
+    def claim_next_runtime_notification_delivery(
+        self,
+        *,
+        updated_by: str = "notification-worker",
+        lease_seconds: int = 300,
+    ) -> RuntimeNotificationDelivery | None:
+        updated_by = updated_by.strip() or "notification-worker"
+        lease_seconds = max(1, int(lease_seconds))
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)}
+                FROM runtime_notification_deliveries
+                WHERE (
+                  (status = %s AND (next_attempt_at IS NULL OR next_attempt_at <= now()))
+                  OR (status = %s AND lease_expires_at IS NOT NULL AND lease_expires_at <= now())
+                )
+                  AND attempt_count < max_attempts
+                ORDER BY
+                  CASE WHEN status = %s THEN 0 ELSE 1 END,
+                  COALESCE(next_attempt_at, created_at) ASC,
+                  created_at ASC,
+                  id ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+                """,
+                ("queued", "sending", "queued"),
+            )
+            before = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
+            if not before:
+                return None
+            now = datetime.now(UTC)
+            lease_expires_at = now + timedelta(seconds=lease_seconds)
+            cursor.execute(
+                f"""
+                UPDATE runtime_notification_deliveries
+                SET status = %s,
+                    attempt_count = attempt_count + 1,
+                    lease_expires_at = %s,
+                    next_attempt_at = NULL,
+                    updated_by = %s,
+                    updated_at = %s
+                WHERE id = %s AND status = %s
+                RETURNING {RUNTIME_NOTIFICATION_DELIVERY_RETURNING}
+                """,
+                ("sending", lease_expires_at, updated_by, now, _uuid(str(before["id"])), str(before["status"])),
+            )
+            after = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
+            if not after:
+                self.connection.rollback()
+                return None
+            delivery_id = str(after["id"])
+            audit_event = build_audit_event(
+                event_type="runtime_notification_delivery_status_updated",
+                project_id=str(after["project_id"]),
+                actor_type="worker",
+                actor_id=updated_by,
+                target_type="runtime_notification_delivery",
+                target_id=delivery_id,
+                before=before,
+                after=after,
+                input_refs={
+                    "runtime_notification_delivery_ids": [delivery_id],
+                    "status": ["sending"],
+                },
+                output_refs={
+                    "runtime_notification_delivery_ids": [delivery_id],
+                    "claimed": [True],
+                },
+                method_version="runtime_notification_delivery_claim_v1",
+                reason="claim runtime notification delivery",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            record = self._runtime_notification_delivery_from_row(cursor=cursor, row=after)
+        self.connection.commit()
+        return record
+
+    def update_runtime_notification_delivery_status(
+        self,
+        update: RuntimeNotificationDeliveryStatusInput,
+    ) -> RuntimeNotificationDelivery:
+        delivery_id = update.delivery_id.strip()
+        status = update.status.strip().lower()
+        updated_by = update.updated_by.strip() or "notification-worker"
+        response_body_hash = update.response_body_hash.strip() if update.response_body_hash else None
+        error_message = update.error_message.strip() if update.error_message else None
+        reason = update.reason.strip() if update.reason else None
+        allowed_statuses = {"queued", "sending", "delivered", "failed", "dead_letter", "cancelled"}
+        if not delivery_id:
+            raise ValueError("delivery_id is required")
+        if status not in allowed_statuses:
+            raise ValueError("delivery status must be queued, sending, delivered, failed, dead_letter, or cancelled")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)}
+                FROM runtime_notification_deliveries
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(delivery_id),),
+            )
+            before = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
+            if not before:
+                raise ValueError("runtime notification delivery not found")
+            now = datetime.now(UTC)
+            cursor.execute(
+                f"""
+                UPDATE runtime_notification_deliveries
+                SET status = %s,
+                    lease_expires_at = CASE WHEN %s = 'sending' THEN COALESCE(%s, lease_expires_at) ELSE NULL END,
+                    next_attempt_at = %s,
+                    response_status = %s,
+                    response_body_hash = %s,
+                    error_message = %s,
+                    updated_by = %s,
+                    updated_at = %s
+                WHERE id = %s
+                RETURNING {RUNTIME_NOTIFICATION_DELIVERY_RETURNING}
+                """,
+                (
+                    status,
+                    status,
+                    update.lease_expires_at,
+                    update.next_attempt_at,
+                    update.response_status,
+                    response_body_hash,
+                    error_message,
+                    updated_by,
+                    now,
+                    _uuid(delivery_id),
+                ),
+            )
+            after = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="runtime_notification_delivery_status_updated",
+                project_id=str(after["project_id"]),
+                actor_type="worker" if updated_by == "notification-worker" else "user",
+                actor_id=updated_by,
+                target_type="runtime_notification_delivery",
+                target_id=delivery_id,
+                before=before,
+                after=after,
+                input_refs={
+                    "runtime_notification_delivery_ids": [delivery_id],
+                    "status": [status],
+                },
+                output_refs={
+                    "runtime_notification_delivery_ids": [delivery_id],
+                    "response_status": [str(update.response_status)] if update.response_status is not None else [],
+                },
+                method_version="runtime_notification_delivery_status_v1",
+                reason=reason or f"mark runtime notification delivery {status}",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            record = self._runtime_notification_delivery_from_row(cursor=cursor, row=after)
+        self.connection.commit()
+        return record
+
     def claim_next_runtime_report_export_job(
         self,
         *,
@@ -5139,15 +5542,15 @@ class PostgresEvidenceRepository:
                 method_version="runtime_report_export_job_status_v1",
                 reason=reason or f"mark report export job {status}",
             )
-            notification_audit_event: AuditEvent | None = None
+            notification_audit_events: tuple[AuditEvent, ...] = ()
             if status in {"succeeded", "failed", "cancelled", "dead_letter"}:
-                _, notification_audit_event = self._insert_report_export_job_notification(
+                _, notification_audit_events = self._insert_report_export_job_notification(
                     cursor=cursor,
                     job=after,
                     updated_by=updated_by,
                     reason=reason or f"report export job {status}",
                 )
-            audit_events = (audit_event,) if notification_audit_event is None else (audit_event, notification_audit_event)
+            audit_events = (audit_event, *notification_audit_events)
             self.save_audit_events(audit_events, cursor=cursor)
             record = self._runtime_report_export_job_from_row(cursor=cursor, row=after)
         self.connection.commit()
@@ -5415,7 +5818,7 @@ class PostgresEvidenceRepository:
         job: dict[str, Any],
         updated_by: str,
         reason: str,
-    ) -> tuple[dict[str, Any], AuditEvent]:
+    ) -> tuple[dict[str, Any], tuple[AuditEvent, ...]]:
         status = str(job["status"])
         job_id = str(job["id"])
         project_id = str(job["project_id"])
@@ -5515,7 +5918,119 @@ class PostgresEvidenceRepository:
             method_version="runtime_notification_v1",
             reason=reason,
         )
-        return notification, audit_event
+        _, delivery_audit_events = self._enqueue_runtime_notification_deliveries(
+            cursor=cursor,
+            notification=notification,
+            updated_by=updated_by,
+        )
+        return notification, (audit_event, *delivery_audit_events)
+
+    def _enqueue_runtime_notification_deliveries(
+        self,
+        *,
+        cursor: DbCursor,
+        notification: dict[str, Any],
+        updated_by: str,
+    ) -> tuple[tuple[dict[str, Any], ...], tuple[AuditEvent, ...]]:
+        notification_type = str(notification.get("notification_type") or "").strip().lower()
+        severity = str(notification.get("severity") or "info").strip().lower()
+        severity_rank = RUNTIME_NOTIFICATION_SEVERITY_ORDER.get(severity, 0)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)}
+            FROM runtime_notification_subscriptions
+            WHERE project_id = %s AND status = %s AND channel = %s
+            ORDER BY updated_at DESC, id DESC
+            """,
+            (_uuid(str(notification["project_id"])), "active", "webhook"),
+        )
+        subscription_rows = _rows_dict(cursor.fetchall(), RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)
+        queued_deliveries: list[dict[str, Any]] = []
+        delivery_audit_events: list[AuditEvent] = []
+        for subscription in subscription_rows:
+            event_types = {str(event_type).strip().lower() for event_type in subscription.get("event_types", [])}
+            threshold = str(subscription.get("severity_threshold") or "info").strip().lower()
+            threshold_rank = RUNTIME_NOTIFICATION_SEVERITY_ORDER.get(threshold, 0)
+            if notification_type not in event_types:
+                continue
+            if severity_rank < threshold_rank:
+                continue
+            delivery_id = _stable_id(
+                "runtime-notification-delivery",
+                str(notification["id"]),
+                str(subscription["id"]),
+            )
+            payload = {
+                "notification": {
+                    "id": str(notification["id"]),
+                    "project_id": str(notification["project_id"]),
+                    "notification_type": notification_type,
+                    "severity": severity,
+                    "title": notification.get("title"),
+                    "message": notification.get("message"),
+                    "target_type": notification.get("target_type"),
+                    "target_id": notification.get("target_id"),
+                    "payload": notification.get("payload") or {},
+                    "created_at": notification.get("created_at"),
+                },
+                "subscription": {
+                    "id": str(subscription["id"]),
+                    "channel": subscription.get("channel"),
+                    "severity_threshold": threshold,
+                },
+                "delivery_version": "runtime_notification_delivery_v1",
+            }
+            cursor.execute(
+                f"""
+                INSERT INTO runtime_notification_deliveries (
+                  id, project_id, notification_id, subscription_id, channel, endpoint_url,
+                  status, max_attempts, payload, updated_by, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (notification_id, subscription_id) DO NOTHING
+                RETURNING {RUNTIME_NOTIFICATION_DELIVERY_RETURNING}
+                """,
+                (
+                    _uuid(delivery_id),
+                    _uuid(str(notification["project_id"])),
+                    _uuid(str(notification["id"])),
+                    _uuid(str(subscription["id"])),
+                    str(subscription["channel"]),
+                    str(subscription["endpoint_url"]),
+                    "queued",
+                    3,
+                    _json_payload(payload),
+                    updated_by,
+                    datetime.now(UTC),
+                ),
+            )
+            inserted = cursor.fetchone()
+            if inserted:
+                delivery = _row_dict(inserted, RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
+                queued_deliveries.append(delivery)
+                delivery_audit_events.append(
+                    build_audit_event(
+                        event_type="runtime_notification_delivery_queued",
+                        project_id=str(delivery["project_id"]),
+                        actor_type="worker" if updated_by in {"runtime-worker", "notification-worker"} else "user",
+                        actor_id=updated_by,
+                        target_type="runtime_notification_delivery",
+                        target_id=str(delivery["id"]),
+                        before=None,
+                        after=delivery,
+                        input_refs={
+                            "runtime_notification_ids": [str(notification["id"])],
+                            "runtime_notification_subscription_ids": [str(subscription["id"])],
+                        },
+                        output_refs={
+                            "runtime_notification_delivery_ids": [str(delivery["id"])],
+                            "status": ["queued"],
+                        },
+                        method_version="runtime_notification_delivery_v1",
+                        reason="queue runtime notification webhook delivery",
+                    )
+                )
+        return tuple(queued_deliveries), tuple(delivery_audit_events)
 
     def _runtime_notification_from_row(
         self,
@@ -5535,6 +6050,75 @@ class PostgresEvidenceRepository:
         )
         audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
         return RuntimeNotification(notification=row, audit_events=audit_events)
+
+    def _runtime_notification_subscription_from_row(
+        self,
+        *,
+        cursor: DbCursor,
+        row: dict[str, Any],
+    ) -> RuntimeNotificationSubscription:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            LIMIT 5
+            """,
+            (_uuid(str(row["project_id"])), "runtime_notification_subscription", str(row["id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeNotificationSubscription(subscription=row, audit_events=audit_events)
+
+    def _runtime_notification_delivery_from_row(
+        self,
+        *,
+        cursor: DbCursor,
+        row: dict[str, Any],
+    ) -> RuntimeNotificationDelivery:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(RUNTIME_NOTIFICATION_COLUMNS)}
+            FROM runtime_notifications
+            WHERE id = %s
+            LIMIT 1
+            """,
+            (_uuid(str(row["notification_id"])),),
+        )
+        notification_row = cursor.fetchone()
+        notification = _row_dict(notification_row, RUNTIME_NOTIFICATION_COLUMNS) if notification_row else None
+        cursor.execute(
+            f"""
+            SELECT {", ".join(RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)}
+            FROM runtime_notification_subscriptions
+            WHERE id = %s
+            LIMIT 1
+            """,
+            (_uuid(str(row["subscription_id"])),),
+        )
+        subscription_row = cursor.fetchone()
+        subscription = (
+            _row_dict(subscription_row, RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)
+            if subscription_row
+            else None
+        )
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            LIMIT 5
+            """,
+            (_uuid(str(row["project_id"])), "runtime_notification_delivery", str(row["id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeNotificationDelivery(
+            delivery=row,
+            notification=notification,
+            subscription=subscription,
+            audit_events=audit_events,
+        )
 
     def _load_score_snapshot_by_id(
         self,

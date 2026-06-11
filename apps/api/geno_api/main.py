@@ -74,6 +74,7 @@ from geno_core.models import (
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
     RuntimePromptImportInput,
+    RuntimeNotificationSubscriptionInput,
     RuntimeNotificationStatusInput,
     RuntimeReportExportJobInput,
     RuntimeReportExportJobStatusInput,
@@ -1203,6 +1204,18 @@ class RuntimeReportExportJobStatusRequest(BaseModel):
 
 class RuntimeNotificationStatusRequest(BaseModel):
     status: str = Field(min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationSubscriptionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    endpoint_url: str = Field(min_length=1, max_length=1000)
+    channel: str = Field(default="webhook", min_length=1, max_length=40)
+    event_types: list[str] = Field(default_factory=lambda: ["report_export_job"])
+    severity_threshold: str = Field(default="info", min_length=1, max_length=40)
+    status: str = Field(default="active", min_length=1, max_length=40)
+    metadata: dict[str, object] = Field(default_factory=dict)
     updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     reason: str | None = Field(default=None, max_length=500)
 
@@ -2839,6 +2852,100 @@ def runtime_notifications(
         close_repository_connection(repository)
 
 
+@app.get("/v1/runtime-notification-subscriptions")
+def runtime_notification_subscriptions(
+    project_id: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_notification_subscriptions(
+            project_id=project_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-notification-subscriptions")
+def save_runtime_notification_subscription(
+    payload: RuntimeNotificationSubscriptionRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        record = repository.save_runtime_notification_subscription(
+            RuntimeNotificationSubscriptionInput(
+                project_id=payload.project_id.strip(),
+                endpoint_url=payload.endpoint_url.strip(),
+                channel=payload.channel.strip(),
+                event_types=tuple(payload.event_types),
+                severity_threshold=payload.severity_threshold.strip(),
+                status=payload.status.strip(),
+                metadata=payload.metadata,
+                updated_by=actor_id or payload.updated_by.strip(),
+                reason=payload.reason.strip() if payload.reason else None,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-notification-deliveries")
+def runtime_notification_deliveries(
+    project_id: str | None = None,
+    notification_id: str | None = None,
+    subscription_id: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_notification_deliveries(
+            project_id=project_id,
+            notification_id=notification_id,
+            subscription_id=subscription_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/runtime-notifications/{notification_id}/status")
 def update_runtime_notification_status(
     notification_id: str,
@@ -3711,7 +3818,14 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeReportExportJobRequest",
             "RuntimeReportExportJobStatusRequest",
             "RuntimeNotification",
+            "RuntimeNotificationDelivery",
+            "RuntimeNotificationDeliveryPage",
+            "RuntimeNotificationDeliveryStatusInput",
             "RuntimeNotificationPage",
+            "RuntimeNotificationSubscription",
+            "RuntimeNotificationSubscriptionInput",
+            "RuntimeNotificationSubscriptionPage",
+            "RuntimeNotificationSubscriptionRequest",
             "RuntimeNotificationStatusInput",
             "RuntimeNotificationStatusRequest",
             "RuntimeReportManagementInput",
@@ -3768,6 +3882,8 @@ def contracts() -> dict[str, list[str]]:
             "/v1/report-export-jobs/runtime/stats",
             "/v1/report-export-jobs/runtime/{job_id}/status",
             "/v1/runtime-notifications",
+            "/v1/runtime-notification-subscriptions",
+            "/v1/runtime-notification-deliveries",
             "/v1/runtime-notifications/{notification_id}/status",
             "/v1/reports/runtime/{report_export_id}/management-events",
             "/v1/reports/runtime/{report_export_id}/artifact",

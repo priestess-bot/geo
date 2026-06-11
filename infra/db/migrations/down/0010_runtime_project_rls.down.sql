@@ -54,6 +54,8 @@ BEGIN
     'report_exports',
     'report_export_jobs',
     'runtime_notifications',
+    'runtime_notification_subscriptions',
+    'runtime_notification_deliveries',
     'score_contributions',
     'score_snapshot_runs',
     'source_graph_evidence',

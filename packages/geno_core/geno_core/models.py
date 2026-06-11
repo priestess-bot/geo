@@ -1274,6 +1274,62 @@ class RuntimeNotificationStatusInput:
 
 
 @dataclass(frozen=True)
+class RuntimeNotificationSubscription:
+    subscription: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeNotificationSubscriptionPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeNotificationSubscription, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeNotificationSubscriptionInput:
+    project_id: str
+    endpoint_url: str
+    channel: str = "webhook"
+    event_types: tuple[str, ...] = ("report_export_job",)
+    severity_threshold: str = "info"
+    status: str = "active"
+    metadata: dict[str, Any] = field(default_factory=dict)
+    updated_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeNotificationDelivery:
+    delivery: dict[str, Any]
+    notification: dict[str, Any] | None
+    subscription: dict[str, Any] | None
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeNotificationDeliveryPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeNotificationDelivery, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeNotificationDeliveryStatusInput:
+    delivery_id: str
+    status: str
+    updated_by: str = "notification-worker"
+    response_status: int | None = None
+    response_body_hash: str | None = None
+    error_message: str | None = None
+    next_attempt_at: datetime | None = None
+    lease_expires_at: datetime | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeReportArtifact:
     report_export: dict[str, Any]
     artifact_type: str

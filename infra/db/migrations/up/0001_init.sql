@@ -547,6 +547,44 @@ CREATE TABLE runtime_notifications (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE runtime_notification_subscriptions (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  channel text NOT NULL DEFAULT 'webhook',
+  endpoint_url text NOT NULL,
+  event_types text[] NOT NULL DEFAULT ARRAY['report_export_job'],
+  severity_threshold text NOT NULL DEFAULT 'info',
+  status text NOT NULL DEFAULT 'active',
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_by text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(project_id, channel, endpoint_url)
+);
+
+CREATE TABLE runtime_notification_deliveries (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  notification_id uuid NOT NULL REFERENCES runtime_notifications(id) ON DELETE CASCADE,
+  subscription_id uuid NOT NULL REFERENCES runtime_notification_subscriptions(id) ON DELETE CASCADE,
+  channel text NOT NULL DEFAULT 'webhook',
+  endpoint_url text NOT NULL,
+  status text NOT NULL DEFAULT 'queued',
+  attempt_count integer NOT NULL DEFAULT 0,
+  max_attempts integer NOT NULL DEFAULT 3,
+  lease_expires_at timestamptz,
+  next_attempt_at timestamptz,
+  response_status integer,
+  response_body_hash text,
+  error_message text,
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_by text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(notification_id, subscription_id)
+);
+
 CREATE TABLE score_contributions (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   score_snapshot_id uuid NOT NULL REFERENCES visibility_score_snapshots(id) ON DELETE CASCADE,
@@ -642,3 +680,7 @@ CREATE INDEX idx_report_export_jobs_claim ON report_export_jobs(status, next_att
 CREATE INDEX idx_report_export_jobs_report ON report_export_jobs(report_export_id, requested_at);
 CREATE INDEX idx_runtime_notifications_project ON runtime_notifications(project_id, status, severity, created_at);
 CREATE INDEX idx_runtime_notifications_target ON runtime_notifications(target_type, target_id, created_at);
+CREATE INDEX idx_runtime_notification_subscriptions_project ON runtime_notification_subscriptions(project_id, status, updated_at);
+CREATE INDEX idx_runtime_notification_deliveries_project ON runtime_notification_deliveries(project_id, status, updated_at);
+CREATE INDEX idx_runtime_notification_deliveries_claim ON runtime_notification_deliveries(status, next_attempt_at, lease_expires_at, created_at);
+CREATE INDEX idx_runtime_notification_deliveries_notification ON runtime_notification_deliveries(notification_id, status, created_at);

@@ -1,4 +1,4 @@
-.PHONY: install-api-deps install-dev-deps lint-python compile-python web-typecheck quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e ci-local api-preflight verify-api-preflight preflight-manifest au-p0a-runbook verify-au-p0a-runbook au-p0a-env verify-au-p0a-env au-p0a-runbook-dry-run verify-au-p0a-runbook-execution au-p0a-readiness au-p0a-package verify-au-p0a-package au-p0a-status verify-au-p0a-status browser-fidelity-plan browser-fidelity-scheduler-plan browser-fidelity-scheduler-run api-browser-fidelity-preflight report-export-worker worker-fixture worker-fixture-persist worker-google-fixture
+.PHONY: install-api-deps install-dev-deps lint-python compile-python web-typecheck quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e ci-local api-preflight verify-api-preflight preflight-manifest au-p0a-runbook verify-au-p0a-runbook au-p0a-env verify-au-p0a-env au-p0a-runbook-dry-run verify-au-p0a-runbook-execution au-p0a-readiness au-p0a-package verify-au-p0a-package au-p0a-status verify-au-p0a-status browser-fidelity-plan browser-fidelity-scheduler-plan browser-fidelity-scheduler-run api-browser-fidelity-preflight report-export-worker notification-delivery-worker worker-fixture worker-fixture-persist worker-google-fixture
 
 install-api-deps:
 	python3 -m pip install -r apps/api/requirements.txt
@@ -108,6 +108,9 @@ api-browser-fidelity-preflight:
 
 report-export-worker:
 	PYTHONPATH=packages/geno_core:apps/api python3 workers/report_export_worker/run_report_export_jobs.py
+
+notification-delivery-worker:
+	PYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_notification_deliveries.py
 
 worker-fixture:
 	PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode fixture

@@ -12,6 +12,8 @@ DROP TABLE IF EXISTS report_evidence;
 DROP TABLE IF EXISTS score_snapshot_runs;
 DROP TABLE IF EXISTS source_graph_evidence;
 DROP TABLE IF EXISTS score_contributions;
+DROP TABLE IF EXISTS runtime_notification_deliveries;
+DROP TABLE IF EXISTS runtime_notification_subscriptions;
 DROP TABLE IF EXISTS runtime_notifications;
 DROP TABLE IF EXISTS report_export_jobs;
 DROP TABLE IF EXISTS report_exports;

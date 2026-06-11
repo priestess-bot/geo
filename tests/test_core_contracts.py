@@ -89,8 +89,13 @@ from geno_core.models import (
     RuntimeHumanReviewQueuePage,
     RuntimeHumanReviewRecord,
     RuntimeCitationGraphPage,
+    RuntimeNotificationDelivery,
+    RuntimeNotificationDeliveryPage,
+    RuntimeNotificationDeliveryStatusInput,
     RuntimeNotificationPage,
     RuntimeNotificationStatusInput,
+    RuntimeNotificationSubscription,
+    RuntimeNotificationSubscriptionInput,
     RuntimeProjectBrandAsset,
     RuntimeProjectBrandAssetInput,
     RuntimeProjectBrandAssetPage,
@@ -5433,7 +5438,7 @@ class CoreContractsTest(unittest.TestCase):
             "updated_by": "runtime-worker",
             "updated_at": now,
         }
-        connection = RecordingConnection(result_sets=[before_row, report_row, after_row, notification_row, [audit_row]])
+        connection = RecordingConnection(result_sets=[before_row, report_row, after_row, notification_row, [], [audit_row]])
 
         record = PostgresEvidenceRepository(connection).update_runtime_report_export_job_status(
             RuntimeReportExportJobStatusInput(
@@ -5572,6 +5577,490 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(connection.commit_count, 1)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("UPDATE runtime_notifications SET status = %s", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_saves_runtime_notification_subscription_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        subscription_row = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "webhook",
+            "endpoint_url": "https://hooks.example.com/geno",
+            "event_types": ["report_export_job"],
+            "severity_threshold": "warning",
+            "status": "active",
+            "metadata": {"source": "contract"},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "de6e0fec-0084-43c7-8f64-b16e412aab9e",
+            "event_type": "runtime_notification_subscription_saved",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "runtime_notification_subscription",
+            "target_id": subscription_id,
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"event_types": ["report_export_job"]},
+            "output_refs": {"runtime_notification_subscription_ids": [subscription_id]},
+            "method_version": "runtime_notification_subscription_v1",
+            "reason": "save webhook",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"id": project_id}, None, subscription_row, [audit_row]])
+
+        record = PostgresEvidenceRepository(connection).save_runtime_notification_subscription(
+            RuntimeNotificationSubscriptionInput(
+                project_id=project_id,
+                endpoint_url="https://hooks.example.com/geno",
+                event_types=("report_export_job",),
+                severity_threshold="warning",
+                metadata={"source": "contract"},
+                updated_by="runtime-console",
+                reason="save webhook",
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeNotificationSubscription)
+        self.assertEqual(record.subscription["endpoint_url"], "https://hooks.example.com/geno")
+        self.assertEqual(record.audit_events[0]["event_type"], "runtime_notification_subscription_saved")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO runtime_notification_subscriptions", executed_sql)
+        self.assertIn("ON CONFLICT (project_id, channel, endpoint_url) DO UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_queues_notification_delivery_for_matching_subscription(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        job_id = "8f4f2a24-d6cf-5050-96a4-942d2c337fd0"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        delivery_id = "118e5c66-7bb4-558e-ab97-e74ef9928b46"
+        before_row = {
+            "id": job_id,
+            "project_id": project_id,
+            "report_export_id": None,
+            "status": "running",
+            "artifact_type": "pdf",
+            "template": "standard",
+            "filters": {},
+            "sort": "collected_at_desc",
+            "requested_by": "runtime-console",
+            "requested_at": now,
+            "started_at": now,
+            "completed_at": None,
+            "attempt_count": 1,
+            "max_attempts": 3,
+            "lease_expires_at": now,
+            "next_attempt_at": None,
+            "artifact_url": None,
+            "error_message": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        report_row = {
+            "id": report_export_id,
+            "project_id": project_id,
+            "market_code": "AU",
+            "report_version": "worker-runtime-v1",
+            "report_type": "worker_runtime",
+            "score_snapshot_ids": [],
+            "answer_run_ids": [],
+            "prompt_version": "au_dtc_ecommerce_v1",
+            "scoring_formula_version": "au_visibility_v1",
+            "platform_weights_snapshot": {},
+            "method_disclosure": {},
+            "methodology_hash": "method-hash",
+            "sample_size": 0,
+            "window_start": now,
+            "window_end": now,
+            "exported_by": "runtime-worker",
+            "exported_at": now,
+            "artifact_url": None,
+        }
+        after_row = {**before_row, "status": "succeeded", "report_export_id": report_export_id, "artifact_url": "s3://geno-reports/report.pdf"}
+        notification_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "report_export_job",
+            "severity": "info",
+            "title": "Report export succeeded",
+            "message": "pdf/standard report export job succeeded. Artifact is ready.",
+            "target_type": "report_export_job",
+            "target_id": job_id,
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {"report_export_job_id": job_id, "status": "succeeded"},
+            "created_by": "runtime-worker",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        subscription_row = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "webhook",
+            "endpoint_url": "https://hooks.example.com/geno",
+            "event_types": ["report_export_job"],
+            "severity_threshold": "info",
+            "status": "active",
+            "metadata": {},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        delivery_row = {
+            "id": delivery_id,
+            "project_id": project_id,
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "channel": "webhook",
+            "endpoint_url": "https://hooks.example.com/geno",
+            "status": "queued",
+            "attempt_count": 0,
+            "max_attempts": 3,
+            "lease_expires_at": None,
+            "next_attempt_at": None,
+            "response_status": None,
+            "response_body_hash": None,
+            "error_message": None,
+            "payload": {"delivery_version": "runtime_notification_delivery_v1"},
+            "created_at": now,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "e011f214-7cf4-40e4-b73e-8cc4308cc7d9",
+            "event_type": "report_export_job_status_updated",
+            "project_id": project_id,
+            "actor_type": "worker",
+            "actor_id": "runtime-worker",
+            "target_type": "report_export_job",
+            "target_id": job_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {"status": ["succeeded"]},
+            "output_refs": {"artifact_url": ["s3://geno-reports/report.pdf"]},
+            "method_version": "runtime_report_export_job_status_v1",
+            "reason": "artifact archived",
+            "created_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[before_row, report_row, after_row, notification_row, [subscription_row], delivery_row, [audit_row]]
+        )
+
+        record = PostgresEvidenceRepository(connection).update_runtime_report_export_job_status(
+            RuntimeReportExportJobStatusInput(
+                job_id=job_id,
+                status="succeeded",
+                updated_by="runtime-worker",
+                report_export_id=report_export_id,
+                artifact_url="s3://geno-reports/report.pdf",
+                reason="artifact archived",
+            )
+        )
+
+        self.assertEqual(record.report_export_job["status"], "succeeded")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("SELECT id, project_id, channel, endpoint_url, event_types", executed_sql)
+        self.assertIn("INSERT INTO runtime_notification_deliveries", executed_sql)
+        inserted_audit_params = [params for sql, params in connection.calls if "INSERT INTO audit_events" in sql][-1]
+        self.assertIn("runtime_notification_delivery_queued", str(inserted_audit_params))
+
+    def test_postgres_repository_lists_runtime_notification_deliveries_with_context(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        delivery_id = "118e5c66-7bb4-558e-ab97-e74ef9928b46"
+        notification_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "report_export_job",
+            "severity": "warning",
+            "title": "Report export failed",
+            "message": "pdf/standard report export job failed.",
+            "target_type": "report_export_job",
+            "target_id": "8f4f2a24-d6cf-5050-96a4-942d2c337fd0",
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {"status": "failed"},
+            "created_by": "runtime-worker",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        subscription_row = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "webhook",
+            "endpoint_url": "https://hooks.example.com/geno",
+            "event_types": ["report_export_job"],
+            "severity_threshold": "info",
+            "status": "active",
+            "metadata": {},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        delivery_row = {
+            "id": delivery_id,
+            "project_id": project_id,
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "channel": "webhook",
+            "endpoint_url": "https://hooks.example.com/geno",
+            "status": "queued",
+            "attempt_count": 0,
+            "max_attempts": 3,
+            "lease_expires_at": None,
+            "next_attempt_at": None,
+            "response_status": None,
+            "response_body_hash": None,
+            "error_message": None,
+            "payload": {"delivery_version": "runtime_notification_delivery_v1"},
+            "created_at": now,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "37931ff6-07d0-4825-8d41-46b7d197f98e",
+            "event_type": "runtime_notification_delivery_queued",
+            "project_id": project_id,
+            "actor_type": "worker",
+            "actor_id": "runtime-worker",
+            "target_type": "runtime_notification_delivery",
+            "target_id": delivery_id,
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"runtime_notification_ids": [notification_id]},
+            "output_refs": {"runtime_notification_delivery_ids": [delivery_id]},
+            "method_version": "runtime_notification_delivery_v1",
+            "reason": "queue runtime notification webhook delivery",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, [delivery_row], notification_row, subscription_row, [audit_row]])
+
+        page = PostgresEvidenceRepository(connection).list_runtime_notification_deliveries(
+            project_id=project_id,
+            status="queued",
+            limit=5,
+            offset=0,
+        )
+
+        self.assertIsInstance(page, RuntimeNotificationDeliveryPage)
+        self.assertIsInstance(page.records[0], RuntimeNotificationDelivery)
+        self.assertEqual(page.records[0].notification["title"], "Report export failed")
+        self.assertEqual(page.records[0].subscription["endpoint_url"], "https://hooks.example.com/geno")
+        self.assertEqual(page.records[0].audit_events[0]["event_type"], "runtime_notification_delivery_queued")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM runtime_notification_deliveries WHERE project_id = %s AND status = %s", executed_sql)
+
+    def test_postgres_repository_claims_next_runtime_notification_delivery_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        delivery_id = "118e5c66-7bb4-558e-ab97-e74ef9928b46"
+        before_row = {
+            "id": delivery_id,
+            "project_id": project_id,
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "channel": "webhook",
+            "endpoint_url": "https://hooks.example.com/geno",
+            "status": "queued",
+            "attempt_count": 0,
+            "max_attempts": 3,
+            "lease_expires_at": None,
+            "next_attempt_at": None,
+            "response_status": None,
+            "response_body_hash": None,
+            "error_message": None,
+            "payload": {"delivery_version": "runtime_notification_delivery_v1"},
+            "created_at": now,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        after_row = {**before_row, "status": "sending", "attempt_count": 1, "lease_expires_at": now, "updated_by": "notification-worker"}
+        notification_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "report_export_job",
+            "severity": "info",
+            "title": "Report export succeeded",
+            "message": "pdf/standard report export job succeeded.",
+            "target_type": "report_export_job",
+            "target_id": "8f4f2a24-d6cf-5050-96a4-942d2c337fd0",
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {"status": "succeeded"},
+            "created_by": "runtime-worker",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        subscription_row = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "webhook",
+            "endpoint_url": "https://hooks.example.com/geno",
+            "event_types": ["report_export_job"],
+            "severity_threshold": "info",
+            "status": "active",
+            "metadata": {},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "37931ff6-07d0-4825-8d41-46b7d197f98e",
+            "event_type": "runtime_notification_delivery_status_updated",
+            "project_id": project_id,
+            "actor_type": "worker",
+            "actor_id": "notification-worker",
+            "target_type": "runtime_notification_delivery",
+            "target_id": delivery_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {"status": ["sending"]},
+            "output_refs": {"runtime_notification_delivery_ids": [delivery_id]},
+            "method_version": "runtime_notification_delivery_claim_v1",
+            "reason": "claim runtime notification delivery",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[before_row, after_row, notification_row, subscription_row, [audit_row]])
+
+        record = PostgresEvidenceRepository(connection).claim_next_runtime_notification_delivery(
+            updated_by="notification-worker",
+            lease_seconds=120,
+        )
+
+        self.assertIsNotNone(record)
+        assert record is not None
+        self.assertEqual(record.delivery["status"], "sending")
+        self.assertEqual(record.delivery["attempt_count"], 1)
+        self.assertEqual(record.audit_events[0]["method_version"], "runtime_notification_delivery_claim_v1")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FOR UPDATE SKIP LOCKED", executed_sql)
+        self.assertIn("UPDATE runtime_notification_deliveries SET status = %s", executed_sql)
+
+    def test_postgres_repository_updates_runtime_notification_delivery_status_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        delivery_id = "118e5c66-7bb4-558e-ab97-e74ef9928b46"
+        before_row = {
+            "id": delivery_id,
+            "project_id": project_id,
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "channel": "webhook",
+            "endpoint_url": "https://hooks.example.com/geno",
+            "status": "sending",
+            "attempt_count": 1,
+            "max_attempts": 3,
+            "lease_expires_at": now,
+            "next_attempt_at": None,
+            "response_status": None,
+            "response_body_hash": None,
+            "error_message": None,
+            "payload": {"delivery_version": "runtime_notification_delivery_v1"},
+            "created_at": now,
+            "updated_by": "notification-worker",
+            "updated_at": now,
+        }
+        after_row = {
+            **before_row,
+            "status": "delivered",
+            "lease_expires_at": None,
+            "response_status": 204,
+            "response_body_hash": "response-hash",
+        }
+        notification_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "report_export_job",
+            "severity": "info",
+            "title": "Report export succeeded",
+            "message": "pdf/standard report export job succeeded.",
+            "target_type": "report_export_job",
+            "target_id": "8f4f2a24-d6cf-5050-96a4-942d2c337fd0",
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {"status": "succeeded"},
+            "created_by": "runtime-worker",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        subscription_row = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "webhook",
+            "endpoint_url": "https://hooks.example.com/geno",
+            "event_types": ["report_export_job"],
+            "severity_threshold": "info",
+            "status": "active",
+            "metadata": {},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "2ce4310a-1c5f-4272-8a61-6d8b1aa9ea99",
+            "event_type": "runtime_notification_delivery_status_updated",
+            "project_id": project_id,
+            "actor_type": "worker",
+            "actor_id": "notification-worker",
+            "target_type": "runtime_notification_delivery",
+            "target_id": delivery_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {"status": ["delivered"]},
+            "output_refs": {"response_status": ["204"]},
+            "method_version": "runtime_notification_delivery_status_v1",
+            "reason": "delivered",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[before_row, after_row, notification_row, subscription_row, [audit_row]])
+
+        record = PostgresEvidenceRepository(connection).update_runtime_notification_delivery_status(
+            RuntimeNotificationDeliveryStatusInput(
+                delivery_id=delivery_id,
+                status="delivered",
+                updated_by="notification-worker",
+                response_status=204,
+                response_body_hash="response-hash",
+                reason="delivered",
+            )
+        )
+
+        self.assertEqual(record.delivery["status"], "delivered")
+        self.assertEqual(record.delivery["response_status"], 204)
+        self.assertEqual(record.audit_events[0]["event_type"], "runtime_notification_delivery_status_updated")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("UPDATE runtime_notification_deliveries SET status = %s", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
 
     def test_postgres_repository_renders_runtime_report_artifact(self) -> None:

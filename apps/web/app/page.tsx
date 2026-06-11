@@ -563,6 +563,8 @@ type RuntimeData = {
   reportJobs: PageResponse<RuntimeReportExportJob>;
   reportJobStats: RuntimeReportExportJobQueueStats;
   notifications: RuntimeNotificationPage;
+  notificationSubscriptions: PageResponse<RuntimeNotificationSubscription>;
+  notificationDeliveries: PageResponse<RuntimeNotificationDelivery>;
   actions: PageResponse<ActionPlan>;
   alerts: PageResponse<RuntimeAlert>;
   content: PageResponse<ContentEngine>;
@@ -688,6 +690,49 @@ type RuntimeNotification = {
     updated_by: string;
     updated_at?: string;
   };
+  audit_events: Array<{ event_type?: string; actor_id?: string; method_version?: string | null }>;
+};
+
+type RuntimeNotificationSubscription = {
+  subscription: {
+    id: string;
+    project_id: string;
+    channel: string;
+    endpoint_url: string;
+    event_types: string[];
+    severity_threshold: string;
+    status: string;
+    metadata?: Record<string, unknown>;
+    created_by: string;
+    created_at?: string;
+    updated_by: string;
+    updated_at?: string;
+  };
+  audit_events: Array<{ event_type?: string; actor_id?: string; method_version?: string | null }>;
+};
+
+type RuntimeNotificationDelivery = {
+  delivery: {
+    id: string;
+    project_id: string;
+    notification_id: string;
+    subscription_id: string;
+    channel: string;
+    endpoint_url: string;
+    status: string;
+    attempt_count: number;
+    max_attempts: number;
+    lease_expires_at?: string | null;
+    next_attempt_at?: string | null;
+    response_status?: number | null;
+    response_body_hash?: string | null;
+    error_message?: string | null;
+    created_at?: string;
+    updated_by: string;
+    updated_at?: string;
+  };
+  notification?: RuntimeNotification["notification"] | null;
+  subscription?: RuntimeNotificationSubscription["subscription"] | null;
   audit_events: Array<{ event_type?: string; actor_id?: string; method_version?: string | null }>;
 };
 
@@ -956,6 +1001,8 @@ const endpoints = {
   reportJobs: "/v1/report-export-jobs/runtime",
   reportJobStats: "/v1/report-export-jobs/runtime/stats",
   notifications: "/v1/runtime-notifications",
+  notificationSubscriptions: "/v1/runtime-notification-subscriptions",
+  notificationDeliveries: "/v1/runtime-notification-deliveries",
   actions: "/v1/action-plans/runtime",
   alerts: "/v1/runtime-alerts",
   content: "/v1/content-engines/runtime",
@@ -1613,6 +1660,46 @@ async function confirmEntityAlias(formData: FormData) {
   revalidatePath("/");
 }
 
+async function saveRuntimeNotificationSubscription(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const endpointUrl = String(formData.get("endpoint_url") || "").trim();
+  if (!projectId || !endpointUrl) {
+    throw new Error("project_id and endpoint_url are required to save notification subscription");
+  }
+  const eventTypes = String(formData.get("event_types") || "report_export_job")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const payload = {
+    project_id: projectId,
+    channel: "webhook",
+    endpoint_url: endpointUrl,
+    event_types: eventTypes.length ? eventTypes : ["report_export_job"],
+    severity_threshold: String(formData.get("severity_threshold") || "info").trim(),
+    status: String(formData.get("status") || "active").trim(),
+    metadata: {
+      source: "runtime_console_notification_subscription"
+    },
+    updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/runtime-notification-subscriptions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/runtime-notification-subscriptions returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
 async function fetchRuntimeEndpoint<T>(
   baseUrl: string,
   path: string,
@@ -1766,6 +1853,8 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     reportJobs: runtimePath(endpoints.reportJobs, { limit: 5 }),
     reportJobStats: endpoints.reportJobStats,
     notifications: runtimePath(endpoints.notifications, { limit: 8 }),
+    notificationSubscriptions: runtimePath(endpoints.notificationSubscriptions, { limit: 5 }),
+    notificationDeliveries: runtimePath(endpoints.notificationDeliveries, { limit: 5 }),
     actions: runtimePath(endpoints.actions, { limit: 1 }),
     alerts: runtimePath(endpoints.alerts, { limit: 10 }),
     content: runtimePath(endpoints.content, { limit: 1 }),
@@ -1918,6 +2007,14 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     ...selectedProjectParams,
     limit: 8
   });
+  paths.notificationSubscriptions = runtimePath(endpoints.notificationSubscriptions, {
+    ...selectedProjectParams,
+    limit: 5
+  });
+  paths.notificationDeliveries = runtimePath(endpoints.notificationDeliveries, {
+    ...selectedProjectParams,
+    limit: 5
+  });
   paths.actions = runtimePath(endpoints.actions, {
     ...selectedProjectParams,
     limit: 1
@@ -1958,6 +2055,8 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     reportJobs,
     reportJobStats,
     notifications,
+    notificationSubscriptions,
+    notificationDeliveries,
     actions,
     alerts,
     content,
@@ -2055,6 +2154,16 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       unread_count: 0,
       records: []
     }),
+    fetchRuntimeEndpoint<PageResponse<RuntimeNotificationSubscription>>(
+      baseUrl,
+      paths.notificationSubscriptions,
+      emptyPage<RuntimeNotificationSubscription>()
+    ),
+    fetchRuntimeEndpoint<PageResponse<RuntimeNotificationDelivery>>(
+      baseUrl,
+      paths.notificationDeliveries,
+      emptyPage<RuntimeNotificationDelivery>()
+    ),
     fetchRuntimeEndpoint<PageResponse<ActionPlan>>(baseUrl, paths.actions, emptyPage<ActionPlan>()),
     fetchRuntimeEndpoint<PageResponse<RuntimeAlert>>(baseUrl, paths.alerts, emptyPage<RuntimeAlert>()),
     fetchRuntimeEndpoint<PageResponse<ContentEngine>>(baseUrl, paths.content, emptyPage<ContentEngine>()),
@@ -2087,6 +2196,8 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     reportJobs,
     reportJobStats,
     notifications,
+    notificationSubscriptions,
+    notificationDeliveries,
     actions,
     alerts,
     content,
@@ -2122,6 +2233,8 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       reportJobs: reportJobs.payload,
       reportJobStats: reportJobStats.payload,
       notifications: notifications.payload,
+      notificationSubscriptions: notificationSubscriptions.payload,
+      notificationDeliveries: notificationDeliveries.payload,
       actions: actions.payload,
       alerts: alerts.payload,
       content: content.payload,
@@ -4052,7 +4165,71 @@ export default async function Home({
           )}
         </Panel>
 
-        <Panel title="Runtime Notifications" subtitle={`${data.notifications.unread_count} unread notifications`} wide>
+        <Panel
+          title="Runtime Notifications"
+          subtitle={`${data.notifications.unread_count} unread notifications · ${data.notificationDeliveries.total_count} deliveries`}
+          wide
+        >
+          <form action={saveRuntimeNotificationSubscription} className="reportManagementForm">
+            <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+            <input type="hidden" name="updated_by" value="runtime-console" />
+            <input
+              type="hidden"
+              name="reason"
+              value="Save runtime notification webhook subscription from console"
+            />
+            <label>
+              <span>Webhook URL</span>
+              <input name="endpoint_url" placeholder="https://hooks.example.com/geno-runtime" />
+            </label>
+            <label>
+              <span>Event types</span>
+              <input name="event_types" defaultValue="report_export_job" />
+            </label>
+            <label>
+              <span>Severity</span>
+              <select name="severity_threshold" defaultValue="info">
+                <option value="info">info</option>
+                <option value="warning">warning</option>
+                <option value="critical">critical</option>
+              </select>
+            </label>
+            <label>
+              <span>Status</span>
+              <select name="status" defaultValue="active">
+                <option value="active">active</option>
+                <option value="paused">paused</option>
+                <option value="disabled">disabled</option>
+              </select>
+            </label>
+            <button className="actionButton compactAction" type="submit" disabled={!selectedProjectId}>
+              Save webhook
+            </button>
+          </form>
+          <dl className="facts contributionFacts">
+            <Fact label="Subscriptions" value={data.notificationSubscriptions.total_count} />
+            <Fact label="Deliveries" value={data.notificationDeliveries.total_count} />
+            <Fact label="Subscription API" value={paths.notificationSubscriptions} />
+            <Fact label="Delivery API" value={paths.notificationDeliveries} />
+          </dl>
+          {data.notificationSubscriptions.records.length ? (
+            <ul className="plainList">
+              {data.notificationSubscriptions.records.map((record) => (
+                <li key={record.subscription.id}>
+                  <strong>
+                    {record.subscription.channel} · {record.subscription.status} ·{" "}
+                    {record.subscription.severity_threshold}
+                  </strong>
+                  <span>{record.subscription.endpoint_url}</span>
+                  <small>
+                    {record.subscription.event_types.join(", ")} ·{" "}
+                    {record.audit_events[0]?.event_type || "runtime_notification_subscription_saved pending"} ·{" "}
+                    {dateText(record.subscription.updated_at)}
+                  </small>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {data.notifications.records.length ? (
             <div className="alertGrid">
               {data.notifications.records.map((record) => {
@@ -4093,6 +4270,24 @@ export default async function Home({
           ) : (
             <EmptyState />
           )}
+          {data.notificationDeliveries.records.length ? (
+            <ul className="plainList">
+              {data.notificationDeliveries.records.map((record) => (
+                <li key={record.delivery.id}>
+                  <strong>
+                    Delivery · {record.delivery.status} · attempt {record.delivery.attempt_count}/
+                    {record.delivery.max_attempts}
+                  </strong>
+                  <span>{record.delivery.endpoint_url}</span>
+                  <small>
+                    HTTP {record.delivery.response_status ?? "pending"} ·{" "}
+                    {record.delivery.error_message || record.delivery.response_body_hash || "response pending"} ·{" "}
+                    {record.audit_events[0]?.event_type || "runtime_notification_delivery_status_updated pending"}
+                  </small>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </Panel>
 
         <Panel

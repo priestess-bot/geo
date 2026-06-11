@@ -31,8 +31,12 @@ from geno_core.models import (
     RuntimeHumanReviewRecord,
     RuntimeKnowledgeSearchPage,
     RuntimeKnowledgeSearchResult,
+    RuntimeNotificationDelivery,
+    RuntimeNotificationDeliveryPage,
     RuntimeNotification,
     RuntimeNotificationPage,
+    RuntimeNotificationSubscription,
+    RuntimeNotificationSubscriptionPage,
     RuntimeProjectBrandAsset,
     RuntimeProjectBrandAssetInput,
     RuntimeProjectBrandAssetPage,
@@ -2818,6 +2822,135 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.notification_id, "notification-1")
         self.assertEqual(fake_repository.update.reason, "mark read")
 
+    def test_runtime_notification_subscriptions_endpoint_returns_page(self) -> None:
+        class FakeRepository:
+            def list_runtime_notification_subscriptions(self, **kwargs: object) -> RuntimeNotificationSubscriptionPage:
+                self.kwargs = kwargs
+                return RuntimeNotificationSubscriptionPage(
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(
+                        RuntimeNotificationSubscription(
+                            subscription={
+                                "id": "subscription-1",
+                                "project_id": kwargs["project_id"],
+                                "channel": "webhook",
+                                "endpoint_url": "https://hooks.example.com/geno",
+                                "event_types": ["report_export_job"],
+                                "severity_threshold": "warning",
+                                "status": "active",
+                                "metadata": {"source": "contract"},
+                                "created_by": "runtime-console",
+                                "updated_by": "runtime-console",
+                            },
+                            audit_events=({"event_type": "runtime_notification_subscription_saved"},),
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/runtime-notification-subscriptions?project_id=project-1&status=active&limit=5"
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_count"], 1)
+        self.assertEqual(payload["records"][0]["subscription"]["endpoint_url"], "https://hooks.example.com/geno")
+        self.assertEqual(payload["records"][0]["audit_events"][0]["event_type"], "runtime_notification_subscription_saved")
+        self.assertEqual(fake_repository.kwargs["status"], "active")
+
+    def test_runtime_notification_subscription_save_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def save_runtime_notification_subscription(self, subscription: object) -> RuntimeNotificationSubscription:
+                self.subscription = subscription
+                return RuntimeNotificationSubscription(
+                    subscription={
+                        "id": "subscription-1",
+                        "project_id": subscription.project_id,
+                        "channel": subscription.channel,
+                        "endpoint_url": subscription.endpoint_url,
+                        "event_types": list(subscription.event_types),
+                        "severity_threshold": subscription.severity_threshold,
+                        "status": subscription.status,
+                        "metadata": subscription.metadata,
+                        "created_by": subscription.updated_by,
+                        "updated_by": subscription.updated_by,
+                    },
+                    audit_events=({"event_type": "runtime_notification_subscription_saved"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/runtime-notification-subscriptions",
+                json={
+                    "project_id": "project-1",
+                    "endpoint_url": "https://hooks.example.com/geno",
+                    "event_types": ["report_export_job"],
+                    "severity_threshold": "critical",
+                    "status": "active",
+                    "metadata": {"source": "api-test"},
+                    "updated_by": "runtime-console",
+                    "reason": "save webhook",
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["subscription"]["severity_threshold"], "critical")
+        self.assertEqual(fake_repository.subscription.endpoint_url, "https://hooks.example.com/geno")
+        self.assertEqual(fake_repository.subscription.reason, "save webhook")
+
+    def test_runtime_notification_deliveries_endpoint_returns_page(self) -> None:
+        class FakeRepository:
+            def list_runtime_notification_deliveries(self, **kwargs: object) -> RuntimeNotificationDeliveryPage:
+                self.kwargs = kwargs
+                return RuntimeNotificationDeliveryPage(
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(
+                        RuntimeNotificationDelivery(
+                            delivery={
+                                "id": "delivery-1",
+                                "project_id": kwargs["project_id"],
+                                "notification_id": "notification-1",
+                                "subscription_id": "subscription-1",
+                                "channel": "webhook",
+                                "endpoint_url": "https://hooks.example.com/geno",
+                                "status": "queued",
+                                "attempt_count": 0,
+                                "max_attempts": 3,
+                                "payload": {"delivery_version": "runtime_notification_delivery_v1"},
+                                "updated_by": "runtime-worker",
+                            },
+                            notification={"id": "notification-1", "title": "Report export failed"},
+                            subscription={"id": "subscription-1", "endpoint_url": "https://hooks.example.com/geno"},
+                            audit_events=({"event_type": "runtime_notification_delivery_queued"},),
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/runtime-notification-deliveries?project_id=project-1&status=queued&limit=5"
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_count"], 1)
+        self.assertEqual(payload["records"][0]["delivery"]["status"], "queued")
+        self.assertEqual(payload["records"][0]["notification"]["title"], "Report export failed")
+        self.assertEqual(payload["records"][0]["audit_events"][0]["event_type"], "runtime_notification_delivery_queued")
+        self.assertEqual(fake_repository.kwargs["status"], "queued")
+
     def test_runtime_report_export_job_enqueue_and_status_endpoints_pass_payload(self) -> None:
         class FakeRepository:
             def __init__(self) -> None:
@@ -3464,6 +3597,13 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeNotificationPage", payload["persistence"])
         self.assertIn("RuntimeNotificationStatusInput", payload["persistence"])
         self.assertIn("RuntimeNotificationStatusRequest", payload["persistence"])
+        self.assertIn("RuntimeNotificationSubscription", payload["persistence"])
+        self.assertIn("RuntimeNotificationSubscriptionPage", payload["persistence"])
+        self.assertIn("RuntimeNotificationSubscriptionInput", payload["persistence"])
+        self.assertIn("RuntimeNotificationSubscriptionRequest", payload["persistence"])
+        self.assertIn("RuntimeNotificationDelivery", payload["persistence"])
+        self.assertIn("RuntimeNotificationDeliveryPage", payload["persistence"])
+        self.assertIn("RuntimeNotificationDeliveryStatusInput", payload["persistence"])
         self.assertIn("RuntimeReportManagementInput", payload["persistence"])
         self.assertIn("RuntimeReportManagementEventRequest", payload["persistence"])
         self.assertIn("RuntimeActionPlan", payload["persistence"])
@@ -3514,6 +3654,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/report-export-jobs/runtime/stats", payload["persistence"])
         self.assertIn("/v1/report-export-jobs/runtime/{job_id}/status", payload["persistence"])
         self.assertIn("/v1/runtime-notifications", payload["persistence"])
+        self.assertIn("/v1/runtime-notification-subscriptions", payload["persistence"])
+        self.assertIn("/v1/runtime-notification-deliveries", payload["persistence"])
         self.assertIn("/v1/runtime-notifications/{notification_id}/status", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/management-events", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/artifact", payload["persistence"])
