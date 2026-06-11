@@ -259,6 +259,7 @@ PERPLEXITY_API_KEY=... OPENAI_API_KEY=... make api-preflight
 make verify-api-preflight
 make preflight-manifest
 make au-p0a-runbook
+make verify-au-p0a-runbook
 ```
 
 `make api-preflight` runs `--mode api --prompt-limit 1 --cities Sydney --sample-size 3
@@ -289,7 +290,8 @@ audit indexing.
 `make au-p0a-runbook` writes
 `${GENO_AU_P0A_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-latest.json}` with the
 ordered command plan for preflight, 5-prompt Sydney small batch, and full 100 prompts × 4 geo × k=3
-batch. The checked-in Chinese runbook is `docs/AU-P0a-真实批次运行手册.md`.
+batch. `make verify-au-p0a-runbook` verifies its payload hash, step order, planned runs, and required
+gate commands. The checked-in Chinese runbook is `docs/AU-P0a-真实批次运行手册.md`.
 The default preflight JSON path is gitignored because live provider status and run context belong
 to local audit evidence, not committed project docs. This is the minimum real API smoke; it does
 not replace the full 100 prompts × 4 geo × k=3 design-partner batch.

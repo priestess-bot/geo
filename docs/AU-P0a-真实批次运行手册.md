@@ -1,11 +1,12 @@
 # AU P0a 真实批次运行手册
 
-本文档描述真实 Perplexity/OpenAI key 到位后，从最小 preflight 到完整 AU P0a 批次的执行顺序、产物命名和停止条件。机器可读版本由 `make au-p0a-runbook` 生成，默认写入 gitignored 的 `docs/runtime_preflight/au-p0a-runbook-latest.json`。
+本文档描述真实 Perplexity/OpenAI key 到位后，从最小 preflight 到完整 AU P0a 批次的执行顺序、产物命名和停止条件。机器可读版本由 `make au-p0a-runbook` 生成，默认写入 gitignored 的 `docs/runtime_preflight/au-p0a-runbook-latest.json`，并由 `make verify-au-p0a-runbook` 校验。
 
 ## 运行原则
 
 - 先跑最小 preflight，再跑 small batch，最后跑 full batch。
 - 每一步都必须先生成 JSON，再 verify，再 manifest。
+- runbook 自身也必须先 verify，避免命令顺序、planned runs 或 gate 参数漂移。
 - “可审计”不等于“可进入 design partner”；进入下一阶段必须通过 `--require-design-partner-ready`。
 - live 运行产物位于 `docs/runtime_preflight/*.json`，默认不提交，避免把 provider 状态、错误上下文或潜在敏感配置写入仓库。
 
@@ -15,6 +16,7 @@
 
 ```bash
 make au-p0a-runbook
+make verify-au-p0a-runbook
 ```
 
 2. 准备环境：
@@ -98,6 +100,7 @@ python3 scripts/build_preflight_manifest.py \
 - `P0ACollectionReadinessGate` 未通过：停止，不进入下一阶段。
 - `--require-no-collection-failures` 返回非零：停止，先复盘失败样本和重试/限流策略。
 - manifest verifier `status=fail`：停止，先修 payload 完整性、必备字段或 gate 状态。
+- runbook verifier `status=fail`：停止，先修命令计划、planned runs、gate 参数或 runbook hash。
 - `ready_for_design_partner=false`：停止，不进入 design partner 或 full batch。
 
 ## 产物清单
@@ -119,6 +122,13 @@ python3 scripts/build_preflight_manifest.py \
 - phase、exit code、planned/record/success/failure counts
 - blocking reasons、worker args 和 evidence refs
 - manifest_payload_hash
+
+runbook verifier 必须确认：
+
+- runbook_payload_hash 可复算
+- preflight、small batch、full batch 步骤顺序固定
+- small batch planned runs = 30，full batch planned runs = 2400
+- design partner gate、P0a readiness gate 和 no-collection-failures gate 未缺失
 
 ## 当前边界
 
