@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -23,6 +24,27 @@ DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-p0a-runbook-execution-latest.js
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _stable_execution_bytes(execution: dict[str, Any]) -> bytes:
+    return json.dumps(
+        execution,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+
+
+def compute_execution_payload_hash(execution: dict[str, Any]) -> str:
+    payload_for_hash = dict(execution)
+    payload_for_hash.pop("execution_payload_hash", None)
+    return hashlib.sha256(_stable_execution_bytes(payload_for_hash)).hexdigest()
+
+
+def _with_payload_hash(execution: dict[str, Any]) -> dict[str, Any]:
+    execution["execution_payload_hash"] = compute_execution_payload_hash(execution)
+    return execution
 
 
 def _as_dict(value: object) -> dict[str, Any]:
@@ -124,7 +146,7 @@ def run_au_p0a_runbook(
     try:
         runbook = json.loads(runbook_path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return {
+        return _with_payload_hash({
             "execution_version": EXECUTION_VERSION,
             "generated_at": generated_at or _utc_now_iso(),
             "mode": "execute" if execute else "dry_run",
@@ -134,9 +156,9 @@ def run_au_p0a_runbook(
             "runbook_path": str(runbook_path),
             "output_path": str(output_path) if output_path else "",
             "steps": [],
-        }
+        })
     except json.JSONDecodeError as exc:
-        return {
+        return _with_payload_hash({
             "execution_version": EXECUTION_VERSION,
             "generated_at": generated_at or _utc_now_iso(),
             "mode": "execute" if execute else "dry_run",
@@ -146,9 +168,9 @@ def run_au_p0a_runbook(
             "runbook_path": str(runbook_path),
             "output_path": str(output_path) if output_path else "",
             "steps": [],
-        }
+        })
     if not isinstance(runbook, dict):
-        return {
+        return _with_payload_hash({
             "execution_version": EXECUTION_VERSION,
             "generated_at": generated_at or _utc_now_iso(),
             "mode": "execute" if execute else "dry_run",
@@ -158,7 +180,7 @@ def run_au_p0a_runbook(
             "runbook_path": str(runbook_path),
             "output_path": str(output_path) if output_path else "",
             "steps": [],
-        }
+        })
 
     verification = verify_au_p0a_runbook(runbook, path=runbook_path)
     environment = _env_status(runbook, env)
@@ -192,7 +214,7 @@ def run_au_p0a_runbook(
 
     status = "pass" if not errors else "fail"
     ready_to_execute = verification["status"] == "pass" and environment["status"] == "pass"
-    return {
+    return _with_payload_hash({
         "execution_version": EXECUTION_VERSION,
         "generated_at": generated_at or _utc_now_iso(),
         "mode": "execute" if execute else "dry_run",
@@ -211,7 +233,7 @@ def run_au_p0a_runbook(
         "recorded_step_count": len(steps),
         "executed_command_count": executed_count,
         "steps": steps,
-    }
+    })
 
 
 def parse_args() -> argparse.Namespace:

@@ -8,10 +8,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from scripts.build_au_p0a_runbook import build_au_p0a_runbook
-from scripts.run_au_p0a_runbook import run_au_p0a_runbook
+from scripts.run_au_p0a_runbook import compute_execution_payload_hash, run_au_p0a_runbook
 
 
-class AuP0aRunbookExecutionTest(unittest.TestCase):
+class AuP0aRunbookExecutionFixtureMixin:
     def _write_runbook(self, temp_dir: str, *, generated_at: str = "2026-06-11T00:00:00Z") -> Path:
         runbook = build_au_p0a_runbook(
             artifact_dir=str(Path(temp_dir) / "runtime"),
@@ -21,6 +21,8 @@ class AuP0aRunbookExecutionTest(unittest.TestCase):
         path.write_text(json.dumps(runbook), encoding="utf-8")
         return path
 
+
+class AuP0aRunbookExecutionTest(AuP0aRunbookExecutionFixtureMixin, unittest.TestCase):
     def test_dry_run_records_all_steps_without_executing_commands(self) -> None:
         with TemporaryDirectory() as temp_dir:
             runbook_path = self._write_runbook(temp_dir)
@@ -36,6 +38,7 @@ class AuP0aRunbookExecutionTest(unittest.TestCase):
         self.assertEqual(result["planned_step_count"], 9)
         self.assertEqual(result["recorded_step_count"], 9)
         self.assertEqual(result["executed_command_count"], 0)
+        self.assertEqual(result["execution_payload_hash"], compute_execution_payload_hash(result))
         steps = {step["id"]: step for step in result["steps"]}
         self.assertEqual(steps["prepare_environment"]["status"], "manual")
         self.assertEqual(steps["preflight_collect"]["status"], "dry_run")
@@ -96,6 +99,7 @@ class AuP0aRunbookExecutionTest(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["mode"], "dry_run")
         self.assertEqual(payload["status"], "pass")
+        self.assertEqual(payload["execution_payload_hash"], compute_execution_payload_hash(payload))
         self.assertTrue(output_exists)
 
 

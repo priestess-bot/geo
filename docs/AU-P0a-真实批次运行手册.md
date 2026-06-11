@@ -21,6 +21,7 @@
 make au-p0a-runbook
 make verify-au-p0a-runbook
 make au-p0a-runbook-dry-run
+make verify-au-p0a-runbook-execution
 GENO_AU_P0A_REQUIRE_DB_CHECK=1 make au-p0a-readiness
 ```
 
@@ -154,6 +155,7 @@ runbook verifier 必须确认：
 runbook dry-run 必须确认：
 
 - execution_version 为 `au_p0a_runbook_execution_v1`
+- execution_payload_hash 可由 `make verify-au-p0a-runbook-execution` 复算
 - 默认 `mode=dry_run`、`executed_command_count=0`
 - 每个 command step 的 command、output_paths、stop_on_failure 和 external_call_risk 可审计
 - `ready_to_execute` 只在 runbook verifier 通过且必需环境存在时为 true
