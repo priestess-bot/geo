@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
-import hmac
 import json
 import os
 from datetime import UTC, datetime, timedelta
@@ -13,11 +11,17 @@ import httpx
 from geno_core.models import RuntimeNotificationDeliveryStatusInput
 from geno_core.repository import PostgresEvidenceRepository
 from geno_core.runtime import build_repository_from_env, close_repository_connection
+from geno_core.webhook_signing import (
+    RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER,
+    RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER,
+    RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER,
+    runtime_notification_webhook_payload_hash,
+    sign_runtime_notification_webhook,
+)
 
 
 WORKER_ID = "notification-worker"
 DEFAULT_SIGNING_SECRET_ENV = "GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET"
-SIGNATURE_VERSION = "runtime_notification_webhook_hmac_sha256_v1"
 
 
 class NotificationDeliveryRepository(Protocol):
@@ -90,15 +94,14 @@ def _apply_webhook_signature_headers(
     notification_id: str,
     payload_hash: str,
 ) -> dict[str, str]:
-    timestamp = str(int(datetime.now(UTC).timestamp()))
-    signature_input = f"{timestamp}.{delivery_id}.{notification_id}.{payload_hash}"
-    signature = hmac.new(secret.encode("utf-8"), signature_input.encode("utf-8"), hashlib.sha256).hexdigest()
     return {
         **headers,
-        "x-geno-signature": f"sha256={signature}",
-        "x-geno-signature-timestamp": timestamp,
-        "x-geno-signature-version": SIGNATURE_VERSION,
-        "x-geno-signature-input": "timestamp.delivery_id.notification_id.payload_sha256",
+        **sign_runtime_notification_webhook(
+            secret=secret,
+            delivery_id=delivery_id,
+            notification_id=notification_id,
+            payload_hash=payload_hash,
+        ),
     }
 
 
@@ -136,12 +139,12 @@ def process_next_notification_delivery(
     endpoint_url = str(delivery["endpoint_url"])
     payload = delivery.get("payload") if isinstance(delivery.get("payload"), dict) else {}
     body = _canonical_json_bytes(payload)
-    body_hash = hashlib.sha256(body).hexdigest()
+    body_hash = runtime_notification_webhook_payload_hash(body)
     headers = {
         "content-type": "application/json",
-        "x-geno-delivery-id": delivery_id,
-        "x-geno-notification-id": str(delivery["notification_id"]),
-        "x-geno-payload-sha256": body_hash,
+        RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER: delivery_id,
+        RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER: str(delivery["notification_id"]),
+        RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER: body_hash,
     }
     signed = False
 
@@ -165,7 +168,7 @@ def process_next_notification_delivery(
             response_body = response.content[:4096]
         else:
             response_status, response_body = requester("POST", endpoint_url, headers, body, timeout_seconds)
-        response_body_hash = hashlib.sha256(response_body or b"").hexdigest()
+        response_body_hash = runtime_notification_webhook_payload_hash(response_body or b"")
         if 200 <= int(response_status) < 300:
             repository.update_runtime_notification_delivery_status(
                 RuntimeNotificationDeliveryStatusInput(

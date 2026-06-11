@@ -172,6 +172,14 @@ from geno_core.stubs import (
 )
 from geno_core.traceability import build_traceability_bundle
 from geno_core.vector_store import InMemoryPgVectorStore, InMemoryQdrantVectorStore, summarize_vector_search
+from geno_core.webhook_signing import (
+    RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER,
+    RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER,
+    RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER,
+    runtime_notification_webhook_payload_hash,
+    sign_runtime_notification_webhook,
+    verify_runtime_notification_webhook_signature,
+)
 
 
 class RecordingCursor:
@@ -257,6 +265,87 @@ class CoreContractsTest(unittest.TestCase):
 
     def test_au_weights_sum_to_one(self) -> None:
         self.assertAlmostEqual(sum(AU_VISIBILITY_V1.values()), 1.0)
+
+    def test_runtime_notification_webhook_signature_verifies_payload_context(self) -> None:
+        body = b'{"delivery_version":"runtime_notification_delivery_v1"}'
+        payload_hash = runtime_notification_webhook_payload_hash(body)
+        headers = {
+            RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER: "delivery-1",
+            RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER: "notification-1",
+            RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER: payload_hash,
+            **sign_runtime_notification_webhook(
+                secret="receiver-secret",
+                delivery_id="delivery-1",
+                notification_id="notification-1",
+                payload_hash=payload_hash,
+                now=datetime(2026, 6, 12, 12, 0, tzinfo=UTC),
+            ),
+        }
+
+        verification = verify_runtime_notification_webhook_signature(
+            headers=headers,
+            body=body,
+            secret="receiver-secret",
+            now=datetime(2026, 6, 12, 12, 2, tzinfo=UTC),
+        )
+
+        self.assertTrue(verification.valid, verification.reason)
+        self.assertEqual(verification.reason, "ok")
+        self.assertEqual(verification.payload_hash, payload_hash)
+        self.assertEqual(verification.age_seconds, 120)
+
+    def test_runtime_notification_webhook_signature_rejects_tampered_body(self) -> None:
+        body = b'{"delivery_version":"runtime_notification_delivery_v1"}'
+        payload_hash = runtime_notification_webhook_payload_hash(body)
+        headers = {
+            RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER: "delivery-1",
+            RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER: "notification-1",
+            RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER: payload_hash,
+            **sign_runtime_notification_webhook(
+                secret="receiver-secret",
+                delivery_id="delivery-1",
+                notification_id="notification-1",
+                payload_hash=payload_hash,
+                now=datetime(2026, 6, 12, 12, 0, tzinfo=UTC),
+            ),
+        }
+
+        verification = verify_runtime_notification_webhook_signature(
+            headers=headers,
+            body=b'{"delivery_version":"changed"}',
+            secret="receiver-secret",
+            now=datetime(2026, 6, 12, 12, 0, tzinfo=UTC),
+        )
+
+        self.assertFalse(verification.valid)
+        self.assertEqual(verification.reason, "payload_hash_mismatch")
+
+    def test_runtime_notification_webhook_signature_rejects_stale_timestamp(self) -> None:
+        body = b'{"delivery_version":"runtime_notification_delivery_v1"}'
+        payload_hash = runtime_notification_webhook_payload_hash(body)
+        headers = {
+            RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER: "delivery-1",
+            RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER: "notification-1",
+            RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER: payload_hash,
+            **sign_runtime_notification_webhook(
+                secret="receiver-secret",
+                delivery_id="delivery-1",
+                notification_id="notification-1",
+                payload_hash=payload_hash,
+                now=datetime(2026, 6, 12, 12, 0, tzinfo=UTC),
+            ),
+        }
+
+        verification = verify_runtime_notification_webhook_signature(
+            headers=headers,
+            body=body,
+            secret="receiver-secret",
+            tolerance_seconds=60,
+            now=datetime(2026, 6, 12, 12, 2, tzinfo=UTC),
+        )
+
+        self.assertFalse(verification.valid)
+        self.assertEqual(verification.reason, "timestamp_outside_tolerance")
 
     def test_prompt_import_file_to_csv_parses_xlsx_first_sheet(self) -> None:
         csv_content, source_format = prompt_import_file_to_csv(

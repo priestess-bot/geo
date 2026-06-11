@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import os
 import unittest
 from datetime import UTC, datetime
 
 from geno_core.models import RuntimeNotificationDelivery, RuntimeNotificationDeliveryStatusInput
+from geno_core.webhook_signing import verify_runtime_notification_webhook_signature
 from workers.notification_worker.run_notification_deliveries import process_next_notification_delivery
 
 
@@ -81,19 +80,6 @@ def _delivery_record(
         },
         audit_events=(),
     )
-
-
-def _expected_signature(*, secret: str, headers: dict[str, str]) -> str:
-    signature_input = ".".join(
-        [
-            headers["x-geno-signature-timestamp"],
-            headers["x-geno-delivery-id"],
-            headers["x-geno-notification-id"],
-            headers["x-geno-payload-sha256"],
-        ]
-    )
-    signature = hmac.new(secret.encode("utf-8"), signature_input.encode("utf-8"), hashlib.sha256).hexdigest()
-    return f"sha256={signature}"
 
 
 class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
@@ -170,7 +156,12 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
             requests[0][2]["x-geno-signature-input"],
             "timestamp.delivery_id.notification_id.payload_sha256",
         )
-        self.assertEqual(requests[0][2]["x-geno-signature"], _expected_signature(secret="test-secret", headers=requests[0][2]))
+        verification = verify_runtime_notification_webhook_signature(
+            headers=requests[0][2],
+            body=requests[0][3],
+            secret="test-secret",
+        )
+        self.assertTrue(verification.valid, verification.reason)
         self.assertTrue(requests[0][2]["x-geno-signature-timestamp"].isdigit())
 
     def test_process_next_notification_delivery_requeues_missing_subscription_secret_env(self) -> None:
@@ -219,10 +210,12 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
 
         self.assertEqual(result["status"], "delivered")
         self.assertTrue(result["signed"])
-        self.assertEqual(
-            requests[0][2]["x-geno-signature"],
-            _expected_signature(secret="default-secret", headers=requests[0][2]),
+        verification = verify_runtime_notification_webhook_signature(
+            headers=requests[0][2],
+            body=requests[0][3],
+            secret="default-secret",
         )
+        self.assertTrue(verification.valid, verification.reason)
 
     def test_process_next_notification_delivery_requeues_non_2xx_before_max_attempts(self) -> None:
         repository = FakeNotificationDeliveryRepository(_delivery_record(attempt_count=1, max_attempts=3))
