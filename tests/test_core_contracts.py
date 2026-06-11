@@ -3687,6 +3687,62 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(invalid_ttl.status, "fail")
         self.assertIn("GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS", invalid_ttl.detail)
 
+    def test_runtime_auth_diagnostic_accepts_oidc_discovery_without_network_check(self) -> None:
+        explicit_discovery = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_OIDC_DISCOVERY_URL": "https://idp.example.test/.well-known/openid-configuration",
+                "GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS": "120",
+                "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
+            }
+        )
+        issuer_discovery = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_JWT_ISSUER": "https://idp.example.test/realms/geno",
+                "GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS": "120",
+                "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
+            }
+        )
+        invalid_discovery_url = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_OIDC_DISCOVERY_URL": "file:///tmp/openid-configuration",
+            }
+        )
+        invalid_issuer_fallback = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_JWT_ISSUER": "issuer-name",
+            }
+        )
+        invalid_discovery_ttl = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_OIDC_DISCOVERY_URL": "https://idp.example.test/.well-known/openid-configuration",
+                "GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS": "-1",
+            }
+        )
+
+        self.assertEqual(explicit_discovery.status, "pass")
+        self.assertEqual(explicit_discovery.metadata["oidc_discovery_url"], "configured")
+        self.assertEqual(explicit_discovery.metadata["oidc_discovery_source"], "explicit")
+        self.assertEqual(explicit_discovery.metadata["oidc_discovery_network_check"], "not_run")
+        self.assertEqual(issuer_discovery.status, "pass")
+        self.assertEqual(issuer_discovery.metadata["oidc_discovery_source"], "jwt_issuer")
+        self.assertEqual(issuer_discovery.metadata["jwt_issuer"], "configured")
+        self.assertEqual(invalid_discovery_url.status, "fail")
+        self.assertIn("GENO_RUNTIME_OIDC_DISCOVERY_URL", invalid_discovery_url.detail)
+        self.assertEqual(invalid_issuer_fallback.status, "fail")
+        self.assertIn("GENO_RUNTIME_JWT_ISSUER", invalid_issuer_fallback.detail)
+        self.assertEqual(invalid_discovery_ttl.status, "fail")
+        self.assertIn("GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS", invalid_discovery_ttl.detail)
+
     def test_runtime_auth_diagnostic_prefers_inline_jwks_over_url(self) -> None:
         diagnostic = runtime_auth_diagnostic(
             {

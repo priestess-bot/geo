@@ -107,9 +107,12 @@ RUNTIME_AUTH_MODES = {RUNTIME_AUTH_MODE_HEADER, RUNTIME_AUTH_MODE_JWT, RUNTIME_A
 RUNTIME_JWT_SECRET_ENV = "GENO_RUNTIME_JWT_SECRET"
 RUNTIME_JWKS_JSON_ENV = "GENO_RUNTIME_JWKS_JSON"
 RUNTIME_JWKS_URL_ENV = "GENO_RUNTIME_JWKS_URL"
+RUNTIME_OIDC_DISCOVERY_URL_ENV = "GENO_RUNTIME_OIDC_DISCOVERY_URL"
 RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV = "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS"
+RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV = "GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS"
 RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV = "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS"
 DEFAULT_RUNTIME_JWKS_CACHE_TTL_SECONDS = 300.0
+DEFAULT_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS = 300.0
 DEFAULT_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS = 2.0
 RUNTIME_JWT_ALGORITHM_ENV = "GENO_RUNTIME_JWT_ALGORITHM"
 RUNTIME_JWT_ACTOR_CLAIM_ENV = "GENO_RUNTIME_JWT_ACTOR_CLAIM"
@@ -133,6 +136,10 @@ _RUNTIME_JWKS_CACHE_LOCK = threading.Lock()
 _RUNTIME_JWKS_CACHE_URL: str | None = None
 _RUNTIME_JWKS_CACHE: dict[str, Any] | None = None
 _RUNTIME_JWKS_CACHE_EXPIRES_AT = 0.0
+_RUNTIME_OIDC_DISCOVERY_CACHE_LOCK = threading.Lock()
+_RUNTIME_OIDC_DISCOVERY_CACHE_URL: str | None = None
+_RUNTIME_OIDC_DISCOVERY_CACHE: dict[str, Any] | None = None
+_RUNTIME_OIDC_DISCOVERY_CACHE_EXPIRES_AT = 0.0
 
 
 def runtime_project_access_control_enabled() -> bool:
@@ -164,14 +171,32 @@ def _validate_runtime_jwks(jwks: object, *, source: str) -> dict[str, Any]:
     return jwks
 
 
+def _validate_runtime_http_url(value: str, *, source: str) -> str:
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(status_code=503, detail=f"{source} must be an http or https URL")
+    return value
+
+
 def _runtime_jwks_url() -> str:
     jwks_url = os.getenv(RUNTIME_JWKS_URL_ENV, "").strip()
     if not jwks_url:
         return ""
-    parsed = urlparse(jwks_url)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise HTTPException(status_code=503, detail=f"{RUNTIME_JWKS_URL_ENV} must be an http or https URL")
-    return jwks_url
+    return _validate_runtime_http_url(jwks_url, source=RUNTIME_JWKS_URL_ENV)
+
+
+def _runtime_oidc_discovery_url() -> str:
+    discovery_url = os.getenv(RUNTIME_OIDC_DISCOVERY_URL_ENV, "").strip()
+    if discovery_url:
+        return _validate_runtime_http_url(discovery_url, source=RUNTIME_OIDC_DISCOVERY_URL_ENV)
+    issuer = os.getenv(RUNTIME_JWT_ISSUER_ENV, "").strip()
+    if not issuer:
+        return ""
+    _validate_runtime_http_url(
+        issuer,
+        source=f"{RUNTIME_JWT_ISSUER_ENV} when used for OIDC discovery",
+    )
+    return f"{issuer.rstrip('/')}/.well-known/openid-configuration"
 
 
 def _non_negative_float_env(key: str, default: float) -> float:
@@ -198,6 +223,13 @@ def _positive_float_env(key: str, default: float) -> float:
 
 def _runtime_jwks_cache_ttl_seconds() -> float:
     return _non_negative_float_env(RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV, DEFAULT_RUNTIME_JWKS_CACHE_TTL_SECONDS)
+
+
+def _runtime_oidc_discovery_cache_ttl_seconds() -> float:
+    return _non_negative_float_env(
+        RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV,
+        DEFAULT_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS,
+    )
 
 
 def _runtime_jwks_fetch_timeout_seconds() -> float:
@@ -242,6 +274,60 @@ def _runtime_jwks_from_url(jwks_url: str) -> dict[str, Any]:
     return validated_jwks
 
 
+def _runtime_oidc_discovery_document(discovery_url: str) -> dict[str, Any]:
+    global _RUNTIME_OIDC_DISCOVERY_CACHE_URL, _RUNTIME_OIDC_DISCOVERY_CACHE, _RUNTIME_OIDC_DISCOVERY_CACHE_EXPIRES_AT
+    now = time.time()
+    with _RUNTIME_OIDC_DISCOVERY_CACHE_LOCK:
+        if (
+            _RUNTIME_OIDC_DISCOVERY_CACHE_URL == discovery_url
+            and _RUNTIME_OIDC_DISCOVERY_CACHE is not None
+            and now < _RUNTIME_OIDC_DISCOVERY_CACHE_EXPIRES_AT
+        ):
+            return _RUNTIME_OIDC_DISCOVERY_CACHE
+    try:
+        response = httpx.get(
+            discovery_url,
+            timeout=_runtime_jwks_fetch_timeout_seconds(),
+            follow_redirects=True,
+        )
+        response.raise_for_status()
+        document = response.json()
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=503, detail="runtime OIDC discovery fetch timed out") from exc
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"runtime OIDC discovery returned status {exc.response.status_code}",
+        ) from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail="runtime OIDC discovery fetch failed") from exc
+
+    if not isinstance(document, dict):
+        raise HTTPException(status_code=503, detail="runtime OIDC discovery document must be a JSON object")
+    jwks_uri = document.get("jwks_uri")
+    if not isinstance(jwks_uri, str) or not jwks_uri.strip():
+        raise HTTPException(status_code=503, detail="runtime OIDC discovery document must contain jwks_uri")
+    validated_document = dict(document)
+    validated_document["jwks_uri"] = _validate_runtime_http_url(
+        jwks_uri.strip(),
+        source="runtime OIDC discovery jwks_uri",
+    )
+    cache_expires_at = time.time() + _runtime_oidc_discovery_cache_ttl_seconds()
+    with _RUNTIME_OIDC_DISCOVERY_CACHE_LOCK:
+        _RUNTIME_OIDC_DISCOVERY_CACHE_URL = discovery_url
+        _RUNTIME_OIDC_DISCOVERY_CACHE = validated_document
+        _RUNTIME_OIDC_DISCOVERY_CACHE_EXPIRES_AT = cache_expires_at
+    return validated_document
+
+
+def _runtime_jwks_from_oidc_discovery() -> dict[str, Any]:
+    discovery_url = _runtime_oidc_discovery_url()
+    if not discovery_url:
+        return {}
+    discovery_document = _runtime_oidc_discovery_document(discovery_url)
+    return _runtime_jwks_from_url(str(discovery_document["jwks_uri"]))
+
+
 def _ensure_runtime_jwks_configured() -> None:
     raw_value = os.getenv(RUNTIME_JWKS_JSON_ENV, "").strip()
     if raw_value:
@@ -251,9 +337,16 @@ def _ensure_runtime_jwks_configured() -> None:
         _runtime_jwks_cache_ttl_seconds()
         _runtime_jwks_fetch_timeout_seconds()
         return
+    if _runtime_oidc_discovery_url():
+        _runtime_oidc_discovery_cache_ttl_seconds()
+        _runtime_jwks_fetch_timeout_seconds()
+        return
     raise HTTPException(
         status_code=503,
-        detail=f"{RUNTIME_JWKS_JSON_ENV} or {RUNTIME_JWKS_URL_ENV} is required when {RUNTIME_AUTH_MODE_ENV}=jwks",
+        detail=(
+            f"{RUNTIME_JWKS_JSON_ENV}, {RUNTIME_JWKS_URL_ENV}, {RUNTIME_OIDC_DISCOVERY_URL_ENV}, "
+            f"or URL-form {RUNTIME_JWT_ISSUER_ENV} is required when {RUNTIME_AUTH_MODE_ENV}=jwks"
+        ),
     )
 
 
@@ -264,18 +357,29 @@ def _runtime_jwks() -> dict[str, Any]:
     jwks_url = _runtime_jwks_url()
     if jwks_url:
         return _runtime_jwks_from_url(jwks_url)
+    oidc_jwks = _runtime_jwks_from_oidc_discovery()
+    if oidc_jwks:
+        return oidc_jwks
     raise HTTPException(
         status_code=503,
-        detail=f"{RUNTIME_JWKS_JSON_ENV} or {RUNTIME_JWKS_URL_ENV} is required when {RUNTIME_AUTH_MODE_ENV}=jwks",
+        detail=(
+            f"{RUNTIME_JWKS_JSON_ENV}, {RUNTIME_JWKS_URL_ENV}, {RUNTIME_OIDC_DISCOVERY_URL_ENV}, "
+            f"or URL-form {RUNTIME_JWT_ISSUER_ENV} is required when {RUNTIME_AUTH_MODE_ENV}=jwks"
+        ),
     )
 
 
 def reset_runtime_auth_caches() -> None:
     global _RUNTIME_JWKS_CACHE_URL, _RUNTIME_JWKS_CACHE, _RUNTIME_JWKS_CACHE_EXPIRES_AT
+    global _RUNTIME_OIDC_DISCOVERY_CACHE_URL, _RUNTIME_OIDC_DISCOVERY_CACHE, _RUNTIME_OIDC_DISCOVERY_CACHE_EXPIRES_AT
     with _RUNTIME_JWKS_CACHE_LOCK:
         _RUNTIME_JWKS_CACHE_URL = None
         _RUNTIME_JWKS_CACHE = None
         _RUNTIME_JWKS_CACHE_EXPIRES_AT = 0.0
+    with _RUNTIME_OIDC_DISCOVERY_CACHE_LOCK:
+        _RUNTIME_OIDC_DISCOVERY_CACHE_URL = None
+        _RUNTIME_OIDC_DISCOVERY_CACHE = None
+        _RUNTIME_OIDC_DISCOVERY_CACHE_EXPIRES_AT = 0.0
 
 
 def _base64url_decode(value: str) -> bytes:

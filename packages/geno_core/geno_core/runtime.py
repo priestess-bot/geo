@@ -28,8 +28,11 @@ RUNTIME_AUTH_MODE_ENV = "GENO_RUNTIME_AUTH_MODE"
 RUNTIME_JWT_SECRET_ENV = "GENO_RUNTIME_JWT_SECRET"
 RUNTIME_JWKS_JSON_ENV = "GENO_RUNTIME_JWKS_JSON"
 RUNTIME_JWKS_URL_ENV = "GENO_RUNTIME_JWKS_URL"
+RUNTIME_OIDC_DISCOVERY_URL_ENV = "GENO_RUNTIME_OIDC_DISCOVERY_URL"
 RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV = "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS"
+RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV = "GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS"
 RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV = "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS"
+RUNTIME_JWT_ISSUER_ENV = "GENO_RUNTIME_JWT_ISSUER"
 RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES = {"1", "true", "yes", "on"}
 RUNTIME_AUTH_MODES = {"header", "jwt", "jwks"}
 
@@ -426,10 +429,20 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
     jwt_secret_configured = bool(runtime_env.get(RUNTIME_JWT_SECRET_ENV, "").strip())
     jwks_json = runtime_env.get(RUNTIME_JWKS_JSON_ENV, "").strip()
     jwks_url = runtime_env.get(RUNTIME_JWKS_URL_ENV, "").strip()
+    oidc_discovery_url = runtime_env.get(RUNTIME_OIDC_DISCOVERY_URL_ENV, "").strip()
+    jwt_issuer = runtime_env.get(RUNTIME_JWT_ISSUER_ENV, "").strip()
     jwks_url_valid = False
     if jwks_url:
         parsed_url = urlparse(jwks_url)
         jwks_url_valid = parsed_url.scheme in {"http", "https"} and bool(parsed_url.netloc)
+    oidc_discovery_url_valid = False
+    if oidc_discovery_url:
+        parsed_url = urlparse(oidc_discovery_url)
+        oidc_discovery_url_valid = parsed_url.scheme in {"http", "https"} and bool(parsed_url.netloc)
+    jwt_issuer_url_valid = False
+    if jwt_issuer:
+        parsed_issuer = urlparse(jwt_issuer)
+        jwt_issuer_url_valid = parsed_issuer.scheme in {"http", "https"} and bool(parsed_issuer.netloc)
     jwks_key_count: int | None = None
     if jwks_json:
         try:
@@ -445,6 +458,10 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
         "jwks_json": "configured" if jwks_json else "missing",
         "jwks_url": "configured" if jwks_url else "missing",
         "jwks_url_network_check": "not_run",
+        "oidc_discovery_url": "configured" if oidc_discovery_url else "missing",
+        "oidc_discovery_source": "explicit" if oidc_discovery_url else ("jwt_issuer" if jwt_issuer else "missing"),
+        "oidc_discovery_network_check": "not_run",
+        "jwt_issuer": "configured" if jwt_issuer else "missing",
         "jwks_key_count": jwks_key_count if jwks_key_count is not None else "unknown",
     }
     if auth_mode not in RUNTIME_AUTH_MODES:
@@ -479,12 +496,51 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
                 detail=str(exc),
                 metadata=metadata,
             )
-    if access_control_enabled and auth_mode == "jwks":
-        if not jwks_json and not jwks_url:
+    if auth_mode == "jwks" and not jwks_json and not jwks_url and oidc_discovery_url:
+        if not oidc_discovery_url_valid:
             return RuntimeComponentDiagnostic(
                 name="runtime_auth",
                 status="fail",
-                detail="GENO_RUNTIME_JWKS_JSON or GENO_RUNTIME_JWKS_URL is required when JWKS auth mode is enabled",
+                detail="GENO_RUNTIME_OIDC_DISCOVERY_URL must be an http or https URL",
+                metadata=metadata,
+            )
+        try:
+            _non_negative_float_from_env(runtime_env, RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV, 300.0)
+            _positive_float_from_env(runtime_env, RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV, 2.0)
+        except RuntimePersistenceError as exc:
+            return RuntimeComponentDiagnostic(
+                name="runtime_auth",
+                status="fail",
+                detail=str(exc),
+                metadata=metadata,
+            )
+    if auth_mode == "jwks" and not jwks_json and not jwks_url and not oidc_discovery_url and jwt_issuer:
+        if not jwt_issuer_url_valid:
+            return RuntimeComponentDiagnostic(
+                name="runtime_auth",
+                status="fail",
+                detail="GENO_RUNTIME_JWT_ISSUER must be an http or https URL when used for OIDC discovery",
+                metadata=metadata,
+            )
+        try:
+            _non_negative_float_from_env(runtime_env, RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV, 300.0)
+            _positive_float_from_env(runtime_env, RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV, 2.0)
+        except RuntimePersistenceError as exc:
+            return RuntimeComponentDiagnostic(
+                name="runtime_auth",
+                status="fail",
+                detail=str(exc),
+                metadata=metadata,
+            )
+    if access_control_enabled and auth_mode == "jwks":
+        if not jwks_json and not jwks_url and not oidc_discovery_url and not jwt_issuer:
+            return RuntimeComponentDiagnostic(
+                name="runtime_auth",
+                status="fail",
+                detail=(
+                    "GENO_RUNTIME_JWKS_JSON, GENO_RUNTIME_JWKS_URL, GENO_RUNTIME_OIDC_DISCOVERY_URL, "
+                    "or URL-form GENO_RUNTIME_JWT_ISSUER is required when JWKS auth mode is enabled"
+                ),
                 metadata=metadata,
             )
         if jwks_json and jwks_key_count is None:
