@@ -100,6 +100,7 @@ python3 scripts/build_preflight_manifest.py \
   --require-design-partner-ready
 
 make au-p0a-package
+make verify-au-p0a-package
 ```
 
 ## 停止条件
@@ -148,6 +149,13 @@ evidence package 必须确认：
 - 每个已存在文件的 file sha256、payload hash 或 manifest hash
 - 每个 payload/manifest 的 verifier status、ready_for_design_partner 和 blocking reasons
 - missing_artifacts、failed_artifacts、blocking_reasons 和 package_payload_hash
+
+package verifier 必须确认：
+
+- package_payload_hash 可复算
+- artifacts 至少包含 runbook、readiness、preflight/small/full JSON 与 manifest
+- summary 的 artifact_count、missing_artifacts、failed_artifacts、ready_artifacts、blocking_reasons 可由 artifacts 反推
+- `ready_for_design_partner` 与 preflight/small/full JSON 和 manifest 的 ready 状态一致
 
 ## 当前边界
 
