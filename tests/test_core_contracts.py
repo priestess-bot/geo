@@ -30,7 +30,7 @@ from geno_core.collection import (
     run_collection_slice,
     run_fixture_collection_slice,
 )
-from geno_core.contracts import CollectorBackend, GraphStore, ParserEngine, ReportExporter, ScoringFormula
+from geno_core.contracts import CollectorBackend, GraphStore, ParserEngine, ReportExporter, ScoringFormula, VectorStore
 from geno_core.collectors import (
     FixtureChatGPTSearchBrowserCollector,
     FixtureGoogleAIModeCollector,
@@ -65,6 +65,8 @@ from geno_core.knowledge import (
     build_localized_knowledge_facts,
     build_manual_distribution_records,
     search_knowledge_facts,
+    embed_knowledge_text,
+    knowledge_fact_text,
 )
 from geno_core.llm_gateway import FixtureLLMGateway, LiteLLMGateway, LLMGatewayRequestError
 from geno_core.market import build_au_market_profile
@@ -150,6 +152,7 @@ from geno_core.stubs import (
     NotConfiguredScoringFormula,
 )
 from geno_core.traceability import build_traceability_bundle
+from geno_core.vector_store import InMemoryPgVectorStore, InMemoryQdrantVectorStore, summarize_vector_search
 
 
 class RecordingCursor:
@@ -2839,6 +2842,44 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("JOIN knowledge_fact_embeddings kfe ON kfe.knowledge_fact_id = kf.id", executed_sql)
         self.assertIn("kfe.embedding <=> %s::vector", executed_sql)
         self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
+
+    def test_vector_store_pgvector_and_qdrant_projection_keep_search_results_stable(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        facts = build_localized_knowledge_facts(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            brand=bootstrap.brand,
+            category=bootstrap.project.category,
+            answer_run_ids=("answer-run-1",),
+            now=datetime(2026, 6, 11, tzinfo=UTC),
+        )
+        collection = f"knowledge_facts:{bootstrap.project.id}"
+        ids = [fact.id for fact in facts]
+        vectors = [list(embed_knowledge_text(knowledge_fact_text(fact))) for fact in facts]
+        query_vector = list(embed_knowledge_text("Australia shipping returns local reviews"))
+        pgvector_store = InMemoryPgVectorStore()
+        qdrant_store = InMemoryQdrantVectorStore()
+
+        self.assertIsInstance(pgvector_store, VectorStore)
+        self.assertIsInstance(qdrant_store, VectorStore)
+        pgvector_store.upsert(collection=collection, ids=ids, vectors=vectors)
+        qdrant_store.upsert(collection=collection, ids=ids, vectors=vectors)
+
+        pgvector_summary = summarize_vector_search(
+            pgvector_store,
+            collection=collection,
+            vector=query_vector,
+            limit=5,
+        )
+        qdrant_summary = summarize_vector_search(
+            qdrant_store,
+            collection=collection,
+            vector=query_vector,
+            limit=5,
+        )
+        self.assertEqual(pgvector_summary, qdrant_summary)
+        self.assertEqual(len(pgvector_summary), 5)
+        self.assertTrue(all(score <= 1.0 for _, score in pgvector_summary))
 
     def test_postgres_repository_persists_project_bootstrap_metadata(self) -> None:
         bootstrap = build_au_project_bootstrap()
