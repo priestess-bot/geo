@@ -11,6 +11,8 @@ from unittest.mock import patch
 from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives import hashes
 
 from geno_api.main import app, close_runtime_resources, reset_runtime_metrics
 from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
@@ -64,6 +66,49 @@ class ApiContractsTest(unittest.TestCase):
         ).digest()
         encoded_signature = base64.urlsafe_b64encode(signature).rstrip(b"=").decode("ascii")
         return f"{encoded_header}.{encoded_payload}.{encoded_signature}"
+
+    def _runtime_jwks_rs256_token(
+        self,
+        *,
+        payload: dict[str, object] | None = None,
+        key_id: str = "runtime-key-1",
+    ) -> tuple[str, str]:
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        public_numbers = private_key.public_key().public_numbers()
+
+        def base64url_int(value: int) -> str:
+            raw = value.to_bytes((value.bit_length() + 7) // 8, "big")
+            return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+        jwks = {
+            "keys": [
+                {
+                    "kty": "RSA",
+                    "kid": key_id,
+                    "use": "sig",
+                    "alg": "RS256",
+                    "n": base64url_int(public_numbers.n),
+                    "e": base64url_int(public_numbers.e),
+                }
+            ]
+        }
+        header = {"alg": "RS256", "kid": key_id, "typ": "JWT"}
+        claims = {"sub": "jwks-owner", "exp": int(time.time()) + 300}
+        if payload:
+            claims.update(payload)
+        encoded_header = base64.urlsafe_b64encode(
+            json.dumps(header, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        ).rstrip(b"=").decode("ascii")
+        encoded_payload = base64.urlsafe_b64encode(
+            json.dumps(claims, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        ).rstrip(b"=").decode("ascii")
+        signature = private_key.sign(
+            f"{encoded_header}.{encoded_payload}".encode("ascii"),
+            padding.PKCS1v15(),
+            hashes.SHA256(),
+        )
+        encoded_signature = base64.urlsafe_b64encode(signature).rstrip(b"=").decode("ascii")
+        return f"{encoded_header}.{encoded_payload}.{encoded_signature}", json.dumps(jwks)
 
     def _xlsx_prompt_import_bytes(self) -> bytes:
         buffer = BytesIO()
@@ -461,6 +506,47 @@ class ApiContractsTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(fake_repository.kwargs["actor_id"], "jwt-owner")
+
+    def test_runtime_projects_endpoint_filters_by_jwks_actor_when_jwks_auth_mode_enabled(self) -> None:
+        class FakeRepository:
+            def list_runtime_projects(self, **kwargs: object) -> RuntimeProjectPage:
+                self.kwargs = kwargs
+                return RuntimeProjectPage(total_count=0, limit=int(kwargs["limit"]), offset=int(kwargs["offset"]), records=())
+
+        fake_repository = FakeRepository()
+        token, jwks_json = self._runtime_jwks_rs256_token(payload={"sub": "jwks-owner"})
+        with patch.dict(
+            "os.environ",
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_JWKS_JSON": jwks_json,
+            },
+            clear=False,
+        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(fake_repository.kwargs["actor_id"], "jwks-owner")
+
+    def test_runtime_projects_endpoint_rejects_jwks_token_signed_by_untrusted_key(self) -> None:
+        token, _ = self._runtime_jwks_rs256_token(payload={"sub": "jwks-owner"}, key_id="runtime-key-1")
+        _, trusted_jwks_json = self._runtime_jwks_rs256_token(key_id="runtime-key-1")
+        with patch.dict(
+            "os.environ",
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_JWKS_JSON": trusted_jwks_json,
+            },
+            clear=False,
+        ):
+            response = self.client.get("/v1/projects/runtime", headers={"Authorization": f"Bearer {token}"})
+
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("invalid runtime JWT signature", response.json()["detail"])
 
     def test_runtime_project_member_save_endpoint_uses_jwt_actor_when_jwt_auth_mode_enabled(self) -> None:
         class FakeRepository:

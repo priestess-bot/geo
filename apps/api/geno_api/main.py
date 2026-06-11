@@ -13,10 +13,14 @@ from collections import defaultdict
 from contextvars import ContextVar
 from dataclasses import asdict
 from collections.abc import Mapping
+from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse, Response
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives import hashes
 
 from geno_core.action_plan import (
     build_action_plan_audit_event,
@@ -96,8 +100,10 @@ RUNTIME_ACTOR_HEADER = "X-GENO-Actor-Id"
 RUNTIME_AUTH_MODE_ENV = "GENO_RUNTIME_AUTH_MODE"
 RUNTIME_AUTH_MODE_HEADER = "header"
 RUNTIME_AUTH_MODE_JWT = "jwt"
-RUNTIME_AUTH_MODES = {RUNTIME_AUTH_MODE_HEADER, RUNTIME_AUTH_MODE_JWT}
+RUNTIME_AUTH_MODE_JWKS = "jwks"
+RUNTIME_AUTH_MODES = {RUNTIME_AUTH_MODE_HEADER, RUNTIME_AUTH_MODE_JWT, RUNTIME_AUTH_MODE_JWKS}
 RUNTIME_JWT_SECRET_ENV = "GENO_RUNTIME_JWT_SECRET"
+RUNTIME_JWKS_JSON_ENV = "GENO_RUNTIME_JWKS_JSON"
 RUNTIME_JWT_ALGORITHM_ENV = "GENO_RUNTIME_JWT_ALGORITHM"
 RUNTIME_JWT_ACTOR_CLAIM_ENV = "GENO_RUNTIME_JWT_ACTOR_CLAIM"
 RUNTIME_JWT_ISSUER_ENV = "GENO_RUNTIME_JWT_ISSUER"
@@ -128,7 +134,7 @@ def runtime_project_access_control_enabled() -> bool:
 def runtime_auth_mode() -> str:
     mode = os.getenv(RUNTIME_AUTH_MODE_ENV, RUNTIME_AUTH_MODE_HEADER).strip().lower() or RUNTIME_AUTH_MODE_HEADER
     if mode not in RUNTIME_AUTH_MODES:
-        raise HTTPException(status_code=503, detail=f"{RUNTIME_AUTH_MODE_ENV} must be header or jwt")
+        raise HTTPException(status_code=503, detail=f"{RUNTIME_AUTH_MODE_ENV} must be header, jwt, or jwks")
     return mode
 
 
@@ -137,6 +143,21 @@ def _runtime_jwt_secret() -> str:
     if not secret:
         raise HTTPException(status_code=503, detail=f"{RUNTIME_JWT_SECRET_ENV} is required when {RUNTIME_AUTH_MODE_ENV}=jwt")
     return secret
+
+
+def _runtime_jwks() -> dict[str, Any]:
+    raw_value = os.getenv(RUNTIME_JWKS_JSON_ENV, "").strip()
+    if not raw_value:
+        raise HTTPException(status_code=503, detail=f"{RUNTIME_JWKS_JSON_ENV} is required when {RUNTIME_AUTH_MODE_ENV}=jwks")
+    try:
+        jwks = json.loads(raw_value)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=f"{RUNTIME_JWKS_JSON_ENV} must be valid JWKS JSON") from exc
+    if not isinstance(jwks, dict) or not isinstance(jwks.get("keys"), list):
+        raise HTTPException(status_code=503, detail=f"{RUNTIME_JWKS_JSON_ENV} must contain a keys array")
+    if not jwks["keys"]:
+        raise HTTPException(status_code=503, detail=f"{RUNTIME_JWKS_JSON_ENV} must contain at least one key")
+    return jwks
 
 
 def _base64url_decode(value: str) -> bytes:
@@ -155,6 +176,15 @@ def _json_from_base64url(value: str) -> dict[str, object]:
     return payload
 
 
+def _int_from_base64url(value: object, *, field: str) -> int:
+    if not isinstance(value, str) or not value:
+        raise HTTPException(status_code=503, detail=f"runtime JWKS RSA key is missing {field}")
+    try:
+        return int.from_bytes(_base64url_decode(value), "big")
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=f"runtime JWKS RSA key has invalid {field}") from exc
+
+
 def _runtime_jwt_clock_skew_seconds() -> int:
     raw_value = os.getenv(RUNTIME_JWT_CLOCK_SKEW_SECONDS_ENV, "30").strip() or "30"
     try:
@@ -163,40 +193,18 @@ def _runtime_jwt_clock_skew_seconds() -> int:
         raise HTTPException(status_code=503, detail=f"{RUNTIME_JWT_CLOCK_SKEW_SECONDS_ENV} must be an integer") from exc
 
 
-def decode_runtime_jwt_actor(authorization: str | None) -> str:
-    if not authorization or not authorization.strip().lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Authorization Bearer JWT is required when runtime auth mode is jwt")
-    token = authorization.strip()[7:].strip()
-    parts = token.split(".")
-    if len(parts) != 3:
-        raise HTTPException(status_code=401, detail="invalid runtime JWT")
-    header = _json_from_base64url(parts[0])
-    payload = _json_from_base64url(parts[1])
-    algorithm = os.getenv(RUNTIME_JWT_ALGORITHM_ENV, "HS256").strip().upper() or "HS256"
-    if algorithm != "HS256":
-        raise HTTPException(status_code=503, detail="only HS256 runtime JWT verification is currently supported")
-    if str(header.get("alg", "")).upper() != algorithm:
-        raise HTTPException(status_code=401, detail="runtime JWT algorithm is not allowed")
-    expected_signature = hmac.new(
-        _runtime_jwt_secret().encode("utf-8"),
-        f"{parts[0]}.{parts[1]}".encode("ascii"),
-        hashlib.sha256,
-    ).digest()
+def _validate_runtime_jwt_claims(payload: dict[str, object]) -> str:
     try:
-        actual_signature = _base64url_decode(parts[2])
-    except ValueError as exc:
-        raise HTTPException(status_code=401, detail="invalid runtime JWT signature") from exc
-    if not hmac.compare_digest(actual_signature, expected_signature):
-        raise HTTPException(status_code=401, detail="invalid runtime JWT signature")
-
-    now = time.time()
-    clock_skew = _runtime_jwt_clock_skew_seconds()
-    exp = payload.get("exp")
-    if exp is not None and now > float(exp) + clock_skew:
-        raise HTTPException(status_code=401, detail="runtime JWT has expired")
-    nbf = payload.get("nbf")
-    if nbf is not None and now + clock_skew < float(nbf):
-        raise HTTPException(status_code=401, detail="runtime JWT is not active yet")
+        now = time.time()
+        clock_skew = _runtime_jwt_clock_skew_seconds()
+        exp = payload.get("exp")
+        if exp is not None and now > float(exp) + clock_skew:
+            raise HTTPException(status_code=401, detail="runtime JWT has expired")
+        nbf = payload.get("nbf")
+        if nbf is not None and now + clock_skew < float(nbf):
+            raise HTTPException(status_code=401, detail="runtime JWT is not active yet")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=401, detail="invalid runtime JWT temporal claim") from exc
     issuer = os.getenv(RUNTIME_JWT_ISSUER_ENV, "").strip()
     if issuer and payload.get("iss") != issuer:
         raise HTTPException(status_code=401, detail="runtime JWT issuer is not allowed")
@@ -213,11 +221,100 @@ def decode_runtime_jwt_actor(authorization: str | None) -> str:
     return actor_id
 
 
+def _verify_runtime_hs256_jwt(parts: list[str], header: dict[str, object]) -> dict[str, object]:
+    algorithm = os.getenv(RUNTIME_JWT_ALGORITHM_ENV, "HS256").strip().upper() or "HS256"
+    if algorithm != "HS256":
+        raise HTTPException(status_code=503, detail="only HS256 runtime JWT verification is currently supported")
+    if str(header.get("alg", "")).upper() != algorithm:
+        raise HTTPException(status_code=401, detail="runtime JWT algorithm is not allowed")
+    expected_signature = hmac.new(
+        _runtime_jwt_secret().encode("utf-8"),
+        f"{parts[0]}.{parts[1]}".encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    try:
+        actual_signature = _base64url_decode(parts[2])
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail="invalid runtime JWT signature") from exc
+    if not hmac.compare_digest(actual_signature, expected_signature):
+        raise HTTPException(status_code=401, detail="invalid runtime JWT signature")
+    return _json_from_base64url(parts[1])
+
+
+def _select_runtime_jwks_key(header: dict[str, object]) -> dict[str, object]:
+    kid = str(header.get("kid", "")).strip()
+    keys = _runtime_jwks()["keys"]
+    matches: list[dict[str, object]] = []
+    for key in keys:
+        if not isinstance(key, dict):
+            continue
+        if key.get("kty") != "RSA":
+            continue
+        if key.get("use") not in {None, "sig"}:
+            continue
+        if kid and key.get("kid") != kid:
+            continue
+        if key.get("alg") not in {None, "RS256"}:
+            continue
+        matches.append(key)
+    if not matches:
+        raise HTTPException(status_code=401, detail="runtime JWT signing key is not trusted")
+    if not kid and len(matches) > 1:
+        raise HTTPException(status_code=401, detail="runtime JWT kid is required when JWKS has multiple RSA signing keys")
+    return matches[0]
+
+
+def _verify_runtime_jwks_jwt(parts: list[str], header: dict[str, object]) -> dict[str, object]:
+    if str(header.get("alg", "")).upper() != "RS256":
+        raise HTTPException(status_code=401, detail="runtime JWT algorithm is not allowed")
+    key = _select_runtime_jwks_key(header)
+    try:
+        public_key = rsa.RSAPublicNumbers(
+            e=_int_from_base64url(key.get("e"), field="e"),
+            n=_int_from_base64url(key.get("n"), field="n"),
+        ).public_key()
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail="runtime JWKS RSA key is invalid") from exc
+    try:
+        signature = _base64url_decode(parts[2])
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail="invalid runtime JWT signature") from exc
+    try:
+        public_key.verify(
+            signature,
+            f"{parts[0]}.{parts[1]}".encode("ascii"),
+            padding.PKCS1v15(),
+            hashes.SHA256(),
+        )
+    except InvalidSignature as exc:
+        raise HTTPException(status_code=401, detail="invalid runtime JWT signature") from exc
+    return _json_from_base64url(parts[1])
+
+
+def decode_runtime_jwt_actor(authorization: str | None) -> str:
+    auth_mode = runtime_auth_mode()
+    if not authorization or not authorization.strip().lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail=f"Authorization Bearer JWT is required when runtime auth mode is {auth_mode}",
+        )
+    token = authorization.strip()[7:].strip()
+    parts = token.split(".")
+    if len(parts) != 3:
+        raise HTTPException(status_code=401, detail="invalid runtime JWT")
+    header = _json_from_base64url(parts[0])
+    if auth_mode == RUNTIME_AUTH_MODE_JWKS:
+        payload = _verify_runtime_jwks_jwt(parts, header)
+    else:
+        payload = _verify_runtime_hs256_jwt(parts, header)
+    return _validate_runtime_jwt_claims(payload)
+
+
 @app.middleware("http")
 async def runtime_jwt_actor_middleware(request: Request, call_next):
     actor_token = _RUNTIME_JWT_ACTOR_ID.set(None)
     try:
-        if runtime_project_access_control_enabled() and runtime_auth_mode() == RUNTIME_AUTH_MODE_JWT:
+        if runtime_project_access_control_enabled() and runtime_auth_mode() in {RUNTIME_AUTH_MODE_JWT, RUNTIME_AUTH_MODE_JWKS}:
             authorization = request.headers.get("authorization")
             if authorization:
                 _RUNTIME_JWT_ACTOR_ID.set(decode_runtime_jwt_actor(authorization))
@@ -427,13 +524,17 @@ async def runtime_metrics_middleware(request: Request, call_next):
 
 
 def require_runtime_actor_id(x_geno_actor_id: str | None = None) -> str | None:
-    if runtime_project_access_control_enabled() and runtime_auth_mode() == RUNTIME_AUTH_MODE_JWT:
-        _runtime_jwt_secret()
+    auth_mode = runtime_auth_mode()
+    if runtime_project_access_control_enabled() and auth_mode in {RUNTIME_AUTH_MODE_JWT, RUNTIME_AUTH_MODE_JWKS}:
+        if auth_mode == RUNTIME_AUTH_MODE_JWT:
+            _runtime_jwt_secret()
+        else:
+            _runtime_jwks()
         actor_id = _RUNTIME_JWT_ACTOR_ID.get()
         if not actor_id:
             raise HTTPException(
                 status_code=401,
-                detail="Authorization Bearer JWT is required when runtime auth mode is jwt",
+                detail=f"Authorization Bearer JWT is required when runtime auth mode is {auth_mode}",
             )
         return actor_id
     actor_id = x_geno_actor_id.strip() if x_geno_actor_id else ""

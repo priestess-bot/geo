@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import queue
 import threading
@@ -21,6 +22,12 @@ RUNTIME_DB_POOL_TIMEOUT_SECONDS_ENV = "GENO_RUNTIME_DB_POOL_TIMEOUT_SECONDS"
 RUNTIME_DB_POOL_ENABLED_VALUES = {"1", "true", "yes", "on"}
 DEFAULT_RUNTIME_DB_POOL_MAX_SIZE = 10
 DEFAULT_RUNTIME_DB_POOL_TIMEOUT_SECONDS = 5.0
+RUNTIME_PROJECT_ACCESS_CONTROL_ENV = "GENO_RUNTIME_PROJECT_ACCESS_CONTROL"
+RUNTIME_AUTH_MODE_ENV = "GENO_RUNTIME_AUTH_MODE"
+RUNTIME_JWT_SECRET_ENV = "GENO_RUNTIME_JWT_SECRET"
+RUNTIME_JWKS_JSON_ENV = "GENO_RUNTIME_JWKS_JSON"
+RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES = {"1", "true", "yes", "on"}
+RUNTIME_AUTH_MODES = {"header", "jwt", "jwks"}
 
 
 @dataclass(frozen=True)
@@ -396,24 +403,33 @@ def runtime_object_store_diagnostic(env: Mapping[str, str] | None = None) -> Run
 
 def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComponentDiagnostic:
     runtime_env = os.environ if env is None else env
-    access_control_enabled = runtime_env.get("GENO_RUNTIME_PROJECT_ACCESS_CONTROL", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    auth_mode = runtime_env.get("GENO_RUNTIME_AUTH_MODE", "header").strip().lower() or "header"
-    jwt_secret_configured = bool(runtime_env.get("GENO_RUNTIME_JWT_SECRET", "").strip())
+    access_control_enabled = (
+        runtime_env.get(RUNTIME_PROJECT_ACCESS_CONTROL_ENV, "").strip().lower()
+        in RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES
+    )
+    auth_mode = runtime_env.get(RUNTIME_AUTH_MODE_ENV, "header").strip().lower() or "header"
+    jwt_secret_configured = bool(runtime_env.get(RUNTIME_JWT_SECRET_ENV, "").strip())
+    jwks_json = runtime_env.get(RUNTIME_JWKS_JSON_ENV, "").strip()
+    jwks_key_count: int | None = None
+    if jwks_json:
+        try:
+            jwks_payload = json.loads(jwks_json)
+        except ValueError:
+            jwks_payload = None
+        if isinstance(jwks_payload, dict) and isinstance(jwks_payload.get("keys"), list):
+            jwks_key_count = len(jwks_payload["keys"])
     metadata: dict[str, object] = {
         "project_access_control_enabled": access_control_enabled,
         "auth_mode": auth_mode,
         "jwt_secret": "configured" if jwt_secret_configured else "missing",
+        "jwks_json": "configured" if jwks_json else "missing",
+        "jwks_key_count": jwks_key_count if jwks_key_count is not None else "unknown",
     }
-    if auth_mode not in {"header", "jwt"}:
+    if auth_mode not in RUNTIME_AUTH_MODES:
         return RuntimeComponentDiagnostic(
             name="runtime_auth",
             status="fail",
-            detail="GENO_RUNTIME_AUTH_MODE must be header or jwt",
+            detail="GENO_RUNTIME_AUTH_MODE must be header, jwt, or jwks",
             metadata=metadata,
         )
     if access_control_enabled and auth_mode == "jwt" and not jwt_secret_configured:
@@ -423,6 +439,28 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
             detail="GENO_RUNTIME_JWT_SECRET is required when JWT auth mode is enabled",
             metadata=metadata,
         )
+    if access_control_enabled and auth_mode == "jwks":
+        if not jwks_json:
+            return RuntimeComponentDiagnostic(
+                name="runtime_auth",
+                status="fail",
+                detail="GENO_RUNTIME_JWKS_JSON is required when JWKS auth mode is enabled",
+                metadata=metadata,
+            )
+        if jwks_key_count is None:
+            return RuntimeComponentDiagnostic(
+                name="runtime_auth",
+                status="fail",
+                detail="GENO_RUNTIME_JWKS_JSON must be valid JWKS JSON with a keys array",
+                metadata=metadata,
+            )
+        if jwks_key_count < 1:
+            return RuntimeComponentDiagnostic(
+                name="runtime_auth",
+                status="fail",
+                detail="GENO_RUNTIME_JWKS_JSON must contain at least one key",
+                metadata=metadata,
+            )
     if not access_control_enabled:
         return RuntimeComponentDiagnostic(
             name="runtime_auth",

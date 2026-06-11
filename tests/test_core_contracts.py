@@ -3624,6 +3624,35 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("GENO_RUNTIME_JWT_SECRET", diagnostic.detail)
         self.assertEqual(valid.status, "pass")
 
+    def test_runtime_auth_diagnostic_validates_jwks_json(self) -> None:
+        missing = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+            }
+        )
+        invalid = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_JWKS_JSON": "{}",
+            }
+        )
+        valid = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_JWKS_JSON": '{"keys":[{"kty":"RSA","kid":"runtime-key-1","n":"AQ","e":"AQAB"}]}',
+            }
+        )
+
+        self.assertEqual(missing.status, "fail")
+        self.assertIn("GENO_RUNTIME_JWKS_JSON", missing.detail)
+        self.assertEqual(invalid.status, "fail")
+        self.assertIn("keys array", invalid.detail)
+        self.assertEqual(valid.status, "pass")
+        self.assertEqual(valid.metadata["jwks_key_count"], 1)
+
     def test_build_runtime_diagnostics_aggregates_component_status(self) -> None:
         diagnostic = build_runtime_diagnostics({})
 
