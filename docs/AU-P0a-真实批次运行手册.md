@@ -162,7 +162,7 @@ runbook dry-run 必须确认：
 
 evidence package 必须确认：
 
-- runbook、readiness、preflight、small batch、full batch 和对应 manifest 是否存在
+- runbook、runbook execution dry-run、readiness、preflight、small batch、full batch 和对应 manifest 是否存在
 - 每个已存在文件的 file sha256、payload hash 或 manifest hash
 - 每个 payload/manifest 的 verifier status、ready_for_design_partner 和 blocking reasons
 - missing_artifacts、failed_artifacts、blocking_reasons 和 package_payload_hash
@@ -170,14 +170,14 @@ evidence package 必须确认：
 package verifier 必须确认：
 
 - package_payload_hash 可复算
-- artifacts 至少包含 runbook、readiness、preflight/small/full JSON 与 manifest
+- artifacts 至少包含 runbook、runbook_execution、readiness、preflight/small/full JSON 与 manifest
 - summary 的 artifact_count、missing_artifacts、failed_artifacts、ready_artifacts、blocking_reasons 可由 artifacts 反推
 - `ready_for_design_partner` 与 preflight/small/full JSON 和 manifest 的 ready 状态一致
 
 status report 必须确认：
 
 - status_report_hash 可由 `make verify-au-p0a-status` 复算
-- runbook verifier、preflight/small_batch/full_batch readiness、package verifier 均有机器可读摘要
+- runbook verifier、runbook execution dry-run、preflight/small_batch/full_batch readiness、package verifier 均有机器可读摘要
 - completion_percent、design_ready_artifact_percent、remaining_blockers 和 next_action 能回答当前还差多少
 - 默认可用于日常进度复盘；需要硬门禁时用 `python3 scripts/verify_au_p0a_status_report.py --require-design-partner-ready`
 

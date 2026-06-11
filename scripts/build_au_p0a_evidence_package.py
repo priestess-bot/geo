@@ -15,6 +15,8 @@ if str(ROOT) not in sys.path:
 
 from scripts.build_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_RUNBOOK_PATH  # noqa: E402
 from scripts.build_preflight_manifest import MANIFEST_VERSION, compute_manifest_payload_hash  # noqa: E402
+from scripts.run_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_RUNBOOK_EXECUTION_PATH  # noqa: E402
+from scripts.verify_au_p0a_runbook_execution import verify_au_p0a_runbook_execution  # noqa: E402
 from scripts.verify_au_p0a_runbook import verify_au_p0a_runbook  # noqa: E402
 from scripts.verify_preflight_payload import verify_preflight_payload  # noqa: E402
 
@@ -141,6 +143,34 @@ def _readiness_artifact(path: Path) -> dict[str, Any]:
     return entry
 
 
+def _runbook_execution_artifact(path: Path) -> dict[str, Any]:
+    payload, entry = _load_json(
+        path,
+        missing_error="runbook_execution_file_missing",
+        invalid_prefix="runbook_execution_json_invalid",
+    )
+    if not isinstance(payload, dict):
+        entry.setdefault("status", "fail")
+        entry.setdefault("errors", ["runbook_execution_not_json_object"])
+        return entry
+    verifier = verify_au_p0a_runbook_execution(payload, path=path)
+    entry.update(
+        {
+            "status": verifier["status"],
+            "errors": verifier["errors"],
+            "hash_valid": verifier["hash_valid"],
+            "execution_version": verifier.get("execution_version", ""),
+            "execution_payload_hash": verifier.get("execution_payload_hash", ""),
+            "mode": verifier.get("mode", ""),
+            "ready_to_execute": verifier.get("ready_to_execute", False),
+            "planned_step_count": verifier.get("planned_step_count"),
+            "recorded_step_count": verifier.get("recorded_step_count"),
+            "executed_command_count": verifier.get("executed_command_count"),
+        }
+    )
+    return entry
+
+
 def _payload_artifact(path: Path) -> dict[str, Any]:
     payload, entry = _load_json(
         path,
@@ -240,6 +270,7 @@ def build_au_p0a_evidence_package(
     *,
     runbook_path: Path = Path(DEFAULT_RUNBOOK_PATH),
     readiness_path: Path | None = None,
+    runbook_execution_path: Path | None = None,
     output_path: Path | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
@@ -248,9 +279,16 @@ def build_au_p0a_evidence_package(
     effective_readiness_path = readiness_path or Path(
         os.environ.get("GENO_AU_P0A_READINESS_OUTPUT_PATH", "docs/runtime_preflight/au-p0a-readiness-latest.json")
     )
+    effective_runbook_execution_path = runbook_execution_path or Path(
+        os.environ.get("GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_RUNBOOK_EXECUTION_PATH)
+    )
     readiness_entry = _readiness_artifact(effective_readiness_path)
 
-    artifacts: dict[str, Any] = {"runbook": runbook_entry, "readiness": readiness_entry}
+    artifacts: dict[str, Any] = {
+        "runbook": runbook_entry,
+        "runbook_execution": _runbook_execution_artifact(effective_runbook_execution_path),
+        "readiness": readiness_entry,
+    }
     for artifact_name, path_key in PAYLOAD_ARTIFACTS:
         path_value = artifact_paths.get(path_key)
         if not path_value:
@@ -271,7 +309,9 @@ def build_au_p0a_evidence_package(
     ready_artifacts = [
         name
         for name, entry in artifacts.items()
-        if entry.get("ready_for_design_partner") is True or entry.get("ready_to_run_phase") is True
+        if entry.get("ready_for_design_partner") is True
+        or entry.get("ready_to_run_phase") is True
+        or entry.get("ready_to_execute") is True
     ]
     blocking_reasons = [
         f"{name}:{error}"
@@ -293,6 +333,7 @@ def build_au_p0a_evidence_package(
         "runbook_path": str(runbook_path),
         "output_path": str(output_path) if output_path else "",
         "artifact_paths": artifact_paths,
+        "runbook_execution_path": str(effective_runbook_execution_path),
         "summary": {
             "artifact_count": len(artifacts),
             "missing_artifacts": missing_artifacts,
@@ -319,6 +360,11 @@ def parse_args() -> argparse.Namespace:
         help="Path to the latest AU P0a readiness JSON.",
     )
     parser.add_argument(
+        "--runbook-execution-path",
+        default=os.environ.get("GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_RUNBOOK_EXECUTION_PATH),
+        help="Path to the latest AU P0a runbook execution dry-run JSON.",
+    )
+    parser.add_argument(
         "--output-path",
         default=os.environ.get("GENO_AU_P0A_PACKAGE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0a evidence package JSON.",
@@ -333,6 +379,7 @@ def main() -> None:
     package = build_au_p0a_evidence_package(
         runbook_path=Path(args.runbook_path),
         readiness_path=Path(args.readiness_path),
+        runbook_execution_path=Path(args.runbook_execution_path),
         output_path=output_path,
         generated_at=args.generated_at,
     )

@@ -14,6 +14,7 @@ from scripts.build_au_p0a_evidence_package import (
 )
 from scripts.build_au_p0a_runbook import build_au_p0a_runbook
 from scripts.build_preflight_manifest import build_preflight_manifest
+from scripts.run_au_p0a_runbook import run_au_p0a_runbook
 from scripts.verify_preflight_payload import compute_preflight_payload_hash, verify_preflight_payload
 
 
@@ -85,6 +86,24 @@ class AuP0aEvidencePackageTest(unittest.TestCase):
         }
         path.write_text(json.dumps(payload), encoding="utf-8")
 
+    def _write_runbook_execution(self, path: Path, runbook_path: Path, *, ready: bool = True) -> None:
+        env = (
+            {
+                "PERPLEXITY_API_KEY": "perplexity-key",
+                "OPENAI_API_KEY": "openai-key",
+                "DATABASE_URL": "postgresql://user:pass@example.test/db",
+            }
+            if ready
+            else {}
+        )
+        execution = run_au_p0a_runbook(
+            runbook_path=runbook_path,
+            output_path=path,
+            env=env,
+            generated_at="2026-06-11T00:00:00Z",
+        )
+        path.write_text(json.dumps(execution), encoding="utf-8")
+
     def _write_payload_and_manifest(
         self,
         payload_path: Path,
@@ -117,11 +136,14 @@ class AuP0aEvidencePackageTest(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             runbook_path, _runbook = self._write_runbook(temp_dir)
             readiness_path = Path(temp_dir) / "readiness.json"
+            execution_path = Path(temp_dir) / "execution.json"
             self._write_readiness(readiness_path, status="fail")
+            self._write_runbook_execution(execution_path, runbook_path, ready=False)
 
             package = build_au_p0a_evidence_package(
                 runbook_path=runbook_path,
                 readiness_path=readiness_path,
+                runbook_execution_path=execution_path,
                 generated_at="2026-06-11T00:00:00Z",
             )
 
@@ -136,7 +158,9 @@ class AuP0aEvidencePackageTest(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             runbook_path, runbook = self._write_runbook(temp_dir)
             readiness_path = Path(temp_dir) / "readiness.json"
+            execution_path = Path(temp_dir) / "execution.json"
             self._write_readiness(readiness_path)
+            self._write_runbook_execution(execution_path, runbook_path)
             artifact_paths = runbook["artifact_paths"]  # type: ignore[index]
             self._write_payload_and_manifest(
                 Path(artifact_paths["preflight_json"]),  # type: ignore[index]
@@ -166,6 +190,7 @@ class AuP0aEvidencePackageTest(unittest.TestCase):
             package = build_au_p0a_evidence_package(
                 runbook_path=runbook_path,
                 readiness_path=readiness_path,
+                runbook_execution_path=execution_path,
                 generated_at="2026-06-11T00:00:00Z",
             )
 
@@ -179,8 +204,10 @@ class AuP0aEvidencePackageTest(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             runbook_path, _runbook = self._write_runbook(temp_dir)
             readiness_path = Path(temp_dir) / "readiness.json"
+            execution_path = Path(temp_dir) / "execution.json"
             output_path = Path(temp_dir) / "package.json"
             self._write_readiness(readiness_path, status="fail")
+            self._write_runbook_execution(execution_path, runbook_path, ready=False)
 
             result = subprocess.run(
                 [
@@ -190,6 +217,8 @@ class AuP0aEvidencePackageTest(unittest.TestCase):
                     str(runbook_path),
                     "--readiness-path",
                     str(readiness_path),
+                    "--runbook-execution-path",
+                    str(execution_path),
                     "--output-path",
                     str(output_path),
                     "--generated-at",

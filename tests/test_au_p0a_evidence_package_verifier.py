@@ -13,6 +13,7 @@ from scripts.build_au_p0a_evidence_package import (
 )
 from scripts.build_au_p0a_runbook import build_au_p0a_runbook
 from scripts.build_preflight_manifest import build_preflight_manifest
+from scripts.run_au_p0a_runbook import run_au_p0a_runbook
 from scripts.verify_au_p0a_evidence_package import verify_au_p0a_evidence_package
 from scripts.verify_preflight_payload import compute_preflight_payload_hash, verify_preflight_payload
 
@@ -74,6 +75,24 @@ class AuP0aEvidencePackageVerifierTest(unittest.TestCase):
         runbook = build_au_p0a_runbook(artifact_dir=artifact_dir, generated_at="2026-06-11T00:00:00Z")
         runbook_path = Path(temp_dir) / "runbook.json"
         runbook_path.write_text(json.dumps(runbook), encoding="utf-8")
+        execution_path = Path(temp_dir) / "execution.json"
+        execution_path.write_text(
+            json.dumps(
+                run_au_p0a_runbook(
+                    runbook_path=runbook_path,
+                    output_path=execution_path,
+                    env={
+                        "PERPLEXITY_API_KEY": "perplexity-key",
+                        "OPENAI_API_KEY": "openai-key",
+                        "DATABASE_URL": "postgresql://user:pass@example.test/db",
+                    }
+                    if complete
+                    else {},
+                    generated_at="2026-06-11T00:00:00Z",
+                )
+            ),
+            encoding="utf-8",
+        )
         readiness_path = Path(temp_dir) / "readiness.json"
         readiness_path.write_text(
             json.dumps(
@@ -112,6 +131,7 @@ class AuP0aEvidencePackageVerifierTest(unittest.TestCase):
         return build_au_p0a_evidence_package(
             runbook_path=runbook_path,
             readiness_path=readiness_path,
+            runbook_execution_path=execution_path,
             generated_at="2026-06-11T00:00:00Z",
         )
 
@@ -123,7 +143,7 @@ class AuP0aEvidencePackageVerifierTest(unittest.TestCase):
         self.assertEqual(result["status"], "pass")
         self.assertTrue(result["hash_valid"])
         self.assertTrue(result["ready_for_design_partner"])
-        self.assertEqual(result["artifact_count"], 8)
+        self.assertEqual(result["artifact_count"], 9)
 
     def test_hash_mismatch_fails(self) -> None:
         with TemporaryDirectory() as temp_dir:

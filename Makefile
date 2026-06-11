@@ -77,13 +77,13 @@ au-p0a-readiness:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_readiness.py --phase $${GENO_AU_P0A_READINESS_PHASE:-preflight} --runbook-path $${GENO_AU_P0A_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-latest.json} --output-path $${GENO_AU_P0A_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-readiness-latest.json}
 
 au-p0a-package:
-	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_p0a_evidence_package.py --runbook-path $${GENO_AU_P0A_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-latest.json} --readiness-path $${GENO_AU_P0A_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-readiness-latest.json} --output-path $${GENO_AU_P0A_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-evidence-package-latest.json}
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_p0a_evidence_package.py --runbook-path $${GENO_AU_P0A_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-latest.json} --readiness-path $${GENO_AU_P0A_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-readiness-latest.json} --runbook-execution-path $${GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-execution-latest.json} --output-path $${GENO_AU_P0A_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-evidence-package-latest.json}
 
 verify-au-p0a-package:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_evidence_package.py $${GENO_AU_P0A_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-evidence-package-latest.json}
 
 au-p0a-status:
-	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_p0a_status_report.py --runbook-path $${GENO_AU_P0A_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-latest.json} --readiness-path $${GENO_AU_P0A_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-readiness-latest.json} --package-path $${GENO_AU_P0A_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-evidence-package-latest.json} --output-path $${GENO_AU_P0A_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-status-latest.json}
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_p0a_status_report.py --runbook-path $${GENO_AU_P0A_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-latest.json} --readiness-path $${GENO_AU_P0A_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-readiness-latest.json} --runbook-execution-path $${GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-execution-latest.json} --package-path $${GENO_AU_P0A_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-evidence-package-latest.json} --output-path $${GENO_AU_P0A_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-status-latest.json}
 
 verify-au-p0a-status:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_status_report.py $${GENO_AU_P0A_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-status-latest.json}

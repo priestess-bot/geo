@@ -20,6 +20,7 @@ from scripts.build_au_p0a_evidence_package import (  # noqa: E402
 
 REQUIRED_ARTIFACTS = (
     "runbook",
+    "runbook_execution",
     "readiness",
     "preflight_json",
     "preflight_manifest",
@@ -96,6 +97,7 @@ def verify_au_p0a_evidence_package(
         for name, artifact in artifacts.items()
         if _as_dict(artifact).get("ready_for_design_partner") is True
         or _as_dict(artifact).get("ready_to_run_phase") is True
+        or _as_dict(artifact).get("ready_to_execute") is True
     )
     expected_blocking = sorted(
         f"{name}:{error}"
