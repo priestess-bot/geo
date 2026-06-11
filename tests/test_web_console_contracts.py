@@ -136,6 +136,11 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn('name="status"', page_source)
         self.assertIn("client_ready", page_source)
         self.assertIn("Record status", page_source)
+        self.assertIn("reportArtifactSignedUrlPath", page_source)
+        self.assertIn("/signed-url", page_source)
+        self.assertIn("Signed PDF URL", page_source)
+        self.assertIn("Signed white-label URL", page_source)
+        self.assertIn("HMAC signed URL endpoint", page_source)
         self.assertIn(".reportManagementForm", css_source)
 
     def test_runtime_console_surfaces_project_member_management(self) -> None:

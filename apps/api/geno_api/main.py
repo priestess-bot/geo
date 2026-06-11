@@ -14,7 +14,7 @@ from contextvars import ContextVar
 from dataclasses import asdict
 from collections.abc import Mapping
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Query, Request
@@ -125,6 +125,10 @@ RUNTIME_JWT_ISSUER_ENV = "GENO_RUNTIME_JWT_ISSUER"
 RUNTIME_JWT_AUDIENCE_ENV = "GENO_RUNTIME_JWT_AUDIENCE"
 RUNTIME_JWT_CLOCK_SKEW_SECONDS_ENV = "GENO_RUNTIME_JWT_CLOCK_SKEW_SECONDS"
 RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES = {"1", "true", "yes", "on"}
+REPORT_ARTIFACT_SIGNING_SECRET_ENV = "GENO_REPORT_ARTIFACT_SIGNING_SECRET"
+REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS_ENV = "GENO_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS"
+DEFAULT_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS = 900.0
+MAX_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS = 86400.0
 PROJECT_MANAGE_ROLES = ("owner", "admin")
 PROJECT_ANALYZE_ROLES = ("owner", "admin", "analyst")
 _RUNTIME_JWT_ACTOR_ID: ContextVar[str | None] = ContextVar("geno_runtime_jwt_actor_id", default=None)
@@ -253,6 +257,96 @@ def _runtime_oidc_discovery_stale_if_error_seconds() -> float:
 
 def _runtime_jwks_fetch_timeout_seconds() -> float:
     return _positive_float_env(RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV, DEFAULT_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS)
+
+
+def _report_artifact_signing_secret() -> str:
+    secret = os.getenv(REPORT_ARTIFACT_SIGNING_SECRET_ENV, "").strip()
+    if not secret:
+        raise HTTPException(status_code=503, detail=f"{REPORT_ARTIFACT_SIGNING_SECRET_ENV} is required")
+    return secret
+
+
+def _report_artifact_signed_url_ttl_seconds() -> int:
+    ttl = _positive_float_env(
+        REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS_ENV,
+        DEFAULT_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS,
+    )
+    if ttl > MAX_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS:
+        raise HTTPException(
+            status_code=503,
+            detail=f"{REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS_ENV} must be <= {int(MAX_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS)}",
+        )
+    return int(ttl)
+
+
+def _report_artifact_signature_payload(
+    *,
+    report_export_id: str,
+    artifact_type: str,
+    template: str,
+    client_name: str | None,
+    prepared_by: str | None,
+    platform: str | None,
+    city: str | None,
+    intent_type: str | None,
+    status: str | None,
+    sort: str | None,
+    expires_at: int,
+    actor_id: str | None,
+) -> dict[str, object]:
+    return {
+        "actor_id": actor_id or "",
+        "city": city or "",
+        "client_name": client_name or "",
+        "expires_at": expires_at,
+        "intent_type": intent_type or "",
+        "platform": platform or "",
+        "prepared_by": prepared_by or "",
+        "report_export_id": report_export_id.strip(),
+        "sort": sort or "",
+        "status": status or "",
+        "template": template,
+        "type": artifact_type,
+    }
+
+
+def _canonical_report_artifact_signature_payload(payload: dict[str, object]) -> bytes:
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _sign_report_artifact_payload(payload: dict[str, object]) -> str:
+    digest = hmac.new(
+        _report_artifact_signing_secret().encode("utf-8"),
+        _canonical_report_artifact_signature_payload(payload),
+        hashlib.sha256,
+    ).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def _verify_report_artifact_signature(payload: dict[str, object], signature: str | None) -> None:
+    if not signature:
+        raise HTTPException(status_code=401, detail="report artifact signature is required")
+    try:
+        expires_at = int(payload["expires_at"])
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=401, detail="report artifact signed URL is invalid") from exc
+    if expires_at < int(time.time()):
+        raise HTTPException(status_code=401, detail="report artifact signed URL has expired")
+    expected = _sign_report_artifact_payload(payload)
+    if not hmac.compare_digest(signature, expected):
+        raise HTTPException(status_code=401, detail="report artifact signature is invalid")
+
+
+def _absolute_url_for_request(request: Request, path: str, query: dict[str, object]) -> str:
+    base_url = str(request.base_url).rstrip("/")
+    query_string = urlencode(
+        {
+            key: str(value)
+            for key, value in query.items()
+            if value is not None and str(value) != ""
+        }
+    )
+    return f"{base_url}{path}?{query_string}" if query_string else f"{base_url}{path}"
 
 
 def _runtime_jwks_from_json(raw_value: str) -> dict[str, Any]:
@@ -2261,6 +2355,7 @@ def create_runtime_fidelity_check(
 
 @app.get("/v1/reports/runtime/{report_export_id}/artifact")
 def runtime_report_artifact(
+    request: Request,
     report_export_id: str,
     artifact_type: str = Query(default="markdown", alias="type", pattern="^(markdown|csv|pdf)$"),
     template: str = Query(default="standard", pattern="^(standard|white_label)$"),
@@ -2271,15 +2366,39 @@ def runtime_report_artifact(
     intent_type: str | None = None,
     status: str | None = None,
     sort: str | None = None,
+    expires_at: int | None = None,
+    signature: str | None = None,
+    signed_actor_id: str | None = None,
     x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> Response:
-    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    signed_download = expires_at is not None or signature is not None
+    if signed_download:
+        payload = _report_artifact_signature_payload(
+            report_export_id=report_export_id,
+            artifact_type=artifact_type,
+            template=template,
+            client_name=client_name,
+            prepared_by=prepared_by,
+            platform=platform,
+            city=city,
+            intent_type=intent_type,
+            status=status,
+            sort=sort,
+            expires_at=expires_at or 0,
+            actor_id=signed_actor_id,
+        )
+        _verify_report_artifact_signature(payload, signature)
+        actor_id = signed_actor_id.strip() if signed_actor_id else None
+    else:
+        actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         if runtime_project_access_control_enabled():
+            if signed_download and not actor_id:
+                raise HTTPException(status_code=401, detail="signed_actor_id is required when runtime project access control is enabled")
             apply_runtime_project_db_context(repository, actor_id=actor_id)
             project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
             assert_runtime_project_access(
@@ -2314,10 +2433,94 @@ def runtime_report_artifact(
                 "X-GENO-Report-Artifact-Sort": artifact.sort,
                 "X-GENO-Report-Artifact-Row-Count": str(artifact.row_count),
                 "X-GENO-Report-Artifact-Total-Count": str(artifact.total_count),
+                "X-GENO-Report-Artifact-Signed": "true" if signed_download else "false",
             },
         )
     finally:
         close_repository_connection(repository)
+
+
+@app.get("/v1/reports/runtime/{report_export_id}/artifact/signed-url")
+def runtime_report_artifact_signed_url(
+    request: Request,
+    report_export_id: str,
+    artifact_type: str = Query(default="markdown", alias="type", pattern="^(markdown|csv|pdf)$"),
+    template: str = Query(default="standard", pattern="^(standard|white_label)$"),
+    client_name: str | None = None,
+    prepared_by: str | None = None,
+    platform: str | None = None,
+    city: str | None = None,
+    intent_type: str | None = None,
+    status: str | None = None,
+    sort: str | None = None,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    ttl_seconds = _report_artifact_signed_url_ttl_seconds()
+    expires_at = int(time.time()) + ttl_seconds
+    payload = _report_artifact_signature_payload(
+        report_export_id=report_export_id,
+        artifact_type=artifact_type,
+        template=template,
+        client_name=client_name,
+        prepared_by=prepared_by,
+        platform=platform,
+        city=city,
+        intent_type=intent_type,
+        status=status,
+        sort=sort,
+        expires_at=expires_at,
+        actor_id=actor_id,
+    )
+    signature = _sign_report_artifact_payload(payload)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        if runtime_project_access_control_enabled():
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
+        project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+        if project_id is None:
+            raise HTTPException(status_code=404, detail="report_export not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            require_project_id=True,
+        )
+    finally:
+        close_repository_connection(repository)
+
+    artifact_path = f"/v1/reports/runtime/{report_export_id}/artifact"
+    signed_query = {
+        "type": artifact_type,
+        "template": template,
+        "client_name": client_name,
+        "prepared_by": prepared_by,
+        "platform": platform,
+        "city": city,
+        "intent_type": intent_type,
+        "status": status,
+        "sort": sort,
+        "expires_at": expires_at,
+        "signed_actor_id": actor_id,
+        "signature": signature,
+    }
+    download_url = _absolute_url_for_request(request, artifact_path, signed_query)
+    return {
+        "report_export_id": report_export_id,
+        "artifact_type": artifact_type,
+        "template": template,
+        "expires_at": expires_at,
+        "ttl_seconds": ttl_seconds,
+        "download_url": download_url,
+        "signed_url_hash": hashlib.sha256(download_url.encode("utf-8")).hexdigest(),
+        "signature_payload_hash": hashlib.sha256(
+            _canonical_report_artifact_signature_payload(payload)
+        ).hexdigest(),
+        "signature_version": "report_artifact_hmac_sha256_v1",
+    }
 
 
 @app.get("/v1/action-plans/runtime")
@@ -3109,6 +3312,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/reports/runtime",
             "/v1/reports/runtime/{report_export_id}/management-events",
             "/v1/reports/runtime/{report_export_id}/artifact",
+            "/v1/reports/runtime/{report_export_id}/artifact/signed-url",
             "/v1/action-plans/runtime",
             "/v1/runtime-alerts",
             "/v1/content-engines/runtime",

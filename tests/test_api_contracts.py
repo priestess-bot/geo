@@ -2422,6 +2422,134 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["client_name"], "ExampleBrand AU")
         self.assertEqual(fake_repository.kwargs["prepared_by"], "Partner Agency")
 
+    def test_runtime_report_artifact_signed_url_requires_signing_secret(self) -> None:
+        class FakeRepository:
+            def get_report_export_project_id(self, *, report_export_id: str) -> str:
+                return "project-1"
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {}, clear=True):
+            response = self.client.get("/v1/reports/runtime/report-1/artifact/signed-url?type=pdf")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("GENO_REPORT_ARTIFACT_SIGNING_SECRET", response.json()["detail"])
+
+    def test_runtime_report_artifact_signed_url_downloads_and_rejects_tampering(self) -> None:
+        class FakeRepository:
+            def get_report_export_project_id(self, *, report_export_id: str) -> str:
+                self.report_export_id = report_export_id
+                return "project-1"
+
+            def get_runtime_report_artifact(self, **kwargs: object) -> RuntimeReportArtifact:
+                self.kwargs = kwargs
+                return RuntimeReportArtifact(
+                    report_export={"id": kwargs["report_export_id"], "report_version": "worker-runtime-v1"},
+                    artifact_type=str(kwargs["artifact_type"]),
+                    template=str(kwargs["template"]),
+                    template_payload={"template": kwargs["template"]},
+                    template_hash="template-hash",
+                    filename=f"worker-runtime-v1.{kwargs['artifact_type']}",
+                    media_type="text/markdown; charset=utf-8",
+                    content="signed artifact content",
+                    content_hash="artifact-hash",
+                    filters={"platform": kwargs["platform"]},
+                    filter_hash="filter-hash",
+                    sort=str(kwargs["sort"]),
+                    total_count=4,
+                    row_count=2,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict(
+            "os.environ",
+            {
+                "GENO_REPORT_ARTIFACT_SIGNING_SECRET": "signed-url-secret",
+                "GENO_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS": "600",
+            },
+            clear=True,
+        ):
+            signed_response = self.client.get(
+                "/v1/reports/runtime/report-1/artifact/signed-url"
+                "?type=markdown&platform=perplexity&sort=cost_desc"
+            )
+            self.assertEqual(signed_response.status_code, 200)
+            payload = signed_response.json()
+            self.assertEqual(payload["signature_version"], "report_artifact_hmac_sha256_v1")
+            self.assertEqual(payload["ttl_seconds"], 600)
+            self.assertIn("signature=", payload["download_url"])
+            self.assertIn("expires_at=", payload["download_url"])
+
+            download_path = payload["download_url"].replace("http://testserver", "")
+            download_response = self.client.get(download_path)
+            self.assertEqual(download_response.status_code, 200)
+            self.assertEqual(download_response.text, "signed artifact content")
+            self.assertEqual(download_response.headers["x-geno-report-artifact-signed"], "true")
+            self.assertEqual(fake_repository.kwargs["platform"], "perplexity")
+
+            tampered_path = download_path.replace("platform=perplexity", "platform=chatgpt")
+            tampered_response = self.client.get(tampered_path)
+            self.assertEqual(tampered_response.status_code, 401)
+            self.assertIn("signature is invalid", tampered_response.json()["detail"])
+
+    def test_runtime_report_artifact_signed_url_preserves_actor_under_access_control(self) -> None:
+        class FakeRepository:
+            def set_runtime_project_access_context(self, **kwargs: object) -> None:
+                self.context = kwargs
+
+            def get_report_export_project_id(self, *, report_export_id: str) -> str:
+                self.report_export_id = report_export_id
+                return "project-1"
+
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
+                self.member_check = {"project_id": project_id, "actor_id": actor_id}
+                return "owner"
+
+            def get_runtime_report_artifact(self, **kwargs: object) -> RuntimeReportArtifact:
+                return RuntimeReportArtifact(
+                    report_export={"id": kwargs["report_export_id"], "report_version": "worker-runtime-v1"},
+                    artifact_type=str(kwargs["artifact_type"]),
+                    template=str(kwargs["template"]),
+                    template_payload={"template": kwargs["template"]},
+                    template_hash="template-hash",
+                    filename="worker-runtime-v1.pdf",
+                    media_type="application/pdf",
+                    content=b"%PDF-1.4\nsigned\n%%EOF\n",
+                    content_hash="artifact-hash",
+                    filters={},
+                    filter_hash="filter-hash",
+                    sort=str(kwargs["sort"]),
+                    total_count=1,
+                    row_count=1,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict(
+            "os.environ",
+            {
+                "GENO_REPORT_ARTIFACT_SIGNING_SECRET": "signed-url-secret",
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+            },
+            clear=True,
+        ):
+            signed_response = self.client.get(
+                "/v1/reports/runtime/report-1/artifact/signed-url?type=pdf",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+            self.assertEqual(signed_response.status_code, 200)
+            download_url = signed_response.json()["download_url"]
+            self.assertIn("signed_actor_id=agency-owner", download_url)
+
+            download_path = download_url.replace("http://testserver", "")
+            download_response = self.client.get(download_path)
+        self.assertEqual(download_response.status_code, 200)
+        self.assertEqual(download_response.headers["x-geno-report-artifact-signed"], "true")
+        self.assertEqual(fake_repository.context["actor_id"], "agency-owner")
+        self.assertEqual(fake_repository.member_check["actor_id"], "agency-owner")
+
     def test_runtime_action_plans_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/action-plans/runtime")
         self.assertEqual(response.status_code, 503)
@@ -2824,6 +2952,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/reports/runtime", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/management-events", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/artifact", payload["persistence"])
+        self.assertIn("/v1/reports/runtime/{report_export_id}/artifact/signed-url", payload["persistence"])
         self.assertIn("/v1/action-plans/runtime", payload["persistence"])
         self.assertIn("/v1/runtime-alerts", payload["persistence"])
         self.assertIn("/v1/content-engines/runtime", payload["persistence"])

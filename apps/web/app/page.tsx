@@ -1361,6 +1361,16 @@ function reportArtifactPath(
   });
 }
 
+function reportArtifactSignedUrlPath(
+  reportArtifactBase: string | null,
+  artifactType: "markdown" | "csv" | "pdf",
+  filters: RuntimeFilters,
+  extras: Record<string, string | number | undefined> = {}
+): string | null {
+  if (!reportArtifactBase) return null;
+  return reportArtifactPath(`${reportArtifactBase}/signed-url`, artifactType, filters, extras);
+}
+
 async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   data: RuntimeData;
   error: string | null;
@@ -2134,6 +2144,7 @@ export default async function Home({
   const reportMarkdownUrl = reportArtifactPath(reportArtifactBase, "markdown", { ...filters, sort: evidenceSort });
   const reportCsvUrl = reportArtifactPath(reportArtifactBase, "csv", { ...filters, sort: evidenceSort });
   const reportPdfUrl = reportArtifactPath(reportArtifactBase, "pdf", { ...filters, sort: evidenceSort });
+  const reportSignedPdfUrl = reportArtifactSignedUrlPath(reportArtifactBase, "pdf", { ...filters, sort: evidenceSort });
   const whiteLabelClientName =
     projectBrandKit?.client_name || latestProject?.brand?.canonical_name || latestProject?.project.target_brand || "Client";
   const whiteLabelPreparedBy = projectBrandKit?.prepared_by || "GENO SaaS AU";
@@ -2143,6 +2154,16 @@ export default async function Home({
   const whiteLabelFooterText = projectBrandKit?.footer_text || "Prepared for AU GEO visibility review";
   const brandKitAudit = data.brandKit?.audit_events[0];
   const reportWhiteLabelPdfUrl = reportArtifactPath(
+    reportArtifactBase,
+    "pdf",
+    { ...filters, sort: evidenceSort },
+    {
+      template: "white_label",
+      client_name: whiteLabelClientName,
+      prepared_by: whiteLabelPreparedBy
+    }
+  );
+  const reportSignedWhiteLabelPdfUrl = reportArtifactSignedUrlPath(
     reportArtifactBase,
     "pdf",
     { ...filters, sort: evidenceSort },
@@ -3223,6 +3244,8 @@ export default async function Home({
                 {reportCsvUrl ? <a href={reportCsvUrl}>Download CSV</a> : null}
                 {reportPdfUrl ? <a href={reportPdfUrl}>Download PDF</a> : null}
                 {reportWhiteLabelPdfUrl ? <a href={reportWhiteLabelPdfUrl}>White-label PDF</a> : null}
+                {reportSignedPdfUrl ? <a href={reportSignedPdfUrl}>Signed PDF URL</a> : null}
+                {reportSignedWhiteLabelPdfUrl ? <a href={reportSignedWhiteLabelPdfUrl}>Signed white-label URL</a> : null}
               </div>
               <div className="traceLinkRow" aria-label="report trace links">
                 <NodeLink label="Trace bundle" kind="traceability-map" value="runtime" />
@@ -3240,6 +3263,10 @@ export default async function Home({
                   label="White-label template"
                   value={reportWhiteLabelPdfUrl?.replace(displayUrl, "") || "No white-label artifact"}
                 />
+                <Fact
+                  label="Signed artifact URL"
+                  value={reportSignedPdfUrl?.replace(displayUrl, "") || "No signed artifact URL"}
+                />
               </dl>
             </div>
           ) : (
@@ -3256,6 +3283,12 @@ export default async function Home({
                 const csvUrl = reportArtifactPath(artifactBase, "csv", reportArtifactFilters);
                 const pdfUrl = reportArtifactPath(artifactBase, "pdf", reportArtifactFilters);
                 const whiteLabelPdfUrl = reportArtifactPath(artifactBase, "pdf", reportArtifactFilters, {
+                  template: "white_label",
+                  client_name: whiteLabelClientName,
+                  prepared_by: whiteLabelPreparedBy
+                });
+                const signedPdfUrl = reportArtifactSignedUrlPath(artifactBase, "pdf", reportArtifactFilters);
+                const signedWhiteLabelPdfUrl = reportArtifactSignedUrlPath(artifactBase, "pdf", reportArtifactFilters, {
                   template: "white_label",
                   client_name: whiteLabelClientName,
                   prepared_by: whiteLabelPreparedBy
@@ -3288,6 +3321,8 @@ export default async function Home({
                       {csvUrl ? <a href={csvUrl}>CSV</a> : null}
                       {pdfUrl ? <a href={pdfUrl}>PDF</a> : null}
                       {whiteLabelPdfUrl ? <a href={whiteLabelPdfUrl}>White-label PDF</a> : null}
+                      {signedPdfUrl ? <a href={signedPdfUrl}>Signed PDF URL</a> : null}
+                      {signedWhiteLabelPdfUrl ? <a href={signedWhiteLabelPdfUrl}>Signed white-label URL</a> : null}
                     </div>
                     <form action={recordRuntimeReportManagementEvent} className="reportManagementForm">
                       <input type="hidden" name="report_export_id" value={report.report_export.id} />
@@ -3333,6 +3368,11 @@ export default async function Home({
                         <strong>White-label template</strong>
                         <span>{whiteLabelPdfUrl?.replace(displayUrl, "") || "No white-label artifact path"}</span>
                         <small>{whiteLabelClientName} · {whiteLabelPreparedBy} · template white_label</small>
+                      </li>
+                      <li>
+                        <strong>Signed artifact URL</strong>
+                        <span>{signedPdfUrl?.replace(displayUrl, "") || "No signed artifact URL"}</span>
+                        <small>HMAC signed URL endpoint · configurable TTL</small>
                       </li>
                       <li>
                         <strong>{report.audit_events[0]?.event_type || "no report audit"}</strong>
