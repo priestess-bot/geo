@@ -4,6 +4,7 @@ import os
 import queue
 import threading
 from collections.abc import Mapping
+from dataclasses import dataclass, asdict
 from typing import Callable
 
 from geno_core.object_store import RequestFn, S3CompatibleObjectStore
@@ -20,6 +21,23 @@ RUNTIME_DB_POOL_TIMEOUT_SECONDS_ENV = "GENO_RUNTIME_DB_POOL_TIMEOUT_SECONDS"
 RUNTIME_DB_POOL_ENABLED_VALUES = {"1", "true", "yes", "on"}
 DEFAULT_RUNTIME_DB_POOL_MAX_SIZE = 10
 DEFAULT_RUNTIME_DB_POOL_TIMEOUT_SECONDS = 5.0
+
+
+@dataclass(frozen=True)
+class RuntimeComponentDiagnostic:
+    name: str
+    status: str
+    detail: str
+    metadata: dict[str, object]
+
+
+@dataclass(frozen=True)
+class RuntimeDiagnostics:
+    status: str
+    checks: tuple[RuntimeComponentDiagnostic, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
 
 
 def _pool_enabled(runtime_env: Mapping[str, str]) -> bool:
@@ -46,6 +64,12 @@ def _non_negative_float_from_env(runtime_env: Mapping[str, str], key: str, defau
     if value < 0:
         raise RuntimePersistenceError(f"{key} must be a non-negative number")
     return value
+
+
+def _redacted_url_status(database_url: str) -> str:
+    if not database_url:
+        return "missing"
+    return "configured"
 
 
 def connect_postgres_from_env(
@@ -239,6 +263,31 @@ def _runtime_postgres_pool_from_env(
         return _RUNTIME_POSTGRES_POOL
 
 
+def runtime_postgres_pool_snapshot(env: Mapping[str, str] | None = None) -> dict[str, object]:
+    runtime_env = os.environ if env is None else env
+    enabled = _pool_enabled(runtime_env)
+    snapshot: dict[str, object] = {"enabled": enabled}
+    if enabled:
+        snapshot["max_size"] = _positive_int_from_env(
+            runtime_env,
+            RUNTIME_DB_POOL_MAX_SIZE_ENV,
+            DEFAULT_RUNTIME_DB_POOL_MAX_SIZE,
+        )
+        snapshot["timeout_seconds"] = _non_negative_float_from_env(
+            runtime_env,
+            RUNTIME_DB_POOL_TIMEOUT_SECONDS_ENV,
+            DEFAULT_RUNTIME_DB_POOL_TIMEOUT_SECONDS,
+        )
+    with _RUNTIME_POSTGRES_POOL_LOCK:
+        if _RUNTIME_POSTGRES_POOL is not None:
+            snapshot["created_connections"] = _RUNTIME_POSTGRES_POOL._created
+            snapshot["available_connections"] = _RUNTIME_POSTGRES_POOL._available.qsize()
+        else:
+            snapshot["created_connections"] = 0
+            snapshot["available_connections"] = 0
+    return snapshot
+
+
 def build_repository_from_env(
     env: Mapping[str, str] | None = None,
     *,
@@ -264,6 +313,149 @@ def build_object_store_from_env(
         region=runtime_env.get("OBJECT_STORE_REGION", "us-east-1").strip(),
         requester=requester,
     )
+
+
+def runtime_database_diagnostic(
+    env: Mapping[str, str] | None = None,
+    *,
+    connector: Callable[[str], DbConnection] | None = None,
+) -> RuntimeComponentDiagnostic:
+    runtime_env = os.environ if env is None else env
+    database_url = runtime_env.get("DATABASE_URL", "").strip()
+    metadata: dict[str, object] = {
+        "database_url": _redacted_url_status(database_url),
+        "pool": runtime_postgres_pool_snapshot(runtime_env),
+    }
+    if not database_url:
+        return RuntimeComponentDiagnostic(
+            name="database",
+            status="fail",
+            detail="DATABASE_URL is not configured",
+            metadata=metadata,
+        )
+    repository: PostgresEvidenceRepository | None = None
+    try:
+        repository = build_repository_from_env(runtime_env, connector=connector)
+        with repository.connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            fetchone = getattr(cursor, "fetchone", None)
+            if callable(fetchone):
+                fetchone()
+    except Exception as exc:
+        return RuntimeComponentDiagnostic(
+            name="database",
+            status="fail",
+            detail=str(exc),
+            metadata=metadata,
+        )
+    finally:
+        if repository is not None:
+            close_repository_connection(repository)
+    return RuntimeComponentDiagnostic(
+        name="database",
+        status="pass",
+        detail="PostgreSQL connection check succeeded",
+        metadata=metadata,
+    )
+
+
+def runtime_object_store_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComponentDiagnostic:
+    runtime_env = os.environ if env is None else env
+    endpoint = runtime_env.get("OBJECT_STORE_ENDPOINT", "").strip()
+    bucket = runtime_env.get("OBJECT_STORE_BUCKET", "geno-reports").strip()
+    access_key = runtime_env.get("OBJECT_STORE_ACCESS_KEY", "").strip()
+    secret_key = runtime_env.get("OBJECT_STORE_SECRET_KEY", "").strip()
+    metadata: dict[str, object] = {
+        "endpoint": "configured" if endpoint else "missing",
+        "bucket": bucket or "missing",
+        "access_key": "configured" if access_key else "missing",
+        "secret_key": "configured" if secret_key else "missing",
+        "network_check": "not_run",
+    }
+    if not endpoint:
+        return RuntimeComponentDiagnostic(
+            name="object_store",
+            status="warn",
+            detail="OBJECT_STORE_ENDPOINT is not configured; artifact archive paths will fail if used",
+            metadata=metadata,
+        )
+    if not bucket or not access_key or not secret_key:
+        return RuntimeComponentDiagnostic(
+            name="object_store",
+            status="warn",
+            detail="Object store credentials or bucket are incomplete",
+            metadata=metadata,
+        )
+    return RuntimeComponentDiagnostic(
+        name="object_store",
+        status="pass",
+        detail="Object store configuration is present",
+        metadata=metadata,
+    )
+
+
+def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComponentDiagnostic:
+    runtime_env = os.environ if env is None else env
+    access_control_enabled = runtime_env.get("GENO_RUNTIME_PROJECT_ACCESS_CONTROL", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    auth_mode = runtime_env.get("GENO_RUNTIME_AUTH_MODE", "header").strip().lower() or "header"
+    jwt_secret_configured = bool(runtime_env.get("GENO_RUNTIME_JWT_SECRET", "").strip())
+    metadata: dict[str, object] = {
+        "project_access_control_enabled": access_control_enabled,
+        "auth_mode": auth_mode,
+        "jwt_secret": "configured" if jwt_secret_configured else "missing",
+    }
+    if auth_mode not in {"header", "jwt"}:
+        return RuntimeComponentDiagnostic(
+            name="runtime_auth",
+            status="fail",
+            detail="GENO_RUNTIME_AUTH_MODE must be header or jwt",
+            metadata=metadata,
+        )
+    if access_control_enabled and auth_mode == "jwt" and not jwt_secret_configured:
+        return RuntimeComponentDiagnostic(
+            name="runtime_auth",
+            status="fail",
+            detail="GENO_RUNTIME_JWT_SECRET is required when JWT auth mode is enabled",
+            metadata=metadata,
+        )
+    if not access_control_enabled:
+        return RuntimeComponentDiagnostic(
+            name="runtime_auth",
+            status="warn",
+            detail="Runtime project access control is disabled",
+            metadata=metadata,
+        )
+    return RuntimeComponentDiagnostic(
+        name="runtime_auth",
+        status="pass",
+        detail="Runtime project access control configuration is valid",
+        metadata=metadata,
+    )
+
+
+def build_runtime_diagnostics(
+    env: Mapping[str, str] | None = None,
+    *,
+    connector: Callable[[str], DbConnection] | None = None,
+) -> RuntimeDiagnostics:
+    checks = (
+        runtime_database_diagnostic(env, connector=connector),
+        runtime_object_store_diagnostic(env),
+        runtime_auth_diagnostic(env),
+    )
+    statuses = {check.status for check in checks}
+    if "fail" in statuses:
+        status = "fail"
+    elif "warn" in statuses:
+        status = "warn"
+    else:
+        status = "pass"
+    return RuntimeDiagnostics(status=status, checks=checks)
 
 
 def close_repository_connection(repository: PostgresEvidenceRepository) -> None:

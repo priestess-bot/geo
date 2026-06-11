@@ -120,9 +120,13 @@ from geno_core.report import MarkdownCsvReportExporter
 from geno_core.repository import PostgresEvidenceRepository
 from geno_core.runtime import (
     RuntimePersistenceError,
+    build_runtime_diagnostics,
     build_repository_from_env,
     close_repository_connection,
     close_runtime_postgres_pool,
+    runtime_auth_diagnostic,
+    runtime_database_diagnostic,
+    runtime_object_store_diagnostic,
 )
 from geno_core.scoring import (
     AU_VISIBILITY_V1,
@@ -3469,6 +3473,73 @@ class CoreContractsTest(unittest.TestCase):
                 },
                 connector=lambda database_url: RecordingConnection(),
             )
+
+    def test_runtime_database_diagnostic_reports_missing_database_url(self) -> None:
+        diagnostic = runtime_database_diagnostic({})
+
+        self.assertEqual(diagnostic.name, "database")
+        self.assertEqual(diagnostic.status, "fail")
+        self.assertEqual(diagnostic.metadata["database_url"], "missing")
+
+    def test_runtime_database_diagnostic_runs_select_one_and_closes_connection(self) -> None:
+        connections: list[RecordingConnection] = []
+
+        def connector(database_url: str) -> RecordingConnection:
+            connections.append(RecordingConnection(result_sets=[{"?column?": 1}]))
+            return connections[-1]
+
+        diagnostic = runtime_database_diagnostic(
+            {"DATABASE_URL": "postgresql://geno:geno@localhost:5432/geno"},
+            connector=connector,
+        )
+
+        self.assertEqual(diagnostic.status, "pass")
+        self.assertEqual(diagnostic.metadata["database_url"], "configured")
+        self.assertEqual(len(connections), 1)
+        self.assertIn("SELECT 1", "\n".join(sql for sql, _ in connections[0].calls))
+        self.assertEqual(connections[0].close_count, 1)
+
+    def test_runtime_object_store_diagnostic_is_config_only(self) -> None:
+        missing = runtime_object_store_diagnostic({})
+        configured = runtime_object_store_diagnostic(
+            {
+                "OBJECT_STORE_ENDPOINT": "http://minio:9000",
+                "OBJECT_STORE_BUCKET": "geno-reports",
+                "OBJECT_STORE_ACCESS_KEY": "minio",
+                "OBJECT_STORE_SECRET_KEY": "minio123",
+            }
+        )
+
+        self.assertEqual(missing.status, "warn")
+        self.assertEqual(missing.metadata["network_check"], "not_run")
+        self.assertEqual(configured.status, "pass")
+        self.assertEqual(configured.metadata["endpoint"], "configured")
+
+    def test_runtime_auth_diagnostic_validates_jwt_secret(self) -> None:
+        diagnostic = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwt",
+            }
+        )
+        valid = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwt",
+                "GENO_RUNTIME_JWT_SECRET": "secret",
+            }
+        )
+
+        self.assertEqual(diagnostic.status, "fail")
+        self.assertIn("GENO_RUNTIME_JWT_SECRET", diagnostic.detail)
+        self.assertEqual(valid.status, "pass")
+
+    def test_build_runtime_diagnostics_aggregates_component_status(self) -> None:
+        diagnostic = build_runtime_diagnostics({})
+
+        self.assertEqual(diagnostic.status, "fail")
+        self.assertEqual([check.name for check in diagnostic.checks], ["database", "object_store", "runtime_auth"])
+        self.assertEqual(diagnostic.to_dict()["status"], "fail")
 
     def test_postgres_repository_maps_collection_failures_to_audit_tables(self) -> None:
         bootstrap = build_au_project_bootstrap()

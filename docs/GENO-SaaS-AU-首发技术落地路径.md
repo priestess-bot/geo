@@ -154,6 +154,7 @@ P0a 这四个主链路接口必须是可测试的运行时契约，而不是仅�
 - 每个接口都有 `NotConfigured*` stub，能暴露 id/version/health 等元信息，业务调用时明确失败，避免静默落空。
 - 每个接口至少有一个工作实现进入合约测试：fixture collector、rule/comparative parser、registry scoring formula、Markdown/PDF/CSV report exporter。
 - 合约测试必须证明 stub 和工作实现都满足同一接口，且工作实现可以串起 evidence -> analysis -> score -> report。
+- 运行时服务必须区分 liveness 与 readiness：`/health` 只证明 API 进程响应，`/ready` 至少验证 PostgreSQL 可用；`/v1/runtime-diagnostics` 暴露 database/object_store/runtime_auth 的配置诊断、连接池快照和 JWT/access-control 状态。对象存储诊断默认只检查配置完整性，不主动写对象，避免健康检查产生副作用。
 
 ### 3.3 开源优先选型映射
 

@@ -13,6 +13,7 @@ from zipfile import ZipFile
 from fastapi.testclient import TestClient
 
 from geno_api.main import app, close_runtime_resources
+from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
 from geno_core.models import (
     RuntimeCollectionRunPage,
     RuntimeAlertItem,
@@ -97,6 +98,64 @@ class ApiContractsTest(unittest.TestCase):
         response = self.client.get("/health")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "ok")
+
+    def test_readiness_returns_503_when_database_check_fails(self) -> None:
+        with patch(
+            "geno_api.main.runtime_database_diagnostic",
+            return_value=RuntimeComponentDiagnostic(
+                name="database",
+                status="fail",
+                detail="DATABASE_URL is not configured",
+                metadata={"database_url": "missing"},
+            ),
+        ):
+            response = self.client.get("/ready")
+
+        self.assertEqual(response.status_code, 503)
+        payload = response.json()
+        self.assertEqual(payload["status"], "fail")
+        self.assertEqual(payload["checks"][0]["name"], "database")
+
+    def test_readiness_returns_200_when_database_check_passes(self) -> None:
+        with patch(
+            "geno_api.main.runtime_database_diagnostic",
+            return_value=RuntimeComponentDiagnostic(
+                name="database",
+                status="pass",
+                detail="PostgreSQL connection check succeeded",
+                metadata={"database_url": "configured"},
+            ),
+        ):
+            response = self.client.get("/ready")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "pass")
+
+    def test_runtime_diagnostics_endpoint_returns_component_checks(self) -> None:
+        diagnostics = RuntimeDiagnostics(
+            status="warn",
+            checks=(
+                RuntimeComponentDiagnostic(
+                    name="database",
+                    status="pass",
+                    detail="PostgreSQL connection check succeeded",
+                    metadata={"database_url": "configured"},
+                ),
+                RuntimeComponentDiagnostic(
+                    name="object_store",
+                    status="warn",
+                    detail="OBJECT_STORE_ENDPOINT is not configured",
+                    metadata={"endpoint": "missing"},
+                ),
+            ),
+        )
+        with patch("geno_api.main.build_runtime_diagnostics", return_value=diagnostics):
+            response = self.client.get("/v1/runtime-diagnostics")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "warn")
+        self.assertEqual([check["name"] for check in payload["checks"]], ["database", "object_store"])
 
     def test_shutdown_closes_runtime_postgres_pool(self) -> None:
         with patch("geno_api.main.close_runtime_postgres_pool") as close_pool:
@@ -2234,6 +2293,12 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeKnowledgeSearchResult", payload["persistence"])
         self.assertIn("RuntimeKnowledgeSearchPage", payload["persistence"])
         self.assertIn("RuntimeTraceabilityDetail", payload["persistence"])
+        self.assertIn("RuntimeComponentDiagnostic", payload["persistence"])
+        self.assertIn("RuntimeDiagnostics", payload["persistence"])
+        self.assertIn("build_runtime_diagnostics", payload["persistence"])
+        self.assertIn("runtime_database_diagnostic", payload["persistence"])
+        self.assertIn("runtime_object_store_diagnostic", payload["persistence"])
+        self.assertIn("runtime_auth_diagnostic", payload["persistence"])
         self.assertIn("build_object_store_from_env", payload["persistence"])
         self.assertIn("archive_project_brand_logo", payload["persistence"])
         self.assertIn("/v1/projects/runtime", payload["persistence"])
@@ -2268,6 +2333,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/content-engines/runtime", payload["persistence"])
         self.assertIn("/v1/knowledge-facts/runtime/search", payload["persistence"])
         self.assertIn("/v1/traceability/runtime", payload["persistence"])
+        self.assertIn("/ready", payload["persistence"])
+        self.assertIn("/v1/runtime-diagnostics", payload["persistence"])
 
 
 if __name__ == "__main__":

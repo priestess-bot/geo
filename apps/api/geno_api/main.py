@@ -69,10 +69,12 @@ from geno_core.prompt_import import prompt_import_file_to_csv
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.runtime import (
     RuntimePersistenceError,
+    build_runtime_diagnostics,
     build_object_store_from_env,
     build_repository_from_env,
     close_repository_connection,
     close_runtime_postgres_pool,
+    runtime_database_diagnostic,
 )
 from geno_core.scoring import get_score_formula, list_score_formulas, normalize_score_weights
 from geno_core.traceability import build_traceability_bundle
@@ -421,6 +423,25 @@ class RuntimeFidelityCheckRequest(BaseModel):
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "geno-saas-au-api"}
+
+
+@app.get("/ready")
+def readiness() -> JSONResponse:
+    diagnostic = runtime_database_diagnostic()
+    status_code = 200 if diagnostic.status == "pass" else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": diagnostic.status,
+            "service": "geno-saas-au-api",
+            "checks": [asdict(diagnostic)],
+        },
+    )
+
+
+@app.get("/v1/runtime-diagnostics")
+def runtime_diagnostics() -> dict[str, object]:
+    return build_runtime_diagnostics().to_dict()
 
 
 @app.get("/v1/market-profiles/au")
@@ -2289,8 +2310,14 @@ def contracts() -> dict[str, list[str]]:
         "persistence": [
             "build_repository_from_env",
             "build_object_store_from_env",
+            "build_runtime_diagnostics",
+            "RuntimeComponentDiagnostic",
+            "RuntimeDiagnostics",
             "connect_postgres_from_env",
             "close_repository_connection",
+            "runtime_database_diagnostic",
+            "runtime_object_store_diagnostic",
+            "runtime_auth_diagnostic",
             "RuntimePersistenceError",
             "PostgresEvidenceRepository",
             "save_project_bootstrap",
@@ -2401,5 +2428,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/content-engines/runtime",
             "/v1/knowledge-facts/runtime/search",
             "/v1/traceability/runtime",
+            "/ready",
+            "/v1/runtime-diagnostics",
         ],
     }

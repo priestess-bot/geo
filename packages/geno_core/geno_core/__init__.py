@@ -58,11 +58,17 @@ from geno_core.report import MarkdownCsvReportExporter
 from geno_core.repository import PostgresEvidenceRepository
 from geno_core.runtime import (
     RuntimePersistenceError,
+    RuntimeComponentDiagnostic,
+    RuntimeDiagnostics,
+    build_runtime_diagnostics,
     build_object_store_from_env,
     build_repository_from_env,
     close_runtime_postgres_pool,
     close_repository_connection,
     connect_postgres_from_env,
+    runtime_database_diagnostic,
+    runtime_object_store_diagnostic,
+    runtime_auth_diagnostic,
 )
 from geno_core.object_store import archive_api_snapshot_assets, archive_browser_capture_assets, archive_project_brand_logo
 from geno_core.scoring import (
@@ -147,6 +153,12 @@ __all__ = [
     "PlaywrightGoogleAIOCollector",
     "PostgresEvidenceRepository",
     "RuntimePersistenceError",
+    "RuntimeComponentDiagnostic",
+    "RuntimeDiagnostics",
+    "build_runtime_diagnostics",
+    "runtime_database_diagnostic",
+    "runtime_object_store_diagnostic",
+    "runtime_auth_diagnostic",
     "RegistryScoringFormula",
     "list_score_formulas",
     "normalize_score_weights",
