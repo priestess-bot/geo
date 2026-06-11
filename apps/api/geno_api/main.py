@@ -2498,6 +2498,9 @@ def contracts() -> dict[str, list[str]]:
             "SourceGap",
             "CompetitorBenchmark",
             "CitationGraphResult",
+            "InMemoryPostgresAdjacencyGraphStore",
+            "InMemoryNeo4jCitationGraphStore",
+            "summarize_citation_graph_store",
         ],
         "m5_report_export": [
             "ReportExport",

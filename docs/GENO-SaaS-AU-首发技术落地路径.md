@@ -192,7 +192,7 @@ P0a 这四个主链路接口必须是可测试的运行时契约，而不是仅�
 | --- | --- | --- |
 | 采集后端（每个平台） | 平台改版/失效时要能换实现或换供应商而不停服 | 同一平台至少跑通"开源自建"和"官方/第三方 API"两种后端 |
 | 向量库 | 规模增长后可从 pgvector 迁 Qdrant/Milvus | 切换后端，检索结果一致性可回归 |
-| 图库 | 关系复杂度上来后从 SQL 邻接表迁 Neo4j | 切换后端，citation graph 查询不变 |
+| 图库 | 关系复杂度上来后从 SQL 邻接表迁 Neo4j | 切换后端，citation graph 查询不变；当前已用本地 PG adjacency projection 与 Neo4j node/relation projection 做 GraphStore contract 验证，真实 Neo4j driver/container 联调后补 |
 | LLM 供应商/模型 | 成本/质量/可用性变化时切换 | 通过 LiteLLM 切换供应商，解析与生成不改 |
 | 解析器实现 | 规则与 LLM 判定要能 A/B 和回退 | 同一答案两种解析器可对比，保留版本 |
 | 评分公式 | 公式要随校准迭代且可复现历史 | 公式版本化，历史分数按旧版本可重算 |
@@ -705,7 +705,7 @@ uncertainty_flags
 
 ### Step 8：建立 Citation Graph
 
-Citation Graph 在内容生成之前上线。底层存储通过 `GraphStore` 接口实现：MVP 起步用 PostgreSQL 邻接表，关系复杂后可平滑替换为 Neo4j / Apache Jena，查询接口不变。
+Citation Graph 在内容生成之前上线。底层存储通过 `GraphStore` 接口实现：MVP 起步用 PostgreSQL 邻接表，关系复杂后可平滑替换为 Neo4j / Apache Jena，查询接口不变。工程上已补 `InMemoryPostgresAdjacencyGraphStore` 与 `InMemoryNeo4jCitationGraphStore` 的投影合约测试：同一 `CitationGraphResult` 写入两种存储投影后，source nodes、evidence links、source gaps 和 competitor benchmarks 的 summary 查询结果必须一致；这证明业务查询口径可切换，但不等同于已完成真实 Neo4j 服务、驱动和 Cypher 联调。
 
 数据字段：
 
@@ -1686,7 +1686,7 @@ ReportEvidence
 架构验收（开源·可插拔）：
 
 - P0a 必须完成接口级可插拔：CollectorBackend、ParserEngine、ScoringFormula、ReportExporter 均有 stub 与至少一个工作实现，并用合约测试证明真实实现满足协议签名。
-- 向量库、图库、LLM 供应商的替换演示不阻塞 P0a 客户试点；P0c/P1 前至少各演示一次"替换/切换后业务不变"：向量库 pgvector ↔ Qdrant、图库 PG 邻接表 ↔ Neo4j、LLM 供应商经 LiteLLM 切换。当前 `LiteLLMGateway` 已可注入 `LLMJudgeAnswerParser` 和 `analyze_and_score_records()`，并保留成功/失败调用日志；chat 路径已具备 retry/backoff、重试错误留痕和上游响应 cost 优先读取；Compose 已提供可选 `llm-gateway` profile 与 `collector-worker-litellm`。真实 provider key 联调、供应商路由选择和账单 reconciliation 仍需完成。
+- 向量库、图库、LLM 供应商的替换演示不阻塞 P0a 客户试点；P0c/P1 前至少各演示一次"替换/切换后业务不变"：向量库 pgvector ↔ Qdrant、图库 PG 邻接表 ↔ Neo4j、LLM 供应商经 LiteLLM 切换。当前 `GraphStore` 已有 PG adjacency 与 Neo4j projection 的本地合约测试，证明 Citation Graph 关键查询口径一致；`LiteLLMGateway` 已可注入 `LLMJudgeAnswerParser` 和 `analyze_and_score_records()`，并保留成功/失败调用日志；chat 路径已具备 retry/backoff、重试错误留痕和上游响应 cost 优先读取；Compose 已提供可选 `llm-gateway` profile 与 `collector-worker-litellm`。真实 Neo4j driver/container、真实 provider key 联调、供应商路由选择和账单 reconciliation 仍需完成。
 - 解析器规则实现与 LLM-as-judge 实现可对同一答案并行对比并保留版本。
 - 评分公式可升级到新版本，历史分数仍可按旧版本重算。
 

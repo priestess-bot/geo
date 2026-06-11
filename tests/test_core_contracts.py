@@ -30,7 +30,7 @@ from geno_core.collection import (
     run_collection_slice,
     run_fixture_collection_slice,
 )
-from geno_core.contracts import CollectorBackend, ParserEngine, ReportExporter, ScoringFormula
+from geno_core.contracts import CollectorBackend, GraphStore, ParserEngine, ReportExporter, ScoringFormula
 from geno_core.collectors import (
     FixtureChatGPTSearchBrowserCollector,
     FixtureGoogleAIModeCollector,
@@ -53,6 +53,11 @@ from geno_core.google_spike import (
     select_google_spike_prompts,
 )
 from geno_core.graph import build_citation_graph
+from geno_core.graph_store import (
+    InMemoryNeo4jCitationGraphStore,
+    InMemoryPostgresAdjacencyGraphStore,
+    summarize_citation_graph_store,
+)
 from geno_core.knowledge import (
     build_content_drafts,
     build_content_engine_audit_event,
@@ -1854,6 +1859,50 @@ class CoreContractsTest(unittest.TestCase):
         self.assertTrue(all(node.answer_run_ids for node in graph.nodes))
         self.assertTrue(all(link.answer_run_id for link in graph.evidence_links))
         self.assertTrue(any(item.mention_count > 0 for item in graph.competitor_benchmarks))
+
+    def test_graph_store_pg_and_neo4j_projection_keep_citation_queries_stable(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia", "Sydney"),
+            sample_size=1,
+            prompt_limit=10,
+        )
+        analysis_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
+        )
+        graph = build_citation_graph(
+            project_id=bootstrap.project.id,
+            records=records,
+            analyses=analysis_result.analyses,
+            competitors=bootstrap.competitors,
+            industry_profile=bootstrap.industry_profile,
+        )
+        pg_store = InMemoryPostgresAdjacencyGraphStore()
+        neo4j_store = InMemoryNeo4jCitationGraphStore()
+
+        self.assertIsInstance(pg_store, GraphStore)
+        self.assertIsInstance(neo4j_store, GraphStore)
+        pg_store.save_citation_graph(project_id=bootstrap.project.id, graph=graph)
+        neo4j_store.save_citation_graph(project_id=bootstrap.project.id, graph=graph)
+
+        pg_summary = summarize_citation_graph_store(pg_store, project_id=bootstrap.project.id)
+        neo4j_summary = summarize_citation_graph_store(neo4j_store, project_id=bootstrap.project.id)
+        self.assertEqual(pg_summary, neo4j_summary)
+        self.assertGreater(pg_summary["source_node_count"], 0)
+        self.assertGreater(pg_summary["evidence_link_count"], 0)
+        self.assertEqual(set(pg_summary["competitor_names"]), {"Emma Sleep", "Sleeping Duck", "Ecosa"})
 
     def test_m5_report_export_freezes_snapshot_and_evidence_refs(self) -> None:
         bootstrap = build_au_project_bootstrap(
