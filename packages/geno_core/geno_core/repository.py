@@ -1690,6 +1690,9 @@ class PostgresEvidenceRepository:
         project_id = prompt_import.project_id.strip()
         imported_by = prompt_import.imported_by.strip() or "runtime-console"
         max_rows = max(1, min(prompt_import.max_rows, 200))
+        source_format = (prompt_import.source_format or "csv").strip().lower()
+        source_filename = (prompt_import.source_filename or "").strip() or None
+        source_content_type = (prompt_import.source_content_type or "").strip() or None
         if not project_id:
             raise ValueError("project_id is required")
         prompts = _parse_prompt_import_csv(
@@ -1776,6 +1779,8 @@ class PostgresEvidenceRepository:
                 "prompt_count": len(normalized_prompts),
                 "prompt_ids": prompt_ids,
                 "prompt_version": normalized_prompts[0]["prompt_version"] if normalized_prompts else project["prompt_version"],
+                "source_format": source_format,
+                "source_filename": source_filename,
             }
             audit_event = build_audit_event(
                 event_type="runtime_prompts_imported",
@@ -1786,10 +1791,15 @@ class PostgresEvidenceRepository:
                 target_id=_stable_id("prompt-import", project_id, imported_by, len(normalized_prompts)),
                 before=before,
                 after=after,
-                input_refs={"csv_sha256": [_artifact_hash(prompt_import.csv_content)]},
+                input_refs={
+                    "csv_sha256": [_artifact_hash(prompt_import.csv_content)],
+                    "source_format": source_format,
+                    "source_filename": source_filename,
+                    "source_content_type": source_content_type,
+                },
                 output_refs={"prompt_question_ids": prompt_ids},
-                method_version="runtime_prompt_import_csv_v1",
-                reason="import runtime prompts from csv",
+                method_version=f"runtime_prompt_import_{source_format}_v1",
+                reason=f"import runtime prompts from {source_format}",
             )
             self.save_audit_events((audit_event,), cursor=cursor)
             imported_rows: list[dict[str, Any]] = []

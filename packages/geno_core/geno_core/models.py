@@ -1034,6 +1034,9 @@ class RuntimePromptImportInput:
     csv_content: str
     imported_by: str = "runtime-console"
     max_rows: int = 100
+    source_filename: str | None = None
+    source_format: str = "csv"
+    source_content_type: str | None = None
 
 
 @dataclass(frozen=True)

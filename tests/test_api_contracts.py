@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from io import BytesIO
 import unittest
 from unittest.mock import patch
+from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
 
@@ -29,6 +31,36 @@ from geno_core.models import (
 class ApiContractsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.client = TestClient(app)
+
+    def _xlsx_prompt_import_bytes(self) -> bytes:
+        buffer = BytesIO()
+        with ZipFile(buffer, "w") as workbook:
+            workbook.writestr(
+                "xl/workbook.xml",
+                """<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Prompts" sheetId="1" r:id="rId1"/></sheets>
+</workbook>""",
+            )
+            workbook.writestr(
+                "xl/_rels/workbook.xml.rels",
+                """<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>""",
+            )
+            workbook.writestr(
+                "xl/worksheets/sheet1.xml",
+                """<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>text</t></is></c><c r="B1" t="inlineStr"><is><t>intent_type</t></is></c><c r="C1" t="inlineStr"><is><t>city</t></is></c></row>
+    <row r="2"><c r="A2" t="inlineStr"><is><t>Is ExampleBrand visible in AI answers?</t></is></c><c r="B2" t="inlineStr"><is><t>brand_awareness</t></is></c><c r="C2" t="inlineStr"><is><t>Sydney</t></is></c></row>
+  </sheetData>
+</worksheet>""",
+            )
+        return buffer.getvalue()
 
     def test_health(self) -> None:
         response = self.client.get("/health")
@@ -171,6 +203,16 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_prompt_file_import_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.post(
+            "/v1/prompts/runtime/import.file"
+            "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c&filename=prompts.csv",
+            content=b"text,intent_type\nIs ExampleBrand visible?,brand_awareness\n",
+            headers={"content-type": "text/csv"},
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_runtime_prompt_import_endpoint_passes_csv_payload(self) -> None:
         class FakeRepository:
             def import_runtime_prompts_csv(self, prompt_import: object) -> RuntimePromptImportResult:
@@ -218,6 +260,54 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["audit_events"][0]["event_type"], "runtime_prompts_imported")
         self.assertEqual(fake_repository.prompt_import.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
         self.assertIn("Is ExampleBrand visible?", fake_repository.prompt_import.csv_content)
+
+    def test_runtime_prompt_file_import_endpoint_parses_xlsx_payload(self) -> None:
+        class FakeRepository:
+            def import_runtime_prompts_csv(self, prompt_import: object) -> RuntimePromptImportResult:
+                self.prompt_import = prompt_import
+                return RuntimePromptImportResult(
+                    prompt_import={
+                        "project_id": prompt_import.project_id,
+                        "prompt_count": 1,
+                        "prompt_ids": ["prompt-1"],
+                        "prompt_version": "au_dtc_ecommerce_v1_imported",
+                        "source_format": prompt_import.source_format,
+                        "source_filename": prompt_import.source_filename,
+                    },
+                    prompts=(
+                        {
+                            "id": "prompt-1",
+                            "project_id": prompt_import.project_id,
+                            "text": "Is ExampleBrand visible in AI answers?",
+                            "intent_type": "brand_awareness",
+                        },
+                    ),
+                    audit_events=(
+                        {
+                            "event_type": "runtime_prompts_imported",
+                            "target_type": "prompt_import",
+                            "method_version": "runtime_prompt_import_xlsx_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/prompts/runtime/import.file"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c&filename=prompts.xlsx&imported_by=runtime-console&max_rows=100",
+                content=self._xlsx_prompt_import_bytes(),
+                headers={"content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["prompt_import"]["source_format"], "xlsx")
+        self.assertEqual(payload["audit_events"][0]["method_version"], "runtime_prompt_import_xlsx_v1")
+        self.assertEqual(fake_repository.prompt_import.source_filename, "prompts.xlsx")
+        self.assertEqual(fake_repository.prompt_import.source_format, "xlsx")
+        self.assertIn("Is ExampleBrand visible in AI answers?", fake_repository.prompt_import.csv_content)
 
     def test_runtime_evidence_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/evidence-runs/runtime")
@@ -1340,6 +1430,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/entity-aliases/runtime/confirm", payload["persistence"])
         self.assertIn("/v1/prompts/runtime", payload["persistence"])
         self.assertIn("/v1/prompts/runtime/import.csv", payload["persistence"])
+        self.assertIn("/v1/prompts/runtime/import.file", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])
         self.assertIn("/v1/collection-runs/runtime", payload["persistence"])
         self.assertIn("/v1/fidelity-checks/runtime", payload["persistence"])

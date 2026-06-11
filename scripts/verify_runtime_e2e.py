@@ -5,15 +5,18 @@ import os
 import subprocess
 import sys
 from dataclasses import asdict
+from io import BytesIO
 from pathlib import Path
 from typing import Any
+from zipfile import ZipFile
 
 import psycopg
 
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import collect_prompt_once
 from geno_core.collectors import JsonHttpResponse, PerplexitySonarCollector
-from geno_core.models import RuntimeHumanReviewInput
+from geno_core.models import RuntimeHumanReviewInput, RuntimePromptImportInput
+from geno_core.prompt_import import prompt_import_file_to_csv
 from geno_core.runtime import build_object_store_from_env, build_repository_from_env, close_repository_connection
 from workers.collector_worker import run_collection_slice as worker_module
 
@@ -42,6 +45,49 @@ class FakePerplexityHttpClient:
                 ],
             },
         )
+
+
+def _xlsx_prompt_import_bytes() -> bytes:
+    buffer = BytesIO()
+    with ZipFile(buffer, "w") as workbook:
+        workbook.writestr(
+            "xl/workbook.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Prompts" sheetId="1" r:id="rId1"/></sheets>
+</workbook>""",
+        )
+        workbook.writestr(
+            "xl/_rels/workbook.xml.rels",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>""",
+        )
+        workbook.writestr(
+            "xl/worksheets/sheet1.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="A1" t="inlineStr"><is><t>text</t></is></c>
+      <c r="B1" t="inlineStr"><is><t>intent_type</t></is></c>
+      <c r="C1" t="inlineStr"><is><t>city</t></is></c>
+      <c r="D1" t="inlineStr"><is><t>priority</t></is></c>
+      <c r="E1" t="inlineStr"><is><t>intent_weight</t></is></c>
+    </row>
+    <row r="2">
+      <c r="A2" t="inlineStr"><is><t>Runtime E2E XLSX prompt for Sydney AI recommendations</t></is></c>
+      <c r="B2" t="inlineStr"><is><t>brand_awareness</t></is></c>
+      <c r="C2" t="inlineStr"><is><t>Sydney</t></is></c>
+      <c r="D2" t="inlineStr"><is><t>1</t></is></c>
+      <c r="E2" t="inlineStr"><is><t>0.8</t></is></c>
+    </row>
+  </sheetData>
+</worksheet>""",
+        )
+    return buffer.getvalue()
 
 
 def _database_url() -> str:
@@ -241,6 +287,47 @@ def _assert_human_review_queue(project_id: str) -> dict[str, Any]:
     }
 
 
+def _assert_prompt_file_import(project_id: str) -> dict[str, Any]:
+    csv_content, source_format = prompt_import_file_to_csv(
+        file_bytes=_xlsx_prompt_import_bytes(),
+        filename="runtime-e2e-prompts.xlsx",
+    )
+    repository = build_repository_from_env()
+    try:
+        result = repository.import_runtime_prompts_csv(
+            RuntimePromptImportInput(
+                project_id=project_id,
+                csv_content=csv_content,
+                imported_by="runtime-e2e",
+                source_filename="runtime-e2e-prompts.xlsx",
+                source_format=source_format,
+                source_content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        )
+    finally:
+        close_repository_connection(repository)
+    if source_format != "xlsx":
+        raise AssertionError(f"Expected source_format=xlsx, got {source_format}")
+    prompt_count = int(result.prompt_import.get("prompt_count", 0))
+    if prompt_count != 1:
+        raise AssertionError(f"Expected one imported prompt, got {prompt_count}")
+    audit = result.audit_events[0] if result.audit_events else {}
+    if audit.get("method_version") != "runtime_prompt_import_xlsx_v1":
+        raise AssertionError(f"Expected xlsx prompt import audit method, got {audit}")
+    input_refs = audit.get("input_refs") or {}
+    if input_refs.get("source_format") != "xlsx":
+        raise AssertionError(f"Expected xlsx source format in audit input refs, got {input_refs}")
+    return {
+        "source_format": source_format,
+        "source_filename": result.prompt_import["source_filename"],
+        "import_count": prompt_count,
+        "prompt_question_id": result.prompts[0]["id"],
+        "audit_event_type": audit.get("event_type"),
+        "audit_method_version": audit.get("method_version"),
+        "audit_source_format": input_refs.get("source_format"),
+    }
+
+
 def _run_api_snapshot_archive_slice() -> dict[str, Any]:
     bootstrap = build_au_project_bootstrap(
         tenant_name="Runtime E2E API Snapshot Tenant",
@@ -320,6 +407,7 @@ def main() -> None:
     counts = _assert_counts(project_id)
     report_artifacts = _assert_report_artifacts(project_id)
     human_review_queue = _assert_human_review_queue(project_id)
+    prompt_file_import = _assert_prompt_file_import(project_id)
     api_snapshot = _run_api_snapshot_archive_slice()
     summary = {
         "status": "passed",
@@ -334,6 +422,7 @@ def main() -> None:
         "postgres_counts": counts,
         "report_artifacts": report_artifacts,
         "human_review_queue": human_review_queue,
+        "prompt_file_import": prompt_file_import,
         "api_snapshot_archive": api_snapshot,
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2, default=str))

@@ -101,6 +101,17 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("component_weights_snapshot", page_source)
         self.assertIn("Weight snapshot", page_source)
 
+    def test_runtime_console_surfaces_prompt_file_import(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("Prompt CSV Import", page_source)
+        self.assertIn("Prompt File Import", page_source)
+        self.assertIn("importRuntimePromptsFile", page_source)
+        self.assertIn("/v1/prompts/runtime/import.csv", page_source)
+        self.assertIn("/v1/prompts/runtime/import.file", page_source)
+        self.assertIn(".csv or .xlsx", page_source)
+        self.assertIn('name="prompt_file"', page_source)
+
     def test_runtime_console_surfaces_human_review_trail(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")

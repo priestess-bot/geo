@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import asdict
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from fastapi.responses import Response
 
@@ -55,6 +55,7 @@ from geno_core.models import (
     RuntimeScoreWeightConfigInput,
 )
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
+from geno_core.prompt_import import prompt_import_file_to_csv
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.runtime import RuntimePersistenceError, build_repository_from_env, close_repository_connection
 from geno_core.scoring import get_score_formula, list_score_formulas, normalize_score_weights
@@ -371,6 +372,46 @@ def import_runtime_prompts_csv(payload: RuntimePromptImportRequest) -> dict[str,
                 csv_content=payload.csv_content,
                 imported_by=payload.imported_by.strip(),
                 max_rows=payload.max_rows,
+            )
+        )
+        return asdict(result)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/prompts/runtime/import.file")
+async def import_runtime_prompts_file(
+    request: Request,
+    project_id: str = Query(min_length=1),
+    filename: str = Query(min_length=1, max_length=240),
+    imported_by: str = Query(default="runtime-console", min_length=1, max_length=120),
+    max_rows: int = Query(default=100, ge=1, le=200),
+    content_type: str | None = Header(default=None),
+) -> dict[str, object]:
+    file_bytes = await request.body()
+    try:
+        csv_content, source_format = prompt_import_file_to_csv(file_bytes=file_bytes, filename=filename)
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="prompt import file must be UTF-8 encoded") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        result = repository.import_runtime_prompts_csv(
+            RuntimePromptImportInput(
+                project_id=project_id.strip(),
+                csv_content=csv_content,
+                imported_by=imported_by.strip(),
+                max_rows=max_rows,
+                source_filename=filename.strip(),
+                source_format=source_format,
+                source_content_type=content_type,
             )
         )
         return asdict(result)
@@ -1658,6 +1699,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/entity-aliases/runtime/confirm",
             "/v1/prompts/runtime",
             "/v1/prompts/runtime/import.csv",
+            "/v1/prompts/runtime/import.file",
             "/v1/evidence-runs/runtime",
             "/v1/collection-runs/runtime",
             "/v1/fidelity-checks/runtime",

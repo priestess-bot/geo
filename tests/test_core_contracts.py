@@ -3,8 +3,10 @@ from __future__ import annotations
 import unittest
 from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
+from io import BytesIO
 from tempfile import TemporaryDirectory
 from uuid import UUID
+from zipfile import ZipFile
 
 from geno_core.action_plan import (
     build_action_plan_audit_event,
@@ -104,6 +106,7 @@ from geno_core.object_store import (
     archive_report_artifacts,
 )
 from geno_core.prompt_pack import INTENT_WEIGHTS
+from geno_core.prompt_import import prompt_import_file_to_csv
 from geno_core.parser import ComparativeAnswerParser, LLMJudgeAnswerParser, RuleBasedAnswerParser
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.repository import PostgresEvidenceRepository
@@ -170,8 +173,49 @@ class RecordingConnection:
 
 
 class CoreContractsTest(unittest.TestCase):
+    def _xlsx_prompt_import_bytes(self) -> bytes:
+        buffer = BytesIO()
+        with ZipFile(buffer, "w") as workbook:
+            workbook.writestr(
+                "xl/workbook.xml",
+                """<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Prompts" sheetId="1" r:id="rId1"/></sheets>
+</workbook>""",
+            )
+            workbook.writestr(
+                "xl/_rels/workbook.xml.rels",
+                """<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>""",
+            )
+            workbook.writestr(
+                "xl/worksheets/sheet1.xml",
+                """<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>text</t></is></c><c r="B1" t="inlineStr"><is><t>intent_type</t></is></c><c r="C1" t="inlineStr"><is><t>city</t></is></c></row>
+    <row r="2"><c r="A2" t="inlineStr"><is><t>Is ExampleBrand visible in AI answers?</t></is></c><c r="B2" t="inlineStr"><is><t>brand_awareness</t></is></c><c r="C2" t="inlineStr"><is><t>Sydney</t></is></c></row>
+  </sheetData>
+</worksheet>""",
+            )
+        return buffer.getvalue()
+
     def test_au_weights_sum_to_one(self) -> None:
         self.assertAlmostEqual(sum(AU_VISIBILITY_V1.values()), 1.0)
+
+    def test_prompt_import_file_to_csv_parses_xlsx_first_sheet(self) -> None:
+        csv_content, source_format = prompt_import_file_to_csv(
+            file_bytes=self._xlsx_prompt_import_bytes(),
+            filename="prompts.xlsx",
+        )
+
+        self.assertEqual(source_format, "xlsx")
+        self.assertIn("text,intent_type,city", csv_content)
+        self.assertIn("Is ExampleBrand visible in AI answers?", csv_content)
+        self.assertIn("brand_awareness,Sydney", csv_content)
 
     def test_market_profile_separates_weight_and_build_stage(self) -> None:
         profile = build_au_market_profile()
@@ -2899,10 +2943,15 @@ class CoreContractsTest(unittest.TestCase):
             "target_id": "prompt-import-1",
             "before_hash": "before",
             "after_hash": "after",
-            "input_refs": {"csv_sha256": ["hash"]},
+            "input_refs": {
+                "csv_sha256": "hash",
+                "source_format": "xlsx",
+                "source_filename": "prompts.xlsx",
+                "source_content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            },
             "output_refs": {"prompt_question_ids": [prompt_id]},
-            "method_version": "runtime_prompt_import_csv_v1",
-            "reason": "import runtime prompts from csv",
+            "method_version": "runtime_prompt_import_xlsx_v1",
+            "reason": "import runtime prompts from xlsx",
             "created_at": now,
         }
         connection = RecordingConnection(
@@ -2931,10 +2980,15 @@ class CoreContractsTest(unittest.TestCase):
                     "Is ExampleBrand visible in Sydney AI recommendations?,brand_awareness,Sydney,1,0.9,au_dtc_ecommerce_v1_imported\n"
                 ),
                 imported_by="runtime-console",
+                source_filename="prompts.xlsx",
+                source_format="xlsx",
+                source_content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
         )
         self.assertIsInstance(result, RuntimePromptImportResult)
         self.assertEqual(result.prompt_import["prompt_count"], 1)
+        self.assertEqual(result.prompt_import["source_format"], "xlsx")
+        self.assertEqual(result.prompt_import["source_filename"], "prompts.xlsx")
         self.assertEqual(result.prompts[0]["text"], "Is ExampleBrand visible in Sydney AI recommendations?")
         self.assertEqual(result.audit_events[0]["event_type"], "runtime_prompts_imported")
         self.assertEqual(connection.commit_count, 1)

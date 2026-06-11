@@ -1023,6 +1023,35 @@ async function importRuntimePromptsCsv(formData: FormData) {
   revalidatePath("/");
 }
 
+async function importRuntimePromptsFile(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const promptFile = formData.get("prompt_file");
+  if (!projectId || !(promptFile instanceof File) || !promptFile.name) {
+    throw new Error("project_id and prompt_file are required to import prompt files");
+  }
+  const params = new URLSearchParams({
+    project_id: projectId,
+    filename: promptFile.name,
+    imported_by: "runtime-console",
+    max_rows: "100"
+  });
+  const response = await fetch(`${baseUrl}/v1/prompts/runtime/import.file?${params.toString()}`, {
+    method: "POST",
+    headers: { "content-type": promptFile.type || "application/octet-stream" },
+    body: Buffer.from(await promptFile.arrayBuffer()),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/prompts/runtime/import.file returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
 async function confirmEntityAlias(formData: FormData) {
   "use server";
   const baseUrl =
@@ -2262,6 +2291,24 @@ export default async function Home({
                 </label>
                 <button className="actionButton" type="submit" disabled={!selectedProjectId}>
                   Import prompts
+                </button>
+              </form>
+              <form action={importRuntimePromptsFile} className="promptImportForm">
+                <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+                <div className="formHeader">
+                  <h3>Prompt File Import</h3>
+                  <small>.csv or .xlsx · first worksheet</small>
+                </div>
+                <label>
+                  <span>Prompt file</span>
+                  <input
+                    name="prompt_file"
+                    type="file"
+                    accept=".csv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  />
+                </label>
+                <button className="actionButton" type="submit" disabled={!selectedProjectId}>
+                  Import file
                 </button>
               </form>
               <form action={submitManualBackfill} className="manualBackfillForm">
