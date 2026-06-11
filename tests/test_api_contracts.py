@@ -21,6 +21,7 @@ from geno_core.models import (
     RuntimeKnowledgeSearchPage,
     RuntimeKnowledgeSearchResult,
     RuntimeProjectBrandKit,
+    RuntimeProjectBrandLogoUpload,
     RuntimePromptImportHistoryItem,
     RuntimePromptImportHistoryPage,
     RuntimePromptImportResult,
@@ -765,6 +766,95 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.brand_kit.client_name, "Koala AU")
         self.assertEqual(fake_repository.brand_kit.logo_url, "https://koala.example/logo.png")
 
+    def test_runtime_project_brand_logo_upload_endpoint_requires_object_store_config(self) -> None:
+        class FakeRepository:
+            def list_runtime_projects(self, **kwargs: object) -> object:
+                self.kwargs = kwargs
+                return type("RuntimeProjectPage", (), {"total_count": 1})()
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/project-brand-kits/runtime/logo"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
+                "&filename=logo.png"
+                "&uploaded_by=runtime-console",
+                content=b"fake-logo-bytes",
+                headers={"content-type": "image/png"},
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("OBJECT_STORE_ENDPOINT", response.json()["detail"])
+        self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+
+    def test_runtime_project_brand_logo_upload_endpoint_archives_and_saves(self) -> None:
+        class FakeStore:
+            def put_object(self, **kwargs: object) -> object:
+                self.kwargs = kwargs
+                return type(
+                    "StoredObject",
+                    (),
+                    {
+                        "uri": "s3://geno-reports/brand-assets/project/logo-25f766a3e701-logo.png",
+                        "content_type": kwargs["content_type"],
+                        "content_hash": "25f766a3e70154aacaa073a049855d207842f9f6a743c082e693c2cadde4ed1b",
+                    },
+                )()
+
+        class FakeRepository:
+            def list_runtime_projects(self, **kwargs: object) -> object:
+                self.list_kwargs = kwargs
+                return type("RuntimeProjectPage", (), {"total_count": 1})()
+
+            def upload_project_brand_logo(self, upload: RuntimeProjectBrandLogoUpload) -> RuntimeProjectBrandKit:
+                self.upload = upload
+                return RuntimeProjectBrandKit(
+                    brand_kit={
+                        "id": "0ada83ad-b669-507e-b3c8-9d8574569a62",
+                        "project_id": upload.project_id,
+                        "client_name": "Koala AU",
+                        "prepared_by": "Partner Agency",
+                        "logo_url": upload.logo_url,
+                        "primary_color": "#0f766e",
+                        "secondary_color": "#111827",
+                        "footer_text": "Prepared for Koala AU board review",
+                        "updated_by": upload.uploaded_by,
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "project_brand_logo_uploaded",
+                            "target_type": "project_brand_kit",
+                            "method_version": "project_brand_logo_upload_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        fake_store = FakeStore()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.build_object_store_from_env", return_value=fake_store
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.post(
+                "/v1/project-brand-kits/runtime/logo"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
+                "&filename=Client%20Logo.png"
+                "&uploaded_by=agency-user",
+                content=b"fake-logo-bytes",
+                headers={"content-type": "image/png"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["brand_kit"]["logo_url"], "s3://geno-reports/brand-assets/project/logo-25f766a3e701-logo.png")
+        self.assertEqual(payload["audit_events"][0]["event_type"], "project_brand_logo_uploaded")
+        self.assertEqual(fake_store.kwargs["content"], b"fake-logo-bytes")
+        self.assertEqual(fake_store.kwargs["content_type"], "image/png")
+        self.assertEqual(fake_repository.upload.filename, "Client Logo.png")
+        self.assertEqual(fake_repository.upload.uploaded_by, "agency-user")
+        self.assertEqual(fake_repository.upload.content_hash, "25f766a3e70154aacaa073a049855d207842f9f6a743c082e693c2cadde4ed1b")
+
     def test_runtime_score_weight_config_endpoint_returns_default_when_missing(self) -> None:
         class FakeRepository:
             def get_score_weight_config(self, **kwargs: object) -> None:
@@ -1454,6 +1544,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeProjectPage", payload["persistence"])
         self.assertIn("RuntimeProjectBrandKit", payload["persistence"])
         self.assertIn("RuntimeProjectBrandKitInput", payload["persistence"])
+        self.assertIn("RuntimeProjectBrandLogoUpload", payload["persistence"])
         self.assertIn("ProjectBrandKitRequest", payload["persistence"])
         self.assertIn("RuntimeScoreWeightConfig", payload["persistence"])
         self.assertIn("RuntimeScoreWeightConfigInput", payload["persistence"])
@@ -1481,6 +1572,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeKnowledgeSearchPage", payload["persistence"])
         self.assertIn("RuntimeTraceabilityDetail", payload["persistence"])
         self.assertIn("build_object_store_from_env", payload["persistence"])
+        self.assertIn("archive_project_brand_logo", payload["persistence"])
         self.assertIn("/v1/projects/runtime", payload["persistence"])
         self.assertIn("/v1/projects/runtime/au/dtc-ecommerce", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime", payload["persistence"])
@@ -1498,6 +1590,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/evidence-runs/runtime/manual-backfill", payload["persistence"])
         self.assertIn("/v1/runtime-saved-views", payload["persistence"])
         self.assertIn("/v1/project-brand-kits/runtime", payload["persistence"])
+        self.assertIn("/v1/project-brand-kits/runtime/logo", payload["persistence"])
         self.assertIn("/v1/score-weight-configs/runtime", payload["persistence"])
         self.assertIn("/v1/score-formulas/runtime", payload["persistence"])
         self.assertIn("/v1/human-reviews/runtime", payload["persistence"])

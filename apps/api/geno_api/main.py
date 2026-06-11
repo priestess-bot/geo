@@ -50,14 +50,21 @@ from geno_core.models import (
     RuntimeHumanReviewInput,
     ManualBackfillInput,
     RuntimeProjectBrandKitInput,
+    RuntimeProjectBrandLogoUpload,
     RuntimePromptImportInput,
     RuntimeSavedViewInput,
     RuntimeScoreWeightConfigInput,
 )
+from geno_core.object_store import ObjectStoreError, archive_project_brand_logo
 from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.prompt_import import prompt_import_file_to_csv
 from geno_core.report import MarkdownCsvReportExporter
-from geno_core.runtime import RuntimePersistenceError, build_repository_from_env, close_repository_connection
+from geno_core.runtime import (
+    RuntimePersistenceError,
+    build_object_store_from_env,
+    build_repository_from_env,
+    close_repository_connection,
+)
 from geno_core.scoring import get_score_formula, list_score_formulas, normalize_score_weights
 from geno_core.traceability import build_traceability_bundle
 
@@ -695,6 +702,53 @@ def save_runtime_project_brand_kit(payload: ProjectBrandKitRequest) -> dict[str,
                 secondary_color=payload.secondary_color.strip() if payload.secondary_color else None,
                 footer_text=payload.footer_text.strip() if payload.footer_text else None,
                 updated_by=payload.updated_by.strip(),
+            )
+        )
+        return asdict(brand_kit)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-brand-kits/runtime/logo")
+async def upload_runtime_project_brand_logo(
+    request: Request,
+    project_id: str = Query(min_length=1),
+    filename: str = Query(min_length=1, max_length=240),
+    uploaded_by: str = Query(default="runtime-console", min_length=1, max_length=120),
+    content_type: str | None = Header(default=None),
+) -> dict[str, object]:
+    file_bytes = await request.body()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="brand logo file is empty")
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        if repository.list_runtime_projects(project_id=project_id.strip(), limit=1, offset=0).total_count == 0:
+            raise HTTPException(status_code=404, detail="project not found")
+        try:
+            store = build_object_store_from_env()
+            stored = archive_project_brand_logo(
+                project_id=project_id.strip(),
+                filename=filename.strip(),
+                content=file_bytes,
+                content_type=content_type,
+                store=store,
+            )
+        except ObjectStoreError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        brand_kit = repository.upload_project_brand_logo(
+            RuntimeProjectBrandLogoUpload(
+                project_id=project_id.strip(),
+                logo_url=stored.uri,
+                filename=filename.strip(),
+                content_type=stored.content_type,
+                content_hash=stored.content_hash,
+                uploaded_by=uploaded_by.strip(),
             )
         )
         return asdict(brand_kit)
@@ -1654,11 +1708,13 @@ def contracts() -> dict[str, list[str]]:
             "RuntimePersistenceError",
             "PostgresEvidenceRepository",
             "save_project_bootstrap",
+            "archive_project_brand_logo",
             "RuntimeProject",
             "RuntimeProjectPage",
             "RuntimeProjectCreateRequest",
             "RuntimeProjectBrandKit",
             "RuntimeProjectBrandKitInput",
+            "RuntimeProjectBrandLogoUpload",
             "ProjectBrandKitRequest",
             "RuntimeScoreWeightConfig",
             "RuntimeScoreWeightConfigInput",
@@ -1734,6 +1790,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/evidence-runs/runtime/manual-backfill",
             "/v1/runtime-saved-views",
             "/v1/project-brand-kits/runtime",
+            "/v1/project-brand-kits/runtime/logo",
             "/v1/score-weight-configs/runtime",
             "/v1/score-formulas/runtime",
             "/v1/human-reviews/runtime",

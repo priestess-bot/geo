@@ -101,6 +101,16 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("component_weights_snapshot", page_source)
         self.assertIn("Weight snapshot", page_source)
 
+    def test_runtime_console_surfaces_brand_logo_upload(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("Logo Upload", page_source)
+        self.assertIn("uploadProjectBrandLogo", page_source)
+        self.assertIn("/v1/project-brand-kits/runtime/logo", page_source)
+        self.assertIn('name="brand_logo"', page_source)
+        self.assertIn('type="file"', page_source)
+        self.assertIn("project_brand_logo_uploaded", page_source)
+
     def test_runtime_console_surfaces_prompt_file_import(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
 

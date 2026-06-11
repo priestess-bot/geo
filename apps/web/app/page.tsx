@@ -773,6 +773,8 @@ const endpoints = {
   traceability: "/v1/traceability/runtime"
 } as const;
 
+const brandLogoEndpoint = "/v1/project-brand-kits/runtime/logo";
+
 const emptyPage = <T,>(): PageResponse<T> => ({ total_count: 0, records: [] });
 
 const scoreComponentNames = [
@@ -903,6 +905,35 @@ async function saveProjectBrandKit(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/project-brand-kits/runtime returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function uploadProjectBrandLogo(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const uploadedBy = String(formData.get("uploaded_by") || "runtime-console").trim();
+  const file = formData.get("brand_logo");
+  if (!projectId || !(file instanceof File) || file.size === 0) {
+    throw new Error("project_id and brand_logo file are required to upload a project logo");
+  }
+  const params = new URLSearchParams({
+    project_id: projectId,
+    filename: file.name || "logo.bin",
+    uploaded_by: uploadedBy || "runtime-console"
+  });
+  const response = await fetch(`${baseUrl}${brandLogoEndpoint}?${params.toString()}`, {
+    method: "POST",
+    headers: { "content-type": file.type || "application/octet-stream" },
+    body: Buffer.from(await file.arrayBuffer()),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`${brandLogoEndpoint} returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -2226,6 +2257,26 @@ export default async function Home({
               <button className="actionButton" type="submit" disabled={!selectedProjectId}>
                 Save brand kit
               </button>
+            </form>
+            <form action={uploadProjectBrandLogo} className="brandKitForm">
+              <div className="formHeader">
+                <h3>Logo Upload</h3>
+                <small>{projectBrandKit?.logo_url || "archive to object storage"}</small>
+              </div>
+              <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+              <input type="hidden" name="uploaded_by" value="runtime-console" />
+              <label className="wideField">
+                <span>Logo file</span>
+                <input name="brand_logo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" />
+              </label>
+              <button className="actionButton" type="submit" disabled={!selectedProjectId}>
+                Upload logo
+              </button>
+              <p className="formHint">
+                {data.brandKit?.audit_events[0]?.event_type === "project_brand_logo_uploaded"
+                  ? `Last upload · ${data.brandKit.audit_events[0]?.method_version || "project_brand_logo_upload_v1"}`
+                  : "Uploaded logo URI becomes the Brand Kit default for white-label PDF artifacts."}
+              </p>
             </form>
             <form action={saveScoreWeightConfig} className="brandKitForm">
               <div className="formHeader">

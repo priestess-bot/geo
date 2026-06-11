@@ -15,7 +15,8 @@ import psycopg
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import collect_prompt_once
 from geno_core.collectors import JsonHttpResponse, PerplexitySonarCollector
-from geno_core.models import RuntimeHumanReviewInput, RuntimePromptImportInput
+from geno_core.models import RuntimeHumanReviewInput, RuntimeProjectBrandLogoUpload, RuntimePromptImportInput
+from geno_core.object_store import archive_project_brand_logo
 from geno_core.prompt_import import prompt_import_file_to_csv
 from geno_core.runtime import build_object_store_from_env, build_repository_from_env, close_repository_connection
 from workers.collector_worker import run_collection_slice as worker_module
@@ -344,6 +345,53 @@ def _assert_prompt_file_import(project_id: str) -> dict[str, Any]:
     }
 
 
+def _assert_project_brand_logo_upload(project_id: str) -> dict[str, Any]:
+    store = build_object_store_from_env()
+    stored = archive_project_brand_logo(
+        project_id=project_id,
+        filename="runtime-e2e-logo.png",
+        content=b"runtime-e2e-logo-bytes",
+        content_type="image/png",
+        store=store,
+    )
+    repository = build_repository_from_env()
+    try:
+        brand_kit = repository.upload_project_brand_logo(
+            RuntimeProjectBrandLogoUpload(
+                project_id=project_id,
+                logo_url=stored.uri,
+                filename="runtime-e2e-logo.png",
+                content_type=stored.content_type,
+                content_hash=stored.content_hash,
+                uploaded_by="runtime-e2e",
+            )
+        )
+    finally:
+        close_repository_connection(repository)
+    key = stored.uri.split("/", 3)[-1]
+    if not store.head_object(key=key):
+        raise AssertionError(f"Archived project brand logo is missing from object store: {stored.uri}")
+    if brand_kit.brand_kit.get("logo_url") != stored.uri:
+        raise AssertionError(f"Expected Brand Kit logo_url to be {stored.uri}, got {brand_kit.brand_kit}")
+    audit = brand_kit.audit_events[0] if brand_kit.audit_events else {}
+    input_refs = audit.get("input_refs") or {}
+    output_refs = audit.get("output_refs") or {}
+    if audit.get("event_type") != "project_brand_logo_uploaded":
+        raise AssertionError(f"Expected project_brand_logo_uploaded audit event, got {audit}")
+    if input_refs.get("content_hash", [None])[0] != stored.content_hash:
+        raise AssertionError(f"Expected logo content hash in audit input refs, got {input_refs}")
+    if output_refs.get("logo_url", [None])[0] != stored.uri:
+        raise AssertionError(f"Expected logo URI in audit output refs, got {output_refs}")
+    return {
+        "logo_url": stored.uri,
+        "content_hash": stored.content_hash,
+        "content_type": stored.content_type,
+        "audit_event_type": audit.get("event_type"),
+        "audit_method_version": audit.get("method_version"),
+        "audit_source_filename": input_refs.get("source_filename", [None])[0],
+    }
+
+
 def _run_api_snapshot_archive_slice() -> dict[str, Any]:
     bootstrap = build_au_project_bootstrap(
         tenant_name="Runtime E2E API Snapshot Tenant",
@@ -424,6 +472,7 @@ def main() -> None:
     report_artifacts = _assert_report_artifacts(project_id)
     human_review_queue = _assert_human_review_queue(project_id)
     prompt_file_import = _assert_prompt_file_import(project_id)
+    project_brand_logo_upload = _assert_project_brand_logo_upload(project_id)
     api_snapshot = _run_api_snapshot_archive_slice()
     summary = {
         "status": "passed",
@@ -439,6 +488,7 @@ def main() -> None:
         "report_artifacts": report_artifacts,
         "human_review_queue": human_review_queue,
         "prompt_file_import": prompt_file_import,
+        "project_brand_logo_upload": project_brand_logo_upload,
         "api_snapshot_archive": api_snapshot,
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2, default=str))

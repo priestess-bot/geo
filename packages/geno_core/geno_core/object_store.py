@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import html
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -234,6 +235,25 @@ def archive_report_artifacts(report: Any, store: S3CompatibleObjectStore) -> tup
     return tuple(stored)
 
 
+def archive_project_brand_logo(
+    *,
+    project_id: str,
+    filename: str,
+    content: bytes,
+    content_type: str | None,
+    store: S3CompatibleObjectStore,
+) -> StoredObject:
+    if not project_id.strip():
+        raise ObjectStoreError("project_id is required")
+    if not content:
+        raise ObjectStoreError("Brand logo payload is empty")
+    safe_filename = _safe_asset_filename(filename)
+    normalized_content_type = _brand_logo_content_type(filename=safe_filename, content_type=content_type)
+    content_hash = hashlib.sha256(content).hexdigest()
+    key = f"brand-assets/{project_id.strip()}/logo-{content_hash[:12]}-{safe_filename}"
+    return store.put_object(key=key, content=content, content_type=normalized_content_type)
+
+
 def archive_api_snapshot_assets(
     *,
     records: tuple[RawEvidenceRecord, ...],
@@ -322,6 +342,30 @@ def _browser_asset_content_type(asset: EvidenceAsset) -> str:
         return "image/webp"
     if suffix == ".png":
         return "image/png"
+    return "application/octet-stream"
+
+
+def _safe_asset_filename(filename: str) -> str:
+    basename = Path(filename or "logo.bin").name.strip() or "logo.bin"
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", basename).strip(".-")
+    return safe or "logo.bin"
+
+
+def _brand_logo_content_type(*, filename: str, content_type: str | None) -> str:
+    normalized = (content_type or "").split(";", 1)[0].strip().lower()
+    if normalized in {"image/png", "image/jpeg", "image/webp", "image/svg+xml", "image/gif"}:
+        return normalized
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".png":
+        return "image/png"
+    if suffix in {".jpg", ".jpeg"}:
+        return "image/jpeg"
+    if suffix == ".webp":
+        return "image/webp"
+    if suffix == ".svg":
+        return "image/svg+xml"
+    if suffix == ".gif":
+        return "image/gif"
     return "application/octet-stream"
 
 

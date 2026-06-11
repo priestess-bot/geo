@@ -84,6 +84,7 @@ from geno_core.models import (
     RuntimeCitationGraphPage,
     RuntimeProjectBrandKit,
     RuntimeProjectBrandKitInput,
+    RuntimeProjectBrandLogoUpload,
     RuntimePromptImportInput,
     RuntimePromptImportHistoryPage,
     RuntimePromptImportResult,
@@ -104,6 +105,7 @@ from geno_core.object_store import (
     S3CompatibleObjectStore,
     archive_api_snapshot_assets,
     archive_browser_capture_assets,
+    archive_project_brand_logo,
     archive_report_artifacts,
 )
 from geno_core.prompt_pack import INTENT_WEIGHTS
@@ -2053,6 +2055,42 @@ class CoreContractsTest(unittest.TestCase):
         object_puts = [item for item in requests if item[0] == "PUT" and item[1].count("/") > 3]
         self.assertEqual(len(object_puts), 3)
         self.assertTrue(any(item[1].endswith(".pdf") and item[3].startswith(b"%PDF-1.4") for item in object_puts))
+
+    def test_project_brand_logo_archive_to_s3_compatible_store(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        requests: list[tuple[str, str, dict[str, str], bytes]] = []
+
+        def requester(
+            method: str,
+            url: str,
+            headers: object,
+            body: bytes,
+        ) -> tuple[int, dict[str, str], bytes]:
+            requests.append((method, url, dict(headers), body))
+            return 200, {"ETag": '"logo-etag"'}, b""
+
+        store = S3CompatibleObjectStore(
+            endpoint="http://minio:9000",
+            bucket="geno-reports",
+            access_key="minio",
+            secret_key="minio123",
+            requester=requester,
+        )
+        stored = archive_project_brand_logo(
+            project_id=project_id,
+            filename="../Client Logo Final.PNG",
+            content=b"fake-logo-bytes",
+            content_type="image/png",
+            store=store,
+        )
+
+        self.assertEqual(stored.content_type, "image/png")
+        self.assertEqual(stored.content_hash, "3a4fbb95f7aa11b1ad48768f3b59e812ce35f94ab2795c8feefda65f67916f2f")
+        self.assertEqual(stored.uri, f"s3://geno-reports/brand-assets/{project_id}/logo-3a4fbb95f7aa-Client-Logo-Final.PNG")
+        object_puts = [item for item in requests if item[0] == "PUT" and "brand-assets" in item[1]]
+        self.assertEqual(len(object_puts), 1)
+        self.assertTrue(object_puts[0][1].endswith("/brand-assets/9a50797d-a341-55a4-8bdf-cc255c017e5c/logo-3a4fbb95f7aa-Client-Logo-Final.PNG"))
+        self.assertEqual(object_puts[0][3], b"fake-logo-bytes")
 
     def test_api_snapshot_assets_archive_to_s3_compatible_store(self) -> None:
         class FakeApiHttpClient:
@@ -5546,6 +5584,82 @@ class CoreContractsTest(unittest.TestCase):
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("INSERT INTO project_brand_kits", executed_sql)
         self.assertIn("ON CONFLICT (project_id) DO UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_uploads_project_brand_logo_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        brand_kit_id = "0ada83ad-b669-507e-b3c8-9d8574569a62"
+        before_row = {
+            "id": brand_kit_id,
+            "project_id": project_id,
+            "client_name": "Koala AU",
+            "prepared_by": "Partner Agency",
+            "logo_url": "https://koala.example/old-logo.png",
+            "primary_color": "#0f766e",
+            "secondary_color": "#111827",
+            "footer_text": "Prepared for Koala AU board review",
+            "updated_by": "runtime-console",
+            "created_at": now,
+            "updated_at": now,
+        }
+        saved_row = {
+            **before_row,
+            "logo_url": f"s3://geno-reports/brand-assets/{project_id}/logo-25f766a3e701-Client-Logo.png",
+            "updated_by": "agency-user",
+        }
+        audit_row = {
+            "id": "ce333139-53e7-44c8-8c85-ce498d841391",
+            "event_type": "project_brand_logo_uploaded",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "agency-user",
+            "target_type": "project_brand_kit",
+            "target_id": brand_kit_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {
+                "project_ids": [project_id],
+                "source_filename": ["Client Logo.png"],
+                "source_content_type": ["image/png"],
+                "content_hash": ["25f766a3e70154aacaa073a049855d207842f9f6a743c082e693c2cadde4ed1b"],
+            },
+            "output_refs": {
+                "project_brand_kit_ids": [brand_kit_id],
+                "logo_url": [saved_row["logo_url"]],
+            },
+            "method_version": "project_brand_logo_upload_v1",
+            "reason": "archive project brand logo asset and update white-label defaults",
+            "created_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                {"id": project_id, "target_brand": "Koala"},
+                before_row,
+                saved_row,
+                [audit_row],
+            ]
+        )
+        record = PostgresEvidenceRepository(connection).upload_project_brand_logo(
+            RuntimeProjectBrandLogoUpload(
+                project_id=project_id,
+                logo_url=saved_row["logo_url"],
+                filename="Client Logo.png",
+                content_type="image/png",
+                content_hash="25f766a3e70154aacaa073a049855d207842f9f6a743c082e693c2cadde4ed1b",
+                uploaded_by="agency-user",
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeProjectBrandKit)
+        self.assertEqual(record.brand_kit["logo_url"], saved_row["logo_url"])
+        self.assertEqual(record.audit_events[0]["event_type"], "project_brand_logo_uploaded")
+        self.assertEqual(record.audit_events[0]["input_refs"]["content_hash"][0], "25f766a3e70154aacaa073a049855d207842f9f6a743c082e693c2cadde4ed1b")
+        self.assertEqual(record.audit_events[0]["output_refs"]["logo_url"][0], saved_row["logo_url"])
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("SELECT id, target_brand FROM projects", executed_sql)
+        self.assertIn("ON CONFLICT (project_id) DO UPDATE SET logo_url = EXCLUDED.logo_url", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
 
     def test_postgres_repository_reads_project_brand_kit_with_audit_events(self) -> None:

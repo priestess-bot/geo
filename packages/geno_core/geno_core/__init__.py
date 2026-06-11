@@ -63,7 +63,7 @@ from geno_core.runtime import (
     close_repository_connection,
     connect_postgres_from_env,
 )
-from geno_core.object_store import archive_api_snapshot_assets, archive_browser_capture_assets
+from geno_core.object_store import archive_api_snapshot_assets, archive_browser_capture_assets, archive_project_brand_logo
 from geno_core.scoring import (
     AU_VISIBILITY_V1,
     AU_VISIBILITY_V1_1_LOCAL_BOOST,
@@ -114,6 +114,7 @@ __all__ = [
     "build_object_store_from_env",
     "archive_api_snapshot_assets",
     "archive_browser_capture_assets",
+    "archive_project_brand_logo",
     "build_citation_graph",
     "build_content_drafts",
     "build_content_engine_audit_event",

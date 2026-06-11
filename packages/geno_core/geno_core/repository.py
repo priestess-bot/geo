@@ -59,6 +59,7 @@ from geno_core.models import (
     RuntimeKnowledgeSearchResult,
     RuntimeProjectBrandKit,
     RuntimeProjectBrandKitInput,
+    RuntimeProjectBrandLogoUpload,
     RuntimeProject,
     RuntimeProjectPage,
     RuntimePromptImportHistoryItem,
@@ -2329,6 +2330,120 @@ class PostgresEvidenceRepository:
                 output_refs={"project_brand_kit_ids": [kit_id]},
                 method_version="project_brand_kit_v1",
                 reason="save project white-label brand configuration",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_BRAND_KIT_COLUMNS)}
+                FROM project_brand_kits
+                WHERE project_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            saved_row = cursor.fetchone()
+            record = self._load_project_brand_kit(
+                cursor=cursor,
+                brand_kit=_row_dict(saved_row, PROJECT_BRAND_KIT_COLUMNS),
+            )
+        self.connection.commit()
+        return record
+
+    def upload_project_brand_logo(self, upload: RuntimeProjectBrandLogoUpload) -> RuntimeProjectBrandKit:
+        project_id = upload.project_id.strip()
+        logo_url = upload.logo_url.strip()
+        filename = upload.filename.strip() or "logo.bin"
+        content_type = upload.content_type.strip() or "application/octet-stream"
+        uploaded_by = upload.uploaded_by.strip() or "runtime-console"
+        content_hash = upload.content_hash.strip()
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not logo_url:
+            raise ValueError("logo_url is required")
+        if not content_hash:
+            raise ValueError("content_hash is required")
+        kit_id = _stable_id("project-brand-kit", project_id)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, target_brand
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            project_row = cursor.fetchone()
+            if not project_row:
+                raise ValueError("project not found")
+            project = _row_dict(project_row, ("id", "target_brand"))
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_BRAND_KIT_COLUMNS)}
+                FROM project_brand_kits
+                WHERE project_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            existing_row = cursor.fetchone()
+            before = _row_dict(existing_row, PROJECT_BRAND_KIT_COLUMNS) if existing_row else None
+            existing = before or {}
+            after = {
+                "id": kit_id,
+                "project_id": project_id,
+                "client_name": existing.get("client_name") or project.get("target_brand") or "Client",
+                "prepared_by": existing.get("prepared_by") or "GENO SaaS AU",
+                "logo_url": logo_url,
+                "primary_color": existing.get("primary_color"),
+                "secondary_color": existing.get("secondary_color"),
+                "footer_text": existing.get("footer_text"),
+                "updated_by": uploaded_by,
+            }
+            cursor.execute(
+                """
+                INSERT INTO project_brand_kits (
+                  id, project_id, client_name, prepared_by, logo_url, primary_color,
+                  secondary_color, footer_text, updated_by
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (project_id) DO UPDATE SET
+                  logo_url = EXCLUDED.logo_url,
+                  updated_by = EXCLUDED.updated_by,
+                  updated_at = now()
+                """,
+                (
+                    _uuid(kit_id),
+                    _uuid(project_id),
+                    after["client_name"],
+                    after["prepared_by"],
+                    after["logo_url"],
+                    after["primary_color"],
+                    after["secondary_color"],
+                    after["footer_text"],
+                    after["updated_by"],
+                ),
+            )
+            audit_event = build_audit_event(
+                event_type="project_brand_logo_uploaded",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=uploaded_by,
+                target_type="project_brand_kit",
+                target_id=kit_id,
+                before=before,
+                after=after,
+                input_refs={
+                    "project_ids": [project_id],
+                    "source_filename": [filename],
+                    "source_content_type": [content_type],
+                    "content_hash": [content_hash],
+                },
+                output_refs={
+                    "project_brand_kit_ids": [kit_id],
+                    "logo_url": [logo_url],
+                },
+                method_version="project_brand_logo_upload_v1",
+                reason="archive project brand logo asset and update white-label defaults",
             )
             self.save_audit_events((audit_event,), cursor=cursor)
             cursor.execute(

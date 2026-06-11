@@ -1021,6 +1021,16 @@ class RuntimeProjectBrandKitInput:
 
 
 @dataclass(frozen=True)
+class RuntimeProjectBrandLogoUpload:
+    project_id: str
+    logo_url: str
+    filename: str
+    content_type: str
+    content_hash: str
+    uploaded_by: str = "runtime-console"
+
+
+@dataclass(frozen=True)
 class RuntimePromptPage:
     total_count: int
     limit: int
