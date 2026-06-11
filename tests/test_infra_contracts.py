@@ -164,6 +164,14 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("'runtime_notifications'", rls_sql)
         self.assertIn("'runtime_notifications'", rls_down_sql)
         self.assertIn('"runtime_notifications"', db_smoke_source)
+        self.assertIn("CREATE TABLE project_brand_assets", init_sql)
+        self.assertIn("preview_url text", init_sql)
+        self.assertIn("scan_status text NOT NULL DEFAULT 'pending'", init_sql)
+        self.assertIn("scan_checked_at timestamptz", init_sql)
+        self.assertIn("scan_method_version text", init_sql)
+        self.assertIn("scan_notes text", init_sql)
+        self.assertIn('"project_brand_assets"', db_smoke_source)
+        self.assertIn('"scan_status"', db_smoke_source)
 
     def test_litellm_config_uses_env_secrets_and_geno_model_aliases(self) -> None:
         config = yaml.safe_load((ROOT / "infra/litellm_config.yaml").read_text(encoding="utf-8"))

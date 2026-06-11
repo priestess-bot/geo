@@ -611,11 +611,16 @@ type RuntimeProjectBrandAsset = {
     asset_type: string;
     asset_url: string;
     category: string;
+    preview_url?: string | null;
     source_filename?: string | null;
     source_content_type?: string | null;
     content_hash?: string | null;
     storage_version?: string | null;
     status: string;
+    scan_status?: string;
+    scan_checked_at?: string | null;
+    scan_method_version?: string | null;
+    scan_notes?: string | null;
     uploaded_by: string;
     metadata?: Record<string, unknown>;
     created_at?: string;
@@ -959,6 +964,10 @@ const endpoints = {
 
 const brandLogoEndpoint = "/v1/project-brand-kits/runtime/logo";
 
+function projectBrandAssetScanPath(assetId: string) {
+  return `/v1/project-brand-assets/runtime/${assetId}/scan-status`;
+}
+
 const emptyPage = <T,>(): PageResponse<T> => ({ total_count: 0, records: [] });
 
 const scoreComponentNames = [
@@ -1140,6 +1149,7 @@ async function saveProjectBrandAsset(formData: FormData) {
     asset_type: String(formData.get("asset_type") || "image").trim(),
     asset_url: assetUrl,
     category: String(formData.get("category") || "uncategorized").trim(),
+    preview_url: optionalText("preview_url"),
     source_filename: optionalText("source_filename"),
     source_content_type: optionalText("source_content_type"),
     content_hash: optionalText("content_hash"),
@@ -1160,6 +1170,37 @@ async function saveProjectBrandAsset(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/project-brand-assets/runtime returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function updateProjectBrandAssetScanStatus(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const assetId = String(formData.get("asset_id") || "").trim();
+  if (!assetId) {
+    throw new Error("asset_id is required to update project brand asset scan status");
+  }
+  const optionalText = (field: string): string | undefined =>
+    String(formData.get(field) || "").trim() || undefined;
+  const payload = {
+    scan_status: String(formData.get("scan_status") || "pending").trim(),
+    scanned_by: String(formData.get("scanned_by") || "runtime-console").trim(),
+    scan_method_version: String(formData.get("scan_method_version") || "manual_asset_scan_v1").trim(),
+    scan_notes: optionalText("scan_notes"),
+    reason: optionalText("reason")
+  };
+  const response = await fetch(`${baseUrl}${projectBrandAssetScanPath(assetId)}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`${projectBrandAssetScanPath(assetId)} returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -3113,6 +3154,10 @@ export default async function Home({
                 <span>Asset URL</span>
                 <input name="asset_url" defaultValue={projectBrandKit?.logo_url || ""} />
               </label>
+              <label className="wideField">
+                <span>Preview URL</span>
+                <input name="preview_url" placeholder="https://cdn.example.com/client/asset-preview.png" />
+              </label>
               <label>
                 <span>Filename</span>
                 <input name="source_filename" defaultValue="client-asset" />
@@ -3148,7 +3193,10 @@ export default async function Home({
             <section className="brandAssetLibrary" aria-label="project brand asset library">
               <div className="formHeader">
                 <h3>Asset Library</h3>
-                <small>{data.brandAssetLibrary.total_count} assets · table project_brand_assets</small>
+                <small>
+                  {data.brandAssetLibrary.total_count} assets · table project_brand_assets ·
+                  project_brand_asset_scan_recorded
+                </small>
               </div>
               {data.brandAssetLibrary.records.length ? (
                 <ul className="plainList">
@@ -3157,9 +3205,15 @@ export default async function Home({
                     return (
                       <li key={record.asset.id}>
                         <strong>
-                          {record.asset.asset_type} · {record.asset.category} · {record.asset.status}
+                          {record.asset.asset_type} · {record.asset.category} · {record.asset.status} · scan{" "}
+                          {record.asset.scan_status || "pending"}
                         </strong>
                         <span>{record.asset.asset_url}</span>
+                        {record.asset.preview_url ? (
+                          <a className="inlineLink" href={record.asset.preview_url} target="_blank" rel="noreferrer">
+                            Preview asset
+                          </a>
+                        ) : null}
                         <small>
                           {record.asset.source_filename || "filename pending"} ·{" "}
                           {record.asset.source_content_type || "content type pending"} ·{" "}
@@ -3170,6 +3224,34 @@ export default async function Home({
                           {assetAudit?.method_version || "project_brand_asset_library_v1"} ·{" "}
                           {dateText(record.asset.updated_at)}
                         </small>
+                        <small>
+                          {record.asset.scan_method_version || "manual_asset_scan_v1"} ·{" "}
+                          {dateText(record.asset.scan_checked_at || undefined)}
+                        </small>
+                        <form action={updateProjectBrandAssetScanStatus} className="assetActivateForm">
+                          <input type="hidden" name="asset_id" value={record.asset.id} />
+                          <input type="hidden" name="scanned_by" value="runtime-console" />
+                          <input type="hidden" name="scan_method_version" value="manual_asset_scan_v1" />
+                          <input
+                            type="hidden"
+                            name="reason"
+                            value="Record manual project brand asset scan gate status"
+                          />
+                          <select name="scan_status" defaultValue={record.asset.scan_status || "pending"}>
+                            <option value="pending">pending</option>
+                            <option value="passed">passed</option>
+                            <option value="failed">failed</option>
+                            <option value="skipped">skipped</option>
+                          </select>
+                          <input
+                            name="scan_notes"
+                            placeholder={record.asset.scan_notes || "scan notes"}
+                            defaultValue={record.asset.scan_notes || ""}
+                          />
+                          <button className="textButton" type="submit" disabled={!selectedProjectId}>
+                            Update scan
+                          </button>
+                        </form>
                       </li>
                     );
                   })}

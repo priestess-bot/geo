@@ -1082,6 +1082,7 @@ class RuntimeProjectBrandAssetInput:
     asset_type: str
     asset_url: str
     category: str = "uncategorized"
+    preview_url: str | None = None
     source_filename: str | None = None
     source_content_type: str | None = None
     content_hash: str | None = None
@@ -1089,6 +1090,16 @@ class RuntimeProjectBrandAssetInput:
     status: str = "active"
     uploaded_by: str = "runtime-console"
     metadata: dict[str, Any] = field(default_factory=dict)
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeProjectBrandAssetScanInput:
+    asset_id: str
+    scan_status: str
+    scanned_by: str = "runtime-console"
+    scan_method_version: str = "manual_asset_scan_v1"
+    scan_notes: str | None = None
     reason: str | None = None
 
 

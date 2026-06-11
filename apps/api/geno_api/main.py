@@ -67,6 +67,7 @@ from geno_core.models import (
     RuntimeHumanReviewInput,
     ManualBackfillInput,
     RuntimeProjectBrandAssetInput,
+    RuntimeProjectBrandAssetScanInput,
     RuntimeProjectBrandKitInput,
     RuntimeProjectBrandAssetActivationInput,
     RuntimeProjectBrandLogoUpload,
@@ -1068,6 +1069,7 @@ class ProjectBrandAssetRequest(BaseModel):
     asset_type: str = Field(default="image", min_length=1, max_length=80)
     asset_url: str = Field(min_length=1, max_length=1000)
     category: str = Field(default="uncategorized", min_length=1, max_length=120)
+    preview_url: str | None = Field(default=None, max_length=1000)
     source_filename: str | None = Field(default=None, max_length=240)
     source_content_type: str | None = Field(default=None, max_length=160)
     content_hash: str | None = Field(default=None, max_length=160)
@@ -1075,6 +1077,14 @@ class ProjectBrandAssetRequest(BaseModel):
     status: str = Field(default="active", min_length=1, max_length=40)
     uploaded_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     metadata: dict[str, object] = Field(default_factory=dict)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ProjectBrandAssetScanRequest(BaseModel):
+    scan_status: str = Field(default="pending", min_length=1, max_length=40)
+    scanned_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    scan_method_version: str = Field(default="manual_asset_scan_v1", min_length=1, max_length=120)
+    scan_notes: str | None = Field(default=None, max_length=1000)
     reason: str | None = Field(default=None, max_length=500)
 
 
@@ -2107,6 +2117,7 @@ def save_runtime_project_brand_asset(
                 asset_type=payload.asset_type.strip(),
                 asset_url=payload.asset_url.strip(),
                 category=payload.category.strip(),
+                preview_url=payload.preview_url.strip() if payload.preview_url else None,
                 source_filename=payload.source_filename.strip() if payload.source_filename else None,
                 source_content_type=payload.source_content_type.strip() if payload.source_content_type else None,
                 content_hash=payload.content_hash.strip() if payload.content_hash else None,
@@ -2120,6 +2131,47 @@ def save_runtime_project_brand_asset(
         return asdict(record)
     except ValueError as exc:
         status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-brand-assets/runtime/{asset_id}/scan-status")
+def update_runtime_project_brand_asset_scan_status(
+    asset_id: str,
+    payload: ProjectBrandAssetScanRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_id = repository.get_project_brand_asset_project_id(asset_id=asset_id.strip())
+        if project_id is None:
+            raise HTTPException(status_code=404, detail="project brand asset not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        record = repository.update_project_brand_asset_scan_status(
+            RuntimeProjectBrandAssetScanInput(
+                asset_id=asset_id.strip(),
+                scan_status=payload.scan_status.strip(),
+                scanned_by=actor_id or payload.scanned_by.strip(),
+                scan_method_version=payload.scan_method_version.strip(),
+                scan_notes=payload.scan_notes.strip() if payload.scan_notes else None,
+                reason=payload.reason.strip() if payload.reason else None,
+            )
+        )
+        return asdict(record)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project brand asset not found" else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     finally:
         close_repository_connection(repository)
@@ -3600,12 +3652,14 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeProjectBrandAsset",
             "RuntimeProjectBrandAssetPage",
             "RuntimeProjectBrandAssetInput",
+            "RuntimeProjectBrandAssetScanInput",
             "RuntimeProjectBrandAssetVersion",
             "RuntimeProjectBrandAssetVersionPage",
             "RuntimeProjectBrandAssetActivationInput",
             "RuntimeProjectBrandLogoUpload",
             "ProjectBrandKitRequest",
             "ProjectBrandAssetRequest",
+            "ProjectBrandAssetScanRequest",
             "ProjectBrandAssetActivationRequest",
             "RuntimeScoreWeightConfig",
             "RuntimeScoreWeightConfigInput",

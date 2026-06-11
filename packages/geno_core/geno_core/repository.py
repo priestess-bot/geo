@@ -67,6 +67,7 @@ from geno_core.models import (
     RuntimeProjectBrandKitInput,
     RuntimeProjectBrandAssetInput,
     RuntimeProjectBrandAssetPage,
+    RuntimeProjectBrandAssetScanInput,
     RuntimeProjectBrandAssetActivationInput,
     RuntimeProjectBrandAssetVersion,
     RuntimeProjectBrandAssetVersionPage,
@@ -1293,11 +1294,16 @@ PROJECT_BRAND_ASSET_COLUMNS = (
     "asset_type",
     "asset_url",
     "category",
+    "preview_url",
     "source_filename",
     "source_content_type",
     "content_hash",
     "storage_version",
     "status",
+    "scan_status",
+    "scan_checked_at",
+    "scan_method_version",
+    "scan_notes",
     "uploaded_by",
     "metadata",
     "created_at",
@@ -2975,6 +2981,96 @@ class PostgresEvidenceRepository:
         self.connection.commit()
         return record
 
+    def get_project_brand_asset_project_id(self, *, asset_id: str) -> str | None:
+        clean_asset_id = asset_id.strip()
+        if not clean_asset_id:
+            raise ValueError("asset_id is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT project_id
+                FROM project_brand_assets
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(clean_asset_id),),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        if isinstance(row, dict):
+            return str(row["project_id"])
+        return str(row[0])
+
+    def update_project_brand_asset_scan_status(
+        self,
+        scan: RuntimeProjectBrandAssetScanInput,
+    ) -> RuntimeProjectBrandAsset:
+        asset_id = scan.asset_id.strip()
+        scan_status = scan.scan_status.strip().lower()
+        scanned_by = scan.scanned_by.strip() or "runtime-console"
+        scan_method_version = scan.scan_method_version.strip() or "manual_asset_scan_v1"
+        scan_notes = scan.scan_notes.strip() if scan.scan_notes else None
+        reason = scan.reason.strip() if scan.reason else None
+        if not asset_id:
+            raise ValueError("asset_id is required")
+        if scan_status not in {"pending", "passed", "failed", "skipped"}:
+            raise ValueError("scan_status must be pending, passed, failed, or skipped")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_BRAND_ASSET_COLUMNS)}
+                FROM project_brand_assets
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(asset_id),),
+            )
+            existing_row = cursor.fetchone()
+            if not existing_row:
+                raise ValueError("project brand asset not found")
+            before = _row_dict(existing_row, PROJECT_BRAND_ASSET_COLUMNS)
+            cursor.execute(
+                f"""
+                UPDATE project_brand_assets
+                SET scan_status = %s,
+                    scan_checked_at = now(),
+                    scan_method_version = %s,
+                    scan_notes = %s,
+                    updated_at = now()
+                WHERE id = %s
+                RETURNING {", ".join(PROJECT_BRAND_ASSET_COLUMNS)}
+                """,
+                (scan_status, scan_method_version, scan_notes, _uuid(asset_id)),
+            )
+            after = _row_dict(cursor.fetchone(), PROJECT_BRAND_ASSET_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="project_brand_asset_scan_recorded",
+                project_id=str(after["project_id"]),
+                actor_type="user",
+                actor_id=scanned_by,
+                target_type="project_brand_asset",
+                target_id=str(after["id"]),
+                before=before,
+                after=after,
+                input_refs={
+                    "project_brand_asset_ids": [str(after["id"])],
+                    "asset_url": [str(after["asset_url"])],
+                    "scan_status": [scan_status],
+                },
+                output_refs={
+                    "project_brand_asset_ids": [str(after["id"])],
+                    "scan_status": [scan_status],
+                    "scan_method_version": [scan_method_version],
+                },
+                method_version=scan_method_version,
+                reason=reason or "record project brand asset scan status",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            record = self._load_project_brand_asset(cursor=cursor, asset=after)
+        self.connection.commit()
+        return record
+
     def list_project_brand_assets(
         self,
         *,
@@ -3272,6 +3368,7 @@ class PostgresEvidenceRepository:
         category = asset.category.strip().lower() if asset.category else "uncategorized"
         status = asset.status.strip().lower() if asset.status else "active"
         uploaded_by = asset.uploaded_by.strip() or "runtime-console"
+        preview_url = asset.preview_url.strip() if asset.preview_url else None
         source_filename = asset.source_filename.strip() if asset.source_filename else None
         source_content_type = asset.source_content_type.strip() if asset.source_content_type else None
         content_hash = asset.content_hash.strip() if asset.content_hash else None
@@ -3299,12 +3396,13 @@ class PostgresEvidenceRepository:
         cursor.execute(
             """
             INSERT INTO project_brand_assets (
-              id, project_id, asset_type, asset_url, category, source_filename,
+              id, project_id, asset_type, asset_url, category, preview_url, source_filename,
               source_content_type, content_hash, storage_version, status, uploaded_by, metadata
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (project_id, asset_url) DO UPDATE SET
               asset_type = EXCLUDED.asset_type,
               category = EXCLUDED.category,
+              preview_url = EXCLUDED.preview_url,
               source_filename = EXCLUDED.source_filename,
               source_content_type = EXCLUDED.source_content_type,
               content_hash = EXCLUDED.content_hash,
@@ -3320,6 +3418,7 @@ class PostgresEvidenceRepository:
                 asset_type,
                 asset_url,
                 category,
+                preview_url,
                 source_filename,
                 source_content_type,
                 content_hash,
@@ -3358,6 +3457,8 @@ class PostgresEvidenceRepository:
             input_refs["source_filename"] = [str(after["source_filename"])]
         if after.get("source_content_type"):
             input_refs["source_content_type"] = [str(after["source_content_type"])]
+        if after.get("preview_url"):
+            input_refs["preview_url"] = [str(after["preview_url"])]
         if content_hash:
             input_refs["content_hash"] = [str(content_hash)]
         output_refs: dict[str, list[str]] = {

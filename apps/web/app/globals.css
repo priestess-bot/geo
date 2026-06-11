@@ -243,8 +243,15 @@ code {
 
 .assetActivateForm {
   display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   justify-content: flex-end;
   margin-top: 6px;
+}
+
+.assetActivateForm input,
+.assetActivateForm select {
+  max-width: 220px;
 }
 
 .reportExportJobForm {
@@ -657,6 +664,13 @@ code {
   overflow-wrap: anywhere;
   padding: 7px 8px;
   text-decoration: none;
+}
+
+.inlineLink {
+  color: #245d61;
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .inlineLinks {

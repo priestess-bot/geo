@@ -94,6 +94,7 @@ from geno_core.models import (
     RuntimeProjectBrandAsset,
     RuntimeProjectBrandAssetInput,
     RuntimeProjectBrandAssetPage,
+    RuntimeProjectBrandAssetScanInput,
     RuntimeProjectBrandKit,
     RuntimeProjectBrandAssetActivationInput,
     RuntimeProjectBrandAssetVersionPage,
@@ -7254,11 +7255,16 @@ class CoreContractsTest(unittest.TestCase):
             "asset_type": "image",
             "asset_url": asset_url,
             "category": "brand_creative",
+            "preview_url": f"https://cdn.example.com/{project_id}/hero-preview.png",
             "source_filename": "hero.png",
             "source_content_type": "image/png",
             "content_hash": "4d8f0cfa7e4b8f76dd5bce99d403d9fa",
             "storage_version": "etag-hero-v1",
             "status": "active",
+            "scan_status": "pending",
+            "scan_checked_at": None,
+            "scan_method_version": None,
+            "scan_notes": None,
             "uploaded_by": "agency-user",
             "metadata": {"source": "runtime_console_asset_register"},
             "created_at": now,
@@ -7277,6 +7283,7 @@ class CoreContractsTest(unittest.TestCase):
             "input_refs": {
                 "project_ids": [project_id],
                 "asset_url": [asset_url],
+                "preview_url": [f"https://cdn.example.com/{project_id}/hero-preview.png"],
                 "source_filename": ["hero.png"],
                 "source_content_type": ["image/png"],
                 "content_hash": ["4d8f0cfa7e4b8f76dd5bce99d403d9fa"],
@@ -7298,6 +7305,7 @@ class CoreContractsTest(unittest.TestCase):
                 asset_type="image",
                 asset_url=asset_url,
                 category="brand_creative",
+                preview_url=f"https://cdn.example.com/{project_id}/hero-preview.png",
                 source_filename="hero.png",
                 source_content_type="image/png",
                 content_hash="4d8f0cfa7e4b8f76dd5bce99d403d9fa",
@@ -7329,11 +7337,16 @@ class CoreContractsTest(unittest.TestCase):
             "asset_type": "image",
             "asset_url": asset_url,
             "category": "brand_creative",
+            "preview_url": f"https://cdn.example.com/{project_id}/hero-preview.png",
             "source_filename": "hero.png",
             "source_content_type": "image/png",
             "content_hash": "4d8f0cfa7e4b8f76dd5bce99d403d9fa",
             "storage_version": "etag-hero-v1",
             "status": "active",
+            "scan_status": "passed",
+            "scan_checked_at": now,
+            "scan_method_version": "manual_asset_scan_v1",
+            "scan_notes": "Clean preview",
             "uploaded_by": "agency-user",
             "metadata": {"source": "runtime_console_asset_register"},
             "created_at": now,
@@ -7373,6 +7386,84 @@ class CoreContractsTest(unittest.TestCase):
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FROM project_brand_assets WHERE project_id = %s AND asset_type = %s", executed_sql)
         self.assertIn("ORDER BY updated_at DESC, created_at DESC, id DESC", executed_sql)
+
+    def test_postgres_repository_updates_project_brand_asset_scan_status_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        asset_id = "ddc23a34-2ffb-5a56-a81a-3b98aaf843b4"
+        asset_url = f"s3://geno-reports/brand-assets/{project_id}/hero.png"
+        before_row = {
+            "id": asset_id,
+            "project_id": project_id,
+            "asset_type": "image",
+            "asset_url": asset_url,
+            "category": "brand_creative",
+            "preview_url": f"https://cdn.example.com/{project_id}/hero-preview.png",
+            "source_filename": "hero.png",
+            "source_content_type": "image/png",
+            "content_hash": "4d8f0cfa7e4b8f76dd5bce99d403d9fa",
+            "storage_version": "etag-hero-v1",
+            "status": "active",
+            "scan_status": "pending",
+            "scan_checked_at": None,
+            "scan_method_version": None,
+            "scan_notes": None,
+            "uploaded_by": "agency-user",
+            "metadata": {"source": "runtime_console_asset_register"},
+            "created_at": now,
+            "updated_at": now,
+        }
+        after_row = {
+            **before_row,
+            "scan_status": "passed",
+            "scan_checked_at": now,
+            "scan_method_version": "manual_asset_scan_v1",
+            "scan_notes": "Clean preview",
+        }
+        audit_row = {
+            "id": "a1305659-1540-4529-86d8-8e90c6b5d446",
+            "event_type": "project_brand_asset_scan_recorded",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "agency-user",
+            "target_type": "project_brand_asset",
+            "target_id": asset_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {
+                "project_brand_asset_ids": [asset_id],
+                "asset_url": [asset_url],
+                "scan_status": ["passed"],
+            },
+            "output_refs": {
+                "project_brand_asset_ids": [asset_id],
+                "scan_status": ["passed"],
+                "scan_method_version": ["manual_asset_scan_v1"],
+            },
+            "method_version": "manual_asset_scan_v1",
+            "reason": "manual scan passed",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[before_row, after_row, [audit_row]])
+
+        record = PostgresEvidenceRepository(connection).update_project_brand_asset_scan_status(
+            RuntimeProjectBrandAssetScanInput(
+                asset_id=asset_id,
+                scan_status="passed",
+                scanned_by="agency-user",
+                scan_notes="Clean preview",
+                reason="manual scan passed",
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeProjectBrandAsset)
+        self.assertEqual(record.asset["scan_status"], "passed")
+        self.assertEqual(record.audit_events[0]["event_type"], "project_brand_asset_scan_recorded")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("UPDATE project_brand_assets", executed_sql)
+        self.assertIn("scan_status = %s", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
 
     def test_postgres_repository_activates_project_brand_asset_version(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
