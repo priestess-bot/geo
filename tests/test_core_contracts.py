@@ -3653,6 +3653,55 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(valid.status, "pass")
         self.assertEqual(valid.metadata["jwks_key_count"], 1)
 
+    def test_runtime_auth_diagnostic_accepts_jwks_url_without_network_check(self) -> None:
+        diagnostic = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_JWKS_URL": "https://idp.example.test/.well-known/jwks.json",
+                "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "120",
+                "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
+            }
+        )
+        invalid_url = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_JWKS_URL": "file:///tmp/jwks.json",
+            }
+        )
+        invalid_ttl = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_JWKS_URL": "https://idp.example.test/.well-known/jwks.json",
+                "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "-1",
+            }
+        )
+
+        self.assertEqual(diagnostic.status, "pass")
+        self.assertEqual(diagnostic.metadata["jwks_url"], "configured")
+        self.assertEqual(diagnostic.metadata["jwks_url_network_check"], "not_run")
+        self.assertEqual(invalid_url.status, "fail")
+        self.assertIn("GENO_RUNTIME_JWKS_URL", invalid_url.detail)
+        self.assertEqual(invalid_ttl.status, "fail")
+        self.assertIn("GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS", invalid_ttl.detail)
+
+    def test_runtime_auth_diagnostic_prefers_inline_jwks_over_url(self) -> None:
+        diagnostic = runtime_auth_diagnostic(
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_JWKS_JSON": '{"keys":[{"kty":"RSA","kid":"runtime-key-1","n":"AQ","e":"AQAB"}]}',
+                "GENO_RUNTIME_JWKS_URL": "file:///tmp/jwks.json",
+            }
+        )
+
+        self.assertEqual(diagnostic.status, "pass")
+        self.assertEqual(diagnostic.metadata["jwks_json"], "configured")
+        self.assertEqual(diagnostic.metadata["jwks_url"], "configured")
+        self.assertEqual(diagnostic.metadata["jwks_url_network_check"], "not_run")
+
     def test_build_runtime_diagnostics_aggregates_component_status(self) -> None:
         diagnostic = build_runtime_diagnostics({})
 

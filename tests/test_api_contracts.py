@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import hashes
 
-from geno_api.main import app, close_runtime_resources, reset_runtime_metrics
+from geno_api.main import app, close_runtime_resources, reset_runtime_auth_caches, reset_runtime_metrics
 from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
 from geno_core.models import (
     RuntimeCollectionRunPage,
@@ -46,6 +46,7 @@ from geno_core.models import (
 class ApiContractsTest(unittest.TestCase):
     def setUp(self) -> None:
         reset_runtime_metrics()
+        reset_runtime_auth_caches()
         self.client = TestClient(app)
 
     def _runtime_jwt(self, *, secret: str = "test-runtime-secret", payload: dict[str, object] | None = None) -> str:
@@ -530,6 +531,55 @@ class ApiContractsTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(fake_repository.kwargs["actor_id"], "jwks-owner")
+
+    def test_runtime_projects_endpoint_fetches_and_caches_jwks_url(self) -> None:
+        class FakeRepository:
+            def list_runtime_projects(self, **kwargs: object) -> RuntimeProjectPage:
+                self.kwargs = kwargs
+                return RuntimeProjectPage(total_count=0, limit=int(kwargs["limit"]), offset=int(kwargs["offset"]), records=())
+
+        class FakeJwksResponse:
+            status_code = 200
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> object:
+                return json.loads(jwks_json)
+
+        fake_repository = FakeRepository()
+        token, jwks_json = self._runtime_jwks_rs256_token(payload={"sub": "remote-jwks-owner"})
+        calls: list[tuple[str, dict[str, object]]] = []
+
+        def fake_get(url: str, **kwargs: object) -> FakeJwksResponse:
+            calls.append((url, kwargs))
+            return FakeJwksResponse()
+
+        jwks_url = "https://idp.example.test/.well-known/jwks.json"
+        with patch.dict(
+            "os.environ",
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GENO_RUNTIME_JWKS_JSON": "",
+                "GENO_RUNTIME_JWKS_URL": jwks_url,
+                "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "60",
+                "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
+            },
+            clear=False,
+        ), patch("geno_api.main.httpx.get", side_effect=fake_get), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            first = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
+            second = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(fake_repository.kwargs["actor_id"], "remote-jwks-owner")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0], jwks_url)
+        self.assertEqual(calls[0][1]["timeout"], 1.5)
+        self.assertEqual(calls[0][1]["follow_redirects"], True)
 
     def test_runtime_projects_endpoint_rejects_jwks_token_signed_by_untrusted_key(self) -> None:
         token, _ = self._runtime_jwks_rs256_token(payload={"sub": "jwks-owner"}, key_id="runtime-key-1")

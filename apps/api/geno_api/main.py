@@ -14,7 +14,9 @@ from contextvars import ContextVar
 from dataclasses import asdict
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import urlparse
 
+import httpx
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse, Response
@@ -104,6 +106,11 @@ RUNTIME_AUTH_MODE_JWKS = "jwks"
 RUNTIME_AUTH_MODES = {RUNTIME_AUTH_MODE_HEADER, RUNTIME_AUTH_MODE_JWT, RUNTIME_AUTH_MODE_JWKS}
 RUNTIME_JWT_SECRET_ENV = "GENO_RUNTIME_JWT_SECRET"
 RUNTIME_JWKS_JSON_ENV = "GENO_RUNTIME_JWKS_JSON"
+RUNTIME_JWKS_URL_ENV = "GENO_RUNTIME_JWKS_URL"
+RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV = "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS"
+RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV = "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS"
+DEFAULT_RUNTIME_JWKS_CACHE_TTL_SECONDS = 300.0
+DEFAULT_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS = 2.0
 RUNTIME_JWT_ALGORITHM_ENV = "GENO_RUNTIME_JWT_ALGORITHM"
 RUNTIME_JWT_ACTOR_CLAIM_ENV = "GENO_RUNTIME_JWT_ACTOR_CLAIM"
 RUNTIME_JWT_ISSUER_ENV = "GENO_RUNTIME_JWT_ISSUER"
@@ -122,6 +129,10 @@ _REQUEST_TOTAL: defaultdict[tuple[str, str, str], int] = defaultdict(int)
 _REQUEST_DURATION_BUCKET_TOTAL: defaultdict[tuple[str, str, str, str], int] = defaultdict(int)
 _REQUEST_DURATION_SUM: defaultdict[tuple[str, str, str], float] = defaultdict(float)
 _REQUEST_DURATION_COUNT: defaultdict[tuple[str, str, str], int] = defaultdict(int)
+_RUNTIME_JWKS_CACHE_LOCK = threading.Lock()
+_RUNTIME_JWKS_CACHE_URL: str | None = None
+_RUNTIME_JWKS_CACHE: dict[str, Any] | None = None
+_RUNTIME_JWKS_CACHE_EXPIRES_AT = 0.0
 
 
 def runtime_project_access_control_enabled() -> bool:
@@ -145,19 +156,126 @@ def _runtime_jwt_secret() -> str:
     return secret
 
 
-def _runtime_jwks() -> dict[str, Any]:
-    raw_value = os.getenv(RUNTIME_JWKS_JSON_ENV, "").strip()
-    if not raw_value:
-        raise HTTPException(status_code=503, detail=f"{RUNTIME_JWKS_JSON_ENV} is required when {RUNTIME_AUTH_MODE_ENV}=jwks")
+def _validate_runtime_jwks(jwks: object, *, source: str) -> dict[str, Any]:
+    if not isinstance(jwks, dict) or not isinstance(jwks.get("keys"), list):
+        raise HTTPException(status_code=503, detail=f"{source} must contain a JWKS keys array")
+    if not jwks["keys"]:
+        raise HTTPException(status_code=503, detail=f"{source} must contain at least one JWKS key")
+    return jwks
+
+
+def _runtime_jwks_url() -> str:
+    jwks_url = os.getenv(RUNTIME_JWKS_URL_ENV, "").strip()
+    if not jwks_url:
+        return ""
+    parsed = urlparse(jwks_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(status_code=503, detail=f"{RUNTIME_JWKS_URL_ENV} must be an http or https URL")
+    return jwks_url
+
+
+def _non_negative_float_env(key: str, default: float) -> float:
+    raw_value = os.getenv(key, str(default)).strip() or str(default)
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=f"{key} must be a non-negative number") from exc
+    if value < 0:
+        raise HTTPException(status_code=503, detail=f"{key} must be a non-negative number")
+    return value
+
+
+def _positive_float_env(key: str, default: float) -> float:
+    raw_value = os.getenv(key, str(default)).strip() or str(default)
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=f"{key} must be a positive number") from exc
+    if value <= 0:
+        raise HTTPException(status_code=503, detail=f"{key} must be a positive number")
+    return value
+
+
+def _runtime_jwks_cache_ttl_seconds() -> float:
+    return _non_negative_float_env(RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV, DEFAULT_RUNTIME_JWKS_CACHE_TTL_SECONDS)
+
+
+def _runtime_jwks_fetch_timeout_seconds() -> float:
+    return _positive_float_env(RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV, DEFAULT_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS)
+
+
+def _runtime_jwks_from_json(raw_value: str) -> dict[str, Any]:
     try:
         jwks = json.loads(raw_value)
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=f"{RUNTIME_JWKS_JSON_ENV} must be valid JWKS JSON") from exc
-    if not isinstance(jwks, dict) or not isinstance(jwks.get("keys"), list):
-        raise HTTPException(status_code=503, detail=f"{RUNTIME_JWKS_JSON_ENV} must contain a keys array")
-    if not jwks["keys"]:
-        raise HTTPException(status_code=503, detail=f"{RUNTIME_JWKS_JSON_ENV} must contain at least one key")
-    return jwks
+    return _validate_runtime_jwks(jwks, source=RUNTIME_JWKS_JSON_ENV)
+
+
+def _runtime_jwks_from_url(jwks_url: str) -> dict[str, Any]:
+    global _RUNTIME_JWKS_CACHE_URL, _RUNTIME_JWKS_CACHE, _RUNTIME_JWKS_CACHE_EXPIRES_AT
+    now = time.time()
+    with _RUNTIME_JWKS_CACHE_LOCK:
+        if _RUNTIME_JWKS_CACHE_URL == jwks_url and _RUNTIME_JWKS_CACHE is not None and now < _RUNTIME_JWKS_CACHE_EXPIRES_AT:
+            return _RUNTIME_JWKS_CACHE
+    try:
+        response = httpx.get(
+            jwks_url,
+            timeout=_runtime_jwks_fetch_timeout_seconds(),
+            follow_redirects=True,
+        )
+        response.raise_for_status()
+        jwks = response.json()
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=503, detail="runtime JWKS URL fetch timed out") from exc
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=503, detail=f"runtime JWKS URL returned status {exc.response.status_code}") from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail="runtime JWKS URL fetch failed") from exc
+
+    validated_jwks = _validate_runtime_jwks(jwks, source=RUNTIME_JWKS_URL_ENV)
+    cache_expires_at = time.time() + _runtime_jwks_cache_ttl_seconds()
+    with _RUNTIME_JWKS_CACHE_LOCK:
+        _RUNTIME_JWKS_CACHE_URL = jwks_url
+        _RUNTIME_JWKS_CACHE = validated_jwks
+        _RUNTIME_JWKS_CACHE_EXPIRES_AT = cache_expires_at
+    return validated_jwks
+
+
+def _ensure_runtime_jwks_configured() -> None:
+    raw_value = os.getenv(RUNTIME_JWKS_JSON_ENV, "").strip()
+    if raw_value:
+        _runtime_jwks_from_json(raw_value)
+        return
+    if _runtime_jwks_url():
+        _runtime_jwks_cache_ttl_seconds()
+        _runtime_jwks_fetch_timeout_seconds()
+        return
+    raise HTTPException(
+        status_code=503,
+        detail=f"{RUNTIME_JWKS_JSON_ENV} or {RUNTIME_JWKS_URL_ENV} is required when {RUNTIME_AUTH_MODE_ENV}=jwks",
+    )
+
+
+def _runtime_jwks() -> dict[str, Any]:
+    raw_value = os.getenv(RUNTIME_JWKS_JSON_ENV, "").strip()
+    if raw_value:
+        return _runtime_jwks_from_json(raw_value)
+    jwks_url = _runtime_jwks_url()
+    if jwks_url:
+        return _runtime_jwks_from_url(jwks_url)
+    raise HTTPException(
+        status_code=503,
+        detail=f"{RUNTIME_JWKS_JSON_ENV} or {RUNTIME_JWKS_URL_ENV} is required when {RUNTIME_AUTH_MODE_ENV}=jwks",
+    )
+
+
+def reset_runtime_auth_caches() -> None:
+    global _RUNTIME_JWKS_CACHE_URL, _RUNTIME_JWKS_CACHE, _RUNTIME_JWKS_CACHE_EXPIRES_AT
+    with _RUNTIME_JWKS_CACHE_LOCK:
+        _RUNTIME_JWKS_CACHE_URL = None
+        _RUNTIME_JWKS_CACHE = None
+        _RUNTIME_JWKS_CACHE_EXPIRES_AT = 0.0
 
 
 def _base64url_decode(value: str) -> bytes:
@@ -529,7 +647,7 @@ def require_runtime_actor_id(x_geno_actor_id: str | None = None) -> str | None:
         if auth_mode == RUNTIME_AUTH_MODE_JWT:
             _runtime_jwt_secret()
         else:
-            _runtime_jwks()
+            _ensure_runtime_jwks_configured()
         actor_id = _RUNTIME_JWT_ACTOR_ID.get()
         if not actor_id:
             raise HTTPException(

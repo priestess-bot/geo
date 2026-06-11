@@ -7,6 +7,7 @@ import threading
 from collections.abc import Mapping
 from dataclasses import dataclass, asdict
 from typing import Callable
+from urllib.parse import urlparse
 
 from geno_core.object_store import RequestFn, S3CompatibleObjectStore
 from geno_core.repository import DbConnection, PostgresEvidenceRepository
@@ -26,6 +27,9 @@ RUNTIME_PROJECT_ACCESS_CONTROL_ENV = "GENO_RUNTIME_PROJECT_ACCESS_CONTROL"
 RUNTIME_AUTH_MODE_ENV = "GENO_RUNTIME_AUTH_MODE"
 RUNTIME_JWT_SECRET_ENV = "GENO_RUNTIME_JWT_SECRET"
 RUNTIME_JWKS_JSON_ENV = "GENO_RUNTIME_JWKS_JSON"
+RUNTIME_JWKS_URL_ENV = "GENO_RUNTIME_JWKS_URL"
+RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV = "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS"
+RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV = "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS"
 RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES = {"1", "true", "yes", "on"}
 RUNTIME_AUTH_MODES = {"header", "jwt", "jwks"}
 
@@ -70,6 +74,17 @@ def _non_negative_float_from_env(runtime_env: Mapping[str, str], key: str, defau
         raise RuntimePersistenceError(f"{key} must be a non-negative number") from exc
     if value < 0:
         raise RuntimePersistenceError(f"{key} must be a non-negative number")
+    return value
+
+
+def _positive_float_from_env(runtime_env: Mapping[str, str], key: str, default: float) -> float:
+    raw_value = runtime_env.get(key, str(default)).strip() or str(default)
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise RuntimePersistenceError(f"{key} must be a positive number") from exc
+    if value <= 0:
+        raise RuntimePersistenceError(f"{key} must be a positive number")
     return value
 
 
@@ -410,6 +425,11 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
     auth_mode = runtime_env.get(RUNTIME_AUTH_MODE_ENV, "header").strip().lower() or "header"
     jwt_secret_configured = bool(runtime_env.get(RUNTIME_JWT_SECRET_ENV, "").strip())
     jwks_json = runtime_env.get(RUNTIME_JWKS_JSON_ENV, "").strip()
+    jwks_url = runtime_env.get(RUNTIME_JWKS_URL_ENV, "").strip()
+    jwks_url_valid = False
+    if jwks_url:
+        parsed_url = urlparse(jwks_url)
+        jwks_url_valid = parsed_url.scheme in {"http", "https"} and bool(parsed_url.netloc)
     jwks_key_count: int | None = None
     if jwks_json:
         try:
@@ -423,6 +443,8 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
         "auth_mode": auth_mode,
         "jwt_secret": "configured" if jwt_secret_configured else "missing",
         "jwks_json": "configured" if jwks_json else "missing",
+        "jwks_url": "configured" if jwks_url else "missing",
+        "jwks_url_network_check": "not_run",
         "jwks_key_count": jwks_key_count if jwks_key_count is not None else "unknown",
     }
     if auth_mode not in RUNTIME_AUTH_MODES:
@@ -439,22 +461,40 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
             detail="GENO_RUNTIME_JWT_SECRET is required when JWT auth mode is enabled",
             metadata=metadata,
         )
-    if access_control_enabled and auth_mode == "jwks":
-        if not jwks_json:
+    if auth_mode == "jwks" and jwks_url and not jwks_json:
+        if not jwks_url_valid:
             return RuntimeComponentDiagnostic(
                 name="runtime_auth",
                 status="fail",
-                detail="GENO_RUNTIME_JWKS_JSON is required when JWKS auth mode is enabled",
+                detail="GENO_RUNTIME_JWKS_URL must be an http or https URL",
                 metadata=metadata,
             )
-        if jwks_key_count is None:
+        try:
+            _non_negative_float_from_env(runtime_env, RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV, 300.0)
+            _positive_float_from_env(runtime_env, RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV, 2.0)
+        except RuntimePersistenceError as exc:
+            return RuntimeComponentDiagnostic(
+                name="runtime_auth",
+                status="fail",
+                detail=str(exc),
+                metadata=metadata,
+            )
+    if access_control_enabled and auth_mode == "jwks":
+        if not jwks_json and not jwks_url:
+            return RuntimeComponentDiagnostic(
+                name="runtime_auth",
+                status="fail",
+                detail="GENO_RUNTIME_JWKS_JSON or GENO_RUNTIME_JWKS_URL is required when JWKS auth mode is enabled",
+                metadata=metadata,
+            )
+        if jwks_json and jwks_key_count is None:
             return RuntimeComponentDiagnostic(
                 name="runtime_auth",
                 status="fail",
                 detail="GENO_RUNTIME_JWKS_JSON must be valid JWKS JSON with a keys array",
                 metadata=metadata,
             )
-        if jwks_key_count < 1:
+        if jwks_json and jwks_key_count < 1:
             return RuntimeComponentDiagnostic(
                 name="runtime_auth",
                 status="fail",
