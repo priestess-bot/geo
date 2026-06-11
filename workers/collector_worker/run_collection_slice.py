@@ -201,6 +201,116 @@ def _build_preflight_summary(
     }
 
 
+def _build_preflight_audit_checklist(
+    *,
+    mode: str,
+    phase: str,
+    exit_code: int,
+    planned_runs: int,
+    record_count: int,
+    success_count: int,
+    failure_count: int,
+    collector_health_gate: dict[str, object],
+    p0a_readiness_gate: object | None,
+    preflight_summary: dict[str, object],
+    output_path: str | None,
+    worker_args: tuple[str, ...],
+) -> dict[str, object]:
+    collector_health_status = str(collector_health_gate.get("gate_status", "unknown"))
+    collector_health_reasons = _string_tuple(collector_health_gate.get("failure_reasons"))
+    p0a_required = mode in {"fixture", "api"}
+    p0a_status_value = _gate_field(p0a_readiness_gate, "gate_status")
+    if p0a_status_value is None:
+        p0a_status = "not_run" if p0a_required else "not_applicable"
+    else:
+        p0a_status = str(p0a_status_value)
+    p0a_reasons = _string_tuple(_gate_field(p0a_readiness_gate, "failure_reasons"))
+    blocking_reasons = tuple(
+        item
+        for item in (
+            *collector_health_reasons,
+            *p0a_reasons,
+            "p0a_readiness_not_run" if p0a_required and p0a_status == "not_run" else "",
+            f"collection_failures={failure_count}" if failure_count else "",
+        )
+        if item
+    )
+    ready_for_design_partner = bool(preflight_summary.get("ready_for_design_partner"))
+    return {
+        "checklist_version": "provider_preflight_audit_checklist_v1",
+        "overall_status": "pass" if ready_for_design_partner else "fail",
+        "ready_for_design_partner": ready_for_design_partner,
+        "phase": phase,
+        "exit_code": exit_code,
+        "blocking_reasons": blocking_reasons,
+        "worker_args": worker_args,
+        "evidence_refs": {
+            "collector_health": "collector_health",
+            "collector_health_gate": "collector_health_gate",
+            "p0a_readiness_gate": "p0a_readiness_gate",
+            "preflight_summary": "preflight_summary",
+            "answer_run_ids": "answer_run_ids" if record_count else "",
+            "failure_events": "failure_events" if failure_count else "",
+            "preflight_output_path": str(Path(output_path)) if output_path else "",
+        },
+        "checks": (
+            {
+                "id": "collector_health",
+                "required": True,
+                "status": collector_health_status,
+                "detail": "All selected collectors are ready"
+                if collector_health_status == "pass"
+                else "One or more selected collectors are not ready",
+                "failure_reasons": collector_health_reasons,
+                "evidence_refs": ("collector_health", "collector_health_gate"),
+            },
+            {
+                "id": "p0a_readiness",
+                "required": p0a_required,
+                "status": p0a_status,
+                "detail": "P0a readiness gate passed"
+                if p0a_status == "pass"
+                else ("P0a readiness gate is not required for this mode" if not p0a_required else "P0a readiness gate did not pass"),
+                "failure_reasons": p0a_reasons,
+                "evidence_refs": ("p0a_readiness_gate",),
+            },
+            {
+                "id": "collection_failures",
+                "required": True,
+                "status": "fail" if failure_count else "pass",
+                "detail": f"{failure_count} collection failure records" if failure_count else "No collection failure records",
+                "failure_reasons": (f"collection_failures={failure_count}",) if failure_count else (),
+                "evidence_refs": ("failure_events",) if failure_count else ("answer_run_ids",),
+            },
+            {
+                "id": "preflight_output_path",
+                "required": False,
+                "status": "pass" if output_path else "warn",
+                "detail": "Worker JSON is written to the configured audit output path"
+                if output_path
+                else "No --preflight-output-path configured; stdout remains the only machine-readable output",
+                "failure_reasons": (),
+                "evidence_refs": ("preflight_output_path",) if output_path else (),
+            },
+            {
+                "id": "replay_context",
+                "required": True,
+                "status": "pass" if worker_args else "warn",
+                "detail": "Worker CLI args are captured for replay",
+                "failure_reasons": (),
+                "evidence_refs": ("preflight_audit_checklist.worker_args",),
+            },
+        ),
+        "run_totals": {
+            "planned_runs": planned_runs,
+            "record_count": record_count,
+            "success_count": success_count,
+            "failure_count": failure_count,
+        },
+        "recommended_next_action": preflight_summary.get("recommended_next_action", "inspect_preflight_output"),
+    }
+
+
 def _emit_json_output(output: dict[str, object], output_path: str | None = None) -> None:
     if output_path:
         path = Path(output_path)
@@ -867,7 +977,7 @@ def main() -> None:
             "p0a_readiness_gate": None,
             "persistence": persistence,
         }
-        output["preflight_summary"] = _build_preflight_summary(
+        preflight_summary = _build_preflight_summary(
             mode=args.mode,
             phase="collector_health",
             exit_code=3,
@@ -882,6 +992,21 @@ def main() -> None:
             p0a_readiness_gate=None,
             persistence=persistence,
             output_path=args.preflight_output_path,
+        )
+        output["preflight_summary"] = preflight_summary
+        output["preflight_audit_checklist"] = _build_preflight_audit_checklist(
+            mode=args.mode,
+            phase="collector_health",
+            exit_code=3,
+            planned_runs=planned_runs,
+            record_count=0,
+            success_count=0,
+            failure_count=0,
+            collector_health_gate=collector_health_gate,
+            p0a_readiness_gate=None,
+            preflight_summary=preflight_summary,
+            output_path=args.preflight_output_path,
+            worker_args=tuple(sys.argv[1:]),
         )
         _emit_json_output(output, args.preflight_output_path)
         print(f"collector_preflight_failed: {', '.join(collector_health_failure_reasons)}", file=sys.stderr)
@@ -940,7 +1065,7 @@ def main() -> None:
         "p0a_readiness_gate": asdict(p0a_readiness_gate) if p0a_readiness_gate is not None else None,
         "persistence": persistence,
     }
-    output["preflight_summary"] = _build_preflight_summary(
+    preflight_summary = _build_preflight_summary(
         mode=args.mode,
         phase=phase,
         exit_code=exit_code,
@@ -955,6 +1080,21 @@ def main() -> None:
         p0a_readiness_gate=p0a_readiness_gate,
         persistence=persistence,
         output_path=args.preflight_output_path,
+    )
+    output["preflight_summary"] = preflight_summary
+    output["preflight_audit_checklist"] = _build_preflight_audit_checklist(
+        mode=args.mode,
+        phase=phase,
+        exit_code=exit_code,
+        planned_runs=planned_runs,
+        record_count=len(records),
+        success_count=len(successes),
+        failure_count=len(failures),
+        collector_health_gate=collector_health_gate,
+        p0a_readiness_gate=p0a_readiness_gate,
+        preflight_summary=preflight_summary,
+        output_path=args.preflight_output_path,
+        worker_args=tuple(sys.argv[1:]),
     )
     if plan is not None:
         output["google_spike_gate"] = asdict(

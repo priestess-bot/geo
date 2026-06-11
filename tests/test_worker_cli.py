@@ -162,6 +162,23 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(summary["collector_health_status"], "pass")
         self.assertEqual(summary["p0a_readiness_status"], "pass")
         self.assertEqual(summary["recommended_next_action"], "promote_to_small_real_au_batch")
+        checklist = payload["preflight_audit_checklist"]
+        self.assertEqual(checklist["checklist_version"], "provider_preflight_audit_checklist_v1")
+        self.assertEqual(checklist["overall_status"], "pass")
+        self.assertTrue(checklist["ready_for_design_partner"])
+        self.assertEqual(checklist["blocking_reasons"], [])
+        self.assertIn("--sample-size", checklist["worker_args"])
+        self.assertEqual(checklist["run_totals"]["planned_runs"], 12)
+        self.assertEqual(
+            {check["id"]: check["status"] for check in checklist["checks"]},
+            {
+                "collector_health": "pass",
+                "p0a_readiness": "pass",
+                "collection_failures": "pass",
+                "preflight_output_path": "warn",
+                "replay_context": "pass",
+            },
+        )
 
     def test_api_worker_slice_without_keys_is_audited_failure(self) -> None:
         payload = self._run_worker("--mode", "api", "--prompt-limit", "1", "--cities", "Australia")
@@ -232,6 +249,23 @@ class WorkerCliTest(unittest.TestCase):
         )
         self.assertEqual(summary["audit_output_path"], output_path)
         self.assertEqual(summary["recommended_next_action"], "configure_missing_provider_credentials_or_collectors")
+        checklist = payload["preflight_audit_checklist"]
+        self.assertEqual(checklist["overall_status"], "fail")
+        self.assertEqual(checklist["phase"], "collector_health")
+        self.assertEqual(checklist["exit_code"], 3)
+        self.assertIn("perplexity.sonar.api:not_configured", checklist["blocking_reasons"])
+        self.assertEqual(checklist["evidence_refs"]["preflight_output_path"], output_path)
+        self.assertIn("--preflight-output-path", checklist["worker_args"])
+        self.assertEqual(
+            {check["id"]: check["status"] for check in checklist["checks"]},
+            {
+                "collector_health": "fail",
+                "p0a_readiness": "not_run",
+                "collection_failures": "pass",
+                "preflight_output_path": "pass",
+                "replay_context": "pass",
+            },
+        )
 
     def test_api_preflight_with_browser_fidelity_requires_browser_collector_ready(self) -> None:
         with patch.dict(
@@ -342,6 +376,20 @@ class WorkerCliTest(unittest.TestCase):
             summary["recommended_next_action"],
             "inspect_p0a_readiness_failure_reasons_before_design_partner",
         )
+        checklist = payload["preflight_audit_checklist"]
+        self.assertEqual(checklist["overall_status"], "fail")
+        self.assertIn("below_required_sample_size=4", checklist["blocking_reasons"])
+        self.assertEqual(checklist["run_totals"]["record_count"], 4)
+        self.assertEqual(
+            {check["id"]: check["status"] for check in checklist["checks"]},
+            {
+                "collector_health": "pass",
+                "p0a_readiness": "fail",
+                "collection_failures": "pass",
+                "preflight_output_path": "warn",
+                "replay_context": "pass",
+            },
+        )
 
     def test_require_no_collection_failures_fails_nonzero_after_collection(self) -> None:
         result = self._run_worker_result(
@@ -359,6 +407,14 @@ class WorkerCliTest(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["failure_count"], 2)
         self.assertEqual(payload["record_count"], 2)
+        checklist = payload["preflight_audit_checklist"]
+        self.assertEqual(checklist["overall_status"], "fail")
+        self.assertIn("collection_failures=2", checklist["blocking_reasons"])
+        self.assertEqual(checklist["run_totals"]["failure_count"], 2)
+        self.assertEqual(
+            {check["id"]: check["status"] for check in checklist["checks"]}["collection_failures"],
+            "fail",
+        )
 
     def test_collection_retry_cli_options_are_reported(self) -> None:
         payload = self._run_worker(
