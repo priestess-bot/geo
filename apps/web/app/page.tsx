@@ -542,6 +542,7 @@ type RuntimeData = {
   prompts: PageResponse<RuntimePrompt>;
   promptImports: PageResponse<RuntimePromptImportHistoryItem>;
   evidence: PageResponse<EvidenceRun>;
+  questionEvidence: PageResponse<EvidenceRun>;
   collectionRuns: PageResponse<CollectionRun>;
   fidelityChecks: PageResponse<RuntimeFidelityCheck>;
   fidelityTrend: RuntimeFidelityTrend | null;
@@ -555,6 +556,10 @@ type RuntimeData = {
   alerts: PageResponse<RuntimeAlert>;
   content: PageResponse<ContentEngine>;
   traceability: TraceabilityDetail | null;
+};
+
+type RuntimePaths = Record<keyof typeof endpoints, string> & {
+  questionEvidence: string;
 };
 
 type RuntimeProjectBrandKit = {
@@ -785,6 +790,31 @@ type RuntimeSavedView = {
     updated_at: string;
   };
   audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
+};
+
+type QuestionCoverageStatus = "covered" | "no_evidence" | "platform_gap" | "trigger_gap" | "answer_gap" | "source_gap";
+
+type QuestionDetailRow = {
+  prompt: RuntimePrompt;
+  evidenceRuns: EvidenceRun[];
+  runCount: number;
+  answerCount: number;
+  triggeredCount: number;
+  citationCount: number;
+  assetCount: number;
+  auditCount: number;
+  totalCost: number;
+  averageDurationMs: number;
+  platforms: string[];
+  requiredPlatforms: string[];
+  missingPlatforms: string[];
+  cities: string[];
+  accessMethods: string[];
+  surfaceCounts: Record<string, number>;
+  statusCounts: Record<string, number>;
+  latestRun?: EvidenceRun;
+  status: QuestionCoverageStatus;
+  gapLabel: string;
 };
 
 const endpoints = {
@@ -1303,7 +1333,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   error: string | null;
   fetchUrl: string;
   displayUrl: string;
-  paths: Record<keyof typeof endpoints, string>;
+  paths: RuntimePaths;
 }> {
   const baseUrl =
     process.env.API_INTERNAL_BASE_URL ||
@@ -1311,13 +1341,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     "http://localhost:8000";
   const displayUrl = process.env.NEXT_PUBLIC_API_BASE_URL || baseUrl;
   const projectListParams = { market_code: "AU", limit: 20 };
-  const paths: Record<keyof typeof endpoints, string> = {
+  const paths: RuntimePaths = {
     projects: runtimePath(endpoints.projects, projectListParams),
     projectMembers: endpoints.projectMembers,
     prompts: runtimePath(endpoints.prompts, {
       market_code: "AU",
       intent_type: filters.intent_type,
-      limit: 20
+      limit: 200
     }),
     promptImports: runtimePath(endpoints.promptImports, {
       limit: 5
@@ -1328,6 +1358,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       intent_type: filters.intent_type,
       sort: filters.sort,
       limit: 5
+    }),
+    questionEvidence: runtimePath(endpoints.evidence, {
+      platform: filters.platform,
+      city: filters.city,
+      intent_type: filters.intent_type,
+      sort: filters.sort,
+      limit: 200
     }),
     collectionRuns: runtimePath(endpoints.collectionRuns, {
       limit: 5
@@ -1410,7 +1447,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     ...selectedProjectParams,
     market_code: "AU",
     intent_type: filters.intent_type,
-    limit: 20
+    limit: 200
   });
   paths.promptImports = runtimePath(endpoints.promptImports, {
     ...selectedProjectParams,
@@ -1423,6 +1460,14 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     intent_type: filters.intent_type,
     sort: filters.sort,
     limit: 5
+  });
+  paths.questionEvidence = runtimePath(endpoints.evidence, {
+    ...selectedProjectParams,
+    platform: filters.platform,
+    city: filters.city,
+    intent_type: filters.intent_type,
+    sort: filters.sort,
+    limit: 200
   });
   paths.collectionRuns = runtimePath(endpoints.collectionRuns, {
     ...selectedProjectParams,
@@ -1514,6 +1559,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     projectMembers,
     promptImports,
     evidence,
+    questionEvidence,
     collectionRuns,
     fidelityChecks,
     fidelityTrend,
@@ -1548,6 +1594,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       emptyPage<RuntimePromptImportHistoryItem>()
     ),
     fetchRuntimeEndpoint<PageResponse<EvidenceRun>>(baseUrl, paths.evidence, emptyPage<EvidenceRun>()),
+    fetchRuntimeEndpoint<PageResponse<EvidenceRun>>(baseUrl, paths.questionEvidence, emptyPage<EvidenceRun>()),
     fetchRuntimeEndpoint<PageResponse<CollectionRun>>(baseUrl, paths.collectionRuns, emptyPage<CollectionRun>()),
     fetchRuntimeEndpoint<PageResponse<RuntimeFidelityCheck>>(
       baseUrl,
@@ -1604,6 +1651,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     projectMembers,
     promptImports,
     evidence,
+    questionEvidence,
     collectionRuns,
     fidelityChecks,
     fidelityTrend,
@@ -1639,6 +1687,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       prompts: prompts.payload,
       promptImports: promptImports.payload,
       evidence: evidence.payload,
+      questionEvidence: questionEvidence.payload,
       collectionRuns: collectionRuns.payload,
       fidelityChecks: fidelityChecks.payload,
       fidelityTrend: fidelityTrend.payload,
@@ -1771,6 +1820,89 @@ function formatCounts(counts: Record<string, number>): string {
   return entries.length ? entries.map(([key, value]) => `${key}:${value}`).join(", ") : "none";
 }
 
+const p0aRequiredPlatforms = ["chatgpt", "perplexity"];
+
+function questionCoverageStatus(row: Omit<QuestionDetailRow, "status" | "gapLabel">): {
+  status: QuestionCoverageStatus;
+  gapLabel: string;
+} {
+  if (row.runCount === 0) {
+    return { status: "no_evidence", gapLabel: "No evidence runs" };
+  }
+  if (row.missingPlatforms.length) {
+    return { status: "platform_gap", gapLabel: `Missing ${row.missingPlatforms.join(", ")}` };
+  }
+  if (row.triggeredCount === 0) {
+    return { status: "trigger_gap", gapLabel: "No triggered answer" };
+  }
+  if (row.answerCount === 0) {
+    return { status: "answer_gap", gapLabel: "No answer present" };
+  }
+  if (row.citationCount === 0 && row.assetCount === 0) {
+    return { status: "source_gap", gapLabel: "No citation or asset" };
+  }
+  return { status: "covered", gapLabel: "Covered" };
+}
+
+function buildQuestionDetailRows(
+  prompts: RuntimePrompt[],
+  evidenceRuns: EvidenceRun[],
+  filters: RuntimeFilters
+): QuestionDetailRow[] {
+  const promptIdByText = new Map(prompts.map((prompt) => [prompt.text, prompt.id]));
+  const evidenceByPrompt = new Map<string, EvidenceRun[]>();
+  evidenceRuns.forEach((run) => {
+    const promptId =
+      run.answer_run.prompt_question_id ||
+      (run.answer_run.prompt_text ? promptIdByText.get(run.answer_run.prompt_text) : undefined);
+    if (!promptId) return;
+    const records = evidenceByPrompt.get(promptId) || [];
+    records.push(run);
+    evidenceByPrompt.set(promptId, records);
+  });
+
+  return prompts.map((prompt) => {
+    const records = evidenceByPrompt.get(prompt.id) || [];
+    const platforms = Array.from(new Set(records.map((run) => run.answer_run.platform).filter(Boolean))).sort();
+    const requiredPlatforms = filters.platform ? [filters.platform] : p0aRequiredPlatforms;
+    const missingPlatforms = requiredPlatforms.filter((platform) => !platforms.includes(platform));
+    const durations = records
+      .map((run) => run.collection_cost?.duration_ms || 0)
+      .filter((duration) => duration > 0);
+    const latestRun = records
+      .slice()
+      .sort(
+        (left, right) =>
+          new Date(right.answer_run.collected_at || "").getTime() -
+          new Date(left.answer_run.collected_at || "").getTime()
+      )[0];
+    const baseRow = {
+      prompt,
+      evidenceRuns: records,
+      runCount: records.length,
+      answerCount: records.filter((run) => run.answer_run.answer_present === true).length,
+      triggeredCount: records.filter((run) => run.answer_run.surface_triggered === true).length,
+      citationCount: records.reduce((total, run) => total + run.citations.length, 0),
+      assetCount: records.reduce((total, run) => total + run.evidence_assets.length, 0),
+      auditCount: records.reduce((total, run) => total + run.audit_events.length, 0),
+      totalCost: records.reduce((total, run) => total + Number(run.collection_cost?.total_cost || 0), 0),
+      averageDurationMs: durations.length
+        ? Math.round(durations.reduce((total, duration) => total + duration, 0) / durations.length)
+        : 0,
+      platforms,
+      requiredPlatforms,
+      missingPlatforms,
+      cities: Array.from(new Set(records.map((run) => run.answer_run.city).filter(Boolean))).sort(),
+      accessMethods: Array.from(new Set(records.map((run) => run.answer_run.access_method || "unknown"))).sort(),
+      surfaceCounts: countBy(records, (run) => run.answer_run.surface),
+      statusCounts: countBy(records, (run) => run.answer_run.status),
+      latestRun
+    };
+    const status = questionCoverageStatus(baseRow);
+    return { ...baseRow, ...status };
+  });
+}
+
 export default async function Home({
   searchParams
 }: {
@@ -1875,6 +2007,11 @@ export default async function Home({
     (traceability?.audit_events.length || 0);
   const promptIntentCount = new Set(data.prompts.records.map((prompt) => prompt.intent_type)).size;
   const promptCityCount = new Set(data.prompts.records.map((prompt) => prompt.city)).size;
+  const questionDetailRows = buildQuestionDetailRows(data.prompts.records, data.questionEvidence.records, filters);
+  const coveredQuestionCount = questionDetailRows.filter((row) => row.status === "covered").length;
+  const questionCoverageRate = questionDetailRows.length ? coveredQuestionCount / questionDetailRows.length : 0;
+  const questionGapRows = questionDetailRows.filter((row) => row.status !== "covered");
+  const questionStatusCounts = countBy(questionDetailRows, (row) => row.status);
   const latestReportScore = latestReport?.score_snapshots[0];
   const latestReportGraph = latestReport?.citation_graph;
   const reportPlatformWeights = latestReport?.report_export.platform_weights_snapshot || {};
@@ -2161,6 +2298,7 @@ export default async function Home({
         <Metric label="Projects" value={data.projects.total_count} />
         <Metric label="Prompts" value={data.prompts.total_count} />
         <Metric label="Evidence runs" value={data.evidence.total_count} />
+        <Metric label="Question coverage" value={pct(questionCoverageRate)} />
         <Metric label="Final score" value={num(latestScore?.snapshot.final_score)} />
         <Metric label="Source gaps" value={latestGraph?.source_gaps.length || 0} />
         <Metric label="Open actions" value={latestAction?.action_recommendations.length || 0} />
@@ -2675,6 +2813,96 @@ export default async function Home({
                   Save backfill
                 </button>
               </form>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </Panel>
+
+        <Panel
+          title="Question Detail"
+          subtitle={`${coveredQuestionCount}/${questionDetailRows.length} covered · evidence window ${data.questionEvidence.records.length}/${data.questionEvidence.total_count}`}
+          wide
+        >
+          {questionDetailRows.length ? (
+            <div className="questionDetail">
+              <dl className="facts questionSummaryFacts">
+                <Fact label="Coverage" value={pct(questionCoverageRate)} />
+                <Fact label="Covered" value={coveredQuestionCount} />
+                <Fact label="Open gaps" value={questionGapRows.length} />
+                <Fact label="Evidence window" value={`${data.questionEvidence.records.length}/${data.questionEvidence.total_count}`} />
+                <Fact label="Question evidence query" value={paths.questionEvidence} />
+                <Fact label="Status mix" value={formatCounts(questionStatusCounts)} />
+              </dl>
+              <div className="questionTable" role="table" aria-label="question detail coverage matrix">
+                <div className="questionTableHeader" role="row">
+                  <span>Question</span>
+                  <span>Coverage</span>
+                  <span>Runs</span>
+                  <span>Platforms</span>
+                  <span>Evidence</span>
+                  <span>Latest</span>
+                </div>
+                {questionDetailRows.map((row) => (
+                  <details className="questionRow" key={row.prompt.id} open={row.status !== "covered"}>
+                    <summary>
+                      <span>
+                        <strong>{row.prompt.priority}</strong>
+                        {row.prompt.intent_type} · {row.prompt.city}
+                      </span>
+                      <span className={`coverageBadge coverage-${row.status}`}>{row.gapLabel}</span>
+                      <span>
+                        {row.runCount} runs · {row.answerCount} answers
+                      </span>
+                      <span>{row.platforms.length ? row.platforms.join(", ") : "none"}</span>
+                      <span>
+                        {row.citationCount} citations · {row.assetCount} assets
+                      </span>
+                      <span>{dateText(row.latestRun?.answer_run.collected_at)}</span>
+                    </summary>
+                    <div className="questionRowBody">
+                      <p className="prompt">{row.prompt.text}</p>
+                      <dl className="facts questionFacts">
+                        <Fact label="Prompt ID" value={shortId(row.prompt.id)} />
+                        <Fact label="Language" value={row.prompt.language} />
+                        <Fact label="Target brand" value={row.prompt.target_brand} />
+                        <Fact label="Competitors" value={row.prompt.competitors.length} />
+                        <Fact label="Trigger rate" value={pct(row.runCount ? row.triggeredCount / row.runCount : 0)} />
+                        <Fact label="Answer rate" value={pct(row.runCount ? row.answerCount / row.runCount : 0)} />
+                        <Fact label="Missing platforms" value={row.missingPlatforms.length ? row.missingPlatforms.join(", ") : "none"} />
+                        <Fact label="Cities observed" value={row.cities.length ? row.cities.join(", ") : "none"} />
+                        <Fact label="Access methods" value={row.accessMethods.length ? row.accessMethods.join(", ") : "none"} />
+                        <Fact label="Surface mix" value={formatCounts(row.surfaceCounts)} />
+                        <Fact label="Run status mix" value={formatCounts(row.statusCounts)} />
+                        <Fact label="Cost" value={num(row.totalCost)} />
+                        <Fact label="Avg duration" value={`${row.averageDurationMs} ms`} />
+                        <Fact label="Audit events" value={row.auditCount} />
+                      </dl>
+                      {row.evidenceRuns.length ? (
+                        <ul className="plainList questionEvidenceList">
+                          {row.evidenceRuns.slice(0, 4).map((run) => (
+                            <li key={run.answer_run.id}>
+                              <strong>
+                                {run.answer_run.platform} · {run.answer_run.surface} · {shortId(run.answer_run.id)}
+                              </strong>
+                              <span>
+                                {run.answer_run.status} · triggered {boolText(run.answer_run.surface_triggered)} · answer{" "}
+                                {boolText(run.answer_run.answer_present)}
+                              </span>
+                              <small>
+                                {run.citations.length} citations · {run.evidence_assets.length} assets · raw hash{" "}
+                                {clipText(run.raw_answer?.raw_payload_hash, 18)}
+                              </small>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mutedText">No evidence runs in the current question evidence window.</p>
+                      )}
+                    </div>
+                  </details>
+                ))}
+              </div>
             </div>
           ) : (
             <EmptyState />

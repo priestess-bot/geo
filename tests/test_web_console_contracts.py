@@ -159,6 +159,21 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".csv or .xlsx", page_source)
         self.assertIn('name="prompt_file"', page_source)
 
+    def test_runtime_console_surfaces_question_detail_matrix(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
+
+        self.assertIn("Question Detail", page_source)
+        self.assertIn("questionEvidence", page_source)
+        self.assertIn("buildQuestionDetailRows", page_source)
+        self.assertIn("Question coverage", page_source)
+        self.assertIn("Question evidence query", page_source)
+        self.assertIn("Missing platforms", page_source)
+        self.assertIn(".questionTable", css_source)
+        self.assertIn(".questionRow", css_source)
+        self.assertIn(".coverageBadge", css_source)
+        self.assertIn(".coverage-platform_gap", css_source)
+
     def test_runtime_console_surfaces_human_review_trail(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")

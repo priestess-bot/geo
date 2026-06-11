@@ -659,6 +659,8 @@ status
 - 城市级竞品压制。
 - 本地相关性不足提示。
 
+工程当前已在 Runtime Console 补齐 `Question Detail` 问题明细矩阵：前端会额外拉取最多 200 条当前筛选下的 evidence window，并与最多 200 条 runtime prompt 做服务端渲染期聚合，不新增后端接口。每条问题展示 run count、trigger/answer rate、required platform coverage、missing platform、citation/asset/audit 计数、城市/access method/surface/status 分布、最新运行时间和最近证据摘要；默认只展开有缺口的问题，已覆盖问题折叠，便于运营先处理 platform gap、trigger gap、answer gap 和 source gap。
+
 ### Step 7：改造澳洲答案解析器（可切换实现）
 
 `ParserEngine` 按接口实现，规则解析与 LLM-as-judge 两种实现可切换或并存（A/B），保留 `analysis_version`。澳洲英文回答需要单独做实体识别、推荐判断和本地相关性判断。
