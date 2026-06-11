@@ -5,14 +5,33 @@ on:
   pull_request:
 
 jobs:
-  python-contracts:
+  contracts-and-runtime:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/web/package-lock.json
       - name: Install API test dependencies
         run: python -m pip install -r apps/api/requirements.txt
-      - name: Run contract tests
-        run: PYTHONPATH=packages/geno_core:apps/api python -m unittest discover -s tests
+      - name: Install web dependencies
+        run: npm --prefix apps/web ci
+      - name: Run Python contract tests
+        run: make test
+      - name: Build Runtime Console
+        run: make web-build
+      - name: Validate Compose default config
+        run: make docker-config
+      - name: Validate Compose LLM gateway config
+        run: make docker-config-llm
+      - name: Validate Compose scheduler config
+        run: make docker-config-scheduler
+      - name: Validate Compose observability config
+        run: make docker-config-observability
+      - name: Run runtime E2E
+        run: make runtime-e2e

@@ -44,10 +44,21 @@
 
 ## 本地验证
 
+推荐先跑与 GitHub Actions 对齐的聚合门禁：
+
+```bash
+make ci-local
+```
+
+该目标会依次执行 Python 合约/运行时测试、Runtime Console production build、默认/LLM/scheduler/observability 四组 Compose config 静态校验，以及 Postgres+MinIO runtime E2E。需要拆开排障时可单独执行：
+
 ```bash
 make test
+make web-build
 make docker-config
 make docker-config-llm
+make docker-config-scheduler
+make docker-config-observability
 make runtime-e2e
 ```
 

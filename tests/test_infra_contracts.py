@@ -173,6 +173,10 @@ class InfraContractsTest(unittest.TestCase):
     def test_browser_fidelity_plan_make_target_outputs_machine_readable_json(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
 
+        self.assertIn("web-build:", makefile)
+        self.assertIn("npm --prefix apps/web run build", makefile)
+        self.assertIn("ci-local:", makefile)
+        self.assertIn("runtime-e2e", makefile)
         self.assertIn("browser-fidelity-plan:", makefile)
         self.assertIn(
             "\t@PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --plan-browser-fidelity-sampling",
@@ -182,6 +186,21 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("browser-fidelity-scheduler-run:", makefile)
         self.assertIn("docker-config-scheduler:", makefile)
         self.assertIn("docker-config-observability:", makefile)
+
+    def test_github_ci_runs_runtime_contract_build_compose_and_e2e_gates(self) -> None:
+        workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+        job = workflow["jobs"]["contracts-and-runtime"]
+        run_steps = [step["run"] for step in job["steps"] if "run" in step]
+
+        self.assertIn("python -m pip install -r apps/api/requirements.txt", run_steps)
+        self.assertIn("npm --prefix apps/web ci", run_steps)
+        self.assertIn("make test", run_steps)
+        self.assertIn("make web-build", run_steps)
+        self.assertIn("make docker-config", run_steps)
+        self.assertIn("make docker-config-llm", run_steps)
+        self.assertIn("make docker-config-scheduler", run_steps)
+        self.assertIn("make docker-config-observability", run_steps)
+        self.assertIn("make runtime-e2e", run_steps)
 
 
 if __name__ == "__main__":
