@@ -50,9 +50,10 @@
 make ci-local
 ```
 
-该目标会依次执行 Python 合约/运行时测试、Runtime Console production build、默认/LLM/scheduler/observability 四组 Compose config 静态校验，以及 Postgres+MinIO runtime E2E。需要拆开排障时可单独执行：
+该目标会依次执行静态质量门禁、Python 合约/运行时测试、Runtime Console production build、默认/LLM/scheduler/observability 四组 Compose config 静态校验，以及 Postgres+MinIO runtime E2E。需要拆开排障时可单独执行：
 
 ```bash
+make quality
 make test
 make web-build
 make docker-config

@@ -69,7 +69,6 @@ from geno_core.models import (
     RuntimeScoreWeightConfigInput,
 )
 from geno_core.object_store import ObjectStoreError, archive_project_brand_logo
-from geno_core.prompt_pack import build_au_dtc_prompt_pack
 from geno_core.prompt_import import prompt_import_file_to_csv
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.runtime import (

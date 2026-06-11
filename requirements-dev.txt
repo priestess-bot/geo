@@ -1,0 +1,4 @@
+-r apps/api/requirements.txt
+
+PyYAML==6.0.2
+ruff==0.8.4

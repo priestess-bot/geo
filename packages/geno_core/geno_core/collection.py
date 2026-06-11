@@ -4,7 +4,7 @@ from collections import Counter
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from time import perf_counter, sleep
-from typing import Callable, Iterable
+from typing import TYPE_CHECKING, Callable, Iterable
 from uuid import uuid5, NAMESPACE_URL
 from urllib.parse import urlparse
 
@@ -27,6 +27,9 @@ from geno_core.models import (
     RawAnswer,
     RawEvidenceRecord,
 )
+
+if TYPE_CHECKING:
+    from geno_core.models import AuditEvent
 
 
 P0A_GEO_CITIES = ("Australia", "Sydney", "Melbourne", "Brisbane")

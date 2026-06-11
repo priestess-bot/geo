@@ -173,6 +173,18 @@ class InfraContractsTest(unittest.TestCase):
     def test_browser_fidelity_plan_make_target_outputs_machine_readable_json(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
 
+        self.assertIn("install-dev-deps:", makefile)
+        self.assertIn("python3 -m pip install -r requirements-dev.txt", makefile)
+        self.assertIn("lint-python:", makefile)
+        self.assertIn("python3 -m ruff check apps/api packages workers scripts tests", makefile)
+        self.assertIn("compile-python:", makefile)
+        self.assertIn(
+            "python3 -m compileall apps/api/geno_api packages/geno_core/geno_core workers scripts tests",
+            makefile,
+        )
+        self.assertIn("web-typecheck:", makefile)
+        self.assertIn("npm --prefix apps/web run typecheck", makefile)
+        self.assertIn("quality: lint-python compile-python web-typecheck", makefile)
         self.assertIn("web-build:", makefile)
         self.assertIn("npm --prefix apps/web run build", makefile)
         self.assertIn("ci-local:", makefile)
@@ -192,8 +204,9 @@ class InfraContractsTest(unittest.TestCase):
         job = workflow["jobs"]["contracts-and-runtime"]
         run_steps = [step["run"] for step in job["steps"] if "run" in step]
 
-        self.assertIn("python -m pip install -r apps/api/requirements.txt", run_steps)
+        self.assertIn("python -m pip install -r requirements-dev.txt", run_steps)
         self.assertIn("npm --prefix apps/web ci", run_steps)
+        self.assertIn("make quality", run_steps)
         self.assertIn("make test", run_steps)
         self.assertIn("make web-build", run_steps)
         self.assertIn("make docker-config", run_steps)

@@ -5035,7 +5035,7 @@ class PostgresEvidenceRepository:
                 )
             )
         cursor.execute(
-            f"""
+            """
             SELECT sge.id AS id,
                    sge.source_graph_id AS source_graph_id,
                    sge.answer_run_id AS answer_run_id,
