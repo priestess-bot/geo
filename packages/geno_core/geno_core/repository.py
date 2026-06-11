@@ -1255,6 +1255,7 @@ class PostgresEvidenceRepository:
         *,
         project_id: str | None = None,
         market_code: str | None = None,
+        actor_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> RuntimeProjectPage:
@@ -1268,6 +1269,17 @@ class PostgresEvidenceRepository:
         if market_code:
             filters.append("p.market_code = %s")
             params.append(market_code)
+        if actor_id:
+            filters.append(
+                """
+                EXISTS (
+                  SELECT 1
+                  FROM project_members pm
+                  WHERE pm.project_id = p.id AND pm.user_id = %s
+                )
+                """
+            )
+            params.append(actor_id)
         where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
         with self.connection.cursor() as cursor:
             cursor.execute(
@@ -1293,6 +1305,57 @@ class PostgresEvidenceRepository:
             projects = _rows_dict(cursor.fetchall(), PROJECT_COLUMNS)
             records = tuple(self._load_runtime_project(cursor=cursor, project=project) for project in projects)
         return RuntimeProjectPage(total_count=total_count, limit=limit, offset=offset, records=records)
+
+    def user_can_access_project(self, *, project_id: str, actor_id: str) -> bool:
+        if not actor_id:
+            return False
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT 1
+                FROM project_members
+                WHERE project_id = %s AND user_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id), actor_id),
+            )
+            return cursor.fetchone() is not None
+
+    def get_entity_project_id(self, *, entity_id: str, entity_kind: str) -> str | None:
+        normalized_kind = entity_kind.strip().lower()
+        if normalized_kind not in {"brand", "competitor"}:
+            raise ValueError("entity_kind must be brand or competitor")
+        table_name = "brand_entities" if normalized_kind == "brand" else "competitor_entities"
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT project_id
+                FROM {table_name}
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(entity_id),),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return str(row["project_id"] if isinstance(row, dict) else row[0])
+
+    def get_report_export_project_id(self, *, report_export_id: str) -> str | None:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT project_id
+                FROM report_exports
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(report_export_id),),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return str(row["project_id"] if isinstance(row, dict) else row[0])
 
     def _load_runtime_project(self, *, cursor: DbCursor, project: dict[str, Any]) -> RuntimeProject:
         cursor.execute(

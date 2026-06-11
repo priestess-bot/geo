@@ -2907,6 +2907,39 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(connection.calls[0][1], (UUID(project_id), "AU"))
         self.assertEqual(connection.calls[1][1], (UUID(project_id), "AU", 10, 0))
 
+    def test_postgres_repository_filters_runtime_project_page_by_actor_membership(self) -> None:
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        connection = RecordingConnection(result_sets=[{"count": 0}, []])
+
+        page = PostgresEvidenceRepository(connection).list_runtime_projects(
+            project_id=project_id,
+            market_code="AU",
+            actor_id="agency-owner",
+            limit=10,
+            offset=0,
+        )
+
+        self.assertEqual(page.total_count, 0)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM project_members pm", executed_sql)
+        self.assertIn("pm.project_id = p.id AND pm.user_id = %s", executed_sql)
+        self.assertEqual(connection.calls[0][1], (UUID(project_id), "AU", "agency-owner"))
+        self.assertEqual(connection.calls[1][1], (UUID(project_id), "AU", "agency-owner", 10, 0))
+
+    def test_postgres_repository_checks_project_membership(self) -> None:
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        connection = RecordingConnection(result_sets=[{"?column?": 1}])
+
+        can_access = PostgresEvidenceRepository(connection).user_can_access_project(
+            project_id=project_id,
+            actor_id="agency-owner",
+        )
+
+        self.assertTrue(can_access)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM project_members", executed_sql)
+        self.assertEqual(connection.calls[0][1], (UUID(project_id), "agency-owner"))
+
     def test_postgres_repository_reads_runtime_prompt_page(self) -> None:
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
         prompt_id = "5b9615f3-533b-5f18-96fb-5c8cbcb934c1"

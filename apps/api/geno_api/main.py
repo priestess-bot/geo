@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from dataclasses import asdict
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
@@ -69,6 +70,59 @@ from geno_core.scoring import get_score_formula, list_score_formulas, normalize_
 from geno_core.traceability import build_traceability_bundle
 
 app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
+
+RUNTIME_PROJECT_ACCESS_CONTROL_ENV = "GENO_RUNTIME_PROJECT_ACCESS_CONTROL"
+RUNTIME_ACTOR_HEADER = "X-GENO-Actor-Id"
+RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES = {"1", "true", "yes", "on"}
+
+
+def runtime_project_access_control_enabled() -> bool:
+    return (
+        os.getenv(RUNTIME_PROJECT_ACCESS_CONTROL_ENV, "").strip().lower()
+        in RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES
+    )
+
+
+def require_runtime_actor_id(x_geno_actor_id: str | None = None) -> str | None:
+    actor_id = x_geno_actor_id.strip() if x_geno_actor_id else ""
+    if runtime_project_access_control_enabled() and not actor_id:
+        raise HTTPException(
+            status_code=401,
+            detail=f"{RUNTIME_ACTOR_HEADER} is required when runtime project access control is enabled",
+        )
+    return actor_id or None
+
+
+def assert_runtime_project_access(
+    repository: object,
+    *,
+    project_id: str | None,
+    actor_id: str | None,
+    require_project_id: bool = True,
+) -> None:
+    if not runtime_project_access_control_enabled():
+        return
+    normalized_project_id = project_id.strip() if project_id else ""
+    if require_project_id and not normalized_project_id:
+        raise HTTPException(
+            status_code=400,
+            detail="project_id is required when runtime project access control is enabled",
+        )
+    if not normalized_project_id:
+        return
+    if not actor_id:
+        raise HTTPException(
+            status_code=401,
+            detail=f"{RUNTIME_ACTOR_HEADER} is required when runtime project access control is enabled",
+        )
+    user_can_access_project = getattr(repository, "user_can_access_project", None)
+    if not callable(user_can_access_project):
+        raise HTTPException(
+            status_code=503,
+            detail="runtime project access control requires repository.user_can_access_project",
+        )
+    if not user_can_access_project(project_id=normalized_project_id, actor_id=actor_id):
+        raise HTTPException(status_code=403, detail="actor does not have access to project")
 
 
 class RuntimeSavedViewRequest(BaseModel):
@@ -200,8 +254,13 @@ def au_dtc_project_bootstrap() -> dict[str, object]:
 
 
 @app.post("/v1/projects/runtime/au/dtc-ecommerce")
-def create_runtime_au_dtc_project(payload: RuntimeProjectCreateRequest | None = None) -> dict[str, object]:
+def create_runtime_au_dtc_project(
+    payload: RuntimeProjectCreateRequest | None = None,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
     request = payload or RuntimeProjectCreateRequest()
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    owner_user_id = actor_id if runtime_project_access_control_enabled() and actor_id else request.owner_user_id.strip()
     competitors = tuple(item.strip() for item in request.competitors if item.strip())
     if not competitors:
         competitors = DEFAULT_AU_COMPETITORS
@@ -217,7 +276,7 @@ def create_runtime_au_dtc_project(payload: RuntimeProjectCreateRequest | None = 
             brand_official_domains=brand_official_domains,
             brand_parent_company=request.brand_parent_company.strip() if request.brand_parent_company else None,
             brand_product_lines=brand_product_lines,
-            owner_user_id=request.owner_user_id.strip(),
+            owner_user_id=owner_user_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -247,7 +306,9 @@ def runtime_projects(
     market_code: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
@@ -256,6 +317,7 @@ def runtime_projects(
         page = repository.list_runtime_projects(
             project_id=project_id,
             market_code=market_code,
+            actor_id=actor_id if runtime_project_access_control_enabled() else None,
             limit=limit,
             offset=offset,
         )
@@ -270,12 +332,15 @@ def runtime_entity_aliases(
     entity_kind: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_entity_aliases(
             project_id=project_id,
             entity_kind=entity_kind,
@@ -293,12 +358,15 @@ def runtime_entity_alias_candidates(
     entity_kind: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_entity_alias_candidates(
             project_id=project_id,
             entity_kind=entity_kind,
@@ -311,13 +379,25 @@ def runtime_entity_alias_candidates(
 
 
 @app.post("/v1/entity-aliases/runtime/confirm")
-def confirm_runtime_entity_alias(payload: EntityAliasConfirmRequest) -> dict[str, object]:
+def confirm_runtime_entity_alias(
+    payload: EntityAliasConfirmRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         try:
+            if runtime_project_access_control_enabled():
+                project_id = repository.get_entity_project_id(
+                    entity_id=payload.entity_id.strip(),
+                    entity_kind=payload.entity_kind.strip(),
+                )
+                if project_id is None:
+                    raise ValueError("entity not found")
+                assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
             record = repository.confirm_entity_alias(
                 EntityAliasInput(
                     entity_id=payload.entity_id.strip(),
@@ -346,12 +426,15 @@ def runtime_prompts(
     status: str | None = None,
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_prompts(
             project_id=project_id,
             market_code=market_code,
@@ -372,12 +455,15 @@ def runtime_prompt_imports(
     source_format: str | None = None,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_prompt_imports(
             project_id=project_id,
             source_format=source_format,
@@ -390,12 +476,17 @@ def runtime_prompt_imports(
 
 
 @app.post("/v1/prompts/runtime/import.csv")
-def import_runtime_prompts_csv(payload: RuntimePromptImportRequest) -> dict[str, object]:
+def import_runtime_prompts_csv(
+    payload: RuntimePromptImportRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id)
         result = repository.import_runtime_prompts_csv(
             RuntimePromptImportInput(
                 project_id=payload.project_id.strip(),
@@ -420,7 +511,9 @@ async def import_runtime_prompts_file(
     imported_by: str = Query(default="runtime-console", min_length=1, max_length=120),
     max_rows: int = Query(default=100, ge=1, le=200),
     content_type: str | None = Header(default=None),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     file_bytes = await request.body()
     try:
         csv_content, source_format = prompt_import_file_to_csv(file_bytes=file_bytes, filename=filename)
@@ -433,6 +526,7 @@ async def import_runtime_prompts_file(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         result = repository.import_runtime_prompts_csv(
             RuntimePromptImportInput(
                 project_id=project_id.strip(),
@@ -490,12 +584,15 @@ def runtime_evidence_runs(
     sort: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_evidence_runs(
             project_id=project_id,
             platform=platform,
@@ -517,12 +614,15 @@ def runtime_collection_runs(
     run_type: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_collection_runs(
             project_id=project_id,
             run_type=run_type,
@@ -544,12 +644,15 @@ def runtime_evidence_export_csv(
     sort: str | None = None,
     limit: int = Query(default=200, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         export = repository.export_runtime_evidence_csv(
             project_id=project_id,
             platform=platform,
@@ -576,7 +679,11 @@ def runtime_evidence_export_csv(
 
 
 @app.post("/v1/evidence-runs/runtime/manual-backfill")
-def runtime_manual_backfill(payload: ManualBackfillRequest) -> dict[str, object]:
+def runtime_manual_backfill(
+    payload: ManualBackfillRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
@@ -585,6 +692,7 @@ def runtime_manual_backfill(payload: ManualBackfillRequest) -> dict[str, object]
         prompt = repository.get_runtime_prompt(payload.prompt_question_id)
         if not prompt:
             raise HTTPException(status_code=404, detail="Prompt question not found")
+        assert_runtime_project_access(repository, project_id=str(prompt["project_id"]), actor_id=actor_id)
         citation_urls = tuple(url.strip() for url in payload.citation_urls if url.strip())
         record = build_manual_backfill_record(
             ManualBackfillInput(
@@ -629,12 +737,15 @@ def runtime_saved_views(
     view_type: str | None = None,
     limit: int = Query(default=20, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_saved_views(
             project_id=project_id,
             view_type=view_type,
@@ -647,12 +758,17 @@ def runtime_saved_views(
 
 
 @app.post("/v1/runtime-saved-views")
-def save_runtime_saved_view(payload: RuntimeSavedViewRequest) -> dict[str, object]:
+def save_runtime_saved_view(
+    payload: RuntimeSavedViewRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id)
         saved_view = repository.save_runtime_saved_view(
             RuntimeSavedViewInput(
                 project_id=payload.project_id,
@@ -671,12 +787,17 @@ def save_runtime_saved_view(payload: RuntimeSavedViewRequest) -> dict[str, objec
 
 
 @app.get("/v1/project-brand-kits/runtime")
-def runtime_project_brand_kit(project_id: str = Query(min_length=1)) -> dict[str, object]:
+def runtime_project_brand_kit(
+    project_id: str = Query(min_length=1),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         brand_kit = repository.get_project_brand_kit(project_id=project_id)
         if brand_kit is None:
             raise HTTPException(status_code=404, detail="Project brand kit not found")
@@ -686,12 +807,17 @@ def runtime_project_brand_kit(project_id: str = Query(min_length=1)) -> dict[str
 
 
 @app.post("/v1/project-brand-kits/runtime")
-def save_runtime_project_brand_kit(payload: ProjectBrandKitRequest) -> dict[str, object]:
+def save_runtime_project_brand_kit(
+    payload: ProjectBrandKitRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id)
         brand_kit = repository.save_project_brand_kit(
             RuntimeProjectBrandKitInput(
                 project_id=payload.project_id.strip(),
@@ -719,7 +845,9 @@ async def upload_runtime_project_brand_logo(
     filename: str = Query(min_length=1, max_length=240),
     uploaded_by: str = Query(default="runtime-console", min_length=1, max_length=120),
     content_type: str | None = Header(default=None),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     file_bytes = await request.body()
     if not file_bytes:
         raise HTTPException(status_code=400, detail="brand logo file is empty")
@@ -728,6 +856,7 @@ async def upload_runtime_project_brand_logo(
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         if repository.list_runtime_projects(project_id=project_id.strip(), limit=1, offset=0).total_count == 0:
             raise HTTPException(status_code=404, detail="project not found")
         try:
@@ -763,12 +892,15 @@ async def upload_runtime_project_brand_logo(
 def runtime_score_weight_config(
     project_id: str = Query(min_length=1),
     formula_version: str = Query(default="au_visibility_v1", min_length=1),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         formula = get_score_formula(formula_version)
         config = repository.get_score_weight_config(project_id=project_id, formula_version=formula.formula_version)
         if config is None:
@@ -791,7 +923,11 @@ def runtime_score_weight_config(
 
 
 @app.post("/v1/score-weight-configs/runtime")
-def save_runtime_score_weight_config(payload: ScoreWeightConfigRequest) -> dict[str, object]:
+def save_runtime_score_weight_config(
+    payload: ScoreWeightConfigRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         weights = normalize_score_weights(payload.weights, formula_version=payload.formula_version.strip())
     except ValueError as exc:
@@ -801,6 +937,7 @@ def save_runtime_score_weight_config(payload: ScoreWeightConfigRequest) -> dict[
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id)
         config = repository.save_score_weight_config(
             RuntimeScoreWeightConfigInput(
                 project_id=payload.project_id.strip(),
@@ -830,12 +967,15 @@ def runtime_human_reviews(
     review_status: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_human_reviews(
             project_id=project_id,
             target_type=target_type,
@@ -855,12 +995,15 @@ def runtime_human_review_queue(
     queue_status: str | None = None,
     limit: int = Query(default=20, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_human_review_queue(
             project_id=project_id,
             target_type=target_type,
@@ -874,12 +1017,17 @@ def runtime_human_review_queue(
 
 
 @app.post("/v1/human-reviews/runtime")
-def record_runtime_human_review(payload: HumanReviewRequest) -> dict[str, object]:
+def record_runtime_human_review(
+    payload: HumanReviewRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id)
         record = repository.save_human_review(
             RuntimeHumanReviewInput(
                 project_id=payload.project_id.strip(),
@@ -906,12 +1054,15 @@ def runtime_visibility_scores(
     scope_type: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_score_snapshots(
             project_id=project_id,
             scope_type=scope_type,
@@ -928,12 +1079,15 @@ def runtime_citation_graphs(
     project_id: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_citation_graphs(
             project_id=project_id,
             limit=limit,
@@ -950,12 +1104,15 @@ def runtime_reports(
     report_type: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_report_exports(
             project_id=project_id,
             report_type=report_type,
@@ -974,12 +1131,19 @@ def runtime_fidelity_checks(
     status: str | None = None,
     limit: int = Query(default=20, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        if runtime_project_access_control_enabled() and report_export_id and not project_id:
+            project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            if project_id is None:
+                raise HTTPException(status_code=404, detail="report_export not found")
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_fidelity_checks(
             project_id=project_id,
             report_export_id=report_export_id,
@@ -997,12 +1161,19 @@ def runtime_fidelity_trend(
     project_id: str | None = None,
     report_export_id: str | None = None,
     limit: int = Query(default=20, ge=1, le=100),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        if runtime_project_access_control_enabled() and report_export_id and not project_id:
+            project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            if project_id is None:
+                raise HTTPException(status_code=404, detail="report_export not found")
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         trend = repository.get_runtime_fidelity_trend(
             project_id=project_id,
             report_export_id=report_export_id,
@@ -1014,12 +1185,17 @@ def runtime_fidelity_trend(
 
 
 @app.post("/v1/fidelity-checks/runtime")
-def create_runtime_fidelity_check(payload: RuntimeFidelityCheckRequest) -> dict[str, object]:
+def create_runtime_fidelity_check(
+    payload: RuntimeFidelityCheckRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id)
         check = repository.create_runtime_fidelity_check(
             project_id=payload.project_id.strip(),
             report_export_id=payload.report_export_id.strip() if payload.report_export_id else None,
@@ -1045,12 +1221,22 @@ def runtime_report_artifact(
     intent_type: str | None = None,
     status: str | None = None,
     sort: str | None = None,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        if runtime_project_access_control_enabled():
+            project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            assert_runtime_project_access(
+                repository,
+                project_id=project_id,
+                actor_id=actor_id,
+                require_project_id=project_id is not None,
+            )
         artifact = repository.get_runtime_report_artifact(
             report_export_id=report_export_id,
             artifact_type=artifact_type,
@@ -1089,12 +1275,15 @@ def runtime_action_plans(
     status: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_action_plans(
             project_id=project_id,
             status=status,
@@ -1113,12 +1302,15 @@ def runtime_alerts(
     severity: str | None = None,
     limit: int = Query(default=20, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_alerts(
             project_id=project_id,
             alert_type=alert_type,
@@ -1137,12 +1329,15 @@ def runtime_content_engines(
     review_status: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.list_runtime_content_engines(
             project_id=project_id,
             review_status=review_status,
@@ -1163,12 +1358,15 @@ def runtime_knowledge_fact_search(
     embedding_model: str = Query(default="fixture-knowledge-embedding-v1", min_length=1, max_length=120),
     limit: int = Query(default=10, ge=1, le=50),
     offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         page = repository.search_runtime_knowledge_facts(
             project_id=project_id,
             query=query,
@@ -1189,12 +1387,19 @@ def runtime_knowledge_fact_search(
 def runtime_traceability(
     project_id: str | None = None,
     report_export_id: str | None = None,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
     except RuntimePersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
+        if runtime_project_access_control_enabled() and report_export_id and not project_id:
+            project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            if project_id is None:
+                raise HTTPException(status_code=404, detail="report_export not found")
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
         detail = repository.get_runtime_traceability_detail(
             project_id=project_id,
             report_export_id=report_export_id,

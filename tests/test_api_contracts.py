@@ -152,6 +152,29 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["bootstrap"]["brand"]["product_lines"], ["Mattress", "Sofa Bed"])
         self.assertEqual(payload["bootstrap"]["members"][0]["user_id"], "agency-owner")
 
+    def test_runtime_project_create_endpoint_uses_actor_as_owner_when_access_control_enabled(self) -> None:
+        class FakeRepository:
+            def save_project_bootstrap(self, bootstrap: object) -> None:
+                self.bootstrap = bootstrap
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.post(
+                "/v1/projects/runtime/au/dtc-ecommerce",
+                json={
+                    "target_brand": "Koala",
+                    "category": "mattresses",
+                    "competitors": ["Emma Sleep", "Sleeping Duck", "Ecosa"],
+                    "owner_user_id": "payload-owner",
+                },
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["bootstrap"]["members"][0]["user_id"], "agency-owner")
+
     def test_runtime_project_create_endpoint_rejects_invalid_competitor_count(self) -> None:
         response = self.client.post(
             "/v1/projects/runtime/au/dtc-ecommerce",
@@ -192,10 +215,67 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["limit"], 2)
         self.assertEqual(fake_repository.kwargs["offset"], 1)
 
+    def test_runtime_projects_endpoint_requires_actor_when_access_control_enabled(self) -> None:
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}):
+            response = self.client.get("/v1/projects/runtime")
+
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("X-GENO-Actor-Id", response.json()["detail"])
+
+    def test_runtime_projects_endpoint_filters_by_actor_when_access_control_enabled(self) -> None:
+        class FakeRepository:
+            def list_runtime_projects(self, **kwargs: object) -> RuntimeProjectPage:
+                self.kwargs = kwargs
+                return RuntimeProjectPage(total_count=0, limit=int(kwargs["limit"]), offset=int(kwargs["offset"]), records=())
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.get("/v1/projects/runtime?market_code=AU", headers={"X-GENO-Actor-Id": "agency-owner"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(fake_repository.kwargs["actor_id"], "agency-owner")
+
     def test_runtime_prompts_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/prompts/runtime")
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_prompts_endpoint_requires_project_id_when_access_control_enabled(self) -> None:
+        class FakeRepository:
+            def user_can_access_project(self, **kwargs: object) -> bool:
+                return True
+
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=FakeRepository()
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.get("/v1/prompts/runtime", headers={"X-GENO-Actor-Id": "agency-owner"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("project_id is required", response.json()["detail"])
+
+    def test_runtime_prompts_endpoint_forbids_project_without_membership_when_access_control_enabled(self) -> None:
+        class FakeRepository:
+            def user_can_access_project(self, **kwargs: object) -> bool:
+                self.access_kwargs = kwargs
+                return False
+
+            def list_runtime_prompts(self, **kwargs: object) -> object:
+                raise AssertionError("list_runtime_prompts should not be called when access is denied")
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.get(
+                "/v1/prompts/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(fake_repository.access_kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.access_kwargs["actor_id"], "agency-owner")
 
     def test_runtime_prompt_import_endpoint_requires_persistence_config(self) -> None:
         response = self.client.post(
