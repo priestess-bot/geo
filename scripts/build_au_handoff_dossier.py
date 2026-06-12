@@ -144,12 +144,20 @@ def _load_or_build_remediation_plan(
     return payload, {"path": str(path), "exists": True, "source": "existing_file"}
 
 
-def _source_file_entry(name: str, path: Path) -> dict[str, Any]:
-    entry: dict[str, Any] = {"name": name, "path": str(path), "exists": path.exists()}
-    if path.exists():
+def _source_file_entry(name: str, path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {"name": name, "path": "", "exists": False}
+    path_text = str(path)
+    entry: dict[str, Any] = {"name": name, "path": path_text, "exists": bool(path_text) and path.exists()}
+    if path_text and path.is_file():
         entry["size_bytes"] = path.stat().st_size
         entry["file_sha256"] = _file_sha256(path)
     return entry
+
+
+def _optional_input_path(inputs: dict[str, Any], key: str) -> Path | None:
+    value = str(inputs.get(key) or "")
+    return Path(value) if value else None
 
 
 def _stage_summaries(launch_status: dict[str, Any]) -> list[dict[str, Any]]:
@@ -332,17 +340,25 @@ def build_au_handoff_dossier(
     *,
     launch_status_path: Path = Path(DEFAULT_LAUNCH_STATUS_PATH),
     remediation_plan_path: Path = Path(DEFAULT_REMEDIATION_PLAN_PATH),
+    launch_status: dict[str, Any] | None = None,
+    remediation_plan: dict[str, Any] | None = None,
     output_path: Path | None = None,
     markdown_output_path: Path | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
-    launch_status, launch_source = _load_or_build_launch_status(launch_status_path, generated_at=generated_at)
-    remediation_plan, remediation_source = _load_or_build_remediation_plan(
-        remediation_plan_path,
-        launch_status=launch_status,
-        launch_status_path=launch_status_path,
-        generated_at=generated_at,
-    )
+    if launch_status is None:
+        launch_status, launch_source = _load_or_build_launch_status(launch_status_path, generated_at=generated_at)
+    else:
+        launch_source = {"path": str(launch_status_path), "exists": True, "source": "provided_payload"}
+    if remediation_plan is None:
+        remediation_plan, remediation_source = _load_or_build_remediation_plan(
+            remediation_plan_path,
+            launch_status=launch_status,
+            launch_status_path=launch_status_path,
+            generated_at=generated_at,
+        )
+    else:
+        remediation_source = {"path": str(remediation_plan_path), "exists": True, "source": "provided_payload"}
     launch_verification = verify_au_launch_status(launch_status, path=launch_status_path)
     remediation_verification = verify_au_launch_remediation_plan(remediation_plan, path=remediation_plan_path)
     remediation_summary = _as_dict(remediation_plan.get("summary"))
@@ -363,10 +379,10 @@ def build_au_handoff_dossier(
     evidence_sources = [
         _source_file_entry("launch_status", launch_status_path),
         _source_file_entry("remediation_plan", remediation_plan_path),
-        _source_file_entry("p0a_status", Path(str(inputs.get("p0a_status_path") or ""))),
-        _source_file_entry("p0b_google_status", Path(str(inputs.get("p0b_google_status_path") or ""))),
-        _source_file_entry("p0b_google_package", Path(str(inputs.get("p0b_google_package_path") or ""))),
-        _source_file_entry("p0c_report_package", Path(str(inputs.get("p0c_report_package_path") or ""))),
+        _source_file_entry("p0a_status", _optional_input_path(inputs, "p0a_status_path")),
+        _source_file_entry("p0b_google_status", _optional_input_path(inputs, "p0b_google_status_path")),
+        _source_file_entry("p0b_google_package", _optional_input_path(inputs, "p0b_google_package_path")),
+        _source_file_entry("p0c_report_package", _optional_input_path(inputs, "p0c_report_package_path")),
     ]
     dossier: dict[str, Any] = {
         "handoff_dossier_version": DOSSIER_VERSION,

@@ -638,7 +638,8 @@ code {
   overflow-wrap: anywhere;
 }
 
-.launchRemediation {
+.launchRemediation,
+.handoffDossier {
   border: 1px solid #d9e2ec;
   border-radius: 4px;
   display: grid;
@@ -696,6 +697,18 @@ code {
   font-size: 11px;
   white-space: normal;
   word-break: break-word;
+}
+
+.handoffBoundary {
+  color: #526575;
+  display: grid;
+  font-size: 12px;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.handoffBoundary span {
+  overflow-wrap: anywhere;
 }
 
 .metrics {
@@ -1813,6 +1826,7 @@ summary {
   .filterForm,
   .launchStageGrid,
   .launchEvidenceGrid,
+  .handoffBoundary,
   .remediationList,
   .savedViews,
   .questionTableHeader,
@@ -1883,6 +1897,7 @@ summary {
   .filterForm,
   .launchStageGrid,
   .launchEvidenceGrid,
+  .handoffBoundary,
   .remediationList,
   .savedViews,
   .saveViewForm,

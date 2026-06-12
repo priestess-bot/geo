@@ -8,6 +8,7 @@ import json
 import time
 import unittest
 from datetime import UTC, datetime
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from zipfile import ZipFile
 
@@ -17,6 +18,8 @@ from cryptography.hazmat.primitives import hashes
 
 from geno_api.main import app, close_runtime_resources, reset_runtime_auth_caches, reset_runtime_metrics
 from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
+from scripts.build_au_launch_status import compute_launch_status_hash
+from tests.test_au_handoff_dossier import AuHandoffDossierTest
 from geno_core.models import (
     RuntimeCollectionRunPage,
     RuntimeAlertEvent,
@@ -283,8 +286,8 @@ class ApiContractsTest(unittest.TestCase):
             "ready_for_customer_report_handoff": False,
             "next_action": "configure_required_environment",
             "remaining_blockers": ["p0a:preflight:required_env_missing:OPENAI_API_KEY"],
-            "launch_status_hash": "abc123",
         }
+        status_payload["launch_status_hash"] = compute_launch_status_hash(status_payload)
         plan_payload = {
             "remediation_plan_version": "au_launch_remediation_plan_v1",
             "generated_at": "2026-06-12T00:00:00Z",
@@ -337,6 +340,34 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["blocker_remediations"][0]["work_item_id"], "p0a_environment")
         build_status.assert_called_once()
         build_plan.assert_called_once()
+
+    def test_au_handoff_dossier_endpoint_returns_runtime_handoff_summary(self) -> None:
+        helper = AuHandoffDossierTest()
+        helper.setUp()
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
+            status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
+            plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
+            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geno_api.main.build_au_launch_remediation_plan",
+                return_value=plan_payload,
+            ):
+                response = self.client.get("/v1/handoff-dossier/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["handoff_dossier_version"], "au_handoff_dossier_v1")
+        self.assertTrue(payload["handoff_dossier_ready"])
+        self.assertFalse(payload["ready_for_customer_report_handoff"])
+        self.assertEqual(payload["summary"]["handoff_posture"], "blocked_external_dependencies")
+        self.assertEqual(payload["summary"]["next_work_item_id"], "p0a_environment")
+        self.assertEqual(payload["summary"]["remaining_blocker_count"], 29)
+        self.assertEqual(payload["summary"]["unmapped_blocker_count"], 0)
+        self.assertEqual(payload["runtime_endpoints"]["launch_status"], "GET /v1/launch-status/au")
+        self.assertEqual(payload["runtime_endpoints"]["launch_remediation_plan"], "GET /v1/launch-remediation-plan/au")
+        self.assertEqual(payload["next_work_item"]["id"], "p0a_environment")
+        self.assertEqual(payload["markdown_report"]["media_type"], "text/markdown; charset=utf-8")
+        self.assertTrue(payload["handoff_dossier_hash"])
 
     def test_metrics_endpoint_exports_request_and_pool_metrics(self) -> None:
         self.client.get("/health")
@@ -3897,6 +3928,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/runtime-diagnostics", payload["persistence"])
         self.assertIn("/v1/launch-status/au", payload["persistence"])
         self.assertIn("/v1/launch-remediation-plan/au", payload["persistence"])
+        self.assertIn("/v1/handoff-dossier/au", payload["persistence"])
         self.assertIn("/metrics", payload["persistence"])
 
 

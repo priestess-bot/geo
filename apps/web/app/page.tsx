@@ -546,6 +546,7 @@ type TraceabilityDetail = {
 type RuntimeData = {
   launchStatus: AuLaunchStatus | null;
   launchRemediationPlan: AuLaunchRemediationPlan | null;
+  handoffDossier: AuHandoffDossier | null;
   projects: PageResponse<RuntimeProject>;
   projectMembers: PageResponse<RuntimeProjectMember>;
   brandKit: RuntimeProjectBrandKit | null;
@@ -663,6 +664,44 @@ type AuLaunchRemediationPlan = {
     next_command?: string;
     dependency_class?: string;
   }>;
+};
+
+type AuHandoffDossier = {
+  handoff_dossier_version: string;
+  generated_at: string;
+  status: string;
+  handoff_dossier_ready: boolean;
+  ready_for_customer_report_handoff: boolean;
+  handoff_dossier_hash: string;
+  summary?: {
+    handoff_posture?: string;
+    next_action?: string;
+    next_work_item_id?: string;
+    remaining_blocker_count?: number;
+    covered_blocker_count?: number;
+    unmapped_blocker_count?: number;
+    work_item_count?: number;
+    external_dependency_blocker_count?: number;
+  };
+  markdown_report?: {
+    path?: string;
+    size_bytes?: number;
+    content_sha256?: string;
+    media_type?: string;
+  };
+  runtime_endpoints?: {
+    launch_status?: string;
+    launch_remediation_plan?: string;
+  };
+  next_work_item?: {
+    id?: string;
+    stage?: string;
+    title?: string;
+    dependency_class?: string;
+    blocker_count?: number;
+    commands?: string[];
+    verification_commands?: string[];
+  };
 };
 
 type RuntimeProjectBrandKit = {
@@ -1067,6 +1106,7 @@ type QuestionDetailRow = {
 const endpoints = {
   launchStatus: "/v1/launch-status/au",
   launchRemediationPlan: "/v1/launch-remediation-plan/au",
+  handoffDossier: "/v1/handoff-dossier/au",
   projects: "/v1/projects/runtime",
   projectMembers: "/v1/project-members/runtime",
   prompts: "/v1/prompts/runtime",
@@ -1955,6 +1995,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   const paths: RuntimePaths = {
     launchStatus: endpoints.launchStatus,
     launchRemediationPlan: endpoints.launchRemediationPlan,
+    handoffDossier: endpoints.handoffDossier,
     projects: runtimePath(endpoints.projects, projectListParams),
     projectMembers: endpoints.projectMembers,
     prompts: runtimePath(endpoints.prompts, {
@@ -2204,6 +2245,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   const [
     launchStatus,
     launchRemediationPlan,
+    handoffDossier,
     prompts,
     projectMembers,
     promptImports,
@@ -2238,6 +2280,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   ] = await Promise.all([
     fetchRuntimeEndpoint<AuLaunchStatus | null>(baseUrl, paths.launchStatus, null),
     fetchRuntimeEndpoint<AuLaunchRemediationPlan | null>(baseUrl, paths.launchRemediationPlan, null),
+    fetchRuntimeEndpoint<AuHandoffDossier | null>(baseUrl, paths.handoffDossier, null),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     selectedProjectId
       ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectMember>>(
@@ -2348,6 +2391,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   const errors = [
     launchStatus,
     launchRemediationPlan,
+    handoffDossier,
     projects,
     prompts,
     projectMembers,
@@ -2387,6 +2431,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     data: {
       launchStatus: launchStatus.payload,
       launchRemediationPlan: launchRemediationPlan.payload,
+      handoffDossier: handoffDossier.payload,
       projects: projects.payload,
       projectMembers: projectMembers.payload,
       brandKit: brandKit.payload,
@@ -2697,6 +2742,9 @@ export default async function Home({
   const remediationSummary = launchRemediationPlan?.summary;
   const remediationWorkItems = launchRemediationPlan?.work_items || [];
   const topRemediationItems = remediationWorkItems.slice(0, 4);
+  const handoffDossier = data.handoffDossier;
+  const handoffSummary = handoffDossier?.summary;
+  const handoffNextWorkItem = handoffDossier?.next_work_item;
   const scoreWeightConfig = data.scoreWeights?.score_weight_config || null;
   const savedScoreWeightConfig = scoreWeightConfig?.id ? scoreWeightConfig : null;
   const scoreWeightAuditEvent = data.scoreWeights?.audit_events[0]?.event_type || "default weights";
@@ -3150,6 +3198,31 @@ export default async function Home({
             <span className="remediationEmpty">No remediation work items recorded.</span>
           )}
           <code>{paths.launchRemediationPlan}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>Handoff dossier</strong>
+            <span>
+              {handoffDossier?.handoff_dossier_version || "au_handoff_dossier_v1"} · hash{" "}
+              {shortHash(handoffDossier?.handoff_dossier_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>Dossier ready {handoffDossier?.handoff_dossier_ready ? "yes" : "no"}</span>
+            <span>Customer handoff {handoffDossier?.ready_for_customer_report_handoff ? "ready" : "blocked"}</span>
+            <span>Posture {handoffSummary?.handoff_posture || "unknown"}</span>
+            <span>Markdown hash {shortHash(handoffDossier?.markdown_report?.content_sha256)}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>Next work item {handoffSummary?.next_work_item_id || handoffNextWorkItem?.id || "none"}</span>
+            <span>
+              Blockers {handoffSummary?.remaining_blocker_count || 0} · work items{" "}
+              {handoffSummary?.work_item_count || 0} · unmapped {handoffSummary?.unmapped_blocker_count || 0}
+            </span>
+            <span>Hard gate: scripts/verify_au_handoff_dossier.py --require-customer-ready</span>
+            <span>{handoffDossier?.runtime_endpoints?.launch_remediation_plan || "GET /v1/launch-remediation-plan/au"}</span>
+          </div>
+          <code>{paths.handoffDossier}</code>
         </div>
         <code>{paths.launchStatus}</code>
       </section>

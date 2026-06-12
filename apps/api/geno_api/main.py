@@ -113,6 +113,11 @@ from scripts.build_au_launch_remediation_plan import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH,
     build_au_launch_remediation_plan,
 )
+from scripts.build_au_handoff_dossier import (
+    DEFAULT_MARKDOWN_OUTPUT_PATH as DEFAULT_AU_HANDOFF_DOSSIER_MARKDOWN_OUTPUT_PATH,
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH,
+    build_au_handoff_dossier,
+)
 
 app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
 
@@ -1309,6 +1314,10 @@ def _build_au_launch_status_from_env() -> dict[str, object]:
 
 @app.get("/v1/launch-remediation-plan/au")
 def au_launch_remediation_plan() -> dict[str, object]:
+    return _build_au_launch_remediation_plan_from_env()
+
+
+def _build_au_launch_remediation_plan_from_env() -> dict[str, object]:
     launch_status_path = Path(os.getenv("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH))
     launch_status = _build_au_launch_status_from_env()
     return build_au_launch_remediation_plan(
@@ -1319,6 +1328,33 @@ def au_launch_remediation_plan() -> dict[str, object]:
                 "GENO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH",
                 DEFAULT_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH,
             )
+        ),
+    )
+
+
+@app.get("/v1/handoff-dossier/au")
+def au_handoff_dossier() -> dict[str, object]:
+    launch_status_path = Path(os.getenv("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH))
+    remediation_plan_path = Path(
+        os.getenv(
+            "GENO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH",
+            DEFAULT_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH,
+        )
+    )
+    launch_status = _build_au_launch_status_from_env()
+    remediation_plan = build_au_launch_remediation_plan(
+        launch_status=launch_status,
+        launch_status_path=launch_status_path,
+        output_path=remediation_plan_path,
+    )
+    return build_au_handoff_dossier(
+        launch_status_path=launch_status_path,
+        remediation_plan_path=remediation_plan_path,
+        launch_status=launch_status,
+        remediation_plan=remediation_plan,
+        output_path=Path(os.getenv("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH)),
+        markdown_output_path=Path(
+            os.getenv("GENO_AU_HANDOFF_DOSSIER_MARKDOWN_PATH", DEFAULT_AU_HANDOFF_DOSSIER_MARKDOWN_OUTPUT_PATH)
         ),
     )
 
@@ -4060,6 +4096,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/runtime-diagnostics",
             "/v1/launch-status/au",
             "/v1/launch-remediation-plan/au",
+            "/v1/handoff-dossier/au",
             "/metrics",
         ],
     }
