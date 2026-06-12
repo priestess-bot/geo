@@ -26,6 +26,7 @@ from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTes
 from tests.test_au_p0a_execution_checklist import AuP0aExecutionChecklistTest
 from tests.test_au_p0b_google_execution_checklist import AuP0bGoogleExecutionChecklistTest
 from geno_core.models import (
+    RuntimeEntityAlias,
     RuntimeCollectionRunPage,
     RuntimeAlertEvent,
     RuntimeAlertItem,
@@ -2050,6 +2051,192 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_entity_alias_confirm_batch_endpoint_returns_audit_summary(self) -> None:
+        class FakeRepository:
+            def __init__(self) -> None:
+                self.confirmed = []
+                self.audit_events = []
+
+            def confirm_entity_alias(self, alias):
+                self.confirmed.append(alias)
+                return RuntimeEntityAlias(
+                    entity_alias={
+                        "id": f"alias-{len(self.confirmed)}",
+                        "entity_id": alias.entity_id,
+                        "entity_kind": alias.entity_kind,
+                        "alias": alias.alias,
+                        "alias_type": alias.alias_type,
+                        "confidence": alias.confidence,
+                        "confirmed_by": alias.confirmed_by,
+                    },
+                    entity={
+                        "id": alias.entity_id,
+                        "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                        "entity_kind": alias.entity_kind,
+                        "canonical_name": "ExampleBrand",
+                        "status": "active",
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "entity_alias_confirmed",
+                            "target_id": f"alias-{len(self.confirmed)}",
+                            "method_version": "entity_alias_confirm_v1",
+                        },
+                    ),
+                )
+
+            def save_audit_events(self, events):
+                self.audit_events.extend(events)
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/entity-aliases/runtime/confirm-batch",
+                json={
+                    "confirmed_by": "runtime-console",
+                    "notes": "Batch entity alias confirmation for parser disambiguation review queue",
+                    "aliases": [
+                        {
+                            "entity_id": "3ba88c1e-3ddc-5075-9ac9-29687d539830",
+                            "entity_kind": "brand",
+                            "alias": "ExampleBrand Australia",
+                            "alias_type": "alias",
+                            "confidence": 0.72,
+                        },
+                        {
+                            "entity_id": "3ba88c1e-3ddc-5075-9ac9-29687d539830",
+                            "entity_kind": "brand",
+                            "alias": "examplebrand.com.au",
+                            "alias_type": "domain",
+                            "confidence": 0.9,
+                        },
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["batch_version"], "entity_alias_confirm_batch_v1")
+        self.assertEqual(payload["requested_count"], 2)
+        self.assertEqual(payload["confirmed_count"], 2)
+        self.assertEqual(payload["failed_count"], 0)
+        self.assertEqual(payload["records"][0]["audit_events"][0]["event_type"], "entity_alias_confirmed")
+        self.assertEqual(payload["audit_summary"]["event_type"], "entity_alias_batch_confirmed")
+        self.assertEqual(payload["audit_summary"]["method_version"], "entity_alias_confirm_batch_v1")
+        self.assertEqual(payload["audit_summary"]["individual_audit_event_type"], "entity_alias_confirmed")
+        self.assertEqual(fake_repository.audit_events[0].event_type, "entity_alias_batch_confirmed")
+        self.assertEqual(fake_repository.audit_events[0].target_type, "entity_alias_batch")
+        self.assertEqual(fake_repository.audit_events[0].method_version, "entity_alias_confirm_batch_v1")
+        self.assertEqual(fake_repository.confirmed[0].confirmed_by, "runtime-console")
+        self.assertEqual(
+            fake_repository.confirmed[0].notes,
+            "Batch entity alias confirmation for parser disambiguation review queue",
+        )
+
+    def test_runtime_entity_alias_confirm_batch_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.post(
+            "/v1/entity-aliases/runtime/confirm-batch",
+            json={
+                "aliases": [
+                    {
+                        "entity_id": "3ba88c1e-3ddc-5075-9ac9-29687d539830",
+                        "entity_kind": "brand",
+                        "alias": "ExampleBrand Australia",
+                        "alias_type": "alias",
+                    }
+                ]
+            },
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_entity_alias_confirm_batch_prevalidates_before_writing(self) -> None:
+        class FakeRepository:
+            def __init__(self) -> None:
+                self.confirmed = []
+
+            def get_entity_project_id(self, *, entity_id: str, entity_kind: str) -> str | None:
+                if entity_id.endswith("9999"):
+                    return None
+                return "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+
+            def confirm_entity_alias(self, alias):
+                self.confirmed.append(alias)
+                return RuntimeEntityAlias(entity_alias={}, entity={}, audit_events=())
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/entity-aliases/runtime/confirm-batch",
+                json={
+                    "aliases": [
+                        {
+                            "entity_id": "3ba88c1e-3ddc-5075-9ac9-29687d539830",
+                            "entity_kind": "brand",
+                            "alias": "ExampleBrand Australia",
+                            "alias_type": "alias",
+                        },
+                        {
+                            "entity_id": "00000000-0000-0000-0000-000000009999",
+                            "entity_kind": "brand",
+                            "alias": "MissingBrand Australia",
+                            "alias_type": "alias",
+                        },
+                    ]
+                },
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"]["index"], 1)
+        self.assertEqual(response.json()["detail"]["error"], "entity not found")
+        self.assertEqual(fake_repository.confirmed, [])
+
+    def test_runtime_entity_alias_confirm_batch_rejects_cross_project_aliases(self) -> None:
+        class FakeRepository:
+            def __init__(self) -> None:
+                self.confirmed = []
+
+            def get_entity_project_id(self, *, entity_id: str, entity_kind: str) -> str | None:
+                if entity_id.endswith("0001"):
+                    return "11111111-1111-1111-1111-111111111111"
+                return "22222222-2222-2222-2222-222222222222"
+
+            def confirm_entity_alias(self, alias):
+                self.confirmed.append(alias)
+                return RuntimeEntityAlias(entity_alias={}, entity={}, audit_events=())
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/entity-aliases/runtime/confirm-batch",
+                json={
+                    "aliases": [
+                        {
+                            "entity_id": "00000000-0000-0000-0000-000000000001",
+                            "entity_kind": "brand",
+                            "alias": "Brand One Australia",
+                            "alias_type": "alias",
+                        },
+                        {
+                            "entity_id": "00000000-0000-0000-0000-000000000002",
+                            "entity_kind": "brand",
+                            "alias": "Brand Two Australia",
+                            "alias_type": "alias",
+                        },
+                    ]
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"]["error"], "aliases must belong to one project")
+        self.assertEqual(fake_repository.confirmed, [])
+
     def test_runtime_saved_views_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/runtime-saved-views?view_type=runtime_evidence")
         self.assertEqual(response.status_code, 503)
@@ -3916,6 +4103,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("EntityAlias", payload["m1_bootstrap"])
         self.assertIn("EntityAliasInput", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAlias", payload["m1_bootstrap"])
+        self.assertIn("RuntimeEntityAliasBatchConfirmResult", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasCandidate", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasCandidatePage", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasPage", payload["m1_bootstrap"])
@@ -3972,6 +4160,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("ManualBackfillInput", payload["persistence"])
         self.assertIn("EntityAliasInput", payload["persistence"])
         self.assertIn("RuntimeEntityAlias", payload["persistence"])
+        self.assertIn("RuntimeEntityAliasBatchConfirmResult", payload["persistence"])
         self.assertIn("RuntimeEntityAliasCandidate", payload["persistence"])
         self.assertIn("RuntimeEntityAliasCandidatePage", payload["persistence"])
         self.assertIn("RuntimeEntityAliasPage", payload["persistence"])
@@ -4064,6 +4253,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/entity-aliases/runtime", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/confirm", payload["persistence"])
+        self.assertIn("/v1/entity-aliases/runtime/confirm-batch", payload["persistence"])
         self.assertIn("/v1/prompts/runtime", payload["persistence"])
         self.assertIn("/v1/prompts/runtime/imports", payload["persistence"])
         self.assertIn("/v1/prompts/runtime/import.csv", payload["persistence"])

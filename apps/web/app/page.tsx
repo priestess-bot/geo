@@ -1303,6 +1303,15 @@ type RuntimeEntityAlias = {
   audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
 };
 
+type RuntimeEntityAliasBatchItem = {
+  entity_id: string;
+  entity_kind: string;
+  alias: string;
+  alias_type: string;
+  confidence?: number;
+  notes?: string;
+};
+
 type RuntimeEntityAliasCandidate = {
   candidate: {
     id: string;
@@ -1395,6 +1404,7 @@ const endpoints = {
   evidenceExport: "/v1/evidence-runs/runtime/export.csv",
   entityAliases: "/v1/entity-aliases/runtime",
   entityAliasCandidates: "/v1/entity-aliases/runtime/candidates",
+  entityAliasConfirmBatch: "/v1/entity-aliases/runtime/confirm-batch",
   savedViews: "/v1/runtime-saved-views",
   brandKit: "/v1/project-brand-kits/runtime",
   brandAssets: "/v1/project-brand-kits/runtime/assets",
@@ -2140,6 +2150,46 @@ async function confirmEntityAlias(formData: FormData) {
   revalidatePath("/");
 }
 
+async function confirmEntityAliasBatch(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const aliases = formData
+    .getAll("candidate")
+    .map((value) => {
+      try {
+        return JSON.parse(String(value)) as RuntimeEntityAliasBatchItem;
+      } catch {
+        return null;
+      }
+    })
+    .filter((value): value is RuntimeEntityAliasBatchItem => {
+      return Boolean(value?.entity_id && value?.entity_kind && value?.alias && value?.alias_type);
+    });
+  if (!aliases.length) {
+    throw new Error("at least one alias candidate is required for batch confirmation");
+  }
+  const response = await fetch(`${baseUrl}/v1/entity-aliases/runtime/confirm-batch`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      aliases,
+      confirmed_by: String(formData.get("confirmed_by") || "runtime-console").trim(),
+      notes:
+        String(formData.get("notes") || "").trim() ||
+        `Batch confirm ${aliases.length} generated entity alias candidates`,
+      continue_on_error: false
+    }),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/entity-aliases/runtime/confirm-batch returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
 async function saveRuntimeNotificationSubscription(formData: FormData) {
   "use server";
   const baseUrl =
@@ -2319,6 +2369,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasCandidates: runtimePath(endpoints.entityAliasCandidates, {
       limit: 5
     }),
+    entityAliasConfirmBatch: endpoints.entityAliasConfirmBatch,
     fidelityChecks: runtimePath(endpoints.fidelityChecks, {
       limit: 5
     }),
@@ -3031,6 +3082,7 @@ export default async function Home({
       ]
     : [];
   const defaultEntityAlias = entityAliasOptions[0]?.defaultAlias || latestProject?.project.target_brand || "";
+  const visibleAliasCandidates = data.entityAliasCandidates.records.slice(0, 5);
   const latestPrompt = data.prompts.records[0];
   const latestEvidence = data.evidence.records[0];
   const latestCollectionRun = data.collectionRuns.records[0];
@@ -3929,9 +3981,47 @@ export default async function Home({
                     Confirm alias
                   </button>
                 </form>
-                {data.entityAliasCandidates.records.length ? (
+                {visibleAliasCandidates.length ? (
+                  <form action={confirmEntityAliasBatch} className="aliasBatchQueue">
+                    <div className="formHeader">
+                      <h3>Bulk Alias Review Queue</h3>
+                      <small>
+                        {visibleAliasCandidates.length} visible candidates · entity_alias_confirm_batch_v1
+                      </small>
+                    </div>
+                    {visibleAliasCandidates.map((record) => (
+                      <input
+                        key={`batch-${record.candidate.id}`}
+                        type="hidden"
+                        name="candidate"
+                        value={JSON.stringify({
+                          entity_id: record.candidate.entity_id,
+                          entity_kind: record.candidate.entity_kind,
+                          alias: record.candidate.alias,
+                          alias_type: record.candidate.alias_type,
+                          confidence: record.candidate.confidence || 0.7,
+                          notes: `Batch confirm generated alias candidate from ${record.candidate.source}`
+                        })}
+                      />
+                    ))}
+                    <input type="hidden" name="confirmed_by" value="runtime-console" />
+                    <input
+                      type="hidden"
+                      name="notes"
+                      value="Batch entity alias confirmation for parser disambiguation review queue"
+                    />
+                    <p>
+                      Batch action writes one entity_alias_confirmed audit event per alias and returns an
+                      entity_alias_batch_confirmed batch audit summary.
+                    </p>
+                    <button className="actionButton" type="submit">
+                      Confirm visible candidates
+                    </button>
+                  </form>
+                ) : null}
+                {visibleAliasCandidates.length ? (
                   <ul className="plainList">
-                    {data.entityAliasCandidates.records.slice(0, 4).map((record) => (
+                    {visibleAliasCandidates.map((record) => (
                       <li key={record.candidate.id}>
                         <strong>
                           Candidate · {record.candidate.alias_type} · {record.entity.entity_kind}

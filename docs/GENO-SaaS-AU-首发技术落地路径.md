@@ -575,7 +575,7 @@ SourceGap / ActionRecommendation
 - `VisibilityScoreSnapshot.answer_run_ids` 在 P0 可先用数组保存，但必须同时预留 `ScoreSnapshotRun` 关联表，避免后续大样本查询困难。
 - `SourceGraph.answer_run_ids` 在 P0 可先用数组保存，但必须同时预留 `SourceGraphEvidence` 关联表，用于追踪某个 source gap 来自哪些引用。
 - `raw_payload_hash`、`html_snapshot_url`、`screenshot_url` 不可覆盖；同一采集重跑必须生成新的 `AnswerRun`。
-- 人工补录、实体别名确认、评分权重修改、评分公式重放都必须写 `AuditEvent`，并在报告方法说明中披露是否存在人工介入或重算口径。
+- 人工补录、实体别名确认/批量确认、评分权重修改、评分公式重放都必须写 `AuditEvent`，并在报告方法说明中披露是否存在人工介入或重算口径。
 
 分数解释包（Explanation Bundle）：
 
@@ -1525,6 +1525,8 @@ EntityAlias
   confidence
   confirmed_by          # 同名消歧的人工确认
 ```
+
+工程当前已落最小运行时闭环：`GET /v1/entity-aliases/runtime/candidates` 从 canonical name、官方域名、产品线和母公司字段生成计算型候选，并排除已确认 alias；`POST /v1/entity-aliases/runtime/confirm` 可单条确认，`POST /v1/entity-aliases/runtime/confirm-batch` 可批量确认当前候选，默认先预校验实体存在与项目访问权限，要求同一批 alias 属于同一个 project，并避免失败批次半写入。批量响应返回 `entity_alias_confirm_batch_v1`、成功/失败计数、confirmed records 和 `entity_alias_batch_confirmed` 摘要；系统还会写入一条项目级 `entity_alias_batch_confirmed` 聚合审计事件，但真实主事实仍是每个 alias 的 `entity_alias_confirmed`，后续 `--persist-analysis` 使用确认后的 alias 参与 `rule_based_v2_aliases` parser。Runtime Console 的 Entity Alias 面板已提供单条确认、候选一键确认和 `Bulk Alias Review Queue`，可以批量确认当前可见候选。该实现不新增候选状态表，仍不是证据文本自动挖掘候选、审核分配/审批流或持久化队列状态机。
 
 ### 8.15 CollectionCost（单位经济，新增）
 

@@ -925,6 +925,17 @@ class RuntimeEntityAliasPage:
 
 
 @dataclass(frozen=True)
+class RuntimeEntityAliasBatchConfirmResult:
+    batch_version: str
+    requested_count: int
+    confirmed_count: int
+    failed_count: int
+    records: tuple[RuntimeEntityAlias, ...]
+    errors: tuple[dict[str, Any], ...]
+    audit_summary: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class RuntimeEntityAliasCandidate:
     candidate: dict[str, Any]
     entity: dict[str, Any]

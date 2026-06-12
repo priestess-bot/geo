@@ -33,6 +33,7 @@ from geno_core.action_plan import (
     compare_retest_windows,
 )
 from geno_core.analysis_pipeline import analyze_and_score_records
+from geno_core.audit import build_audit_event
 from geno_core.bootstrap import DEFAULT_AU_COMPETITORS, build_au_project_bootstrap
 from geno_core.collection import (
     build_manual_backfill_record,
@@ -66,6 +67,7 @@ from geno_core.market import build_au_market_profile
 from geno_core.models import (
     EntityAliasInput,
     RuntimeAlertEventInput,
+    RuntimeEntityAliasBatchConfirmResult,
     RuntimeHumanReviewInput,
     ManualBackfillInput,
     RuntimeProjectBrandAssetInput,
@@ -1200,6 +1202,13 @@ class EntityAliasConfirmRequest(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
 
 
+class EntityAliasBatchConfirmRequest(BaseModel):
+    aliases: list[EntityAliasConfirmRequest] = Field(min_length=1, max_length=25)
+    confirmed_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=2000)
+    continue_on_error: bool = False
+
+
 class RuntimeProjectCreateRequest(BaseModel):
     tenant_name: str = Field(default="Design Partner AU", min_length=1, max_length=160)
     project_name: str = Field(default="AU DTC Evidence Pilot", min_length=1, max_length=160)
@@ -1786,35 +1795,195 @@ def confirm_runtime_entity_alias(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         try:
-            if runtime_project_access_control_enabled():
-                apply_runtime_project_db_context(repository, actor_id=actor_id)
-                project_id = repository.get_entity_project_id(
-                    entity_id=payload.entity_id.strip(),
-                    entity_kind=payload.entity_kind.strip(),
-                )
-                if project_id is None:
-                    raise ValueError("entity not found")
-                assert_runtime_project_access(
-                    repository,
-                    project_id=project_id,
-                    actor_id=actor_id,
-                    allowed_roles=PROJECT_ANALYZE_ROLES,
-                )
-            record = repository.confirm_entity_alias(
-                EntityAliasInput(
-                    entity_id=payload.entity_id.strip(),
-                    entity_kind=payload.entity_kind.strip(),
-                    alias=payload.alias.strip(),
-                    alias_type=payload.alias_type.strip(),
-                    confidence=payload.confidence,
-                    confirmed_by=payload.confirmed_by.strip(),
-                    notes=payload.notes.strip() if payload.notes else None,
-                )
+            record = _confirm_runtime_entity_alias_record(
+                repository,
+                payload=payload,
+                actor_id=actor_id,
             )
         except ValueError as exc:
             status_code = 404 if str(exc) == "entity not found" else 400
             raise HTTPException(status_code=status_code, detail=str(exc)) from exc
         return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+def _confirm_runtime_entity_alias_record(
+    repository: Any,
+    *,
+    payload: EntityAliasConfirmRequest,
+    actor_id: str | None,
+    confirmed_by: str | None = None,
+    notes: str | None = None,
+) -> Any:
+    if runtime_project_access_control_enabled():
+        apply_runtime_project_db_context(repository, actor_id=actor_id)
+        project_id = repository.get_entity_project_id(
+            entity_id=payload.entity_id.strip(),
+            entity_kind=payload.entity_kind.strip(),
+        )
+        if project_id is None:
+            raise ValueError("entity not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+    effective_confirmed_by = (confirmed_by or payload.confirmed_by).strip()
+    effective_notes = notes if notes is not None else payload.notes
+    return repository.confirm_entity_alias(
+        EntityAliasInput(
+            entity_id=payload.entity_id.strip(),
+            entity_kind=payload.entity_kind.strip(),
+            alias=payload.alias.strip(),
+            alias_type=payload.alias_type.strip(),
+            confidence=payload.confidence,
+            confirmed_by=effective_confirmed_by,
+            notes=effective_notes.strip() if effective_notes else None,
+        )
+    )
+
+
+def _validate_runtime_entity_alias_payload(
+    repository: Any,
+    *,
+    payload: EntityAliasConfirmRequest,
+    actor_id: str | None,
+) -> str | None:
+    get_project_id = getattr(repository, "get_entity_project_id", None)
+    if get_project_id is None:
+        return None
+    if runtime_project_access_control_enabled():
+        apply_runtime_project_db_context(repository, actor_id=actor_id)
+    project_id = get_project_id(
+        entity_id=payload.entity_id.strip(),
+        entity_kind=payload.entity_kind.strip(),
+    )
+    if project_id is None:
+        raise ValueError("entity not found")
+    project_id = str(project_id)
+    assert_runtime_project_access(
+        repository,
+        project_id=project_id,
+        actor_id=actor_id,
+        allowed_roles=PROJECT_ANALYZE_ROLES,
+    )
+    return project_id
+
+
+@app.post("/v1/entity-aliases/runtime/confirm-batch")
+def confirm_runtime_entity_alias_batch(
+    payload: EntityAliasBatchConfirmRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        records = []
+        errors: list[dict[str, object]] = []
+        skipped_error_indexes: set[int] = set()
+        validated_project_ids: set[str] = set()
+        confirmed_by = payload.confirmed_by.strip()
+        notes = payload.notes.strip() if payload.notes else None
+        for index, item in enumerate(payload.aliases):
+            try:
+                project_id = _validate_runtime_entity_alias_payload(repository, payload=item, actor_id=actor_id)
+                if project_id:
+                    validated_project_ids.add(project_id)
+            except ValueError as exc:
+                error = {
+                    "index": index,
+                    "entity_id": item.entity_id.strip(),
+                    "entity_kind": item.entity_kind.strip(),
+                    "alias": item.alias.strip(),
+                    "error": str(exc),
+                }
+                if payload.continue_on_error:
+                    errors.append(error)
+                    skipped_error_indexes.add(index)
+                    continue
+                status_code = 404 if str(exc) == "entity not found" else 400
+                raise HTTPException(status_code=status_code, detail=error) from exc
+        if len(validated_project_ids) > 1:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "aliases must belong to one project",
+                    "project_ids": sorted(validated_project_ids),
+                },
+            )
+        for index, item in enumerate(payload.aliases):
+            if index in skipped_error_indexes:
+                continue
+            try:
+                records.append(
+                    _confirm_runtime_entity_alias_record(
+                        repository,
+                        payload=item,
+                        actor_id=actor_id,
+                        confirmed_by=confirmed_by,
+                        notes=notes or item.notes,
+                    )
+                )
+            except ValueError as exc:
+                error = {
+                    "index": index,
+                    "entity_id": item.entity_id.strip(),
+                    "entity_kind": item.entity_kind.strip(),
+                    "alias": item.alias.strip(),
+                    "error": str(exc),
+                }
+                errors.append(error)
+                if not payload.continue_on_error:
+                    status_code = 404 if str(exc) == "entity not found" else 400
+                    raise HTTPException(status_code=status_code, detail=error) from exc
+        audit_summary = {
+            "event_type": "entity_alias_batch_confirmed",
+            "method_version": "entity_alias_confirm_batch_v1",
+            "confirmed_by": confirmed_by,
+            "entity_alias_ids": [str(record.entity_alias["id"]) for record in records],
+            "entity_ids": [str(record.entity_alias["entity_id"]) for record in records],
+            "entity_kinds": sorted({str(record.entity_alias["entity_kind"]) for record in records}),
+            "requested_count": len(payload.aliases),
+            "confirmed_count": len(records),
+            "failed_count": len(errors),
+            "notes": notes,
+            "individual_audit_event_type": "entity_alias_confirmed",
+        }
+        if records and hasattr(repository, "save_audit_events"):
+            project_id = str(records[0].entity["project_id"])
+            repository.save_audit_events(
+                (
+                    build_audit_event(
+                        event_type="entity_alias_batch_confirmed",
+                        project_id=project_id,
+                        actor_type="user",
+                        actor_id=confirmed_by,
+                        target_type="entity_alias_batch",
+                        target_id=str(uuid.uuid5(uuid.NAMESPACE_URL, "|".join(audit_summary["entity_alias_ids"]))),
+                        before=None,
+                        after=audit_summary,
+                        input_refs={"entity_ids": audit_summary["entity_ids"]},
+                        output_refs={"entity_alias_ids": audit_summary["entity_alias_ids"]},
+                        method_version="entity_alias_confirm_batch_v1",
+                        reason=notes or "batch confirm entity aliases for parser disambiguation",
+                    ),
+                )
+            )
+        result = RuntimeEntityAliasBatchConfirmResult(
+            batch_version="entity_alias_confirm_batch_v1",
+            requested_count=len(payload.aliases),
+            confirmed_count=len(records),
+            failed_count=len(errors),
+            records=tuple(records),
+            errors=tuple(errors),
+            audit_summary=audit_summary,
+        )
+        return asdict(result)
     finally:
         close_repository_connection(repository)
 
@@ -3970,6 +4139,7 @@ def contracts() -> dict[str, list[str]]:
             "EntityAlias",
             "EntityAliasInput",
             "RuntimeEntityAlias",
+            "RuntimeEntityAliasBatchConfirmResult",
             "RuntimeEntityAliasCandidate",
             "RuntimeEntityAliasCandidatePage",
             "RuntimeEntityAliasPage",
@@ -4135,6 +4305,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimePromptImportRequest",
             "EntityAliasInput",
             "RuntimeEntityAlias",
+            "RuntimeEntityAliasBatchConfirmResult",
             "RuntimeEntityAliasCandidate",
             "RuntimeEntityAliasCandidatePage",
             "RuntimeEntityAliasPage",
@@ -4207,6 +4378,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/entity-aliases/runtime",
             "/v1/entity-aliases/runtime/candidates",
             "/v1/entity-aliases/runtime/confirm",
+            "/v1/entity-aliases/runtime/confirm-batch",
             "/v1/prompts/runtime",
             "/v1/prompts/runtime/imports",
             "/v1/prompts/runtime/import.csv",

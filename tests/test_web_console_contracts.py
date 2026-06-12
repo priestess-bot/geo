@@ -424,6 +424,20 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".humanReviewGrid", css_source)
         self.assertIn(".humanReviewForm", css_source)
 
+    def test_runtime_console_surfaces_entity_alias_batch_review_queue(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
+
+        self.assertIn("Bulk Alias Review Queue", page_source)
+        self.assertIn("confirmEntityAliasBatch", page_source)
+        self.assertIn("/v1/entity-aliases/runtime/confirm-batch", page_source)
+        self.assertIn("entity_alias_confirm_batch_v1", page_source)
+        self.assertIn("entity_alias_batch_confirmed", page_source)
+        self.assertIn("entity_alias_confirmed audit event per alias", page_source)
+        self.assertIn('name="candidate"', page_source)
+        self.assertIn("Confirm visible candidates", page_source)
+        self.assertIn(".aliasBatchQueue", css_source)
+
     def test_runtime_console_surfaces_pgvector_knowledge_search(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
 
