@@ -683,6 +683,7 @@ type RuntimeData = {
   entityAliases: PageResponse<RuntimeEntityAlias>;
   entityAliasCandidates: PageResponse<RuntimeEntityAliasCandidate>;
   entityAliasCandidateReviews: PageResponse<RuntimeEntityAliasCandidateReview>;
+  entityAliasAssignmentQueue: PageResponse<RuntimeEntityAliasCandidateReview>;
   savedViews: PageResponse<RuntimeSavedView>;
   scores: PageResponse<ScoreSnapshot>;
   graphs: PageResponse<CitationGraph>;
@@ -1458,6 +1459,7 @@ const endpoints = {
   entityAliases: "/v1/entity-aliases/runtime",
   entityAliasCandidates: "/v1/entity-aliases/runtime/candidates",
   entityAliasCandidateReviews: "/v1/entity-aliases/runtime/candidates/reviews",
+  entityAliasAssignmentQueue: "/v1/entity-aliases/runtime/candidates/reviews",
   entityAliasConfirmBatch: "/v1/entity-aliases/runtime/confirm-batch",
   savedViews: "/v1/runtime-saved-views",
   brandKit: "/v1/project-brand-kits/runtime",
@@ -2609,6 +2611,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       limit: 5
     }),
     entityAliasCandidateReviews: endpoints.entityAliasCandidateReviews,
+    entityAliasAssignmentQueue: endpoints.entityAliasAssignmentQueue,
     entityAliasConfirmBatch: endpoints.entityAliasConfirmBatch,
     fidelityChecks: runtimePath(endpoints.fidelityChecks, {
       limit: 5
@@ -2741,6 +2744,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
         limit: 8
       })
     : paths.entityAliasCandidateReviews;
+  paths.entityAliasAssignmentQueue = selectedProjectId
+    ? runtimePath(endpoints.entityAliasAssignmentQueue, {
+        project_id: selectedProjectId,
+        assignment_status: "assigned",
+        limit: 8
+      })
+    : paths.entityAliasAssignmentQueue;
   paths.savedViews = runtimePath(endpoints.savedViews, {
     ...selectedProjectParams,
     view_type: "runtime_evidence",
@@ -2843,6 +2853,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliases,
     entityAliasCandidates,
     entityAliasCandidateReviews,
+    entityAliasAssignmentQueue,
     savedViews,
     brandKit,
     brandAssets,
@@ -2912,6 +2923,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       ? fetchRuntimeEndpoint<PageResponse<RuntimeEntityAliasCandidateReview>>(
           baseUrl,
           paths.entityAliasCandidateReviews,
+          emptyPage<RuntimeEntityAliasCandidateReview>()
+        )
+      : Promise.resolve({ payload: emptyPage<RuntimeEntityAliasCandidateReview>(), error: null }),
+    selectedProjectId
+      ? fetchRuntimeEndpoint<PageResponse<RuntimeEntityAliasCandidateReview>>(
+          baseUrl,
+          paths.entityAliasAssignmentQueue,
           emptyPage<RuntimeEntityAliasCandidateReview>()
         )
       : Promise.resolve({ payload: emptyPage<RuntimeEntityAliasCandidateReview>(), error: null }),
@@ -3010,6 +3028,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliases,
     entityAliasCandidates,
     entityAliasCandidateReviews,
+    entityAliasAssignmentQueue,
     savedViews,
     brandKit,
     brandAssets,
@@ -3065,6 +3084,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       entityAliases: entityAliases.payload,
       entityAliasCandidates: entityAliasCandidates.payload,
       entityAliasCandidateReviews: entityAliasCandidateReviews.payload,
+      entityAliasAssignmentQueue: entityAliasAssignmentQueue.payload,
       savedViews: savedViews.payload,
       scores: scores.payload,
       graphs: graphs.payload,
@@ -3340,6 +3360,7 @@ export default async function Home({
   const defaultEntityAlias = entityAliasOptions[0]?.defaultAlias || latestProject?.project.target_brand || "";
   const visibleAliasCandidates = data.entityAliasCandidates.records.slice(0, 5);
   const visibleAliasCandidateReviews = data.entityAliasCandidateReviews.records.slice(0, 8);
+  const visibleAliasAssignmentQueue = data.entityAliasAssignmentQueue.records.slice(0, 8);
   const latestPrompt = data.prompts.records[0];
   const latestEvidence = data.evidence.records[0];
   const latestCollectionRun = data.collectionRuns.records[0];
@@ -4424,6 +4445,36 @@ export default async function Home({
                       </li>
                     ))}
                   </ul>
+                ) : null}
+                {visibleAliasAssignmentQueue.length ? (
+                  <div className="aliasBatchQueue">
+                    <div className="formHeader">
+                      <h3>Alias Candidate Assignment Queue</h3>
+                      <small>
+                        {data.entityAliasAssignmentQueue.total_count} assigned reviews · assigned_to /
+                        assignment_status / priority / due_before filters · {paths.entityAliasAssignmentQueue}
+                      </small>
+                    </div>
+                    <ul className="plainList">
+                      {visibleAliasAssignmentQueue.map((record) => {
+                        const review = record.review;
+                        return (
+                          <li key={`assignment-${review.id}`}>
+                            <strong>
+                              {review.assignment_status || "assigned"} · {review.priority || "normal"} ·{" "}
+                              {review.assigned_to || "unassigned"}
+                            </strong>
+                            <span>{review.alias}</span>
+                            <small>
+                              {review.entity_kind} · {review.decision} · candidate {shortId(review.candidate_id)}
+                              {review.due_at ? ` · due ${dateText(review.due_at)}` : " · no due date"} ·{" "}
+                              {record.audit_events[0]?.event_type || "no assignment audit"}
+                            </small>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
                 ) : null}
                 {visibleAliasCandidateReviews.length ? (
                   <div className="aliasBatchQueue">

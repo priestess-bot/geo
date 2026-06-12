@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 from dataclasses import FrozenInstanceError
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from tempfile import TemporaryDirectory
 from uuid import UUID
@@ -9941,6 +9941,13 @@ class CoreContractsTest(unittest.TestCase):
                         "reviewed_by": "analyst-1",
                         "reason": "not an owned brand alias",
                         "notes": "Reject repeated noisy candidate",
+                        "assigned_to": "reviewer@example.com",
+                        "assigned_by": "lead@example.com",
+                        "assignment_status": "assigned",
+                        "assignment_note": "Review by Monday",
+                        "assigned_at": now,
+                        "due_at": now + timedelta(days=2),
+                        "priority": "high",
                         "evidence_answer_run_ids": ["answer-run-1"],
                         "evidence_urls": ["https://examplebrand.com.au/reviews"],
                         "payload": {"source_panel": "runtime_entity_alias_candidates"},
@@ -9973,6 +9980,10 @@ class CoreContractsTest(unittest.TestCase):
             project_id=project_id,
             decision="rejected",
             entity_kind="brand",
+            assigned_to="reviewer@example.com",
+            assignment_status="assigned",
+            priority="high",
+            due_before=now + timedelta(days=3),
             limit=20,
             offset=0,
         )
@@ -9986,6 +9997,10 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM entity_alias_candidate_reviews", executed_sql)
         self.assertIn("decision = %s", executed_sql)
         self.assertIn("entity_kind = %s", executed_sql)
+        self.assertIn("assigned_to = %s", executed_sql)
+        self.assertIn("assignment_status = %s", executed_sql)
+        self.assertIn("priority = %s", executed_sql)
+        self.assertIn("due_at <= %s", executed_sql)
         self.assertIn("ORDER BY updated_at DESC, created_at DESC, candidate_id", executed_sql)
         self.assertIn("target_type = %s AND target_id = %s", executed_sql)
 

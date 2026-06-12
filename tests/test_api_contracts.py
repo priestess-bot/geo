@@ -2334,7 +2334,9 @@ class ApiContractsTest(unittest.TestCase):
         with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.get(
                 f"/v1/entity-aliases/runtime/candidates/reviews?project_id={project_id}"
-                "&decision=rejected&entity_kind=brand&limit=8&offset=2"
+                "&decision=rejected&entity_kind=brand&assigned_to=reviewer@example.com"
+                "&assignment_status=assigned&priority=high&due_before=2026-06-14T09:00:00Z"
+                "&limit=8&offset=2"
             )
 
         self.assertEqual(response.status_code, 200)
@@ -2347,6 +2349,10 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["project_id"], project_id)
         self.assertEqual(fake_repository.kwargs["decision"], "rejected")
         self.assertEqual(fake_repository.kwargs["entity_kind"], "brand")
+        self.assertEqual(fake_repository.kwargs["assigned_to"], "reviewer@example.com")
+        self.assertEqual(fake_repository.kwargs["assignment_status"], "assigned")
+        self.assertEqual(fake_repository.kwargs["priority"], "high")
+        self.assertEqual(fake_repository.kwargs["due_before"].isoformat(), "2026-06-14T09:00:00+00:00")
 
     def test_runtime_entity_alias_candidate_review_endpoint_records_decision(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

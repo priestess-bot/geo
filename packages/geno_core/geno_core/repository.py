@@ -2494,6 +2494,10 @@ class PostgresEvidenceRepository:
         project_id: str,
         decision: str | None = None,
         entity_kind: str | None = None,
+        assigned_to: str | None = None,
+        assignment_status: str | None = None,
+        priority: str | None = None,
+        due_before: datetime | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> RuntimeEntityAliasCandidateReviewPage:
@@ -2505,6 +2509,18 @@ class PostgresEvidenceRepository:
         if entity_kind:
             filters.append("entity_kind = %s")
             params.append(entity_kind.strip().lower())
+        if assigned_to:
+            filters.append("assigned_to = %s")
+            params.append(assigned_to.strip())
+        if assignment_status:
+            filters.append("assignment_status = %s")
+            params.append(assignment_status.strip().lower())
+        if priority:
+            filters.append("priority = %s")
+            params.append(priority.strip().lower())
+        if due_before:
+            filters.append("due_at <= %s")
+            params.append(due_before)
         where_clause = f"WHERE {' AND '.join(filters)}"
         with self.connection.cursor() as cursor:
             cursor.execute(
