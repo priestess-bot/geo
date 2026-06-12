@@ -976,6 +976,14 @@ class RuntimeEntityAliasCandidateReview:
 
 
 @dataclass(frozen=True)
+class RuntimeEntityAliasCandidateReviewPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeEntityAliasCandidateReview, ...]
+
+
+@dataclass(frozen=True)
 class RuntimeEntityAliasCandidateBatchReviewResult:
     batch_version: str
     requested_count: int

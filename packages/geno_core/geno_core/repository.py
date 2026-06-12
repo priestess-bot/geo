@@ -54,6 +54,7 @@ from geno_core.models import (
     RuntimeEntityAliasCandidateBatchReviewResult,
     RuntimeEntityAliasCandidatePage,
     RuntimeEntityAliasCandidateReview,
+    RuntimeEntityAliasCandidateReviewPage,
     RuntimeEntityAliasPage,
     RuntimeFidelityCheck,
     RuntimeFidelityCheckPage,
@@ -2478,6 +2479,64 @@ class PostgresEvidenceRepository:
             if candidate_id and candidate_id not in reviews:
                 reviews[candidate_id] = row
         return reviews
+
+    def list_entity_alias_candidate_reviews(
+        self,
+        *,
+        project_id: str,
+        decision: str | None = None,
+        entity_kind: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeEntityAliasCandidateReviewPage:
+        filters = ["project_id = %s"]
+        params: list[Any] = [_uuid(project_id)]
+        if decision:
+            filters.append("decision = %s")
+            params.append(decision.strip().lower())
+        if entity_kind:
+            filters.append("entity_kind = %s")
+            params.append(entity_kind.strip().lower())
+        where_clause = f"WHERE {' AND '.join(filters)}"
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT count(*)
+                FROM entity_alias_candidate_reviews
+                {where_clause}
+                """,
+                tuple(params),
+            )
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)}
+                FROM entity_alias_candidate_reviews
+                {where_clause}
+                ORDER BY updated_at DESC, created_at DESC, candidate_id
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            rows = _rows_dict(cursor.fetchall(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
+            records = tuple(
+                RuntimeEntityAliasCandidateReview(
+                    review=row,
+                    audit_events=self._load_entity_alias_candidate_review_audit_events(
+                        cursor=cursor,
+                        project_id=str(row["project_id"]),
+                        review_id=str(row["id"]),
+                    ),
+                )
+                for row in rows
+            )
+        return RuntimeEntityAliasCandidateReviewPage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=records,
+        )
 
     def record_entity_alias_candidate_review(
         self,

@@ -682,6 +682,7 @@ type RuntimeData = {
   fidelityTrend: RuntimeFidelityTrend | null;
   entityAliases: PageResponse<RuntimeEntityAlias>;
   entityAliasCandidates: PageResponse<RuntimeEntityAliasCandidate>;
+  entityAliasCandidateReviews: PageResponse<RuntimeEntityAliasCandidateReview>;
   savedViews: PageResponse<RuntimeSavedView>;
   scores: PageResponse<ScoreSnapshot>;
   graphs: PageResponse<CitationGraph>;
@@ -1355,6 +1356,29 @@ type RuntimeEntityAliasCandidate = {
   confirmed_aliases: string[];
 };
 
+type RuntimeEntityAliasCandidateReview = {
+  review: {
+    id: string;
+    project_id: string;
+    candidate_id: string;
+    entity_id: string;
+    entity_kind: string;
+    alias: string;
+    alias_type: string;
+    source?: string | null;
+    confidence?: number | null;
+    decision: string;
+    reviewed_by?: string | null;
+    reason?: string | null;
+    notes?: string | null;
+    evidence_answer_run_ids?: string[];
+    evidence_urls?: string[];
+    updated_at?: string;
+    created_at?: string;
+  };
+  audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
+};
+
 type RuntimeFilters = {
   project_id?: string;
   platform?: string;
@@ -1426,6 +1450,7 @@ const endpoints = {
   evidenceExport: "/v1/evidence-runs/runtime/export.csv",
   entityAliases: "/v1/entity-aliases/runtime",
   entityAliasCandidates: "/v1/entity-aliases/runtime/candidates",
+  entityAliasCandidateReviews: "/v1/entity-aliases/runtime/candidates/reviews",
   entityAliasConfirmBatch: "/v1/entity-aliases/runtime/confirm-batch",
   savedViews: "/v1/runtime-saved-views",
   brandKit: "/v1/project-brand-kits/runtime",
@@ -2541,6 +2566,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasCandidates: runtimePath(endpoints.entityAliasCandidates, {
       limit: 5
     }),
+    entityAliasCandidateReviews: endpoints.entityAliasCandidateReviews,
     entityAliasConfirmBatch: endpoints.entityAliasConfirmBatch,
     fidelityChecks: runtimePath(endpoints.fidelityChecks, {
       limit: 5
@@ -2667,6 +2693,12 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
         limit: 5
       })
     : paths.entityAliasCandidates;
+  paths.entityAliasCandidateReviews = selectedProjectId
+    ? runtimePath(endpoints.entityAliasCandidateReviews, {
+        project_id: selectedProjectId,
+        limit: 8
+      })
+    : paths.entityAliasCandidateReviews;
   paths.savedViews = runtimePath(endpoints.savedViews, {
     ...selectedProjectParams,
     view_type: "runtime_evidence",
@@ -2768,6 +2800,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fidelityTrend,
     entityAliases,
     entityAliasCandidates,
+    entityAliasCandidateReviews,
     savedViews,
     brandKit,
     brandAssets,
@@ -2833,6 +2866,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
           emptyPage<RuntimeEntityAliasCandidate>()
         )
       : Promise.resolve({ payload: emptyPage<RuntimeEntityAliasCandidate>(), error: null }),
+    selectedProjectId
+      ? fetchRuntimeEndpoint<PageResponse<RuntimeEntityAliasCandidateReview>>(
+          baseUrl,
+          paths.entityAliasCandidateReviews,
+          emptyPage<RuntimeEntityAliasCandidateReview>()
+        )
+      : Promise.resolve({ payload: emptyPage<RuntimeEntityAliasCandidateReview>(), error: null }),
     fetchRuntimeEndpoint<PageResponse<RuntimeSavedView>>(baseUrl, paths.savedViews, emptyPage<RuntimeSavedView>()),
     selectedProjectId
       ? fetchRuntimeEndpoint<RuntimeProjectBrandKit | null>(baseUrl, paths.brandKit, null, { optionalNotFound: true })
@@ -2927,6 +2967,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fidelityTrend,
     entityAliases,
     entityAliasCandidates,
+    entityAliasCandidateReviews,
     savedViews,
     brandKit,
     brandAssets,
@@ -2981,6 +3022,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       fidelityTrend: fidelityTrend.payload,
       entityAliases: entityAliases.payload,
       entityAliasCandidates: entityAliasCandidates.payload,
+      entityAliasCandidateReviews: entityAliasCandidateReviews.payload,
       savedViews: savedViews.payload,
       scores: scores.payload,
       graphs: graphs.payload,
@@ -3255,6 +3297,7 @@ export default async function Home({
     : [];
   const defaultEntityAlias = entityAliasOptions[0]?.defaultAlias || latestProject?.project.target_brand || "";
   const visibleAliasCandidates = data.entityAliasCandidates.records.slice(0, 5);
+  const visibleAliasCandidateReviews = data.entityAliasCandidateReviews.records.slice(0, 8);
   const latestPrompt = data.prompts.records[0];
   const latestEvidence = data.evidence.records[0];
   const latestCollectionRun = data.collectionRuns.records[0];
@@ -4339,6 +4382,109 @@ export default async function Home({
                       </li>
                     ))}
                   </ul>
+                ) : null}
+                {visibleAliasCandidateReviews.length ? (
+                  <div className="aliasBatchQueue">
+                    <div className="formHeader">
+                      <h3>Alias Candidate Review History</h3>
+                      <small>
+                        {data.entityAliasCandidateReviews.total_count} stored reviews ·{" "}
+                        /v1/entity-aliases/runtime/candidates/reviews
+                      </small>
+                    </div>
+                    <ul className="plainList">
+                      {visibleAliasCandidateReviews.map((record) => {
+                        const review = record.review;
+                        return (
+                          <li key={review.id}>
+                            <strong>
+                              {review.decision} · {review.alias_type} · {review.entity_kind}
+                            </strong>
+                            <span>{review.alias}</span>
+                            <small>
+                              {review.source || "manual"} · candidate {shortId(review.candidate_id)} ·{" "}
+                              {dateText(review.updated_at || review.created_at)} ·{" "}
+                              {record.audit_events[0]?.event_type || "no review audit"}
+                            </small>
+                            {review.decision === "rejected" ? (
+                              <form action={reviewEntityAliasCandidate} className="inlineAliasForm">
+                                <input type="hidden" name="project_id" value={review.project_id} />
+                                <input type="hidden" name="candidate_id" value={review.candidate_id} />
+                                <input type="hidden" name="entity_id" value={review.entity_id} />
+                                <input type="hidden" name="entity_kind" value={review.entity_kind} />
+                                <input type="hidden" name="alias" value={review.alias} />
+                                <input type="hidden" name="alias_type" value={review.alias_type} />
+                                <input type="hidden" name="source" value={review.source || ""} />
+                                <input type="hidden" name="confidence" value={String(review.confidence ?? 0.7)} />
+                                <input
+                                  type="hidden"
+                                  name="evidence_answer_run_ids"
+                                  value={(review.evidence_answer_run_ids || []).join(",")}
+                                />
+                                <input
+                                  type="hidden"
+                                  name="evidence_urls"
+                                  value={(review.evidence_urls || []).join("\n")}
+                                />
+                                <input type="hidden" name="decision" value="needs_review" />
+                                <input type="hidden" name="reviewed_by" value="runtime-console" />
+                                <input
+                                  type="hidden"
+                                  name="reason"
+                                  value="Restore rejected alias candidate from review history"
+                                />
+                                <input
+                                  type="hidden"
+                                  name="notes"
+                                  value={`Restore ${review.alias} to needs_review from alias candidate review history`}
+                                />
+                                <button className="actionButton compactAction" type="submit">
+                                  Restore to needs review
+                                </button>
+                              </form>
+                            ) : null}
+                            {review.decision !== "approved" ? (
+                              <form action={reviewEntityAliasCandidate} className="inlineAliasForm">
+                                <input type="hidden" name="project_id" value={review.project_id} />
+                                <input type="hidden" name="candidate_id" value={review.candidate_id} />
+                                <input type="hidden" name="entity_id" value={review.entity_id} />
+                                <input type="hidden" name="entity_kind" value={review.entity_kind} />
+                                <input type="hidden" name="alias" value={review.alias} />
+                                <input type="hidden" name="alias_type" value={review.alias_type} />
+                                <input type="hidden" name="source" value={review.source || ""} />
+                                <input type="hidden" name="confidence" value={String(review.confidence ?? 0.7)} />
+                                <input
+                                  type="hidden"
+                                  name="evidence_answer_run_ids"
+                                  value={(review.evidence_answer_run_ids || []).join(",")}
+                                />
+                                <input
+                                  type="hidden"
+                                  name="evidence_urls"
+                                  value={(review.evidence_urls || []).join("\n")}
+                                />
+                                <input type="hidden" name="decision" value="approved" />
+                                <input type="hidden" name="reviewed_by" value="runtime-console" />
+                                <input
+                                  type="hidden"
+                                  name="reason"
+                                  value="Approve alias candidate from review history"
+                                />
+                                <input
+                                  type="hidden"
+                                  name="notes"
+                                  value={`Mark ${review.alias} approved from alias candidate review history`}
+                                />
+                                <button className="actionButton compactAction" type="submit">
+                                  Mark approved
+                                </button>
+                              </form>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
                 ) : null}
                 {data.entityAliases.records.length ? (
                   <ul className="plainList">

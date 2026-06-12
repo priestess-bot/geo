@@ -88,6 +88,7 @@ from geno_core.models import (
     RuntimeEntityAliasCandidateBatchReviewResult,
     RuntimeEntityAliasCandidatePage,
     RuntimeEntityAliasCandidateReview,
+    RuntimeEntityAliasCandidateReviewPage,
     RuntimeEntityAliasPage,
     RuntimeFidelityCheck,
     RuntimeFidelityCheckPage,
@@ -9915,6 +9916,77 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("INSERT INTO entity_alias_candidate_reviews", executed_sql)
         self.assertIn("entity_alias_candidate_batch_reviewed", str(connection.calls))
         self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_lists_runtime_entity_alias_candidate_reviews(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        brand_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+        review_id = "60f1e5a4-d1d0-511e-b0c8-15dfc081ee9b"
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [
+                    {
+                        "id": review_id,
+                        "project_id": project_id,
+                        "candidate_id": "candidate-1",
+                        "entity_id": brand_id,
+                        "entity_kind": "brand",
+                        "alias": "ExampleBrand AU",
+                        "alias_type": "alias",
+                        "source": "evidence_answer_text",
+                        "confidence": 0.8,
+                        "decision": "rejected",
+                        "reviewed_by": "analyst-1",
+                        "reason": "not an owned brand alias",
+                        "notes": "Reject repeated noisy candidate",
+                        "evidence_answer_run_ids": ["answer-run-1"],
+                        "evidence_urls": ["https://examplebrand.com.au/reviews"],
+                        "payload": {"source_panel": "runtime_entity_alias_candidates"},
+                        "created_at": now,
+                        "updated_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": "audit-1",
+                        "project_id": project_id,
+                        "event_type": "entity_alias_candidate_review_recorded",
+                        "actor_type": "user",
+                        "actor_id": "analyst-1",
+                        "target_type": "entity_alias_candidate_review",
+                        "target_id": review_id,
+                        "before_hash": None,
+                        "after_hash": "hash",
+                        "input_refs": {},
+                        "output_refs": {},
+                        "method_version": "entity_alias_candidate_review_v1",
+                        "reason": "Reject repeated noisy candidate",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+
+        page = PostgresEvidenceRepository(connection).list_entity_alias_candidate_reviews(
+            project_id=project_id,
+            decision="rejected",
+            entity_kind="brand",
+            limit=20,
+            offset=0,
+        )
+
+        self.assertIsInstance(page, RuntimeEntityAliasCandidateReviewPage)
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.records[0].review["candidate_id"], "candidate-1")
+        self.assertEqual(page.records[0].review["decision"], "rejected")
+        self.assertEqual(page.records[0].audit_events[0]["event_type"], "entity_alias_candidate_review_recorded")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM entity_alias_candidate_reviews", executed_sql)
+        self.assertIn("decision = %s", executed_sql)
+        self.assertIn("entity_kind = %s", executed_sql)
+        self.assertIn("ORDER BY updated_at DESC, created_at DESC, candidate_id", executed_sql)
+        self.assertIn("target_type = %s AND target_id = %s", executed_sql)
 
     def test_postgres_repository_lists_runtime_entity_aliases_with_audit_events(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

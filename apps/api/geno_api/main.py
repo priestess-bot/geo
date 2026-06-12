@@ -2039,6 +2039,34 @@ def runtime_entity_alias_candidates(
         close_repository_connection(repository)
 
 
+@app.get("/v1/entity-aliases/runtime/candidates/reviews")
+def runtime_entity_alias_candidate_reviews(
+    project_id: str = Query(min_length=1),
+    decision: str | None = Query(default=None, min_length=1, max_length=40),
+    entity_kind: str | None = Query(default=None, min_length=1, max_length=40),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_entity_alias_candidate_reviews(
+            project_id=project_id.strip(),
+            decision=decision.strip() if decision else None,
+            entity_kind=entity_kind.strip() if entity_kind else None,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/entity-aliases/runtime/candidates/review")
 def review_runtime_entity_alias_candidate(
     payload: EntityAliasCandidateReviewRequest,
@@ -4547,6 +4575,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasCandidate",
             "RuntimeEntityAliasCandidatePage",
             "RuntimeEntityAliasCandidateReview",
+            "RuntimeEntityAliasCandidateReviewPage",
             "RuntimeEntityAliasCandidateBatchReviewResult",
             "RuntimeEntityAliasPage",
             "IndustryProfile",
@@ -4718,6 +4747,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasCandidate",
             "RuntimeEntityAliasCandidatePage",
             "RuntimeEntityAliasCandidateReview",
+            "RuntimeEntityAliasCandidateReviewPage",
             "RuntimeEntityAliasCandidateBatchReviewResult",
             "EntityAliasCandidateReviewInput",
             "EntityAliasCandidateReviewRequest",
@@ -4791,6 +4821,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/project-members/runtime",
             "/v1/entity-aliases/runtime",
             "/v1/entity-aliases/runtime/candidates",
+            "/v1/entity-aliases/runtime/candidates/reviews",
             "/v1/entity-aliases/runtime/candidates/review",
             "/v1/entity-aliases/runtime/candidates/review-batch",
             "/v1/entity-aliases/runtime/confirm",
