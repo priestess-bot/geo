@@ -1689,7 +1689,7 @@ ReportEvidence
 - 可生成 Citation Graph。
 - 可输出 3-5 个竞品的 Benchmark。
 - 可识别 source gap。
-- 可导出包含方法说明（含 API/消费者界面差异抽检结论、Google spike 结论、平台覆盖/降级口径）、审计摘要、分数解释包和原始证据附录的 PDF/CSV 报告；工程实现必须把审计摘要冻结到 `ReportExport.method_disclosure.audit_summary`，并在 Markdown/PDF/runtime artifact 中展示事件数量、事件类型分布、target 类型、method version、actor 类型、input/output ref keys、事件时间窗和代表性 audit event ids；真实客户报告交付前必须通过 `make au-launch-status` / `make verify-au-launch-status` 的 hash 自洽检查，并可通过 `GET /v1/launch-status/au` 与 Runtime Console AU Launch Gate 做人工复核；需要硬门禁时运行 `scripts/verify_au_launch_status.py --require-ready`。
+- 可导出包含方法说明（含 API/消费者界面差异抽检结论、Google spike 结论、平台覆盖/降级口径）、审计摘要、分数解释包和原始证据附录的 PDF/CSV 报告；工程实现必须把审计摘要冻结到 `ReportExport.method_disclosure.audit_summary`，并在 Markdown/PDF/runtime artifact 中展示事件数量、事件类型分布、target 类型、method version、actor 类型、input/output ref keys、事件时间窗和代表性 audit event ids；`make au-p0c-report-package` 必须生成可复算 P0c 报告交付包，至少覆盖 Markdown/CSV/PDF/白标 PDF artifact hash、API-vs-browser fidelity sampled 口径、Method Disclosure、Audit Summary 和 `ReportExport -> VisibilityScoreSnapshot -> AnswerRun` traceability 合同；真实客户报告交付前必须通过 `make au-launch-status` / `make verify-au-launch-status` 的 hash 自洽检查，并可通过 `GET /v1/launch-status/au` 与 Runtime Console AU Launch Gate 做人工复核；需要硬门禁时运行 `scripts/verify_au_launch_status.py --require-ready`。
 
 架构验收（开源·可插拔）：
 

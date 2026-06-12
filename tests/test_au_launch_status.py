@@ -14,6 +14,7 @@ from scripts.build_au_launch_status import (
 )
 from scripts.build_au_p0a_status_report import build_au_p0a_status_report
 from scripts.build_au_p0b_google_evidence_package import build_au_p0b_google_evidence_package
+from scripts.build_au_p0c_report_package import build_au_p0c_report_package
 from scripts.verify_au_launch_status import verify_au_launch_status
 from tests.test_au_p0a_status_report import AuP0aStatusReportFixtureMixin
 from tests.test_au_p0b_google_evidence_package import AuP0bGoogleEvidencePackageTest
@@ -76,9 +77,20 @@ class AuLaunchStatusTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
         package_path.write_text(json.dumps(package), encoding="utf-8")
         return runbook_path, execution_path, status_path, package_path
 
+    def _write_p0c_package(self, temp_dir: str) -> Path:
+        package_path = Path(temp_dir) / "p0c-report-package.json"
+        package = build_au_p0c_report_package(
+            output_path=package_path,
+            generated_at="2026-06-12T00:00:00Z",
+            prompt_limit=1,
+        )
+        package_path.write_text(json.dumps(package), encoding="utf-8")
+        return package_path
+
     def test_launch_status_records_p0a_blocker_before_design_partner_ready(self) -> None:
         with TemporaryDirectory() as temp_dir:
             p0a_status_path = self._write_p0a_status(temp_dir, ready=False)
+            p0c_package_path = self._write_p0c_package(temp_dir)
             runbook_path, execution_path, p0b_status_path, p0b_package_path = self._write_p0b_status_and_package(
                 temp_dir,
                 google_ready=False,
@@ -89,6 +101,7 @@ class AuLaunchStatusTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
                 p0b_google_package_path=p0b_package_path,
                 p0b_google_runbook_path=runbook_path,
                 p0b_google_execution_path=execution_path,
+                p0c_report_package_path=p0c_package_path,
                 generated_at="2026-06-12T00:00:00Z",
             )
             verification = verify_au_launch_status(report)
@@ -100,6 +113,7 @@ class AuLaunchStatusTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
         self.assertFalse(report["p0a_design_partner"]["ready_for_design_partner"])  # type: ignore[index]
         self.assertFalse(report["p0b_google"]["google_main_scoring_allowed"])  # type: ignore[index]
         self.assertEqual(report["p0c_customer_report"]["status"], "pass")  # type: ignore[index]
+        self.assertTrue(report["p0c_customer_report"]["p0c_report_contract_ready"])  # type: ignore[index]
         self.assertIn("p0a:readiness:readiness_file_missing", report["remaining_blockers"])
         self.assertIn("p0b_google:playwright_env:file_missing", report["remaining_blockers"])
         self.assertEqual(report["launch_status_hash"], compute_launch_status_hash(report))
@@ -109,6 +123,7 @@ class AuLaunchStatusTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
     def test_launch_status_moves_to_google_next_action_after_p0a_is_ready(self) -> None:
         with TemporaryDirectory() as temp_dir:
             p0a_status_path = self._write_p0a_status(temp_dir, ready=True)
+            p0c_package_path = self._write_p0c_package(temp_dir)
             runbook_path, execution_path, p0b_status_path, p0b_package_path = self._write_p0b_status_and_package(
                 temp_dir,
                 google_ready=False,
@@ -119,6 +134,7 @@ class AuLaunchStatusTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
                 p0b_google_package_path=p0b_package_path,
                 p0b_google_runbook_path=runbook_path,
                 p0b_google_execution_path=execution_path,
+                p0c_report_package_path=p0c_package_path,
                 generated_at="2026-06-12T00:00:00Z",
             )
 
@@ -131,6 +147,7 @@ class AuLaunchStatusTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
     def test_launch_status_passes_when_p0a_p0b_and_p0c_are_ready(self) -> None:
         with TemporaryDirectory() as temp_dir:
             p0a_status_path = self._write_p0a_status(temp_dir, ready=True)
+            p0c_package_path = self._write_p0c_package(temp_dir)
             runbook_path, execution_path, p0b_status_path, p0b_package_path = self._write_p0b_status_and_package(
                 temp_dir,
                 google_ready=True,
@@ -141,6 +158,7 @@ class AuLaunchStatusTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
                 p0b_google_package_path=p0b_package_path,
                 p0b_google_runbook_path=runbook_path,
                 p0b_google_execution_path=execution_path,
+                p0c_report_package_path=p0c_package_path,
                 generated_at="2026-06-12T00:00:00Z",
             )
             verification = verify_au_launch_status(report, require_ready=True)
@@ -156,6 +174,7 @@ class AuLaunchStatusTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
     def test_verifier_detects_hash_mismatch(self) -> None:
         with TemporaryDirectory() as temp_dir:
             p0a_status_path = self._write_p0a_status(temp_dir, ready=False)
+            p0c_package_path = self._write_p0c_package(temp_dir)
             runbook_path, execution_path, p0b_status_path, p0b_package_path = self._write_p0b_status_and_package(
                 temp_dir,
                 google_ready=False,
@@ -166,6 +185,7 @@ class AuLaunchStatusTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
                 p0b_google_package_path=p0b_package_path,
                 p0b_google_runbook_path=runbook_path,
                 p0b_google_execution_path=execution_path,
+                p0c_report_package_path=p0c_package_path,
                 generated_at="2026-06-12T00:00:00Z",
             )
             report["next_action"] = "tampered"
@@ -178,6 +198,7 @@ class AuLaunchStatusTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
     def test_cli_writes_and_verifies_launch_status(self) -> None:
         with TemporaryDirectory() as temp_dir:
             p0a_status_path = self._write_p0a_status(temp_dir, ready=False)
+            p0c_package_path = self._write_p0c_package(temp_dir)
             runbook_path, execution_path, p0b_status_path, p0b_package_path = self._write_p0b_status_and_package(
                 temp_dir,
                 google_ready=False,
@@ -197,6 +218,8 @@ class AuLaunchStatusTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
                     str(runbook_path),
                     "--p0b-google-execution-path",
                     str(execution_path),
+                    "--p0c-report-package-path",
+                    str(p0c_package_path),
                     "--output-path",
                     str(output_path),
                     "--generated-at",

@@ -106,6 +106,7 @@ from scripts.build_au_launch_status import (
     DEFAULT_P0B_GOOGLE_PACKAGE_PATH,
     DEFAULT_P0B_GOOGLE_RUNBOOK_PATH,
     DEFAULT_P0B_GOOGLE_STATUS_PATH,
+    DEFAULT_P0C_REPORT_PACKAGE_PATH,
     build_au_launch_status,
 )
 
@@ -1290,6 +1291,9 @@ def au_launch_status() -> dict[str, object]:
         ),
         p0b_google_execution_path=Path(
             os.getenv("GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_EXECUTION_PATH)
+        ),
+        p0c_report_package_path=Path(
+            os.getenv("GENO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", DEFAULT_P0C_REPORT_PACKAGE_PATH)
         ),
         output_path=Path(os.getenv("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH)),
     )

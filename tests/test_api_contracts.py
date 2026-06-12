@@ -253,9 +253,11 @@ class ApiContractsTest(unittest.TestCase):
             },
             "p0c_customer_report": {
                 "status": "blocked",
+                "p0c_report_contract_ready": False,
                 "report_contract_version": "customer_report_handoff_v1",
                 "google_coverage": "limited_coverage_appendix_only",
                 "audit_event_count": 12,
+                "artifact_count": 8,
                 "remaining_blockers": ["missing_signed_report_url"],
             },
         }

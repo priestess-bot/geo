@@ -27,6 +27,10 @@ from scripts.build_au_p0b_google_spike_runbook import (  # noqa: E402
 from scripts.build_au_p0b_google_spike_status_report import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_P0B_GOOGLE_STATUS_PATH,
 )
+from scripts.build_au_p0c_report_package import (  # noqa: E402
+    DEFAULT_OUTPUT_PATH as DEFAULT_P0C_REPORT_PACKAGE_PATH,
+    build_au_p0c_report_package,
+)
 from scripts.run_au_p0b_google_spike_runbook import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_P0B_GOOGLE_EXECUTION_PATH,
 )
@@ -37,6 +41,7 @@ from scripts.verify_au_p0b_google_evidence_package import (  # noqa: E402
 from scripts.verify_au_p0b_google_spike_status_report import (  # noqa: E402
     verify_au_p0b_google_spike_status_report,
 )
+from scripts.verify_au_p0c_report_package import verify_au_p0c_report_package  # noqa: E402
 
 
 LAUNCH_STATUS_VERSION = "au_launch_status_v1"
@@ -136,6 +141,16 @@ def _load_or_build_p0b_package(
     return built, source
 
 
+def _load_or_build_p0c_package(path: Path, *, generated_at: str | None) -> tuple[dict[str, Any], dict[str, Any]]:
+    payload, source = _load_json(path)
+    if isinstance(payload, dict):
+        source["source"] = "existing_file"
+        return payload, source
+    built = build_au_p0c_report_package(output_path=path, generated_at=generated_at)
+    source["source"] = "generated_in_memory"
+    return built, source
+
+
 def _p0a_summary(status: dict[str, Any], *, path: Path) -> dict[str, Any]:
     verification = verify_au_p0a_status_report(status, path=path)
     return {
@@ -188,109 +203,27 @@ def _p0b_summary(
     }
 
 
-def _p0c_report_contract() -> dict[str, Any]:
-    from geno_core.audit import build_audit_event
-    from geno_core.report import (
-        SCORE_RATE_DENOMINATORS,
-        build_report_audit_summary,
-        build_report_methodology_disclosure,
-        render_audit_summary_lines,
-        render_methodology_disclosure_lines,
-    )
-
-    audit_event = build_audit_event(
-        event_type="launch_status_report_contract_checked",
-        project_id="au-launch-status-contract",
-        actor_type="system",
-        actor_id="au-launch-status",
-        target_type="report_contract",
-        target_id="p0c-method-disclosure",
-        before=None,
-        after={"contract": "p0c_report_method_disclosure"},
-        input_refs={"status_sources": ["p0a_status", "p0b_google_status", "p0b_google_package"]},
-        output_refs={"contract_checks": ["method_disclosure", "audit_summary"]},
-        method_version=LAUNCH_STATUS_VERSION,
-        reason="AU launch status verifies P0c report disclosure contract locally",
-    )
-    disclosure = build_report_methodology_disclosure(
-        rows=(
-            {
-                "id": "answer-run-1",
-                "prompt_question_id": "prompt-1",
-                "platform": "perplexity",
-                "surface": "sonar",
-                "access_method": "official_api",
-                "city": "Sydney",
-                "answer_present": True,
-                "surface_triggered": True,
-                "screenshot_count": 0,
-                "html_snapshot_count": 1,
-            },
-        ),
-        fidelity_rows=(
-            {
-                "id": "answer-run-1",
-                "prompt_question_id": "prompt-1",
-                "platform": "perplexity",
-                "surface": "sonar",
-                "access_method": "official_api",
-                "city": "Sydney",
-                "answer_present": True,
-                "surface_triggered": True,
-                "screenshot_count": 0,
-                "html_snapshot_count": 1,
-            },
-            {
-                "id": "answer-run-2",
-                "prompt_question_id": "prompt-1",
-                "platform": "chatgpt",
-                "surface": "search",
-                "access_method": "browser",
-                "city": "Sydney",
-                "answer_present": True,
-                "surface_triggered": True,
-                "screenshot_count": 1,
-                "html_snapshot_count": 1,
-            },
-        ),
-        platform_weights_snapshot={"perplexity": 0.25, "chatgpt": 0.30, "google": 0.45},
-        score_input_policy={"google_main_scoring_allowed": False, "score_input_record_count": 1},
-        audit_events=(audit_event,),
-    )
-    audit_summary = build_report_audit_summary((audit_event,))
-    methodology_lines = render_methodology_disclosure_lines(disclosure)
-    audit_lines = render_audit_summary_lines(disclosure.get("audit_summary"))
-    required_fields = {
-        "google_coverage",
-        "google_spike_gate",
-        "api_browser_fidelity",
-        "score_rate_denominators",
-        "access_method_distribution",
-        "platform_distribution",
-        "platform_weights_snapshot",
-        "score_input_policy",
-        "audit_summary",
-        "evidence_asset_coverage",
-    }
-    checks = {
-        "method_disclosure_fields_present": required_fields.issubset(disclosure.keys()),
-        "score_rate_definitions_present": set(SCORE_RATE_DENOMINATORS).issubset(
-            _as_dict(disclosure.get("score_rate_denominators")).get("definitions", {}).keys()
-        ),
-        "audit_summary_count_present": _as_dict(disclosure.get("audit_summary")).get("audit_event_count") == 1,
-        "audit_summary_hashable": audit_summary.get("audit_event_count") == 1,
-        "methodology_render_mentions_denominator": any("Trigger rate denominator" in line for line in methodology_lines),
-        "audit_summary_render_mentions_events": any("Audit events attached: 1" in line for line in audit_lines),
-    }
-    errors = [name for name, passed in checks.items() if passed is not True]
+def _p0c_summary(package: dict[str, Any], *, path: Path) -> dict[str, Any]:
+    verification = verify_au_p0c_report_package(package, path=path)
+    report_export = _as_dict(package.get("report_export"))
+    summary = _as_dict(package.get("summary"))
+    ready = verification["status"] == "pass" and package.get("p0c_report_contract_ready") is True
     return {
-        "status": "pass" if not errors else "fail",
-        "errors": errors,
-        "checks": checks,
-        "report_contract_version": "p0c_report_method_disclosure_contract_v1",
-        "google_coverage": disclosure.get("google_coverage", ""),
-        "audit_event_count": _as_dict(disclosure.get("audit_summary")).get("audit_event_count", 0),
-        "score_rate_definition_keys": sorted(_as_dict(_as_dict(disclosure.get("score_rate_denominators")).get("definitions")).keys()),
+        "status": "pass" if ready else "fail",
+        "package_verifier_status": verification["status"],
+        "errors": verification["errors"],
+        "hash_valid": verification["hash_valid"],
+        "p0c_report_contract_ready": ready,
+        "next_action": package.get("next_action", ""),
+        "remaining_blockers": [str(item) for item in _as_list(package.get("remaining_blockers"))],
+        "report_contract_version": package.get("package_version", ""),
+        "package_payload_hash": package.get("package_payload_hash", ""),
+        "google_coverage": report_export.get("google_coverage", ""),
+        "api_browser_fidelity_status": report_export.get("api_browser_fidelity_status", ""),
+        "audit_event_count": report_export.get("audit_event_count", 0),
+        "artifact_count": summary.get("artifact_count", 0),
+        "failed_artifacts": [str(item) for item in _as_list(summary.get("failed_artifacts"))],
+        "ready_artifacts": [str(item) for item in _as_list(summary.get("ready_artifacts"))],
     }
 
 
@@ -311,6 +244,7 @@ def build_au_launch_status(
     p0b_google_package_path: Path = Path(DEFAULT_P0B_GOOGLE_PACKAGE_PATH),
     p0b_google_runbook_path: Path = Path(DEFAULT_P0B_GOOGLE_RUNBOOK_PATH),
     p0b_google_execution_path: Path = Path(DEFAULT_P0B_GOOGLE_EXECUTION_PATH),
+    p0c_report_package_path: Path = Path(DEFAULT_P0C_REPORT_PACKAGE_PATH),
     output_path: Path | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
@@ -328,6 +262,7 @@ def build_au_launch_status(
         status_report_path=p0b_google_status_path,
         generated_at=generated_at,
     )
+    p0c_package, p0c_source = _load_or_build_p0c_package(p0c_report_package_path, generated_at=generated_at)
     p0a = _p0a_summary(p0a_status, path=p0a_status_path)
     p0b = _p0b_summary(
         p0b_status,
@@ -335,11 +270,11 @@ def build_au_launch_status(
         status_path=p0b_google_status_path,
         package_path=p0b_google_package_path,
     )
-    p0c = _p0c_report_contract()
+    p0c = _p0c_summary(p0c_package, path=p0c_report_package_path)
     ready_for_customer_report_handoff = (
         p0a.get("ready_for_design_partner") is True
         and p0b.get("google_main_scoring_allowed") is True
-        and p0c.get("status") == "pass"
+        and p0c.get("p0c_report_contract_ready") is True
     )
     remaining_blockers = sorted(
         set(
@@ -361,12 +296,14 @@ def build_au_launch_status(
             "p0b_google_package_path": str(p0b_google_package_path),
             "p0b_google_runbook_path": str(p0b_google_runbook_path),
             "p0b_google_execution_path": str(p0b_google_execution_path),
+            "p0c_report_package_path": str(p0c_report_package_path),
             "output_path": str(output_path) if output_path else "",
         },
         "sources": {
             "p0a_status": p0a_source,
             "p0b_google_status": p0b_status_source,
             "p0b_google_package": p0b_package_source,
+            "p0c_report_package": p0c_source,
         },
         "p0a_design_partner": p0a,
         "p0b_google": p0b,
@@ -399,6 +336,10 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_EXECUTION_PATH),
     )
     parser.add_argument(
+        "--p0c-report-package-path",
+        default=os.environ.get("GENO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", DEFAULT_P0C_REPORT_PACKAGE_PATH),
+    )
+    parser.add_argument(
         "--output-path",
         default=os.environ.get("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
     )
@@ -420,6 +361,7 @@ def main() -> None:
         p0b_google_package_path=Path(args.p0b_google_package_path),
         p0b_google_runbook_path=Path(args.p0b_google_runbook_path),
         p0b_google_execution_path=Path(args.p0b_google_execution_path),
+        p0c_report_package_path=Path(args.p0c_report_package_path),
         output_path=output_path,
         generated_at=args.generated_at,
     )

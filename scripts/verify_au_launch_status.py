@@ -110,23 +110,17 @@ def verify_au_launch_status(
         errors.append("p0b_status_hash_not_valid")
     if p0b.get("package_hash_valid") is not True:
         errors.append("p0b_package_hash_not_valid")
-    if p0c.get("status") != "pass":
-        errors.append("p0c_report_contract_not_pass")
-    checks = _as_dict(p0c.get("checks"))
-    for name in (
-        "method_disclosure_fields_present",
-        "score_rate_definitions_present",
-        "audit_summary_count_present",
-        "methodology_render_mentions_denominator",
-        "audit_summary_render_mentions_events",
-    ):
-        if checks.get(name) is not True:
-            errors.append(f"p0c_check_not_pass:{name}")
+    if p0c.get("package_verifier_status") != "pass":
+        errors.append("p0c_package_verifier_not_pass")
+    if p0c.get("hash_valid") is not True:
+        errors.append("p0c_package_hash_not_valid")
+    if p0c.get("p0c_report_contract_ready") is not True:
+        errors.append("p0c_report_contract_not_ready")
 
     expected_ready = (
         p0a.get("ready_for_design_partner") is True
         and p0b.get("google_main_scoring_allowed") is True
-        and p0c.get("status") == "pass"
+        and p0c.get("p0c_report_contract_ready") is True
     )
     if report.get("ready_for_customer_report_handoff") is not expected_ready:
         errors.append("ready_for_customer_report_handoff_mismatch")
