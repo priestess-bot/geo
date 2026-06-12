@@ -69,6 +69,7 @@ from geno_core.knowledge import (
 )
 from geno_core.market import build_au_market_profile
 from geno_core.models import (
+    EntityAliasCandidateAssignmentActionInput,
     EntityAliasCandidateAssignmentInput,
     EntityAliasCandidateReviewInput,
     EntityAliasInput,
@@ -1479,6 +1480,15 @@ class EntityAliasCandidateAssignmentRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class EntityAliasCandidateAssignmentActionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    candidate_id: str = Field(min_length=1, max_length=160)
+    action: str = Field(min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    note: str | None = Field(default=None, max_length=1000)
+    force: bool = False
+
+
 class EntityAliasAssignmentNotificationRequest(BaseModel):
     project_id: str = Field(min_length=1)
     assigned_to: str | None = Field(default=None, min_length=1, max_length=120)
@@ -2292,6 +2302,52 @@ def assign_runtime_entity_alias_candidate_review(
         except ValueError as exc:
             status_code = 404 if str(exc) == "entity alias candidate review not found" else 400
             raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/entity-aliases/runtime/candidates/assignment-action")
+def action_runtime_entity_alias_candidate_assignment(
+    payload: EntityAliasCandidateAssignmentActionRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id.strip(),
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            record = repository.apply_entity_alias_candidate_assignment_action(
+                EntityAliasCandidateAssignmentActionInput(
+                    project_id=payload.project_id.strip(),
+                    candidate_id=payload.candidate_id.strip(),
+                    action=payload.action.strip(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    note=payload.note.strip() if payload.note else None,
+                    force=payload.force,
+                )
+            )
+        except ValueError as exc:
+            detail = str(exc)
+            if detail == "entity alias candidate review not found":
+                status_code = 404
+            elif detail in {
+                "entity alias candidate review is already assigned",
+                "entity alias candidate review is assigned to another reviewer",
+                "completed entity alias candidate review cannot be claimed or released",
+            }:
+                status_code = 409
+            else:
+                status_code = 400
+            raise HTTPException(status_code=status_code, detail=detail) from exc
         return asdict(record)
     finally:
         close_repository_connection(repository)
@@ -4719,6 +4775,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasCandidateAssignmentQueueStats",
             "RuntimeEntityAliasAssignmentNotificationResult",
             "RuntimeEntityAliasCandidateBatchReviewResult",
+            "EntityAliasCandidateAssignmentActionInput",
             "EntityAliasCandidateAssignmentInput",
             "RuntimeEntityAliasPage",
             "IndustryProfile",
@@ -4894,9 +4951,11 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasCandidateAssignmentQueueStats",
             "RuntimeEntityAliasCandidateBatchReviewResult",
             "EntityAliasCandidateReviewInput",
+            "EntityAliasCandidateAssignmentActionInput",
             "EntityAliasCandidateAssignmentInput",
             "EntityAliasCandidateReviewRequest",
             "EntityAliasCandidateBatchReviewRequest",
+            "EntityAliasCandidateAssignmentActionRequest",
             "EntityAliasCandidateAssignmentRequest",
             "EntityAliasAssignmentNotificationRequest",
             "RuntimeEntityAliasPage",
@@ -4974,6 +5033,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/entity-aliases/runtime/candidates/review",
             "/v1/entity-aliases/runtime/candidates/review-batch",
             "/v1/entity-aliases/runtime/candidates/assign",
+            "/v1/entity-aliases/runtime/candidates/assignment-action",
             "/v1/entity-aliases/runtime/confirm",
             "/v1/entity-aliases/runtime/confirm-batch",
             "/v1/prompts/runtime",

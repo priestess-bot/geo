@@ -1478,6 +1478,7 @@ const endpoints = {
   entityAliasCandidateReviews: "/v1/entity-aliases/runtime/candidates/reviews",
   entityAliasAssignmentQueue: "/v1/entity-aliases/runtime/candidates/reviews",
   entityAliasAssignmentStats: "/v1/entity-aliases/runtime/candidates/assignment-stats",
+  entityAliasAssignmentAction: "/v1/entity-aliases/runtime/candidates/assignment-action",
   entityAliasConfirmBatch: "/v1/entity-aliases/runtime/confirm-batch",
   savedViews: "/v1/runtime-saved-views",
   brandKit: "/v1/project-brand-kits/runtime",
@@ -2496,6 +2497,37 @@ async function assignEntityAliasCandidateReview(formData: FormData) {
   revalidatePath("/");
 }
 
+async function actionEntityAliasCandidateAssignment(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const candidateId = String(formData.get("candidate_id") || "").trim();
+  const action = String(formData.get("action") || "").trim();
+  if (!projectId || !candidateId || !action) {
+    throw new Error("project, candidate, and assignment action are required");
+  }
+  const response = await fetch(`${baseUrl}${endpoints.entityAliasAssignmentAction}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      project_id: projectId,
+      candidate_id: candidateId,
+      action,
+      updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
+      note: String(formData.get("note") || "").trim() || undefined,
+      force: String(formData.get("force") || "").trim() === "true"
+    }),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`${endpoints.entityAliasAssignmentAction} returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
 async function saveRuntimeNotificationSubscription(formData: FormData) {
   "use server";
   const baseUrl =
@@ -2682,6 +2714,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasCandidateReviews: endpoints.entityAliasCandidateReviews,
     entityAliasAssignmentQueue: endpoints.entityAliasAssignmentQueue,
     entityAliasAssignmentStats: endpoints.entityAliasAssignmentStats,
+    entityAliasAssignmentAction: endpoints.entityAliasAssignmentAction,
     entityAliasConfirmBatch: endpoints.entityAliasConfirmBatch,
     fidelityChecks: runtimePath(endpoints.fidelityChecks, {
       limit: 5
@@ -2903,6 +2936,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   });
   paths.alertNotifications = endpoints.alertNotifications;
   paths.entityAliasAssignmentNotifications = endpoints.entityAliasAssignmentNotifications;
+  paths.entityAliasAssignmentAction = endpoints.entityAliasAssignmentAction;
   paths.content = runtimePath(endpoints.content, {
     ...selectedProjectParams,
     limit: 1
@@ -4571,7 +4605,8 @@ export default async function Home({
                       {JSON.stringify(data.entityAliasAssignmentStats.priority_counts)}
                       {data.entityAliasAssignmentStats.next_due_at
                         ? ` · next due ${dateText(data.entityAliasAssignmentStats.next_due_at)}`
-                        : " · no next due"}
+                        : " · no next due"}{" "}
+                      · actions: {paths.entityAliasAssignmentAction} · audit entity_alias_candidate_assignment_actioned
                     </small>
                     <form action={enqueueEntityAliasAssignmentNotifications} className="inlineAliasForm">
                       <input type="hidden" name="project_id" value={selectedProjectId || ""} />
@@ -4605,6 +4640,34 @@ export default async function Home({
                               {review.due_at ? ` · due ${dateText(review.due_at)}` : " · no due date"} ·{" "}
                               {record.audit_events[0]?.event_type || "no assignment audit"}
                             </small>
+                            <form action={actionEntityAliasCandidateAssignment} className="inlineAliasForm">
+                              <input type="hidden" name="project_id" value={review.project_id} />
+                              <input type="hidden" name="candidate_id" value={review.candidate_id} />
+                              <input type="hidden" name="action" value="claim" />
+                              <input type="hidden" name="updated_by" value="runtime-console" />
+                              <input
+                                type="hidden"
+                                name="note"
+                                value={`Claim ${review.alias} alias candidate review from Runtime Console`}
+                              />
+                              <button className="actionButton compactAction" type="submit">
+                                Claim review
+                              </button>
+                            </form>
+                            <form action={actionEntityAliasCandidateAssignment} className="inlineAliasForm">
+                              <input type="hidden" name="project_id" value={review.project_id} />
+                              <input type="hidden" name="candidate_id" value={review.candidate_id} />
+                              <input type="hidden" name="action" value="release" />
+                              <input type="hidden" name="updated_by" value="runtime-console" />
+                              <input
+                                type="hidden"
+                                name="note"
+                                value={`Release ${review.alias} alias candidate review from Runtime Console`}
+                              />
+                              <button className="actionButton compactAction" type="submit" disabled={!review.assigned_to}>
+                                Release review
+                              </button>
+                            </form>
                             {["in_progress", "blocked", "completed"].map((status) => (
                               <form action={assignEntityAliasCandidateReview} className="inlineAliasForm" key={status}>
                                 <input type="hidden" name="project_id" value={review.project_id} />

@@ -2691,6 +2691,73 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_entity_alias_candidate_assignment_action_endpoint_claims_review(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+
+        class FakeRepository:
+            connection = type("Connection", (), {"close": lambda self: None})()
+
+            def apply_entity_alias_candidate_assignment_action(self, action):
+                self.action = action
+                return RuntimeEntityAliasCandidateReview(
+                    review={
+                        "id": "review-1",
+                        "project_id": action.project_id,
+                        "candidate_id": action.candidate_id,
+                        "assigned_to": action.updated_by,
+                        "assignment_status": "assigned",
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "entity_alias_candidate_assignment_actioned",
+                            "method_version": "entity_alias_candidate_assignment_action_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+            response = self.client.post(
+                "/v1/entity-aliases/runtime/candidates/assignment-action",
+                json={
+                    "project_id": project_id,
+                    "candidate_id": "candidate-1",
+                    "action": "claim",
+                    "updated_by": "reviewer@example.com",
+                    "note": "Claim from queue",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["review"]["assigned_to"], "reviewer@example.com")
+        self.assertEqual(payload["audit_events"][0]["event_type"], "entity_alias_candidate_assignment_actioned")
+        self.assertEqual(fake_repository.action.action, "claim")
+        self.assertEqual(fake_repository.action.note, "Claim from queue")
+
+    def test_runtime_entity_alias_candidate_assignment_action_endpoint_returns_conflict(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+
+        class FakeRepository:
+            connection = type("Connection", (), {"close": lambda self: None})()
+
+            def apply_entity_alias_candidate_assignment_action(self, action):
+                raise ValueError("entity alias candidate review is already assigned")
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()):
+            response = self.client.post(
+                "/v1/entity-aliases/runtime/candidates/assignment-action",
+                json={
+                    "project_id": project_id,
+                    "candidate_id": "candidate-1",
+                    "action": "claim",
+                    "updated_by": "reviewer@example.com",
+                },
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "entity alias candidate review is already assigned")
+
     def test_runtime_entity_alias_candidate_review_batch_rejects_cross_project_reviews(self) -> None:
         class FakeRepository:
             connection = type("Connection", (), {"close": lambda self: None})()
@@ -4801,6 +4868,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEntityAliasCandidateAssignmentQueueStats", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasAssignmentNotificationResult", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasCandidateBatchReviewResult", payload["m1_bootstrap"])
+        self.assertIn("EntityAliasCandidateAssignmentActionInput", payload["m1_bootstrap"])
         self.assertIn("EntityAliasCandidateAssignmentInput", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasPage", payload["m1_bootstrap"])
         self.assertIn("TraceabilityBundle", payload["auditability"])
@@ -4863,9 +4931,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEntityAliasCandidateReviewPage", payload["persistence"])
         self.assertIn("RuntimeEntityAliasCandidateBatchReviewResult", payload["persistence"])
         self.assertIn("EntityAliasCandidateReviewInput", payload["persistence"])
+        self.assertIn("EntityAliasCandidateAssignmentActionInput", payload["persistence"])
         self.assertIn("EntityAliasCandidateAssignmentInput", payload["persistence"])
         self.assertIn("EntityAliasCandidateReviewRequest", payload["persistence"])
         self.assertIn("EntityAliasCandidateBatchReviewRequest", payload["persistence"])
+        self.assertIn("EntityAliasCandidateAssignmentActionRequest", payload["persistence"])
         self.assertIn("EntityAliasCandidateAssignmentRequest", payload["persistence"])
         self.assertIn("EntityAliasAssignmentNotificationRequest", payload["persistence"])
         self.assertIn("RuntimeEntityAliasPage", payload["persistence"])
@@ -4962,6 +5032,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/entity-aliases/runtime/candidates/review", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/review-batch", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/assign", payload["persistence"])
+        self.assertIn("/v1/entity-aliases/runtime/candidates/assignment-action", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/confirm", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/confirm-batch", payload["persistence"])
         self.assertIn("/v1/prompts/runtime", payload["persistence"])

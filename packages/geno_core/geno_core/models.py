@@ -983,6 +983,16 @@ class EntityAliasCandidateAssignmentInput:
 
 
 @dataclass(frozen=True)
+class EntityAliasCandidateAssignmentActionInput:
+    project_id: str
+    candidate_id: str
+    action: str
+    updated_by: str = "runtime-console"
+    note: str | None = None
+    force: bool = False
+
+
+@dataclass(frozen=True)
 class RuntimeEntityAliasCandidateReview:
     review: dict[str, Any]
     audit_events: tuple[dict[str, Any], ...]
