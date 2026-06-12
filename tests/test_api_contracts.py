@@ -223,6 +223,56 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["status"], "warn")
         self.assertEqual([check["name"] for check in payload["checks"]], ["database", "object_store"])
 
+    def test_au_launch_status_endpoint_returns_auditable_gate(self) -> None:
+        status_payload = {
+            "launch_status_version": "au_launch_status_v1",
+            "generated_at": "2026-06-12T00:00:00Z",
+            "status": "blocked",
+            "ready_for_customer_report_handoff": False,
+            "next_action": "configure_required_environment",
+            "remaining_blockers": ["missing_real_p0a_credentials"],
+            "launch_status_hash": "abc123",
+            "p0a_design_partner": {
+                "status": "blocked",
+                "ready_for_design_partner": False,
+                "completion": {
+                    "completion_percent": 50.0,
+                    "design_ready_artifact_percent": 40.0,
+                },
+                "remaining_blockers": ["missing_real_p0a_credentials"],
+            },
+            "p0b_google": {
+                "status": "blocked",
+                "google_main_scoring_allowed": False,
+                "limited_coverage": True,
+                "package_summary": {
+                    "artifact_count": 5,
+                    "failed_artifacts": ["real_google_serp_health"],
+                },
+                "remaining_blockers": ["missing_google_serp_health"],
+            },
+            "p0c_customer_report": {
+                "status": "blocked",
+                "report_contract_version": "customer_report_handoff_v1",
+                "google_coverage": "limited_coverage_appendix_only",
+                "audit_event_count": 12,
+                "remaining_blockers": ["missing_signed_report_url"],
+            },
+        }
+        with patch("geno_api.main.build_au_launch_status", return_value=status_payload) as build_status:
+            response = self.client.get("/v1/launch-status/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["launch_status_version"], "au_launch_status_v1")
+        self.assertFalse(payload["ready_for_customer_report_handoff"])
+        self.assertEqual(payload["next_action"], "configure_required_environment")
+        self.assertIn("missing_real_p0a_credentials", payload["remaining_blockers"])
+        self.assertEqual(payload["p0a_design_partner"]["completion"]["completion_percent"], 50.0)
+        self.assertTrue(payload["p0b_google"]["limited_coverage"])
+        self.assertEqual(payload["p0c_customer_report"]["report_contract_version"], "customer_report_handoff_v1")
+        build_status.assert_called_once()
+
     def test_metrics_endpoint_exports_request_and_pool_metrics(self) -> None:
         self.client.get("/health")
         with patch(
@@ -3780,6 +3830,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/traceability/runtime", payload["persistence"])
         self.assertIn("/ready", payload["persistence"])
         self.assertIn("/v1/runtime-diagnostics", payload["persistence"])
+        self.assertIn("/v1/launch-status/au", payload["persistence"])
         self.assertIn("/metrics", payload["persistence"])
 
 

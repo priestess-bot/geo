@@ -56,6 +56,27 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Trend query", page_source)
         self.assertIn("Payload hash", page_source)
 
+    def test_runtime_console_surfaces_au_launch_status_gate(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
+
+        self.assertIn('launchStatus: "/v1/launch-status/au"', page_source)
+        self.assertIn("type AuLaunchStatus", page_source)
+        self.assertIn("AU Launch Gate", page_source)
+        self.assertIn("ready_for_customer_report_handoff", page_source)
+        self.assertIn("launch_status_hash", page_source)
+        self.assertIn("p0a_design_partner", page_source)
+        self.assertIn("p0b_google", page_source)
+        self.assertIn("p0c_customer_report", page_source)
+        self.assertIn("Remaining blockers", page_source)
+        self.assertIn("Next action", page_source)
+        self.assertIn("paths.launchStatus", page_source)
+        self.assertIn(".launchStatusPanel", css_source)
+        self.assertIn(".launchStatusHeader", css_source)
+        self.assertIn(".launchStageGrid", css_source)
+        self.assertIn(".launchEvidenceGrid", css_source)
+        self.assertIn(".launchBlockers", css_source)
+
     def test_runtime_console_surfaces_collection_run_quality(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
 

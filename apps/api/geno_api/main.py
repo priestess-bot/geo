@@ -13,6 +13,7 @@ from collections import defaultdict
 from contextvars import ContextVar
 from dataclasses import asdict
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode, urlparse
 
@@ -98,6 +99,15 @@ from geno_core.runtime import (
 )
 from geno_core.scoring import get_score_formula, list_score_formulas, normalize_score_weights
 from geno_core.traceability import build_traceability_bundle
+from scripts.build_au_launch_status import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH,
+    DEFAULT_P0A_STATUS_PATH,
+    DEFAULT_P0B_GOOGLE_EXECUTION_PATH,
+    DEFAULT_P0B_GOOGLE_PACKAGE_PATH,
+    DEFAULT_P0B_GOOGLE_RUNBOOK_PATH,
+    DEFAULT_P0B_GOOGLE_STATUS_PATH,
+    build_au_launch_status,
+)
 
 app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
 
@@ -1263,6 +1273,26 @@ def readiness() -> JSONResponse:
 @app.get("/v1/runtime-diagnostics")
 def runtime_diagnostics() -> dict[str, object]:
     return build_runtime_diagnostics().to_dict()
+
+
+@app.get("/v1/launch-status/au")
+def au_launch_status() -> dict[str, object]:
+    return build_au_launch_status(
+        p0a_status_path=Path(os.getenv("GENO_AU_P0A_STATUS_OUTPUT_PATH", DEFAULT_P0A_STATUS_PATH)),
+        p0b_google_status_path=Path(
+            os.getenv("GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_STATUS_PATH)
+        ),
+        p0b_google_package_path=Path(
+            os.getenv("GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_PACKAGE_PATH)
+        ),
+        p0b_google_runbook_path=Path(
+            os.getenv("GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_RUNBOOK_PATH)
+        ),
+        p0b_google_execution_path=Path(
+            os.getenv("GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_EXECUTION_PATH)
+        ),
+        output_path=Path(os.getenv("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH)),
+    )
 
 
 @app.get("/metrics")
@@ -4000,6 +4030,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/traceability/runtime",
             "/ready",
             "/v1/runtime-diagnostics",
+            "/v1/launch-status/au",
             "/metrics",
         ],
     }

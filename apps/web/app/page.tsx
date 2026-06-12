@@ -544,6 +544,7 @@ type TraceabilityDetail = {
 };
 
 type RuntimeData = {
+  launchStatus: AuLaunchStatus | null;
   projects: PageResponse<RuntimeProject>;
   projectMembers: PageResponse<RuntimeProjectMember>;
   brandKit: RuntimeProjectBrandKit | null;
@@ -580,6 +581,47 @@ type RuntimeData = {
 
 type RuntimePaths = Record<keyof typeof endpoints, string> & {
   questionEvidence: string;
+};
+
+type AuLaunchStatus = {
+  launch_status_version: string;
+  generated_at: string;
+  status: string;
+  ready_for_customer_report_handoff: boolean;
+  next_action: string;
+  remaining_blockers: string[];
+  launch_status_hash: string;
+  p0a_design_partner?: {
+    status?: string;
+    ready_for_design_partner?: boolean;
+    next_action?: string;
+    completion?: {
+      completion_percent?: number;
+      design_ready_artifact_percent?: number;
+    };
+    remaining_blockers?: string[];
+  };
+  p0b_google?: {
+    status?: string;
+    google_main_scoring_allowed?: boolean;
+    limited_coverage?: boolean;
+    next_action?: string;
+    remaining_blockers?: string[];
+    package_summary?: {
+      artifact_count?: number;
+      missing_artifacts?: string[];
+      failed_artifacts?: string[];
+      ready_artifacts?: string[];
+    };
+  };
+  p0c_customer_report?: {
+    status?: string;
+    report_contract_version?: string;
+    google_coverage?: string;
+    audit_event_count?: number;
+    checks?: Record<string, boolean>;
+    errors?: string[];
+  };
 };
 
 type RuntimeProjectBrandKit = {
@@ -982,6 +1024,7 @@ type QuestionDetailRow = {
 };
 
 const endpoints = {
+  launchStatus: "/v1/launch-status/au",
   projects: "/v1/projects/runtime",
   projectMembers: "/v1/project-members/runtime",
   prompts: "/v1/prompts/runtime",
@@ -1868,6 +1911,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   const displayUrl = process.env.NEXT_PUBLIC_API_BASE_URL || baseUrl;
   const projectListParams = { market_code: "AU", limit: 20 };
   const paths: RuntimePaths = {
+    launchStatus: endpoints.launchStatus,
     projects: runtimePath(endpoints.projects, projectListParams),
     projectMembers: endpoints.projectMembers,
     prompts: runtimePath(endpoints.prompts, {
@@ -2115,6 +2159,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.traceability = runtimePath(endpoints.traceability, selectedProjectParams);
 
   const [
+    launchStatus,
     prompts,
     projectMembers,
     promptImports,
@@ -2147,6 +2192,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     content,
     traceability
   ] = await Promise.all([
+    fetchRuntimeEndpoint<AuLaunchStatus | null>(baseUrl, paths.launchStatus, null),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     selectedProjectId
       ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectMember>>(
@@ -2255,6 +2301,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<TraceabilityDetail | null>(baseUrl, paths.traceability, null, { optionalNotFound: true })
   ]);
   const errors = [
+    launchStatus,
     projects,
     prompts,
     projectMembers,
@@ -2292,6 +2339,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     .filter((item): item is string => Boolean(item));
   return {
     data: {
+      launchStatus: launchStatus.payload,
       projects: projects.payload,
       projectMembers: projectMembers.payload,
       brandKit: brandKit.payload,
@@ -2448,6 +2496,15 @@ function formatCounts(counts: Record<string, number>): string {
   return entries.length ? entries.map(([key, value]) => `${key}:${value}`).join(", ") : "none";
 }
 
+function launchStageText(status: AuLaunchStatus | null): string {
+  if (!status) return "not loaded";
+  return status.ready_for_customer_report_handoff ? "ready for customer report handoff" : "not ready";
+}
+
+function shortHash(value: string | undefined): string {
+  return value ? value.slice(0, 12) : "unknown";
+}
+
 const p0aRequiredPlatforms = ["chatgpt", "perplexity"];
 
 function questionCoverageStatus(row: Omit<QuestionDetailRow, "status" | "gapLabel">): {
@@ -2584,6 +2641,11 @@ export default async function Home({
   const latestAction = data.actions.records[0];
   const latestContent = data.content.records[0];
   const traceability = data.traceability;
+  const launchStatus = data.launchStatus;
+  const launchBlockers = launchStatus?.remaining_blockers || [];
+  const launchP0a = launchStatus?.p0a_design_partner;
+  const launchP0b = launchStatus?.p0b_google;
+  const launchP0c = launchStatus?.p0c_customer_report;
   const scoreWeightConfig = data.scoreWeights?.score_weight_config || null;
   const savedScoreWeightConfig = scoreWeightConfig?.id ? scoreWeightConfig : null;
   const scoreWeightAuditEvent = data.scoreWeights?.audit_events[0]?.event_type || "default weights";
@@ -2936,6 +2998,68 @@ export default async function Home({
             )}
           </div>
         </div>
+      </section>
+
+      <section className="launchStatusPanel" aria-label="AU launch status gate">
+        <div className="launchStatusHeader">
+          <div>
+            <p className="eyebrow">AU Launch Gate</p>
+            <h2>{launchStageText(launchStatus)}</h2>
+            <span>
+              {launchStatus?.launch_status_version || "au_launch_status_v1"} · hash{" "}
+              {shortHash(launchStatus?.launch_status_hash)}
+            </span>
+          </div>
+          <div className={`launchBadge ${launchStatus?.ready_for_customer_report_handoff ? "ready" : "blocked"}`}>
+            {launchStatus?.status || "unknown"}
+          </div>
+        </div>
+        <div className="launchStageGrid">
+          <Fact
+            label="P0a design partner"
+            value={launchP0a?.ready_for_design_partner ? "ready" : launchP0a?.status || "not ready"}
+          />
+          <Fact
+            label="P0b Google scoring"
+            value={
+              launchP0b?.google_main_scoring_allowed
+                ? "allowed"
+                : launchP0b?.limited_coverage
+                  ? "limited coverage"
+                  : "not ready"
+            }
+          />
+          <Fact label="P0c report contract" value={launchP0c?.status || "unknown"} />
+          <Fact label="Next action" value={launchStatus?.next_action || "run au-launch-status"} />
+        </div>
+        <div className="launchEvidenceGrid">
+          <span>
+            P0a completion {pct((launchP0a?.completion?.completion_percent || 0) / 100)} · design-ready{" "}
+            {pct((launchP0a?.completion?.design_ready_artifact_percent || 0) / 100)}
+          </span>
+          <span>
+            P0b package artifacts {launchP0b?.package_summary?.artifact_count || 0} · failed{" "}
+            {launchP0b?.package_summary?.failed_artifacts?.length || 0}
+          </span>
+          <span>
+            P0c audit events {launchP0c?.audit_event_count || 0} · {launchP0c?.google_coverage || "coverage unknown"}
+          </span>
+          <span>Generated {dateText(launchStatus?.generated_at)}</span>
+        </div>
+        <div className="launchBlockers">
+          <strong>Remaining blockers</strong>
+          {launchBlockers.length ? (
+            <ul>
+              {launchBlockers.slice(0, 6).map((blocker) => (
+                <li key={blocker}>{blocker}</li>
+              ))}
+            </ul>
+          ) : (
+            <span>No launch blockers recorded.</span>
+          )}
+          {launchBlockers.length > 6 ? <span>{launchBlockers.length - 6} more blockers in API payload</span> : null}
+        </div>
+        <code>{paths.launchStatus}</code>
       </section>
 
       <section className="metrics" aria-label="runtime metrics">
