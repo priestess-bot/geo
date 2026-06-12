@@ -494,17 +494,30 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(payload["google_spike_plan"]["planned_runs"], 240)
 
     def test_google_spike_health_check_only_reports_ready_paths_without_collecting(self) -> None:
-        result = self._run_worker_result(
-            "--mode",
-            "google-spike",
-            "--health-check-only",
-            extra_env={
-                "GOOGLE_PLAYWRIGHT_ENABLED": "1",
-                "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR": "#prompt",
-                "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR": ".answer",
-                "MANUAL_BACKFILL_PATH": "/tmp/manual-google-spike.jsonl",
-            },
-        )
+        with TemporaryDirectory() as temp_dir:
+            manual_path = os.path.join(temp_dir, "manual-google-spike.jsonl")
+            with open(manual_path, "w", encoding="utf-8") as manual_file:
+                manual_file.write(
+                    json.dumps(
+                        {
+                            "prompt": "placeholder",
+                            "city": "Sydney",
+                            "answer_text": "Placeholder manual evidence.",
+                        }
+                    )
+                    + "\n"
+                )
+            result = self._run_worker_result(
+                "--mode",
+                "google-spike",
+                "--health-check-only",
+                extra_env={
+                    "GOOGLE_PLAYWRIGHT_ENABLED": "1",
+                    "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR": "#prompt",
+                    "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR": ".answer",
+                    "MANUAL_BACKFILL_PATH": manual_path,
+                },
+            )
         result.check_returncode()
         payload = json.loads(result.stdout)
         self.assertEqual(payload["record_count"], 0)
@@ -513,7 +526,7 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(payload["preflight_summary"]["phase"], "collector_health")
         self.assertEqual(payload["google_spike_plan"]["geo_cities"], ["Australia", "Sydney"])
 
-    def test_google_spike_health_check_requires_google_playwright_selectors(self) -> None:
+    def test_google_spike_health_check_requires_existing_manual_backfill_file(self) -> None:
         result = self._run_worker_result(
             "--mode",
             "google-spike",
@@ -521,15 +534,50 @@ class WorkerCliTest(unittest.TestCase):
             "--health-check-only",
             extra_env={
                 "GOOGLE_PLAYWRIGHT_ENABLED": "1",
-                "MANUAL_BACKFILL_PATH": "/tmp/manual-google-spike.jsonl",
+                "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR": "#prompt",
+                "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR": ".answer",
+                "MANUAL_BACKFILL_PATH": "/tmp/geno-missing-manual-google-spike.jsonl",
             },
-            unset_env=(
-                "GOOGLE_AIO_PLAYWRIGHT_PROMPT_SELECTOR",
-                "GOOGLE_AIO_PLAYWRIGHT_ANSWER_SELECTOR",
-                "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR",
-                "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR",
-            ),
         )
+        self.assertEqual(result.returncode, 3)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["record_count"], 0)
+        self.assertEqual(payload["collector_health_gate"]["gate_status"], "fail")
+        self.assertEqual(
+            payload["collector_health_gate"]["failure_reasons"],
+            ["google.manual_backfill:file_missing"],
+        )
+
+    def test_google_spike_health_check_requires_google_playwright_selectors(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            manual_path = os.path.join(temp_dir, "manual-google-spike.jsonl")
+            with open(manual_path, "w", encoding="utf-8") as manual_file:
+                manual_file.write(
+                    json.dumps(
+                        {
+                            "prompt": "placeholder",
+                            "city": "Sydney",
+                            "answer_text": "Placeholder manual evidence.",
+                        }
+                    )
+                    + "\n"
+                )
+            result = self._run_worker_result(
+                "--mode",
+                "google-spike",
+                "--require-ready-collectors",
+                "--health-check-only",
+                extra_env={
+                    "GOOGLE_PLAYWRIGHT_ENABLED": "1",
+                    "MANUAL_BACKFILL_PATH": manual_path,
+                },
+                unset_env=(
+                    "GOOGLE_AIO_PLAYWRIGHT_PROMPT_SELECTOR",
+                    "GOOGLE_AIO_PLAYWRIGHT_ANSWER_SELECTOR",
+                    "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR",
+                    "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR",
+                ),
+            )
         self.assertEqual(result.returncode, 3)
         payload = json.loads(result.stdout)
         self.assertEqual(payload["record_count"], 0)

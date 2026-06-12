@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
@@ -38,6 +39,7 @@ from geno_core.collectors import (
     FixtureOpenAIWebSearchCollector,
     FixturePerplexitySonarCollector,
     FixtureThirdPartySerpCollector,
+    ManualBackfillCollector,
     OpenAIWebSearchCollector,
     PerplexitySonarCollector,
     PlaywrightAIModeCollector,
@@ -1477,6 +1479,80 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(record.audit_events[0].actor_type, "user")
         self.assertEqual(record.audit_events[0].actor_id, "analyst@example.com")
         self.assertTrue(record.raw_answer.raw_payload_hash)
+
+    def test_m2b_manual_backfill_collector_reads_jsonl_records_in_order(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        prompt = bootstrap.prompt_questions[0]
+        with TemporaryDirectory() as temp_dir:
+            backfill_path = f"{temp_dir}/manual-google-spike.jsonl"
+            with open(backfill_path, "w", encoding="utf-8") as output_file:
+                output_file.write(
+                    json.dumps(
+                        {
+                            "prompt": prompt.text,
+                            "city": "Sydney",
+                            "language": prompt.language,
+                            "device": "desktop",
+                            "answer_text": "Manual answer sample 1 mentioning ExampleBrand.",
+                            "citation_urls": ["https://examplebrand.example/manual-1"],
+                            "screenshot_url": "s3://manual/google-ai-mode-1.png",
+                            "html_snapshot_url": "s3://manual/google-ai-mode-1.html",
+                            "submitted_by": "analyst@example.com",
+                            "notes": "First k=2 manual sample",
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+                output_file.write(
+                    json.dumps(
+                        {
+                            "prompt_text": prompt.text,
+                            "city": "Sydney",
+                            "answer": "Manual answer sample 2 mentioning ExampleBrand.",
+                            "sources": [{"url": "https://reviews.example/manual-2"}],
+                            "answer_present": True,
+                            "surface_triggered": True,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+
+            collector = ManualBackfillCollector(backfill_path=backfill_path)
+            self.assertEqual(collector.health(), "ready")
+            first = collector.collect(
+                prompt=prompt.text,
+                market=bootstrap.market_profile,
+                city="Sydney",
+                language=prompt.language,
+                device="desktop",
+            )
+            second = collector.collect(
+                prompt=prompt.text,
+                market=bootstrap.market_profile,
+                city="Sydney",
+                language=prompt.language,
+                device="desktop",
+            )
+
+        self.assertEqual(first.answer_text, "Manual answer sample 1 mentioning ExampleBrand.")
+        self.assertEqual(first.citations[0]["domain"], "examplebrand.example")
+        self.assertEqual(first.raw_payload["source"], "manual_backfill_jsonl")
+        self.assertEqual(first.raw_payload["manual_backfill_line_number"], 1)
+        self.assertEqual(first.collector_version, "manual-backfill-jsonl-v1")
+        self.assertEqual(first.evidence_asset_hashes is not None, True)
+        self.assertEqual(len(first.evidence_asset_hashes["screenshot"]), 64)
+        self.assertEqual(second.answer_text, "Manual answer sample 2 mentioning ExampleBrand.")
+        self.assertEqual(second.citations[0]["domain"], "reviews.example")
+        self.assertEqual(second.raw_payload["manual_backfill_line_number"], 2)
+
+    def test_m2b_manual_backfill_collector_reports_file_gaps(self) -> None:
+        self.assertEqual(ManualBackfillCollector(backfill_path=None).health(), "not_configured")
+        self.assertEqual(
+            ManualBackfillCollector(backfill_path="/tmp/geno-missing-manual-backfill.jsonl").health(),
+            "file_missing",
+        )
 
     def test_m2b_google_spike_plan_matches_240_runs(self) -> None:
         bootstrap = build_au_project_bootstrap()

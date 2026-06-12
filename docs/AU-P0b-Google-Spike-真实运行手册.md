@@ -61,6 +61,14 @@ export GENO_BROWSER_ARTIFACT_DIR=/absolute/path/to/browser-artifacts
 
 `PlaywrightGoogleAIOCollector` 和 `PlaywrightAIModeCollector` 已是 selector-driven browser adapter：health-only 预检会在真实采集前检查 `GOOGLE_PLAYWRIGHT_ENABLED`、prompt/answer selector、可选 storage state 文件和 Python Playwright 包。常见失败原因包括 `selector_missing`、`session_state_missing`、`playwright_missing`。通过后，collector 会记录最终 URL、页面标题、HTML snapshot hash、screenshot hash、citation selector 提取结果和 `google-playwright-browser-v1` collector version。上面的 selector 只是模板，真实运行前必须用澳洲 Google 账号、AU IP/地理环境和目标界面手工校准。
 
+`ManualBackfillCollector` 已支持读取 `MANUAL_BACKFILL_PATH` 指向的 JSONL 文件。每行是一条人工补录证据，最小字段如下；同一 `prompt + city` 的多条记录会按 worker 调用顺序消费，用于 k=2 样本：
+
+```json
+{"prompt":"原始 prompt 文本","city":"Sydney","language":"en-AU","device":"desktop","answer_text":"人工记录的 Google AI Mode 答案","citation_urls":["https://example.com/source"],"screenshot_url":"s3://.../manual.png","html_snapshot_url":"s3://.../manual.html","submitted_by":"analyst@example.com","notes":"AI Mode manual sample 1"}
+```
+
+兼容字段：`prompt_text` / `question` 可替代 `prompt`，`answer` / `content` 可替代 `answer_text`，`citations` / `sources` 可用字符串数组或 `{ "url": "..." }` 对象数组。health-only 预检会检查文件存在；真实采集时若 JSONL 为空、JSON 无效、目标 prompt/city 缺记录或缺 `answer_text`，worker 会把该样本写成可审计 collection failure。
+
 所有运行产物默认写入 `docs/runtime_preflight/*.json`，该目录下 JSON 默认不提交，避免把真实 provider 状态、错误上下文或潜在敏感配置写入仓库。需要提交的是摘要、审计日志和代码。
 
 ## 3. 标准步骤

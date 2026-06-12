@@ -5,7 +5,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
@@ -1053,12 +1053,208 @@ class ThirdPartySerpCollector(GoogleSpikeCollectorShell):
 
 
 class ManualBackfillCollector(GoogleSpikeCollectorShell):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        backfill_path: str | None = None,
+        vendor_cost: float | None = None,
+    ) -> None:
         super().__init__(
             backend_id="google.manual_backfill",
             surface="google_ai_mode",
             access_method="manual",
             required_env_var="MANUAL_BACKFILL_PATH",
+        )
+        self._backfill_path = _optional_env(backfill_path) or _optional_env(os.getenv("MANUAL_BACKFILL_PATH"))
+        self.vendor_cost = vendor_cost if vendor_cost is not None else float(os.getenv("MANUAL_BACKFILL_VENDOR_COST") or "0")
+        self._entries: list[dict[str, Any]] | None = None
+        self._next_index_by_key: dict[tuple[str, str], int] = {}
+
+    def capabilities(self) -> dict[str, object]:
+        capabilities = super().capabilities()
+        capabilities.update(
+            {
+                "supports_screenshot": True,
+                "supports_html_snapshot": True,
+                "requires_enable_env": "MANUAL_BACKFILL_PATH",
+                "file_format": "jsonl",
+                "match_fields": ("prompt or prompt_text", "city"),
+            }
+        )
+        return capabilities
+
+    def health(self) -> str:
+        if not self._backfill_path:
+            return "not_configured"
+        path = Path(self._backfill_path)
+        if not path.exists():
+            return "file_missing"
+        if not path.is_file():
+            return "file_not_readable"
+        return "ready"
+
+    def _load_entries(self) -> list[dict[str, Any]]:
+        if self._entries is not None:
+            return self._entries
+        health = self.health()
+        if health != "ready":
+            raise CollectorConfigurationError(f"google.manual_backfill is not ready: {health}")
+        assert self._backfill_path is not None
+        path = Path(self._backfill_path)
+        entries: list[dict[str, Any]] = []
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                entry = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                raise CollectorConfigurationError(
+                    f"MANUAL_BACKFILL_PATH contains invalid JSON on line {line_number}: {exc.msg}"
+                ) from exc
+            if not isinstance(entry, dict):
+                raise CollectorConfigurationError(
+                    f"MANUAL_BACKFILL_PATH line {line_number} must be a JSON object"
+                )
+            entry["_manual_backfill_line_number"] = line_number
+            entries.append(entry)
+        if not entries:
+            raise CollectorConfigurationError("MANUAL_BACKFILL_PATH contains no JSONL records")
+        self._entries = entries
+        return entries
+
+    def _entry_text(self, entry: dict[str, Any], *keys: str) -> str:
+        for key in keys:
+            value = entry.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return ""
+
+    def _entry_bool(self, entry: dict[str, Any], key: str, default: bool) -> bool:
+        value = entry.get(key)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "off"}:
+                return False
+        return default
+
+    def _entry_urls(self, entry: dict[str, Any]) -> list[str]:
+        raw_urls = entry.get("citation_urls") or entry.get("citations") or entry.get("sources") or []
+        urls: list[str] = []
+        if isinstance(raw_urls, str):
+            raw_urls = [raw_urls]
+        if isinstance(raw_urls, list):
+            for item in raw_urls:
+                if isinstance(item, str):
+                    url = item.strip()
+                elif isinstance(item, dict) and isinstance(item.get("url"), str):
+                    url = str(item["url"]).strip()
+                else:
+                    continue
+                if url and url not in urls:
+                    urls.append(url)
+        return urls
+
+    def _matches_entry(
+        self,
+        entry: dict[str, Any],
+        *,
+        prompt: str,
+        city: str,
+        language: str,
+        device: str,
+    ) -> bool:
+        entry_prompt = self._entry_text(entry, "prompt", "prompt_text", "question")
+        entry_city = self._entry_text(entry, "city", "geo_city", "location")
+        entry_language = self._entry_text(entry, "language")
+        entry_device = self._entry_text(entry, "device")
+        return (
+            entry_prompt == prompt
+            and (not entry_city or entry_city == city)
+            and (not entry_language or entry_language == language)
+            and (not entry_device or entry_device == device)
+        )
+
+    def _select_entry(
+        self,
+        *,
+        prompt: str,
+        city: str,
+        language: str,
+        device: str,
+    ) -> dict[str, Any]:
+        entries = self._load_entries()
+        key = (prompt, city)
+        target_index = self._next_index_by_key.get(key, 0)
+        matches = [
+            entry
+            for entry in entries
+            if self._matches_entry(entry, prompt=prompt, city=city, language=language, device=device)
+        ]
+        if target_index >= len(matches):
+            raise CollectorConfigurationError(
+                "MANUAL_BACKFILL_PATH missing matching record for "
+                f"prompt={prompt!r}, city={city!r}, occurrence={target_index + 1}"
+            )
+        self._next_index_by_key[key] = target_index + 1
+        return matches[target_index]
+
+    def collect(
+        self,
+        *,
+        prompt: str,
+        market: MarketProfile,
+        city: str,
+        language: str,
+        device: str,
+    ) -> RawCollectResult:
+        entry = self._select_entry(prompt=prompt, city=city, language=language, device=device)
+        answer_text = self._entry_text(entry, "answer_text", "answer", "content")
+        if not answer_text:
+            raise CollectorConfigurationError(
+                f"MANUAL_BACKFILL_PATH line {entry['_manual_backfill_line_number']} missing answer_text"
+            )
+        citation_urls = self._entry_urls(entry)
+        citations = _citation_dicts(citation_urls)
+        screenshot_url = _optional_env(self._entry_text(entry, "screenshot_url", "screenshot"))
+        html_snapshot_url = _optional_env(self._entry_text(entry, "html_snapshot_url", "html_snapshot"))
+        evidence_asset_hashes: dict[str, str] = {}
+        if screenshot_url:
+            evidence_asset_hashes["screenshot"] = hash_payload({"url": screenshot_url})
+        if html_snapshot_url:
+            evidence_asset_hashes["html_snapshot"] = hash_payload({"url": html_snapshot_url})
+        return RawCollectResult(
+            answer_present=self._entry_bool(entry, "answer_present", bool(answer_text)),
+            surface_triggered=self._entry_bool(entry, "surface_triggered", bool(answer_text)),
+            answer_text=answer_text,
+            citations=citations,
+            screenshot_url=screenshot_url,
+            html_snapshot_url=html_snapshot_url,
+            raw_payload={
+                "prompt": prompt,
+                "market_code": market.market_code,
+                "city": city,
+                "language": language,
+                "device": device,
+                "platform": "google",
+                "surface": "google_ai_mode",
+                "collector_backend_id": self.id(),
+                "source": "manual_backfill_jsonl",
+                "manual_backfill_path": str(Path(self._backfill_path or "").name),
+                "manual_backfill_line_number": entry["_manual_backfill_line_number"],
+                "submitted_by": self._entry_text(entry, "submitted_by", "actor") or "manual-backfill",
+                "notes": self._entry_text(entry, "notes") or None,
+                "citation_count": len(citations),
+                "asset_count": int(bool(screenshot_url)) + int(bool(html_snapshot_url)),
+            },
+            model_or_surface="manual_backfill_jsonl",
+            account_state=self._entry_text(entry, "account_state") or None,
+            collector_version="manual-backfill-jsonl-v1",
+            evidence_asset_hashes=evidence_asset_hashes or None,
         )
 
 
