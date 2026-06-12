@@ -79,7 +79,7 @@
 
 **P0b Google spike 验收门槛**：
 
-- `[~]` 对 30 条高意图 prompt 跑 Google AIO / AI Mode，地理范围 Australia + Sydney，k=2（`google-spike` 真实 worker 模式、`make au-p0b-google-runbook`、`make verify-au-p0b-google-runbook`、`make au-p0b-google-runbook-dry-run`、`make verify-au-p0b-google-runbook-execution`、`make au-p0b-google-status`、`make verify-au-p0b-google-status` 已落；真实 240-run 待跑）
+- `[~]` 对 30 条高意图 prompt 跑 Google AIO / AI Mode，地理范围 Australia + Sydney，k=2（`google-spike` 真实 worker 模式、`make au-p0b-google-playwright-smoke`、`make verify-au-p0b-google-playwright-smoke`、`make au-p0b-google-runbook`、`make verify-au-p0b-google-runbook`、`make au-p0b-google-runbook-dry-run`、`make verify-au-p0b-google-runbook-execution`、`make au-p0b-google-status`、`make verify-au-p0b-google-status` 已落；真实 Google Playwright smoke success 与真实 240-run 待跑）
 - `[~]` 至少对比自建浏览器、第三方 SERP API、人工补录中的两条路径（`GoogleSpikeReadinessGate` 已自动检查 access method 路径数；browser-only fixture 会 fail，browser+third_party fixture 可 pass；真实 `google-spike` 默认核心矩阵为 browser + manual 以保持 240 planned runs；`ThirdPartySerpCollector` 已有 provider-neutral JSON adapter，并已新增独立 `google-serp-fixture` / `google-serp-spike` 120-run 对照入口、payload verifier 与 status/hash verifier，真实供应商凭证/endpoint 联调后再纳入 P0b 对照复盘）
 - `[~]` 输出 pass/fail gate：成功率、触发率、失败原因、截图/HTML 证据、成本/耗时估算（`GoogleSpikeGateResult` + `GoogleSpikeReadinessGate`、P0b runbook/dry-run/status report/hash verifier 已落；真实 spike JSON 与 manifest 待生成）
 - `[~]` 未通过健康闸门时，Google 只进入 limited coverage 附录，不进入主评分分母（`score_input_policy` 已在分析/评分层硬性排除未同时通过 `GoogleSpikeGateResult` 与 `GoogleSpikeReadinessGate` 的 Google answer runs，并写入评分审计与报告 Method Disclosure；真实 spike 待跑）
@@ -173,8 +173,8 @@ DoD：
 
 任务：
 
-- `[~]` (P0b·spike) `PlaywrightGoogleAIOCollector`：SERP 内嵌 AIO 采集，记录触发状态、截图/HTML、失败原因 — `Step4`（selector-driven Playwright adapter、health gate、HTML/screenshot hash、fake browser 合同测试已落；澳洲真实 Google selector、账号/session 和 240-run 待跑）
-- `[~]` (P0b·spike) `PlaywrightAIModeCollector`：AI Mode 独立界面采集，记录账号状态、地理、设备、失败原因 — `Step4`（selector-driven Playwright adapter、health gate、HTML/screenshot hash、fake browser 合同测试已落；真实 AI Mode 入口、selector、账号/session 和 240-run 待跑）
+- `[~]` (P0b·spike) `PlaywrightGoogleAIOCollector`：SERP 内嵌 AIO 采集，记录触发状态、截图/HTML、失败原因 — `Step4`（selector-driven Playwright adapter、health gate、HTML/screenshot hash、fake browser 合同测试、单样本 smoke runner/verifier 已落；澳洲真实 Google selector、账号/session、smoke success 和 240-run 待跑）
+- `[~]` (P0b·spike) `PlaywrightAIModeCollector`：AI Mode 独立界面采集，记录账号状态、地理、设备、失败原因 — `Step4`（selector-driven Playwright adapter、health gate、HTML/screenshot hash、fake browser 合同测试、单样本 smoke runner/verifier 已落；真实 AI Mode 入口、selector、账号/session、smoke success 和 240-run 待跑）
 - `[~]` (P0b·spike) `ThirdPartySerpCollector`：至少接入一个第三方 SERP/AI-answer 供应商做对照 — `Step4`（provider-neutral JSON adapter、health gate、snapshot hash、响应解析测试、独立 `google-serp-fixture` / `google-serp-spike` 120-run comparison entry、Make 入口、payload verifier、manifest 与 status/hash verifier 已落；真实供应商凭证/endpoint 联调、真实 comparison 120-run 与默认 240-run 待跑）
 - `[~]` (P0b·spike) `ManualBackfillCollector`：人工补录最小路径，保证样本可审计 — `Step4`（JSONL file-backed collector、health gate、顺序消费 k 样本、120-row template generator、strict coverage verifier、runtime manual backfill API + 控制台最小表单已落；真实 240-run 人工补录文件待准备）
 - `[x]` (P0b·spike) Google spike 采样：30 prompts × 2 surfaces × 2 geo（Australia + Sydney）× k=2 = 240 planned_runs — `Step4 / Step9.3`

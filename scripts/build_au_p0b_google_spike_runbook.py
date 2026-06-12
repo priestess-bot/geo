@@ -103,6 +103,7 @@ def build_au_p0b_google_spike_runbook(
     health_manifest_path = f"{artifact_root}/au-p0b-google-spike-health-manifest-latest.json"
     spike_path = f"{artifact_root}/au-p0b-google-spike-latest.json"
     spike_manifest_path = f"{artifact_root}/au-p0b-google-spike-manifest-latest.json"
+    smoke_path = f"{artifact_root}/au-p0b-google-playwright-smoke-latest.json"
     planned_runs = _planned_runs(prompt_count, geo_cities, sample_size, DEFAULT_SURFACE_COUNT)
     python_env = {"PYTHONPATH": "packages/geno_core:apps/api"}
     runbook: dict[str, Any] = {
@@ -149,6 +150,7 @@ def build_au_p0b_google_spike_runbook(
             "GENO_BROWSER_ARTIFACT_DIR",
         ),
         "artifact_paths": {
+            "playwright_smoke_json": smoke_path,
             "health_json": health_path,
             "health_manifest": health_manifest_path,
             "spike_json": spike_path,
@@ -195,10 +197,41 @@ def build_au_p0b_google_spike_runbook(
                     "Browser health fails fast with selector_missing, session_state_missing, or playwright_missing before collection.",
                     "The second path is manual backfill for google_ai_mode until AI Mode browser capture is implemented.",
                     "Generate, fill, and verify MANUAL_BACKFILL_PATH with au-p0b-google-manual-template and verify-au-p0b-google-manual-backfill before collection.",
+                    "Run au-p0b-google-playwright-smoke and verify-au-p0b-google-playwright-smoke before the 240-run matrix; use --require-success on the verifier before promoting the browser path.",
                     "Third-party SERP JSON capture is implemented as an alternate google_aio backend, but not part of the default 240-run matrix.",
                     "Do not persist secrets in generated JSON artifacts.",
                 ),
             },
+            _command_step(
+                step_id="google_playwright_smoke",
+                title="Run one Google Playwright browser smoke capture before the full matrix",
+                command=[
+                    "python3",
+                    "scripts/run_au_p0b_google_playwright_smoke.py",
+                    "--output-path",
+                    smoke_path,
+                ],
+                env=python_env,
+                output_paths=(smoke_path,),
+                planned_runs=1,
+                notes=(
+                    "The smoke runner writes an auditable JSON payload even when collector health is not ready.",
+                    "Use scripts/verify_au_p0b_google_playwright_smoke.py --require-success for the final browser-path promotion gate.",
+                ),
+            ),
+            _command_step(
+                step_id="google_playwright_smoke_verify",
+                title="Verify Google Playwright smoke payload integrity and browser evidence structure",
+                command=[
+                    "python3",
+                    "scripts/verify_au_p0b_google_playwright_smoke.py",
+                    smoke_path,
+                    "--require-success",
+                ],
+                env=python_env,
+                output_paths=(),
+                planned_runs=1,
+            ),
             _command_step(
                 step_id="google_spike_health_check",
                 title="Check Google spike collector readiness without external collection",

@@ -33,6 +33,8 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
             list(steps),
             [
                 "prepare_environment",
+                "google_playwright_smoke",
+                "google_playwright_smoke_verify",
                 "google_spike_health_check",
                 "google_spike_health_manifest",
                 "google_spike_collect",
@@ -41,6 +43,9 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
             ],
         )
         self.assertIn("--health-check-only", steps["google_spike_health_check"]["command"])
+        self.assertIn("scripts/run_au_p0b_google_playwright_smoke.py", steps["google_playwright_smoke"]["command"])
+        self.assertIn("scripts/verify_au_p0b_google_playwright_smoke.py", steps["google_playwright_smoke_verify"]["command"])
+        self.assertIn("--require-success", steps["google_playwright_smoke_verify"]["command"])
         self.assertIn("--require-google-spike-gates", steps["google_spike_collect"]["command"])
         self.assertIn("--persist", steps["google_spike_collect"]["command"])
         self.assertTrue(
@@ -49,7 +54,15 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
                 for note in steps["prepare_environment"]["notes"]
             )
         )
+        self.assertTrue(
+            any("au-p0b-google-playwright-smoke" in note for note in steps["prepare_environment"]["notes"])
+        )
+        self.assertEqual(steps["google_playwright_smoke"]["planned_runs"], 1)
         self.assertEqual(steps["google_spike_collect"]["planned_runs"], 240)
+        self.assertEqual(
+            runbook["artifact_paths"]["playwright_smoke_json"],
+            "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json",
+        )
         self.assertEqual(runbook["runbook_payload_hash"], compute_google_spike_runbook_hash(runbook))
 
     def test_runbook_can_disable_persistence(self) -> None:
