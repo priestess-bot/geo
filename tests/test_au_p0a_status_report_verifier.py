@@ -76,6 +76,16 @@ class AuP0aStatusReportVerifierTest(AuP0aStatusReportFixtureMixin, unittest.Test
         self.assertEqual(result["status"], "fail")
         self.assertIn("completion_mismatch:completion_percent", result["errors"])
 
+    def test_forbidden_secret_field_fails_even_when_hash_is_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            report = self._complete_report(temp_dir)
+            report["readiness"]["preflight"]["environment"]["required"][0]["raw_value"] = "secret"  # type: ignore[index]
+            report["status_report_hash"] = compute_status_report_hash(report)
+            result = verify_au_p0a_status_report(report)
+
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("forbidden_secret_field:$.readiness.preflight.environment.required[0].raw_value", result["errors"])
+
     def test_require_design_partner_ready_fails_incomplete_report(self) -> None:
         with TemporaryDirectory() as temp_dir:
             report = self._incomplete_report(temp_dir)

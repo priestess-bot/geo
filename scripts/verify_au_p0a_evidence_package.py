@@ -40,6 +40,20 @@ def _as_list(value: object) -> list[object]:
     return value if isinstance(value, list) else []
 
 
+def _find_forbidden_secret_fields(value: object, *, path: str = "$") -> list[str]:
+    findings: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}"
+            if key in {"value", "raw_value"}:
+                findings.append(child_path)
+            findings.extend(_find_forbidden_secret_fields(child, path=child_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            findings.extend(_find_forbidden_secret_fields(child, path=f"{path}[{index}]"))
+    return findings
+
+
 def _expected_ready_for_design_partner(artifacts: dict[str, Any]) -> bool:
     return all(
         _as_dict(artifacts.get(name)).get("ready_for_design_partner") is True
@@ -71,6 +85,8 @@ def verify_au_p0a_evidence_package(
     errors: list[str] = []
     if package.get("package_version") != PACKAGE_VERSION:
         errors.append("package_version_invalid")
+    for forbidden_path in _find_forbidden_secret_fields(package):
+        errors.append(f"forbidden_secret_field:{forbidden_path}")
     expected_hash = package.get("package_payload_hash")
     computed_hash = compute_package_payload_hash(package)
     hash_valid = isinstance(expected_hash, str) and expected_hash == computed_hash

@@ -140,6 +140,20 @@ class AuP0aStatusReportFixtureMixin:
             encoding="utf-8",
         )
 
+    def _write_env_file(self, temp_dir: str) -> Path:
+        env_file = Path(temp_dir) / ".env.au-p0a"
+        env_file.write_text(
+            "\n".join(
+                [
+                    "PERPLEXITY_API_KEY=env-file-perplexity",
+                    "OPENAI_API_KEY=env-file-openai",
+                    "DATABASE_URL=postgresql://env-file.example/db",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        return env_file
+
     def _write_complete_package(self, temp_dir: str) -> tuple[Path, Path, Path, Path, Path]:
         runbook_path, runbook = self._write_runbook(temp_dir)
         environment_path = Path(temp_dir) / "environment.json"
@@ -240,6 +254,28 @@ class AuP0aStatusReportTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
         self.assertEqual(report["remaining_blockers"], [])
         self.assertEqual(report["status_report_hash"], compute_status_report_hash(report))
 
+    def test_status_report_recomputes_readiness_from_env_file(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, environment_path, readiness_path, execution_path, package_path = self._write_complete_package(temp_dir)
+            env_file = self._write_env_file(temp_dir)
+            report = build_au_p0a_status_report(
+                runbook_path=runbook_path,
+                environment_path=environment_path,
+                readiness_path=readiness_path,
+                runbook_execution_path=execution_path,
+                package_path=package_path,
+                env={},
+                env_file_path=env_file,
+                generated_at="2026-06-11T00:00:00Z",
+            )
+
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["inputs"]["env_file_path"], str(env_file))
+        checks = {check["name"]: check for check in report["readiness"]["preflight"]["environment"]["required"]}
+        self.assertEqual(checks["PERPLEXITY_API_KEY"]["source"], "env_file")
+        self.assertNotIn("env-file-perplexity", json.dumps(report))
+        self.assertEqual(report["status_report_hash"], compute_status_report_hash(report))
+
     def test_cli_writes_status_report_without_hard_gate(self) -> None:
         with TemporaryDirectory() as temp_dir:
             runbook_path, _ = self._write_runbook(temp_dir)
@@ -262,6 +298,8 @@ class AuP0aStatusReportTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
                     str(execution_path),
                     "--package-path",
                     str(Path(temp_dir) / "missing-package.json"),
+                    "--env-file",
+                    str(Path(temp_dir) / "missing.env"),
                     "--output-path",
                     str(output_path),
                     "--generated-at",
@@ -298,6 +336,8 @@ class AuP0aStatusReportTest(AuP0aStatusReportFixtureMixin, unittest.TestCase):
                     str(execution_path),
                     "--package-path",
                     str(Path(temp_dir) / "missing-package.json"),
+                    "--env-file",
+                    str(Path(temp_dir) / "missing.env"),
                     "--output-path",
                     str(Path(temp_dir) / "status.json"),
                     "--require-design-partner-ready",

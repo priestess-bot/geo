@@ -54,6 +54,20 @@ def _as_list(value: object) -> list[object]:
     return value if isinstance(value, list) else []
 
 
+def _find_forbidden_secret_fields(value: object, *, path: str = "$") -> list[str]:
+    findings: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}"
+            if key in {"value", "raw_value"}:
+                findings.append(child_path)
+            findings.extend(_find_forbidden_secret_fields(child, path=child_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            findings.extend(_find_forbidden_secret_fields(child, path=f"{path}[{index}]"))
+    return findings
+
+
 def _percent(numerator: int, denominator: int) -> float:
     return round((numerator / denominator) * 100, 2) if denominator else 0.0
 
@@ -127,6 +141,8 @@ def verify_au_p0a_status_report(
             errors.append(f"field_missing:{field}")
     if report.get("status_report_version") != STATUS_REPORT_VERSION:
         errors.append("status_report_version_invalid")
+    for forbidden_path in _find_forbidden_secret_fields(report):
+        errors.append(f"forbidden_secret_field:{forbidden_path}")
 
     expected_hash = report.get("status_report_hash")
     computed_hash = compute_status_report_hash(report)

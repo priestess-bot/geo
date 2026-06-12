@@ -179,6 +179,16 @@ class AuP0aEvidencePackageVerifierTest(unittest.TestCase):
         self.assertEqual(result["status"], "fail")
         self.assertIn("summary_missing_artifacts_mismatch", result["errors"])
 
+    def test_forbidden_secret_field_fails_even_when_hash_is_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            package = self._package(temp_dir, complete=True)
+            package["artifacts"]["readiness"]["raw_value"] = "secret"  # type: ignore[index]
+            package["package_payload_hash"] = compute_package_payload_hash(package)
+            result = verify_au_p0a_evidence_package(package)
+
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("forbidden_secret_field:$.artifacts.readiness.raw_value", result["errors"])
+
     def test_require_design_partner_ready_fails_incomplete_package(self) -> None:
         with TemporaryDirectory() as temp_dir:
             package = self._package(temp_dir, complete=False)

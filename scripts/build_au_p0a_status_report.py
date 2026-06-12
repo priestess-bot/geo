@@ -17,7 +17,7 @@ from scripts.build_au_p0a_evidence_package import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_PACKAGE_PATH,
     build_au_p0a_evidence_package,
 )
-from scripts.build_au_p0a_env_report import DEFAULT_OUTPUT_PATH as DEFAULT_ENV_REPORT_PATH  # noqa: E402
+from scripts.build_au_p0a_env_report import DEFAULT_ENV_FILE, DEFAULT_OUTPUT_PATH as DEFAULT_ENV_REPORT_PATH  # noqa: E402
 from scripts.build_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_RUNBOOK_PATH  # noqa: E402
 from scripts.run_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_RUNBOOK_EXECUTION_PATH  # noqa: E402
 from scripts.verify_au_p0a_evidence_package import verify_au_p0a_evidence_package  # noqa: E402
@@ -121,6 +121,7 @@ def _readiness_statuses(
     *,
     runbook_path: Path,
     env: dict[str, str] | None,
+    env_file_path: Path | None,
     require_db_check: bool,
     generated_at: str | None,
 ) -> dict[str, Any]:
@@ -130,6 +131,7 @@ def _readiness_statuses(
             phase=phase,
             runbook_path=runbook_path,
             env=env,
+            env_file_path=env_file_path,
             require_db_check=require_db_check,
             generated_at=generated_at,
         )
@@ -227,6 +229,7 @@ def build_au_p0a_status_report(
     package_path: Path = Path(DEFAULT_PACKAGE_PATH),
     output_path: Path | None = None,
     env: dict[str, str] | None = None,
+    env_file_path: Path | None = Path(DEFAULT_ENV_FILE),
     require_db_check: bool = False,
     require_design_partner_ready: bool = False,
     generated_at: str | None = None,
@@ -243,6 +246,7 @@ def build_au_p0a_status_report(
     readiness = _readiness_statuses(
         runbook_path=runbook_path,
         env=env,
+        env_file_path=env_file_path,
         require_db_check=require_db_check,
         generated_at=generated_at,
     )
@@ -278,6 +282,7 @@ def build_au_p0a_status_report(
             "runbook_execution_path": str(runbook_execution_path),
             "package_path": str(package_path),
             "output_path": str(output_path) if output_path else "",
+            "env_file_path": str(env_file_path) if env_file_path else "",
             "require_db_check": require_db_check,
             "require_design_partner_ready": require_design_partner_ready,
         },
@@ -323,6 +328,11 @@ def parse_args() -> argparse.Namespace:
         help="Path to write the status report JSON.",
     )
     parser.add_argument(
+        "--env-file",
+        default=os.environ.get("GENO_AU_P0A_ENV_FILE", DEFAULT_ENV_FILE),
+        help="Optional env file to use when status report recomputes readiness phases.",
+    )
+    parser.add_argument(
         "--require-db-check",
         action="store_true",
         help="Require SELECT 1 DATABASE_URL readiness in all phase checks.",
@@ -346,6 +356,7 @@ def main() -> None:
         runbook_execution_path=Path(args.runbook_execution_path),
         package_path=Path(args.package_path),
         output_path=output_path,
+        env_file_path=Path(args.env_file) if args.env_file else None,
         require_db_check=args.require_db_check,
         require_design_partner_ready=args.require_design_partner_ready,
         generated_at=args.generated_at,

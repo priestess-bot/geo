@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -14,6 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.build_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_RUNBOOK_PATH  # noqa: E402
+from scripts.build_au_p0a_env_report import DEFAULT_ENV_FILE, _load_env_file  # noqa: E402
 from scripts.build_preflight_manifest import (  # noqa: E402
     MANIFEST_VERSION,
     compute_manifest_payload_hash,
@@ -42,6 +44,47 @@ def _as_sequence(value: object) -> list[object]:
 
 def _flag_enabled(value: str | None) -> bool:
     return (value or "").strip().lower() in DB_CHECK_ENABLED_VALUES
+
+
+def _fingerprint(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+
+
+def _check_env_names(
+    names: tuple[str, ...],
+    *,
+    env_file_values: Mapping[str, str],
+    process_env: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    for name in names:
+        source = "missing"
+        value = ""
+        if process_env.get(name):
+            value = str(process_env[name])
+            source = "process"
+        elif env_file_values.get(name):
+            value = str(env_file_values[name])
+            source = "env_file"
+        checks.append(
+            {
+                "name": name,
+                "present": bool(value),
+                "source": source,
+                "value_length": len(value),
+                "sha256_prefix": _fingerprint(value) if value else "",
+                "secret_redacted": True,
+            }
+        )
+    return checks
+
+
+def _merged_env(process_env: Mapping[str, str], env_file_values: Mapping[str, str]) -> dict[str, str]:
+    merged = dict(process_env)
+    for key, value in env_file_values.items():
+        if not merged.get(key):
+            merged[key] = value
+    return merged
 
 
 def _load_json(path: Path, missing_error: str, invalid_prefix: str) -> tuple[Any | None, dict[str, Any]]:
@@ -88,19 +131,27 @@ def _load_and_verify_runbook(runbook_path: Path) -> tuple[dict[str, Any] | None,
     return runbook if isinstance(runbook, dict) else None, entry
 
 
-def _environment_check(runbook: dict[str, Any] | None, env: Mapping[str, str]) -> dict[str, Any]:
+def _environment_check(
+    runbook: dict[str, Any] | None,
+    process_env: Mapping[str, str],
+    env_file_values: Mapping[str, str],
+    env_file: dict[str, Any],
+) -> dict[str, Any]:
     required = tuple(str(item) for item in _as_sequence(_as_dict(runbook).get("required_env"))) or REQUIRED_ENV
     recommended = tuple(str(item) for item in _as_sequence(_as_dict(runbook).get("recommended_env")))
-    required_checks = [{"name": name, "present": bool(env.get(name))} for name in required]
-    recommended_checks = [{"name": name, "present": bool(env.get(name))} for name in recommended]
+    required_checks = _check_env_names(required, env_file_values=env_file_values, process_env=process_env)
+    recommended_checks = _check_env_names(recommended, env_file_values=env_file_values, process_env=process_env)
     missing_required = [item["name"] for item in required_checks if not item["present"]]
     missing_recommended = [item["name"] for item in recommended_checks if not item["present"]]
+    env_file_errors = [str(item) for item in _as_sequence(env_file.get("errors"))]
     return {
-        "status": "pass" if not missing_required else "fail",
+        "status": "pass" if not missing_required and not env_file_errors else "fail",
+        "env_file": env_file,
         "required": required_checks,
         "recommended": recommended_checks,
         "missing_required": missing_required,
         "missing_recommended": missing_recommended,
+        "errors": [f"env_file:{error}" for error in env_file_errors],
         "secrets_redacted": True,
     }
 
@@ -269,6 +320,8 @@ def _append_gate_errors(errors: list[str], gate_name: str, gate: dict[str, Any])
 
 def _next_action(phase: str, errors: list[str]) -> str:
     if errors:
+        if any(error.startswith("env_file:") for error in errors):
+            return "fix_environment_file"
         if any(error.startswith("required_env_missing:") for error in errors):
             return "configure_required_environment"
         if any(error.startswith("database:") for error in errors):
@@ -292,11 +345,14 @@ def verify_au_p0a_readiness(
     phase: str = "preflight",
     runbook_path: Path = Path(DEFAULT_RUNBOOK_PATH),
     env: Mapping[str, str] | None = None,
+    env_file_path: Path | None = Path(DEFAULT_ENV_FILE),
     require_db_check: bool = False,
     db_connector: Callable[[str], Any] | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
-    env_map = os.environ if env is None else env
+    process_env = os.environ if env is None else env
+    env_file_values, env_file = _load_env_file(env_file_path)
+    env_map = _merged_env(process_env, env_file_values)
     errors: list[str] = []
     warnings: list[str] = []
     gates: dict[str, Any] = {}
@@ -309,7 +365,8 @@ def verify_au_p0a_readiness(
     if runbook_entry.get("status") != "pass":
         errors.extend(f"runbook:{error}" for error in _as_sequence(runbook_entry.get("errors")))
 
-    environment = _environment_check(runbook, env_map)
+    environment = _environment_check(runbook, process_env, env_file_values, env_file)
+    errors.extend(environment["errors"])
     for name in environment["missing_required"]:
         errors.append(f"required_env_missing:{name}")
     for name in environment["missing_recommended"]:
@@ -379,6 +436,11 @@ def parse_args() -> argparse.Namespace:
         help="Path to write the readiness JSON result.",
     )
     parser.add_argument(
+        "--env-file",
+        default=os.environ.get("GENO_AU_P0A_ENV_FILE", DEFAULT_ENV_FILE),
+        help="Optional env file to parse without shell evaluation. Missing files are allowed.",
+    )
+    parser.add_argument(
         "--require-db-check",
         action="store_true",
         default=_flag_enabled(os.environ.get("GENO_AU_P0A_REQUIRE_DB_CHECK")),
@@ -398,6 +460,7 @@ def main() -> None:
     result = verify_au_p0a_readiness(
         phase=args.phase,
         runbook_path=Path(args.runbook_path),
+        env_file_path=Path(args.env_file) if args.env_file else None,
         require_db_check=args.require_db_check,
         generated_at=args.generated_at,
     )

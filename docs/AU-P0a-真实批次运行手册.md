@@ -9,7 +9,7 @@
 - runbook 自身也必须先 verify，避免命令顺序、planned runs 或 gate 参数漂移。
 - 真实执行前先跑 runbook dry-run，确认步骤、产物、外部 API 调用风险和环境缺口；dry-run 默认读取 `GENO_AU_P0A_ENV_FILE` 或 `.env.au-p0a`，按进程环境优先、文件只补缺的规则判断 readiness，且默认不执行任何命令。
 - 每个阶段开始前都先跑 readiness gate，缺 key、缺上游 manifest 或上游未达 design-partner ready 时停止。
-- readiness 默认不主动连接数据库；真实批次前建议开启 `GENO_AU_P0A_REQUIRE_DB_CHECK=1`，用只读 `SELECT 1` 验证 `DATABASE_URL` 可用。
+- readiness 默认读取 `GENO_AU_P0A_ENV_FILE` 或 `.env.au-p0a`，按进程环境优先、文件只补缺的规则判断必需变量；默认不主动连接数据库，真实批次前建议开启 `GENO_AU_P0A_REQUIRE_DB_CHECK=1`，用只读 `SELECT 1` 验证合并后的 `DATABASE_URL` 可用。
 - “可审计”不等于“可进入 design partner”；进入下一阶段必须通过 `--require-design-partner-ready`。
 - live 运行产物位于 `docs/runtime_preflight/*.json`，默认不提交，避免把 provider 状态、错误上下文或潜在敏感配置写入仓库。
 
@@ -49,7 +49,7 @@ make verify-au-p0a-environment-checklist
 python3 scripts/verify_au_p0a_env_report.py --require-ready-environment
 GENO_AU_P0A_ENV_FILE=${GENO_AU_P0A_ENV_FILE:-.env.au-p0a} make au-p0a-runbook-dry-run
 make verify-au-p0a-runbook-execution
-GENO_AU_P0A_REQUIRE_DB_CHECK=1 make au-p0a-readiness
+GENO_AU_P0A_ENV_FILE=${GENO_AU_P0A_ENV_FILE:-.env.au-p0a} GENO_AU_P0A_REQUIRE_DB_CHECK=1 make au-p0a-readiness
 ```
 
 4. 最小 provider preflight：
@@ -58,7 +58,7 @@ GENO_AU_P0A_REQUIRE_DB_CHECK=1 make au-p0a-readiness
 make api-preflight
 make verify-api-preflight
 make preflight-manifest
-GENO_AU_P0A_READINESS_PHASE=small_batch make au-p0a-readiness
+GENO_AU_P0A_ENV_FILE=${GENO_AU_P0A_ENV_FILE:-.env.au-p0a} GENO_AU_P0A_READINESS_PHASE=small_batch make au-p0a-readiness
 PYTHONPATH=packages/geno_core:apps/api \
 python3 scripts/verify_preflight_payload.py \
   docs/runtime_preflight/api-preflight-latest.json \
@@ -87,7 +87,7 @@ python3 scripts/build_preflight_manifest.py \
   --manifest-path docs/runtime_preflight/au-p0a-small-batch-manifest.json \
   --require-design-partner-ready
 
-GENO_AU_P0A_READINESS_PHASE=full_batch make au-p0a-readiness
+GENO_AU_P0A_ENV_FILE=${GENO_AU_P0A_ENV_FILE:-.env.au-p0a} GENO_AU_P0A_READINESS_PHASE=full_batch make au-p0a-readiness
 ```
 
 6. 完整 AU P0a 批次（默认 100 prompts x 4 geo x k=3 x 2 platforms = 2400 runs）：
@@ -114,7 +114,7 @@ python3 scripts/build_preflight_manifest.py \
 
 make au-p0a-package
 make verify-au-p0a-package
-make au-p0a-status
+GENO_AU_P0A_ENV_FILE=${GENO_AU_P0A_ENV_FILE:-.env.au-p0a} make au-p0a-status
 make verify-au-p0a-status
 ```
 
@@ -190,6 +190,13 @@ runbook dry-run 必须确认：
 - env-file metadata 必须记录 path/exists/loaded/errors，但 required/recommended 检查只能记录 source、value_length、sha256_prefix 和 `secret_redacted=true`
 - process env 必须优先于 env-file；env-file 只补缺失值；执行 JSON 不允许出现 `value` 或 `raw_value` 字段
 
+readiness gate 必须确认：
+
+- readiness output 只记录 env-file path/exists/loaded/errors、变量来源、长度和 sha256 前缀，不输出原始 secret
+- process env 必须优先于 env-file；env-file 只补缺失值
+- `GENO_AU_P0A_REQUIRE_DB_CHECK=1` 时，DB gate 使用合并后的 `DATABASE_URL` 做只读 `SELECT 1`，仍不得输出连接串
+- preflight/small_batch/full_batch 三个阶段的上游 payload 和 manifest gate 必须按阶段递进，不允许跳过缺失产物
+
 evidence package 必须确认：
 
 - runbook、environment report、runbook execution dry-run、readiness、preflight、small batch、full batch 和对应 manifest 是否存在
@@ -203,12 +210,14 @@ package verifier 必须确认：
 - artifacts 至少包含 runbook、environment、runbook_execution、readiness、preflight/small/full JSON 与 manifest
 - summary 的 artifact_count、missing_artifacts、failed_artifacts、ready_artifacts、blocking_reasons 可由 artifacts 反推
 - `ready_for_design_partner` 与 preflight/small/full JSON 和 manifest 的 ready 状态一致
+- package verifier 递归拒绝 `value` / `raw_value`，避免手工拼包时把 secret 塞回证据包
 
 status report 必须确认：
 
 - status_report_hash 可由 `make verify-au-p0a-status` 复算
-- runbook verifier、environment report、runbook execution dry-run、preflight/small_batch/full_batch readiness、package verifier 均有机器可读摘要
+- runbook verifier、environment report、runbook execution dry-run、同源 env-file preflight/small_batch/full_batch readiness、package verifier 均有机器可读摘要
 - completion_percent、design_ready_artifact_percent、remaining_blockers 和 next_action 能回答当前还差多少
+- status verifier 递归拒绝 `value` / `raw_value`，避免总控状态报告泄露 env-file、process env 或数据库连接串
 - 默认可用于日常进度复盘；需要硬门禁时用 `python3 scripts/verify_au_p0a_status_report.py --require-design-partner-ready`
 
 ## 当前边界
