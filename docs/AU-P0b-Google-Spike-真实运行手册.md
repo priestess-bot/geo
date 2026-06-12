@@ -125,6 +125,7 @@ python3 scripts/verify_au_p0b_google_spike_status_report.py \
 
 ```bash
 make au-p0b-google-serp-fixture
+make verify-au-p0b-google-serp-fixture
 ```
 
 默认输出：
@@ -142,10 +143,13 @@ google_serp_comparison_summary.ready_for_comparison = true
 google_spike_gate / google_spike_readiness_gate 不应出现在该模式输出中
 ```
 
+`verify-au-p0b-google-serp-fixture` 会要求 `ready_for_comparison=true`、collector health pass、payload hash 可复算、120-run 计划口径正确、full Google spike gates 不存在，以及 score input policy 保持 comparison-only。
+
 2. 接入真实供应商前做 health-only 预检：
 
 ```bash
 make au-p0b-google-serp-health
+make verify-au-p0b-google-serp-health
 ```
 
 默认输出：
@@ -154,7 +158,7 @@ make au-p0b-google-serp-health
 docs/runtime_preflight/au-p0b-google-serp-health-latest.json
 ```
 
-若缺少 `SERP_API_KEY` 或 `SERP_API_ENDPOINT`，该目标会以 collector health gate fail 退出，并在 payload 中给出 `google.third_party_serp:not_configured` 或 endpoint 相关原因。health 通过后再用显式 worker 命令运行真实对照：
+若缺少 `SERP_API_KEY` 或 `SERP_API_ENDPOINT`，该目标会以 collector health gate fail 退出，并在 payload 中给出 `google.third_party_serp:not_configured` 或 endpoint 相关原因；这种失败 payload 仍可通过 `verify-au-p0b-google-serp-health` 证明 hash、计划口径和审计结构完整，但不会被标记为 comparison ready。health 通过后再用显式 worker 命令运行真实对照：
 
 ```bash
 PYTHONPATH=packages/geno_core:apps/api \
