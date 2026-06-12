@@ -85,6 +85,8 @@ def _p0a_environment_item(blockers: list[str]) -> dict[str, Any]:
             _command("make au-p0a-runbook"),
             _command("make au-p0a-env"),
             _command("make verify-au-p0a-env"),
+            _command("make au-p0a-environment-checklist"),
+            _command("make verify-au-p0a-environment-checklist"),
             _command("make au-p0a-readiness"),
         ],
         "verification_commands": [
@@ -100,6 +102,7 @@ def _p0a_environment_item(blockers: list[str]) -> dict[str, Any]:
         "evidence_outputs": [
             "docs/runtime_preflight/au-p0a-runbook-latest.json",
             "docs/runtime_preflight/au-p0a-env-latest.json",
+            "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
             "docs/runtime_preflight/au-p0a-readiness-latest.json",
             "docs/runtime_preflight/au-p0a-status-latest.json",
         ],

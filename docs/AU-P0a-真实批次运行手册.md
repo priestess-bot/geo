@@ -44,6 +44,8 @@ export OBJECT_STORE_SECRET_KEY=...
 ```bash
 make au-p0a-env
 make verify-au-p0a-env
+make au-p0a-environment-checklist
+make verify-au-p0a-environment-checklist
 python3 scripts/verify_au_p0a_env_report.py --require-ready-environment
 make au-p0a-runbook-dry-run
 make verify-au-p0a-runbook-execution
@@ -137,6 +139,7 @@ make verify-au-p0a-status
 - `docs/runtime_preflight/api-preflight-manifest-latest.json`
 - `docs/runtime_preflight/au-p0a-runbook-latest.json`
 - `docs/runtime_preflight/au-p0a-env-latest.json`
+- `docs/runtime_preflight/au-p0a-environment-checklist-latest.json`
 - `docs/runtime_preflight/au-p0a-runbook-execution-latest.json`
 - `docs/runtime_preflight/au-p0a-readiness-latest.json`
 - `docs/runtime_preflight/au-p0a-evidence-package-latest.json`
@@ -167,6 +170,15 @@ environment report 必须确认：
 - `PERPLEXITY_API_KEY`、`OPENAI_API_KEY`、`DATABASE_URL` 必需变量只记录存在状态、来源、长度和 sha256 前缀，不输出原始 secret
 - `.env.au-p0a` 可作为本地模板文件，真实 `.env.au-p0a` 不提交 git
 - `ready_for_real_batch` 只在 runbook verifier 通过且必需环境存在时为 true
+
+environment checklist 必须确认：
+
+- environment_checklist_hash 可由 `make verify-au-p0a-environment-checklist` 复算
+- 必填变量、推荐变量、present/source/value_length/sha256_prefix 与 env report 一致
+- 不包含 `value` 或 `raw_value` 等原始 secret 字段
+- setup_commands 固定 env 模板、runbook、env report 和 checklist 生成顺序
+- verification_commands 固定 `--require-ready-environment`、runbook dry-run、DB readiness 和 status refresh
+- 当前缺项可直接回答 `p0a_environment` work item 还要填哪些输入
 
 runbook dry-run 必须确认：
 

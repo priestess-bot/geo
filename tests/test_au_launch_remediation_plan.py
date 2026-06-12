@@ -66,6 +66,14 @@ class AuLaunchRemediationPlanTest(unittest.TestCase):
         self.assertIn("p0a_environment", [item["id"] for item in plan["work_items"]])
         self.assertIn("p0b_google_playwright_env", [item["id"] for item in plan["work_items"]])
         work_items = {item["id"]: item for item in plan["work_items"]}
+        self.assertIn(
+            "make au-p0a-environment-checklist",
+            [command["shell"] for command in work_items["p0a_environment"]["commands"]],
+        )
+        self.assertIn(
+            "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
+            work_items["p0a_environment"]["evidence_outputs"],
+        )
         self.assertEqual(
             [command["shell"] for command in work_items["p0b_google_spike_health"]["commands"]],
             ["make au-p0b-google-spike-health", "make au-p0b-google-spike-health-manifest"],
