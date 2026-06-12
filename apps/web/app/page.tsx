@@ -1325,6 +1325,12 @@ type RuntimeEntityAliasCandidate = {
     evidence_count?: number;
     evidence_answer_run_ids?: string[];
     evidence_urls?: string[];
+    latest_review?: {
+      decision?: string;
+      reviewed_by?: string;
+      notes?: string | null;
+      updated_at?: string;
+    };
   };
   entity: {
     id: string;
@@ -2218,6 +2224,60 @@ async function confirmEntityAliasBatch(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/entity-aliases/runtime/confirm-batch returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function reviewEntityAliasCandidate(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const decision = String(formData.get("decision") || "").trim();
+  const candidateId = String(formData.get("candidate_id") || "").trim();
+  const entityId = String(formData.get("entity_id") || "").trim();
+  const entityKind = String(formData.get("entity_kind") || "").trim();
+  const alias = String(formData.get("alias") || "").trim();
+  const aliasType = String(formData.get("alias_type") || "alias").trim();
+  if (!projectId || !candidateId || !entityId || !entityKind || !alias || !decision) {
+    throw new Error("project, candidate, entity, alias, and decision are required for alias candidate review");
+  }
+  const payload = {
+    project_id: projectId,
+    candidate_id: candidateId,
+    entity_id: entityId,
+    entity_kind: entityKind,
+    alias,
+    alias_type: aliasType,
+    decision,
+    reviewed_by: String(formData.get("reviewed_by") || "runtime-console").trim(),
+    source: String(formData.get("source") || "").trim() || undefined,
+    confidence: Number(String(formData.get("confidence") || "0")),
+    reason: String(formData.get("reason") || "").trim() || undefined,
+    notes: String(formData.get("notes") || "").trim() || undefined,
+    evidence_answer_run_ids: String(formData.get("evidence_answer_run_ids") || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+    evidence_urls: String(formData.get("evidence_urls") || "")
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean),
+    payload: {
+      source_panel: "runtime_entity_alias_candidates",
+      candidate_source: String(formData.get("source") || "").trim()
+    }
+  };
+  const response = await fetch(`${baseUrl}/v1/entity-aliases/runtime/candidates/review`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/entity-aliases/runtime/candidates/review returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -4068,6 +4128,9 @@ export default async function Home({
                           {record.candidate.evidence_answer_run_ids?.[0]
                             ? ` · answer run ${record.candidate.evidence_answer_run_ids[0]}`
                             : ""}
+                          {record.candidate.latest_review?.decision
+                            ? ` · review ${record.candidate.latest_review.decision}`
+                            : ""}
                         </small>
                         <form action={confirmEntityAlias} className="inlineAliasForm">
                           <input
@@ -4090,6 +4153,43 @@ export default async function Home({
                             Confirm candidate
                           </button>
                         </form>
+                        {["needs_review", "rejected"].map((decision) => (
+                          <form action={reviewEntityAliasCandidate} className="inlineAliasForm" key={decision}>
+                            <input type="hidden" name="project_id" value={record.entity.project_id} />
+                            <input type="hidden" name="candidate_id" value={record.candidate.id} />
+                            <input type="hidden" name="entity_id" value={record.candidate.entity_id} />
+                            <input type="hidden" name="entity_kind" value={record.candidate.entity_kind} />
+                            <input type="hidden" name="alias" value={record.candidate.alias} />
+                            <input type="hidden" name="alias_type" value={record.candidate.alias_type} />
+                            <input type="hidden" name="source" value={record.candidate.source} />
+                            <input type="hidden" name="confidence" value={String(record.candidate.confidence || 0.7)} />
+                            <input
+                              type="hidden"
+                              name="evidence_answer_run_ids"
+                              value={(record.candidate.evidence_answer_run_ids || []).join(",")}
+                            />
+                            <input
+                              type="hidden"
+                              name="evidence_urls"
+                              value={(record.candidate.evidence_urls || []).join("\n")}
+                            />
+                            <input type="hidden" name="decision" value={decision} />
+                            <input type="hidden" name="reviewed_by" value="runtime-console" />
+                            <input
+                              type="hidden"
+                              name="reason"
+                              value={`Alias candidate ${decision} from Runtime Console`}
+                            />
+                            <input
+                              type="hidden"
+                              name="notes"
+                              value={`Record ${decision} decision for generated alias candidate ${record.candidate.alias}`}
+                            />
+                            <button className="actionButton compactAction" type="submit">
+                              {decision === "rejected" ? "Reject candidate" : "Needs review"}
+                            </button>
+                          </form>
+                        ))}
                       </li>
                     ))}
                   </ul>

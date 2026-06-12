@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS entity_alias_candidate_reviews;
 DROP TABLE IF EXISTS entity_aliases;
 DROP TABLE IF EXISTS competitor_entities;
 DROP TABLE IF EXISTS brand_entities;

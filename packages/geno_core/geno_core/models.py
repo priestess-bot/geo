@@ -951,6 +951,31 @@ class RuntimeEntityAliasCandidatePage:
 
 
 @dataclass(frozen=True)
+class EntityAliasCandidateReviewInput:
+    project_id: str
+    candidate_id: str
+    entity_id: str
+    entity_kind: str
+    alias: str
+    alias_type: str
+    decision: str
+    reviewed_by: str = "runtime-console"
+    source: str | None = None
+    confidence: float | None = None
+    reason: str | None = None
+    notes: str | None = None
+    evidence_answer_run_ids: tuple[str, ...] = ()
+    evidence_urls: tuple[str, ...] = ()
+    payload: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RuntimeEntityAliasCandidateReview:
+    review: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class RuntimeScoreSnapshotRun:
     answer_run: dict[str, Any]
     analysis: dict[str, Any] | None

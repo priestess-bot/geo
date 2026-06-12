@@ -68,6 +68,7 @@ from geno_core.knowledge import (
 )
 from geno_core.market import build_au_market_profile
 from geno_core.models import (
+    EntityAliasCandidateReviewInput,
     EntityAliasInput,
     RuntimeAlertEventInput,
     RuntimeEntityAliasBatchConfirmResult,
@@ -1439,6 +1440,24 @@ class EntityAliasBatchConfirmRequest(BaseModel):
     continue_on_error: bool = False
 
 
+class EntityAliasCandidateReviewRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    candidate_id: str = Field(min_length=1, max_length=160)
+    entity_id: str = Field(min_length=1)
+    entity_kind: str = Field(min_length=1, max_length=40)
+    alias: str = Field(min_length=1, max_length=240)
+    alias_type: str = Field(default="alias", min_length=1, max_length=80)
+    decision: str = Field(min_length=1, max_length=40)
+    reviewed_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    source: str | None = Field(default=None, max_length=120)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    reason: str | None = Field(default=None, max_length=500)
+    notes: str | None = Field(default=None, max_length=2000)
+    evidence_answer_run_ids: list[str] = Field(default_factory=list, max_length=10)
+    evidence_urls: list[str] = Field(default_factory=list, max_length=10)
+    payload: dict[str, object] = Field(default_factory=dict)
+
+
 class RuntimeProjectCreateRequest(BaseModel):
     tenant_name: str = Field(default="Design Partner AU", min_length=1, max_length=160)
     project_name: str = Field(default="AU DTC Evidence Pilot", min_length=1, max_length=160)
@@ -2009,6 +2028,51 @@ def runtime_entity_alias_candidates(
             offset=offset,
         )
         return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/entity-aliases/runtime/candidates/review")
+def review_runtime_entity_alias_candidate(
+    payload: EntityAliasCandidateReviewRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id.strip(),
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            record = repository.record_entity_alias_candidate_review(
+                EntityAliasCandidateReviewInput(
+                    project_id=payload.project_id.strip(),
+                    candidate_id=payload.candidate_id.strip(),
+                    entity_id=payload.entity_id.strip(),
+                    entity_kind=payload.entity_kind.strip(),
+                    alias=payload.alias.strip(),
+                    alias_type=payload.alias_type.strip(),
+                    decision=payload.decision.strip(),
+                    reviewed_by=payload.reviewed_by.strip(),
+                    source=payload.source.strip() if payload.source else None,
+                    confidence=payload.confidence,
+                    reason=payload.reason.strip() if payload.reason else None,
+                    notes=payload.notes.strip() if payload.notes else None,
+                    evidence_answer_run_ids=tuple(item.strip() for item in payload.evidence_answer_run_ids if item.strip()),
+                    evidence_urls=tuple(item.strip() for item in payload.evidence_urls if item.strip()),
+                    payload=payload.payload,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) in {"project not found", "entity not found"} else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
     finally:
         close_repository_connection(repository)
 
@@ -4416,6 +4480,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasBatchConfirmResult",
             "RuntimeEntityAliasCandidate",
             "RuntimeEntityAliasCandidatePage",
+            "RuntimeEntityAliasCandidateReview",
             "RuntimeEntityAliasPage",
             "IndustryProfile",
             "PromptQuestion",
@@ -4585,6 +4650,9 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasBatchConfirmResult",
             "RuntimeEntityAliasCandidate",
             "RuntimeEntityAliasCandidatePage",
+            "RuntimeEntityAliasCandidateReview",
+            "EntityAliasCandidateReviewInput",
+            "EntityAliasCandidateReviewRequest",
             "RuntimeEntityAliasPage",
             "RuntimeEvidenceRun",
             "RuntimeEvidencePage",
@@ -4654,6 +4722,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/project-members/runtime",
             "/v1/entity-aliases/runtime",
             "/v1/entity-aliases/runtime/candidates",
+            "/v1/entity-aliases/runtime/candidates/review",
             "/v1/entity-aliases/runtime/confirm",
             "/v1/entity-aliases/runtime/confirm-batch",
             "/v1/prompts/runtime",

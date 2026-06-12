@@ -21,6 +21,7 @@ from geno_core.models import (
     CollectionFailureRecord,
     CollectionRunSummary,
     ContentDraft,
+    EntityAliasCandidateReviewInput,
     EntityAliasInput,
     IntegrationConnector,
     LocalizedKnowledgeFact,
@@ -51,6 +52,7 @@ from geno_core.models import (
     RuntimeEntityAlias,
     RuntimeEntityAliasCandidate,
     RuntimeEntityAliasCandidatePage,
+    RuntimeEntityAliasCandidateReview,
     RuntimeEntityAliasPage,
     RuntimeFidelityCheck,
     RuntimeFidelityCheckPage,
@@ -1187,6 +1189,26 @@ ENTITY_ALIAS_COLUMNS = (
     "confirmed_by",
     "created_at",
 )
+ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS = (
+    "id",
+    "project_id",
+    "candidate_id",
+    "entity_id",
+    "entity_kind",
+    "alias",
+    "alias_type",
+    "source",
+    "confidence",
+    "decision",
+    "reviewed_by",
+    "reason",
+    "notes",
+    "evidence_answer_run_ids",
+    "evidence_urls",
+    "payload",
+    "created_at",
+    "updated_at",
+)
 ENTITY_ALIAS_JOIN_COLUMNS = ENTITY_ALIAS_COLUMNS + (
     "project_id",
     "canonical_name",
@@ -2302,6 +2324,7 @@ class PostgresEvidenceRepository:
             citation_rows = _rows_dict(cursor.fetchall(), ("answer_run_id", "url", "domain"))
         confirmed_aliases = self.get_confirmed_entity_alias_terms(project_id)
         records: list[RuntimeEntityAliasCandidate] = []
+        latest_reviews = self.get_entity_alias_candidate_reviews(project_id)
         for entity in entities:
             entity_id = str(entity["id"])
             confirmed = confirmed_aliases.get(entity_id, ())
@@ -2412,13 +2435,218 @@ class PostgresEvidenceRepository:
                         confirmed_aliases=confirmed,
                     )
                 )
-        total_count = len(records)
+        visible_records: list[RuntimeEntityAliasCandidate] = []
+        for record in records:
+            review = latest_reviews.get(str(record.candidate["id"]))
+            if review:
+                candidate = {**record.candidate, "latest_review": review}
+                if str(review.get("decision") or "").lower() == "rejected":
+                    continue
+                visible_records.append(
+                    RuntimeEntityAliasCandidate(
+                        candidate=candidate,
+                        entity=record.entity,
+                        confirmed_aliases=record.confirmed_aliases,
+                    )
+                )
+                continue
+            visible_records.append(record)
+        total_count = len(visible_records)
         return RuntimeEntityAliasCandidatePage(
             total_count=total_count,
             limit=limit,
             offset=offset,
-            records=tuple(records[offset : offset + limit]),
+            records=tuple(visible_records[offset : offset + limit]),
         )
+
+    def get_entity_alias_candidate_reviews(self, project_id: str) -> dict[str, dict[str, Any]]:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)}
+                FROM entity_alias_candidate_reviews
+                WHERE project_id = %s
+                ORDER BY updated_at DESC, created_at DESC
+                """,
+                (_uuid(project_id),),
+            )
+            rows = _rows_dict(cursor.fetchall(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
+        reviews: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            candidate_id = str(row.get("candidate_id") or "")
+            if candidate_id and candidate_id not in reviews:
+                reviews[candidate_id] = row
+        return reviews
+
+    def record_entity_alias_candidate_review(
+        self,
+        review: EntityAliasCandidateReviewInput,
+    ) -> RuntimeEntityAliasCandidateReview:
+        project_id = review.project_id.strip()
+        candidate_id = review.candidate_id.strip()
+        entity_id = review.entity_id.strip()
+        entity_kind = review.entity_kind.strip().lower()
+        alias = review.alias.strip()
+        alias_type = review.alias_type.strip().lower()
+        decision = review.decision.strip().lower()
+        reviewed_by = review.reviewed_by.strip() or "runtime-console"
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not candidate_id:
+            raise ValueError("candidate_id is required")
+        if not entity_id:
+            raise ValueError("entity_id is required")
+        if entity_kind not in {"brand", "competitor"}:
+            raise ValueError("entity_kind must be brand or competitor")
+        if not alias:
+            raise ValueError("alias is required")
+        if not alias_type:
+            raise ValueError("alias_type is required")
+        if decision not in {"needs_review", "rejected", "approved"}:
+            raise ValueError("decision must be needs_review, rejected, or approved")
+        review_id = _stable_id("entity-alias-candidate-review", project_id, candidate_id)
+        confidence = None if review.confidence is None else max(0.0, min(1.0, float(review.confidence)))
+        after = {
+            "id": review_id,
+            "project_id": project_id,
+            "candidate_id": candidate_id,
+            "entity_id": entity_id,
+            "entity_kind": entity_kind,
+            "alias": alias,
+            "alias_type": alias_type,
+            "source": review.source.strip() if review.source else None,
+            "confidence": confidence,
+            "decision": decision,
+            "reviewed_by": reviewed_by,
+            "reason": review.reason.strip() if review.reason else None,
+            "notes": review.notes.strip() if review.notes else None,
+            "evidence_answer_run_ids": list(review.evidence_answer_run_ids),
+            "evidence_urls": list(review.evidence_urls),
+            "payload": review.payload or {},
+        }
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            cursor.execute(
+                """
+                SELECT id
+                FROM (
+                  SELECT id, project_id, 'brand' AS entity_kind FROM brand_entities
+                  UNION ALL
+                  SELECT id, project_id, 'competitor' AS entity_kind FROM competitor_entities
+                ) entity
+                WHERE entity.id = %s AND entity.entity_kind = %s AND entity.project_id = %s
+                LIMIT 1
+                """,
+                (_uuid(entity_id), entity_kind, _uuid(project_id)),
+            )
+            if not cursor.fetchone():
+                raise ValueError("entity not found")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)}
+                FROM entity_alias_candidate_reviews
+                WHERE project_id = %s AND candidate_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id), candidate_id),
+            )
+            before = _row_dict(cursor.fetchone(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
+            cursor.execute(
+                """
+                INSERT INTO entity_alias_candidate_reviews (
+                  id, project_id, candidate_id, entity_id, entity_kind, alias, alias_type,
+                  source, confidence, decision, reviewed_by, reason, notes,
+                  evidence_answer_run_ids, evidence_urls, payload, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+                ON CONFLICT (project_id, candidate_id) DO UPDATE SET
+                  entity_id = EXCLUDED.entity_id,
+                  entity_kind = EXCLUDED.entity_kind,
+                  alias = EXCLUDED.alias,
+                  alias_type = EXCLUDED.alias_type,
+                  source = EXCLUDED.source,
+                  confidence = EXCLUDED.confidence,
+                  decision = EXCLUDED.decision,
+                  reviewed_by = EXCLUDED.reviewed_by,
+                  reason = EXCLUDED.reason,
+                  notes = EXCLUDED.notes,
+                  evidence_answer_run_ids = EXCLUDED.evidence_answer_run_ids,
+                  evidence_urls = EXCLUDED.evidence_urls,
+                  payload = EXCLUDED.payload,
+                  updated_at = now()
+                """,
+                (
+                    _uuid(review_id),
+                    _uuid(project_id),
+                    candidate_id,
+                    _uuid(entity_id),
+                    entity_kind,
+                    alias,
+                    alias_type,
+                    after["source"],
+                    confidence,
+                    decision,
+                    reviewed_by,
+                    after["reason"],
+                    after["notes"],
+                    list(review.evidence_answer_run_ids),
+                    list(review.evidence_urls),
+                    _json_payload(after["payload"]),
+                ),
+            )
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)}
+                FROM entity_alias_candidate_reviews
+                WHERE project_id = %s AND candidate_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id), candidate_id),
+            )
+            record = _row_dict(cursor.fetchone(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="entity_alias_candidate_review_recorded",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=reviewed_by,
+                target_type="entity_alias_candidate_review",
+                target_id=str(record["id"]),
+                before=before or None,
+                after={**after, "id": str(record["id"])},
+                input_refs={
+                    "candidate_id": candidate_id,
+                    "entity_id": entity_id,
+                    "evidence_answer_run_ids": list(review.evidence_answer_run_ids),
+                    "evidence_urls": list(review.evidence_urls),
+                },
+                output_refs={"entity_alias_candidate_review_ids": [str(record["id"])], "decision": decision},
+                method_version="entity_alias_candidate_review_v1",
+                reason=after["notes"] or f"record entity alias candidate review decision {decision}",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE project_id = %s AND target_type = %s AND target_id = %s
+                ORDER BY created_at DESC
+                LIMIT 5
+                """,
+                (_uuid(project_id), "entity_alias_candidate_review", str(record["id"])),
+            )
+            audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        self.connection.commit()
+        return RuntimeEntityAliasCandidateReview(review=record, audit_events=audit_events)
 
     def confirm_entity_alias(self, alias: EntityAliasInput) -> RuntimeEntityAlias:
         normalized_kind = alias.entity_kind.strip().lower()

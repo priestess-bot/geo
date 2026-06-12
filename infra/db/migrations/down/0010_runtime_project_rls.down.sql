@@ -57,6 +57,7 @@ BEGIN
     'runtime_notifications',
     'runtime_notification_subscriptions',
     'runtime_notification_deliveries',
+    'entity_alias_candidate_reviews',
     'score_contributions',
     'score_snapshot_runs',
     'source_graph_evidence',

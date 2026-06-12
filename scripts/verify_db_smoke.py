@@ -60,6 +60,7 @@ EXPECTED_TABLES = (
     "brand_entities",
     "competitor_entities",
     "entity_aliases",
+    "entity_alias_candidate_reviews",
 )
 
 CRITICAL_COLUMNS = {
@@ -76,6 +77,14 @@ CRITICAL_COLUMNS = {
     "score_weight_configs": ("weights", "updated_by"),
     "human_review_records": ("target_type", "review_status", "decision"),
     "runtime_alert_events": ("alert_id", "alert_type", "source", "source_id", "status", "metadata"),
+    "entity_alias_candidate_reviews": (
+        "candidate_id",
+        "decision",
+        "reviewed_by",
+        "evidence_answer_run_ids",
+        "evidence_urls",
+        "payload",
+    ),
     "project_brand_kits": ("logo_url", "footer_text"),
     "project_brand_assets": (
         "asset_type",
@@ -186,6 +195,7 @@ EXPECTED_RLS_TABLES = (
     "source_graph_evidence",
     "report_evidence",
     "entity_aliases",
+    "entity_alias_candidate_reviews",
 )
 
 EXPECTED_POLICIES = (
@@ -195,6 +205,7 @@ EXPECTED_POLICIES = (
     "raw_answers_runtime_project_isolation",
     "score_contributions_runtime_project_isolation",
     "entity_aliases_runtime_project_isolation",
+    "entity_alias_candidate_reviews_runtime_project_isolation",
 )
 
 

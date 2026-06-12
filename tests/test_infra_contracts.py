@@ -220,6 +220,13 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("scan_notes text", init_sql)
         self.assertIn('"project_brand_assets"', db_smoke_source)
         self.assertIn('"scan_status"', db_smoke_source)
+        self.assertIn("CREATE TABLE entity_alias_candidate_reviews", init_sql)
+        self.assertIn("idx_entity_alias_candidate_reviews_project", init_sql)
+        self.assertIn("UNIQUE(project_id, candidate_id)", init_sql)
+        self.assertIn("'entity_alias_candidate_reviews'", rls_sql)
+        self.assertIn("'entity_alias_candidate_reviews'", rls_down_sql)
+        self.assertIn('"entity_alias_candidate_reviews"', db_smoke_source)
+        self.assertIn('"candidate_id"', db_smoke_source)
 
     def test_litellm_config_uses_env_secrets_and_geno_model_aliases(self) -> None:
         config = yaml.safe_load((ROOT / "infra/litellm_config.yaml").read_text(encoding="utf-8"))
