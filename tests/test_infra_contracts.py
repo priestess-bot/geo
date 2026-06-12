@@ -375,6 +375,10 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("scripts/build_au_p0b_google_serp_status_report.py", makefile)
         self.assertIn("verify-au-p0b-google-serp-status:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_serp_status_report.py", makefile)
+        self.assertIn("au-broader-platform-registry:", makefile)
+        self.assertIn("scripts/build_au_broader_platform_registry.py", makefile)
+        self.assertIn("verify-au-broader-platform-registry:", makefile)
+        self.assertIn("scripts/verify_au_broader_platform_registry.py", makefile)
         self.assertIn(
             "\t@PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --plan-browser-fidelity-sampling",
             makefile,

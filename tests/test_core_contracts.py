@@ -371,6 +371,15 @@ class CoreContractsTest(unittest.TestCase):
         stages = {(item.platform, item.surface): item.build_stage for item in profile.platforms}
         self.assertEqual(stages[("google", "google_aio")], "P0b")
         self.assertEqual(stages[("perplexity", "sonar")], "P0a")
+        self.assertEqual(stages[("gemini", "gemini_search")], "P1")
+        self.assertEqual(stages[("youtube", "youtube_search")], "P2")
+        disabled_candidates = [
+            item
+            for item in profile.platforms
+            if item.platform in {"gemini", "bing_copilot", "claude", "youtube", "reddit", "productreview"}
+        ]
+        self.assertEqual(len(disabled_candidates), 6)
+        self.assertTrue(all(not item.enabled and item.weight == 0.0 for item in disabled_candidates))
 
     def test_p0a_pluggable_interfaces_have_stubs_and_working_implementations(self) -> None:
         collector_stub = NotConfiguredCollectorBackend(

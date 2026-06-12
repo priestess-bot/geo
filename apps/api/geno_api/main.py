@@ -118,6 +118,10 @@ from scripts.build_au_handoff_dossier import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH,
     build_au_handoff_dossier,
 )
+from scripts.build_au_broader_platform_registry import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_BROADER_PLATFORM_REGISTRY_OUTPUT_PATH,
+    build_au_broader_platform_registry,
+)
 from scripts.build_au_p0a_environment_checklist import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH,
     build_au_p0a_environment_checklist,
@@ -1369,6 +1373,18 @@ def au_p0b_google_execution_checklist() -> dict[str, object]:
                 DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
             )
         ),
+    )
+
+
+@app.get("/v1/au-broader-platform-registry")
+def au_broader_platform_registry() -> dict[str, object]:
+    return build_au_broader_platform_registry(
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_BROADER_PLATFORM_REGISTRY_OUTPUT_PATH",
+                DEFAULT_AU_BROADER_PLATFORM_REGISTRY_OUTPUT_PATH,
+            )
+        )
     )
 
 
@@ -4171,6 +4187,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/launch-remediation-plan/au",
             "/v1/p0a-environment-checklist/au",
             "/v1/p0b-google-execution-checklist/au",
+            "/v1/au-broader-platform-registry",
             "/v1/handoff-dossier/au",
             "/metrics",
         ],

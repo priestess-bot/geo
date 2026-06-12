@@ -272,13 +272,15 @@ P0b high-risk spike:
 P1/P2 平台扩展：
 
 ```text
-Bing Copilot
 Gemini
+Bing Copilot
 Claude
 YouTube
 Reddit
 ProductReview
 ```
+
+工程落地口径：上述 P1/P2 平台已进入 `AU broader platform registry`，并同步登记到 `MarketProfile.platforms`，但全部默认 `enabled=false`、`weight=0.0`，不改变 P0a 2400 planned runs、不进入 P0b Google spike，也不进入主评分分母。`make au-broader-platform-registry` / `make verify-au-broader-platform-registry` 会生成并复算 `docs/runtime_preflight/au-broader-platform-registry-latest.json`，固定候选平台顺序、build stage、platform role、access methods、required environment、evidence requirements、scoring policy 和 recommended sequence；`GET /v1/au-broader-platform-registry` 与 Runtime Console Broader Platform Registry 面板读取同一清单。真实 Gemini/Copilot/Claude/YouTube/Reddit/ProductReview adapter、evidence package 和 gate 通过后，再另起公式版本或 MarketProfile 版本给权重。
 
 澳洲信源分类：
 
@@ -820,16 +822,18 @@ Perplexity: 25%
 
 项目级评分权重可通过 `score_weight_configs` 按 `project_id + formula_version` 覆盖默认 8 项组件权重；保存时必须校验组件完整、非负、总和为 1.00，并写入 `score_weight_config_saved` 审计事件。每次生成 `VisibilityScoreSnapshot` 时都把实际使用的 `formula_version` 与 `component_weights_snapshot` 冻结到快照，后续即使项目权重调整或默认公式升级，历史分数和 `ScoreContribution.weight` 仍能按当时口径复盘。人工复核采用追加型 `human_review_records`，不覆盖原始评分、内容草稿正文或证据绑定；每条记录保存 `project_id / target_type / target_id / review_status / decision / reviewer_id / notes / payload / created_at`，并写入 `human_review_recorded` 审计事件。MVP 可先覆盖 `visibility_score_snapshot`、`content_draft`、`answer_analysis`、`answer_run`、`score_weight_config` 和 `project` 六类对象；当前已补 `RuntimeHumanReviewQueue` 队列，从 `visibility_score_snapshot` 与 `content_draft` 聚合待审对象，冻结 `priority / reason / latest_review / evidence_refs` 供 Console 复盘；对 `content_draft` 的复核会把同项目 `content_drafts.review_status` 投影为本次复核状态并写入 `content_draft_review_status_updated`。开启 API 级项目访问控制后，score weight 读取、human review 读取和 review queue 都会按 `project_members` 做项目成员校验，actor 可来自 header、HS256 JWT 或 inline/remote/OIDC-discovered JWKS RS256 JWT；数据库层 RLS 会按同一个 actor/project 上下文限制评分、复核、内容草稿和审计表可见范围；score weight 保存要求 owner/admin，human review 写入允许 owner/admin/analyst。后续再接复杂审批流、分配、通知、Keycloak/OIDC login/session、前端 SSO 登录流、完整权限后台和抽样校准。
 
-P1/P2 平台扩展权重（默认值，可在 MarketProfile 调整）：
+P1/P2 平台扩展权重（当前注册表默认值，先不进入主评分）：
 
 ```text
-Google AI Overviews / AI Mode: 35%
-ChatGPT Search / browsing: 25%
-Perplexity: 15%
-Gemini: 10%
-Bing Copilot: 10%
-Claude: 5%
+Gemini: 0%
+Bing Copilot: 0%
+Claude: 0%
+YouTube: 0%
+Reddit: 0%
+ProductReview: 0%
 ```
+
+这些 0% 不是业务价值判断，而是工程门禁：候选平台只有在 adapter health、证据字段、方法披露、采样口径和回归 verifier 都通过后，才允许进入新的评分配置或 source-graph-only 分析口径。
 
 #### 9.2 分母口径（必须区分"没触发"和"没提到"）
 

@@ -548,6 +548,7 @@ type RuntimeData = {
   launchRemediationPlan: AuLaunchRemediationPlan | null;
   p0aEnvironmentChecklist: AuP0aEnvironmentChecklist | null;
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
+  broaderPlatformRegistry: AuBroaderPlatformRegistry | null;
   handoffDossier: AuHandoffDossier | null;
   projects: PageResponse<RuntimeProject>;
   projectMembers: PageResponse<RuntimeProjectMember>;
@@ -742,6 +743,46 @@ type AuP0bGoogleExecutionChecklist = {
   };
   verification_commands?: Array<{ id?: string; shell?: string; purpose?: string }>;
   evidence_outputs?: string[];
+};
+
+type AuBroaderPlatformRegistry = {
+  registry_version: string;
+  generated_at: string;
+  status: string;
+  broader_platform_registry_ready: boolean;
+  broader_platform_registry_hash: string;
+  summary?: {
+    candidate_count?: number;
+    registered_candidate_count?: number;
+    enabled_candidate_count?: number;
+    disabled_candidate_count?: number;
+    stage_counts?: Record<string, number>;
+    role_counts?: Record<string, number>;
+    p0a_enabled_platform_surfaces?: string[];
+    p0b_platform_surfaces?: string[];
+    candidate_platform_surfaces?: string[];
+    adapter_status_counts?: Record<string, number>;
+  };
+  candidate_platforms?: Array<{
+    id: string;
+    platform: string;
+    surface: string;
+    build_stage: string;
+    platform_role: string;
+    default_weight: number;
+    enabled: boolean;
+    priority: number;
+    access_methods?: string[];
+    adapter_status?: string;
+    required_environment?: string[];
+    evidence_requirements?: string[];
+    scoring_policy?: string;
+    source_signal_types?: string[];
+    next_work_item?: string;
+    market_profile_registered?: boolean;
+  }>;
+  recommended_sequence?: string[];
+  current_boundary?: string[];
 };
 
 type AuHandoffDossier = {
@@ -1190,6 +1231,7 @@ const endpoints = {
   launchRemediationPlan: "/v1/launch-remediation-plan/au",
   p0aEnvironmentChecklist: "/v1/p0a-environment-checklist/au",
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
+  broaderPlatformRegistry: "/v1/au-broader-platform-registry",
   handoffDossier: "/v1/handoff-dossier/au",
   projects: "/v1/projects/runtime",
   projectMembers: "/v1/project-members/runtime",
@@ -2081,6 +2123,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     launchRemediationPlan: endpoints.launchRemediationPlan,
     p0aEnvironmentChecklist: endpoints.p0aEnvironmentChecklist,
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
+    broaderPlatformRegistry: endpoints.broaderPlatformRegistry,
     handoffDossier: endpoints.handoffDossier,
     projects: runtimePath(endpoints.projects, projectListParams),
     projectMembers: endpoints.projectMembers,
@@ -2333,6 +2376,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     launchRemediationPlan,
     p0aEnvironmentChecklist,
     p0bGoogleExecutionChecklist,
+    broaderPlatformRegistry,
     handoffDossier,
     prompts,
     projectMembers,
@@ -2370,6 +2414,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuLaunchRemediationPlan | null>(baseUrl, paths.launchRemediationPlan, null),
     fetchRuntimeEndpoint<AuP0aEnvironmentChecklist | null>(baseUrl, paths.p0aEnvironmentChecklist, null),
     fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
+    fetchRuntimeEndpoint<AuBroaderPlatformRegistry | null>(baseUrl, paths.broaderPlatformRegistry, null),
     fetchRuntimeEndpoint<AuHandoffDossier | null>(baseUrl, paths.handoffDossier, null),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     selectedProjectId
@@ -2483,6 +2528,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     launchRemediationPlan,
     p0aEnvironmentChecklist,
     p0bGoogleExecutionChecklist,
+    broaderPlatformRegistry,
     handoffDossier,
     projects,
     prompts,
@@ -2525,6 +2571,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       launchRemediationPlan: launchRemediationPlan.payload,
       p0aEnvironmentChecklist: p0aEnvironmentChecklist.payload,
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
+      broaderPlatformRegistry: broaderPlatformRegistry.payload,
       handoffDossier: handoffDossier.payload,
       projects: projects.payload,
       projectMembers: projectMembers.payload,
@@ -2846,6 +2893,10 @@ export default async function Home({
   const missingP0bFullRunEnv = p0bGoogleExecutionSummary?.missing_full_run_required_environment || [];
   const missingP0bSelectors = p0bGoogleExecutionSummary?.missing_selector_groups || [];
   const p0bChecklistBlockers = p0bGoogleExecutionSummary?.remaining_blockers || [];
+  const broaderPlatformRegistry = data.broaderPlatformRegistry;
+  const broaderPlatformSummary = broaderPlatformRegistry?.summary;
+  const broaderPlatformCandidates = broaderPlatformRegistry?.candidate_platforms || [];
+  const broaderPlatformSequence = broaderPlatformRegistry?.recommended_sequence || [];
   const handoffDossier = data.handoffDossier;
   const handoffSummary = handoffDossier?.summary;
   const handoffNextWorkItem = handoffDossier?.next_work_item;
@@ -3104,6 +3155,12 @@ export default async function Home({
               <option value="chatgpt">chatgpt</option>
               <option value="google">google</option>
               <option value="perplexity">perplexity</option>
+              <option value="gemini">gemini</option>
+              <option value="bing_copilot">bing_copilot</option>
+              <option value="claude">claude</option>
+              <option value="youtube">youtube</option>
+              <option value="reddit">reddit</option>
+              <option value="productreview">productreview</option>
             </select>
           </label>
           <label>
@@ -3426,6 +3483,44 @@ export default async function Home({
             </ul>
           ) : null}
           <code>{paths.p0bGoogleExecutionChecklist}</code>
+        </div>
+        <div className="broaderPlatformRegistry">
+          <div className="launchRemediationHeader">
+            <strong>Broader platform registry</strong>
+            <span>
+              {broaderPlatformRegistry?.registry_version || "au_broader_platform_registry_v1"} · hash{" "}
+              {shortHash(broaderPlatformRegistry?.broader_platform_registry_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>Ready {broaderPlatformRegistry?.broader_platform_registry_ready ? "yes" : "no"}</span>
+            <span>Candidates {broaderPlatformSummary?.candidate_count || 0}</span>
+            <span>Registered {broaderPlatformSummary?.registered_candidate_count || 0}</span>
+            <span>Enabled {broaderPlatformSummary?.enabled_candidate_count || 0}</span>
+          </div>
+          <div className="platformRegistryGrid">
+            {broaderPlatformCandidates.slice(0, 6).map((candidate) => (
+              <div className="platformCandidate" key={candidate.id}>
+                <div>
+                  <strong>{candidate.platform}</strong>
+                  <span>
+                    {candidate.surface} · {candidate.build_stage} · {candidate.platform_role}
+                  </span>
+                </div>
+                <small>
+                  {candidate.adapter_status || "status"} · {candidate.enabled ? "enabled" : "disabled"} · weight{" "}
+                  {num(candidate.default_weight || 0)}
+                </small>
+                <code>{candidate.next_work_item || candidate.id}</code>
+              </div>
+            ))}
+          </div>
+          <div className="handoffBoundary">
+            <span>P0a enabled {broaderPlatformSummary?.p0a_enabled_platform_surfaces?.join(", ") || "none"}</span>
+            <span>P0b isolated {broaderPlatformSummary?.p0b_platform_surfaces?.join(", ") || "none"}</span>
+            <span>Sequence {broaderPlatformSequence.slice(0, 3).join(" -> ") || "not planned"}</span>
+          </div>
+          <code>{paths.broaderPlatformRegistry}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">
@@ -4138,6 +4233,12 @@ export default async function Home({
                     <option value="google">google</option>
                     <option value="perplexity">perplexity</option>
                     <option value="chatgpt">chatgpt</option>
+                    <option value="gemini">gemini</option>
+                    <option value="bing_copilot">bing_copilot</option>
+                    <option value="claude">claude</option>
+                    <option value="youtube">youtube</option>
+                    <option value="reddit">reddit</option>
+                    <option value="productreview">productreview</option>
                   </select>
                 </label>
                 <label>
@@ -4147,6 +4248,12 @@ export default async function Home({
                     <option value="google_aio">google_aio</option>
                     <option value="sonar">sonar</option>
                     <option value="chatgpt_search">chatgpt_search</option>
+                    <option value="gemini_search">gemini_search</option>
+                    <option value="copilot_search">copilot_search</option>
+                    <option value="claude_search">claude_search</option>
+                    <option value="youtube_search">youtube_search</option>
+                    <option value="reddit_search">reddit_search</option>
+                    <option value="productreview_reviews">productreview_reviews</option>
                   </select>
                 </label>
                 <label className="wideField">

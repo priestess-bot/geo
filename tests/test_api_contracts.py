@@ -408,6 +408,21 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("hard_package_gate", [command["id"] for command in payload["verification_commands"]])
         self.assertNotIn("raw_value", json.dumps(payload))
 
+    def test_au_broader_platform_registry_endpoint_returns_disabled_candidates(self) -> None:
+        response = self.client.get("/v1/au-broader-platform-registry")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["registry_version"], "au_broader_platform_registry_v1")
+        self.assertTrue(payload["broader_platform_registry_ready"])
+        self.assertEqual(payload["summary"]["candidate_count"], 6)
+        self.assertEqual(payload["summary"]["enabled_candidate_count"], 0)
+        self.assertEqual(set(payload["summary"]["p0a_enabled_platform_surfaces"]), {"chatgpt:chatgpt_search", "perplexity:sonar"})
+        self.assertEqual(payload["candidate_platforms"][0]["id"], "gemini_ai_search")
+        self.assertEqual(payload["candidate_platforms"][-1]["id"], "productreview_au_reviews")
+        self.assertTrue(all(candidate["enabled"] is False for candidate in payload["candidate_platforms"]))
+        self.assertTrue(payload["broader_platform_registry_hash"])
+
     def test_au_handoff_dossier_endpoint_returns_runtime_handoff_summary(self) -> None:
         helper = AuHandoffDossierTest()
         helper.setUp()
@@ -4009,6 +4024,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/launch-remediation-plan/au", payload["persistence"])
         self.assertIn("/v1/p0a-environment-checklist/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-execution-checklist/au", payload["persistence"])
+        self.assertIn("/v1/au-broader-platform-registry", payload["persistence"])
         self.assertIn("/v1/handoff-dossier/au", payload["persistence"])
         self.assertIn("/metrics", payload["persistence"])
 

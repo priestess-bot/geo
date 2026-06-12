@@ -641,12 +641,36 @@ code {
 .launchRemediation,
 .p0aEnvironmentChecklist,
 .p0bGoogleExecutionChecklist,
+.broaderPlatformRegistry,
 .handoffDossier {
   border: 1px solid #d9e2ec;
   border-radius: 4px;
   display: grid;
   gap: 10px;
   padding: 10px;
+}
+
+.platformRegistryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.platformCandidate {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #e5edf4;
+  border-radius: 4px;
+  padding: 10px;
+  background: #ffffff;
+  min-width: 0;
+}
+
+.platformCandidate div,
+.platformCandidate small {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 
 .launchRemediationHeader {
