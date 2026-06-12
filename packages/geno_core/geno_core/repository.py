@@ -21,6 +21,7 @@ from geno_core.models import (
     CollectionFailureRecord,
     CollectionRunSummary,
     ContentDraft,
+    EntityAliasCandidateAssignmentInput,
     EntityAliasCandidateReviewInput,
     EntityAliasInput,
     IntegrationConnector,
@@ -1205,6 +1206,13 @@ ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS = (
     "reviewed_by",
     "reason",
     "notes",
+    "assigned_to",
+    "assigned_by",
+    "assignment_status",
+    "assignment_note",
+    "assigned_at",
+    "due_at",
+    "priority",
     "evidence_answer_run_ids",
     "evidence_urls",
     "payload",
@@ -2538,6 +2546,103 @@ class PostgresEvidenceRepository:
             records=records,
         )
 
+    def assign_entity_alias_candidate_review(
+        self,
+        assignment: EntityAliasCandidateAssignmentInput,
+    ) -> RuntimeEntityAliasCandidateReview:
+        project_id = assignment.project_id.strip()
+        candidate_id = assignment.candidate_id.strip()
+        assigned_to = assignment.assigned_to.strip()
+        assigned_by = assignment.assigned_by.strip() or "runtime-console"
+        assignment_status = assignment.assignment_status.strip().lower() or "assigned"
+        priority = assignment.priority.strip().lower() or "normal"
+        assignment_note = assignment.assignment_note.strip() if assignment.assignment_note else None
+        reason = assignment.reason.strip() if assignment.reason else None
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not candidate_id:
+            raise ValueError("candidate_id is required")
+        if not assigned_to:
+            raise ValueError("assigned_to is required")
+        if assignment_status not in {"assigned", "in_progress", "blocked", "completed", "unassigned"}:
+            raise ValueError("assignment_status must be assigned, in_progress, blocked, completed, or unassigned")
+        if priority not in {"low", "normal", "high", "urgent"}:
+            raise ValueError("priority must be low, normal, high, or urgent")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)}
+                FROM entity_alias_candidate_reviews
+                WHERE project_id = %s AND candidate_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id), candidate_id),
+            )
+            before = _row_dict(cursor.fetchone(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
+            if not before:
+                raise ValueError("entity alias candidate review not found")
+            cursor.execute(
+                """
+                UPDATE entity_alias_candidate_reviews
+                SET assigned_to = %s,
+                    assigned_by = %s,
+                    assignment_status = %s,
+                    assignment_note = %s,
+                    assigned_at = now(),
+                    due_at = %s,
+                    priority = %s,
+                    updated_at = now()
+                WHERE project_id = %s AND candidate_id = %s
+                """,
+                (
+                    assigned_to,
+                    assigned_by,
+                    assignment_status,
+                    assignment_note,
+                    assignment.due_at,
+                    priority,
+                    _uuid(project_id),
+                    candidate_id,
+                ),
+            )
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)}
+                FROM entity_alias_candidate_reviews
+                WHERE project_id = %s AND candidate_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id), candidate_id),
+            )
+            record = _row_dict(cursor.fetchone(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="entity_alias_candidate_assigned",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=assigned_by,
+                target_type="entity_alias_candidate_review",
+                target_id=str(record["id"]),
+                before=before,
+                after=record,
+                input_refs={"candidate_id": candidate_id, "assigned_to": assigned_to},
+                output_refs={
+                    "entity_alias_candidate_review_ids": [str(record["id"])],
+                    "assignment_status": assignment_status,
+                    "priority": priority,
+                    "due_at": record.get("due_at"),
+                },
+                method_version="entity_alias_candidate_assignment_v1",
+                reason=reason or assignment_note or f"assign entity alias candidate review to {assigned_to}",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            audit_events = self._load_entity_alias_candidate_review_audit_events(
+                cursor=cursor,
+                project_id=str(record["project_id"]),
+                review_id=str(record["id"]),
+            )
+        self.connection.commit()
+        return RuntimeEntityAliasCandidateReview(review=record, audit_events=audit_events)
+
     def record_entity_alias_candidate_review(
         self,
         review: EntityAliasCandidateReviewInput,
@@ -2762,9 +2867,9 @@ class PostgresEvidenceRepository:
             INSERT INTO entity_alias_candidate_reviews (
               id, project_id, candidate_id, entity_id, entity_kind, alias, alias_type,
               source, confidence, decision, reviewed_by, reason, notes,
-              evidence_answer_run_ids, evidence_urls, payload, updated_at
+              assignment_status, priority, evidence_answer_run_ids, evidence_urls, payload, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
             ON CONFLICT (project_id, candidate_id) DO UPDATE SET
               entity_id = EXCLUDED.entity_id,
               entity_kind = EXCLUDED.entity_kind,
@@ -2795,6 +2900,8 @@ class PostgresEvidenceRepository:
                 normalized["reviewed_by"],
                 normalized["reason"],
                 normalized["notes"],
+                "unassigned",
+                "normal",
                 normalized["evidence_answer_run_ids"],
                 normalized["evidence_urls"],
                 _json_payload(normalized["payload"]),

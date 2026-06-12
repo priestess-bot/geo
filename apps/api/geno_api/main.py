@@ -15,6 +15,7 @@ import uuid
 from collections import defaultdict
 from contextvars import ContextVar
 from dataclasses import asdict, replace
+from datetime import datetime
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -68,6 +69,7 @@ from geno_core.knowledge import (
 )
 from geno_core.market import build_au_market_profile
 from geno_core.models import (
+    EntityAliasCandidateAssignmentInput,
     EntityAliasCandidateReviewInput,
     EntityAliasInput,
     RuntimeAlertEventInput,
@@ -1465,6 +1467,18 @@ class EntityAliasCandidateBatchReviewRequest(BaseModel):
     continue_on_error: bool = False
 
 
+class EntityAliasCandidateAssignmentRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    candidate_id: str = Field(min_length=1, max_length=160)
+    assigned_to: str = Field(min_length=1, max_length=120)
+    assigned_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    assignment_status: str = Field(default="assigned", min_length=1, max_length=40)
+    priority: str = Field(default="normal", min_length=1, max_length=40)
+    due_at: str | None = Field(default=None, max_length=80)
+    assignment_note: str | None = Field(default=None, max_length=1000)
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class RuntimeProjectCreateRequest(BaseModel):
     tenant_name: str = Field(default="Design Partner AU", min_length=1, max_length=160)
     project_name: str = Field(default="AU DTC Evidence Pilot", min_length=1, max_length=160)
@@ -2169,6 +2183,59 @@ def review_runtime_entity_alias_candidates_batch(
         return asdict(result)
     finally:
         close_repository_connection(repository)
+
+
+@app.post("/v1/entity-aliases/runtime/candidates/assign")
+def assign_runtime_entity_alias_candidate_review(
+    payload: EntityAliasCandidateAssignmentRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id.strip(),
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            record = repository.assign_entity_alias_candidate_review(
+                EntityAliasCandidateAssignmentInput(
+                    project_id=payload.project_id.strip(),
+                    candidate_id=payload.candidate_id.strip(),
+                    assigned_to=payload.assigned_to.strip(),
+                    assigned_by=actor_id or payload.assigned_by.strip(),
+                    assignment_status=payload.assignment_status.strip(),
+                    priority=payload.priority.strip(),
+                    due_at=_parse_optional_datetime(payload.due_at),
+                    assignment_note=payload.assignment_note.strip() if payload.assignment_note else None,
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "entity alias candidate review not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+def _parse_optional_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="due_at must be an ISO 8601 datetime") from exc
 
 
 @app.post("/v1/entity-aliases/runtime/confirm")
@@ -4577,6 +4644,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasCandidateReview",
             "RuntimeEntityAliasCandidateReviewPage",
             "RuntimeEntityAliasCandidateBatchReviewResult",
+            "EntityAliasCandidateAssignmentInput",
             "RuntimeEntityAliasPage",
             "IndustryProfile",
             "PromptQuestion",
@@ -4750,8 +4818,10 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasCandidateReviewPage",
             "RuntimeEntityAliasCandidateBatchReviewResult",
             "EntityAliasCandidateReviewInput",
+            "EntityAliasCandidateAssignmentInput",
             "EntityAliasCandidateReviewRequest",
             "EntityAliasCandidateBatchReviewRequest",
+            "EntityAliasCandidateAssignmentRequest",
             "RuntimeEntityAliasPage",
             "RuntimeEvidenceRun",
             "RuntimeEvidencePage",
@@ -4824,6 +4894,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/entity-aliases/runtime/candidates/reviews",
             "/v1/entity-aliases/runtime/candidates/review",
             "/v1/entity-aliases/runtime/candidates/review-batch",
+            "/v1/entity-aliases/runtime/candidates/assign",
             "/v1/entity-aliases/runtime/confirm",
             "/v1/entity-aliases/runtime/confirm-batch",
             "/v1/prompts/runtime",

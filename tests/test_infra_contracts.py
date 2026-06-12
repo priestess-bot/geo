@@ -222,11 +222,17 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn('"scan_status"', db_smoke_source)
         self.assertIn("CREATE TABLE entity_alias_candidate_reviews", init_sql)
         self.assertIn("idx_entity_alias_candidate_reviews_project", init_sql)
+        self.assertIn("idx_entity_alias_candidate_reviews_assignment", init_sql)
+        self.assertIn("assigned_to text", init_sql)
+        self.assertIn("assignment_status text NOT NULL DEFAULT 'unassigned'", init_sql)
+        self.assertIn("due_at timestamptz", init_sql)
         self.assertIn("UNIQUE(project_id, candidate_id)", init_sql)
+        self.assertIn("0012_entity_alias_candidate_review_assignments.sql", "\n".join(sorted(p.name for p in (ROOT / "infra/db/migrations/up").glob("*.sql"))))
         self.assertIn("'entity_alias_candidate_reviews'", rls_sql)
         self.assertIn("'entity_alias_candidate_reviews'", rls_down_sql)
         self.assertIn('"entity_alias_candidate_reviews"', db_smoke_source)
         self.assertIn('"candidate_id"', db_smoke_source)
+        self.assertIn('"assignment_status"', db_smoke_source)
 
     def test_litellm_config_uses_env_secrets_and_geno_model_aliases(self) -> None:
         config = yaml.safe_load((ROOT / "infra/litellm_config.yaml").read_text(encoding="utf-8"))

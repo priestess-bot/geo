@@ -684,6 +684,13 @@ CREATE TABLE entity_alias_candidate_reviews (
   reviewed_by text,
   reason text,
   notes text,
+  assigned_to text,
+  assigned_by text,
+  assignment_status text NOT NULL DEFAULT 'unassigned',
+  assignment_note text,
+  assigned_at timestamptz,
+  due_at timestamptz,
+  priority text NOT NULL DEFAULT 'normal',
   evidence_answer_run_ids text[] NOT NULL DEFAULT ARRAY[]::text[],
   evidence_urls text[] NOT NULL DEFAULT ARRAY[]::text[],
   payload jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -724,3 +731,4 @@ CREATE INDEX idx_runtime_notification_deliveries_claim ON runtime_notification_d
 CREATE INDEX idx_runtime_notification_deliveries_notification ON runtime_notification_deliveries(notification_id, status, created_at);
 CREATE INDEX idx_entity_alias_candidate_reviews_project ON entity_alias_candidate_reviews(project_id, decision, updated_at);
 CREATE INDEX idx_entity_alias_candidate_reviews_entity ON entity_alias_candidate_reviews(entity_kind, entity_id, alias_type, alias);
+CREATE INDEX idx_entity_alias_candidate_reviews_assignment ON entity_alias_candidate_reviews(project_id, assignment_status, assigned_to, due_at, priority);

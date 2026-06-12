@@ -1371,6 +1371,13 @@ type RuntimeEntityAliasCandidateReview = {
     reviewed_by?: string | null;
     reason?: string | null;
     notes?: string | null;
+    assigned_to?: string | null;
+    assigned_by?: string | null;
+    assignment_status?: string | null;
+    assignment_note?: string | null;
+    assigned_at?: string | null;
+    due_at?: string | null;
+    priority?: string | null;
     evidence_answer_run_ids?: string[];
     evidence_urls?: string[];
     updated_at?: string;
@@ -2383,6 +2390,41 @@ async function reviewEntityAliasCandidatesBatch(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/entity-aliases/runtime/candidates/review-batch returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function assignEntityAliasCandidateReview(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const candidateId = String(formData.get("candidate_id") || "").trim();
+  const assignedTo = String(formData.get("assigned_to") || "").trim();
+  if (!projectId || !candidateId || !assignedTo) {
+    throw new Error("project, candidate, and assigned_to are required for alias candidate assignment");
+  }
+  const payload = {
+    project_id: projectId,
+    candidate_id: candidateId,
+    assigned_to: assignedTo,
+    assigned_by: String(formData.get("assigned_by") || "runtime-console").trim(),
+    assignment_status: String(formData.get("assignment_status") || "assigned").trim(),
+    priority: String(formData.get("priority") || "normal").trim(),
+    due_at: String(formData.get("due_at") || "").trim() || undefined,
+    assignment_note: String(formData.get("assignment_note") || "").trim() || undefined,
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/entity-aliases/runtime/candidates/assign`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/entity-aliases/runtime/candidates/assign returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -4405,7 +4447,49 @@ export default async function Home({
                               {review.source || "manual"} · candidate {shortId(review.candidate_id)} ·{" "}
                               {dateText(review.updated_at || review.created_at)} ·{" "}
                               {record.audit_events[0]?.event_type || "no review audit"}
+                              {review.assigned_to
+                                ? ` · assigned ${review.assigned_to} / ${review.assignment_status || "assigned"} / ${
+                                    review.priority || "normal"
+                                  }`
+                                : " · unassigned"}
+                              {review.due_at ? ` · due ${dateText(review.due_at)}` : ""}
                             </small>
+                            <form action={assignEntityAliasCandidateReview} className="inlineAliasForm">
+                              <input type="hidden" name="project_id" value={review.project_id} />
+                              <input type="hidden" name="candidate_id" value={review.candidate_id} />
+                              <input type="hidden" name="assigned_by" value="runtime-console" />
+                              <input type="hidden" name="assignment_status" value="assigned" />
+                              <input
+                                type="hidden"
+                                name="reason"
+                                value="Assign alias candidate review from Runtime Console history"
+                              />
+                              <label>
+                                <span>Assignee</span>
+                                <input name="assigned_to" defaultValue={review.assigned_to || "runtime-console"} />
+                              </label>
+                              <label>
+                                <span>Priority</span>
+                                <select name="priority" defaultValue={review.priority || "normal"}>
+                                  <option value="low">low</option>
+                                  <option value="normal">normal</option>
+                                  <option value="high">high</option>
+                                  <option value="urgent">urgent</option>
+                                </select>
+                              </label>
+                              <label>
+                                <span>Due</span>
+                                <input name="due_at" type="datetime-local" />
+                              </label>
+                              <input
+                                type="hidden"
+                                name="assignment_note"
+                                value={`Assign ${review.alias} alias candidate review`}
+                              />
+                              <button className="actionButton compactAction" type="submit">
+                                Assign review
+                              </button>
+                            </form>
                             {review.decision === "rejected" ? (
                               <form action={reviewEntityAliasCandidate} className="inlineAliasForm">
                                 <input type="hidden" name="project_id" value={review.project_id} />
