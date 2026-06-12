@@ -126,6 +126,7 @@ python3 scripts/verify_au_p0b_google_spike_status_report.py \
 ```bash
 make au-p0b-google-serp-fixture
 make verify-au-p0b-google-serp-fixture
+make au-p0b-google-serp-fixture-manifest
 ```
 
 默认输出：
@@ -150,6 +151,7 @@ google_spike_gate / google_spike_readiness_gate 不应出现在该模式输出�
 ```bash
 make au-p0b-google-serp-health
 make verify-au-p0b-google-serp-health
+make au-p0b-google-serp-health-manifest
 ```
 
 默认输出：
@@ -172,6 +174,15 @@ python3 workers/collector_worker/run_collection_slice.py \
 
 禁止在该模式使用 `--persist-analysis`；真实 third-party 结果只能作为 comparison evidence，待与完整 `GoogleSpikeGateResult` 和 `GoogleSpikeReadinessGate` 复盘后，才讨论是否调整主评分准入口径。
 
+3. 汇总第三方 SERP 对照状态：
+
+```bash
+make au-p0b-google-serp-status
+make verify-au-p0b-google-serp-status
+```
+
+`au-p0b-google-serp-status` 会汇总 fixture、fixture manifest、supplier health、health manifest、真实 comparison payload 与 comparison manifest，输出 `comparison_evidence_ready`、`supplier_health_ready`、`remaining_blockers` 和 `next_action`。即使该 status pass，也只表示 third-party SERP evidence 可进入 P0b review，不表示 Google 可以进入主评分分母；主评分仍必须由默认 `google-spike` 240-run 的 `GoogleSpikeGateResult`、`GoogleSpikeReadinessGate` 和 `score_input_policy` 决定。
+
 ## 4. 停止条件
 
 - `verify-au-p0b-google-runbook` 失败：停止，先修步骤顺序、planned runs、gate 参数或 runbook hash。
@@ -192,8 +203,12 @@ python3 workers/collector_worker/run_collection_slice.py \
 - `docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json`
 - `docs/runtime_preflight/au-p0b-google-spike-status-latest.json`
 - `docs/runtime_preflight/au-p0b-google-serp-fixture-latest.json`
+- `docs/runtime_preflight/au-p0b-google-serp-fixture-manifest-latest.json`
 - `docs/runtime_preflight/au-p0b-google-serp-health-latest.json`
+- `docs/runtime_preflight/au-p0b-google-serp-health-manifest-latest.json`
 - `docs/runtime_preflight/au-p0b-google-serp-latest.json`
+- `docs/runtime_preflight/au-p0b-google-serp-manifest-latest.json`
+- `docs/runtime_preflight/au-p0b-google-serp-status-latest.json`
 
 真实运行后，应保留 gitignored JSON 产物用于本地复盘，并把摘要写回 `docs/工程实施审计日志.md`。
 

@@ -1,4 +1,4 @@
-.PHONY: install-api-deps install-dev-deps lint-python compile-python web-typecheck quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e ci-local api-preflight verify-api-preflight preflight-manifest au-p0a-runbook verify-au-p0a-runbook au-p0a-env verify-au-p0a-env au-p0a-runbook-dry-run verify-au-p0a-runbook-execution au-p0a-readiness au-p0a-package verify-au-p0a-package au-p0a-status verify-au-p0a-status au-p0b-google-runbook verify-au-p0b-google-runbook au-p0b-google-runbook-dry-run verify-au-p0b-google-runbook-execution au-p0b-google-status verify-au-p0b-google-status au-p0b-google-serp-health verify-au-p0b-google-serp-health au-p0b-google-serp-fixture verify-au-p0b-google-serp-fixture browser-fidelity-plan browser-fidelity-scheduler-plan browser-fidelity-scheduler-run api-browser-fidelity-preflight report-export-worker runtime-alert-notification-worker runtime-alert-escalation-worker notification-delivery-worker worker-fixture worker-fixture-persist worker-google-fixture
+.PHONY: install-api-deps install-dev-deps lint-python compile-python web-typecheck quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e ci-local api-preflight verify-api-preflight preflight-manifest au-p0a-runbook verify-au-p0a-runbook au-p0a-env verify-au-p0a-env au-p0a-runbook-dry-run verify-au-p0a-runbook-execution au-p0a-readiness au-p0a-package verify-au-p0a-package au-p0a-status verify-au-p0a-status au-p0b-google-runbook verify-au-p0b-google-runbook au-p0b-google-runbook-dry-run verify-au-p0b-google-runbook-execution au-p0b-google-status verify-au-p0b-google-status au-p0b-google-serp-health verify-au-p0b-google-serp-health au-p0b-google-serp-health-manifest au-p0b-google-serp-fixture verify-au-p0b-google-serp-fixture au-p0b-google-serp-fixture-manifest au-p0b-google-serp-status verify-au-p0b-google-serp-status browser-fidelity-plan browser-fidelity-scheduler-plan browser-fidelity-scheduler-run api-browser-fidelity-preflight report-export-worker runtime-alert-notification-worker runtime-alert-escalation-worker notification-delivery-worker worker-fixture worker-fixture-persist worker-google-fixture
 
 install-api-deps:
 	python3 -m pip install -r apps/api/requirements.txt
@@ -118,11 +118,23 @@ au-p0b-google-serp-health:
 verify-au-p0b-google-serp-health:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_serp_comparison.py $${GENO_AU_P0B_GOOGLE_SERP_HEALTH_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-serp-health-latest.json}
 
+au-p0b-google-serp-health-manifest:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_preflight_manifest.py $${GENO_AU_P0B_GOOGLE_SERP_HEALTH_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-serp-health-latest.json} --manifest-path $${GENO_AU_P0B_GOOGLE_SERP_HEALTH_MANIFEST_PATH:-docs/runtime_preflight/au-p0b-google-serp-health-manifest-latest.json}
+
 au-p0b-google-serp-fixture:
 	PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode google-serp-fixture --preflight-output-path $${GENO_AU_P0B_GOOGLE_SERP_FIXTURE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-serp-fixture-latest.json}
 
 verify-au-p0b-google-serp-fixture:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_serp_comparison.py $${GENO_AU_P0B_GOOGLE_SERP_FIXTURE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-serp-fixture-latest.json} --require-comparison-ready --require-collector-health-ready
+
+au-p0b-google-serp-fixture-manifest:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_preflight_manifest.py $${GENO_AU_P0B_GOOGLE_SERP_FIXTURE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-serp-fixture-latest.json} --manifest-path $${GENO_AU_P0B_GOOGLE_SERP_FIXTURE_MANIFEST_PATH:-docs/runtime_preflight/au-p0b-google-serp-fixture-manifest-latest.json}
+
+au-p0b-google-serp-status:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_p0b_google_serp_status_report.py --output-path $${GENO_AU_P0B_GOOGLE_SERP_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-serp-status-latest.json}
+
+verify-au-p0b-google-serp-status:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_serp_status_report.py $${GENO_AU_P0B_GOOGLE_SERP_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-serp-status-latest.json}
 
 browser-fidelity-plan:
 	@PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --plan-browser-fidelity-sampling
