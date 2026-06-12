@@ -24,6 +24,14 @@ google_ai_mode -> ManualBackfillCollector      -> access_method=manual
 
 ## 2. 运行前环境
 
+推荐先复制脱敏模板：
+
+```bash
+cp .env.au-p0b-google.example .env.au-p0b-google
+```
+
+模板默认 `GOOGLE_PLAYWRIGHT_ENABLED=0`，不会误触发真实浏览器采集。填完真实 selector、storage state、manual backfill 路径、数据库和可选对象存储后，再运行 `make au-p0b-google-playwright-env`；报告只会保存变量来源、长度和 hash 前缀，不会保存原始值。
+
 必需变量：
 
 ```bash

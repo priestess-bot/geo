@@ -261,6 +261,30 @@ class AuP0bGooglePlaywrightEnvReportTest(unittest.TestCase):
         self.assertEqual(json.loads(build_result.stdout), written_payload)
         self.assertEqual(json.loads(verify_result.stdout)["status"], "pass")
 
+    def test_repo_example_env_is_safe_to_parse_and_disabled_by_default(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path = self._write_runbook(temp_dir)
+            report = build_google_playwright_env_report(
+                runbook_path=runbook_path,
+                env_file_path=Path(".env.au-p0b-google.example"),
+                env={},
+                playwright_available=True,
+                generated_at="2026-06-12T00:00:00Z",
+            )
+
+        required = {item["name"]: item for item in report["required"]}
+        self.assertTrue(required["GOOGLE_PLAYWRIGHT_ENABLED"]["present"])
+        self.assertFalse(required["GOOGLE_PLAYWRIGHT_ENABLED"]["truthy"])
+        self.assertEqual(required["GOOGLE_PLAYWRIGHT_ENABLED"]["source"], "env_file")
+        self.assertEqual(report["collector_health"], "not_configured")
+        self.assertFalse(report["ready_for_playwright_smoke"])
+        self.assertFalse(report["ready_for_full_google_run"])
+        self.assertEqual(report["next_action"], "populate_google_playwright_smoke_environment")
+        self.assertIn("GOOGLE_PLAYWRIGHT_ENABLED", report["missing_required"])
+        self.assertIn("google_aio_prompt_selector", report["missing_selector_groups"])
+        self.assertNotIn("raw_value", json.dumps(report))
+        self.assertEqual(verify_google_playwright_env_report(report)["status"], "pass")
+
 
 if __name__ == "__main__":
     unittest.main()

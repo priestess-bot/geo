@@ -266,6 +266,8 @@ class InfraContractsTest(unittest.TestCase):
 
     def test_browser_fidelity_plan_make_target_outputs_machine_readable_json(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+        gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        google_env_example = (ROOT / ".env.au-p0b-google.example").read_text(encoding="utf-8")
 
         self.assertIn("install-dev-deps:", makefile)
         self.assertIn("python3 -m pip install -r requirements-dev.txt", makefile)
@@ -303,6 +305,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH", makefile)
         self.assertIn("au-p0b-google-playwright-env:", makefile)
         self.assertIn("scripts/build_au_p0b_google_playwright_env_report.py", makefile)
+        self.assertIn("--env-file $${GENO_AU_P0B_GOOGLE_ENV_FILE:-.env.au-p0b-google}", makefile)
         self.assertIn("verify-au-p0b-google-playwright-env:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_playwright_env_report.py", makefile)
         self.assertIn("au-p0b-google-playwright-smoke:", makefile)
@@ -345,6 +348,18 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("db-smoke:", makefile)
         self.assertIn("docker compose -p geno-db-smoke -f infra/docker-compose.yml --profile db-smoke run --rm db-smoke", makefile)
         self.assertIn("ci-local: quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e", makefile)
+        self.assertIn("!.env.au-p0b-google.example", gitignore)
+        self.assertIn("GOOGLE_PLAYWRIGHT_ENABLED=0", google_env_example)
+        for name in (
+            "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR=",
+            "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR=",
+            "MANUAL_BACKFILL_PATH=",
+            "DATABASE_URL=",
+            "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH=",
+        ):
+            self.assertIn(name, google_env_example)
+        for forbidden in ("sk-", "AIza", "postgresql://user:pass@", "serpapi.com"):
+            self.assertNotIn(forbidden, google_env_example)
 
     def test_github_ci_runs_runtime_contract_build_compose_and_e2e_gates(self) -> None:
         workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))

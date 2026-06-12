@@ -27,6 +27,7 @@ tmp/
 .env.*
 !.env.example
 !.env.au-p0a.example
+!.env.au-p0b-google.example
 
 # Python
 __pycache__/
