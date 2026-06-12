@@ -1567,7 +1567,7 @@ checked_at
 - 只比较同一 `prompt_question_id + city` 下的 `official_api` 与 `browser` access method；没有 browser 样本时状态为 `not_run`，两类样本没有交集时状态为 `no_overlap`。
 - `payload_hash` 冻结比较口径；Runtime Console 和报告方法说明展示 status、official/browser 记录数、comparable pairs、mismatch count、difference rate 和 hash。
 - 每次生成或重跑 check 追加 `api_browser_fidelity_checked` 审计事件，记录输入 report/answer_run ids、输出 check id、方法版本和 actor。
-- P0c 可先由 worker 在 `--persist-analysis` 后自动生成；启用 `--include-browser-fidelity-fixture` 时，报告 Method Disclosure 的 fidelity payload 使用全量 official_api + browser 抽检样本，但报告证据附录、score rate denominators 和 `VisibilityScoreSnapshot.answer_run_ids` 仍只使用 `score_input_records`；`GET /v1/fidelity-checks/runtime/trend` 已把最近 checks 聚合为可解释趋势摘要，并由 Runtime Console 展示；`make browser-fidelity-plan` 负责生成可审计、可复跑的 prompt/city 抽样计划，`scripts/run_browser_fidelity_scheduler.py` / Compose `scheduler` profile 负责把计划生成和可选执行包装成 cron/K8s CronJob 可消费的 JSON 调度入口；启用 `--include-browser-fidelity-playwright` 时可把真实 browser collector 加入 API 批次，先用 `make api-browser-fidelity-preflight` 验证启用开关、selector、session state 和 Playwright 依赖；采集执行可用 `CollectionExecutionPolicy` 做 worker 内重试/backoff/节流并保留 attempt 审计；配置 `GENO_BROWSER_ARTIFACT_DIR` 与对象存储后，浏览器截图/HTML 可归档为 `s3://...` EvidenceAsset；P1 再补真实账号/selector 联调、真实周期样本数据、分布式失败重试队列和 Temporal 深度编排。
+- P0c 可先由 worker 在 `--persist-analysis` 后自动生成；启用 `--include-browser-fidelity-fixture` 时，报告 Method Disclosure 的 fidelity payload 使用全量 official_api + browser 抽检样本，但报告证据附录、score rate denominators 和 `VisibilityScoreSnapshot.answer_run_ids` 仍只使用 `score_input_records`；`GET /v1/fidelity-checks/runtime/trend` 已把最近 checks 聚合为可解释趋势摘要，并由 Runtime Console 展示；`make browser-fidelity-plan` 负责生成可审计、可复跑的 prompt/city 抽样计划，`scripts/run_browser_fidelity_scheduler.py` / Compose `scheduler` profile 负责把计划生成和可选执行包装成 cron/K8s CronJob 可消费的 JSON 调度入口；启用 `--include-browser-fidelity-playwright` 时可把真实 browser collector 加入 API 批次，先用 `make api-browser-fidelity-preflight` 验证启用开关、selector、session state 和 Playwright 依赖；采集执行可用 `CollectionExecutionPolicy` 做 worker 内重试/backoff/节流并保留 attempt 审计；配置 `GENO_BROWSER_ARTIFACT_DIR` 与对象存储后，浏览器截图/HTML 可归档为 `s3://...` EvidenceAsset；`make au-launch-status` 会把 P0a design partner 状态、P0b Google 主评分准入和 P0c 报告方法披露本地合同合并为 `ready_for_customer_report_handoff`、`next_action`、remaining blockers 与 hash，可作为真实客户报告交付前的总控准入检查；P1 再补真实账号/selector 联调、真实周期样本数据、分布式失败重试队列和 Temporal 深度编排。
 
 ### 8.16 AuditEvent（审计事件，新增）
 
@@ -1689,7 +1689,7 @@ ReportEvidence
 - 可生成 Citation Graph。
 - 可输出 3-5 个竞品的 Benchmark。
 - 可识别 source gap。
-- 可导出包含方法说明（含 API/消费者界面差异抽检结论、Google spike 结论、平台覆盖/降级口径）、审计摘要、分数解释包和原始证据附录的 PDF/CSV 报告；工程实现必须把审计摘要冻结到 `ReportExport.method_disclosure.audit_summary`，并在 Markdown/PDF/runtime artifact 中展示事件数量、事件类型分布、target 类型、method version、actor 类型、input/output ref keys、事件时间窗和代表性 audit event ids。
+- 可导出包含方法说明（含 API/消费者界面差异抽检结论、Google spike 结论、平台覆盖/降级口径）、审计摘要、分数解释包和原始证据附录的 PDF/CSV 报告；工程实现必须把审计摘要冻结到 `ReportExport.method_disclosure.audit_summary`，并在 Markdown/PDF/runtime artifact 中展示事件数量、事件类型分布、target 类型、method version、actor 类型、input/output ref keys、事件时间窗和代表性 audit event ids；真实客户报告交付前必须通过 `make au-launch-status` / `make verify-au-launch-status` 的 hash 自洽检查，并在需要硬门禁时运行 `scripts/verify_au_launch_status.py --require-ready`。
 
 架构验收（开源·可插拔）：
 
