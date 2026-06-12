@@ -81,6 +81,7 @@ def _p0a_environment_item(blockers: list[str]) -> dict[str, Any]:
         "dependency_class": "provider_keys_and_database",
         "required_inputs": missing_env or ["PERPLEXITY_API_KEY", "OPENAI_API_KEY", "DATABASE_URL"],
         "commands": [
+            _command("make verify-au-p0a-env-template"),
             _command("cp .env.au-p0a.example .env.au-p0a"),
             _command("make au-p0a-runbook"),
             _command("make au-p0a-env"),

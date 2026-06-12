@@ -7,6 +7,7 @@
 - 先跑最小 preflight，再跑 small batch，最后跑 full batch。
 - 每一步都必须先生成 JSON，再 verify，再 manifest。
 - runbook 自身也必须先 verify，避免命令顺序、planned runs 或 gate 参数漂移。
+- 复制或填写真实 `.env.au-p0a` 前，必须先运行 `make verify-au-p0a-env-template`，确认提交到仓库的 `.env.au-p0a.example` 完整且不含真实 provider secret。
 - 真实执行前先跑 runbook dry-run，确认步骤、产物、外部 API 调用风险和环境缺口；dry-run 默认读取 `GENO_AU_P0A_ENV_FILE` 或 `.env.au-p0a`，按进程环境优先、文件只补缺的规则判断 readiness，且默认不执行任何命令。
 - 每个阶段开始前都先跑 readiness gate，缺 key、缺上游 manifest 或上游未达 design-partner ready 时停止。
 - readiness 默认读取 `GENO_AU_P0A_ENV_FILE` 或 `.env.au-p0a`，按进程环境优先、文件只补缺的规则判断必需变量；默认不主动连接数据库，真实批次前建议开启 `GENO_AU_P0A_REQUIRE_DB_CHECK=1`，用只读 `SELECT 1` 验证合并后的 `DATABASE_URL` 可用。
@@ -22,7 +23,14 @@ make au-p0a-runbook
 make verify-au-p0a-runbook
 ```
 
-2. 准备环境：
+2. 校验模板并准备环境：
+
+```bash
+make verify-au-p0a-env-template
+cp .env.au-p0a.example .env.au-p0a
+```
+
+再把 `.env.au-p0a` 中的 provider key、数据库连接和对象存储配置替换为真实值，或直接在 shell 中导出变量：
 
 ```bash
 export PERPLEXITY_API_KEY=...
@@ -171,12 +179,21 @@ environment report 必须确认：
 - `.env.au-p0a` 可作为本地模板文件，真实 `.env.au-p0a` 不提交 git；`GENO_AU_P0A_ENV_FILE` 可指向其它本地 secret 文件
 - `ready_for_real_batch` 只在 runbook verifier 通过且必需环境存在时为 true
 
+env template verifier 必须确认：
+
+- `template_verification_hash` 可由 `make verify-au-p0a-env-template` 复算
+- `.env.au-p0a.example` 包含 `PERPLEXITY_API_KEY`、`OPENAI_API_KEY`、`DATABASE_URL` 和 P0a runtime 输出路径
+- provider key 在模板中必须为空；`DATABASE_URL` 和对象存储凭证只能是本地占位值
+- 输出路径必须落在 gitignored 的 `docs/runtime_preflight/*.json`
+- 模板报告只输出长度、sha256 前缀和脱敏状态，不输出原始值；出现 `sk-`、`pplx-`、`AIza` 或 `serpapi.com` 等疑似真实 secret 标记时必须 fail
+- 该 verifier 只证明已提交模板安全完整，不证明本地 `.env.au-p0a`、真实 provider key 或数据库已 ready
+
 environment checklist 必须确认：
 
 - environment_checklist_hash 可由 `make verify-au-p0a-environment-checklist` 复算
 - 必填变量、推荐变量、present/source/value_length/sha256_prefix 与 env report 一致
 - 不包含 `value` 或 `raw_value` 等原始 secret 字段
-- setup_commands 固定 env 模板、runbook、env report 和 checklist 生成顺序
+- setup_commands 固定 env 模板校验、env 模板复制、runbook、env report 和 checklist 生成顺序
 - verification_commands 固定 `--require-ready-environment`、runbook dry-run、DB readiness 和 status refresh
 - 当前缺项可直接回答 `p0a_environment` work item 还要填哪些输入
 

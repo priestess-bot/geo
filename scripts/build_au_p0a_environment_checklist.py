@@ -143,6 +143,11 @@ def _environment_tasks(checks: list[object], *, required: bool) -> list[dict[str
 def _setup_commands() -> list[dict[str, str]]:
     return [
         {
+            "id": "verify_env_template",
+            "shell": "make verify-au-p0a-env-template",
+            "purpose": "Verify the committed env template is complete and does not contain provider secrets.",
+        },
+        {
             "id": "copy_env_template",
             "shell": "cp .env.au-p0a.example .env.au-p0a",
             "purpose": "Create a local env file for real AU P0a credentials without committing secrets.",

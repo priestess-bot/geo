@@ -291,6 +291,8 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("scripts/build_au_p0b_google_spike_runbook.py", makefile)
         self.assertIn("verify-au-p0b-google-runbook:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_spike_runbook.py", makefile)
+        self.assertIn("verify-au-p0a-env-template:", makefile)
+        self.assertIn("scripts/verify_au_p0a_env_template.py", makefile)
         self.assertIn("au-p0b-google-runbook-dry-run:", makefile)
         self.assertIn("scripts/run_au_p0b_google_spike_runbook.py", makefile)
         self.assertIn("verify-au-p0b-google-runbook-execution:", makefile)
@@ -418,6 +420,17 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("db-smoke:", makefile)
         self.assertIn("docker compose -p geno-db-smoke -f infra/docker-compose.yml --profile db-smoke run --rm db-smoke", makefile)
         self.assertIn("ci-local: quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e", makefile)
+        self.assertIn("!.env.au-p0a.example", gitignore)
+        p0a_env_example = (ROOT / ".env.au-p0a.example").read_text(encoding="utf-8")
+        for name in (
+            "PERPLEXITY_API_KEY=",
+            "OPENAI_API_KEY=",
+            "DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:5432/geno",
+            "GENO_AU_P0A_STATUS_OUTPUT_PATH=docs/runtime_preflight/au-p0a-status-latest.json",
+        ):
+            self.assertIn(name, p0a_env_example)
+        for forbidden in ("sk-", "pplx-", "AIza", "serpapi.com"):
+            self.assertNotIn(forbidden, p0a_env_example)
         self.assertIn("!.env.au-p0b-google.example", gitignore)
         self.assertIn("GOOGLE_PLAYWRIGHT_ENABLED=0", google_env_example)
         for name in (
