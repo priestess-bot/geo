@@ -80,7 +80,7 @@ verify-au-p0a-environment-checklist:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_environment_checklist.py $${GENO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-environment-checklist-latest.json}
 
 au-p0a-runbook-dry-run:
-	PYTHONPATH=packages/geno_core:apps/api python3 scripts/run_au_p0a_runbook.py --runbook-path $${GENO_AU_P0A_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-latest.json} --output-path $${GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-execution-latest.json}
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/run_au_p0a_runbook.py --runbook-path $${GENO_AU_P0A_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-latest.json} --env-file $${GENO_AU_P0A_ENV_FILE:-.env.au-p0a} --output-path $${GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-execution-latest.json}
 
 verify-au-p0a-runbook-execution:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_runbook_execution.py $${GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-execution-latest.json}

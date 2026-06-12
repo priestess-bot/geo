@@ -7,7 +7,7 @@
 - 先跑最小 preflight，再跑 small batch，最后跑 full batch。
 - 每一步都必须先生成 JSON，再 verify，再 manifest。
 - runbook 自身也必须先 verify，避免命令顺序、planned runs 或 gate 参数漂移。
-- 真实执行前先跑 runbook dry-run，确认步骤、产物、外部 API 调用风险和环境缺口；默认 dry-run 不执行任何命令。
+- 真实执行前先跑 runbook dry-run，确认步骤、产物、外部 API 调用风险和环境缺口；dry-run 默认读取 `GENO_AU_P0A_ENV_FILE` 或 `.env.au-p0a`，按进程环境优先、文件只补缺的规则判断 readiness，且默认不执行任何命令。
 - 每个阶段开始前都先跑 readiness gate，缺 key、缺上游 manifest 或上游未达 design-partner ready 时停止。
 - readiness 默认不主动连接数据库；真实批次前建议开启 `GENO_AU_P0A_REQUIRE_DB_CHECK=1`，用只读 `SELECT 1` 验证 `DATABASE_URL` 可用。
 - “可审计”不等于“可进入 design partner”；进入下一阶段必须通过 `--require-design-partner-ready`。
@@ -47,7 +47,7 @@ make verify-au-p0a-env
 make au-p0a-environment-checklist
 make verify-au-p0a-environment-checklist
 python3 scripts/verify_au_p0a_env_report.py --require-ready-environment
-make au-p0a-runbook-dry-run
+GENO_AU_P0A_ENV_FILE=${GENO_AU_P0A_ENV_FILE:-.env.au-p0a} make au-p0a-runbook-dry-run
 make verify-au-p0a-runbook-execution
 GENO_AU_P0A_REQUIRE_DB_CHECK=1 make au-p0a-readiness
 ```
@@ -168,7 +168,7 @@ environment report 必须确认：
 
 - environment_report_hash 可由 `make verify-au-p0a-env` 复算
 - `PERPLEXITY_API_KEY`、`OPENAI_API_KEY`、`DATABASE_URL` 必需变量只记录存在状态、来源、长度和 sha256 前缀，不输出原始 secret
-- `.env.au-p0a` 可作为本地模板文件，真实 `.env.au-p0a` 不提交 git
+- `.env.au-p0a` 可作为本地模板文件，真实 `.env.au-p0a` 不提交 git；`GENO_AU_P0A_ENV_FILE` 可指向其它本地 secret 文件
 - `ready_for_real_batch` 只在 runbook verifier 通过且必需环境存在时为 true
 
 environment checklist 必须确认：
@@ -187,6 +187,8 @@ runbook dry-run 必须确认：
 - 默认 `mode=dry_run`、`executed_command_count=0`
 - 每个 command step 的 command、output_paths、stop_on_failure 和 external_call_risk 可审计
 - `ready_to_execute` 只在 runbook verifier 通过且必需环境存在时为 true
+- env-file metadata 必须记录 path/exists/loaded/errors，但 required/recommended 检查只能记录 source、value_length、sha256_prefix 和 `secret_redacted=true`
+- process env 必须优先于 env-file；env-file 只补缺失值；执行 JSON 不允许出现 `value` 或 `raw_value` 字段
 
 evidence package 必须确认：
 

@@ -46,6 +46,51 @@ def _as_list(value: object) -> list[object]:
     return value if isinstance(value, list) else []
 
 
+def _find_forbidden_secret_fields(value: object, *, path: str = "$") -> list[str]:
+    findings: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}"
+            if key in {"value", "raw_value"}:
+                findings.append(child_path)
+            findings.extend(_find_forbidden_secret_fields(child, path=child_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            findings.extend(_find_forbidden_secret_fields(child, path=f"{path}[{index}]"))
+    return findings
+
+
+def _validate_env_checks(label: str, checks: list[object], errors: list[str]) -> list[str]:
+    missing: list[str] = []
+    for item in checks:
+        check = _as_dict(item)
+        name = check.get("name")
+        if not isinstance(name, str) or not name:
+            errors.append(f"{label}_check_name_invalid")
+            continue
+        for field in ("name", "present", "source", "value_length", "sha256_prefix", "secret_redacted"):
+            if field not in check:
+                errors.append(f"{label}_check_field_missing:{name}:{field}")
+        if check.get("source") not in {"process", "env_file", "missing"}:
+            errors.append(f"{label}_check_source_invalid:{name}")
+        if check.get("secret_redacted") is not True:
+            errors.append(f"{label}_check_secret_redaction_missing:{name}")
+        if check.get("present") is True:
+            if not isinstance(check.get("value_length"), int) or check.get("value_length") <= 0:
+                errors.append(f"{label}_check_value_length_invalid:{name}")
+            if not isinstance(check.get("sha256_prefix"), str) or len(check.get("sha256_prefix")) != 12:
+                errors.append(f"{label}_check_sha256_prefix_invalid:{name}")
+        elif check.get("present") is False:
+            missing.append(name)
+            if check.get("value_length") not in {0, None}:
+                errors.append(f"{label}_check_missing_value_length_invalid:{name}")
+            if check.get("sha256_prefix") not in {"", None}:
+                errors.append(f"{label}_check_missing_sha256_prefix_invalid:{name}")
+        else:
+            errors.append(f"{label}_check_present_invalid:{name}")
+    return sorted(missing)
+
+
 def _step_status_counts(steps: list[object]) -> dict[str, int]:
     counts = {"executed": 0, "failed": 0}
     for step in steps:
@@ -77,6 +122,8 @@ def verify_au_p0a_runbook_execution(
             errors.append(f"field_missing:{field}")
     if execution.get("execution_version") != EXECUTION_VERSION:
         errors.append("execution_version_invalid")
+    for forbidden_path in _find_forbidden_secret_fields(execution):
+        errors.append(f"forbidden_secret_field:{forbidden_path}")
 
     expected_hash = execution.get("execution_payload_hash")
     computed_hash = compute_execution_payload_hash(execution)
@@ -93,6 +140,21 @@ def verify_au_p0a_runbook_execution(
 
     runbook = _as_dict(execution.get("runbook_verification"))
     environment = _as_dict(execution.get("environment"))
+    if environment.get("secrets_redacted") is not True:
+        errors.append("environment_secrets_redacted_missing")
+    env_file = _as_dict(environment.get("env_file"))
+    if "path" not in env_file or "exists" not in env_file or "loaded" not in env_file:
+        errors.append("environment_env_file_metadata_incomplete")
+    required_missing = _validate_env_checks("required", _as_list(environment.get("required")), errors)
+    recommended_missing = _validate_env_checks("recommended", _as_list(environment.get("recommended")), errors)
+    if sorted(str(item) for item in _as_list(environment.get("missing_required"))) != required_missing:
+        errors.append("environment_missing_required_mismatch")
+    if sorted(str(item) for item in _as_list(environment.get("missing_recommended"))) != recommended_missing:
+        errors.append("environment_missing_recommended_mismatch")
+    if environment.get("status") not in {"pass", "fail"}:
+        errors.append("environment_status_invalid")
+    if environment.get("status") == "pass" and required_missing:
+        errors.append("environment_status_pass_with_missing_required")
     expected_ready = runbook.get("status") == "pass" and environment.get("status") == "pass"
     if execution.get("ready_to_execute") is not expected_ready:
         errors.append("ready_to_execute_mismatch")

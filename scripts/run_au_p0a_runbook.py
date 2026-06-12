@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.build_au_p0a_env_report import DEFAULT_ENV_FILE, _load_env_file  # noqa: E402
 from scripts.build_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_RUNBOOK_PATH  # noqa: E402
 from scripts.verify_au_p0a_runbook import verify_au_p0a_runbook  # noqa: E402
 
@@ -55,6 +57,10 @@ def _as_list(value: object) -> list[object]:
     return value if isinstance(value, list) else []
 
 
+def _fingerprint(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+
+
 def _step_env(step: dict[str, Any]) -> dict[str, str]:
     return {str(key): str(value) for key, value in _as_dict(step.get("env")).items()}
 
@@ -63,18 +69,68 @@ def _command(step: dict[str, Any]) -> list[str]:
     return [str(item) for item in _as_list(step.get("command"))]
 
 
-def _env_status(runbook: dict[str, Any], env: dict[str, str] | None) -> dict[str, Any]:
-    env_map = os.environ if env is None else env
+def _check_env_names(
+    names: list[str],
+    *,
+    env_file_values: Mapping[str, str],
+    process_env: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    for name in names:
+        source = "missing"
+        value = ""
+        if process_env.get(name):
+            value = str(process_env[name])
+            source = "process"
+        elif env_file_values.get(name):
+            value = env_file_values[name]
+            source = "env_file"
+        checks.append(
+            {
+                "name": name,
+                "present": bool(value),
+                "source": source,
+                "value_length": len(value),
+                "sha256_prefix": _fingerprint(value) if value else "",
+                "secret_redacted": True,
+            }
+        )
+    return checks
+
+
+def _env_status(
+    runbook: dict[str, Any],
+    env: dict[str, str] | None,
+    env_file_path: Path | None,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    env_file_values, env_file = _load_env_file(env_file_path)
+    process_env = os.environ if env is None else env
     required = [str(item) for item in _as_list(runbook.get("required_env"))]
     recommended = [str(item) for item in _as_list(runbook.get("recommended_env"))]
-    missing_required = [name for name in required if not env_map.get(name)]
-    missing_recommended = [name for name in recommended if not env_map.get(name)]
-    return {
-        "status": "pass" if not missing_required else "fail",
+    required_checks = _check_env_names(required, env_file_values=env_file_values, process_env=process_env)
+    recommended_checks = _check_env_names(recommended, env_file_values=env_file_values, process_env=process_env)
+    missing_required = [item["name"] for item in required_checks if not item["present"]]
+    missing_recommended = [item["name"] for item in recommended_checks if not item["present"]]
+    env_file_errors = [str(item) for item in _as_list(env_file.get("errors"))]
+    status = {
+        "status": "pass" if not missing_required and not env_file_errors else "fail",
+        "env_file": env_file,
+        "required": required_checks,
+        "recommended": recommended_checks,
         "missing_required": missing_required,
         "missing_recommended": missing_recommended,
+        "errors": [f"env_file:{error}" for error in env_file_errors],
         "secrets_redacted": True,
     }
+    return status, env_file_values
+
+
+def _merged_env(env: dict[str, str] | None, env_file_values: Mapping[str, str]) -> dict[str, str]:
+    merged = dict(os.environ if env is None else env)
+    for key, value in env_file_values.items():
+        if not merged.get(key):
+            merged[key] = value
+    return merged
 
 
 def _external_call_risk(step: dict[str, Any]) -> str:
@@ -90,6 +146,7 @@ def _step_result(
     index: int,
     execute: bool,
     env: dict[str, str] | None,
+    env_file_values: dict[str, str],
 ) -> dict[str, Any]:
     command = _command(step)
     entry: dict[str, Any] = {
@@ -118,9 +175,7 @@ def _step_result(
         entry["status"] = "dry_run"
         return entry
 
-    merged_env = dict(os.environ)
-    if env is not None:
-        merged_env.update(env)
+    merged_env = _merged_env(env, env_file_values)
     merged_env.update(_step_env(step))
     completed = subprocess.run(command, env=merged_env, capture_output=True, text=True, check=False)
     entry.update(
@@ -141,8 +196,10 @@ def run_au_p0a_runbook(
     execute: bool = False,
     stop_after_step: str | None = None,
     env: dict[str, str] | None = None,
+    env_file_path: Path | None = Path(DEFAULT_ENV_FILE),
     generated_at: str | None = None,
 ) -> dict[str, Any]:
+    _, env_file = _load_env_file(env_file_path)
     try:
         runbook = json.loads(runbook_path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -153,6 +210,7 @@ def run_au_p0a_runbook(
             "status": "fail",
             "ready_to_execute": False,
             "errors": ["runbook_file_missing"],
+            "environment": {"status": "fail", "env_file": env_file, "secrets_redacted": True},
             "runbook_path": str(runbook_path),
             "output_path": str(output_path) if output_path else "",
             "steps": [],
@@ -165,6 +223,7 @@ def run_au_p0a_runbook(
             "status": "fail",
             "ready_to_execute": False,
             "errors": [f"runbook_json_invalid:{exc.msg}"],
+            "environment": {"status": "fail", "env_file": env_file, "secrets_redacted": True},
             "runbook_path": str(runbook_path),
             "output_path": str(output_path) if output_path else "",
             "steps": [],
@@ -177,19 +236,21 @@ def run_au_p0a_runbook(
             "status": "fail",
             "ready_to_execute": False,
             "errors": ["runbook_not_json_object"],
+            "environment": {"status": "fail", "env_file": env_file, "secrets_redacted": True},
             "runbook_path": str(runbook_path),
             "output_path": str(output_path) if output_path else "",
             "steps": [],
         })
 
     verification = verify_au_p0a_runbook(runbook, path=runbook_path)
-    environment = _env_status(runbook, env)
+    environment, env_file_values = _env_status(runbook, env, env_file_path)
     steps: list[dict[str, Any]] = []
     errors: list[str] = []
     if verification["status"] != "pass":
         errors.extend(f"runbook:{error}" for error in verification["errors"])
     if execute and environment["status"] != "pass":
         errors.extend(f"environment:required_env_missing:{name}" for name in environment["missing_required"])
+        errors.extend(f"environment:{error}" for error in environment["errors"])
 
     stopped_after_step = False
     executed_count = 0
@@ -199,7 +260,7 @@ def run_au_p0a_runbook(
             if not isinstance(step, dict):
                 errors.append("step_not_object")
                 continue
-            result = _step_result(step, index=index, execute=execute, env=env)
+            result = _step_result(step, index=index, execute=execute, env=env, env_file_values=env_file_values)
             steps.append(result)
             if result["status"] in {"pass", "fail"}:
                 executed_count += 1
@@ -258,6 +319,11 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("GENO_AU_P0A_STOP_AFTER_STEP", ""),
         help="Stop after recording/executing the named step id.",
     )
+    parser.add_argument(
+        "--env-file",
+        default=os.environ.get("GENO_AU_P0A_ENV_FILE", DEFAULT_ENV_FILE),
+        help="Optional env file to parse without shell evaluation. Missing files are allowed.",
+    )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")
     return parser.parse_args()
 
@@ -270,6 +336,7 @@ def main() -> None:
         output_path=output_path,
         execute=args.execute,
         stop_after_step=args.stop_after_step or None,
+        env_file_path=Path(args.env_file) if args.env_file else None,
         generated_at=args.generated_at,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
