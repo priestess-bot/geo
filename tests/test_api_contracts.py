@@ -397,6 +397,12 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["unmapped_blocker_count"], 0)
         self.assertEqual(payload["runtime_endpoints"]["launch_status"], "GET /v1/launch-status/au")
         self.assertEqual(payload["runtime_endpoints"]["launch_remediation_plan"], "GET /v1/launch-remediation-plan/au")
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0a_environment_checklist"],
+            "GET /v1/p0a-environment-checklist/au",
+        )
+        self.assertIn("p0a_environment_checklist", payload)
+        self.assertEqual(payload["p0a_environment_checklist"]["missing_required_count"], 3)
         self.assertEqual(payload["next_work_item"]["id"], "p0a_environment")
         self.assertEqual(payload["markdown_report"]["media_type"], "text/markdown; charset=utf-8")
         self.assertTrue(payload["handoff_dossier_hash"])

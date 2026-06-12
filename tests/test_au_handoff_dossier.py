@@ -13,8 +13,10 @@ from scripts.build_au_handoff_dossier import (
     compute_handoff_dossier_hash,
     render_au_handoff_markdown,
 )
+from scripts.build_au_p0a_environment_checklist import build_au_p0a_environment_checklist
 from scripts.build_au_launch_remediation_plan import build_au_launch_remediation_plan
 from scripts.verify_au_handoff_dossier import verify_au_handoff_dossier
+from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTest
 from tests.test_au_launch_status import AuLaunchStatusTest
 
 
@@ -22,6 +24,7 @@ class AuHandoffDossierTest(unittest.TestCase):
     def setUp(self) -> None:
         self._launch_helper = AuLaunchStatusTest()
         self._launch_helper.setUp()
+        self._environment_helper = AuP0aEnvironmentChecklistTest()
 
     def _write_launch_status_and_plan(self, temp_dir: str, *, ready: bool) -> tuple[Path, Path]:
         p0a_status_path = self._launch_helper._write_p0a_status(temp_dir, ready=ready)
@@ -53,13 +56,30 @@ class AuHandoffDossierTest(unittest.TestCase):
         remediation_plan_path.write_text(json.dumps(remediation_plan), encoding="utf-8")
         return launch_status_path, remediation_plan_path
 
+    def _write_p0a_environment_checklist(self, temp_dir: str, *, ready: bool = False) -> Path:
+        runbook_path = self._environment_helper._write_runbook(temp_dir)
+        env_path = self._environment_helper._write_env_report(temp_dir, runbook_path, ready=ready)
+        checklist_path = Path(temp_dir) / "p0a-environment-checklist.json"
+        checklist = build_au_p0a_environment_checklist(
+            runbook_path=runbook_path,
+            environment_path=env_path,
+            status_path=Path(temp_dir) / "missing-p0a-status.json",
+            env_file_path=Path(temp_dir) / "missing.env",
+            output_path=checklist_path,
+            generated_at="2026-06-12T00:00:00Z",
+        )
+        checklist_path.write_text(json.dumps(checklist), encoding="utf-8")
+        return checklist_path
+
     def test_dossier_records_blocked_handoff_with_mapped_work_items(self) -> None:
         with TemporaryDirectory() as temp_dir:
             launch_status_path, remediation_plan_path = self._write_launch_status_and_plan(temp_dir, ready=False)
+            checklist_path = self._write_p0a_environment_checklist(temp_dir)
             markdown_path = Path(temp_dir) / "dossier.md"
             dossier = build_au_handoff_dossier(
                 launch_status_path=launch_status_path,
                 remediation_plan_path=remediation_plan_path,
+                p0a_environment_checklist_path=checklist_path,
                 output_path=Path(temp_dir) / "dossier.json",
                 markdown_output_path=markdown_path,
                 generated_at="2026-06-12T00:00:00Z",
@@ -79,7 +99,17 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertEqual(dossier["summary"]["next_work_item_id"], "p0a_environment")
         self.assertEqual(dossier["next_work_item"]["id"], "p0a_environment")
         self.assertEqual(dossier["runtime_endpoints"]["launch_status"], "GET /v1/launch-status/au")
-        self.assertIn("AU 客户交付总包", render_au_handoff_markdown(dossier))
+        self.assertEqual(
+            dossier["runtime_endpoints"]["p0a_environment_checklist"],
+            "GET /v1/p0a-environment-checklist/au",
+        )
+        self.assertFalse(dossier["p0a_environment_checklist"]["environment_checklist_ready"])
+        self.assertEqual(dossier["p0a_environment_checklist"]["missing_required_count"], 3)
+        self.assertEqual(dossier["summary"]["p0a_missing_required_environment_count"], 3)
+        markdown = render_au_handoff_markdown(dossier)
+        self.assertIn("AU 客户交付总包", markdown)
+        self.assertIn("P0a 环境清单", markdown)
+        self.assertIn("PERPLEXITY_API_KEY", markdown)
         self.assertEqual(dossier["handoff_dossier_hash"], compute_handoff_dossier_hash(dossier))
         self.assertEqual(verification["status"], "pass")
         self.assertEqual(hard_gate["status"], "fail")
@@ -88,9 +118,11 @@ class AuHandoffDossierTest(unittest.TestCase):
     def test_dossier_passes_customer_ready_when_launch_ready(self) -> None:
         with TemporaryDirectory() as temp_dir:
             launch_status_path, remediation_plan_path = self._write_launch_status_and_plan(temp_dir, ready=True)
+            checklist_path = self._write_p0a_environment_checklist(temp_dir, ready=True)
             dossier = build_au_handoff_dossier(
                 launch_status_path=launch_status_path,
                 remediation_plan_path=remediation_plan_path,
+                p0a_environment_checklist_path=checklist_path,
                 output_path=Path(temp_dir) / "dossier.json",
                 markdown_output_path=Path(temp_dir) / "dossier.md",
                 generated_at="2026-06-12T00:00:00Z",
@@ -107,9 +139,11 @@ class AuHandoffDossierTest(unittest.TestCase):
     def test_verifier_detects_hash_and_markdown_tampering(self) -> None:
         with TemporaryDirectory() as temp_dir:
             launch_status_path, remediation_plan_path = self._write_launch_status_and_plan(temp_dir, ready=False)
+            checklist_path = self._write_p0a_environment_checklist(temp_dir)
             dossier = build_au_handoff_dossier(
                 launch_status_path=launch_status_path,
                 remediation_plan_path=remediation_plan_path,
+                p0a_environment_checklist_path=checklist_path,
                 output_path=Path(temp_dir) / "dossier.json",
                 markdown_output_path=Path(temp_dir) / "dossier.md",
                 generated_at="2026-06-12T00:00:00Z",
@@ -124,9 +158,11 @@ class AuHandoffDossierTest(unittest.TestCase):
     def test_verifier_accepts_covered_count_when_unmapped_blockers_exist(self) -> None:
         with TemporaryDirectory() as temp_dir:
             launch_status_path, remediation_plan_path = self._write_launch_status_and_plan(temp_dir, ready=False)
+            checklist_path = self._write_p0a_environment_checklist(temp_dir)
             dossier = build_au_handoff_dossier(
                 launch_status_path=launch_status_path,
                 remediation_plan_path=remediation_plan_path,
+                p0a_environment_checklist_path=checklist_path,
                 output_path=Path(temp_dir) / "dossier.json",
                 markdown_output_path=Path(temp_dir) / "dossier.md",
                 generated_at="2026-06-12T00:00:00Z",
@@ -144,6 +180,7 @@ class AuHandoffDossierTest(unittest.TestCase):
     def test_cli_writes_json_and_markdown(self) -> None:
         with TemporaryDirectory() as temp_dir:
             launch_status_path, remediation_plan_path = self._write_launch_status_and_plan(temp_dir, ready=False)
+            checklist_path = self._write_p0a_environment_checklist(temp_dir)
             output_path = Path(temp_dir) / "dossier.json"
             markdown_path = Path(temp_dir) / "dossier.md"
             result = subprocess.run(
@@ -154,6 +191,8 @@ class AuHandoffDossierTest(unittest.TestCase):
                     str(launch_status_path),
                     "--remediation-plan-path",
                     str(remediation_plan_path),
+                    "--p0a-environment-checklist-path",
+                    str(checklist_path),
                     "--output-path",
                     str(output_path),
                     "--markdown-output-path",

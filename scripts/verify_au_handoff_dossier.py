@@ -36,6 +36,8 @@ REQUIRED_FIELDS = (
     "remediation_plan",
     "remediation_plan_source",
     "remediation_plan_verifier",
+    "p0a_environment_checklist",
+    "p0a_environment_checklist_source",
     "stage_summaries",
     "work_items",
     "next_work_item",
@@ -101,6 +103,7 @@ def verify_au_handoff_dossier(
     launch_verifier = _as_dict(dossier.get("launch_status_verifier"))
     remediation = _as_dict(dossier.get("remediation_plan"))
     remediation_verifier = _as_dict(dossier.get("remediation_plan_verifier"))
+    p0a_environment_checklist = _as_dict(dossier.get("p0a_environment_checklist"))
     summary = _as_dict(dossier.get("summary"))
     markdown_report = _as_dict(dossier.get("markdown_report"))
     blockers = _as_list(launch.get("remaining_blockers"))
@@ -150,6 +153,15 @@ def verify_au_handoff_dossier(
         errors.append("summary_unmapped_blocker_count_mismatch")
     if summary.get("external_dependency_blocker_count") != remediation_verifier.get("external_dependency_blocker_count"):
         errors.append("summary_external_dependency_blocker_count_mismatch")
+    if (
+        summary.get("p0a_environment_checklist_ready")
+        is not p0a_environment_checklist.get("environment_checklist_ready")
+    ):
+        errors.append("summary_p0a_environment_checklist_ready_mismatch")
+    if summary.get("p0a_missing_required_environment_count") != p0a_environment_checklist.get(
+        "missing_required_count"
+    ):
+        errors.append("summary_p0a_missing_required_environment_count_mismatch")
 
     next_work_item_id = str(summary.get("next_work_item_id") or "")
     if next_work_item_id != remediation.get("next_work_item_id"):

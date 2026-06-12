@@ -21,6 +21,10 @@ from scripts.build_au_launch_status import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_LAUNCH_STATUS_PATH,
     build_au_launch_status,
 )
+from scripts.build_au_p0a_environment_checklist import (  # noqa: E402
+    DEFAULT_OUTPUT_PATH as DEFAULT_P0A_ENVIRONMENT_CHECKLIST_PATH,
+    build_au_p0a_environment_checklist,
+)
 from scripts.verify_au_launch_remediation_plan import verify_au_launch_remediation_plan  # noqa: E402
 from scripts.verify_au_launch_status import verify_au_launch_status  # noqa: E402
 
@@ -144,6 +148,52 @@ def _load_or_build_remediation_plan(
     return payload, {"path": str(path), "exists": True, "source": "existing_file"}
 
 
+def _load_or_build_p0a_environment_checklist(
+    path: Path,
+    *,
+    generated_at: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        checklist = build_au_p0a_environment_checklist(output_path=path, generated_at=generated_at)
+        return checklist, {"path": str(path), "exists": False, "source": "generated_in_memory", "errors": ["file_missing"]}
+    except json.JSONDecodeError as exc:
+        checklist = build_au_p0a_environment_checklist(output_path=path, generated_at=generated_at)
+        return checklist, {
+            "path": str(path),
+            "exists": True,
+            "source": "generated_in_memory",
+            "errors": [f"json_invalid:{exc.msg}"],
+        }
+    if isinstance(payload, dict):
+        return payload, {"path": str(path), "exists": True, "source": "existing_file"}
+    checklist = build_au_p0a_environment_checklist(output_path=path, generated_at=generated_at)
+    return checklist, {"path": str(path), "exists": True, "source": "generated_in_memory", "errors": ["not_json_object"]}
+
+
+def _p0a_environment_checklist_summary(checklist: dict[str, Any]) -> dict[str, Any]:
+    summary = _as_dict(checklist.get("summary"))
+    return {
+        "path": str(_as_dict(checklist.get("paths")).get("output", "")),
+        "environment_checklist_version": checklist.get("environment_checklist_version", ""),
+        "status": checklist.get("status", ""),
+        "environment_checklist_ready": checklist.get("environment_checklist_ready") is True,
+        "next_action": checklist.get("next_action", ""),
+        "environment_checklist_hash": checklist.get("environment_checklist_hash", ""),
+        "required_count": summary.get("required_count", 0),
+        "required_present_count": summary.get("required_present_count", 0),
+        "missing_required_count": summary.get("missing_required_count", 0),
+        "missing_required": [str(value) for value in _as_list(summary.get("missing_required"))],
+        "recommended_count": summary.get("recommended_count", 0),
+        "missing_recommended_count": summary.get("missing_recommended_count", 0),
+        "missing_recommended": [str(value) for value in _as_list(summary.get("missing_recommended"))],
+        "runbook_verifier_status": summary.get("runbook_verifier_status", ""),
+        "environment_verifier_status": summary.get("environment_verifier_status", ""),
+        "environment_report_ready": summary.get("environment_report_ready") is True,
+    }
+
+
 def _source_file_entry(name: str, path: Path | None) -> dict[str, Any]:
     if path is None:
         return {"name": name, "path": "", "exists": False}
@@ -252,6 +302,7 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
     summary = _as_dict(dossier.get("summary"))
     launch_status = _as_dict(dossier.get("launch_status"))
     remediation_plan = _as_dict(dossier.get("remediation_plan"))
+    p0a_environment_checklist = _as_dict(dossier.get("p0a_environment_checklist"))
     next_work_item = _as_dict(dossier.get("next_work_item"))
     lines = [
         "# AU 客户交付总包",
@@ -262,10 +313,11 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
         f"- 当前姿态：{summary.get('handoff_posture', '')}",
         f"- 下一步：{summary.get('next_action', '')}",
         f"- 下一 work item：{summary.get('next_work_item_id', '')}",
-        f"- Launch status hash：{launch_status.get('launch_status_hash', '')}",
-        f"- Remediation plan hash：{remediation_plan.get('remediation_plan_hash', '')}",
-        "",
-        "## 阶段门禁",
+            f"- Launch status hash：{launch_status.get('launch_status_hash', '')}",
+            f"- Remediation plan hash：{remediation_plan.get('remediation_plan_hash', '')}",
+            f"- P0a environment checklist hash：{p0a_environment_checklist.get('environment_checklist_hash', '')}",
+            "",
+            "## 阶段门禁",
         "",
         "| 阶段 | 状态 | Ready | 下一步 | Blockers |",
         "| --- | --- | --- | --- | ---: |",
@@ -311,6 +363,21 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
         str(command) for command in _as_list(next_work_item.get("verification_commands")) if str(command)
     ]
     lines.extend([f"- `{command}`" for command in verification_commands] or ["- 无"])
+    lines.extend(
+        [
+            "",
+            "## P0a 环境清单",
+            "",
+            f"- 状态：{p0a_environment_checklist.get('status', '')}",
+            f"- Ready：{'yes' if p0a_environment_checklist.get('environment_checklist_ready') else 'no'}",
+            f"- 下一步：{p0a_environment_checklist.get('next_action', '')}",
+            f"- 必填变量：{p0a_environment_checklist.get('required_present_count', 0)}/{p0a_environment_checklist.get('required_count', 0)}",
+            f"- 缺失必填：{', '.join(str(value) for value in _as_list(p0a_environment_checklist.get('missing_required'))) or '无'}",
+            f"- 缺失推荐：{', '.join(str(value) for value in _as_list(p0a_environment_checklist.get('missing_recommended'))) or '无'}",
+            f"- Runbook verifier：{p0a_environment_checklist.get('runbook_verifier_status', '')}",
+            f"- Environment verifier：{p0a_environment_checklist.get('environment_verifier_status', '')}",
+        ]
+    )
     lines.extend(["", "## 证据来源", "", "| 名称 | 存在 | sha256 | 路径 |", "| --- | --- | --- | --- |"])
     for source in _as_list(dossier.get("evidence_sources")):
         item = _as_dict(source)
@@ -340,8 +407,10 @@ def build_au_handoff_dossier(
     *,
     launch_status_path: Path = Path(DEFAULT_LAUNCH_STATUS_PATH),
     remediation_plan_path: Path = Path(DEFAULT_REMEDIATION_PLAN_PATH),
+    p0a_environment_checklist_path: Path = Path(DEFAULT_P0A_ENVIRONMENT_CHECKLIST_PATH),
     launch_status: dict[str, Any] | None = None,
     remediation_plan: dict[str, Any] | None = None,
+    p0a_environment_checklist: dict[str, Any] | None = None,
     output_path: Path | None = None,
     markdown_output_path: Path | None = None,
     generated_at: str | None = None,
@@ -359,8 +428,16 @@ def build_au_handoff_dossier(
         )
     else:
         remediation_source = {"path": str(remediation_plan_path), "exists": True, "source": "provided_payload"}
+    if p0a_environment_checklist is None:
+        p0a_environment_checklist, checklist_source = _load_or_build_p0a_environment_checklist(
+            p0a_environment_checklist_path,
+            generated_at=generated_at,
+        )
+    else:
+        checklist_source = {"path": str(p0a_environment_checklist_path), "exists": True, "source": "provided_payload"}
     launch_verification = verify_au_launch_status(launch_status, path=launch_status_path)
     remediation_verification = verify_au_launch_remediation_plan(remediation_plan, path=remediation_plan_path)
+    checklist_summary = _p0a_environment_checklist_summary(p0a_environment_checklist)
     remediation_summary = _as_dict(remediation_plan.get("summary"))
     remaining_blockers = [str(item) for item in _as_list(launch_status.get("remaining_blockers"))]
     work_items = _work_item_summaries(remediation_plan)
@@ -379,6 +456,7 @@ def build_au_handoff_dossier(
     evidence_sources = [
         _source_file_entry("launch_status", launch_status_path),
         _source_file_entry("remediation_plan", remediation_plan_path),
+        _source_file_entry("p0a_environment_checklist", p0a_environment_checklist_path),
         _source_file_entry("p0a_status", _optional_input_path(inputs, "p0a_status_path")),
         _source_file_entry("p0b_google_status", _optional_input_path(inputs, "p0b_google_status_path")),
         _source_file_entry("p0b_google_package", _optional_input_path(inputs, "p0b_google_package_path")),
@@ -408,10 +486,13 @@ def build_au_handoff_dossier(
             "work_item_count": remediation_summary.get("work_item_count", 0),
             "external_dependency_blocker_count": external_blocker_count,
             "runnable_now_work_item_count": remediation_summary.get("runnable_now_work_item_count", 0),
+            "p0a_environment_checklist_ready": checklist_summary.get("environment_checklist_ready") is True,
+            "p0a_missing_required_environment_count": checklist_summary.get("missing_required_count", 0),
         },
         "runtime_endpoints": {
             "launch_status": "GET /v1/launch-status/au",
             "launch_remediation_plan": "GET /v1/launch-remediation-plan/au",
+            "p0a_environment_checklist": "GET /v1/p0a-environment-checklist/au",
         },
         "launch_status": {
             "path": str(launch_status_path),
@@ -433,6 +514,8 @@ def build_au_handoff_dossier(
         },
         "remediation_plan_source": remediation_source,
         "remediation_plan_verifier": remediation_verification,
+        "p0a_environment_checklist": checklist_summary,
+        "p0a_environment_checklist_source": checklist_source,
         "stage_summaries": _stage_summaries(launch_status),
         "work_items": work_items,
         "next_work_item": next_work_item,
@@ -463,6 +546,11 @@ def parse_args() -> argparse.Namespace:
         help="Path to the AU launch remediation plan JSON.",
     )
     parser.add_argument(
+        "--p0a-environment-checklist-path",
+        default=os.environ.get("GENO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH", DEFAULT_P0A_ENVIRONMENT_CHECKLIST_PATH),
+        help="Path to the AU P0a environment checklist JSON.",
+    )
+    parser.add_argument(
         "--output-path",
         default=os.environ.get("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU handoff dossier JSON.",
@@ -483,6 +571,7 @@ def main() -> None:
     dossier = build_au_handoff_dossier(
         launch_status_path=Path(args.launch_status_path),
         remediation_plan_path=Path(args.remediation_plan_path),
+        p0a_environment_checklist_path=Path(args.p0a_environment_checklist_path),
         output_path=output_path,
         markdown_output_path=markdown_path,
         generated_at=args.generated_at,
