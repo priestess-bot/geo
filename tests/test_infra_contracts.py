@@ -293,6 +293,8 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("scripts/verify_au_p0b_google_spike_runbook.py", makefile)
         self.assertIn("verify-au-p0a-env-template:", makefile)
         self.assertIn("scripts/verify_au_p0a_env_template.py", makefile)
+        self.assertIn("verify-au-p0b-google-env-template:", makefile)
+        self.assertIn("scripts/verify_au_p0b_google_env_template.py", makefile)
         self.assertIn("au-p0b-google-runbook-dry-run:", makefile)
         self.assertIn("scripts/run_au_p0b_google_spike_runbook.py", makefile)
         self.assertIn("verify-au-p0b-google-runbook-execution:", makefile)
@@ -436,12 +438,17 @@ class InfraContractsTest(unittest.TestCase):
         for name in (
             "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR=",
             "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR=",
+            "SERP_API_KEY=",
+            "SERP_API_ENDPOINT=",
             "MANUAL_BACKFILL_PATH=",
             "DATABASE_URL=",
+            "GOOGLE_PLAYWRIGHT_BROWSER_NAME=chromium",
+            "GOOGLE_PLAYWRIGHT_TIMEOUT_SECONDS=45",
+            "GENO_AU_P0B_GOOGLE_ENV_FILE=.env.au-p0b-google",
             "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH=",
         ):
             self.assertIn(name, google_env_example)
-        for forbidden in ("sk-", "AIza", "postgresql://user:pass@", "serpapi.com"):
+        for forbidden in ("sk-", "AIza", "postgresql://user:pass@", "serpapi.com", "storage_state"):
             self.assertNotIn(forbidden, google_env_example)
 
     def test_github_ci_runs_runtime_contract_build_compose_and_e2e_gates(self) -> None:

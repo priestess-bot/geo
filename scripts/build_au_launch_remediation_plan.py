@@ -226,6 +226,7 @@ def _p0b_playwright_env_item() -> dict[str, Any]:
             "DATABASE_URL",
         ],
         "commands": [
+            _command("make verify-au-p0b-google-env-template"),
             _command("cp .env.au-p0b-google.example .env.au-p0b-google"),
             _command("make au-p0b-google-runbook"),
             _command("make au-p0b-google-playwright-env"),

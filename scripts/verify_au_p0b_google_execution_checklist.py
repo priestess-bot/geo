@@ -334,7 +334,14 @@ def verify_au_p0b_google_execution_checklist(
     setup_ids = _command_ids(_as_list(checklist.get("setup_commands")))
     execution_ids = _command_ids(_as_list(checklist.get("execution_commands")))
     verification_ids = _command_ids(_as_list(checklist.get("verification_commands")))
-    for command_id in {"copy_env_template", "build_runbook", "dry_run_runbook", "build_playwright_env", "build_execution_checklist"}:
+    for command_id in {
+        "verify_env_template",
+        "copy_env_template",
+        "build_runbook",
+        "dry_run_runbook",
+        "build_playwright_env",
+        "build_execution_checklist",
+    }:
         if command_id not in setup_ids:
             errors.append(f"setup_command_missing:{command_id}")
     for command_id in {

@@ -92,6 +92,11 @@ class AuP0bGoogleExecutionChecklistTest(unittest.TestCase):
         self.assertTrue(
             any(str(blocker).startswith("playwright_env:") for blocker in checklist["summary"]["remaining_blockers"])
         )
+        self.assertIn("verify_env_template", {command["id"] for command in checklist["setup_commands"]})
+        self.assertEqual(
+            checklist["work_items"][0]["commands"][:2],
+            ["make verify-au-p0b-google-env-template", "cp .env.au-p0b-google.example .env.au-p0b-google"],
+        )
         self.assertIn("run_smoke", {command["id"] for command in checklist["execution_commands"]})
         self.assertEqual(
             checklist["google_execution_checklist_hash"],

@@ -345,6 +345,12 @@ the AIO success gate while still failing the two-path readiness gate; in that ca
 the collection summary persist, but main scoring/report generation is skipped with
 `reason=no_score_input_records`. Real Google paths still require browser/API/manual runtime
 implementations.
+Before filling the local Google browser/manual environment, run
+`make verify-au-p0b-google-env-template`. It proves the committed
+`.env.au-p0b-google.example` is disabled by default, contains no selectors, session state, manual
+backfill path, database URL, SERP credentials, or object-store secrets, and keeps runtime outputs
+under `docs/runtime_preflight/`. Then copy it to `.env.au-p0b-google`, fill real local values, and
+run `make au-p0b-google-playwright-env`.
 When `--persist-analysis` creates a report from the stable fixture path, the report Method Disclosure
 is frozen into `report_exports.method_disclosure`, records Google as limited coverage until a Google
 spike gate is available, and records the current API-vs-browser fidelity status plus access-method

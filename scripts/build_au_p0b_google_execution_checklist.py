@@ -278,6 +278,11 @@ def _file_gate_issues(tasks: list[dict[str, Any]]) -> list[str]:
 def _setup_commands() -> list[dict[str, str]]:
     return [
         {
+            "id": "verify_env_template",
+            "shell": "make verify-au-p0b-google-env-template",
+            "purpose": "Verify the committed Google env template is complete, disabled by default, and free of selectors/secrets.",
+        },
+        {
             "id": "copy_env_template",
             "shell": "cp .env.au-p0b-google.example .env.au-p0b-google",
             "purpose": "Create a local Google spike env file without committing selectors or secrets.",
@@ -370,7 +375,11 @@ def _work_items() -> list[dict[str, Any]]:
         {
             "id": "google_playwright_environment",
             "stage": "P0b",
-            "commands": ["cp .env.au-p0b-google.example .env.au-p0b-google", "make au-p0b-google-playwright-env"],
+            "commands": [
+                "make verify-au-p0b-google-env-template",
+                "cp .env.au-p0b-google.example .env.au-p0b-google",
+                "make au-p0b-google-playwright-env",
+            ],
             "hard_gate": "hard_playwright_env_gate",
         },
         {
