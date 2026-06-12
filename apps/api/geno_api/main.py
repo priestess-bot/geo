@@ -118,6 +118,15 @@ from scripts.build_au_handoff_dossier import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH,
     build_au_handoff_dossier,
 )
+from scripts.build_au_p0a_environment_checklist import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH,
+    build_au_p0a_environment_checklist,
+)
+from scripts.build_au_p0a_env_report import (
+    DEFAULT_ENV_FILE as DEFAULT_AU_P0A_ENV_FILE,
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_ENV_OUTPUT_PATH,
+)
+from scripts.build_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_RUNBOOK_OUTPUT_PATH
 
 app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
 
@@ -1315,6 +1324,22 @@ def _build_au_launch_status_from_env() -> dict[str, object]:
 @app.get("/v1/launch-remediation-plan/au")
 def au_launch_remediation_plan() -> dict[str, object]:
     return _build_au_launch_remediation_plan_from_env()
+
+
+@app.get("/v1/p0a-environment-checklist/au")
+def au_p0a_environment_checklist() -> dict[str, object]:
+    return build_au_p0a_environment_checklist(
+        runbook_path=Path(os.getenv("GENO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_AU_P0A_RUNBOOK_OUTPUT_PATH)),
+        environment_path=Path(os.getenv("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_AU_P0A_ENV_OUTPUT_PATH)),
+        status_path=Path(os.getenv("GENO_AU_P0A_STATUS_OUTPUT_PATH", DEFAULT_P0A_STATUS_PATH)),
+        env_file_path=Path(os.getenv("GENO_AU_P0A_ENV_FILE", DEFAULT_AU_P0A_ENV_FILE)),
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH",
+                DEFAULT_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH,
+            )
+        ),
+    )
 
 
 def _build_au_launch_remediation_plan_from_env() -> dict[str, object]:
@@ -4096,6 +4121,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/runtime-diagnostics",
             "/v1/launch-status/au",
             "/v1/launch-remediation-plan/au",
+            "/v1/p0a-environment-checklist/au",
             "/v1/handoff-dossier/au",
             "/metrics",
         ],

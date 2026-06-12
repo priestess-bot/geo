@@ -639,6 +639,7 @@ code {
 }
 
 .launchRemediation,
+.p0aEnvironmentChecklist,
 .handoffDossier {
   border: 1px solid #d9e2ec;
   border-radius: 4px;
@@ -697,6 +698,29 @@ code {
   font-size: 11px;
   white-space: normal;
   word-break: break-word;
+}
+
+.environmentChecklistGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.environmentChecklistGrid > div {
+  background: #f7fafc;
+  border: 1px solid #d9e2ec;
+  border-radius: 4px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 9px;
+}
+
+.environmentChecklistGrid li,
+.environmentChecklistGrid small {
+  color: #526575;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .handoffBoundary {

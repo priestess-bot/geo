@@ -5,6 +5,8 @@ import hashlib
 import hmac
 from io import BytesIO
 import json
+import os
+from pathlib import Path
 import time
 import unittest
 from datetime import UTC, datetime
@@ -20,6 +22,7 @@ from geno_api.main import app, close_runtime_resources, reset_runtime_auth_cache
 from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
 from scripts.build_au_launch_status import compute_launch_status_hash
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
+from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTest
 from geno_core.models import (
     RuntimeCollectionRunPage,
     RuntimeAlertEvent,
@@ -340,6 +343,35 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["blocker_remediations"][0]["work_item_id"], "p0a_environment")
         build_status.assert_called_once()
         build_plan.assert_called_once()
+
+    def test_au_p0a_environment_checklist_endpoint_returns_redacted_readiness(self) -> None:
+        helper = AuP0aEnvironmentChecklistTest()
+        with TemporaryDirectory() as temp_dir:
+            runbook_path = helper._write_runbook(temp_dir)
+            env_path = helper._write_env_report(temp_dir, runbook_path, ready=False)
+            with patch.dict(
+                os.environ,
+                {
+                    "GENO_AU_P0A_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GENO_AU_P0A_ENV_OUTPUT_PATH": str(env_path),
+                    "GENO_AU_P0A_STATUS_OUTPUT_PATH": str(Path(temp_dir) / "missing-status.json"),
+                    "GENO_AU_P0A_ENV_FILE": str(Path(temp_dir) / "missing.env"),
+                    "GENO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                },
+                clear=False,
+            ):
+                response = self.client.get("/v1/p0a-environment-checklist/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["environment_checklist_version"], "au_p0a_environment_checklist_v1")
+        self.assertFalse(payload["environment_checklist_ready"])
+        self.assertEqual(payload["next_action"], "populate_required_environment")
+        self.assertEqual(payload["summary"]["missing_required_count"], 3)
+        self.assertIn("OPENAI_API_KEY", payload["summary"]["missing_required"])
+        self.assertIn("hard_env_gate", [command["id"] for command in payload["verification_commands"]])
+        self.assertNotIn("raw_value", json.dumps(payload))
+        self.assertNotIn("perplexity-key", json.dumps(payload))
 
     def test_au_handoff_dossier_endpoint_returns_runtime_handoff_summary(self) -> None:
         helper = AuHandoffDossierTest()
@@ -3928,6 +3960,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/runtime-diagnostics", payload["persistence"])
         self.assertIn("/v1/launch-status/au", payload["persistence"])
         self.assertIn("/v1/launch-remediation-plan/au", payload["persistence"])
+        self.assertIn("/v1/p0a-environment-checklist/au", payload["persistence"])
         self.assertIn("/v1/handoff-dossier/au", payload["persistence"])
         self.assertIn("/metrics", payload["persistence"])
 

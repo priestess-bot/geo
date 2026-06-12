@@ -546,6 +546,7 @@ type TraceabilityDetail = {
 type RuntimeData = {
   launchStatus: AuLaunchStatus | null;
   launchRemediationPlan: AuLaunchRemediationPlan | null;
+  p0aEnvironmentChecklist: AuP0aEnvironmentChecklist | null;
   handoffDossier: AuHandoffDossier | null;
   projects: PageResponse<RuntimeProject>;
   projectMembers: PageResponse<RuntimeProjectMember>;
@@ -664,6 +665,49 @@ type AuLaunchRemediationPlan = {
     next_command?: string;
     dependency_class?: string;
   }>;
+};
+
+type AuP0aEnvironmentChecklist = {
+  environment_checklist_version: string;
+  generated_at: string;
+  status: string;
+  environment_checklist_ready: boolean;
+  next_action: string;
+  environment_checklist_hash: string;
+  summary?: {
+    required_count?: number;
+    required_present_count?: number;
+    missing_required_count?: number;
+    missing_required?: string[];
+    recommended_count?: number;
+    missing_recommended_count?: number;
+    missing_recommended?: string[];
+    runbook_verifier_status?: string;
+    environment_verifier_status?: string;
+    environment_report_ready?: boolean;
+  };
+  required_environment?: Array<{
+    name?: string;
+    required?: boolean;
+    present?: boolean;
+    source?: string;
+    value_length?: number;
+    sha256_prefix?: string;
+    secret_redacted?: boolean;
+    action?: string;
+  }>;
+  recommended_environment?: Array<{
+    name?: string;
+    required?: boolean;
+    present?: boolean;
+    source?: string;
+    value_length?: number;
+    sha256_prefix?: string;
+    secret_redacted?: boolean;
+    action?: string;
+  }>;
+  verification_commands?: Array<{ id?: string; shell?: string; purpose?: string }>;
+  evidence_outputs?: string[];
 };
 
 type AuHandoffDossier = {
@@ -1106,6 +1150,7 @@ type QuestionDetailRow = {
 const endpoints = {
   launchStatus: "/v1/launch-status/au",
   launchRemediationPlan: "/v1/launch-remediation-plan/au",
+  p0aEnvironmentChecklist: "/v1/p0a-environment-checklist/au",
   handoffDossier: "/v1/handoff-dossier/au",
   projects: "/v1/projects/runtime",
   projectMembers: "/v1/project-members/runtime",
@@ -1995,6 +2040,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   const paths: RuntimePaths = {
     launchStatus: endpoints.launchStatus,
     launchRemediationPlan: endpoints.launchRemediationPlan,
+    p0aEnvironmentChecklist: endpoints.p0aEnvironmentChecklist,
     handoffDossier: endpoints.handoffDossier,
     projects: runtimePath(endpoints.projects, projectListParams),
     projectMembers: endpoints.projectMembers,
@@ -2245,6 +2291,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   const [
     launchStatus,
     launchRemediationPlan,
+    p0aEnvironmentChecklist,
     handoffDossier,
     prompts,
     projectMembers,
@@ -2280,6 +2327,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   ] = await Promise.all([
     fetchRuntimeEndpoint<AuLaunchStatus | null>(baseUrl, paths.launchStatus, null),
     fetchRuntimeEndpoint<AuLaunchRemediationPlan | null>(baseUrl, paths.launchRemediationPlan, null),
+    fetchRuntimeEndpoint<AuP0aEnvironmentChecklist | null>(baseUrl, paths.p0aEnvironmentChecklist, null),
     fetchRuntimeEndpoint<AuHandoffDossier | null>(baseUrl, paths.handoffDossier, null),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     selectedProjectId
@@ -2391,6 +2439,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   const errors = [
     launchStatus,
     launchRemediationPlan,
+    p0aEnvironmentChecklist,
     handoffDossier,
     projects,
     prompts,
@@ -2431,6 +2480,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     data: {
       launchStatus: launchStatus.payload,
       launchRemediationPlan: launchRemediationPlan.payload,
+      p0aEnvironmentChecklist: p0aEnvironmentChecklist.payload,
       handoffDossier: handoffDossier.payload,
       projects: projects.payload,
       projectMembers: projectMembers.payload,
@@ -2742,6 +2792,10 @@ export default async function Home({
   const remediationSummary = launchRemediationPlan?.summary;
   const remediationWorkItems = launchRemediationPlan?.work_items || [];
   const topRemediationItems = remediationWorkItems.slice(0, 4);
+  const p0aEnvironmentChecklist = data.p0aEnvironmentChecklist;
+  const p0aEnvironmentSummary = p0aEnvironmentChecklist?.summary;
+  const missingP0aRequired = p0aEnvironmentSummary?.missing_required || [];
+  const missingP0aRecommended = p0aEnvironmentSummary?.missing_recommended || [];
   const handoffDossier = data.handoffDossier;
   const handoffSummary = handoffDossier?.summary;
   const handoffNextWorkItem = handoffDossier?.next_work_item;
@@ -3198,6 +3252,63 @@ export default async function Home({
             <span className="remediationEmpty">No remediation work items recorded.</span>
           )}
           <code>{paths.launchRemediationPlan}</code>
+        </div>
+        <div className="p0aEnvironmentChecklist">
+          <div className="launchRemediationHeader">
+            <strong>P0a environment checklist</strong>
+            <span>
+              {p0aEnvironmentChecklist?.environment_checklist_version || "au_p0a_environment_checklist_v1"} · hash{" "}
+              {shortHash(p0aEnvironmentChecklist?.environment_checklist_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>Ready {p0aEnvironmentChecklist?.environment_checklist_ready ? "yes" : "no"}</span>
+            <span>Next action {p0aEnvironmentChecklist?.next_action || "run checklist"}</span>
+            <span>
+              Required {p0aEnvironmentSummary?.required_present_count || 0}/
+              {p0aEnvironmentSummary?.required_count || 0}
+            </span>
+            <span>Recommended missing {p0aEnvironmentSummary?.missing_recommended_count || 0}</span>
+          </div>
+          <div className="environmentChecklistGrid">
+            <div>
+              <strong>Missing required</strong>
+              {missingP0aRequired.length ? (
+                <ul className="plainList">
+                  {missingP0aRequired.map((name) => (
+                    <li key={name}>{name}</li>
+                  ))}
+                </ul>
+              ) : (
+                <small>All required variables are present.</small>
+              )}
+            </div>
+            <div>
+              <strong>Missing recommended</strong>
+              {missingP0aRecommended.length ? (
+                <ul className="plainList">
+                  {missingP0aRecommended.slice(0, 4).map((name) => (
+                    <li key={name}>{name}</li>
+                  ))}
+                </ul>
+              ) : (
+                <small>Recommended object store variables are present.</small>
+              )}
+            </div>
+          </div>
+          <div className="handoffBoundary">
+            <span>
+              Hard gate{" "}
+              {p0aEnvironmentChecklist?.verification_commands?.find((command) => command.id === "hard_env_gate")
+                ?.shell || "python3 scripts/verify_au_p0a_env_report.py --require-ready-environment"}
+            </span>
+            <span>
+              Verifiers: runbook {p0aEnvironmentSummary?.runbook_verifier_status || "unknown"} · environment{" "}
+              {p0aEnvironmentSummary?.environment_verifier_status || "unknown"}
+            </span>
+            <span>Evidence outputs {p0aEnvironmentChecklist?.evidence_outputs?.length || 0}</span>
+          </div>
+          <code>{paths.p0aEnvironmentChecklist}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">
