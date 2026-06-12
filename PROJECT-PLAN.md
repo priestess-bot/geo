@@ -173,8 +173,8 @@ DoD：
 
 任务：
 
-- `[~]` (P0b·spike) `PlaywrightGoogleAIOCollector`：SERP 内嵌 AIO 采集，记录触发状态、截图/HTML、失败原因 — `Step4`（shell + fixture 已落；真实浏览器运行待接）
-- `[~]` (P0b·spike) `PlaywrightAIModeCollector`：AI Mode 独立界面采集，记录账号状态、地理、设备、失败原因 — `Step4`（shell + fixture 已落；真实浏览器运行待接）
+- `[~]` (P0b·spike) `PlaywrightGoogleAIOCollector`：SERP 内嵌 AIO 采集，记录触发状态、截图/HTML、失败原因 — `Step4`（selector-driven Playwright adapter、health gate、HTML/screenshot hash、fake browser 合同测试已落；澳洲真实 Google selector、账号/session 和 240-run 待跑）
+- `[~]` (P0b·spike) `PlaywrightAIModeCollector`：AI Mode 独立界面采集，记录账号状态、地理、设备、失败原因 — `Step4`（selector-driven Playwright adapter、health gate、HTML/screenshot hash、fake browser 合同测试已落；真实 AI Mode 入口、selector、账号/session 和 240-run 待跑）
 - `[~]` (P0b·spike) `ThirdPartySerpCollector`：至少接入一个第三方 SERP/AI-answer 供应商做对照 — `Step4`（provider-neutral JSON adapter、health gate、snapshot hash、响应解析测试、独立 `google-serp-fixture` / `google-serp-spike` 120-run comparison entry、Make 入口、payload verifier、manifest 与 status/hash verifier 已落；真实供应商凭证/endpoint 联调、真实 comparison 120-run 与默认 240-run 待跑）
 - `[~]` (P0b·spike) `ManualBackfillCollector`：人工补录最小路径，保证样本可审计 — `Step4`（shell + candidate + runtime manual backfill API + 控制台最小表单已落；批量文件流待接）
 - `[x]` (P0b·spike) Google spike 采样：30 prompts × 2 surfaces × 2 geo（Australia + Sydney）× k=2 = 240 planned_runs — `Step4 / Step9.3`

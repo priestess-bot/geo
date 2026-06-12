@@ -35,6 +35,16 @@ export DATABASE_URL=postgresql://...
 推荐变量：
 
 ```bash
+export GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR='textarea[name="q"]'
+export GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR='[data-attrid*="AI"], [data-testid*="answer"]'
+export GOOGLE_PLAYWRIGHT_SUBMIT_SELECTOR=
+export GOOGLE_PLAYWRIGHT_CITATION_SELECTOR='a[href^="http"]'
+export GOOGLE_PLAYWRIGHT_STORAGE_STATE=/absolute/path/to/google-storage-state.json
+export GOOGLE_AIO_PLAYWRIGHT_START_URL='https://www.google.com/search?udm=14'
+export GOOGLE_AI_MODE_PLAYWRIGHT_START_URL='https://www.google.com/search?udm=50'
+export GOOGLE_PLAYWRIGHT_BROWSER_NAME=chromium
+export GOOGLE_PLAYWRIGHT_TIMEOUT_SECONDS=45
+export GOOGLE_PLAYWRIGHT_VENDOR_COST=0.004
 export SERP_API_ENGINE=google_ai_overview
 export SERP_API_KEY=...
 export SERP_API_ENDPOINT=https://your-serp-provider.example/search
@@ -48,6 +58,8 @@ export OBJECT_STORE_ACCESS_KEY=...
 export OBJECT_STORE_SECRET_KEY=...
 export GENO_BROWSER_ARTIFACT_DIR=/absolute/path/to/browser-artifacts
 ```
+
+`PlaywrightGoogleAIOCollector` 和 `PlaywrightAIModeCollector` 已是 selector-driven browser adapter：health-only 预检会在真实采集前检查 `GOOGLE_PLAYWRIGHT_ENABLED`、prompt/answer selector、可选 storage state 文件和 Python Playwright 包。常见失败原因包括 `selector_missing`、`session_state_missing`、`playwright_missing`。通过后，collector 会记录最终 URL、页面标题、HTML snapshot hash、screenshot hash、citation selector 提取结果和 `google-playwright-browser-v1` collector version。上面的 selector 只是模板，真实运行前必须用澳洲 Google 账号、AU IP/地理环境和目标界面手工校准。
 
 所有运行产物默认写入 `docs/runtime_preflight/*.json`，该目录下 JSON 默认不提交，避免把真实 provider 状态、错误上下文或潜在敏感配置写入仓库。需要提交的是摘要、审计日志和代码。
 
@@ -187,7 +199,7 @@ make verify-au-p0b-google-serp-status
 
 - `verify-au-p0b-google-runbook` 失败：停止，先修步骤顺序、planned runs、gate 参数或 runbook hash。
 - dry-run verifier 失败：停止，先修 runbook execution payload 或环境判断。
-- health-only collector gate 失败：停止，先修 `GOOGLE_PLAYWRIGHT_ENABLED`、`MANUAL_BACKFILL_PATH`、浏览器账号/selector 或人工补录文件。第三方对照切片另需检查 `SERP_API_KEY` 与 `SERP_API_ENDPOINT`。
+- health-only collector gate 失败：停止，先修 `GOOGLE_PLAYWRIGHT_ENABLED`、`GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR`、`GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR`、Playwright 安装、可选 storage state、`MANUAL_BACKFILL_PATH` 或人工补录文件。第三方对照切片另需检查 `SERP_API_KEY` 与 `SERP_API_ENDPOINT`。
 - 真实 spike 出现 collection failure：停止，先复盘 `failure_events` 和 `CollectionRunSummary`。
 - `google_spike_gate` 失败：Google 不进入主评分，只进入 limited coverage 附录。
 - `google_spike_readiness_gate` 失败：即使 AIO 成功率达标，也不能进入主评分。
@@ -214,4 +226,4 @@ make verify-au-p0b-google-serp-status
 
 ## 6. 当前边界
 
-本手册固定真实 Google spike 的可审计执行路径，不代表已经完成真实 Playwright 采集、真实 AI Mode 浏览器采集、真实第三方供应商凭证联调或 240-run 真实样本。当前第三方路径是通用 JSON adapter，不绑定单一供应商私有 schema；若选定供应商有更稳定的专用字段，应在保持 `RawCollectResult`、snapshot hash、`answer_present/surface_triggered` 语义不变的前提下新增轻量 mapping，并通过独立 120-run 对照切片进入 P0b 复盘。第三方对照结果不能绕过 `GoogleSpikeGateResult`、`GoogleSpikeReadinessGate` 和 `score_input_policy`。
+本手册固定真实 Google spike 的可审计执行路径。当前 `PlaywrightGoogleAIOCollector` / `PlaywrightAIModeCollector` 已具备 selector-driven browser capture、health gate、HTML/screenshot hash 和 fake-browser 合同测试，但不代表已经完成澳洲真实 Google 账号、真实 selector、真实 AI Mode 入口、第三方供应商凭证联调或 240-run 真实样本。当前第三方路径是通用 JSON adapter，不绑定单一供应商私有 schema；若选定供应商有更稳定的专用字段，应在保持 `RawCollectResult`、snapshot hash、`answer_present/surface_triggered` 语义不变的前提下新增轻量 mapping，并通过独立 120-run 对照切片进入 P0b 复盘。第三方对照结果不能绕过 `GoogleSpikeGateResult`、`GoogleSpikeReadinessGate` 和 `score_input_policy`。

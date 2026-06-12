@@ -500,6 +500,8 @@ class WorkerCliTest(unittest.TestCase):
             "--health-check-only",
             extra_env={
                 "GOOGLE_PLAYWRIGHT_ENABLED": "1",
+                "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR": "#prompt",
+                "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR": ".answer",
                 "MANUAL_BACKFILL_PATH": "/tmp/manual-google-spike.jsonl",
             },
         )
@@ -510,6 +512,32 @@ class WorkerCliTest(unittest.TestCase):
         self.assertEqual(payload["collector_health_gate"]["gate_status"], "pass")
         self.assertEqual(payload["preflight_summary"]["phase"], "collector_health")
         self.assertEqual(payload["google_spike_plan"]["geo_cities"], ["Australia", "Sydney"])
+
+    def test_google_spike_health_check_requires_google_playwright_selectors(self) -> None:
+        result = self._run_worker_result(
+            "--mode",
+            "google-spike",
+            "--require-ready-collectors",
+            "--health-check-only",
+            extra_env={
+                "GOOGLE_PLAYWRIGHT_ENABLED": "1",
+                "MANUAL_BACKFILL_PATH": "/tmp/manual-google-spike.jsonl",
+            },
+            unset_env=(
+                "GOOGLE_AIO_PLAYWRIGHT_PROMPT_SELECTOR",
+                "GOOGLE_AIO_PLAYWRIGHT_ANSWER_SELECTOR",
+                "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR",
+                "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR",
+            ),
+        )
+        self.assertEqual(result.returncode, 3)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["record_count"], 0)
+        self.assertEqual(payload["collector_health_gate"]["gate_status"], "fail")
+        self.assertEqual(
+            payload["collector_health_gate"]["failure_reasons"],
+            ["google_aio.playwright:selector_missing"],
+        )
 
     def test_google_serp_fixture_runs_third_party_comparison_without_full_spike_gates(self) -> None:
         payload = self._run_worker("--mode", "google-serp-fixture")
