@@ -1689,7 +1689,7 @@ ReportEvidence
 - 可生成 Citation Graph。
 - 可输出 3-5 个竞品的 Benchmark。
 - 可识别 source gap。
-- 可导出包含方法说明（含 API/消费者界面差异抽检结论、Google spike 结论、平台覆盖/降级口径）、审计摘要、分数解释包和原始证据附录的 PDF/CSV 报告。
+- 可导出包含方法说明（含 API/消费者界面差异抽检结论、Google spike 结论、平台覆盖/降级口径）、审计摘要、分数解释包和原始证据附录的 PDF/CSV 报告；工程实现必须把审计摘要冻结到 `ReportExport.method_disclosure.audit_summary`，并在 Markdown/PDF/runtime artifact 中展示事件数量、事件类型分布、target 类型、method version、actor 类型、input/output ref keys、事件时间窗和代表性 audit event ids。
 
 架构验收（开源·可插拔）：
 

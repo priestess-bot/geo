@@ -4,6 +4,7 @@ from typing import Any, Mapping, Protocol, runtime_checkable
 
 from geno_core.models import (
     AnswerAnalysis,
+    AuditEvent,
     BrandEntity,
     CitationGraphResult,
     CompetitorEntity,
@@ -132,4 +133,5 @@ class ReportExporter(Protocol):
         google_spike_gate: GoogleSpikeGateResult | Mapping[str, object] | None = None,
         score_input_policy: Mapping[str, object] | None = None,
         fidelity_records: tuple[RawEvidenceRecord, ...] | None = None,
+        audit_events: tuple[AuditEvent | Mapping[str, object], ...] = (),
     ) -> EvidenceReport: ...

@@ -663,6 +663,7 @@ def _persist_records(
             google_spike_gate=google_gate,
             score_input_policy=analysis_result.score_input_policy,
             fidelity_records=successes,
+            audit_events=(collection_summary_audit, analysis_result.audit_event),
         )
         repository.save_report_export(report.report_export, report.audit_event)
         fidelity_check, fidelity_audit = build_runtime_fidelity_check_from_records(

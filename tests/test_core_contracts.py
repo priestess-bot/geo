@@ -2373,6 +2373,7 @@ class CoreContractsTest(unittest.TestCase):
             graph=graph,
             platform_weights_snapshot={"google": 0.45, "chatgpt": 0.30, "perplexity": 0.25},
             score_input_policy=analysis_result.score_input_policy,
+            audit_events=(analysis_result.audit_event,),
         )
         self.assertEqual(report.report_export.score_snapshot_ids, (analysis_result.snapshot.id,))
         self.assertEqual(report.report_export.answer_run_ids, tuple(record.answer_run.id for record in records))
@@ -2397,6 +2398,9 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("Report evidence attempted records: 40", report.markdown)
         self.assertIn("Report evidence surface-triggered records: 40", report.markdown)
         self.assertIn("Access method distribution", report.markdown)
+        self.assertIn("### Audit Summary", report.markdown)
+        self.assertIn("Audit events attached: 1", report.markdown)
+        self.assertIn("visibility_score_snapshot_created", report.markdown)
         score_rate_disclosure = report.report_export.method_disclosure["score_rate_denominators"]
         self.assertEqual(
             score_rate_disclosure["definitions"]["trigger_rate"]["formula"],
@@ -2409,6 +2413,10 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(score_rate_disclosure["evidence_denominators"]["attempted_records"], len(records))
         self.assertEqual(score_rate_disclosure["evidence_denominators"]["surface_triggered_records"], len(records))
         self.assertEqual(report.report_export.method_disclosure["score_input_policy"], analysis_result.score_input_policy)
+        audit_summary = report.report_export.method_disclosure["audit_summary"]
+        self.assertEqual(audit_summary["audit_event_count"], 1)
+        self.assertEqual(audit_summary["event_type_distribution"]["visibility_score_snapshot_created"], 1)
+        self.assertIn("score_snapshot_ids", audit_summary["output_ref_keys"])
         self.assertIn("answer_run_id", report.csv_content)
         self.assertTrue(report.pdf_content.startswith(b"%PDF-1.4"))
         self.assertIn(b"%%EOF", report.pdf_content)
@@ -5285,6 +5293,19 @@ class CoreContractsTest(unittest.TestCase):
                 },
                 "access_method_distribution": {"official_api": 1},
                 "platform_distribution": {"perplexity": 1},
+                "audit_summary": {
+                    "audit_event_count": 1,
+                    "event_type_distribution": {"report_export_created": 1},
+                    "target_type_distribution": {"report_export": 1},
+                    "method_version_distribution": {"markdown_csv_report_exporter_v1": 1},
+                    "actor_type_distribution": {"system": 1},
+                    "input_ref_keys": ["answer_run_ids"],
+                    "output_ref_keys": ["report_export_ids"],
+                    "first_event_at": "2026-06-10T00:00:00+00:00",
+                    "last_event_at": "2026-06-10T00:00:00+00:00",
+                    "event_ids": ["d5f57d79-4834-4bd3-92a3-a1c917fbb3cf"],
+                    "summary": "1 upstream audit events attached to this report export.",
+                },
                 "evidence_asset_coverage": {"screenshot_records": 1, "html_snapshot_records": 1},
             },
             "sample_size": 1,
@@ -6884,6 +6905,9 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("Report evidence surface-triggered records: 1", artifact.content)
         self.assertIn("Screenshot records: 1", artifact.content)
         self.assertIn("HTML snapshot records: 1", artifact.content)
+        self.assertIn("## Audit Summary", artifact.content)
+        self.assertIn("Audit events attached: 1", artifact.content)
+        self.assertIn("report_export_created", artifact.content)
         self.assertIn("ReportExport -> VisibilityScoreSnapshot", artifact.content)
         self.assertTrue(artifact.content_hash)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)

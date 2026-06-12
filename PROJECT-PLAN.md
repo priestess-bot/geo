@@ -86,8 +86,8 @@
 
 **P0c 可售报告验收门槛**：
 
-- `[ ]` 生成 Citation Graph，识别 source gap，输出 3–5 竞品 Benchmark
-- `[ ]` 导出含方法说明（含 API/消费者界面差异抽检结论、Google spike 结论、平台覆盖/降级口径）、审计摘要、分数解释包与原始证据附录的 PDF/CSV
+- `[~]` 生成 Citation Graph，识别 source gap，输出 3–5 竞品 Benchmark（fixture/runtime graph API、Runtime Console graph 明细与图谱 map 已落；真实客户数据与完整交互式图谱待接）
+- `[~]` 导出含方法说明（含 API/消费者界面差异抽检结论、Google spike 结论、平台覆盖/降级口径）、审计摘要、分数解释包与原始证据附录的 PDF/CSV（Markdown/CSV/PDF/白标 PDF、Method Disclosure、ScoreContribution、Evidence Appendix、`method_disclosure.audit_summary` 冻结与 runtime artifact 渲染已落；真实 P0a/P0b 数据报告待跑）
 - `[~]` 任意报告数值可沿 `ReportExport -> VisibilityScoreSnapshot -> ScoreContribution -> AnswerAnalysis -> PromptQuestion -> AnswerRun -> RawAnswer/AnswerCitation/EvidenceAsset -> SourceGraph/SourceGap/CompetitorBenchmark` 追溯（fixture TraceabilityBundle、prompt-linked runtime evidence API、runtime score API、runtime citation graph API、runtime report API、runtime report artifact API、runtime traceability detail API 与 Runtime Console Evidence Runs、Score Contributions、Citation Graph & Competitors、Citation Graph Map、Report History、Traceability Detail / Traceability Map / node drilldown / anchor deep links 已落；基础 PDF artifact、MinIO/S3-compatible artifact 归档、附录级筛选/排序 artifact 下载与最小白标 PDF 模板已落，独立详情页和完整交互式图谱待接）
 
 **架构验收门槛**（开源·可插拔，搬自 AU 路径 §9）：

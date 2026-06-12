@@ -80,6 +80,7 @@ class MarkdownCsvReportExporter:
         google_spike_gate: GoogleSpikeGateResult | Mapping[str, object] | None = None,
         score_input_policy: Mapping[str, object] | None = None,
         fidelity_records: tuple[RawEvidenceRecord, ...] | None = None,
+        audit_events: tuple[AuditEvent | Mapping[str, object], ...] = (),
     ) -> EvidenceReport:
         if not records:
             raise ValueError("Evidence report requires at least one raw evidence record")
@@ -92,6 +93,7 @@ class MarkdownCsvReportExporter:
             platform_weights_snapshot=platform_weights_snapshot,
             google_spike_gate=google_spike_gate,
             score_input_policy=score_input_policy,
+            audit_events=audit_events,
         )
         methodology = {
             "market_code": market_code,
@@ -210,6 +212,14 @@ def _build_markdown_report(
         "",
         *render_methodology_disclosure_lines(
             methodology.get("method_disclosure") if isinstance(methodology.get("method_disclosure"), dict) else {}
+        ),
+        "",
+        "### Audit Summary",
+        "",
+        *render_audit_summary_lines(
+            dict(methodology.get("method_disclosure") or {}).get("audit_summary")
+            if isinstance(methodology.get("method_disclosure"), dict)
+            else {}
         ),
         "",
         "## Score Contributions",
@@ -371,6 +381,68 @@ def build_api_browser_fidelity_payload(rows: tuple[dict[str, Any], ...]) -> dict
     }
 
 
+def _event_payload(event: AuditEvent | Mapping[str, object]) -> dict[str, Any]:
+    return asdict(event) if is_dataclass(event) else dict(event)
+
+
+def build_report_audit_summary(events: tuple[AuditEvent | Mapping[str, object], ...]) -> dict[str, Any]:
+    payloads = tuple(_event_payload(event) for event in events)
+    if not payloads:
+        return {
+            "audit_event_count": 0,
+            "event_type_distribution": {},
+            "target_type_distribution": {},
+            "method_version_distribution": {},
+            "actor_type_distribution": {},
+            "input_ref_keys": [],
+            "output_ref_keys": [],
+            "first_event_at": "",
+            "last_event_at": "",
+            "event_ids": [],
+            "summary": "No upstream audit events were attached to this report export.",
+        }
+
+    def text_value(payload: dict[str, Any], key: str, default: str = "unknown") -> str:
+        value = payload.get(key)
+        return str(value) if value not in (None, "") else default
+
+    created_values = sorted(
+        str(payload.get("created_at"))
+        for payload in payloads
+        if payload.get("created_at") not in (None, "")
+    )
+    input_ref_keys = sorted(
+        {
+            str(key)
+            for payload in payloads
+            for key in (payload.get("input_refs") if isinstance(payload.get("input_refs"), dict) else {}).keys()
+        }
+    )
+    output_ref_keys = sorted(
+        {
+            str(key)
+            for payload in payloads
+            for key in (payload.get("output_refs") if isinstance(payload.get("output_refs"), dict) else {}).keys()
+        }
+    )
+    def distribution(key: str) -> dict[str, int]:
+        return dict(sorted(Counter(text_value(payload, key) for payload in payloads).items()))
+
+    return {
+        "audit_event_count": len(payloads),
+        "event_type_distribution": distribution("event_type"),
+        "target_type_distribution": distribution("target_type"),
+        "method_version_distribution": distribution("method_version"),
+        "actor_type_distribution": distribution("actor_type"),
+        "input_ref_keys": input_ref_keys,
+        "output_ref_keys": output_ref_keys,
+        "first_event_at": created_values[0] if created_values else "",
+        "last_event_at": created_values[-1] if created_values else "",
+        "event_ids": [str(payload.get("id")) for payload in payloads[:20] if payload.get("id")],
+        "summary": f"{len(payloads)} upstream audit events attached to this report export.",
+    }
+
+
 def build_report_methodology_disclosure(
     *,
     rows: tuple[dict[str, Any], ...],
@@ -378,6 +450,7 @@ def build_report_methodology_disclosure(
     platform_weights_snapshot: dict[str, float],
     google_spike_gate: GoogleSpikeGateResult | Mapping[str, object] | None = None,
     score_input_policy: Mapping[str, object] | None = None,
+    audit_events: tuple[AuditEvent | Mapping[str, object], ...] = (),
 ) -> dict[str, Any]:
     access_distribution = dict(sorted(Counter(str(row.get("access_method") or "unknown") for row in rows).items()))
     platform_distribution = dict(sorted(Counter(str(row.get("platform") or "unknown") for row in rows).items()))
@@ -400,6 +473,7 @@ def build_report_methodology_disclosure(
         "platform_distribution": platform_distribution,
         "platform_weights_snapshot": dict(sorted(platform_weights_snapshot.items())),
         "score_input_policy": score_policy,
+        "audit_summary": build_report_audit_summary(audit_events),
         "evidence_asset_coverage": {
             "screenshot_records": sum(1 for row in rows if int(row.get("screenshot_count") or 0) > 0),
             "html_snapshot_records": sum(1 for row in rows if int(row.get("html_snapshot_count") or 0) > 0),
@@ -441,6 +515,29 @@ def render_methodology_disclosure_lines(disclosure: Mapping[str, Any]) -> list[s
         f"- Platform distribution: {platform_distribution}",
         f"- Screenshot records: {assets.get('screenshot_records', 0)}",
         f"- HTML snapshot records: {assets.get('html_snapshot_records', 0)}",
+    ]
+
+
+def render_audit_summary_lines(summary_value: object) -> list[str]:
+    summary = dict(summary_value) if isinstance(summary_value, Mapping) else {}
+    event_types = dict(summary.get("event_type_distribution") or {})
+    target_types = dict(summary.get("target_type_distribution") or {})
+    method_versions = dict(summary.get("method_version_distribution") or {})
+    actor_types = dict(summary.get("actor_type_distribution") or {})
+    input_ref_keys = summary.get("input_ref_keys") if isinstance(summary.get("input_ref_keys"), list) else []
+    output_ref_keys = summary.get("output_ref_keys") if isinstance(summary.get("output_ref_keys"), list) else []
+    event_ids = summary.get("event_ids") if isinstance(summary.get("event_ids"), list) else []
+    return [
+        f"- Audit events attached: {summary.get('audit_event_count', 0)}",
+        f"- Audit event types: {event_types}",
+        f"- Audit target types: {target_types}",
+        f"- Audit method versions: {method_versions}",
+        f"- Audit actor types: {actor_types}",
+        f"- Audit input ref keys: {input_ref_keys}",
+        f"- Audit output ref keys: {output_ref_keys}",
+        f"- Audit event window: {summary.get('first_event_at') or 'n/a'} to {summary.get('last_event_at') or 'n/a'}",
+        f"- Audit event ids: {event_ids}",
+        f"- Audit summary: {summary.get('summary', 'No audit summary recorded')}",
     ]
 
 

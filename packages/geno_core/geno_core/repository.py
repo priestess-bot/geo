@@ -115,10 +115,12 @@ from geno_core.models import (
     VisibilityScoreSnapshot,
 )
 from geno_core.report import (
+    build_report_audit_summary,
     build_report_methodology_disclosure,
     build_score_rate_methodology,
     methodology_rows_from_runtime_answer_runs,
     render_markdown_pdf,
+    render_audit_summary_lines,
     render_methodology_disclosure_lines,
 )
 from geno_core.fidelity import build_runtime_fidelity_check
@@ -502,9 +504,12 @@ def _runtime_method_disclosure(report: RuntimeReportExport) -> dict[str, Any]:
         return build_report_methodology_disclosure(
             rows=rows,
             platform_weights_snapshot=dict(report.report_export.get("platform_weights_snapshot") or {}),
+            audit_events=tuple(report.audit_events),
         )
     if "score_rate_denominators" not in disclosure:
         disclosure["score_rate_denominators"] = build_score_rate_methodology(rows)
+    if "audit_summary" not in disclosure:
+        disclosure["audit_summary"] = build_report_audit_summary(tuple(report.audit_events))
     return disclosure
 
 
@@ -703,6 +708,10 @@ def _render_runtime_report_markdown(report: RuntimeReportExport) -> str:
         "",
         *render_methodology_disclosure_lines(method_disclosure),
         "",
+        "## Audit Summary",
+        "",
+        *render_audit_summary_lines(method_disclosure.get("audit_summary")),
+        "",
         "## Evidence Appendix",
         "",
     ]
@@ -723,7 +732,7 @@ def _render_runtime_report_markdown(report: RuntimeReportExport) -> str:
             lines.append(f"- {gap['source_type']}: {gap['gap_type']}; {gap['recommendation']}")
     else:
         lines.append("- No citation graph stored for this report.")
-    lines.extend(["", "## Audit Summary", ""])
+    lines.extend(["", "## Audit Events", ""])
     for event in report.audit_events:
         lines.append(
             f"- {event['event_type']} target={event['target_type']} "
@@ -814,6 +823,7 @@ def _render_white_label_report_markdown(
         lines.append(f"- Competitor benchmarks: {len(graph.competitor_benchmarks)}")
     else:
         lines.append("- No citation graph stored for this report.")
+    lines.extend(render_audit_summary_lines(method_disclosure.get("audit_summary")))
     lines.append(f"- Report audit events: {len(report.audit_events)}")
     for event in report.audit_events[:5]:
         lines.append(

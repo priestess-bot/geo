@@ -3435,6 +3435,7 @@ def au_p0a_fixture_report() -> dict[str, object]:
         platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
         google_spike_gate=google_gate,
         score_input_policy=analysis_result.score_input_policy,
+        audit_events=(analysis_result.audit_event,),
     )
     return {
         "report_export": asdict(report.report_export),
@@ -3627,6 +3628,7 @@ def au_p0a_fixture_traceability() -> dict[str, object]:
         graph=graph,
         platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
         score_input_policy=analysis_result.score_input_policy,
+        audit_events=(analysis_result.audit_event,),
     )
     actions = build_action_recommendations(
         project_id=bootstrap.project.id,

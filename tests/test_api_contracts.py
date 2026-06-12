@@ -3504,12 +3504,17 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("Trigger rate denominator: all attempted evidence records in this report window", payload["markdown"])
         self.assertIn("Mention rate denominator: surface_triggered evidence records, not all attempted records", payload["markdown"])
         self.assertIn("Report evidence attempted records:", payload["markdown"])
+        self.assertIn("### Audit Summary", payload["markdown"])
+        self.assertIn("Audit events attached: 1", payload["markdown"])
         score_rate_disclosure = payload["report_export"]["method_disclosure"]["score_rate_denominators"]
         self.assertEqual(
             score_rate_disclosure["definitions"]["recommendation_rate"]["formula"],
             "brand_recommended_records / surface_triggered_records",
         )
         self.assertGreater(score_rate_disclosure["evidence_denominators"]["attempted_records"], 0)
+        audit_summary = payload["report_export"]["method_disclosure"]["audit_summary"]
+        self.assertEqual(audit_summary["audit_event_count"], 1)
+        self.assertEqual(audit_summary["event_type_distribution"]["visibility_score_snapshot_created"], 1)
         self.assertIn("answer_run_id", payload["csv_content"])
         self.assertGreater(payload["pdf_size_bytes"], 0)
         self.assertEqual(len(payload["pdf_content_hash"]), 64)
