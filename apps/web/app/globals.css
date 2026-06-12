@@ -638,6 +638,66 @@ code {
   overflow-wrap: anywhere;
 }
 
+.launchRemediation {
+  border: 1px solid #d9e2ec;
+  border-radius: 4px;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.launchRemediationHeader {
+  align-items: baseline;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.launchRemediationHeader span,
+.remediationEmpty {
+  color: #647382;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.remediationList {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.remediationItem {
+  background: #f7fafc;
+  border: 1px solid #d9e2ec;
+  border-radius: 4px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 9px;
+}
+
+.remediationItem div {
+  display: grid;
+  gap: 3px;
+}
+
+.remediationItem p,
+.remediationItem small {
+  color: #526575;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.remediationItem code {
+  background: #ffffff;
+  border-color: #d9e2ec;
+  font-size: 11px;
+  white-space: normal;
+  word-break: break-word;
+}
+
 .metrics {
   display: grid;
   gap: 10px;
@@ -1753,6 +1813,7 @@ summary {
   .filterForm,
   .launchStageGrid,
   .launchEvidenceGrid,
+  .remediationList,
   .savedViews,
   .questionTableHeader,
   .questionRow summary,
@@ -1822,6 +1883,7 @@ summary {
   .filterForm,
   .launchStageGrid,
   .launchEvidenceGrid,
+  .remediationList,
   .savedViews,
   .saveViewForm,
   .questionTableHeader,

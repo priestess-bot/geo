@@ -109,6 +109,10 @@ from scripts.build_au_launch_status import (
     DEFAULT_P0C_REPORT_PACKAGE_PATH,
     build_au_launch_status,
 )
+from scripts.build_au_launch_remediation_plan import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH,
+    build_au_launch_remediation_plan,
+)
 
 app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
 
@@ -1278,6 +1282,10 @@ def runtime_diagnostics() -> dict[str, object]:
 
 @app.get("/v1/launch-status/au")
 def au_launch_status() -> dict[str, object]:
+    return _build_au_launch_status_from_env()
+
+
+def _build_au_launch_status_from_env() -> dict[str, object]:
     return build_au_launch_status(
         p0a_status_path=Path(os.getenv("GENO_AU_P0A_STATUS_OUTPUT_PATH", DEFAULT_P0A_STATUS_PATH)),
         p0b_google_status_path=Path(
@@ -1296,6 +1304,22 @@ def au_launch_status() -> dict[str, object]:
             os.getenv("GENO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", DEFAULT_P0C_REPORT_PACKAGE_PATH)
         ),
         output_path=Path(os.getenv("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH)),
+    )
+
+
+@app.get("/v1/launch-remediation-plan/au")
+def au_launch_remediation_plan() -> dict[str, object]:
+    launch_status_path = Path(os.getenv("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH))
+    launch_status = _build_au_launch_status_from_env()
+    return build_au_launch_remediation_plan(
+        launch_status=launch_status,
+        launch_status_path=launch_status_path,
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH",
+                DEFAULT_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH,
+            )
+        ),
     )
 
 
@@ -4035,6 +4059,7 @@ def contracts() -> dict[str, list[str]]:
             "/ready",
             "/v1/runtime-diagnostics",
             "/v1/launch-status/au",
+            "/v1/launch-remediation-plan/au",
             "/metrics",
         ],
     }

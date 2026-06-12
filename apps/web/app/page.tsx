@@ -545,6 +545,7 @@ type TraceabilityDetail = {
 
 type RuntimeData = {
   launchStatus: AuLaunchStatus | null;
+  launchRemediationPlan: AuLaunchRemediationPlan | null;
   projects: PageResponse<RuntimeProject>;
   projectMembers: PageResponse<RuntimeProjectMember>;
   brandKit: RuntimeProjectBrandKit | null;
@@ -622,6 +623,46 @@ type AuLaunchStatus = {
     checks?: Record<string, boolean>;
     errors?: string[];
   };
+};
+
+type AuLaunchRemediationPlan = {
+  remediation_plan_version: string;
+  generated_at: string;
+  status: string;
+  remediation_plan_ready: boolean;
+  next_work_item_id: string;
+  remediation_plan_hash: string;
+  summary?: {
+    blocker_count?: number;
+    covered_blocker_count?: number;
+    unmapped_blocker_count?: number;
+    work_item_count?: number;
+    external_dependency_blocker_count?: number;
+    runnable_now_work_item_count?: number;
+    runnable_now_work_items?: string[];
+    unmapped_blockers?: string[];
+  };
+  work_items?: Array<{
+    id: string;
+    stage?: string;
+    title?: string;
+    status?: string;
+    external_dependency?: boolean;
+    dependency_class?: string;
+    commands?: Array<{ shell?: string }>;
+    verification_commands?: Array<{ shell?: string }>;
+    evidence_outputs?: string[];
+    clears_blockers?: string[];
+    blocker_count?: number;
+    acceptance?: string;
+  }>;
+  blocker_remediations?: Array<{
+    blocker?: string;
+    work_item_id?: string;
+    mapped?: boolean;
+    next_command?: string;
+    dependency_class?: string;
+  }>;
 };
 
 type RuntimeProjectBrandKit = {
@@ -1025,6 +1066,7 @@ type QuestionDetailRow = {
 
 const endpoints = {
   launchStatus: "/v1/launch-status/au",
+  launchRemediationPlan: "/v1/launch-remediation-plan/au",
   projects: "/v1/projects/runtime",
   projectMembers: "/v1/project-members/runtime",
   prompts: "/v1/prompts/runtime",
@@ -1912,6 +1954,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   const projectListParams = { market_code: "AU", limit: 20 };
   const paths: RuntimePaths = {
     launchStatus: endpoints.launchStatus,
+    launchRemediationPlan: endpoints.launchRemediationPlan,
     projects: runtimePath(endpoints.projects, projectListParams),
     projectMembers: endpoints.projectMembers,
     prompts: runtimePath(endpoints.prompts, {
@@ -2160,6 +2203,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
 
   const [
     launchStatus,
+    launchRemediationPlan,
     prompts,
     projectMembers,
     promptImports,
@@ -2193,6 +2237,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     traceability
   ] = await Promise.all([
     fetchRuntimeEndpoint<AuLaunchStatus | null>(baseUrl, paths.launchStatus, null),
+    fetchRuntimeEndpoint<AuLaunchRemediationPlan | null>(baseUrl, paths.launchRemediationPlan, null),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     selectedProjectId
       ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectMember>>(
@@ -2302,6 +2347,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   ]);
   const errors = [
     launchStatus,
+    launchRemediationPlan,
     projects,
     prompts,
     projectMembers,
@@ -2340,6 +2386,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   return {
     data: {
       launchStatus: launchStatus.payload,
+      launchRemediationPlan: launchRemediationPlan.payload,
       projects: projects.payload,
       projectMembers: projectMembers.payload,
       brandKit: brandKit.payload,
@@ -2646,6 +2693,10 @@ export default async function Home({
   const launchP0a = launchStatus?.p0a_design_partner;
   const launchP0b = launchStatus?.p0b_google;
   const launchP0c = launchStatus?.p0c_customer_report;
+  const launchRemediationPlan = data.launchRemediationPlan;
+  const remediationSummary = launchRemediationPlan?.summary;
+  const remediationWorkItems = launchRemediationPlan?.work_items || [];
+  const topRemediationItems = remediationWorkItems.slice(0, 4);
   const scoreWeightConfig = data.scoreWeights?.score_weight_config || null;
   const savedScoreWeightConfig = scoreWeightConfig?.id ? scoreWeightConfig : null;
   const scoreWeightAuditEvent = data.scoreWeights?.audit_events[0]?.event_type || "default weights";
@@ -3058,6 +3109,47 @@ export default async function Home({
             <span>No launch blockers recorded.</span>
           )}
           {launchBlockers.length > 6 ? <span>{launchBlockers.length - 6} more blockers in API payload</span> : null}
+        </div>
+        <div className="launchRemediation">
+          <div className="launchRemediationHeader">
+            <strong>Remediation plan</strong>
+            <span>
+              {launchRemediationPlan?.remediation_plan_version || "au_launch_remediation_plan_v1"} · hash{" "}
+              {shortHash(launchRemediationPlan?.remediation_plan_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>Next work item {launchRemediationPlan?.next_work_item_id || "run remediation plan"}</span>
+            <span>
+              Covered blockers {remediationSummary?.covered_blocker_count || 0}/
+              {remediationSummary?.blocker_count || 0}
+            </span>
+            <span>Work items {remediationSummary?.work_item_count || 0}</span>
+            <span>Unmapped blockers {remediationSummary?.unmapped_blocker_count || 0}</span>
+          </div>
+          {topRemediationItems.length ? (
+            <div className="remediationList">
+              {topRemediationItems.map((item) => (
+                <div className="remediationItem" key={item.id}>
+                  <div>
+                    <strong>{item.id}</strong>
+                    <span>
+                      {item.stage || "stage"} · {item.status || "status"} · {item.dependency_class || "dependency"}
+                    </span>
+                  </div>
+                  <p>{item.title || item.acceptance || "No title"}</p>
+                  <code>{item.commands?.[0]?.shell || "no command"}</code>
+                  <small>
+                    verifies {item.verification_commands?.[0]?.shell || "no verifier"} · clears{" "}
+                    {item.blocker_count || item.clears_blockers?.length || 0}
+                  </small>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span className="remediationEmpty">No remediation work items recorded.</span>
+          )}
+          <code>{paths.launchRemediationPlan}</code>
         </div>
         <code>{paths.launchStatus}</code>
       </section>

@@ -275,6 +275,69 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["p0c_customer_report"]["report_contract_version"], "customer_report_handoff_v1")
         build_status.assert_called_once()
 
+    def test_au_launch_remediation_plan_endpoint_returns_auditable_work_items(self) -> None:
+        status_payload = {
+            "launch_status_version": "au_launch_status_v1",
+            "generated_at": "2026-06-12T00:00:00Z",
+            "status": "fail",
+            "ready_for_customer_report_handoff": False,
+            "next_action": "configure_required_environment",
+            "remaining_blockers": ["p0a:preflight:required_env_missing:OPENAI_API_KEY"],
+            "launch_status_hash": "abc123",
+        }
+        plan_payload = {
+            "remediation_plan_version": "au_launch_remediation_plan_v1",
+            "generated_at": "2026-06-12T00:00:00Z",
+            "status": "pass",
+            "remediation_plan_ready": True,
+            "next_work_item_id": "p0a_environment",
+            "summary": {
+                "blocker_count": 1,
+                "covered_blocker_count": 1,
+                "unmapped_blocker_count": 0,
+                "work_item_count": 1,
+            },
+            "work_items": [
+                {
+                    "id": "p0a_environment",
+                    "stage": "P0a",
+                    "title": "Configure AU P0a provider keys and runtime database",
+                    "commands": [{"shell": "make au-p0a-env"}],
+                    "verification_commands": [{"shell": "make verify-au-p0a-env"}],
+                    "evidence_outputs": ["docs/runtime_preflight/au-p0a-env-latest.json"],
+                    "clears_blockers": ["p0a:preflight:required_env_missing:OPENAI_API_KEY"],
+                    "blocker_count": 1,
+                    "external_dependency": True,
+                    "dependency_class": "provider_keys_and_database",
+                }
+            ],
+            "blocker_remediations": [
+                {
+                    "blocker": "p0a:preflight:required_env_missing:OPENAI_API_KEY",
+                    "work_item_id": "p0a_environment",
+                    "mapped": True,
+                    "next_command": "make au-p0a-env",
+                }
+            ],
+            "remediation_plan_hash": "plan123",
+        }
+        with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload) as build_status, patch(
+            "geno_api.main.build_au_launch_remediation_plan",
+            return_value=plan_payload,
+        ) as build_plan:
+            response = self.client.get("/v1/launch-remediation-plan/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["remediation_plan_version"], "au_launch_remediation_plan_v1")
+        self.assertTrue(payload["remediation_plan_ready"])
+        self.assertEqual(payload["next_work_item_id"], "p0a_environment")
+        self.assertEqual(payload["summary"]["covered_blocker_count"], 1)
+        self.assertEqual(payload["work_items"][0]["verification_commands"][0]["shell"], "make verify-au-p0a-env")
+        self.assertEqual(payload["blocker_remediations"][0]["work_item_id"], "p0a_environment")
+        build_status.assert_called_once()
+        build_plan.assert_called_once()
+
     def test_metrics_endpoint_exports_request_and_pool_metrics(self) -> None:
         self.client.get("/health")
         with patch(
@@ -3833,6 +3896,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/ready", payload["persistence"])
         self.assertIn("/v1/runtime-diagnostics", payload["persistence"])
         self.assertIn("/v1/launch-status/au", payload["persistence"])
+        self.assertIn("/v1/launch-remediation-plan/au", payload["persistence"])
         self.assertIn("/metrics", payload["persistence"])
 
 
