@@ -85,6 +85,7 @@ from geno_core.models import (
     RuntimeEvidencePage,
     RuntimeEvidenceExport,
     RuntimeEntityAlias,
+    RuntimeEntityAliasCandidateBatchReviewResult,
     RuntimeEntityAliasCandidatePage,
     RuntimeEntityAliasCandidateReview,
     RuntimeEntityAliasPage,
@@ -9807,6 +9808,112 @@ class CoreContractsTest(unittest.TestCase):
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("INSERT INTO entity_alias_candidate_reviews", executed_sql)
         self.assertIn("ON CONFLICT (project_id, candidate_id) DO UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_records_runtime_entity_alias_candidate_reviews_batch(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        brand_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        review_1_id = "60f1e5a4-d1d0-511e-b0c8-15dfc081ee9b"
+        review_2_id = "652f2760-8ba3-5fdd-bd04-84e93b6d6519"
+        connection = RecordingConnection(
+            result_sets=[
+                {"id": project_id},
+                {"id": brand_id},
+                {"id": project_id},
+                {"id": brand_id},
+                None,
+                {
+                    "id": review_1_id,
+                    "project_id": project_id,
+                    "candidate_id": "candidate-1",
+                    "entity_id": brand_id,
+                    "entity_kind": "brand",
+                    "alias": "ExampleBrand AU",
+                    "alias_type": "alias",
+                    "source": "evidence_answer_text",
+                    "confidence": 0.8,
+                    "decision": "rejected",
+                    "reviewed_by": "analyst-1",
+                    "reason": "batch reject noisy alias candidates",
+                    "notes": "Batch reject noisy candidates",
+                    "evidence_answer_run_ids": ["answer-run-1"],
+                    "evidence_urls": ["https://examplebrand.com.au/reviews"],
+                    "payload": {"source_panel": "runtime_entity_alias_candidates"},
+                    "created_at": now,
+                    "updated_at": now,
+                },
+                None,
+                {
+                    "id": review_2_id,
+                    "project_id": project_id,
+                    "candidate_id": "candidate-2",
+                    "entity_id": brand_id,
+                    "entity_kind": "brand",
+                    "alias": "examplebrand-au.example",
+                    "alias_type": "domain",
+                    "source": "evidence_citation_domain",
+                    "confidence": 0.72,
+                    "decision": "rejected",
+                    "reviewed_by": "analyst-1",
+                    "reason": "batch reject noisy alias candidates",
+                    "notes": "Batch reject noisy candidates",
+                    "evidence_answer_run_ids": [],
+                    "evidence_urls": [],
+                    "payload": {"source_panel": "runtime_entity_alias_candidates"},
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            ]
+        )
+
+        result = PostgresEvidenceRepository(connection).record_entity_alias_candidate_reviews(
+            (
+                EntityAliasCandidateReviewInput(
+                    project_id=project_id,
+                    candidate_id="candidate-1",
+                    entity_id=brand_id,
+                    entity_kind="brand",
+                    alias="ExampleBrand AU",
+                    alias_type="alias",
+                    decision="rejected",
+                    reviewed_by="analyst-1",
+                    source="evidence_answer_text",
+                    confidence=0.8,
+                    reason="batch reject noisy alias candidates",
+                    evidence_answer_run_ids=("answer-run-1",),
+                    evidence_urls=("https://examplebrand.com.au/reviews",),
+                    payload={"source_panel": "runtime_entity_alias_candidates"},
+                ),
+                EntityAliasCandidateReviewInput(
+                    project_id=project_id,
+                    candidate_id="candidate-2",
+                    entity_id=brand_id,
+                    entity_kind="brand",
+                    alias="examplebrand-au.example",
+                    alias_type="domain",
+                    decision="rejected",
+                    reviewed_by="analyst-1",
+                    source="evidence_citation_domain",
+                    confidence=0.72,
+                    payload={"source_panel": "runtime_entity_alias_candidates"},
+                ),
+            ),
+            reviewed_by="analyst-1",
+            notes="Batch reject noisy candidates",
+        )
+
+        self.assertIsInstance(result, RuntimeEntityAliasCandidateBatchReviewResult)
+        self.assertEqual(result.batch_version, "entity_alias_candidate_review_batch_v1")
+        self.assertEqual(result.reviewed_count, 2)
+        self.assertEqual(result.failed_count, 0)
+        self.assertEqual(result.audit_summary["event_type"], "entity_alias_candidate_batch_reviewed")
+        self.assertEqual(result.audit_summary["individual_audit_event_type"], "entity_alias_candidate_review_recorded")
+        self.assertEqual(result.records[0].review["decision"], "rejected")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO entity_alias_candidate_reviews", executed_sql)
+        self.assertIn("entity_alias_candidate_batch_reviewed", str(connection.calls))
         self.assertIn("INSERT INTO audit_events", executed_sql)
 
     def test_postgres_repository_lists_runtime_entity_aliases_with_audit_events(self) -> None:

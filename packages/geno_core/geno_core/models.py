@@ -976,6 +976,17 @@ class RuntimeEntityAliasCandidateReview:
 
 
 @dataclass(frozen=True)
+class RuntimeEntityAliasCandidateBatchReviewResult:
+    batch_version: str
+    requested_count: int
+    reviewed_count: int
+    failed_count: int
+    records: tuple[RuntimeEntityAliasCandidateReview, ...]
+    errors: tuple[dict[str, Any], ...]
+    audit_summary: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class RuntimeScoreSnapshotRun:
     answer_run: dict[str, Any]
     analysis: dict[str, Any] | None

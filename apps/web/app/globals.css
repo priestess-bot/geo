@@ -453,7 +453,7 @@ code {
 }
 
 .aliasBatchQueue {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .aliasBatchQueue p {
@@ -462,6 +462,11 @@ code {
   line-height: 1.4;
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.aliasBatchActions {
+  display: inline-grid;
+  justify-self: start;
 }
 
 .formHeader,

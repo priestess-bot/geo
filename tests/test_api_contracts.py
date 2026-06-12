@@ -28,6 +28,7 @@ from tests.test_au_p0b_google_execution_checklist import AuP0bGoogleExecutionChe
 from geno_core.models import (
     RuntimeEntityAlias,
     RuntimeEntityAliasCandidate,
+    RuntimeEntityAliasCandidateBatchReviewResult,
     RuntimeEntityAliasCandidatePage,
     RuntimeEntityAliasCandidateReview,
     RuntimeCollectionRunPage,
@@ -2339,6 +2340,150 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.review.reviewed_by, "analyst-1")
         self.assertEqual(fake_repository.review.evidence_answer_run_ids, ("answer-run-1",))
 
+    def test_runtime_entity_alias_candidate_review_batch_endpoint_records_decisions(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        entity_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+
+        class FakeRepository:
+            connection = type("Connection", (), {"close": lambda self: None})()
+
+            def record_entity_alias_candidate_reviews(self, reviews, **kwargs):
+                self.reviews = reviews
+                self.kwargs = kwargs
+                return RuntimeEntityAliasCandidateBatchReviewResult(
+                    batch_version="entity_alias_candidate_review_batch_v1",
+                    requested_count=len(reviews),
+                    reviewed_count=len(reviews),
+                    failed_count=0,
+                    records=tuple(
+                        RuntimeEntityAliasCandidateReview(
+                            review={
+                                "id": f"review-{index}",
+                                "project_id": review.project_id,
+                                "candidate_id": review.candidate_id,
+                                "entity_id": review.entity_id,
+                                "decision": review.decision,
+                                "reviewed_by": review.reviewed_by,
+                            },
+                            audit_events=(
+                                {
+                                    "event_type": "entity_alias_candidate_review_recorded",
+                                    "method_version": "entity_alias_candidate_review_v1",
+                                },
+                            ),
+                        )
+                        for index, review in enumerate(reviews)
+                    ),
+                    errors=(),
+                    audit_summary={
+                        "event_type": "entity_alias_candidate_batch_reviewed",
+                        "method_version": "entity_alias_candidate_review_batch_v1",
+                        "reviewed_count": len(reviews),
+                        "failed_count": 0,
+                    },
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+            response = self.client.post(
+                "/v1/entity-aliases/runtime/candidates/review-batch",
+                json={
+                    "reviewed_by": "analyst-1",
+                    "notes": "Batch reject noisy candidates",
+                    "reviews": [
+                        {
+                            "project_id": project_id,
+                            "candidate_id": "candidate-1",
+                            "entity_id": entity_id,
+                            "entity_kind": "brand",
+                            "alias": "ExampleBrand AU",
+                            "alias_type": "alias",
+                            "decision": "rejected",
+                            "source": "evidence_answer_text",
+                            "confidence": 0.8,
+                            "evidence_answer_run_ids": ["answer-run-1"],
+                            "evidence_urls": ["https://examplebrand.com.au/reviews"],
+                        },
+                        {
+                            "project_id": project_id,
+                            "candidate_id": "candidate-2",
+                            "entity_id": entity_id,
+                            "entity_kind": "brand",
+                            "alias": "examplebrand-au.example",
+                            "alias_type": "domain",
+                            "decision": "rejected",
+                            "source": "evidence_citation_domain",
+                            "confidence": 0.72,
+                        },
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["batch_version"], "entity_alias_candidate_review_batch_v1")
+        self.assertEqual(payload["reviewed_count"], 2)
+        self.assertEqual(payload["audit_summary"]["event_type"], "entity_alias_candidate_batch_reviewed")
+        self.assertEqual(fake_repository.kwargs["reviewed_by"], "analyst-1")
+        self.assertEqual(fake_repository.reviews[0].notes, "Batch reject noisy candidates")
+        self.assertEqual(fake_repository.reviews[0].evidence_answer_run_ids, ("answer-run-1",))
+
+    def test_runtime_entity_alias_candidate_review_batch_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.post(
+            "/v1/entity-aliases/runtime/candidates/review-batch",
+            json={
+                "reviews": [
+                    {
+                        "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                        "candidate_id": "candidate-1",
+                        "entity_id": "3ba88c1e-3ddc-5075-9ac9-29687d539830",
+                        "entity_kind": "brand",
+                        "alias": "ExampleBrand AU",
+                        "alias_type": "alias",
+                        "decision": "rejected",
+                    }
+                ]
+            },
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_entity_alias_candidate_review_batch_rejects_cross_project_reviews(self) -> None:
+        class FakeRepository:
+            connection = type("Connection", (), {"close": lambda self: None})()
+
+            def record_entity_alias_candidate_reviews(self, reviews, **kwargs):
+                raise AssertionError("batch review should reject cross-project payload before writing")
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()):
+            response = self.client.post(
+                "/v1/entity-aliases/runtime/candidates/review-batch",
+                json={
+                    "reviews": [
+                        {
+                            "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                            "candidate_id": "candidate-1",
+                            "entity_id": "3ba88c1e-3ddc-5075-9ac9-29687d539830",
+                            "entity_kind": "brand",
+                            "alias": "ExampleBrand AU",
+                            "alias_type": "alias",
+                            "decision": "rejected",
+                        },
+                        {
+                            "project_id": "other-project",
+                            "candidate_id": "candidate-2",
+                            "entity_id": "3ba88c1e-3ddc-5075-9ac9-29687d539830",
+                            "entity_kind": "brand",
+                            "alias": "ExampleBrand Australia",
+                            "alias_type": "alias",
+                            "decision": "rejected",
+                        },
+                    ]
+                },
+            )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"]["error"], "reviews must belong to one project")
+
     def test_runtime_entity_alias_confirm_endpoint_requires_persistence_config(self) -> None:
         response = self.client.post(
             "/v1/entity-aliases/runtime/confirm",
@@ -4409,6 +4554,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEntityAliasCandidate", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasCandidatePage", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasCandidateReview", payload["m1_bootstrap"])
+        self.assertIn("RuntimeEntityAliasCandidateBatchReviewResult", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasPage", payload["m1_bootstrap"])
         self.assertIn("TraceabilityBundle", payload["auditability"])
         self.assertIn("RuntimeFidelityCheck", payload["auditability"])
@@ -4467,8 +4613,10 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEntityAliasCandidate", payload["persistence"])
         self.assertIn("RuntimeEntityAliasCandidatePage", payload["persistence"])
         self.assertIn("RuntimeEntityAliasCandidateReview", payload["persistence"])
+        self.assertIn("RuntimeEntityAliasCandidateBatchReviewResult", payload["persistence"])
         self.assertIn("EntityAliasCandidateReviewInput", payload["persistence"])
         self.assertIn("EntityAliasCandidateReviewRequest", payload["persistence"])
+        self.assertIn("EntityAliasCandidateBatchReviewRequest", payload["persistence"])
         self.assertIn("RuntimeEntityAliasPage", payload["persistence"])
         self.assertIn("RuntimeSavedView", payload["persistence"])
         self.assertIn("RuntimeSavedViewInput", payload["persistence"])
@@ -4559,6 +4707,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/entity-aliases/runtime", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/review", payload["persistence"])
+        self.assertIn("/v1/entity-aliases/runtime/candidates/review-batch", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/confirm", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/confirm-batch", payload["persistence"])
         self.assertIn("/v1/prompts/runtime", payload["persistence"])

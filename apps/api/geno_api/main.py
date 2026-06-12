@@ -1458,6 +1458,13 @@ class EntityAliasCandidateReviewRequest(BaseModel):
     payload: dict[str, object] = Field(default_factory=dict)
 
 
+class EntityAliasCandidateBatchReviewRequest(BaseModel):
+    reviews: list[EntityAliasCandidateReviewRequest] = Field(min_length=1, max_length=25)
+    reviewed_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=2000)
+    continue_on_error: bool = False
+
+
 class RuntimeProjectCreateRequest(BaseModel):
     tenant_name: str = Field(default="Design Partner AU", min_length=1, max_length=160)
     project_name: str = Field(default="AU DTC Evidence Pilot", min_length=1, max_length=160)
@@ -2051,28 +2058,87 @@ def review_runtime_entity_alias_candidate(
         )
         try:
             record = repository.record_entity_alias_candidate_review(
-                EntityAliasCandidateReviewInput(
-                    project_id=payload.project_id.strip(),
-                    candidate_id=payload.candidate_id.strip(),
-                    entity_id=payload.entity_id.strip(),
-                    entity_kind=payload.entity_kind.strip(),
-                    alias=payload.alias.strip(),
-                    alias_type=payload.alias_type.strip(),
-                    decision=payload.decision.strip(),
-                    reviewed_by=payload.reviewed_by.strip(),
-                    source=payload.source.strip() if payload.source else None,
-                    confidence=payload.confidence,
-                    reason=payload.reason.strip() if payload.reason else None,
-                    notes=payload.notes.strip() if payload.notes else None,
-                    evidence_answer_run_ids=tuple(item.strip() for item in payload.evidence_answer_run_ids if item.strip()),
-                    evidence_urls=tuple(item.strip() for item in payload.evidence_urls if item.strip()),
-                    payload=payload.payload,
-                )
+                _entity_alias_candidate_review_input(payload)
             )
         except ValueError as exc:
             status_code = 404 if str(exc) in {"project not found", "entity not found"} else 400
             raise HTTPException(status_code=status_code, detail=str(exc)) from exc
         return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+def _entity_alias_candidate_review_input(
+    payload: EntityAliasCandidateReviewRequest,
+    *,
+    reviewed_by: str | None = None,
+    notes: str | None = None,
+) -> EntityAliasCandidateReviewInput:
+    effective_reviewed_by = reviewed_by.strip() if reviewed_by else payload.reviewed_by.strip()
+    effective_notes = notes.strip() if notes else payload.notes.strip() if payload.notes else None
+    return EntityAliasCandidateReviewInput(
+        project_id=payload.project_id.strip(),
+        candidate_id=payload.candidate_id.strip(),
+        entity_id=payload.entity_id.strip(),
+        entity_kind=payload.entity_kind.strip(),
+        alias=payload.alias.strip(),
+        alias_type=payload.alias_type.strip(),
+        decision=payload.decision.strip(),
+        reviewed_by=effective_reviewed_by,
+        source=payload.source.strip() if payload.source else None,
+        confidence=payload.confidence,
+        reason=payload.reason.strip() if payload.reason else None,
+        notes=effective_notes,
+        evidence_answer_run_ids=tuple(item.strip() for item in payload.evidence_answer_run_ids if item.strip()),
+        evidence_urls=tuple(item.strip() for item in payload.evidence_urls if item.strip()),
+        payload=payload.payload,
+    )
+
+
+@app.post("/v1/entity-aliases/runtime/candidates/review-batch")
+def review_runtime_entity_alias_candidates_batch(
+    payload: EntityAliasCandidateBatchReviewRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_ids = {review.project_id.strip() for review in payload.reviews if review.project_id.strip()}
+        if not project_ids:
+            raise HTTPException(status_code=400, detail="project_id is required")
+        if len(project_ids) > 1:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "reviews must belong to one project", "project_ids": sorted(project_ids)},
+            )
+        project_id = next(iter(project_ids))
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            result = repository.record_entity_alias_candidate_reviews(
+                tuple(
+                    _entity_alias_candidate_review_input(
+                        review,
+                        reviewed_by=payload.reviewed_by,
+                        notes=payload.notes,
+                    )
+                    for review in payload.reviews
+                ),
+                reviewed_by=payload.reviewed_by.strip(),
+                notes=payload.notes.strip() if payload.notes else None,
+                continue_on_error=payload.continue_on_error,
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) in {"project not found", "entity not found"} else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(result)
     finally:
         close_repository_connection(repository)
 
@@ -4481,6 +4547,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasCandidate",
             "RuntimeEntityAliasCandidatePage",
             "RuntimeEntityAliasCandidateReview",
+            "RuntimeEntityAliasCandidateBatchReviewResult",
             "RuntimeEntityAliasPage",
             "IndustryProfile",
             "PromptQuestion",
@@ -4651,8 +4718,10 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasCandidate",
             "RuntimeEntityAliasCandidatePage",
             "RuntimeEntityAliasCandidateReview",
+            "RuntimeEntityAliasCandidateBatchReviewResult",
             "EntityAliasCandidateReviewInput",
             "EntityAliasCandidateReviewRequest",
+            "EntityAliasCandidateBatchReviewRequest",
             "RuntimeEntityAliasPage",
             "RuntimeEvidenceRun",
             "RuntimeEvidencePage",
@@ -4723,6 +4792,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/entity-aliases/runtime",
             "/v1/entity-aliases/runtime/candidates",
             "/v1/entity-aliases/runtime/candidates/review",
+            "/v1/entity-aliases/runtime/candidates/review-batch",
             "/v1/entity-aliases/runtime/confirm",
             "/v1/entity-aliases/runtime/confirm-batch",
             "/v1/prompts/runtime",

@@ -51,6 +51,7 @@ from geno_core.models import (
     RuntimeEvidenceRun,
     RuntimeEntityAlias,
     RuntimeEntityAliasCandidate,
+    RuntimeEntityAliasCandidateBatchReviewResult,
     RuntimeEntityAliasCandidatePage,
     RuntimeEntityAliasCandidateReview,
     RuntimeEntityAliasPage,
@@ -2482,6 +2483,127 @@ class PostgresEvidenceRepository:
         self,
         review: EntityAliasCandidateReviewInput,
     ) -> RuntimeEntityAliasCandidateReview:
+        with self.connection.cursor() as cursor:
+            self._validate_entity_alias_candidate_review(cursor=cursor, review=review)
+            record, audit_event = self._upsert_entity_alias_candidate_review(cursor=cursor, review=review)
+            audit_events = self._load_entity_alias_candidate_review_audit_events(
+                cursor=cursor,
+                project_id=str(record["project_id"]),
+                review_id=str(record["id"]),
+            )
+        self.connection.commit()
+        return RuntimeEntityAliasCandidateReview(review=record, audit_events=audit_events)
+
+    def record_entity_alias_candidate_reviews(
+        self,
+        reviews: tuple[EntityAliasCandidateReviewInput, ...],
+        *,
+        reviewed_by: str = "runtime-console",
+        notes: str | None = None,
+        continue_on_error: bool = False,
+    ) -> RuntimeEntityAliasCandidateBatchReviewResult:
+        if not reviews:
+            raise ValueError("at least one review is required")
+        normalized_reviewer = reviewed_by.strip() or "runtime-console"
+        batch_notes = notes.strip() if notes else None
+        records: list[RuntimeEntityAliasCandidateReview] = []
+        errors: list[dict[str, Any]] = []
+        skipped_error_indexes: set[int] = set()
+        validated_project_ids: set[str] = set()
+        try:
+            with self.connection.cursor() as cursor:
+                for index, review in enumerate(reviews):
+                    effective_review = self._with_entity_alias_candidate_batch_defaults(
+                        review,
+                        reviewed_by=normalized_reviewer,
+                        notes=batch_notes,
+                    )
+                    try:
+                        validated_project_ids.add(
+                            self._validate_entity_alias_candidate_review(cursor=cursor, review=effective_review)
+                        )
+                    except ValueError as exc:
+                        error = self._entity_alias_candidate_review_error(index=index, review=effective_review, error=str(exc))
+                        if continue_on_error:
+                            errors.append(error)
+                            skipped_error_indexes.add(index)
+                            continue
+                        raise
+                if len(validated_project_ids) > 1:
+                    raise ValueError("reviews must belong to one project")
+                for index, review in enumerate(reviews):
+                    if index in skipped_error_indexes:
+                        continue
+                    effective_review = self._with_entity_alias_candidate_batch_defaults(
+                        review,
+                        reviewed_by=normalized_reviewer,
+                        notes=batch_notes,
+                    )
+                    try:
+                        record, audit_event = self._upsert_entity_alias_candidate_review(
+                            cursor=cursor,
+                            review=effective_review,
+                        )
+                        records.append(
+                            RuntimeEntityAliasCandidateReview(
+                                review=record,
+                                audit_events=(asdict(audit_event),),
+                            )
+                        )
+                    except ValueError as exc:
+                        errors.append(self._entity_alias_candidate_review_error(index=index, review=effective_review, error=str(exc)))
+                        if not continue_on_error:
+                            raise
+                decisions = sorted({str(record.review["decision"]) for record in records})
+                review_ids = [str(record.review["id"]) for record in records]
+                candidate_ids = [str(record.review["candidate_id"]) for record in records]
+                entity_ids = [str(record.review["entity_id"]) for record in records]
+                project_id = next(iter(validated_project_ids), "")
+                audit_summary = {
+                    "event_type": "entity_alias_candidate_batch_reviewed",
+                    "method_version": "entity_alias_candidate_review_batch_v1",
+                    "reviewed_by": normalized_reviewer,
+                    "entity_alias_candidate_review_ids": review_ids,
+                    "candidate_ids": candidate_ids,
+                    "entity_ids": entity_ids,
+                    "decisions": decisions,
+                    "requested_count": len(reviews),
+                    "reviewed_count": len(records),
+                    "failed_count": len(errors),
+                    "notes": batch_notes,
+                    "individual_audit_event_type": "entity_alias_candidate_review_recorded",
+                }
+                if records and project_id:
+                    batch_event = build_audit_event(
+                        event_type="entity_alias_candidate_batch_reviewed",
+                        project_id=project_id,
+                        actor_type="user",
+                        actor_id=normalized_reviewer,
+                        target_type="entity_alias_candidate_review_batch",
+                        target_id=str(uuid5(NAMESPACE_URL, "|".join(review_ids))),
+                        before=None,
+                        after=audit_summary,
+                        input_refs={"candidate_ids": candidate_ids, "entity_ids": entity_ids},
+                        output_refs={"entity_alias_candidate_review_ids": review_ids, "decisions": decisions},
+                        method_version="entity_alias_candidate_review_batch_v1",
+                        reason=batch_notes or "batch review generated entity alias candidates",
+                    )
+                    self.save_audit_events((batch_event,), cursor=cursor)
+        except Exception:
+            self.connection.rollback()
+            raise
+        self.connection.commit()
+        return RuntimeEntityAliasCandidateBatchReviewResult(
+            batch_version="entity_alias_candidate_review_batch_v1",
+            requested_count=len(reviews),
+            reviewed_count=len(records),
+            failed_count=len(errors),
+            records=tuple(records),
+            errors=tuple(errors),
+            audit_summary=audit_summary,
+        )
+
+    def _normalize_entity_alias_candidate_review(self, review: EntityAliasCandidateReviewInput) -> dict[str, Any]:
         project_id = review.project_id.strip()
         candidate_id = review.candidate_id.strip()
         entity_id = review.entity_id.strip()
@@ -2504,10 +2626,9 @@ class PostgresEvidenceRepository:
             raise ValueError("alias_type is required")
         if decision not in {"needs_review", "rejected", "approved"}:
             raise ValueError("decision must be needs_review, rejected, or approved")
-        review_id = _stable_id("entity-alias-candidate-review", project_id, candidate_id)
         confidence = None if review.confidence is None else max(0.0, min(1.0, float(review.confidence)))
-        after = {
-            "id": review_id,
+        return {
+            "id": _stable_id("entity-alias-candidate-review", project_id, candidate_id),
             "project_id": project_id,
             "candidate_id": candidate_id,
             "entity_id": entity_id,
@@ -2520,133 +2641,201 @@ class PostgresEvidenceRepository:
             "reviewed_by": reviewed_by,
             "reason": review.reason.strip() if review.reason else None,
             "notes": review.notes.strip() if review.notes else None,
-            "evidence_answer_run_ids": list(review.evidence_answer_run_ids),
-            "evidence_urls": list(review.evidence_urls),
+            "evidence_answer_run_ids": [item.strip() for item in review.evidence_answer_run_ids if item.strip()],
+            "evidence_urls": [item.strip() for item in review.evidence_urls if item.strip()],
             "payload": review.payload or {},
         }
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id
-                FROM projects
-                WHERE id = %s
-                LIMIT 1
-                """,
-                (_uuid(project_id),),
+
+    def _validate_entity_alias_candidate_review(
+        self,
+        *,
+        cursor: DbCursor,
+        review: EntityAliasCandidateReviewInput,
+    ) -> str:
+        normalized = self._normalize_entity_alias_candidate_review(review)
+        cursor.execute(
+            """
+            SELECT id
+            FROM projects
+            WHERE id = %s
+            LIMIT 1
+            """,
+            (_uuid(normalized["project_id"]),),
+        )
+        if not cursor.fetchone():
+            raise ValueError("project not found")
+        cursor.execute(
+            """
+            SELECT id
+            FROM (
+              SELECT id, project_id, 'brand' AS entity_kind FROM brand_entities
+              UNION ALL
+              SELECT id, project_id, 'competitor' AS entity_kind FROM competitor_entities
+            ) entity
+            WHERE entity.id = %s AND entity.entity_kind = %s AND entity.project_id = %s
+            LIMIT 1
+            """,
+            (_uuid(normalized["entity_id"]), normalized["entity_kind"], _uuid(normalized["project_id"])),
+        )
+        if not cursor.fetchone():
+            raise ValueError("entity not found")
+        return str(normalized["project_id"])
+
+    def _upsert_entity_alias_candidate_review(
+        self,
+        *,
+        cursor: DbCursor,
+        review: EntityAliasCandidateReviewInput,
+    ) -> tuple[dict[str, Any], AuditEvent]:
+        normalized = self._normalize_entity_alias_candidate_review(review)
+        cursor.execute(
+            f"""
+            SELECT {", ".join(ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)}
+            FROM entity_alias_candidate_reviews
+            WHERE project_id = %s AND candidate_id = %s
+            LIMIT 1
+            """,
+            (_uuid(normalized["project_id"]), normalized["candidate_id"]),
+        )
+        before = _row_dict(cursor.fetchone(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
+        cursor.execute(
+            """
+            INSERT INTO entity_alias_candidate_reviews (
+              id, project_id, candidate_id, entity_id, entity_kind, alias, alias_type,
+              source, confidence, decision, reviewed_by, reason, notes,
+              evidence_answer_run_ids, evidence_urls, payload, updated_at
             )
-            if not cursor.fetchone():
-                raise ValueError("project not found")
-            cursor.execute(
-                """
-                SELECT id
-                FROM (
-                  SELECT id, project_id, 'brand' AS entity_kind FROM brand_entities
-                  UNION ALL
-                  SELECT id, project_id, 'competitor' AS entity_kind FROM competitor_entities
-                ) entity
-                WHERE entity.id = %s AND entity.entity_kind = %s AND entity.project_id = %s
-                LIMIT 1
-                """,
-                (_uuid(entity_id), entity_kind, _uuid(project_id)),
-            )
-            if not cursor.fetchone():
-                raise ValueError("entity not found")
-            cursor.execute(
-                f"""
-                SELECT {", ".join(ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)}
-                FROM entity_alias_candidate_reviews
-                WHERE project_id = %s AND candidate_id = %s
-                LIMIT 1
-                """,
-                (_uuid(project_id), candidate_id),
-            )
-            before = _row_dict(cursor.fetchone(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
-            cursor.execute(
-                """
-                INSERT INTO entity_alias_candidate_reviews (
-                  id, project_id, candidate_id, entity_id, entity_kind, alias, alias_type,
-                  source, confidence, decision, reviewed_by, reason, notes,
-                  evidence_answer_run_ids, evidence_urls, payload, updated_at
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
-                ON CONFLICT (project_id, candidate_id) DO UPDATE SET
-                  entity_id = EXCLUDED.entity_id,
-                  entity_kind = EXCLUDED.entity_kind,
-                  alias = EXCLUDED.alias,
-                  alias_type = EXCLUDED.alias_type,
-                  source = EXCLUDED.source,
-                  confidence = EXCLUDED.confidence,
-                  decision = EXCLUDED.decision,
-                  reviewed_by = EXCLUDED.reviewed_by,
-                  reason = EXCLUDED.reason,
-                  notes = EXCLUDED.notes,
-                  evidence_answer_run_ids = EXCLUDED.evidence_answer_run_ids,
-                  evidence_urls = EXCLUDED.evidence_urls,
-                  payload = EXCLUDED.payload,
-                  updated_at = now()
-                """,
-                (
-                    _uuid(review_id),
-                    _uuid(project_id),
-                    candidate_id,
-                    _uuid(entity_id),
-                    entity_kind,
-                    alias,
-                    alias_type,
-                    after["source"],
-                    confidence,
-                    decision,
-                    reviewed_by,
-                    after["reason"],
-                    after["notes"],
-                    list(review.evidence_answer_run_ids),
-                    list(review.evidence_urls),
-                    _json_payload(after["payload"]),
-                ),
-            )
-            cursor.execute(
-                f"""
-                SELECT {", ".join(ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)}
-                FROM entity_alias_candidate_reviews
-                WHERE project_id = %s AND candidate_id = %s
-                LIMIT 1
-                """,
-                (_uuid(project_id), candidate_id),
-            )
-            record = _row_dict(cursor.fetchone(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
-            audit_event = build_audit_event(
-                event_type="entity_alias_candidate_review_recorded",
-                project_id=project_id,
-                actor_type="user",
-                actor_id=reviewed_by,
-                target_type="entity_alias_candidate_review",
-                target_id=str(record["id"]),
-                before=before or None,
-                after={**after, "id": str(record["id"])},
-                input_refs={
-                    "candidate_id": candidate_id,
-                    "entity_id": entity_id,
-                    "evidence_answer_run_ids": list(review.evidence_answer_run_ids),
-                    "evidence_urls": list(review.evidence_urls),
-                },
-                output_refs={"entity_alias_candidate_review_ids": [str(record["id"])], "decision": decision},
-                method_version="entity_alias_candidate_review_v1",
-                reason=after["notes"] or f"record entity alias candidate review decision {decision}",
-            )
-            self.save_audit_events((audit_event,), cursor=cursor)
-            cursor.execute(
-                f"""
-                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
-                FROM audit_events
-                WHERE project_id = %s AND target_type = %s AND target_id = %s
-                ORDER BY created_at DESC
-                LIMIT 5
-                """,
-                (_uuid(project_id), "entity_alias_candidate_review", str(record["id"])),
-            )
-            audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
-        self.connection.commit()
-        return RuntimeEntityAliasCandidateReview(review=record, audit_events=audit_events)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+            ON CONFLICT (project_id, candidate_id) DO UPDATE SET
+              entity_id = EXCLUDED.entity_id,
+              entity_kind = EXCLUDED.entity_kind,
+              alias = EXCLUDED.alias,
+              alias_type = EXCLUDED.alias_type,
+              source = EXCLUDED.source,
+              confidence = EXCLUDED.confidence,
+              decision = EXCLUDED.decision,
+              reviewed_by = EXCLUDED.reviewed_by,
+              reason = EXCLUDED.reason,
+              notes = EXCLUDED.notes,
+              evidence_answer_run_ids = EXCLUDED.evidence_answer_run_ids,
+              evidence_urls = EXCLUDED.evidence_urls,
+              payload = EXCLUDED.payload,
+              updated_at = now()
+            """,
+            (
+                _uuid(normalized["id"]),
+                _uuid(normalized["project_id"]),
+                normalized["candidate_id"],
+                _uuid(normalized["entity_id"]),
+                normalized["entity_kind"],
+                normalized["alias"],
+                normalized["alias_type"],
+                normalized["source"],
+                normalized["confidence"],
+                normalized["decision"],
+                normalized["reviewed_by"],
+                normalized["reason"],
+                normalized["notes"],
+                normalized["evidence_answer_run_ids"],
+                normalized["evidence_urls"],
+                _json_payload(normalized["payload"]),
+            ),
+        )
+        cursor.execute(
+            f"""
+            SELECT {", ".join(ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)}
+            FROM entity_alias_candidate_reviews
+            WHERE project_id = %s AND candidate_id = %s
+            LIMIT 1
+            """,
+            (_uuid(normalized["project_id"]), normalized["candidate_id"]),
+        )
+        record = _row_dict(cursor.fetchone(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
+        audit_event = build_audit_event(
+            event_type="entity_alias_candidate_review_recorded",
+            project_id=normalized["project_id"],
+            actor_type="user",
+            actor_id=normalized["reviewed_by"],
+            target_type="entity_alias_candidate_review",
+            target_id=str(record["id"]),
+            before=before or None,
+            after={**normalized, "id": str(record["id"])},
+            input_refs={
+                "candidate_id": normalized["candidate_id"],
+                "entity_id": normalized["entity_id"],
+                "evidence_answer_run_ids": normalized["evidence_answer_run_ids"],
+                "evidence_urls": normalized["evidence_urls"],
+            },
+            output_refs={
+                "entity_alias_candidate_review_ids": [str(record["id"])],
+                "decision": normalized["decision"],
+            },
+            method_version="entity_alias_candidate_review_v1",
+            reason=normalized["notes"] or f"record entity alias candidate review decision {normalized['decision']}",
+        )
+        self.save_audit_events((audit_event,), cursor=cursor)
+        return record, audit_event
+
+    def _load_entity_alias_candidate_review_audit_events(
+        self,
+        *,
+        cursor: DbCursor,
+        project_id: str,
+        review_id: str,
+    ) -> tuple[dict[str, Any], ...]:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            LIMIT 5
+            """,
+            (_uuid(project_id), "entity_alias_candidate_review", review_id),
+        )
+        return tuple(_rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS))
+
+    def _with_entity_alias_candidate_batch_defaults(
+        self,
+        review: EntityAliasCandidateReviewInput,
+        *,
+        reviewed_by: str,
+        notes: str | None,
+    ) -> EntityAliasCandidateReviewInput:
+        return EntityAliasCandidateReviewInput(
+            project_id=review.project_id,
+            candidate_id=review.candidate_id,
+            entity_id=review.entity_id,
+            entity_kind=review.entity_kind,
+            alias=review.alias,
+            alias_type=review.alias_type,
+            decision=review.decision,
+            reviewed_by=review.reviewed_by.strip() or reviewed_by,
+            source=review.source,
+            confidence=review.confidence,
+            reason=review.reason,
+            notes=review.notes if review.notes is not None else notes,
+            evidence_answer_run_ids=review.evidence_answer_run_ids,
+            evidence_urls=review.evidence_urls,
+            payload=review.payload,
+        )
+
+    def _entity_alias_candidate_review_error(
+        self,
+        *,
+        index: int,
+        review: EntityAliasCandidateReviewInput,
+        error: str,
+    ) -> dict[str, Any]:
+        return {
+            "index": index,
+            "project_id": review.project_id.strip(),
+            "candidate_id": review.candidate_id.strip(),
+            "entity_id": review.entity_id.strip(),
+            "entity_kind": review.entity_kind.strip(),
+            "alias": review.alias.strip(),
+            "error": error,
+        }
 
     def confirm_entity_alias(self, alias: EntityAliasInput) -> RuntimeEntityAlias:
         normalized_kind = alias.entity_kind.strip().lower()

@@ -1312,6 +1312,19 @@ type RuntimeEntityAliasBatchItem = {
   notes?: string;
 };
 
+type RuntimeEntityAliasCandidateBatchReviewItem = {
+  project_id: string;
+  candidate_id: string;
+  entity_id: string;
+  entity_kind: string;
+  alias: string;
+  alias_type: string;
+  source?: string;
+  confidence?: number;
+  evidence_answer_run_ids?: string[];
+  evidence_urls?: string[];
+};
+
 type RuntimeEntityAliasCandidate = {
   candidate: {
     id: string;
@@ -2278,6 +2291,73 @@ async function reviewEntityAliasCandidate(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/entity-aliases/runtime/candidates/review returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function reviewEntityAliasCandidatesBatch(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const decision = String(formData.get("decision") || "").trim();
+  if (!decision) {
+    throw new Error("decision is required for batch alias candidate review");
+  }
+  const reviews = formData
+    .getAll("candidate_review")
+    .map((value) => {
+      try {
+        return JSON.parse(String(value)) as RuntimeEntityAliasCandidateBatchReviewItem;
+      } catch {
+        return null;
+      }
+    })
+    .filter((value): value is RuntimeEntityAliasCandidateBatchReviewItem => {
+      return Boolean(value?.project_id && value?.candidate_id && value?.entity_id && value?.entity_kind && value?.alias);
+    })
+    .map((candidate) => ({
+      project_id: candidate.project_id,
+      candidate_id: candidate.candidate_id,
+      entity_id: candidate.entity_id,
+      entity_kind: candidate.entity_kind,
+      alias: candidate.alias,
+      alias_type: candidate.alias_type || "alias",
+      decision,
+      reviewed_by: String(formData.get("reviewed_by") || "runtime-console").trim(),
+      source: candidate.source || undefined,
+      confidence: candidate.confidence ?? 0,
+      reason: `Alias candidate ${decision} from Runtime Console batch action`,
+      notes:
+        String(formData.get("notes") || "").trim() ||
+        `Batch ${decision} decision for generated alias candidates`,
+      evidence_answer_run_ids: candidate.evidence_answer_run_ids || [],
+      evidence_urls: candidate.evidence_urls || [],
+      payload: {
+        source_panel: "runtime_entity_alias_candidates",
+        batch_action: "entity_alias_candidate_review_batch_v1",
+        candidate_source: candidate.source || "unknown"
+      }
+    }));
+  if (!reviews.length) {
+    throw new Error("at least one alias candidate is required for batch candidate review");
+  }
+  const response = await fetch(`${baseUrl}/v1/entity-aliases/runtime/candidates/review-batch`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      reviews,
+      reviewed_by: String(formData.get("reviewed_by") || "runtime-console").trim(),
+      notes:
+        String(formData.get("notes") || "").trim() ||
+        `Batch ${decision} generated entity alias candidates`,
+      continue_on_error: false
+    }),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/entity-aliases/runtime/candidates/review-batch returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -4074,44 +4154,110 @@ export default async function Home({
                   </button>
                 </form>
                 {visibleAliasCandidates.length ? (
-                  <form action={confirmEntityAliasBatch} className="aliasBatchQueue">
+                  <div className="aliasBatchQueue">
                     <div className="formHeader">
                       <h3>Bulk Alias Review Queue</h3>
                       <small>
-                        {visibleAliasCandidates.length} visible candidates · entity_alias_confirm_batch_v1
+                        {visibleAliasCandidates.length} visible candidates · entity_alias_confirm_batch_v1 ·
+                        entity_alias_candidate_review_batch_v1
                       </small>
                     </div>
-                    {visibleAliasCandidates.map((record) => (
-                      <input
-                        key={`batch-${record.candidate.id}`}
-                        type="hidden"
-                        name="candidate"
-                        value={JSON.stringify({
-                          entity_id: record.candidate.entity_id,
-                          entity_kind: record.candidate.entity_kind,
-                          alias: record.candidate.alias,
-                          alias_type: record.candidate.alias_type,
-                          confidence: record.candidate.confidence || 0.7,
-                          notes: `Batch confirm generated alias candidate from ${record.candidate.source}${
-                            record.candidate.evidence_count ? ` with ${record.candidate.evidence_count} evidence rows` : ""
-                          }`
-                        })}
-                      />
-                    ))}
-                    <input type="hidden" name="confirmed_by" value="runtime-console" />
-                    <input
-                      type="hidden"
-                      name="notes"
-                      value="Batch entity alias confirmation for parser disambiguation review queue"
-                    />
                     <p>
-                      Batch action writes one entity_alias_confirmed audit event per alias and returns an
-                      entity_alias_batch_confirmed batch audit summary.
+                      Confirm writes one entity_alias_confirmed audit event per alias and returns entity_alias_batch_confirmed.
+                      Batch review writes entity_alias_candidate_review_recorded per candidate and returns
+                      entity_alias_candidate_batch_reviewed.
                     </p>
-                    <button className="actionButton" type="submit">
-                      Confirm visible candidates
-                    </button>
-                  </form>
+                    <form action={confirmEntityAliasBatch} className="aliasBatchActions">
+                      {visibleAliasCandidates.map((record) => (
+                        <input
+                          key={`batch-${record.candidate.id}`}
+                          type="hidden"
+                          name="candidate"
+                          value={JSON.stringify({
+                            entity_id: record.candidate.entity_id,
+                            entity_kind: record.candidate.entity_kind,
+                            alias: record.candidate.alias,
+                            alias_type: record.candidate.alias_type,
+                            confidence: record.candidate.confidence || 0.7,
+                            notes: `Batch confirm generated alias candidate from ${record.candidate.source}${
+                              record.candidate.evidence_count ? ` with ${record.candidate.evidence_count} evidence rows` : ""
+                            }`
+                          })}
+                        />
+                      ))}
+                      <input type="hidden" name="confirmed_by" value="runtime-console" />
+                      <input
+                        type="hidden"
+                        name="notes"
+                        value="Batch entity alias confirmation for parser disambiguation review queue"
+                      />
+                      <button className="actionButton" type="submit">
+                        Confirm visible candidates
+                      </button>
+                    </form>
+                    <form action={reviewEntityAliasCandidatesBatch} className="aliasBatchActions">
+                      {visibleAliasCandidates.map((record) => (
+                        <input
+                          key={`batch-review-${record.candidate.id}`}
+                          type="hidden"
+                          name="candidate_review"
+                          value={JSON.stringify({
+                            project_id: record.entity.project_id,
+                            candidate_id: record.candidate.id,
+                            entity_id: record.candidate.entity_id,
+                            entity_kind: record.candidate.entity_kind,
+                            alias: record.candidate.alias,
+                            alias_type: record.candidate.alias_type,
+                            source: record.candidate.source,
+                            confidence: record.candidate.confidence || 0.7,
+                            evidence_answer_run_ids: record.candidate.evidence_answer_run_ids || [],
+                            evidence_urls: record.candidate.evidence_urls || []
+                          })}
+                        />
+                      ))}
+                      <input type="hidden" name="decision" value="needs_review" />
+                      <input type="hidden" name="reviewed_by" value="runtime-console" />
+                      <input
+                        type="hidden"
+                        name="notes"
+                        value="Batch mark generated alias candidates as needs review"
+                      />
+                      <button className="actionButton" type="submit">
+                        Mark visible needs review
+                      </button>
+                    </form>
+                    <form action={reviewEntityAliasCandidatesBatch} className="aliasBatchActions">
+                      {visibleAliasCandidates.map((record) => (
+                        <input
+                          key={`batch-reject-${record.candidate.id}`}
+                          type="hidden"
+                          name="candidate_review"
+                          value={JSON.stringify({
+                            project_id: record.entity.project_id,
+                            candidate_id: record.candidate.id,
+                            entity_id: record.candidate.entity_id,
+                            entity_kind: record.candidate.entity_kind,
+                            alias: record.candidate.alias,
+                            alias_type: record.candidate.alias_type,
+                            source: record.candidate.source,
+                            confidence: record.candidate.confidence || 0.7,
+                            evidence_answer_run_ids: record.candidate.evidence_answer_run_ids || [],
+                            evidence_urls: record.candidate.evidence_urls || []
+                          })}
+                        />
+                      ))}
+                      <input type="hidden" name="decision" value="rejected" />
+                      <input type="hidden" name="reviewed_by" value="runtime-console" />
+                      <input
+                        type="hidden"
+                        name="notes"
+                        value="Batch reject generated alias candidates from the visible review queue"
+                      />
+                      <button className="actionButton" type="submit">
+                        Reject visible candidates
+                      </button>
+                    </form>
+                  </div>
                 ) : null}
                 {visibleAliasCandidates.length ? (
                   <ul className="plainList">
