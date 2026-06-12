@@ -38,6 +38,8 @@ REQUIRED_FIELDS = (
     "remediation_plan_verifier",
     "p0a_environment_checklist",
     "p0a_environment_checklist_source",
+    "p0b_google_execution_checklist",
+    "p0b_google_execution_checklist_source",
     "stage_summaries",
     "work_items",
     "next_work_item",
@@ -104,6 +106,7 @@ def verify_au_handoff_dossier(
     remediation = _as_dict(dossier.get("remediation_plan"))
     remediation_verifier = _as_dict(dossier.get("remediation_plan_verifier"))
     p0a_environment_checklist = _as_dict(dossier.get("p0a_environment_checklist"))
+    p0b_google_execution_checklist = _as_dict(dossier.get("p0b_google_execution_checklist"))
     summary = _as_dict(dossier.get("summary"))
     markdown_report = _as_dict(dossier.get("markdown_report"))
     blockers = _as_list(launch.get("remaining_blockers"))
@@ -162,6 +165,14 @@ def verify_au_handoff_dossier(
         "missing_required_count"
     ):
         errors.append("summary_p0a_missing_required_environment_count_mismatch")
+    if summary.get("p0b_google_execution_checklist_ready") is not p0b_google_execution_checklist.get(
+        "google_execution_checklist_ready"
+    ):
+        errors.append("summary_p0b_google_execution_checklist_ready_mismatch")
+    if summary.get("p0b_google_remaining_blocker_count") != p0b_google_execution_checklist.get(
+        "remaining_blocker_count"
+    ):
+        errors.append("summary_p0b_google_remaining_blocker_count_mismatch")
 
     next_work_item_id = str(summary.get("next_work_item_id") or "")
     if next_work_item_id != remediation.get("next_work_item_id"):

@@ -15,6 +15,7 @@ from scripts.build_au_handoff_dossier import (
 )
 from scripts.build_au_p0a_environment_checklist import build_au_p0a_environment_checklist
 from scripts.build_au_launch_remediation_plan import build_au_launch_remediation_plan
+from scripts.build_au_p0b_google_execution_checklist import build_au_p0b_google_execution_checklist
 from scripts.verify_au_handoff_dossier import verify_au_handoff_dossier
 from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTest
 from tests.test_au_launch_status import AuLaunchStatusTest
@@ -56,6 +57,25 @@ class AuHandoffDossierTest(unittest.TestCase):
         remediation_plan_path.write_text(json.dumps(remediation_plan), encoding="utf-8")
         return launch_status_path, remediation_plan_path
 
+    def _write_p0b_google_execution_checklist(self, temp_dir: str, *, ready: bool = False) -> Path:
+        runbook_path, execution_path, p0b_status_path, p0b_package_path = self._launch_helper._write_p0b_status_and_package(
+            temp_dir,
+            google_ready=ready,
+        )
+        checklist_path = Path(temp_dir) / "p0b-google-execution-checklist.json"
+        checklist = build_au_p0b_google_execution_checklist(
+            runbook_path=runbook_path,
+            execution_path=execution_path,
+            playwright_env_path=Path(temp_dir) / "runtime" / "au-p0b-google-playwright-env-latest.json",
+            status_report_path=p0b_status_path,
+            package_path=p0b_package_path,
+            env_file_path=Path(temp_dir) / "missing-google.env",
+            output_path=checklist_path,
+            generated_at="2026-06-12T00:00:00Z",
+        )
+        checklist_path.write_text(json.dumps(checklist), encoding="utf-8")
+        return checklist_path
+
     def _write_p0a_environment_checklist(self, temp_dir: str, *, ready: bool = False) -> Path:
         runbook_path = self._environment_helper._write_runbook(temp_dir)
         env_path = self._environment_helper._write_env_report(temp_dir, runbook_path, ready=ready)
@@ -75,11 +95,13 @@ class AuHandoffDossierTest(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             launch_status_path, remediation_plan_path = self._write_launch_status_and_plan(temp_dir, ready=False)
             checklist_path = self._write_p0a_environment_checklist(temp_dir)
+            p0b_checklist_path = self._write_p0b_google_execution_checklist(temp_dir)
             markdown_path = Path(temp_dir) / "dossier.md"
             dossier = build_au_handoff_dossier(
                 launch_status_path=launch_status_path,
                 remediation_plan_path=remediation_plan_path,
                 p0a_environment_checklist_path=checklist_path,
+                p0b_google_execution_checklist_path=p0b_checklist_path,
                 output_path=Path(temp_dir) / "dossier.json",
                 markdown_output_path=markdown_path,
                 generated_at="2026-06-12T00:00:00Z",
@@ -103,12 +125,19 @@ class AuHandoffDossierTest(unittest.TestCase):
             dossier["runtime_endpoints"]["p0a_environment_checklist"],
             "GET /v1/p0a-environment-checklist/au",
         )
+        self.assertEqual(
+            dossier["runtime_endpoints"]["p0b_google_execution_checklist"],
+            "GET /v1/p0b-google-execution-checklist/au",
+        )
         self.assertFalse(dossier["p0a_environment_checklist"]["environment_checklist_ready"])
         self.assertEqual(dossier["p0a_environment_checklist"]["missing_required_count"], 3)
         self.assertEqual(dossier["summary"]["p0a_missing_required_environment_count"], 3)
+        self.assertFalse(dossier["p0b_google_execution_checklist"]["google_execution_checklist_ready"])
+        self.assertEqual(dossier["summary"]["p0b_google_remaining_blocker_count"], 7)
         markdown = render_au_handoff_markdown(dossier)
         self.assertIn("AU 客户交付总包", markdown)
         self.assertIn("P0a 环境清单", markdown)
+        self.assertIn("P0b Google 执行清单", markdown)
         self.assertIn("PERPLEXITY_API_KEY", markdown)
         self.assertEqual(dossier["handoff_dossier_hash"], compute_handoff_dossier_hash(dossier))
         self.assertEqual(verification["status"], "pass")
@@ -119,10 +148,12 @@ class AuHandoffDossierTest(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             launch_status_path, remediation_plan_path = self._write_launch_status_and_plan(temp_dir, ready=True)
             checklist_path = self._write_p0a_environment_checklist(temp_dir, ready=True)
+            p0b_checklist_path = self._write_p0b_google_execution_checklist(temp_dir, ready=True)
             dossier = build_au_handoff_dossier(
                 launch_status_path=launch_status_path,
                 remediation_plan_path=remediation_plan_path,
                 p0a_environment_checklist_path=checklist_path,
+                p0b_google_execution_checklist_path=p0b_checklist_path,
                 output_path=Path(temp_dir) / "dossier.json",
                 markdown_output_path=Path(temp_dir) / "dossier.md",
                 generated_at="2026-06-12T00:00:00Z",
@@ -140,10 +171,12 @@ class AuHandoffDossierTest(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             launch_status_path, remediation_plan_path = self._write_launch_status_and_plan(temp_dir, ready=False)
             checklist_path = self._write_p0a_environment_checklist(temp_dir)
+            p0b_checklist_path = self._write_p0b_google_execution_checklist(temp_dir)
             dossier = build_au_handoff_dossier(
                 launch_status_path=launch_status_path,
                 remediation_plan_path=remediation_plan_path,
                 p0a_environment_checklist_path=checklist_path,
+                p0b_google_execution_checklist_path=p0b_checklist_path,
                 output_path=Path(temp_dir) / "dossier.json",
                 markdown_output_path=Path(temp_dir) / "dossier.md",
                 generated_at="2026-06-12T00:00:00Z",
@@ -159,10 +192,12 @@ class AuHandoffDossierTest(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             launch_status_path, remediation_plan_path = self._write_launch_status_and_plan(temp_dir, ready=False)
             checklist_path = self._write_p0a_environment_checklist(temp_dir)
+            p0b_checklist_path = self._write_p0b_google_execution_checklist(temp_dir)
             dossier = build_au_handoff_dossier(
                 launch_status_path=launch_status_path,
                 remediation_plan_path=remediation_plan_path,
                 p0a_environment_checklist_path=checklist_path,
+                p0b_google_execution_checklist_path=p0b_checklist_path,
                 output_path=Path(temp_dir) / "dossier.json",
                 markdown_output_path=Path(temp_dir) / "dossier.md",
                 generated_at="2026-06-12T00:00:00Z",
@@ -181,6 +216,7 @@ class AuHandoffDossierTest(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             launch_status_path, remediation_plan_path = self._write_launch_status_and_plan(temp_dir, ready=False)
             checklist_path = self._write_p0a_environment_checklist(temp_dir)
+            p0b_checklist_path = self._write_p0b_google_execution_checklist(temp_dir)
             output_path = Path(temp_dir) / "dossier.json"
             markdown_path = Path(temp_dir) / "dossier.md"
             result = subprocess.run(
@@ -193,6 +229,8 @@ class AuHandoffDossierTest(unittest.TestCase):
                     str(remediation_plan_path),
                     "--p0a-environment-checklist-path",
                     str(checklist_path),
+                    "--p0b-google-execution-checklist-path",
+                    str(p0b_checklist_path),
                     "--output-path",
                     str(output_path),
                     "--markdown-output-path",

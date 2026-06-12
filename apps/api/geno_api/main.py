@@ -127,6 +127,14 @@ from scripts.build_au_p0a_env_report import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_ENV_OUTPUT_PATH,
 )
 from scripts.build_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_RUNBOOK_OUTPUT_PATH
+from scripts.build_au_p0b_google_execution_checklist import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
+    build_au_p0b_google_execution_checklist,
+)
+from scripts.build_au_p0b_google_playwright_env_report import (
+    DEFAULT_ENV_FILE as DEFAULT_AU_P0B_GOOGLE_ENV_FILE,
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH,
+)
 
 app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
 
@@ -1342,6 +1350,28 @@ def au_p0a_environment_checklist() -> dict[str, object]:
     )
 
 
+@app.get("/v1/p0b-google-execution-checklist/au")
+def au_p0b_google_execution_checklist() -> dict[str, object]:
+    return build_au_p0b_google_execution_checklist(
+        runbook_path=Path(os.getenv("GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_RUNBOOK_PATH)),
+        execution_path=Path(
+            os.getenv("GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_EXECUTION_PATH)
+        ),
+        playwright_env_path=Path(
+            os.getenv("GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH", DEFAULT_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH)
+        ),
+        status_report_path=Path(os.getenv("GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_STATUS_PATH)),
+        package_path=Path(os.getenv("GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_PACKAGE_PATH)),
+        env_file_path=Path(os.getenv("GENO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_AU_P0B_GOOGLE_ENV_FILE)),
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
 def _build_au_launch_remediation_plan_from_env() -> dict[str, object]:
     launch_status_path = Path(os.getenv("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH))
     launch_status = _build_au_launch_status_from_env()
@@ -1372,6 +1402,12 @@ def au_handoff_dossier() -> dict[str, object]:
             DEFAULT_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH,
         )
     )
+    p0b_google_execution_checklist_path = Path(
+        os.getenv(
+            "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
     launch_status = _build_au_launch_status_from_env()
     remediation_plan = build_au_launch_remediation_plan(
         launch_status=launch_status,
@@ -1379,13 +1415,16 @@ def au_handoff_dossier() -> dict[str, object]:
         output_path=remediation_plan_path,
     )
     p0a_environment_checklist = au_p0a_environment_checklist()
+    p0b_google_execution_checklist = au_p0b_google_execution_checklist()
     return build_au_handoff_dossier(
         launch_status_path=launch_status_path,
         remediation_plan_path=remediation_plan_path,
         p0a_environment_checklist_path=p0a_environment_checklist_path,
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
         launch_status=launch_status,
         remediation_plan=remediation_plan,
         p0a_environment_checklist=p0a_environment_checklist,
+        p0b_google_execution_checklist=p0b_google_execution_checklist,
         output_path=Path(os.getenv("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH)),
         markdown_output_path=Path(
             os.getenv("GENO_AU_HANDOFF_DOSSIER_MARKDOWN_PATH", DEFAULT_AU_HANDOFF_DOSSIER_MARKDOWN_OUTPUT_PATH)
@@ -4131,6 +4170,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/launch-status/au",
             "/v1/launch-remediation-plan/au",
             "/v1/p0a-environment-checklist/au",
+            "/v1/p0b-google-execution-checklist/au",
             "/v1/handoff-dossier/au",
             "/metrics",
         ],

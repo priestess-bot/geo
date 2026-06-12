@@ -195,6 +195,8 @@ make verify-au-p0b-google-execution-checklist
 
 `au-p0b-google-execution-checklist` 会把 runbook、dry-run execution、Playwright env readiness、status report 和 evidence package 汇总成 `docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json`。该清单会列出当前缺失的 `GOOGLE_PLAYWRIGHT_ENABLED`、selector group、`MANUAL_BACKFILL_PATH`、`DATABASE_URL`、Playwright dependency、file gate issue、remaining blockers、setup commands、execution commands、hard gate commands 和证据输出路径。清单只保留来源、长度和 sha256 前缀，不保存 selector 原文、secret 或数据库 URL。`verify-au-p0b-google-execution-checklist` 只证明清单 hash、计数、脱敏约束和 next action 推导自洽；需要作为 Google 主评分硬门禁时，应继续运行 status/package 的 `--require-google-main-scoring-allowed`。
 
+同一份清单也可以通过 Runtime API 与交接总包读取：`GET /v1/p0b-google-execution-checklist/au` 会按当前 `GENO_AU_P0B_GOOGLE_*` 路径覆盖规则内存生成脱敏 checklist；`GET /v1/handoff-dossier/au` 会纳入 `p0b_google_execution_checklist` 摘要、hash、缺失 env/selector、remaining blockers 和 verifier status；Runtime Console 首页 AU Launch Gate 会展示 P0b Google execution checklist 面板，便于执行前确认 Google 主评分仍被 hard gate 阻断还是已经允许。
+
 需要硬门禁时：
 
 ```bash
@@ -296,6 +298,7 @@ make verify-au-p0b-google-serp-status
 - `docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json`
 - `docs/runtime_preflight/au-p0b-google-spike-status-latest.json`
 - `docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json`
+- Runtime API：`GET /v1/p0b-google-execution-checklist/au`
 - `docs/runtime_preflight/au-p0b-google-serp-fixture-latest.json`
 - `docs/runtime_preflight/au-p0b-google-serp-fixture-manifest-latest.json`
 - `docs/runtime_preflight/au-p0b-google-serp-health-latest.json`

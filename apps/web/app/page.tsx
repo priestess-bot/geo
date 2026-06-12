@@ -547,6 +547,7 @@ type RuntimeData = {
   launchStatus: AuLaunchStatus | null;
   launchRemediationPlan: AuLaunchRemediationPlan | null;
   p0aEnvironmentChecklist: AuP0aEnvironmentChecklist | null;
+  p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
   handoffDossier: AuHandoffDossier | null;
   projects: PageResponse<RuntimeProject>;
   projectMembers: PageResponse<RuntimeProjectMember>;
@@ -710,6 +711,39 @@ type AuP0aEnvironmentChecklist = {
   evidence_outputs?: string[];
 };
 
+type AuP0bGoogleExecutionChecklist = {
+  execution_checklist_version: string;
+  generated_at: string;
+  status: string;
+  google_execution_checklist_ready: boolean;
+  google_main_scoring_allowed: boolean;
+  limited_coverage: boolean;
+  next_action: string;
+  google_execution_checklist_hash: string;
+  summary?: {
+    planned_runs?: number;
+    step_count?: number;
+    missing_required_environment_count?: number;
+    missing_required_environment?: string[];
+    missing_full_run_required_environment_count?: number;
+    missing_full_run_required_environment?: string[];
+    missing_selector_group_count?: number;
+    missing_selector_groups?: string[];
+    missing_dependency_count?: number;
+    missing_dependencies?: string[];
+    file_gate_issue_count?: number;
+    file_gate_issues?: string[];
+    remaining_blocker_count?: number;
+    remaining_blockers?: string[];
+    runbook_verifier_status?: string;
+    playwright_env_verifier_status?: string;
+    status_verifier_status?: string;
+    package_verifier_status?: string;
+  };
+  verification_commands?: Array<{ id?: string; shell?: string; purpose?: string }>;
+  evidence_outputs?: string[];
+};
+
 type AuHandoffDossier = {
   handoff_dossier_version: string;
   generated_at: string;
@@ -726,6 +760,8 @@ type AuHandoffDossier = {
     unmapped_blocker_count?: number;
     work_item_count?: number;
     external_dependency_blocker_count?: number;
+    p0b_google_execution_checklist_ready?: boolean;
+    p0b_google_remaining_blocker_count?: number;
   };
   markdown_report?: {
     path?: string;
@@ -736,6 +772,8 @@ type AuHandoffDossier = {
   runtime_endpoints?: {
     launch_status?: string;
     launch_remediation_plan?: string;
+    p0a_environment_checklist?: string;
+    p0b_google_execution_checklist?: string;
   };
   next_work_item?: {
     id?: string;
@@ -1151,6 +1189,7 @@ const endpoints = {
   launchStatus: "/v1/launch-status/au",
   launchRemediationPlan: "/v1/launch-remediation-plan/au",
   p0aEnvironmentChecklist: "/v1/p0a-environment-checklist/au",
+  p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
   handoffDossier: "/v1/handoff-dossier/au",
   projects: "/v1/projects/runtime",
   projectMembers: "/v1/project-members/runtime",
@@ -2041,6 +2080,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     launchStatus: endpoints.launchStatus,
     launchRemediationPlan: endpoints.launchRemediationPlan,
     p0aEnvironmentChecklist: endpoints.p0aEnvironmentChecklist,
+    p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
     handoffDossier: endpoints.handoffDossier,
     projects: runtimePath(endpoints.projects, projectListParams),
     projectMembers: endpoints.projectMembers,
@@ -2292,6 +2332,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     launchStatus,
     launchRemediationPlan,
     p0aEnvironmentChecklist,
+    p0bGoogleExecutionChecklist,
     handoffDossier,
     prompts,
     projectMembers,
@@ -2328,6 +2369,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuLaunchStatus | null>(baseUrl, paths.launchStatus, null),
     fetchRuntimeEndpoint<AuLaunchRemediationPlan | null>(baseUrl, paths.launchRemediationPlan, null),
     fetchRuntimeEndpoint<AuP0aEnvironmentChecklist | null>(baseUrl, paths.p0aEnvironmentChecklist, null),
+    fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
     fetchRuntimeEndpoint<AuHandoffDossier | null>(baseUrl, paths.handoffDossier, null),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     selectedProjectId
@@ -2440,6 +2482,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     launchStatus,
     launchRemediationPlan,
     p0aEnvironmentChecklist,
+    p0bGoogleExecutionChecklist,
     handoffDossier,
     projects,
     prompts,
@@ -2481,6 +2524,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       launchStatus: launchStatus.payload,
       launchRemediationPlan: launchRemediationPlan.payload,
       p0aEnvironmentChecklist: p0aEnvironmentChecklist.payload,
+      p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
       handoffDossier: handoffDossier.payload,
       projects: projects.payload,
       projectMembers: projectMembers.payload,
@@ -2796,6 +2840,12 @@ export default async function Home({
   const p0aEnvironmentSummary = p0aEnvironmentChecklist?.summary;
   const missingP0aRequired = p0aEnvironmentSummary?.missing_required || [];
   const missingP0aRecommended = p0aEnvironmentSummary?.missing_recommended || [];
+  const p0bGoogleExecutionChecklist = data.p0bGoogleExecutionChecklist;
+  const p0bGoogleExecutionSummary = p0bGoogleExecutionChecklist?.summary;
+  const missingP0bSmokeEnv = p0bGoogleExecutionSummary?.missing_required_environment || [];
+  const missingP0bFullRunEnv = p0bGoogleExecutionSummary?.missing_full_run_required_environment || [];
+  const missingP0bSelectors = p0bGoogleExecutionSummary?.missing_selector_groups || [];
+  const p0bChecklistBlockers = p0bGoogleExecutionSummary?.remaining_blockers || [];
   const handoffDossier = data.handoffDossier;
   const handoffSummary = handoffDossier?.summary;
   const handoffNextWorkItem = handoffDossier?.next_work_item;
@@ -3309,6 +3359,73 @@ export default async function Home({
             <span>Evidence outputs {p0aEnvironmentChecklist?.evidence_outputs?.length || 0}</span>
           </div>
           <code>{paths.p0aEnvironmentChecklist}</code>
+        </div>
+        <div className="p0bGoogleExecutionChecklist">
+          <div className="launchRemediationHeader">
+            <strong>P0b Google execution checklist</strong>
+            <span>
+              {p0bGoogleExecutionChecklist?.execution_checklist_version ||
+                "au_p0b_google_execution_checklist_v1"} · hash{" "}
+              {shortHash(p0bGoogleExecutionChecklist?.google_execution_checklist_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>Ready {p0bGoogleExecutionChecklist?.google_execution_checklist_ready ? "yes" : "no"}</span>
+            <span>Google scoring {p0bGoogleExecutionChecklist?.google_main_scoring_allowed ? "allowed" : "blocked"}</span>
+            <span>Next action {p0bGoogleExecutionChecklist?.next_action || "run checklist"}</span>
+            <span>Planned runs {p0bGoogleExecutionSummary?.planned_runs || 0}</span>
+          </div>
+          <div className="environmentChecklistGrid">
+            <div>
+              <strong>Missing env</strong>
+              {missingP0bSmokeEnv.length || missingP0bFullRunEnv.length ? (
+                <ul className="plainList">
+                  {[...missingP0bSmokeEnv, ...missingP0bFullRunEnv].slice(0, 5).map((name) => (
+                    <li key={name}>{name}</li>
+                  ))}
+                </ul>
+              ) : (
+                <small>Required Google env is present.</small>
+              )}
+            </div>
+            <div>
+              <strong>Missing selectors</strong>
+              {missingP0bSelectors.length ? (
+                <ul className="plainList">
+                  {missingP0bSelectors.slice(0, 4).map((name) => (
+                    <li key={name}>{name}</li>
+                  ))}
+                </ul>
+              ) : (
+                <small>Selector groups are present.</small>
+              )}
+            </div>
+          </div>
+          <div className="handoffBoundary">
+            <span>
+              Remaining blockers {p0bGoogleExecutionSummary?.remaining_blocker_count || 0} · shown{" "}
+              {Math.min(p0bChecklistBlockers.length, 4)}
+            </span>
+            <span>
+              Verifiers: env {p0bGoogleExecutionSummary?.playwright_env_verifier_status || "unknown"} · status{" "}
+              {p0bGoogleExecutionSummary?.status_verifier_status || "unknown"} · package{" "}
+              {p0bGoogleExecutionSummary?.package_verifier_status || "unknown"}
+            </span>
+            <span>
+              Hard gate{" "}
+              {p0bGoogleExecutionChecklist?.verification_commands?.find((command) => command.id === "hard_package_gate")
+                ?.shell || "python3 scripts/verify_au_p0b_google_evidence_package.py --require-google-main-scoring-allowed"}
+            </span>
+            <span>Evidence outputs {p0bGoogleExecutionChecklist?.evidence_outputs?.length || 0}</span>
+          </div>
+          {p0bChecklistBlockers.length ? (
+            <ul className="plainList compactList">
+              {p0bChecklistBlockers.slice(0, 4).map((blocker) => (
+                <li key={blocker}>{blocker}</li>
+              ))}
+            </ul>
+          ) : null}
+          <code>{paths.p0bGoogleExecutionChecklist}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">

@@ -25,6 +25,10 @@ from scripts.build_au_p0a_environment_checklist import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_P0A_ENVIRONMENT_CHECKLIST_PATH,
     build_au_p0a_environment_checklist,
 )
+from scripts.build_au_p0b_google_execution_checklist import (  # noqa: E402
+    DEFAULT_OUTPUT_PATH as DEFAULT_P0B_GOOGLE_EXECUTION_CHECKLIST_PATH,
+    build_au_p0b_google_execution_checklist,
+)
 from scripts.verify_au_launch_remediation_plan import verify_au_launch_remediation_plan  # noqa: E402
 from scripts.verify_au_launch_status import verify_au_launch_status  # noqa: E402
 
@@ -172,6 +176,30 @@ def _load_or_build_p0a_environment_checklist(
     return checklist, {"path": str(path), "exists": True, "source": "generated_in_memory", "errors": ["not_json_object"]}
 
 
+def _load_or_build_p0b_google_execution_checklist(
+    path: Path,
+    *,
+    generated_at: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        checklist = build_au_p0b_google_execution_checklist(output_path=path, generated_at=generated_at)
+        return checklist, {"path": str(path), "exists": False, "source": "generated_in_memory", "errors": ["file_missing"]}
+    except json.JSONDecodeError as exc:
+        checklist = build_au_p0b_google_execution_checklist(output_path=path, generated_at=generated_at)
+        return checklist, {
+            "path": str(path),
+            "exists": True,
+            "source": "generated_in_memory",
+            "errors": [f"json_invalid:{exc.msg}"],
+        }
+    if isinstance(payload, dict):
+        return payload, {"path": str(path), "exists": True, "source": "existing_file"}
+    checklist = build_au_p0b_google_execution_checklist(output_path=path, generated_at=generated_at)
+    return checklist, {"path": str(path), "exists": True, "source": "generated_in_memory", "errors": ["not_json_object"]}
+
+
 def _p0a_environment_checklist_summary(checklist: dict[str, Any]) -> dict[str, Any]:
     summary = _as_dict(checklist.get("summary"))
     return {
@@ -191,6 +219,40 @@ def _p0a_environment_checklist_summary(checklist: dict[str, Any]) -> dict[str, A
         "runbook_verifier_status": summary.get("runbook_verifier_status", ""),
         "environment_verifier_status": summary.get("environment_verifier_status", ""),
         "environment_report_ready": summary.get("environment_report_ready") is True,
+    }
+
+
+def _p0b_google_execution_checklist_summary(checklist: dict[str, Any]) -> dict[str, Any]:
+    summary = _as_dict(checklist.get("summary"))
+    return {
+        "path": str(_as_dict(checklist.get("paths")).get("output", "")),
+        "execution_checklist_version": checklist.get("execution_checklist_version", ""),
+        "status": checklist.get("status", ""),
+        "google_execution_checklist_ready": checklist.get("google_execution_checklist_ready") is True,
+        "google_main_scoring_allowed": checklist.get("google_main_scoring_allowed") is True,
+        "limited_coverage": checklist.get("limited_coverage") is True,
+        "next_action": checklist.get("next_action", ""),
+        "google_execution_checklist_hash": checklist.get("google_execution_checklist_hash", ""),
+        "planned_runs": summary.get("planned_runs"),
+        "step_count": summary.get("step_count", 0),
+        "missing_required_environment_count": summary.get("missing_required_environment_count", 0),
+        "missing_required_environment": [str(value) for value in _as_list(summary.get("missing_required_environment"))],
+        "missing_full_run_required_environment_count": summary.get("missing_full_run_required_environment_count", 0),
+        "missing_full_run_required_environment": [
+            str(value) for value in _as_list(summary.get("missing_full_run_required_environment"))
+        ],
+        "missing_selector_group_count": summary.get("missing_selector_group_count", 0),
+        "missing_selector_groups": [str(value) for value in _as_list(summary.get("missing_selector_groups"))],
+        "missing_dependency_count": summary.get("missing_dependency_count", 0),
+        "missing_dependencies": [str(value) for value in _as_list(summary.get("missing_dependencies"))],
+        "file_gate_issue_count": summary.get("file_gate_issue_count", 0),
+        "file_gate_issues": [str(value) for value in _as_list(summary.get("file_gate_issues"))],
+        "remaining_blocker_count": summary.get("remaining_blocker_count", 0),
+        "remaining_blockers": [str(value) for value in _as_list(summary.get("remaining_blockers"))],
+        "runbook_verifier_status": summary.get("runbook_verifier_status", ""),
+        "playwright_env_verifier_status": summary.get("playwright_env_verifier_status", ""),
+        "status_verifier_status": summary.get("status_verifier_status", ""),
+        "package_verifier_status": summary.get("package_verifier_status", ""),
     }
 
 
@@ -303,6 +365,7 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
     launch_status = _as_dict(dossier.get("launch_status"))
     remediation_plan = _as_dict(dossier.get("remediation_plan"))
     p0a_environment_checklist = _as_dict(dossier.get("p0a_environment_checklist"))
+    p0b_google_execution_checklist = _as_dict(dossier.get("p0b_google_execution_checklist"))
     next_work_item = _as_dict(dossier.get("next_work_item"))
     lines = [
         "# AU 客户交付总包",
@@ -313,11 +376,12 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
         f"- 当前姿态：{summary.get('handoff_posture', '')}",
         f"- 下一步：{summary.get('next_action', '')}",
         f"- 下一 work item：{summary.get('next_work_item_id', '')}",
-            f"- Launch status hash：{launch_status.get('launch_status_hash', '')}",
-            f"- Remediation plan hash：{remediation_plan.get('remediation_plan_hash', '')}",
-            f"- P0a environment checklist hash：{p0a_environment_checklist.get('environment_checklist_hash', '')}",
-            "",
-            "## 阶段门禁",
+        f"- Launch status hash：{launch_status.get('launch_status_hash', '')}",
+        f"- Remediation plan hash：{remediation_plan.get('remediation_plan_hash', '')}",
+        f"- P0a environment checklist hash：{p0a_environment_checklist.get('environment_checklist_hash', '')}",
+        f"- P0b Google execution checklist hash：{p0b_google_execution_checklist.get('google_execution_checklist_hash', '')}",
+        "",
+        "## 阶段门禁",
         "",
         "| 阶段 | 状态 | Ready | 下一步 | Blockers |",
         "| --- | --- | --- | --- | ---: |",
@@ -376,6 +440,20 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
             f"- 缺失推荐：{', '.join(str(value) for value in _as_list(p0a_environment_checklist.get('missing_recommended'))) or '无'}",
             f"- Runbook verifier：{p0a_environment_checklist.get('runbook_verifier_status', '')}",
             f"- Environment verifier：{p0a_environment_checklist.get('environment_verifier_status', '')}",
+            "",
+            "## P0b Google 执行清单",
+            "",
+            f"- 状态：{p0b_google_execution_checklist.get('status', '')}",
+            f"- Ready：{'yes' if p0b_google_execution_checklist.get('google_execution_checklist_ready') else 'no'}",
+            f"- Google 主评分准入：{'yes' if p0b_google_execution_checklist.get('google_main_scoring_allowed') else 'no'}",
+            f"- 下一步：{p0b_google_execution_checklist.get('next_action', '')}",
+            f"- Planned runs：{p0b_google_execution_checklist.get('planned_runs', '')}",
+            f"- 缺失 smoke env：{', '.join(str(value) for value in _as_list(p0b_google_execution_checklist.get('missing_required_environment'))) or '无'}",
+            f"- 缺失 full-run env：{', '.join(str(value) for value in _as_list(p0b_google_execution_checklist.get('missing_full_run_required_environment'))) or '无'}",
+            f"- 缺失 selector group：{', '.join(str(value) for value in _as_list(p0b_google_execution_checklist.get('missing_selector_groups'))) or '无'}",
+            f"- Remaining blockers：{p0b_google_execution_checklist.get('remaining_blocker_count', 0)}",
+            f"- Status verifier：{p0b_google_execution_checklist.get('status_verifier_status', '')}",
+            f"- Package verifier：{p0b_google_execution_checklist.get('package_verifier_status', '')}",
         ]
     )
     lines.extend(["", "## 证据来源", "", "| 名称 | 存在 | sha256 | 路径 |", "| --- | --- | --- | --- |"])
@@ -408,9 +486,11 @@ def build_au_handoff_dossier(
     launch_status_path: Path = Path(DEFAULT_LAUNCH_STATUS_PATH),
     remediation_plan_path: Path = Path(DEFAULT_REMEDIATION_PLAN_PATH),
     p0a_environment_checklist_path: Path = Path(DEFAULT_P0A_ENVIRONMENT_CHECKLIST_PATH),
+    p0b_google_execution_checklist_path: Path = Path(DEFAULT_P0B_GOOGLE_EXECUTION_CHECKLIST_PATH),
     launch_status: dict[str, Any] | None = None,
     remediation_plan: dict[str, Any] | None = None,
     p0a_environment_checklist: dict[str, Any] | None = None,
+    p0b_google_execution_checklist: dict[str, Any] | None = None,
     output_path: Path | None = None,
     markdown_output_path: Path | None = None,
     generated_at: str | None = None,
@@ -435,9 +515,21 @@ def build_au_handoff_dossier(
         )
     else:
         checklist_source = {"path": str(p0a_environment_checklist_path), "exists": True, "source": "provided_payload"}
+    if p0b_google_execution_checklist is None:
+        p0b_google_execution_checklist, p0b_google_checklist_source = _load_or_build_p0b_google_execution_checklist(
+            p0b_google_execution_checklist_path,
+            generated_at=generated_at,
+        )
+    else:
+        p0b_google_checklist_source = {
+            "path": str(p0b_google_execution_checklist_path),
+            "exists": True,
+            "source": "provided_payload",
+        }
     launch_verification = verify_au_launch_status(launch_status, path=launch_status_path)
     remediation_verification = verify_au_launch_remediation_plan(remediation_plan, path=remediation_plan_path)
     checklist_summary = _p0a_environment_checklist_summary(p0a_environment_checklist)
+    p0b_google_checklist_summary = _p0b_google_execution_checklist_summary(p0b_google_execution_checklist)
     remediation_summary = _as_dict(remediation_plan.get("summary"))
     remaining_blockers = [str(item) for item in _as_list(launch_status.get("remaining_blockers"))]
     work_items = _work_item_summaries(remediation_plan)
@@ -457,6 +549,7 @@ def build_au_handoff_dossier(
         _source_file_entry("launch_status", launch_status_path),
         _source_file_entry("remediation_plan", remediation_plan_path),
         _source_file_entry("p0a_environment_checklist", p0a_environment_checklist_path),
+        _source_file_entry("p0b_google_execution_checklist", p0b_google_execution_checklist_path),
         _source_file_entry("p0a_status", _optional_input_path(inputs, "p0a_status_path")),
         _source_file_entry("p0b_google_status", _optional_input_path(inputs, "p0b_google_status_path")),
         _source_file_entry("p0b_google_package", _optional_input_path(inputs, "p0b_google_package_path")),
@@ -488,11 +581,17 @@ def build_au_handoff_dossier(
             "runnable_now_work_item_count": remediation_summary.get("runnable_now_work_item_count", 0),
             "p0a_environment_checklist_ready": checklist_summary.get("environment_checklist_ready") is True,
             "p0a_missing_required_environment_count": checklist_summary.get("missing_required_count", 0),
+            "p0b_google_execution_checklist_ready": p0b_google_checklist_summary.get(
+                "google_execution_checklist_ready"
+            )
+            is True,
+            "p0b_google_remaining_blocker_count": p0b_google_checklist_summary.get("remaining_blocker_count", 0),
         },
         "runtime_endpoints": {
             "launch_status": "GET /v1/launch-status/au",
             "launch_remediation_plan": "GET /v1/launch-remediation-plan/au",
             "p0a_environment_checklist": "GET /v1/p0a-environment-checklist/au",
+            "p0b_google_execution_checklist": "GET /v1/p0b-google-execution-checklist/au",
         },
         "launch_status": {
             "path": str(launch_status_path),
@@ -516,6 +615,8 @@ def build_au_handoff_dossier(
         "remediation_plan_verifier": remediation_verification,
         "p0a_environment_checklist": checklist_summary,
         "p0a_environment_checklist_source": checklist_source,
+        "p0b_google_execution_checklist": p0b_google_checklist_summary,
+        "p0b_google_execution_checklist_source": p0b_google_checklist_source,
         "stage_summaries": _stage_summaries(launch_status),
         "work_items": work_items,
         "next_work_item": next_work_item,
@@ -551,6 +652,14 @@ def parse_args() -> argparse.Namespace:
         help="Path to the AU P0a environment checklist JSON.",
     )
     parser.add_argument(
+        "--p0b-google-execution-checklist-path",
+        default=os.environ.get(
+            "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_P0B_GOOGLE_EXECUTION_CHECKLIST_PATH,
+        ),
+        help="Path to the AU P0b Google execution checklist JSON.",
+    )
+    parser.add_argument(
         "--output-path",
         default=os.environ.get("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU handoff dossier JSON.",
@@ -572,6 +681,7 @@ def main() -> None:
         launch_status_path=Path(args.launch_status_path),
         remediation_plan_path=Path(args.remediation_plan_path),
         p0a_environment_checklist_path=Path(args.p0a_environment_checklist_path),
+        p0b_google_execution_checklist_path=Path(args.p0b_google_execution_checklist_path),
         output_path=output_path,
         markdown_output_path=markdown_path,
         generated_at=args.generated_at,

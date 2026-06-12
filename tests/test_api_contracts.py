@@ -23,6 +23,7 @@ from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
 from scripts.build_au_launch_status import compute_launch_status_hash
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
 from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTest
+from tests.test_au_p0b_google_execution_checklist import AuP0bGoogleExecutionChecklistTest
 from geno_core.models import (
     RuntimeCollectionRunPage,
     RuntimeAlertEvent,
@@ -373,6 +374,40 @@ class ApiContractsTest(unittest.TestCase):
         self.assertNotIn("raw_value", json.dumps(payload))
         self.assertNotIn("perplexity-key", json.dumps(payload))
 
+    def test_au_p0b_google_execution_checklist_endpoint_returns_redacted_readiness(self) -> None:
+        helper = AuP0bGoogleExecutionChecklistTest()
+        helper.setUp()
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, execution_path, env_path, status_path, package_path, _runbook = helper._write_status_and_package(
+                temp_dir,
+                google_ready=False,
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                },
+                clear=False,
+            ):
+                response = self.client.get("/v1/p0b-google-execution-checklist/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["execution_checklist_version"], "au_p0b_google_execution_checklist_v1")
+        self.assertFalse(payload["google_execution_checklist_ready"])
+        self.assertFalse(payload["google_main_scoring_allowed"])
+        self.assertEqual(payload["next_action"], "populate_google_playwright_smoke_environment")
+        self.assertEqual(payload["summary"]["remaining_blocker_count"], 7)
+        self.assertIn("google_aio_prompt_selector", payload["summary"]["missing_selector_groups"])
+        self.assertIn("hard_package_gate", [command["id"] for command in payload["verification_commands"]])
+        self.assertNotIn("raw_value", json.dumps(payload))
+
     def test_au_handoff_dossier_endpoint_returns_runtime_handoff_summary(self) -> None:
         helper = AuHandoffDossierTest()
         helper.setUp()
@@ -401,8 +436,14 @@ class ApiContractsTest(unittest.TestCase):
             payload["runtime_endpoints"]["p0a_environment_checklist"],
             "GET /v1/p0a-environment-checklist/au",
         )
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0b_google_execution_checklist"],
+            "GET /v1/p0b-google-execution-checklist/au",
+        )
         self.assertIn("p0a_environment_checklist", payload)
         self.assertEqual(payload["p0a_environment_checklist"]["missing_required_count"], 3)
+        self.assertIn("p0b_google_execution_checklist", payload)
+        self.assertEqual(payload["p0b_google_execution_checklist"]["remaining_blocker_count"], 7)
         self.assertEqual(payload["next_work_item"]["id"], "p0a_environment")
         self.assertEqual(payload["markdown_report"]["media_type"], "text/markdown; charset=utf-8")
         self.assertTrue(payload["handoff_dossier_hash"])
@@ -3967,6 +4008,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/launch-status/au", payload["persistence"])
         self.assertIn("/v1/launch-remediation-plan/au", payload["persistence"])
         self.assertIn("/v1/p0a-environment-checklist/au", payload["persistence"])
+        self.assertIn("/v1/p0b-google-execution-checklist/au", payload["persistence"])
         self.assertIn("/v1/handoff-dossier/au", payload["persistence"])
         self.assertIn("/metrics", payload["persistence"])
 
