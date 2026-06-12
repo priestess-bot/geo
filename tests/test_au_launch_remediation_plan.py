@@ -74,6 +74,18 @@ class AuLaunchRemediationPlanTest(unittest.TestCase):
             "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
             work_items["p0a_environment"]["evidence_outputs"],
         )
+        self.assertIn(
+            "make au-p0b-google-execution-checklist",
+            [command["shell"] for command in work_items["p0b_google_playwright_env"]["commands"]],
+        )
+        self.assertIn(
+            "make verify-au-p0b-google-execution-checklist",
+            [command["shell"] for command in work_items["p0b_google_playwright_env"]["verification_commands"]],
+        )
+        self.assertIn(
+            "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json",
+            work_items["p0b_google_playwright_env"]["evidence_outputs"],
+        )
         self.assertEqual(
             [command["shell"] for command in work_items["p0b_google_spike_health"]["commands"]],
             ["make au-p0b-google-spike-health", "make au-p0b-google-spike-health-manifest"],
@@ -81,6 +93,10 @@ class AuLaunchRemediationPlanTest(unittest.TestCase):
         self.assertEqual(
             [command["shell"] for command in work_items["p0b_google_full_spike"]["commands"][:2]],
             ["make au-p0b-google-spike", "make au-p0b-google-spike-manifest"],
+        )
+        self.assertIn(
+            "make au-p0b-google-execution-checklist",
+            [command["shell"] for command in work_items["p0b_google_full_spike"]["commands"]],
         )
         self.assertTrue(all(item["mapped"] for item in plan["blocker_remediations"]))
         self.assertEqual(plan["remediation_plan_hash"], compute_remediation_plan_hash(plan))

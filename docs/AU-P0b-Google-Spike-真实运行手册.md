@@ -185,11 +185,15 @@ make au-p0b-google-status
 make verify-au-p0b-google-status
 make au-p0b-google-package
 make verify-au-p0b-google-package
+make au-p0b-google-execution-checklist
+make verify-au-p0b-google-execution-checklist
 ```
 
 `au-p0b-google-status` 会读取 runbook、dry-run execution、Playwright env readiness、Playwright smoke、manual backfill strict verification、health、spike 和 manifest 产物。若 env readiness 报告缺失，状态报告会输出 `next_action=run_google_playwright_env_report`；若 env strict gate 不通过，会优先返回 env 报告里的 `next_action`，例如补 selector、storage state 或 Playwright 包。若 Playwright smoke 没有通过 strict success gate，状态报告会输出 `next_action=run_google_playwright_smoke`，并把 `playwright_smoke:smoke_not_successful` 或对应文件/hash/结构错误放入 `remaining_blockers`。若 manual verification 缺失或 strict 失败，状态报告会输出 `next_action=run_verify_google_manual_backfill`、`prepare_google_manual_backfill_file` 或 `fix_google_manual_backfill_coverage`；这时不要进入 health-only 或 240-run。
 
 `au-p0b-google-package` 会把 status report 作为最终 gate，再把 runbook、execution、Playwright env、smoke、manual verification、health/spike payload 与 manifest 的存在状态、文件 sha256、verifier hash、ready 字段、`remaining_blockers` 和 `google_main_scoring_allowed` 汇总到 `docs/runtime_preflight/au-p0b-google-evidence-package-latest.json`。`verify-au-p0b-google-package` 默认只校验 package hash 与 summary/artifacts 自洽；需要把它作为 Google 主评分硬门禁时，运行 `python3 scripts/verify_au_p0b_google_evidence_package.py docs/runtime_preflight/au-p0b-google-evidence-package-latest.json --require-google-main-scoring-allowed`。
+
+`au-p0b-google-execution-checklist` 会把 runbook、dry-run execution、Playwright env readiness、status report 和 evidence package 汇总成 `docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json`。该清单会列出当前缺失的 `GOOGLE_PLAYWRIGHT_ENABLED`、selector group、`MANUAL_BACKFILL_PATH`、`DATABASE_URL`、Playwright dependency、file gate issue、remaining blockers、setup commands、execution commands、hard gate commands 和证据输出路径。清单只保留来源、长度和 sha256 前缀，不保存 selector 原文、secret 或数据库 URL。`verify-au-p0b-google-execution-checklist` 只证明清单 hash、计数、脱敏约束和 next action 推导自洽；需要作为 Google 主评分硬门禁时，应继续运行 status/package 的 `--require-google-main-scoring-allowed`。
 
 需要硬门禁时：
 
@@ -291,6 +295,7 @@ make verify-au-p0b-google-serp-status
 - `docs/runtime_preflight/au-p0b-google-spike-latest.json`
 - `docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json`
 - `docs/runtime_preflight/au-p0b-google-spike-status-latest.json`
+- `docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json`
 - `docs/runtime_preflight/au-p0b-google-serp-fixture-latest.json`
 - `docs/runtime_preflight/au-p0b-google-serp-fixture-manifest-latest.json`
 - `docs/runtime_preflight/au-p0b-google-serp-health-latest.json`

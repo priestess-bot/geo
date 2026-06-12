@@ -228,8 +228,10 @@ def _p0b_playwright_env_item() -> dict[str, Any]:
             _command("cp .env.au-p0b-google.example .env.au-p0b-google"),
             _command("make au-p0b-google-runbook"),
             _command("make au-p0b-google-playwright-env"),
+            _command("make au-p0b-google-execution-checklist"),
         ],
         "verification_commands": [
+            _command("make verify-au-p0b-google-execution-checklist"),
             _command(
                 "PYTHONPATH=packages/geno_core:apps/api "
                 "python3 scripts/verify_au_p0b_google_playwright_env_report.py "
@@ -240,6 +242,7 @@ def _p0b_playwright_env_item() -> dict[str, Any]:
         "evidence_outputs": [
             "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
             "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+            "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json",
         ],
         "acceptance": "Google Playwright environment report is ready for smoke and contains no raw secret values.",
     }
@@ -326,10 +329,12 @@ def _p0b_full_spike_item() -> dict[str, Any]:
             _command("make au-p0b-google-spike-manifest"),
             _command("make au-p0b-google-status"),
             _command("make au-p0b-google-package"),
+            _command("make au-p0b-google-execution-checklist"),
             _command("make au-launch-status"),
         ],
         "verification_commands": [
             _command("make verify-au-p0b-google-status"),
+            _command("make verify-au-p0b-google-execution-checklist"),
             _command(
                 "PYTHONPATH=packages/geno_core:apps/api "
                 "python3 scripts/verify_au_p0b_google_evidence_package.py "
@@ -342,6 +347,7 @@ def _p0b_full_spike_item() -> dict[str, Any]:
             "docs/runtime_preflight/au-p0b-google-spike-latest.json",
             "docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json",
             "docs/runtime_preflight/au-p0b-google-evidence-package-latest.json",
+            "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json",
             "docs/runtime_preflight/au-launch-status-latest.json",
         ],
         "acceptance": "P0b package allows Google main scoring or the launch report explicitly keeps Google limited coverage.",
