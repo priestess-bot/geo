@@ -4470,6 +4470,34 @@ export default async function Home({
                               {review.due_at ? ` · due ${dateText(review.due_at)}` : " · no due date"} ·{" "}
                               {record.audit_events[0]?.event_type || "no assignment audit"}
                             </small>
+                            {["in_progress", "blocked", "completed"].map((status) => (
+                              <form action={assignEntityAliasCandidateReview} className="inlineAliasForm" key={status}>
+                                <input type="hidden" name="project_id" value={review.project_id} />
+                                <input type="hidden" name="candidate_id" value={review.candidate_id} />
+                                <input
+                                  type="hidden"
+                                  name="assigned_to"
+                                  value={review.assigned_to || "runtime-console"}
+                                />
+                                <input type="hidden" name="assigned_by" value="runtime-console" />
+                                <input type="hidden" name="assignment_status" value={status} />
+                                <input type="hidden" name="priority" value={review.priority || "normal"} />
+                                <input type="hidden" name="due_at" value={review.due_at || ""} />
+                                <input
+                                  type="hidden"
+                                  name="assignment_note"
+                                  value={`Mark ${review.alias} assignment ${status}`}
+                                />
+                                <input
+                                  type="hidden"
+                                  name="reason"
+                                  value={`Alias candidate assignment status changed to ${status} from Runtime Console`}
+                                />
+                                <button className="actionButton compactAction" type="submit">
+                                  {status === "in_progress" ? "Start review" : status === "blocked" ? "Block review" : "Complete review"}
+                                </button>
+                              </form>
+                            ))}
                           </li>
                         );
                       })}
