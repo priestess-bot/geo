@@ -134,11 +134,18 @@ from scripts.build_au_p0a_environment_checklist import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH,
     build_au_p0a_environment_checklist,
 )
+from scripts.build_au_p0a_execution_checklist import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH,
+    build_au_p0a_execution_checklist,
+)
 from scripts.build_au_p0a_env_report import (
     DEFAULT_ENV_FILE as DEFAULT_AU_P0A_ENV_FILE,
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_ENV_OUTPUT_PATH,
 )
+from scripts.build_au_p0a_evidence_package import DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_PACKAGE_OUTPUT_PATH
 from scripts.build_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_RUNBOOK_OUTPUT_PATH
+from scripts.run_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH
+from scripts.verify_au_p0a_readiness import DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_READINESS_OUTPUT_PATH
 from scripts.build_au_p0b_google_execution_checklist import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
     build_au_p0b_google_execution_checklist,
@@ -1357,6 +1364,27 @@ def au_p0a_environment_checklist() -> dict[str, object]:
             os.getenv(
                 "GENO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH",
                 DEFAULT_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0a-execution-checklist/au")
+def au_p0a_execution_checklist() -> dict[str, object]:
+    return build_au_p0a_execution_checklist(
+        runbook_path=Path(os.getenv("GENO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_AU_P0A_RUNBOOK_OUTPUT_PATH)),
+        environment_path=Path(os.getenv("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_AU_P0A_ENV_OUTPUT_PATH)),
+        runbook_execution_path=Path(
+            os.getenv("GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH)
+        ),
+        readiness_path=Path(os.getenv("GENO_AU_P0A_READINESS_OUTPUT_PATH", DEFAULT_AU_P0A_READINESS_OUTPUT_PATH)),
+        package_path=Path(os.getenv("GENO_AU_P0A_PACKAGE_OUTPUT_PATH", DEFAULT_AU_P0A_PACKAGE_OUTPUT_PATH)),
+        status_path=Path(os.getenv("GENO_AU_P0A_STATUS_OUTPUT_PATH", DEFAULT_P0A_STATUS_PATH)),
+        env_file_path=Path(os.getenv("GENO_AU_P0A_ENV_FILE", DEFAULT_AU_P0A_ENV_FILE)),
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH",
+                DEFAULT_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH,
             )
         ),
     )
@@ -4226,6 +4254,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/launch-status/au",
             "/v1/launch-remediation-plan/au",
             "/v1/p0a-environment-checklist/au",
+            "/v1/p0a-execution-checklist/au",
             "/v1/p0b-google-execution-checklist/au",
             "/v1/au-broader-platform-registry",
             "/v1/au-retest-scheduler-plan",

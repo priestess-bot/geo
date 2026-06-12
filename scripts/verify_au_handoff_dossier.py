@@ -38,6 +38,8 @@ REQUIRED_FIELDS = (
     "remediation_plan_verifier",
     "p0a_environment_checklist",
     "p0a_environment_checklist_source",
+    "p0a_execution_checklist",
+    "p0a_execution_checklist_source",
     "p0b_google_execution_checklist",
     "p0b_google_execution_checklist_source",
     "stage_summaries",
@@ -106,6 +108,7 @@ def verify_au_handoff_dossier(
     remediation = _as_dict(dossier.get("remediation_plan"))
     remediation_verifier = _as_dict(dossier.get("remediation_plan_verifier"))
     p0a_environment_checklist = _as_dict(dossier.get("p0a_environment_checklist"))
+    p0a_execution_checklist = _as_dict(dossier.get("p0a_execution_checklist"))
     p0b_google_execution_checklist = _as_dict(dossier.get("p0b_google_execution_checklist"))
     summary = _as_dict(dossier.get("summary"))
     endpoints = _as_dict(dossier.get("runtime_endpoints"))
@@ -166,6 +169,14 @@ def verify_au_handoff_dossier(
         "missing_required_count"
     ):
         errors.append("summary_p0a_missing_required_environment_count_mismatch")
+    if summary.get("p0a_execution_checklist_ready") is not p0a_execution_checklist.get(
+        "p0a_execution_checklist_ready"
+    ):
+        errors.append("summary_p0a_execution_checklist_ready_mismatch")
+    if summary.get("p0a_execution_remaining_blocker_count") != p0a_execution_checklist.get(
+        "remaining_blocker_count"
+    ):
+        errors.append("summary_p0a_execution_remaining_blocker_count_mismatch")
     if summary.get("p0b_google_execution_checklist_ready") is not p0b_google_execution_checklist.get(
         "google_execution_checklist_ready"
     ):
@@ -178,6 +189,8 @@ def verify_au_handoff_dossier(
         errors.append("runtime_endpoint_au_retest_scheduler_plan_invalid")
     if endpoints.get("au_retest_execution_status") != "GET /v1/au-retest-execution-status":
         errors.append("runtime_endpoint_au_retest_execution_status_invalid")
+    if endpoints.get("p0a_execution_checklist") != "GET /v1/p0a-execution-checklist/au":
+        errors.append("runtime_endpoint_p0a_execution_checklist_invalid")
 
     next_work_item_id = str(summary.get("next_work_item_id") or "")
     if next_work_item_id != remediation.get("next_work_item_id"):

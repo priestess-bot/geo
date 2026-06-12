@@ -23,6 +23,7 @@ from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
 from scripts.build_au_launch_status import compute_launch_status_hash
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
 from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTest
+from tests.test_au_p0a_execution_checklist import AuP0aExecutionChecklistTest
 from tests.test_au_p0b_google_execution_checklist import AuP0bGoogleExecutionChecklistTest
 from geno_core.models import (
     RuntimeCollectionRunPage,
@@ -374,6 +375,54 @@ class ApiContractsTest(unittest.TestCase):
         self.assertNotIn("raw_value", json.dumps(payload))
         self.assertNotIn("perplexity-key", json.dumps(payload))
 
+    def test_au_p0a_execution_checklist_endpoint_returns_redacted_readiness(self) -> None:
+        helper = AuP0aExecutionChecklistTest()
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, _runbook = helper._write_runbook(temp_dir)
+            environment_path = Path(temp_dir) / "environment.json"
+            execution_path = Path(temp_dir) / "execution.json"
+            readiness_path = Path(temp_dir) / "readiness.json"
+            package_path = Path(temp_dir) / "package.json"
+            status_path = Path(temp_dir) / "status.json"
+            helper._write_env_report(environment_path, runbook_path, ready=False)
+            helper._write_runbook_execution(execution_path, runbook_path, ready=False)
+            helper._write_readiness(readiness_path, ready=False)
+            helper._write_package_and_status(
+                runbook_path=runbook_path,
+                environment_path=environment_path,
+                execution_path=execution_path,
+                readiness_path=readiness_path,
+                package_path=package_path,
+                status_path=status_path,
+                ready=False,
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "GENO_AU_P0A_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GENO_AU_P0A_ENV_OUTPUT_PATH": str(environment_path),
+                    "GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GENO_AU_P0A_READINESS_OUTPUT_PATH": str(readiness_path),
+                    "GENO_AU_P0A_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GENO_AU_P0A_STATUS_OUTPUT_PATH": str(status_path),
+                    "GENO_AU_P0A_ENV_FILE": str(Path(temp_dir) / "missing.env"),
+                    "GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "execution-checklist.json"),
+                },
+                clear=False,
+            ):
+                response = self.client.get("/v1/p0a-execution-checklist/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["execution_checklist_version"], "au_p0a_execution_checklist_v1")
+        self.assertFalse(payload["p0a_execution_checklist_ready"])
+        self.assertFalse(payload["ready_for_design_partner"])
+        self.assertEqual(payload["next_action"], "configure_required_environment")
+        self.assertIn("preflight_json", payload["summary"]["missing_artifacts"])
+        self.assertIn("hard_status_gate", [command["id"] for command in payload["verification_commands"]])
+        self.assertNotIn("raw_value", json.dumps(payload))
+        self.assertNotIn("perplexity-key", json.dumps(payload))
+
     def test_au_p0b_google_execution_checklist_endpoint_returns_redacted_readiness(self) -> None:
         helper = AuP0bGoogleExecutionChecklistTest()
         helper.setUp()
@@ -452,11 +501,17 @@ class ApiContractsTest(unittest.TestCase):
             "GET /v1/p0a-environment-checklist/au",
         )
         self.assertEqual(
+            payload["runtime_endpoints"]["p0a_execution_checklist"],
+            "GET /v1/p0a-execution-checklist/au",
+        )
+        self.assertEqual(
             payload["runtime_endpoints"]["p0b_google_execution_checklist"],
             "GET /v1/p0b-google-execution-checklist/au",
         )
         self.assertIn("p0a_environment_checklist", payload)
         self.assertEqual(payload["p0a_environment_checklist"]["missing_required_count"], 3)
+        self.assertIn("p0a_execution_checklist", payload)
+        self.assertEqual(payload["p0a_execution_checklist"]["remaining_blocker_count"], 22)
         self.assertIn("p0b_google_execution_checklist", payload)
         self.assertEqual(payload["p0b_google_execution_checklist"]["remaining_blocker_count"], 7)
         self.assertEqual(payload["next_work_item"]["id"], "p0a_environment")
@@ -4054,6 +4109,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/launch-status/au", payload["persistence"])
         self.assertIn("/v1/launch-remediation-plan/au", payload["persistence"])
         self.assertIn("/v1/p0a-environment-checklist/au", payload["persistence"])
+        self.assertIn("/v1/p0a-execution-checklist/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-execution-checklist/au", payload["persistence"])
         self.assertIn("/v1/au-broader-platform-registry", payload["persistence"])
         self.assertIn("/v1/au-retest-scheduler-plan", payload["persistence"])

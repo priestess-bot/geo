@@ -657,6 +657,7 @@ type RuntimeData = {
   launchStatus: AuLaunchStatus | null;
   launchRemediationPlan: AuLaunchRemediationPlan | null;
   p0aEnvironmentChecklist: AuP0aEnvironmentChecklist | null;
+  p0aExecutionChecklist: AuP0aExecutionChecklist | null;
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
   broaderPlatformRegistry: AuBroaderPlatformRegistry | null;
   retestSchedulerPlan: AuRetestSchedulerPlan | null;
@@ -857,6 +858,38 @@ type AuP0bGoogleExecutionChecklist = {
   evidence_outputs?: string[];
 };
 
+type AuP0aExecutionChecklist = {
+  execution_checklist_version: string;
+  generated_at: string;
+  status: string;
+  p0a_execution_checklist_ready: boolean;
+  ready_for_design_partner: boolean;
+  next_action: string;
+  p0a_execution_checklist_hash: string;
+  summary?: {
+    small_batch_planned_runs?: number;
+    full_batch_planned_runs?: number;
+    step_count?: number;
+    artifact_count?: number;
+    missing_artifact_count?: number;
+    missing_artifacts?: string[];
+    failed_artifact_count?: number;
+    failed_artifacts?: string[];
+    ready_artifact_count?: number;
+    remaining_blocker_count?: number;
+    remaining_blockers?: string[];
+    completion_percent?: number;
+    design_ready_artifact_percent?: number;
+    runbook_verifier_status?: string;
+    environment_verifier_status?: string;
+    runbook_execution_verifier_status?: string;
+    package_verifier_status?: string;
+    status_verifier_status?: string;
+  };
+  verification_commands?: Array<{ id?: string; shell?: string; purpose?: string }>;
+  evidence_outputs?: string[];
+};
+
 type AuBroaderPlatformRegistry = {
   registry_version: string;
   generated_at: string;
@@ -913,6 +946,8 @@ type AuHandoffDossier = {
     unmapped_blocker_count?: number;
     work_item_count?: number;
     external_dependency_blocker_count?: number;
+    p0a_execution_checklist_ready?: boolean;
+    p0a_execution_remaining_blocker_count?: number;
     p0b_google_execution_checklist_ready?: boolean;
     p0b_google_remaining_blocker_count?: number;
   };
@@ -926,6 +961,7 @@ type AuHandoffDossier = {
     launch_status?: string;
     launch_remediation_plan?: string;
     p0a_environment_checklist?: string;
+    p0a_execution_checklist?: string;
     p0b_google_execution_checklist?: string;
   };
   next_work_item?: {
@@ -1342,6 +1378,7 @@ const endpoints = {
   launchStatus: "/v1/launch-status/au",
   launchRemediationPlan: "/v1/launch-remediation-plan/au",
   p0aEnvironmentChecklist: "/v1/p0a-environment-checklist/au",
+  p0aExecutionChecklist: "/v1/p0a-execution-checklist/au",
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
   broaderPlatformRegistry: "/v1/au-broader-platform-registry",
   retestSchedulerPlan: "/v1/au-retest-scheduler-plan",
@@ -2236,6 +2273,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     launchStatus: endpoints.launchStatus,
     launchRemediationPlan: endpoints.launchRemediationPlan,
     p0aEnvironmentChecklist: endpoints.p0aEnvironmentChecklist,
+    p0aExecutionChecklist: endpoints.p0aExecutionChecklist,
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
     broaderPlatformRegistry: endpoints.broaderPlatformRegistry,
     retestSchedulerPlan: endpoints.retestSchedulerPlan,
@@ -2491,6 +2529,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     launchStatus,
     launchRemediationPlan,
     p0aEnvironmentChecklist,
+    p0aExecutionChecklist,
     p0bGoogleExecutionChecklist,
     broaderPlatformRegistry,
     retestSchedulerPlan,
@@ -2531,6 +2570,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuLaunchStatus | null>(baseUrl, paths.launchStatus, null),
     fetchRuntimeEndpoint<AuLaunchRemediationPlan | null>(baseUrl, paths.launchRemediationPlan, null),
     fetchRuntimeEndpoint<AuP0aEnvironmentChecklist | null>(baseUrl, paths.p0aEnvironmentChecklist, null),
+    fetchRuntimeEndpoint<AuP0aExecutionChecklist | null>(baseUrl, paths.p0aExecutionChecklist, null),
     fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
     fetchRuntimeEndpoint<AuBroaderPlatformRegistry | null>(baseUrl, paths.broaderPlatformRegistry, null),
     fetchRuntimeEndpoint<AuRetestSchedulerPlan | null>(baseUrl, paths.retestSchedulerPlan, null),
@@ -2647,6 +2687,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     launchStatus,
     launchRemediationPlan,
     p0aEnvironmentChecklist,
+    p0aExecutionChecklist,
     p0bGoogleExecutionChecklist,
     broaderPlatformRegistry,
     retestSchedulerPlan,
@@ -2692,6 +2733,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       launchStatus: launchStatus.payload,
       launchRemediationPlan: launchRemediationPlan.payload,
       p0aEnvironmentChecklist: p0aEnvironmentChecklist.payload,
+      p0aExecutionChecklist: p0aExecutionChecklist.payload,
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
       broaderPlatformRegistry: broaderPlatformRegistry.payload,
       retestSchedulerPlan: retestSchedulerPlan.payload,
@@ -3011,6 +3053,10 @@ export default async function Home({
   const p0aEnvironmentSummary = p0aEnvironmentChecklist?.summary;
   const missingP0aRequired = p0aEnvironmentSummary?.missing_required || [];
   const missingP0aRecommended = p0aEnvironmentSummary?.missing_recommended || [];
+  const p0aExecutionChecklist = data.p0aExecutionChecklist;
+  const p0aExecutionSummary = p0aExecutionChecklist?.summary;
+  const missingP0aArtifacts = p0aExecutionSummary?.missing_artifacts || [];
+  const p0aExecutionBlockers = p0aExecutionSummary?.remaining_blockers || [];
   const p0bGoogleExecutionChecklist = data.p0bGoogleExecutionChecklist;
   const p0bGoogleExecutionSummary = p0bGoogleExecutionChecklist?.summary;
   const missingP0bSmokeEnv = p0bGoogleExecutionSummary?.missing_required_environment || [];
@@ -3546,6 +3592,65 @@ export default async function Home({
             <span>Evidence outputs {p0aEnvironmentChecklist?.evidence_outputs?.length || 0}</span>
           </div>
           <code>{paths.p0aEnvironmentChecklist}</code>
+        </div>
+        <div className="p0aExecutionChecklist">
+          <div className="launchRemediationHeader">
+            <strong>P0a execution checklist</strong>
+            <span>
+              {p0aExecutionChecklist?.execution_checklist_version || "au_p0a_execution_checklist_v1"} · hash{" "}
+              {shortHash(p0aExecutionChecklist?.p0a_execution_checklist_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>Ready {p0aExecutionChecklist?.p0a_execution_checklist_ready ? "yes" : "no"}</span>
+            <span>Design partner {p0aExecutionChecklist?.ready_for_design_partner ? "ready" : "blocked"}</span>
+            <span>Next action {p0aExecutionChecklist?.next_action || "run checklist"}</span>
+            <span>Full batch runs {p0aExecutionSummary?.full_batch_planned_runs || 0}</span>
+          </div>
+          <div className="environmentChecklistGrid">
+            <div>
+              <strong>Missing artifacts</strong>
+              {missingP0aArtifacts.length ? (
+                <ul className="plainList">
+                  {missingP0aArtifacts.slice(0, 5).map((name) => (
+                    <li key={name}>{name}</li>
+                  ))}
+                </ul>
+              ) : (
+                <small>All P0a execution artifacts are present.</small>
+              )}
+            </div>
+            <div>
+              <strong>Execution blockers</strong>
+              {p0aExecutionBlockers.length ? (
+                <ul className="plainList">
+                  {p0aExecutionBlockers.slice(0, 5).map((blocker) => (
+                    <li key={blocker}>{blocker}</li>
+                  ))}
+                </ul>
+              ) : (
+                <small>No P0a execution blockers recorded.</small>
+              )}
+            </div>
+          </div>
+          <div className="handoffBoundary">
+            <span>
+              Completion {p0aExecutionSummary?.completion_percent || 0}% · design-ready{" "}
+              {p0aExecutionSummary?.design_ready_artifact_percent || 0}%
+            </span>
+            <span>
+              Verifiers: execution {p0aExecutionSummary?.runbook_execution_verifier_status || "unknown"} · package{" "}
+              {p0aExecutionSummary?.package_verifier_status || "unknown"} · status{" "}
+              {p0aExecutionSummary?.status_verifier_status || "unknown"}
+            </span>
+            <span>
+              Hard gate{" "}
+              {p0aExecutionChecklist?.verification_commands?.find((command) => command.id === "hard_status_gate")
+                ?.shell || "python3 scripts/verify_au_p0a_status_report.py --require-design-partner-ready"}
+            </span>
+            <span>Evidence outputs {p0aExecutionChecklist?.evidence_outputs?.length || 0}</span>
+          </div>
+          <code>{paths.p0aExecutionChecklist}</code>
         </div>
         <div className="p0bGoogleExecutionChecklist">
           <div className="launchRemediationHeader">

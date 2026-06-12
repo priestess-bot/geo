@@ -270,6 +270,8 @@ make au-p0a-package
 make verify-au-p0a-package
 make au-p0a-status
 make verify-au-p0a-status
+make au-p0a-execution-checklist
+make verify-au-p0a-execution-checklist
 ```
 
 `make api-preflight` runs `--mode api --prompt-limit 1 --cities Sydney --sample-size 3
@@ -325,6 +327,13 @@ phases, package verifier, completion percentage, design-ready percentage, remain
 next action.
 `make verify-au-p0a-status` recomputes the status report hash and checks that completion, blockers,
 ready state, and next action can be derived from the embedded gate summaries.
+`make au-p0a-execution-checklist` writes
+`${GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-execution-checklist-latest.json}`
+with the redacted setup commands, execution commands, verification commands, evidence output paths,
+artifact summary, remaining blockers, and `p0a_execution_checklist_hash` across the full P0a path.
+`make verify-au-p0a-execution-checklist` recomputes the hash, checks derived readiness, rejects raw
+secret fields, and confirms that missing small/full batch evidence keeps `ready_for_design_partner`
+false.
 The default preflight JSON path is gitignored because live provider status and run context belong
 to local audit evidence, not committed project docs. This is the minimum real API smoke; it does
 not replace the full 100 prompts × 4 geo × k=3 design-partner batch.

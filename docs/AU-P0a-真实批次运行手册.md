@@ -124,6 +124,8 @@ make au-p0a-package
 make verify-au-p0a-package
 GENO_AU_P0A_ENV_FILE=${GENO_AU_P0A_ENV_FILE:-.env.au-p0a} make au-p0a-status
 make verify-au-p0a-status
+make au-p0a-execution-checklist
+make verify-au-p0a-execution-checklist
 ```
 
 ## 停止条件
@@ -138,6 +140,7 @@ make verify-au-p0a-status
 - `database.connection_check=fail`：停止，先修 `DATABASE_URL`、网络、凭证或迁移后的 PostgreSQL 服务。
 - `ready_for_design_partner=false`：停止，不进入 design partner 或 full batch。
 - status report `next_action` 不是 `ready_for_design_partner_handoff`：停止，按 `remaining_blockers` 逐项修复。
+- execution checklist `ready_for_design_partner=false`：停止，按 `remaining_blockers` 和 `execution_commands` 补齐真实环境、preflight、小批次或全量批次证据。
 
 ## 产物清单
 
@@ -152,6 +155,7 @@ make verify-au-p0a-status
 - `docs/runtime_preflight/au-p0a-readiness-latest.json`
 - `docs/runtime_preflight/au-p0a-evidence-package-latest.json`
 - `docs/runtime_preflight/au-p0a-status-latest.json`
+- `docs/runtime_preflight/au-p0a-execution-checklist-latest.json`
 - `docs/runtime_preflight/au-p0a-small-batch.json`
 - `docs/runtime_preflight/au-p0a-small-batch-manifest.json`
 - `docs/runtime_preflight/au-p0a-full-batch.json`
@@ -236,6 +240,17 @@ status report 必须确认：
 - completion_percent、design_ready_artifact_percent、remaining_blockers 和 next_action 能回答当前还差多少
 - status verifier 递归拒绝 `value` / `raw_value`，避免总控状态报告泄露 env-file、process env 或数据库连接串
 - 默认可用于日常进度复盘；需要硬门禁时用 `python3 scripts/verify_au_p0a_status_report.py --require-design-partner-ready`
+
+execution checklist 必须确认：
+
+- `p0a_execution_checklist_hash` 可由 `make verify-au-p0a-execution-checklist` 复算
+- setup commands 固定 env template gate、env 模板复制、runbook、env report、environment checklist 和 dry-run 顺序
+- execution commands 固定 preflight、preflight manifest、small batch、small manifest、full batch 和 full manifest 的运行/验证顺序
+- verification commands 固定 environment、runbook execution、preflight、package 和 status hard gates
+- evidence outputs 至少覆盖 runbook、environment report、environment checklist、runbook execution、readiness、preflight、small/full payload、manifest、package 和 status report
+- missing_artifacts、failed_artifacts、remaining_blockers、completion_percent 和 design_ready_artifact_percent 能回答当前还差多少
+- verifier 递归拒绝 `value` / `raw_value`，避免执行清单泄露 env-file、process env 或数据库连接串
+- 该清单证明真实 P0a 执行路径、命令顺序、证据索引和阻塞项可审计，不证明 provider key、数据库、small batch 或 2400-run full batch 已实际完成
 
 ## 当前边界
 
