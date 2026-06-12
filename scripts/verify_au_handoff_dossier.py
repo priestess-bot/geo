@@ -108,6 +108,7 @@ def verify_au_handoff_dossier(
     p0a_environment_checklist = _as_dict(dossier.get("p0a_environment_checklist"))
     p0b_google_execution_checklist = _as_dict(dossier.get("p0b_google_execution_checklist"))
     summary = _as_dict(dossier.get("summary"))
+    endpoints = _as_dict(dossier.get("runtime_endpoints"))
     markdown_report = _as_dict(dossier.get("markdown_report"))
     blockers = _as_list(launch.get("remaining_blockers"))
     work_items = [_as_dict(item) for item in _as_list(dossier.get("work_items"))]
@@ -173,6 +174,10 @@ def verify_au_handoff_dossier(
         "remaining_blocker_count"
     ):
         errors.append("summary_p0b_google_remaining_blocker_count_mismatch")
+    if endpoints.get("au_retest_scheduler_plan") != "GET /v1/au-retest-scheduler-plan":
+        errors.append("runtime_endpoint_au_retest_scheduler_plan_invalid")
+    if endpoints.get("au_retest_execution_status") != "GET /v1/au-retest-execution-status":
+        errors.append("runtime_endpoint_au_retest_execution_status_invalid")
 
     next_work_item_id = str(summary.get("next_work_item_id") or "")
     if next_work_item_id != remediation.get("next_work_item_id"):

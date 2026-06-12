@@ -448,6 +448,66 @@ type AuRetestSchedulerPlan = {
   retest_scheduler_plan_hash: string;
 };
 
+type AuRetestExecutionStatus = {
+  status_version: string;
+  generated_at?: string;
+  status: string;
+  execution_status_report_ready: boolean;
+  retest_execution_ready: boolean;
+  comparison_allowed: boolean;
+  next_action: string;
+  plan_summary: {
+    prompt_version?: string;
+    planned_runs_per_window?: number;
+    total_planned_runs?: number;
+    retest_scheduler_plan_hash?: string;
+  };
+  summary: {
+    window_count: number;
+    ready_window_count: number;
+    ready_retest_window_count: number;
+    missing_window_count: number;
+    missing_artifact_count: number;
+    baseline_ready: boolean;
+    comparison_allowed: boolean;
+    next_window_id?: string | null;
+  };
+  windows: Array<{
+    id: string;
+    label: string;
+    offset_day: number;
+    planned_runs: number;
+    prompt_version: string;
+    sample_size: number;
+    window_ready: boolean;
+    missing_artifact_count: number;
+    payload?: {
+      exists?: boolean;
+      status?: string;
+      path?: string;
+      ready_for_design_partner?: boolean;
+      hash_valid?: boolean;
+    };
+    manifest?: {
+      exists?: boolean;
+      status?: string;
+      path?: string;
+      ready_for_design_partner?: boolean;
+      hash_valid?: boolean;
+    };
+    blocking_reasons?: string[];
+  }>;
+  runtime_endpoints: Record<string, string>;
+  current_boundary: {
+    real_external_runs_completed?: boolean;
+    temporal_scheduler_implemented?: boolean;
+    requires_p0a_environment_ready?: boolean;
+    requires_design_partner_ready_baseline?: boolean;
+    notes?: string[];
+  };
+  retest_execution_status_hash: string;
+};
+
 type RuntimeAlert = {
   alert: {
     id: string;
@@ -600,6 +660,7 @@ type RuntimeData = {
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
   broaderPlatformRegistry: AuBroaderPlatformRegistry | null;
   retestSchedulerPlan: AuRetestSchedulerPlan | null;
+  retestExecutionStatus: AuRetestExecutionStatus | null;
   handoffDossier: AuHandoffDossier | null;
   projects: PageResponse<RuntimeProject>;
   projectMembers: PageResponse<RuntimeProjectMember>;
@@ -1284,6 +1345,7 @@ const endpoints = {
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
   broaderPlatformRegistry: "/v1/au-broader-platform-registry",
   retestSchedulerPlan: "/v1/au-retest-scheduler-plan",
+  retestExecutionStatus: "/v1/au-retest-execution-status",
   handoffDossier: "/v1/handoff-dossier/au",
   projects: "/v1/projects/runtime",
   projectMembers: "/v1/project-members/runtime",
@@ -2177,6 +2239,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
     broaderPlatformRegistry: endpoints.broaderPlatformRegistry,
     retestSchedulerPlan: endpoints.retestSchedulerPlan,
+    retestExecutionStatus: endpoints.retestExecutionStatus,
     handoffDossier: endpoints.handoffDossier,
     projects: runtimePath(endpoints.projects, projectListParams),
     projectMembers: endpoints.projectMembers,
@@ -2431,6 +2494,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleExecutionChecklist,
     broaderPlatformRegistry,
     retestSchedulerPlan,
+    retestExecutionStatus,
     handoffDossier,
     prompts,
     projectMembers,
@@ -2470,6 +2534,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
     fetchRuntimeEndpoint<AuBroaderPlatformRegistry | null>(baseUrl, paths.broaderPlatformRegistry, null),
     fetchRuntimeEndpoint<AuRetestSchedulerPlan | null>(baseUrl, paths.retestSchedulerPlan, null),
+    fetchRuntimeEndpoint<AuRetestExecutionStatus | null>(baseUrl, paths.retestExecutionStatus, null),
     fetchRuntimeEndpoint<AuHandoffDossier | null>(baseUrl, paths.handoffDossier, null),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     selectedProjectId
@@ -2585,6 +2650,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleExecutionChecklist,
     broaderPlatformRegistry,
     retestSchedulerPlan,
+    retestExecutionStatus,
     handoffDossier,
     projects,
     prompts,
@@ -2629,6 +2695,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
       broaderPlatformRegistry: broaderPlatformRegistry.payload,
       retestSchedulerPlan: retestSchedulerPlan.payload,
+      retestExecutionStatus: retestExecutionStatus.payload,
       handoffDossier: handoffDossier.payload,
       projects: projects.payload,
       projectMembers: projectMembers.payload,
@@ -2957,6 +3024,9 @@ export default async function Home({
   const retestSchedulerPlan = data.retestSchedulerPlan;
   const retestSchedulerScope = retestSchedulerPlan?.scope;
   const retestSchedulerTimeline = retestSchedulerPlan?.timeline || [];
+  const retestExecutionStatus = data.retestExecutionStatus;
+  const retestExecutionSummary = retestExecutionStatus?.summary;
+  const retestExecutionWindows = retestExecutionStatus?.windows || [];
   const handoffDossier = data.handoffDossier;
   const handoffSummary = handoffDossier?.summary;
   const handoffNextWorkItem = handoffDossier?.next_work_item;
@@ -5427,6 +5497,9 @@ export default async function Home({
                   <Fact label="Plan status" value={retestSchedulerPlan?.status || "unknown"} />
                   <Fact label="Ready" value={boolText(retestSchedulerPlan?.retest_scheduler_plan_ready)} />
                   <Fact label="Plan hash" value={shortHash(retestSchedulerPlan?.retest_scheduler_plan_hash)} />
+                  <Fact label="Execution status" value={retestExecutionStatus?.status || "unknown"} />
+                  <Fact label="Execution ready" value={boolText(retestExecutionStatus?.retest_execution_ready)} />
+                  <Fact label="Comparison allowed" value={boolText(retestExecutionStatus?.comparison_allowed)} />
                   <Fact
                     label="Scheduler"
                     value={retestSchedulerPlan?.scheduler_policy.scheduler_status || "planned_not_temporalized"}
@@ -5437,7 +5510,12 @@ export default async function Home({
                   <Fact label="Offsets" value={retestSchedulerScope?.offsets_days.join("/") || "0/7/14/30"} />
                   <Fact label="Runs/window" value={retestSchedulerScope?.planned_runs_per_window || 0} />
                   <Fact label="Total planned" value={retestSchedulerScope?.total_planned_runs || 0} />
+                  <Fact label="Ready windows" value={`${retestExecutionSummary?.ready_window_count || 0}/${retestExecutionSummary?.window_count || 0}`} />
+                  <Fact label="Missing artifacts" value={retestExecutionSummary?.missing_artifact_count || 0} />
+                  <Fact label="Next execution" value={retestExecutionStatus?.next_action || "unknown"} />
+                  <Fact label="Status hash" value={shortHash(retestExecutionStatus?.retest_execution_status_hash)} />
                   <Fact label="API" value={paths.retestSchedulerPlan} />
+                  <Fact label="Execution API" value={paths.retestExecutionStatus} />
                 </dl>
                 {retestSchedulerTimeline.length ? (
                   <div className="retestTimeline">
@@ -5458,6 +5536,28 @@ export default async function Home({
                 ) : (
                   <EmptyState />
                 )}
+                {retestExecutionWindows.length ? (
+                  <div className="retestExecutionGrid">
+                    {retestExecutionWindows.map((window) => (
+                      <article className="retestExecutionWindow" key={window.id}>
+                        <header>
+                          <h4>{window.label}</h4>
+                          <span>{window.window_ready ? "ready" : "blocked"}</span>
+                        </header>
+                        <dl className="facts contributionFacts">
+                          <Fact label="Offset" value={`T+${window.offset_day}`} />
+                          <Fact label="Runs" value={window.planned_runs} />
+                          <Fact label="Missing" value={window.missing_artifact_count} />
+                          <Fact label="Payload" value={`${window.payload?.status || "unknown"} / exists ${boolText(window.payload?.exists)}`} />
+                          <Fact label="Manifest" value={`${window.manifest?.status || "unknown"} / exists ${boolText(window.manifest?.exists)}`} />
+                          <Fact label="Payload hash" value={boolText(window.payload?.hash_valid)} />
+                          <Fact label="Manifest hash" value={boolText(window.manifest?.hash_valid)} />
+                        </dl>
+                        <code>{window.blocking_reasons?.slice(0, 4).join("\n") || "window evidence ready"}</code>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
                 <ul className="plainList compactList">
                   {(retestSchedulerPlan?.scheduler_policy.immutability_requirements || []).map((item) => (
                     <li key={item}>
@@ -5468,8 +5568,9 @@ export default async function Home({
                   <li>
                     <strong>Boundary</strong>
                     <span>
-                      real runs {boolText(retestSchedulerPlan?.current_boundary.real_external_runs_completed)} · Temporal{" "}
-                      {boolText(retestSchedulerPlan?.current_boundary.temporal_scheduler_implemented)}
+                      plan real runs {boolText(retestSchedulerPlan?.current_boundary.real_external_runs_completed)} ·
+                      execution real runs {boolText(retestExecutionStatus?.current_boundary.real_external_runs_completed)} ·
+                      Temporal {boolText(retestSchedulerPlan?.current_boundary.temporal_scheduler_implemented)}
                     </span>
                   </li>
                 </ul>

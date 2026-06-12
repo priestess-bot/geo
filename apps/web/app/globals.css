@@ -1628,6 +1628,56 @@ code {
   white-space: pre-wrap;
 }
 
+.retestExecutionGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.retestExecutionWindow {
+  background: #ffffff;
+  border: 1px solid #dde6ef;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.retestExecutionWindow header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.retestExecutionWindow h4 {
+  font-size: 13px;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.retestExecutionWindow header span {
+  color: #5d6d7c;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.retestExecutionWindow code {
+  background: #f4f7fa;
+  border: 1px solid #e3e9f0;
+  border-radius: 5px;
+  color: #1f2c38;
+  display: block;
+  font-size: 11px;
+  line-height: 1.45;
+  min-height: 48px;
+  overflow-wrap: anywhere;
+  padding: 8px;
+  white-space: pre-wrap;
+}
+
 .actionCards {
   display: grid;
   gap: 10px;
@@ -1929,6 +1979,7 @@ summary {
   .launchEvidenceGrid,
   .handoffBoundary,
   .remediationList,
+  .retestExecutionGrid,
   .savedViews,
   .questionTableHeader,
   .questionRow summary,
@@ -2000,6 +2051,7 @@ summary {
   .launchEvidenceGrid,
   .handoffBoundary,
   .remediationList,
+  .retestExecutionGrid,
   .savedViews,
   .saveViewForm,
   .questionTableHeader,

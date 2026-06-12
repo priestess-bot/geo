@@ -3482,6 +3482,24 @@ class ApiContractsTest(unittest.TestCase):
         self.assertFalse(payload["current_boundary"]["real_external_runs_completed"])
         self.assertEqual(payload["runtime_endpoints"]["retest_scheduler_plan"], "GET /v1/au-retest-scheduler-plan")
 
+    def test_au_retest_execution_status_endpoint_reports_missing_window_artifacts(self) -> None:
+        response = self.client.get("/v1/au-retest-execution-status")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status_version"], "au_retest_execution_status_v1")
+        self.assertEqual(payload["status"], "fail")
+        self.assertTrue(payload["execution_status_report_ready"])
+        self.assertFalse(payload["retest_execution_ready"])
+        self.assertFalse(payload["comparison_allowed"])
+        self.assertEqual(payload["summary"]["window_count"], 4)
+        self.assertEqual(payload["summary"]["ready_window_count"], 0)
+        self.assertEqual(payload["summary"]["missing_artifact_count"], 8)
+        self.assertEqual(payload["next_action"], "run_retest_window:baseline")
+        self.assertEqual(
+            payload["runtime_endpoints"]["retest_execution_status"],
+            "GET /v1/au-retest-execution-status",
+        )
+
     def test_runtime_alerts_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/runtime-alerts")
         self.assertEqual(response.status_code, 503)
@@ -4039,6 +4057,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/p0b-google-execution-checklist/au", payload["persistence"])
         self.assertIn("/v1/au-broader-platform-registry", payload["persistence"])
         self.assertIn("/v1/au-retest-scheduler-plan", payload["persistence"])
+        self.assertIn("/v1/au-retest-execution-status", payload["persistence"])
         self.assertIn("/v1/handoff-dossier/au", payload["persistence"])
         self.assertIn("/metrics", payload["persistence"])
 

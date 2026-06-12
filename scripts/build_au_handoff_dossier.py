@@ -592,6 +592,8 @@ def build_au_handoff_dossier(
             "launch_remediation_plan": "GET /v1/launch-remediation-plan/au",
             "p0a_environment_checklist": "GET /v1/p0a-environment-checklist/au",
             "p0b_google_execution_checklist": "GET /v1/p0b-google-execution-checklist/au",
+            "au_retest_scheduler_plan": "GET /v1/au-retest-scheduler-plan",
+            "au_retest_execution_status": "GET /v1/au-retest-execution-status",
         },
         "launch_status": {
             "path": str(launch_status_path),

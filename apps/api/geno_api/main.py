@@ -122,6 +122,10 @@ from scripts.build_au_broader_platform_registry import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_BROADER_PLATFORM_REGISTRY_OUTPUT_PATH,
     build_au_broader_platform_registry,
 )
+from scripts.build_au_retest_execution_status import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_RETEST_EXECUTION_STATUS_OUTPUT_PATH,
+    build_au_retest_execution_status,
+)
 from scripts.build_au_retest_scheduler_plan import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH,
     build_au_retest_scheduler_plan,
@@ -1402,6 +1406,25 @@ def au_retest_scheduler_plan() -> dict[str, object]:
             )
         ),
         project_id=os.getenv("GENO_AU_RETEST_PROJECT_ID", "au-dtc-design-partner"),
+    )
+
+
+@app.get("/v1/au-retest-execution-status")
+def au_retest_execution_status() -> dict[str, object]:
+    return build_au_retest_execution_status(
+        plan_path=Path(
+            os.getenv(
+                "GENO_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH",
+                DEFAULT_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH,
+            )
+        ),
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_RETEST_EXECUTION_STATUS_OUTPUT_PATH",
+                DEFAULT_AU_RETEST_EXECUTION_STATUS_OUTPUT_PATH,
+            )
+        ),
+        artifact_base_dir=Path(os.getenv("GENO_AU_RETEST_ARTIFACT_BASE_DIR", ".")),
     )
 
 
@@ -4206,6 +4229,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/p0b-google-execution-checklist/au",
             "/v1/au-broader-platform-registry",
             "/v1/au-retest-scheduler-plan",
+            "/v1/au-retest-execution-status",
             "/v1/handoff-dossier/au",
             "/metrics",
         ],

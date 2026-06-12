@@ -129,6 +129,14 @@ class AuHandoffDossierTest(unittest.TestCase):
             dossier["runtime_endpoints"]["p0b_google_execution_checklist"],
             "GET /v1/p0b-google-execution-checklist/au",
         )
+        self.assertEqual(
+            dossier["runtime_endpoints"]["au_retest_scheduler_plan"],
+            "GET /v1/au-retest-scheduler-plan",
+        )
+        self.assertEqual(
+            dossier["runtime_endpoints"]["au_retest_execution_status"],
+            "GET /v1/au-retest-execution-status",
+        )
         self.assertFalse(dossier["p0a_environment_checklist"]["environment_checklist_ready"])
         self.assertEqual(dossier["p0a_environment_checklist"]["missing_required_count"], 3)
         self.assertEqual(dossier["summary"]["p0a_missing_required_environment_count"], 3)
