@@ -3469,6 +3469,19 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_au_retest_scheduler_plan_endpoint_returns_replayable_plan(self) -> None:
+        response = self.client.get("/v1/au-retest-scheduler-plan")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["plan_version"], "au_retest_scheduler_plan_v1")
+        self.assertTrue(payload["retest_scheduler_plan_ready"])
+        self.assertEqual(payload["scope"]["offsets_days"], [0, 7, 14, 30])
+        self.assertEqual(payload["scope"]["planned_runs_per_window"], 2400)
+        self.assertEqual(payload["scope"]["total_planned_runs"], 9600)
+        self.assertEqual(payload["scheduler_policy"]["scheduler_status"], "planned_not_temporalized")
+        self.assertFalse(payload["current_boundary"]["real_external_runs_completed"])
+        self.assertEqual(payload["runtime_endpoints"]["retest_scheduler_plan"], "GET /v1/au-retest-scheduler-plan")
+
     def test_runtime_alerts_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/runtime-alerts")
         self.assertEqual(response.status_code, 503)
@@ -4025,6 +4038,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/p0a-environment-checklist/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-execution-checklist/au", payload["persistence"])
         self.assertIn("/v1/au-broader-platform-registry", payload["persistence"])
+        self.assertIn("/v1/au-retest-scheduler-plan", payload["persistence"])
         self.assertIn("/v1/handoff-dossier/au", payload["persistence"])
         self.assertIn("/metrics", payload["persistence"])
 

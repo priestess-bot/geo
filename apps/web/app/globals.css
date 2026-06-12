@@ -1576,6 +1576,58 @@ code {
   grid-column: 1 / -1;
 }
 
+.retestSchedulerPlan {
+  grid-column: 1 / -1;
+}
+
+.retestTimeline {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.retestWindow {
+  background: #ffffff;
+  border: 1px solid #dde6ef;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.retestWindow header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.retestWindow h4 {
+  font-size: 14px;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.retestWindow header span {
+  color: #5d6d7c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.retestWindow code {
+  background: #f4f7fa;
+  border: 1px solid #e3e9f0;
+  border-radius: 5px;
+  color: #1f2c38;
+  display: block;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  padding: 8px;
+  white-space: pre-wrap;
+}
+
 .actionCards {
   display: grid;
   gap: 10px;

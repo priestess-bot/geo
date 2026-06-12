@@ -398,6 +398,56 @@ type ActionPlan = {
   audit_events: Array<{ event_type?: string; target_type?: string; method_version?: string | null }>;
 };
 
+type AuRetestSchedulerPlan = {
+  plan_version: string;
+  generated_at?: string;
+  status: string;
+  retest_scheduler_plan_ready: boolean;
+  project_id: string;
+  scope: {
+    market_code?: string;
+    locale?: string;
+    industry_code?: string;
+    prompt_version: string;
+    prompt_count: number;
+    platform_surfaces: string[];
+    geo_cities: string[];
+    sample_size: number;
+    offsets_days: number[];
+    window_count: number;
+    planned_runs_per_window: number;
+    total_planned_runs: number;
+  };
+  scheduler_policy: {
+    scheduler_status?: string;
+    execution_mode?: string;
+    replay_key?: Record<string, unknown>;
+    immutability_requirements?: string[];
+  };
+  timeline: Array<{
+    id: string;
+    label: string;
+    offset_day: number;
+    planned_runs: number;
+    prompt_version: string;
+    sample_size: number;
+    platform_surfaces: string[];
+    geo_cities: string[];
+    commands?: Array<{ id?: string; shell_command?: string; output_path?: string }>;
+    evidence_outputs?: string[];
+  }>;
+  verification_commands: Array<{ shell?: string }>;
+  runtime_endpoints: Record<string, string>;
+  current_boundary: {
+    real_external_runs_completed?: boolean;
+    temporal_scheduler_implemented?: boolean;
+    requires_p0a_environment_ready?: boolean;
+    requires_design_partner_ready_baseline?: boolean;
+    notes?: string[];
+  };
+  retest_scheduler_plan_hash: string;
+};
+
 type RuntimeAlert = {
   alert: {
     id: string;
@@ -549,6 +599,7 @@ type RuntimeData = {
   p0aEnvironmentChecklist: AuP0aEnvironmentChecklist | null;
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
   broaderPlatformRegistry: AuBroaderPlatformRegistry | null;
+  retestSchedulerPlan: AuRetestSchedulerPlan | null;
   handoffDossier: AuHandoffDossier | null;
   projects: PageResponse<RuntimeProject>;
   projectMembers: PageResponse<RuntimeProjectMember>;
@@ -1232,6 +1283,7 @@ const endpoints = {
   p0aEnvironmentChecklist: "/v1/p0a-environment-checklist/au",
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
   broaderPlatformRegistry: "/v1/au-broader-platform-registry",
+  retestSchedulerPlan: "/v1/au-retest-scheduler-plan",
   handoffDossier: "/v1/handoff-dossier/au",
   projects: "/v1/projects/runtime",
   projectMembers: "/v1/project-members/runtime",
@@ -2124,6 +2176,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aEnvironmentChecklist: endpoints.p0aEnvironmentChecklist,
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
     broaderPlatformRegistry: endpoints.broaderPlatformRegistry,
+    retestSchedulerPlan: endpoints.retestSchedulerPlan,
     handoffDossier: endpoints.handoffDossier,
     projects: runtimePath(endpoints.projects, projectListParams),
     projectMembers: endpoints.projectMembers,
@@ -2377,6 +2430,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aEnvironmentChecklist,
     p0bGoogleExecutionChecklist,
     broaderPlatformRegistry,
+    retestSchedulerPlan,
     handoffDossier,
     prompts,
     projectMembers,
@@ -2415,6 +2469,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0aEnvironmentChecklist | null>(baseUrl, paths.p0aEnvironmentChecklist, null),
     fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
     fetchRuntimeEndpoint<AuBroaderPlatformRegistry | null>(baseUrl, paths.broaderPlatformRegistry, null),
+    fetchRuntimeEndpoint<AuRetestSchedulerPlan | null>(baseUrl, paths.retestSchedulerPlan, null),
     fetchRuntimeEndpoint<AuHandoffDossier | null>(baseUrl, paths.handoffDossier, null),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     selectedProjectId
@@ -2529,6 +2584,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aEnvironmentChecklist,
     p0bGoogleExecutionChecklist,
     broaderPlatformRegistry,
+    retestSchedulerPlan,
     handoffDossier,
     projects,
     prompts,
@@ -2572,6 +2628,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0aEnvironmentChecklist: p0aEnvironmentChecklist.payload,
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
       broaderPlatformRegistry: broaderPlatformRegistry.payload,
+      retestSchedulerPlan: retestSchedulerPlan.payload,
       handoffDossier: handoffDossier.payload,
       projects: projects.payload,
       projectMembers: projectMembers.payload,
@@ -2897,6 +2954,9 @@ export default async function Home({
   const broaderPlatformSummary = broaderPlatformRegistry?.summary;
   const broaderPlatformCandidates = broaderPlatformRegistry?.candidate_platforms || [];
   const broaderPlatformSequence = broaderPlatformRegistry?.recommended_sequence || [];
+  const retestSchedulerPlan = data.retestSchedulerPlan;
+  const retestSchedulerScope = retestSchedulerPlan?.scope;
+  const retestSchedulerTimeline = retestSchedulerPlan?.timeline || [];
   const handoffDossier = data.handoffDossier;
   const handoffSummary = handoffDossier?.summary;
   const handoffNextWorkItem = handoffDossier?.next_work_item;
@@ -5359,6 +5419,60 @@ export default async function Home({
                   <Fact label="Retest runs" value={latestRetestComparison?.retest_answer_run_ids?.length || 0} />
                   <Fact label="Compared at" value={dateText(latestRetestComparison?.created_at)} />
                 </dl>
+              </section>
+
+              <section className="actionSection retestSchedulerPlan">
+                <h3>AU Retest Scheduler Plan</h3>
+                <dl className="facts contributionFacts">
+                  <Fact label="Plan status" value={retestSchedulerPlan?.status || "unknown"} />
+                  <Fact label="Ready" value={boolText(retestSchedulerPlan?.retest_scheduler_plan_ready)} />
+                  <Fact label="Plan hash" value={shortHash(retestSchedulerPlan?.retest_scheduler_plan_hash)} />
+                  <Fact
+                    label="Scheduler"
+                    value={retestSchedulerPlan?.scheduler_policy.scheduler_status || "planned_not_temporalized"}
+                  />
+                  <Fact label="Prompt version" value={retestSchedulerScope?.prompt_version || "unknown"} />
+                  <Fact label="Prompt count" value={retestSchedulerScope?.prompt_count || 0} />
+                  <Fact label="Sample size" value={retestSchedulerScope?.sample_size || 0} />
+                  <Fact label="Offsets" value={retestSchedulerScope?.offsets_days.join("/") || "0/7/14/30"} />
+                  <Fact label="Runs/window" value={retestSchedulerScope?.planned_runs_per_window || 0} />
+                  <Fact label="Total planned" value={retestSchedulerScope?.total_planned_runs || 0} />
+                  <Fact label="API" value={paths.retestSchedulerPlan} />
+                </dl>
+                {retestSchedulerTimeline.length ? (
+                  <div className="retestTimeline">
+                    {retestSchedulerTimeline.map((window) => (
+                      <article className="retestWindow" key={window.id}>
+                        <header>
+                          <h4>{window.label}</h4>
+                          <span>T+{window.offset_day}</span>
+                        </header>
+                        <dl className="facts contributionFacts">
+                          <Fact label="Runs" value={window.planned_runs} />
+                          <Fact label="Outputs" value={window.evidence_outputs?.length || 0} />
+                        </dl>
+                        <code>{window.commands?.[0]?.shell_command || "collection command pending"}</code>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState />
+                )}
+                <ul className="plainList compactList">
+                  {(retestSchedulerPlan?.scheduler_policy.immutability_requirements || []).map((item) => (
+                    <li key={item}>
+                      <strong>Invariant</strong>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                  <li>
+                    <strong>Boundary</strong>
+                    <span>
+                      real runs {boolText(retestSchedulerPlan?.current_boundary.real_external_runs_completed)} · Temporal{" "}
+                      {boolText(retestSchedulerPlan?.current_boundary.temporal_scheduler_implemented)}
+                    </span>
+                  </li>
+                </ul>
               </section>
 
               <section className="actionSection">

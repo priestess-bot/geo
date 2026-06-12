@@ -378,6 +378,11 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("au-broader-platform-registry:", makefile)
         self.assertIn("scripts/build_au_broader_platform_registry.py", makefile)
         self.assertIn("verify-au-broader-platform-registry:", makefile)
+        self.assertIn("au-retest-scheduler-plan:", makefile)
+        self.assertIn("scripts/build_au_retest_scheduler_plan.py", makefile)
+        self.assertIn("GENO_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH", makefile)
+        self.assertIn("verify-au-retest-scheduler-plan:", makefile)
+        self.assertIn("scripts/verify_au_retest_scheduler_plan.py", makefile)
         self.assertIn("scripts/verify_au_broader_platform_registry.py", makefile)
         self.assertIn(
             "\t@PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --plan-browser-fidelity-sampling",
