@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import re
 from contextlib import nullcontext
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime, timedelta
@@ -539,6 +540,79 @@ def _alias_host(value: str) -> str:
     return (parsed.netloc or parsed.path).strip().lower().removeprefix("www.")
 
 
+COMMON_ALIAS_CITATION_HOST_SUFFIXES = (
+    "amazon.com",
+    "amazon.com.au",
+    "facebook.com",
+    "google.com",
+    "instagram.com",
+    "linkedin.com",
+    "medium.com",
+    "productreview.com.au",
+    "reddit.com",
+    "tiktok.com",
+    "trustpilot.com",
+    "wikipedia.org",
+    "x.com",
+    "youtube.com",
+)
+
+
+def _compact_alias_token(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def _alias_terms(value: str) -> tuple[str, ...]:
+    return tuple(term for term in re.findall(r"[a-z0-9]+", value.lower()) if len(term) >= 3)
+
+
+def _camel_case_alias(value: str) -> str:
+    return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", value).strip()
+
+
+def _answer_text_contains_alias(answer_text: str, alias: str) -> bool:
+    if not answer_text.strip() or not alias.strip():
+        return False
+    pattern = rf"(?<![A-Za-z0-9]){re.escape(alias.strip())}(?![A-Za-z0-9])"
+    return re.search(pattern, answer_text, flags=re.IGNORECASE) is not None
+
+
+def _answer_text_alias_candidates(*, canonical_name: str, answer_text: str) -> tuple[str, ...]:
+    canonical = canonical_name.strip()
+    if len(_compact_alias_token(canonical)) < 4:
+        return ()
+    base_aliases = {canonical}
+    spaced = _camel_case_alias(canonical)
+    if spaced and spaced.lower() != canonical.lower():
+        base_aliases.add(spaced)
+    variants: list[str] = []
+    for base_alias in sorted(base_aliases, key=lambda item: (len(item), item.lower())):
+        variants.extend((f"{base_alias} Australia", f"{base_alias} AU", base_alias))
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for alias in variants:
+        key = alias.lower()
+        if key in seen or not _answer_text_contains_alias(answer_text, alias):
+            continue
+        seen.add(key)
+        candidates.append(alias)
+    return tuple(candidates)
+
+
+def _citation_host_matches_entity(*, host: str, canonical_name: str) -> bool:
+    if not host:
+        return False
+    normalized_host = _alias_host(host)
+    if any(normalized_host == suffix or normalized_host.endswith(f".{suffix}") for suffix in COMMON_ALIAS_CITATION_HOST_SUFFIXES):
+        return False
+    compact_name = _compact_alias_token(canonical_name)
+    compact_host = _compact_alias_token(normalized_host)
+    if len(compact_name) >= 4 and compact_name in compact_host:
+        return True
+    terms = _alias_terms(canonical_name)
+    return len(terms) >= 2 and all(term in compact_host for term in terms)
+
+
 def _append_alias_candidate(
     candidates: list[dict[str, Any]],
     seen: set[str],
@@ -548,31 +622,66 @@ def _append_alias_candidate(
     alias_type: str,
     source: str,
     confidence: float,
+    reason: str | None = None,
+    evidence_answer_run_ids: tuple[str, ...] = (),
+    evidence_urls: tuple[str, ...] = (),
+    evidence_count: int | None = None,
 ) -> None:
     normalized_alias = alias.strip()
     key = normalized_alias.lower()
-    if not normalized_alias or key in seen:
+    if not normalized_alias:
+        return
+    if key in seen:
+        for candidate in candidates:
+            if str(candidate.get("alias", "")).lower() != key:
+                continue
+            if evidence_answer_run_ids:
+                existing_ids = list(candidate.get("evidence_answer_run_ids") or [])
+                for answer_run_id in evidence_answer_run_ids:
+                    if answer_run_id not in existing_ids:
+                        existing_ids.append(answer_run_id)
+                candidate["evidence_answer_run_ids"] = existing_ids[:5]
+            if evidence_urls:
+                existing_urls = list(candidate.get("evidence_urls") or [])
+                for evidence_url in evidence_urls:
+                    if evidence_url not in existing_urls:
+                        existing_urls.append(evidence_url)
+                candidate["evidence_urls"] = existing_urls[:5]
+            if evidence_count is not None:
+                candidate["evidence_count"] = int(candidate.get("evidence_count") or 0) + evidence_count
+            supporting_sources = list(candidate.get("supporting_sources") or [])
+            if source not in supporting_sources:
+                supporting_sources.append(source)
+            candidate["supporting_sources"] = supporting_sources
+            if reason and source.startswith("evidence_"):
+                candidate["reason"] = f"{candidate['reason']}; {reason}"
+            return
         return
     seen.add(key)
-    candidates.append(
-        {
-            "id": _stable_id(
-                "entity-alias-candidate",
-                entity["entity_kind"],
-                entity["id"],
-                normalized_alias,
-                alias_type,
-                source,
-            ),
-            "entity_id": str(entity["id"]),
-            "entity_kind": str(entity["entity_kind"]),
-            "alias": normalized_alias,
-            "alias_type": alias_type,
-            "source": source,
-            "confidence": confidence,
-            "reason": f"candidate from {source}",
-        }
-    )
+    candidate = {
+        "id": _stable_id(
+            "entity-alias-candidate",
+            entity["entity_kind"],
+            entity["id"],
+            normalized_alias,
+            alias_type,
+            source,
+        ),
+        "entity_id": str(entity["id"]),
+        "entity_kind": str(entity["entity_kind"]),
+        "alias": normalized_alias,
+        "alias_type": alias_type,
+        "source": source,
+        "confidence": confidence,
+        "reason": reason or f"candidate from {source}",
+    }
+    if evidence_answer_run_ids:
+        candidate["evidence_answer_run_ids"] = list(evidence_answer_run_ids)
+    if evidence_urls:
+        candidate["evidence_urls"] = list(evidence_urls)
+    if evidence_count is not None:
+        candidate["evidence_count"] = evidence_count
+    candidates.append(candidate)
 
 
 def _artifact_hash(content: str | bytes) -> str:
@@ -2167,6 +2276,30 @@ class PostgresEvidenceRepository:
                     "status",
                 ),
             )
+            cursor.execute(
+                """
+                SELECT ar.id AS answer_run_id, ra.answer_text
+                FROM answer_runs ar
+                JOIN raw_answers ra ON ra.answer_run_id = ar.id
+                WHERE ar.project_id = %s
+                ORDER BY ar.collected_at DESC, ra.created_at DESC
+                LIMIT 500
+                """,
+                (_uuid(project_id),),
+            )
+            answer_text_rows = _rows_dict(cursor.fetchall(), ("answer_run_id", "answer_text"))
+            cursor.execute(
+                """
+                SELECT ar.id AS answer_run_id, ac.url, ac.domain
+                FROM answer_runs ar
+                JOIN answer_citations ac ON ac.answer_run_id = ar.id
+                WHERE ar.project_id = %s
+                ORDER BY ar.collected_at DESC, ac.position ASC, ac.created_at ASC
+                LIMIT 500
+                """,
+                (_uuid(project_id),),
+            )
+            citation_rows = _rows_dict(cursor.fetchall(), ("answer_run_id", "url", "domain"))
         confirmed_aliases = self.get_confirmed_entity_alias_terms(project_id)
         records: list[RuntimeEntityAliasCandidate] = []
         for entity in entities:
@@ -2213,6 +2346,63 @@ class PostgresEvidenceRepository:
                     alias_type="parent_company",
                     source="parent_company",
                     confidence=0.74,
+                )
+            text_evidence: dict[str, dict[str, Any]] = {}
+            canonical_name = str(entity["canonical_name"])
+            for row in answer_text_rows:
+                answer_run_id = str(row.get("answer_run_id") or "")
+                answer_text = str(row.get("answer_text") or "")
+                for alias in _answer_text_alias_candidates(canonical_name=canonical_name, answer_text=answer_text):
+                    evidence = text_evidence.setdefault(alias, {"answer_run_ids": [], "count": 0})
+                    evidence["count"] += 1
+                    if answer_run_id and answer_run_id not in evidence["answer_run_ids"]:
+                        evidence["answer_run_ids"].append(answer_run_id)
+            for alias, evidence in sorted(
+                text_evidence.items(),
+                key=lambda item: (-int(item[1]["count"]), item[0].lower()),
+            ):
+                is_market_alias = alias.lower().endswith((" australia", " au"))
+                _append_alias_candidate(
+                    candidates,
+                    seen,
+                    entity=entity,
+                    alias=alias,
+                    alias_type="alias",
+                    source="evidence_answer_text",
+                    confidence=0.8 if is_market_alias else 0.73,
+                    reason="alias phrase found in stored answer text",
+                    evidence_answer_run_ids=tuple(evidence["answer_run_ids"][:5]),
+                    evidence_count=int(evidence["count"]),
+                )
+            citation_evidence: dict[str, dict[str, Any]] = {}
+            for row in citation_rows:
+                host = _alias_host(str(row.get("domain") or row.get("url") or ""))
+                if not _citation_host_matches_entity(host=host, canonical_name=canonical_name):
+                    continue
+                evidence = citation_evidence.setdefault(host, {"answer_run_ids": [], "urls": [], "count": 0})
+                evidence["count"] += 1
+                answer_run_id = str(row.get("answer_run_id") or "")
+                url = str(row.get("url") or "")
+                if answer_run_id and answer_run_id not in evidence["answer_run_ids"]:
+                    evidence["answer_run_ids"].append(answer_run_id)
+                if url and url not in evidence["urls"]:
+                    evidence["urls"].append(url)
+            for host, evidence in sorted(
+                citation_evidence.items(),
+                key=lambda item: (-int(item[1]["count"]), item[0].lower()),
+            ):
+                _append_alias_candidate(
+                    candidates,
+                    seen,
+                    entity=entity,
+                    alias=host,
+                    alias_type="domain",
+                    source="evidence_citation_domain",
+                    confidence=0.82,
+                    reason="domain appears in stored answer citation evidence and matches the entity name",
+                    evidence_answer_run_ids=tuple(evidence["answer_run_ids"][:5]),
+                    evidence_urls=tuple(evidence["urls"][:5]),
+                    evidence_count=int(evidence["count"]),
                 )
             for candidate in candidates:
                 records.append(

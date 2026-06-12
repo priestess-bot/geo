@@ -435,6 +435,9 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("entity_alias_batch_confirmed", page_source)
         self.assertIn("entity_alias_confirmed audit event per alias", page_source)
         self.assertIn('name="candidate"', page_source)
+        self.assertIn("evidence_count", page_source)
+        self.assertIn("evidence rows", page_source)
+        self.assertIn("evidence_answer_run_ids", page_source)
         self.assertIn("Confirm visible candidates", page_source)
         self.assertIn(".aliasBatchQueue", css_source)
 

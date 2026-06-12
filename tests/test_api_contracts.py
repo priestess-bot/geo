@@ -27,6 +27,8 @@ from tests.test_au_p0a_execution_checklist import AuP0aExecutionChecklistTest
 from tests.test_au_p0b_google_execution_checklist import AuP0bGoogleExecutionChecklistTest
 from geno_core.models import (
     RuntimeEntityAlias,
+    RuntimeEntityAliasCandidate,
+    RuntimeEntityAliasCandidatePage,
     RuntimeCollectionRunPage,
     RuntimeAlertEvent,
     RuntimeAlertItem,
@@ -2205,6 +2207,61 @@ class ApiContractsTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_entity_alias_candidates_endpoint_returns_evidence_metadata(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        entity_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+        answer_run_id = "0e6cb35e-340c-55df-9b7c-ed6965b6582d"
+
+        class FakeRepository:
+            connection = type("Connection", (), {"close": lambda self: None})()
+
+            def list_runtime_entity_alias_candidates(self, **kwargs):
+                self.kwargs = kwargs
+                return RuntimeEntityAliasCandidatePage(
+                    total_count=1,
+                    limit=kwargs["limit"],
+                    offset=kwargs["offset"],
+                    records=(
+                        RuntimeEntityAliasCandidate(
+                            candidate={
+                                "id": "candidate-1",
+                                "entity_id": entity_id,
+                                "entity_kind": "brand",
+                                "alias": "shop.examplebrand.com.au",
+                                "alias_type": "domain",
+                                "source": "evidence_citation_domain",
+                                "confidence": 0.82,
+                                "reason": "domain appears in stored answer citation evidence and matches the entity name",
+                                "evidence_count": 2,
+                                "evidence_answer_run_ids": [answer_run_id],
+                                "evidence_urls": ["https://shop.examplebrand.com.au/mattresses"],
+                            },
+                            entity={
+                                "id": entity_id,
+                                "project_id": project_id,
+                                "entity_kind": "brand",
+                                "canonical_name": "ExampleBrand",
+                            },
+                            confirmed_aliases=(),
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+            response = self.client.get(
+                f"/v1/entity-aliases/runtime/candidates?project_id={project_id}&entity_kind=brand&limit=10"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        candidate = payload["records"][0]["candidate"]
+        self.assertEqual(candidate["source"], "evidence_citation_domain")
+        self.assertEqual(candidate["evidence_count"], 2)
+        self.assertEqual(candidate["evidence_answer_run_ids"], [answer_run_id])
+        self.assertEqual(candidate["evidence_urls"], ["https://shop.examplebrand.com.au/mattresses"])
+        self.assertEqual(fake_repository.kwargs["project_id"], project_id)
 
     def test_runtime_entity_alias_confirm_endpoint_requires_persistence_config(self) -> None:
         response = self.client.post(

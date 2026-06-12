@@ -1322,6 +1322,9 @@ type RuntimeEntityAliasCandidate = {
     source: string;
     confidence?: number;
     reason?: string;
+    evidence_count?: number;
+    evidence_answer_run_ids?: string[];
+    evidence_urls?: string[];
   };
   entity: {
     id: string;
@@ -4029,7 +4032,9 @@ export default async function Home({
                           alias: record.candidate.alias,
                           alias_type: record.candidate.alias_type,
                           confidence: record.candidate.confidence || 0.7,
-                          notes: `Batch confirm generated alias candidate from ${record.candidate.source}`
+                          notes: `Batch confirm generated alias candidate from ${record.candidate.source}${
+                            record.candidate.evidence_count ? ` with ${record.candidate.evidence_count} evidence rows` : ""
+                          }`
                         })}
                       />
                     ))}
@@ -4059,6 +4064,10 @@ export default async function Home({
                         <small>
                           {record.entity.canonical_name} · {record.candidate.source} · confidence{" "}
                           {num(record.candidate.confidence)}
+                          {record.candidate.evidence_count ? ` · evidence rows ${record.candidate.evidence_count}` : ""}
+                          {record.candidate.evidence_answer_run_ids?.[0]
+                            ? ` · answer run ${record.candidate.evidence_answer_run_ids[0]}`
+                            : ""}
                         </small>
                         <form action={confirmEntityAlias} className="inlineAliasForm">
                           <input
@@ -4073,7 +4082,9 @@ export default async function Home({
                           <input
                             type="hidden"
                             name="notes"
-                            value={`Confirm generated alias candidate from ${record.candidate.source}`}
+                            value={`Confirm generated alias candidate from ${record.candidate.source}${
+                              record.candidate.evidence_count ? ` with ${record.candidate.evidence_count} evidence rows` : ""
+                            }`}
                           />
                           <button className="actionButton compactAction" type="submit">
                             Confirm candidate

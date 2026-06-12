@@ -709,6 +709,7 @@ uncertainty_flags
 - 支持品牌别名、域名、产品名、母公司名（实体与别名表见 8.14）。
 - 支持竞品别名和产品线。
 - 对同名品牌做人工确认机制。
+- 从已入库 `RawAnswer` 与 `AnswerCitation` 挖掘高置信候选时必须保留 answer run / citation URL 引用，候选确认后再进入 parser。
 - 保存解析置信度和规则/模型版本（`analysis_version`）。
 
 ### Step 8：建立 Citation Graph
@@ -1528,7 +1529,7 @@ EntityAlias
   confirmed_by          # 同名消歧的人工确认
 ```
 
-工程当前已落最小运行时闭环：`GET /v1/entity-aliases/runtime/candidates` 从 canonical name、官方域名、产品线和母公司字段生成计算型候选，并排除已确认 alias；`POST /v1/entity-aliases/runtime/confirm` 可单条确认，`POST /v1/entity-aliases/runtime/confirm-batch` 可批量确认当前候选，默认先预校验实体存在与项目访问权限，要求同一批 alias 属于同一个 project，并避免失败批次半写入。批量响应返回 `entity_alias_confirm_batch_v1`、成功/失败计数、confirmed records 和 `entity_alias_batch_confirmed` 摘要；系统还会写入一条项目级 `entity_alias_batch_confirmed` 聚合审计事件，但真实主事实仍是每个 alias 的 `entity_alias_confirmed`，后续 `--persist-analysis` 使用确认后的 alias 参与 `rule_based_v2_aliases` parser。Runtime Console 的 Entity Alias 面板已提供单条确认、候选一键确认和 `Bulk Alias Review Queue`，可以批量确认当前可见候选。该实现不新增候选状态表，仍不是证据文本自动挖掘候选、审核分配/审批流或持久化队列状态机。
+工程当前已落最小运行时闭环：`GET /v1/entity-aliases/runtime/candidates` 从 canonical name、官方域名、产品线和母公司字段生成计算型候选，并排除已确认 alias；同一 read model 还会读取项目内最近已入库的 `raw_answers.answer_text` 与 `answer_citations.domain/url`，用高置信规则生成 `evidence_answer_text` / `evidence_citation_domain` 候选，候选 payload 会带回 `evidence_count`、`evidence_answer_run_ids`、`evidence_urls` 与 `supporting_sources`，便于审核时回查原始 answer run 或 citation。若证据命中的是已有官方域名候选，系统会把证据合并为 supporting evidence，而不是生成重复候选。`POST /v1/entity-aliases/runtime/confirm` 可单条确认，`POST /v1/entity-aliases/runtime/confirm-batch` 可批量确认当前候选，默认先预校验实体存在与项目访问权限，要求同一批 alias 属于同一个 project，并避免失败批次半写入。批量响应返回 `entity_alias_confirm_batch_v1`、成功/失败计数、confirmed records 和 `entity_alias_batch_confirmed` 摘要；系统还会写入一条项目级 `entity_alias_batch_confirmed` 聚合审计事件，但真实主事实仍是每个 alias 的 `entity_alias_confirmed`，后续 `--persist-analysis` 使用确认后的 alias 参与 `rule_based_v2_aliases` parser。Runtime Console 的 Entity Alias 面板已提供单条确认、候选一键确认和 `Bulk Alias Review Queue`，可以批量确认当前可见候选，并展示 evidence rows / answer run 引用。该实现不新增候选状态表，仍不是审核分配/审批流、批量驳回、持久化队列状态机或黑箱 NLP 自动消歧。
 
 ### 8.15 CollectionCost（单位经济，新增）
 

@@ -9573,6 +9573,8 @@ class CoreContractsTest(unittest.TestCase):
                         "status": "active",
                     }
                 ],
+                [],
+                [],
                 [
                     {"entity_id": brand_id, "alias": "ExampleBrand Australia"},
                 ],
@@ -9595,6 +9597,73 @@ class CoreContractsTest(unittest.TestCase):
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FROM ( SELECT id, project_id, 'brand' AS entity_kind", executed_sql)
         self.assertIn("WHERE entity.project_id = %s AND entity.entity_kind = %s", executed_sql)
+
+    def test_postgres_repository_mines_runtime_entity_alias_candidates_from_evidence(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        brand_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+        answer_run_id = "0e6cb35e-340c-55df-9b7c-ed6965b6582d"
+        connection = RecordingConnection(
+            result_sets=[
+                [
+                    {
+                        "id": brand_id,
+                        "project_id": project_id,
+                        "entity_kind": "brand",
+                        "canonical_name": "ExampleBrand",
+                        "official_domains": ["https://www.examplebrand.com.au"],
+                        "parent_company": None,
+                        "product_lines": [],
+                        "status": "active",
+                    }
+                ],
+                [
+                    {
+                        "answer_run_id": answer_run_id,
+                        "answer_text": "Australian shoppers often compare Example Brand AU with local retailers.",
+                    }
+                ],
+                [
+                    {
+                        "answer_run_id": answer_run_id,
+                        "url": "https://shop.examplebrand.com.au/mattresses",
+                        "domain": "shop.examplebrand.com.au",
+                    },
+                    {
+                        "answer_run_id": answer_run_id,
+                        "url": "https://www.examplebrand.com.au/reviews",
+                        "domain": "examplebrand.com.au",
+                    },
+                    {
+                        "answer_run_id": answer_run_id,
+                        "url": "https://www.youtube.com/watch?v=examplebrand",
+                        "domain": "youtube.com",
+                    },
+                ],
+                [],
+            ]
+        )
+
+        page = PostgresEvidenceRepository(connection).list_runtime_entity_alias_candidates(
+            project_id=project_id,
+            entity_kind="brand",
+            limit=20,
+            offset=0,
+        )
+
+        candidates = {record.candidate["alias"]: record.candidate for record in page.records}
+        self.assertIn("Example Brand AU", candidates)
+        self.assertEqual(candidates["Example Brand AU"]["source"], "evidence_answer_text")
+        self.assertEqual(candidates["Example Brand AU"]["evidence_count"], 1)
+        self.assertEqual(candidates["Example Brand AU"]["evidence_answer_run_ids"], [answer_run_id])
+        self.assertIn("shop.examplebrand.com.au", candidates)
+        self.assertEqual(candidates["shop.examplebrand.com.au"]["source"], "evidence_citation_domain")
+        self.assertEqual(candidates["shop.examplebrand.com.au"]["evidence_urls"], ["https://shop.examplebrand.com.au/mattresses"])
+        self.assertEqual(candidates["examplebrand.com.au"]["source"], "official_domain")
+        self.assertIn("evidence_citation_domain", candidates["examplebrand.com.au"]["supporting_sources"])
+        self.assertNotIn("youtube.com", candidates)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("JOIN raw_answers ra ON ra.answer_run_id = ar.id", executed_sql)
+        self.assertIn("JOIN answer_citations ac ON ac.answer_run_id = ar.id", executed_sql)
 
     def test_postgres_repository_lists_runtime_entity_aliases_with_audit_events(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
