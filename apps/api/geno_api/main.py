@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import base64
+import csv
 import hashlib
 import hmac
+import io
 import json
 import logging
 import os
+import re
 import threading
 import time
 import uuid
 from collections import defaultdict
 from contextvars import ContextVar
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -1192,6 +1195,233 @@ class ManualBackfillRequest(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
 
 
+class ManualBackfillCsvImportRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    csv_content: str = Field(min_length=1, max_length=500000)
+    submitted_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    max_rows: int = Field(default=120, ge=1, le=500)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+def _split_manual_backfill_citation_urls(raw_value: object) -> list[str]:
+    value = str(raw_value or "").strip()
+    if not value:
+        return []
+    return [item.strip() for item in re.split(r"[\n\r,|]+", value) if item.strip()]
+
+
+def _parse_manual_backfill_bool(raw_value: object, *, default: bool, field_name: str, row_number: int) -> bool:
+    value = str(raw_value or "").strip().lower()
+    if value == "":
+        return default
+    if value in {"1", "true", "yes", "y"}:
+        return True
+    if value in {"0", "false", "no", "n"}:
+        return False
+    raise ValueError(f"row {row_number} {field_name} must be a boolean")
+
+
+def _parse_manual_backfill_int(
+    raw_value: object,
+    *,
+    default: int,
+    field_name: str,
+    row_number: int,
+    min_value: int = 1,
+    max_value: int = 50,
+) -> int:
+    value = str(raw_value or "").strip()
+    if value == "":
+        return default
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError(f"row {row_number} {field_name} must be an integer") from exc
+    if parsed < min_value or parsed > max_value:
+        raise ValueError(f"row {row_number} {field_name} must be between {min_value} and {max_value}")
+    return parsed
+
+
+def _manual_backfill_payload_from_csv_row(
+    row: Mapping[str, object],
+    *,
+    row_number: int,
+    submitted_by: str,
+    import_notes: str | None,
+) -> ManualBackfillRequest:
+    prompt_question_id = str(row.get("prompt_question_id") or "").strip()
+    answer_text = str(row.get("answer_text") or "").strip()
+    if not prompt_question_id:
+        raise ValueError(f"row {row_number} prompt_question_id is required")
+    if not answer_text:
+        raise ValueError(f"row {row_number} answer_text is required")
+    row_submitted_by = str(row.get("submitted_by") or "").strip() or submitted_by
+    row_notes = str(row.get("notes") or "").strip()
+    notes = row_notes or import_notes
+    return ManualBackfillRequest(
+        prompt_question_id=prompt_question_id,
+        platform=str(row.get("platform") or "google").strip() or "google",
+        surface=str(row.get("surface") or "google_ai_mode").strip() or "google_ai_mode",
+        answer_text=answer_text,
+        citation_urls=_split_manual_backfill_citation_urls(row.get("citation_urls")),
+        screenshot_url=str(row.get("screenshot_url") or "").strip() or None,
+        html_snapshot_url=str(row.get("html_snapshot_url") or "").strip() or None,
+        answer_present=_parse_manual_backfill_bool(
+            row.get("answer_present"),
+            default=True,
+            field_name="answer_present",
+            row_number=row_number,
+        ),
+        surface_triggered=_parse_manual_backfill_bool(
+            row.get("surface_triggered"),
+            default=True,
+            field_name="surface_triggered",
+            row_number=row_number,
+        ),
+        sample_index=_parse_manual_backfill_int(
+            row.get("sample_index"),
+            default=1,
+            field_name="sample_index",
+            row_number=row_number,
+        ),
+        sample_size=_parse_manual_backfill_int(
+            row.get("sample_size"),
+            default=1,
+            field_name="sample_size",
+            row_number=row_number,
+        ),
+        device=str(row.get("device") or "desktop").strip() or "desktop",
+        account_state=str(row.get("account_state") or "").strip() or None,
+        submitted_by=row_submitted_by,
+        notes=notes.strip() if notes else None,
+    )
+
+
+def _parse_manual_backfill_csv_import(payload: ManualBackfillCsvImportRequest) -> list[tuple[int, ManualBackfillRequest]]:
+    try:
+        reader = csv.DictReader(io.StringIO(payload.csv_content.strip()))
+    except csv.Error as exc:
+        raise HTTPException(status_code=400, detail=f"CSV parse error: {exc}") from exc
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="CSV header is required")
+    normalized_fieldnames = {field.strip() for field in reader.fieldnames if field}
+    required_fields = {"prompt_question_id", "answer_text"}
+    missing_fields = sorted(required_fields - normalized_fieldnames)
+    if missing_fields:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "manual backfill CSV missing required columns", "missing_fields": missing_fields},
+        )
+    records: list[tuple[int, ManualBackfillRequest]] = []
+    for csv_index, row in enumerate(reader, start=2):
+        if len(records) >= payload.max_rows:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "manual backfill CSV exceeds max_rows",
+                    "max_rows": payload.max_rows,
+                    "first_excess_row": csv_index,
+                },
+            )
+        normalized_row = {str(key or "").strip(): value for key, value in row.items()}
+        if not any(str(value or "").strip() for value in normalized_row.values()):
+            continue
+        try:
+            records.append(
+                (
+                    csv_index,
+                    _manual_backfill_payload_from_csv_row(
+                        normalized_row,
+                        row_number=csv_index,
+                        submitted_by=payload.submitted_by.strip(),
+                        import_notes=payload.notes.strip() if payload.notes else None,
+                    ),
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail={"row": csv_index, "error": str(exc)}) from exc
+    if not records:
+        raise HTTPException(status_code=400, detail="manual backfill CSV has no data rows")
+    return records
+
+
+def _build_runtime_manual_backfill_record(payload: ManualBackfillRequest, prompt: Mapping[str, object]) -> Any:
+    citation_urls = tuple(url.strip() for url in payload.citation_urls if url.strip())
+    return build_manual_backfill_record(
+        ManualBackfillInput(
+            project_id=str(prompt["project_id"]),
+            prompt_question_id=str(prompt["id"]),
+            prompt_text=str(prompt["text"]),
+            market_code=str(prompt["market_code"]),
+            city=str(prompt["city"]),
+            language=str(prompt["language"]),
+            platform=payload.platform.strip(),
+            surface=payload.surface.strip(),
+            answer_text=payload.answer_text.strip(),
+            citation_urls=citation_urls,
+            screenshot_url=payload.screenshot_url.strip() if payload.screenshot_url else None,
+            html_snapshot_url=payload.html_snapshot_url.strip() if payload.html_snapshot_url else None,
+            answer_present=payload.answer_present,
+            surface_triggered=payload.surface_triggered,
+            sample_index=payload.sample_index,
+            sample_size=payload.sample_size,
+            device=payload.device.strip(),
+            account_state=payload.account_state.strip() if payload.account_state else None,
+            submitted_by=payload.submitted_by.strip(),
+            notes=payload.notes.strip() if payload.notes else None,
+        )
+    )
+
+
+def _manual_backfill_batch_audit_event(
+    *,
+    project_id: str,
+    submitted_by: str,
+    notes: str | None,
+    records: list[Any],
+    requested_count: int,
+) -> tuple[dict[str, object], Any]:
+    prompt_question_ids = [record.answer_run.prompt_question_id for record in records]
+    answer_run_ids = [record.answer_run.id for record in records]
+    raw_answer_ids = [record.raw_answer.id for record in records]
+    citation_count = sum(len(record.citations) for record in records)
+    evidence_asset_count = sum(len(record.evidence_assets) for record in records)
+    audit_summary = {
+        "event_type": "manual_backfill_batch_imported",
+        "method_version": "manual_backfill_csv_import_v1",
+        "project_id": project_id,
+        "submitted_by": submitted_by,
+        "requested_count": requested_count,
+        "imported_count": len(records),
+        "prompt_question_ids": prompt_question_ids,
+        "answer_run_ids": answer_run_ids,
+        "raw_answer_ids": raw_answer_ids,
+        "citation_count": citation_count,
+        "evidence_asset_count": evidence_asset_count,
+        "platforms": sorted({record.answer_run.platform for record in records}),
+        "surfaces": sorted({record.answer_run.surface for record in records}),
+        "notes": notes,
+        "individual_audit_event_type": "manual_backfill_recorded",
+    }
+    return (
+        audit_summary,
+        build_audit_event(
+            event_type="manual_backfill_batch_imported",
+            project_id=project_id,
+            actor_type="user",
+            actor_id=submitted_by,
+            target_type="manual_backfill_batch",
+            target_id=str(uuid.uuid5(uuid.NAMESPACE_URL, "|".join(answer_run_ids))),
+            before=None,
+            after=audit_summary,
+            input_refs={"prompt_question_ids": prompt_question_ids},
+            output_refs={"answer_run_ids": answer_run_ids, "raw_answer_ids": raw_answer_ids},
+            method_version="manual_backfill_csv_import_v1",
+            reason=notes or "batch import manual backfill CSV into auditable raw evidence",
+        ),
+    )
+
+
 class EntityAliasConfirmRequest(BaseModel):
     entity_id: str = Field(min_length=1)
     entity_kind: str = Field(min_length=1, max_length=40)
@@ -2280,31 +2510,7 @@ def runtime_manual_backfill(
             actor_id=actor_id,
             allowed_roles=PROJECT_ANALYZE_ROLES,
         )
-        citation_urls = tuple(url.strip() for url in payload.citation_urls if url.strip())
-        record = build_manual_backfill_record(
-            ManualBackfillInput(
-                project_id=str(prompt["project_id"]),
-                prompt_question_id=str(prompt["id"]),
-                prompt_text=str(prompt["text"]),
-                market_code=str(prompt["market_code"]),
-                city=str(prompt["city"]),
-                language=str(prompt["language"]),
-                platform=payload.platform.strip(),
-                surface=payload.surface.strip(),
-                answer_text=payload.answer_text.strip(),
-                citation_urls=citation_urls,
-                screenshot_url=payload.screenshot_url.strip() if payload.screenshot_url else None,
-                html_snapshot_url=payload.html_snapshot_url.strip() if payload.html_snapshot_url else None,
-                answer_present=payload.answer_present,
-                surface_triggered=payload.surface_triggered,
-                sample_index=payload.sample_index,
-                sample_size=payload.sample_size,
-                device=payload.device.strip(),
-                account_state=payload.account_state.strip() if payload.account_state else None,
-                submitted_by=payload.submitted_by.strip(),
-                notes=payload.notes.strip() if payload.notes else None,
-            )
-        )
+        record = _build_runtime_manual_backfill_record(payload, prompt)
         repository.save_raw_evidence_records((record,))
         return {
             "answer_run_id": record.answer_run.id,
@@ -2313,6 +2519,74 @@ def runtime_manual_backfill(
             "evidence_asset_count": len(record.evidence_assets),
             "audit_event_ids": [event.id for event in record.audit_events],
             "record": asdict(record),
+        }
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/evidence-runs/runtime/manual-backfill/import.csv")
+def runtime_manual_backfill_csv_import(
+    payload: ManualBackfillCsvImportRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_id = payload.project_id.strip()
+        submitted_by = payload.submitted_by.strip()
+        notes = payload.notes.strip() if payload.notes else None
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        parsed_rows = _parse_manual_backfill_csv_import(payload)
+        records = []
+        for row_number, item in parsed_rows:
+            prompt = repository.get_runtime_prompt(item.prompt_question_id)
+            if not prompt:
+                raise HTTPException(
+                    status_code=404,
+                    detail={"row": row_number, "prompt_question_id": item.prompt_question_id, "error": "Prompt question not found"},
+                )
+            if str(prompt["project_id"]) != project_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "row": row_number,
+                        "prompt_question_id": item.prompt_question_id,
+                        "error": "prompt does not belong to import project",
+                        "project_id": project_id,
+                        "prompt_project_id": str(prompt["project_id"]),
+                    },
+                )
+            records.append(_build_runtime_manual_backfill_record(item, prompt))
+        audit_summary, batch_audit_event = _manual_backfill_batch_audit_event(
+            project_id=project_id,
+            submitted_by=submitted_by,
+            notes=notes,
+            records=records,
+            requested_count=len(parsed_rows),
+        )
+        first_record = records[0]
+        records[0] = replace(first_record, audit_events=(*first_record.audit_events, batch_audit_event))
+        repository.save_raw_evidence_records(tuple(records))
+        return {
+            "import_version": "manual_backfill_csv_import_v1",
+            "project_id": project_id,
+            "requested_count": len(parsed_rows),
+            "imported_count": len(records),
+            "answer_run_ids": [record.answer_run.id for record in records],
+            "raw_payload_hashes": [record.raw_answer.raw_payload_hash for record in records],
+            "citation_count": sum(len(record.citations) for record in records),
+            "evidence_asset_count": sum(len(record.evidence_assets) for record in records),
+            "audit_summary": audit_summary,
+            "batch_audit_event_id": batch_audit_event.id,
+            "records": [asdict(record) for record in records],
         }
     finally:
         close_repository_connection(repository)
@@ -4167,6 +4441,8 @@ def contracts() -> dict[str, list[str]]:
             "RawEvidenceRecord",
             "CollectionFailureRecord",
             "ManualBackfillInput",
+            "ManualBackfillCsvImportRequest",
+            "manual_backfill_csv_import_v1",
             "PerplexitySonarCollector",
             "OpenAIWebSearchCollector",
             "FixtureChatGPTSearchBrowserCollector",
@@ -4303,6 +4579,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimePromptImportInput",
             "RuntimePromptImportResult",
             "RuntimePromptImportRequest",
+            "ManualBackfillCsvImportRequest",
             "EntityAliasInput",
             "RuntimeEntityAlias",
             "RuntimeEntityAliasBatchConfirmResult",
@@ -4389,6 +4666,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/fidelity-checks/runtime/trend",
             "/v1/evidence-runs/runtime/export.csv",
             "/v1/evidence-runs/runtime/manual-backfill",
+            "/v1/evidence-runs/runtime/manual-backfill/import.csv",
             "/v1/runtime-saved-views",
             "/v1/project-brand-kits/runtime",
             "/v1/project-brand-kits/runtime/logo",

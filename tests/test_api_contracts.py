@@ -2025,6 +2025,175 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_manual_backfill_csv_import_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.post(
+            "/v1/evidence-runs/runtime/manual-backfill/import.csv",
+            json={
+                "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                "csv_content": "prompt_question_id,answer_text\nf1f8ee6a-cd19-5afc-a053-b4d16a5e56c0,Manual answer",
+            },
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_manual_backfill_csv_import_returns_batch_audit_summary(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        prompt_one = "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0"
+        prompt_two = "d05d0df2-b067-5f65-a65b-2fb19054b248"
+
+        class FakeRepository:
+            def __init__(self) -> None:
+                self.saved_records = ()
+                self.prompts = {
+                    prompt_one: {
+                        "id": prompt_one,
+                        "project_id": project_id,
+                        "text": "Is ExampleBrand visible in Google AI Mode?",
+                        "market_code": "AU",
+                        "city": "Sydney",
+                        "language": "en-AU",
+                    },
+                    prompt_two: {
+                        "id": prompt_two,
+                        "project_id": project_id,
+                        "text": "Best DTC ecommerce products for Australian shoppers",
+                        "market_code": "AU",
+                        "city": "Australia",
+                        "language": "en-AU",
+                    },
+                }
+
+            def get_runtime_prompt(self, prompt_question_id: str):
+                return self.prompts.get(prompt_question_id)
+
+            def save_raw_evidence_records(self, records):
+                self.saved_records = records
+
+        csv_content = (
+            "prompt_question_id,platform,surface,answer_text,citation_urls,screenshot_url,html_snapshot_url,"
+            "sample_index,sample_size,device,notes\n"
+            f'{prompt_one},google,google_ai_mode,"Manual answer one","https://examplebrand.example/au|'
+            'https://reviews.example/manual",s3://manual/one.png,s3://manual/one.html,1,2,desktop,Row note\n'
+            f'{prompt_two},google,google_ai_mode,"Manual answer two",https://examplebrand.example/au/manual-2,'
+            "s3://manual/two.png,s3://manual/two.html,2,2,desktop,Row note"
+        )
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/evidence-runs/runtime/manual-backfill/import.csv",
+                json={
+                    "project_id": project_id,
+                    "csv_content": csv_content,
+                    "submitted_by": "runtime-console",
+                    "notes": "Batch import for Google spike manual path",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["import_version"], "manual_backfill_csv_import_v1")
+        self.assertEqual(payload["requested_count"], 2)
+        self.assertEqual(payload["imported_count"], 2)
+        self.assertEqual(payload["citation_count"], 3)
+        self.assertEqual(payload["evidence_asset_count"], 4)
+        self.assertEqual(payload["audit_summary"]["event_type"], "manual_backfill_batch_imported")
+        self.assertEqual(payload["audit_summary"]["method_version"], "manual_backfill_csv_import_v1")
+        self.assertEqual(payload["audit_summary"]["individual_audit_event_type"], "manual_backfill_recorded")
+        self.assertEqual(len(fake_repository.saved_records), 2)
+        self.assertEqual(fake_repository.saved_records[0].audit_events[0].event_type, "manual_backfill_recorded")
+        self.assertEqual(fake_repository.saved_records[0].audit_events[1].event_type, "manual_backfill_batch_imported")
+        self.assertEqual(fake_repository.saved_records[0].answer_run.sample_index, 1)
+        self.assertEqual(fake_repository.saved_records[1].answer_run.sample_index, 2)
+        self.assertEqual(fake_repository.saved_records[0].citations[1].domain, "reviews.example")
+
+    def test_runtime_manual_backfill_csv_import_prevalidates_before_writing(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        prompt_one = "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0"
+        missing_prompt = "00000000-0000-0000-0000-000000009999"
+
+        class FakeRepository:
+            def __init__(self) -> None:
+                self.saved_records = ()
+
+            def get_runtime_prompt(self, prompt_question_id: str):
+                if prompt_question_id == prompt_one:
+                    return {
+                        "id": prompt_one,
+                        "project_id": project_id,
+                        "text": "Is ExampleBrand visible in Google AI Mode?",
+                        "market_code": "AU",
+                        "city": "Sydney",
+                        "language": "en-AU",
+                    }
+                return None
+
+            def save_raw_evidence_records(self, records):
+                self.saved_records = records
+
+        csv_content = (
+            "prompt_question_id,answer_text\n"
+            f"{prompt_one},Manual answer one\n"
+            f"{missing_prompt},Manual answer missing prompt"
+        )
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/evidence-runs/runtime/manual-backfill/import.csv",
+                json={
+                    "project_id": project_id,
+                    "csv_content": csv_content,
+                    "submitted_by": "runtime-console",
+                },
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"]["row"], 3)
+        self.assertEqual(response.json()["detail"]["error"], "Prompt question not found")
+        self.assertEqual(fake_repository.saved_records, ())
+
+    def test_runtime_manual_backfill_csv_import_rejects_cross_project_prompt(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        other_project_id = "11111111-1111-1111-1111-111111111111"
+        prompt_one = "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0"
+
+        class FakeRepository:
+            def __init__(self) -> None:
+                self.saved_records = ()
+
+            def get_runtime_prompt(self, prompt_question_id: str):
+                return {
+                    "id": prompt_question_id,
+                    "project_id": other_project_id,
+                    "text": "Other project prompt",
+                    "market_code": "AU",
+                    "city": "Sydney",
+                    "language": "en-AU",
+                }
+
+            def save_raw_evidence_records(self, records):
+                self.saved_records = records
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/evidence-runs/runtime/manual-backfill/import.csv",
+                json={
+                    "project_id": project_id,
+                    "csv_content": f"prompt_question_id,answer_text\n{prompt_one},Manual answer",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"]["error"], "prompt does not belong to import project")
+        self.assertEqual(response.json()["detail"]["prompt_project_id"], other_project_id)
+        self.assertEqual(fake_repository.saved_records, ())
+
     def test_runtime_entity_aliases_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/entity-aliases/runtime?entity_kind=brand")
         self.assertEqual(response.status_code, 503)

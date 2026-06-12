@@ -2060,6 +2060,35 @@ async function submitManualBackfill(formData: FormData) {
   revalidatePath("/");
 }
 
+async function importManualBackfillCsv(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const csvContent = String(formData.get("csv_content") || "").trim();
+  if (!projectId || !csvContent) {
+    throw new Error("project_id and csv_content are required for manual backfill CSV import");
+  }
+  const response = await fetch(`${baseUrl}/v1/evidence-runs/runtime/manual-backfill/import.csv`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      project_id: projectId,
+      csv_content: csvContent,
+      submitted_by: String(formData.get("submitted_by") || "runtime-console").trim(),
+      notes: String(formData.get("notes") || "").trim() || undefined,
+      max_rows: Number(formData.get("max_rows") || 120)
+    }),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/evidence-runs/runtime/manual-backfill/import.csv returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
 async function importRuntimePromptsCsv(formData: FormData) {
   "use server";
   const baseUrl =
@@ -4612,6 +4641,41 @@ export default async function Home({
                 <input type="hidden" name="submitted_by" value="runtime-console" />
                 <button className="actionButton" type="submit" disabled={!latestPrompt}>
                   Save backfill
+                </button>
+              </form>
+              <form action={importManualBackfillCsv} className="manualBackfillForm">
+                <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+                <input type="hidden" name="submitted_by" value="runtime-console" />
+                <div className="formHeader">
+                  <h3>Manual Backfill CSV</h3>
+                  <small>manual_backfill_csv_import_v1</small>
+                </div>
+                <label className="wideField">
+                  <span>CSV rows</span>
+                  <textarea
+                    name="csv_content"
+                    defaultValue={
+                      "prompt_question_id,platform,surface,answer_text,citation_urls,screenshot_url,html_snapshot_url,sample_index,sample_size,device,notes\n" +
+                      `${latestPrompt?.id || "prompt-question-id"},google,google_ai_mode,"Manual AI Mode sample 1 for ${
+                        latestPrompt?.text || "selected prompt"
+                      }","https://examplebrand.example/au/manual|https://reviews.example/manual",s3://manual-backfill/google-ai-mode-1.png,s3://manual-backfill/google-ai-mode-1.html,1,2,desktop,"Batch manual backfill for Google spike"\n` +
+                      `${latestPrompt?.id || "prompt-question-id"},google,google_ai_mode,"Manual AI Mode sample 2 for ${
+                        latestPrompt?.text || "selected prompt"
+                      }","https://examplebrand.example/au/manual-2",s3://manual-backfill/google-ai-mode-2.png,s3://manual-backfill/google-ai-mode-2.html,2,2,desktop,"Batch manual backfill for Google spike"`
+                    }
+                    rows={6}
+                  />
+                </label>
+                <label>
+                  <span>Max rows</span>
+                  <input name="max_rows" defaultValue="120" />
+                </label>
+                <label>
+                  <span>Import note</span>
+                  <input name="notes" defaultValue="Batch manual backfill import for auditable Google spike coverage" />
+                </label>
+                <button className="actionButton" type="submit" disabled={!selectedProjectId || !latestPrompt}>
+                  Import backfill CSV
                 </button>
               </form>
             </div>

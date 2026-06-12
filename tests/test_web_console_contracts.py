@@ -438,6 +438,19 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Confirm visible candidates", page_source)
         self.assertIn(".aliasBatchQueue", css_source)
 
+    def test_runtime_console_surfaces_manual_backfill_csv_import(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
+
+        self.assertIn("Manual Backfill CSV", page_source)
+        self.assertIn("importManualBackfillCsv", page_source)
+        self.assertIn("/v1/evidence-runs/runtime/manual-backfill/import.csv", page_source)
+        self.assertIn("manual_backfill_csv_import_v1", page_source)
+        self.assertIn("Import backfill CSV", page_source)
+        self.assertIn('name="max_rows"', page_source)
+        self.assertIn("Batch manual backfill import for auditable Google spike coverage", page_source)
+        self.assertIn(".manualBackfillForm", css_source)
+
     def test_runtime_console_surfaces_pgvector_knowledge_search(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
 
