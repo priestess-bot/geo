@@ -684,6 +684,7 @@ type RuntimeData = {
   entityAliasCandidates: PageResponse<RuntimeEntityAliasCandidate>;
   entityAliasCandidateReviews: PageResponse<RuntimeEntityAliasCandidateReview>;
   entityAliasAssignmentQueue: PageResponse<RuntimeEntityAliasCandidateReview>;
+  entityAliasAssignmentStats: RuntimeEntityAliasCandidateAssignmentQueueStats;
   savedViews: PageResponse<RuntimeSavedView>;
   scores: PageResponse<ScoreSnapshot>;
   graphs: PageResponse<CitationGraph>;
@@ -1387,6 +1388,22 @@ type RuntimeEntityAliasCandidateReview = {
   audit_events: Array<{ event_type?: string; actor_id?: string; after_hash?: string | null; method_version?: string | null }>;
 };
 
+type RuntimeEntityAliasCandidateAssignmentQueueStats = {
+  project_id: string;
+  generated_at: string;
+  method_version: string;
+  active_statuses: string[];
+  total_count: number;
+  active_count: number;
+  unassigned_count: number;
+  overdue_count: number;
+  due_soon_count: number;
+  status_counts: Record<string, number>;
+  priority_counts: Record<string, number>;
+  oldest_due_at?: string | null;
+  next_due_at?: string | null;
+};
+
 type RuntimeFilters = {
   project_id?: string;
   platform?: string;
@@ -1460,6 +1477,7 @@ const endpoints = {
   entityAliasCandidates: "/v1/entity-aliases/runtime/candidates",
   entityAliasCandidateReviews: "/v1/entity-aliases/runtime/candidates/reviews",
   entityAliasAssignmentQueue: "/v1/entity-aliases/runtime/candidates/reviews",
+  entityAliasAssignmentStats: "/v1/entity-aliases/runtime/candidates/assignment-stats",
   entityAliasConfirmBatch: "/v1/entity-aliases/runtime/confirm-batch",
   savedViews: "/v1/runtime-saved-views",
   brandKit: "/v1/project-brand-kits/runtime",
@@ -1496,6 +1514,22 @@ function runtimeAlertEventPath(alertId: string) {
 }
 
 const emptyPage = <T,>(): PageResponse<T> => ({ total_count: 0, records: [] });
+
+const emptyAliasAssignmentStats = (): RuntimeEntityAliasCandidateAssignmentQueueStats => ({
+  project_id: "",
+  generated_at: "",
+  method_version: "entity_alias_assignment_queue_stats_v1",
+  active_statuses: ["assigned", "in_progress", "blocked"],
+  total_count: 0,
+  active_count: 0,
+  unassigned_count: 0,
+  overdue_count: 0,
+  due_soon_count: 0,
+  status_counts: {},
+  priority_counts: {},
+  oldest_due_at: null,
+  next_due_at: null
+});
 
 const scoreComponentNames = [
   "MentionScore",
@@ -2612,6 +2646,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     }),
     entityAliasCandidateReviews: endpoints.entityAliasCandidateReviews,
     entityAliasAssignmentQueue: endpoints.entityAliasAssignmentQueue,
+    entityAliasAssignmentStats: endpoints.entityAliasAssignmentStats,
     entityAliasConfirmBatch: endpoints.entityAliasConfirmBatch,
     fidelityChecks: runtimePath(endpoints.fidelityChecks, {
       limit: 5
@@ -2751,6 +2786,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
         limit: 8
       })
     : paths.entityAliasAssignmentQueue;
+  paths.entityAliasAssignmentStats = selectedProjectId
+    ? runtimePath(endpoints.entityAliasAssignmentStats, {
+        project_id: selectedProjectId
+      })
+    : paths.entityAliasAssignmentStats;
   paths.savedViews = runtimePath(endpoints.savedViews, {
     ...selectedProjectParams,
     view_type: "runtime_evidence",
@@ -2854,6 +2894,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasCandidates,
     entityAliasCandidateReviews,
     entityAliasAssignmentQueue,
+    entityAliasAssignmentStats,
     savedViews,
     brandKit,
     brandAssets,
@@ -2933,6 +2974,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
           emptyPage<RuntimeEntityAliasCandidateReview>()
         )
       : Promise.resolve({ payload: emptyPage<RuntimeEntityAliasCandidateReview>(), error: null }),
+    selectedProjectId
+      ? fetchRuntimeEndpoint<RuntimeEntityAliasCandidateAssignmentQueueStats>(
+          baseUrl,
+          paths.entityAliasAssignmentStats,
+          emptyAliasAssignmentStats()
+        )
+      : Promise.resolve({ payload: emptyAliasAssignmentStats(), error: null }),
     fetchRuntimeEndpoint<PageResponse<RuntimeSavedView>>(baseUrl, paths.savedViews, emptyPage<RuntimeSavedView>()),
     selectedProjectId
       ? fetchRuntimeEndpoint<RuntimeProjectBrandKit | null>(baseUrl, paths.brandKit, null, { optionalNotFound: true })
@@ -3026,10 +3074,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fidelityChecks,
     fidelityTrend,
     entityAliases,
-    entityAliasCandidates,
-    entityAliasCandidateReviews,
-    entityAliasAssignmentQueue,
-    savedViews,
+      entityAliasCandidates,
+      entityAliasCandidateReviews,
+      entityAliasAssignmentQueue,
+      entityAliasAssignmentStats,
+      savedViews,
     brandKit,
     brandAssets,
     brandAssetLibrary,
@@ -3085,6 +3134,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       entityAliasCandidates: entityAliasCandidates.payload,
       entityAliasCandidateReviews: entityAliasCandidateReviews.payload,
       entityAliasAssignmentQueue: entityAliasAssignmentQueue.payload,
+      entityAliasAssignmentStats: entityAliasAssignmentStats.payload,
       savedViews: savedViews.payload,
       scores: scores.payload,
       graphs: graphs.payload,
@@ -4455,6 +4505,37 @@ export default async function Home({
                         assignment_status / priority / due_before filters · {paths.entityAliasAssignmentQueue}
                       </small>
                     </div>
+                    <div className="facts aliasAssignmentStats" aria-label="Alias Assignment Queue Stats">
+                      <div>
+                        <span>Total</span>
+                        <strong>{data.entityAliasAssignmentStats.total_count}</strong>
+                      </div>
+                      <div>
+                        <span>Active</span>
+                        <strong>{data.entityAliasAssignmentStats.active_count}</strong>
+                      </div>
+                      <div>
+                        <span>Overdue</span>
+                        <strong>{data.entityAliasAssignmentStats.overdue_count}</strong>
+                      </div>
+                      <div>
+                        <span>Due soon</span>
+                        <strong>{data.entityAliasAssignmentStats.due_soon_count}</strong>
+                      </div>
+                      <div>
+                        <span>Unassigned</span>
+                        <strong>{data.entityAliasAssignmentStats.unassigned_count}</strong>
+                      </div>
+                    </div>
+                    <small>
+                      stats: {paths.entityAliasAssignmentStats} ·{" "}
+                      {data.entityAliasAssignmentStats.method_version} · status_counts{" "}
+                      {JSON.stringify(data.entityAliasAssignmentStats.status_counts)} · priority_counts{" "}
+                      {JSON.stringify(data.entityAliasAssignmentStats.priority_counts)}
+                      {data.entityAliasAssignmentStats.next_due_at
+                        ? ` · next due ${dateText(data.entityAliasAssignmentStats.next_due_at)}`
+                        : " · no next due"}
+                    </small>
                     <ul className="plainList">
                       {visibleAliasAssignmentQueue.map((record) => {
                         const review = record.review;

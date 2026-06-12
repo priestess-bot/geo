@@ -86,6 +86,7 @@ from geno_core.models import (
     RuntimeEvidencePage,
     RuntimeEvidenceExport,
     RuntimeEntityAlias,
+    RuntimeEntityAliasCandidateAssignmentQueueStats,
     RuntimeEntityAliasCandidateBatchReviewResult,
     RuntimeEntityAliasCandidatePage,
     RuntimeEntityAliasCandidateReview,
@@ -10003,6 +10004,69 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("due_at <= %s", executed_sql)
         self.assertIn("ORDER BY updated_at DESC, created_at DESC, candidate_id", executed_sql)
         self.assertIn("target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_summarizes_runtime_entity_alias_assignment_queue(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        now = datetime.now(UTC)
+        connection = RecordingConnection(
+            result_sets=[
+                [
+                    {
+                        "assignment_status": "assigned",
+                        "priority": "high",
+                        "due_at": now - timedelta(days=1),
+                        "assigned_to": "reviewer@example.com",
+                    },
+                    {
+                        "assignment_status": "in_progress",
+                        "priority": "urgent",
+                        "due_at": now + timedelta(days=2),
+                        "assigned_to": "reviewer@example.com",
+                    },
+                    {
+                        "assignment_status": "blocked",
+                        "priority": "normal",
+                        "due_at": now + timedelta(days=10),
+                        "assigned_to": "reviewer-2@example.com",
+                    },
+                    {
+                        "assignment_status": "completed",
+                        "priority": "low",
+                        "due_at": now - timedelta(days=3),
+                        "assigned_to": "reviewer@example.com",
+                    },
+                    {
+                        "assignment_status": "unassigned",
+                        "priority": "normal",
+                        "due_at": None,
+                        "assigned_to": None,
+                    },
+                ]
+            ]
+        )
+
+        stats = PostgresEvidenceRepository(connection).get_entity_alias_candidate_assignment_queue_stats(
+            project_id=project_id,
+            due_soon_before=now + timedelta(days=7),
+        )
+
+        self.assertIsInstance(stats, RuntimeEntityAliasCandidateAssignmentQueueStats)
+        self.assertEqual(stats.method_version, "entity_alias_assignment_queue_stats_v1")
+        self.assertEqual(stats.total_count, 5)
+        self.assertEqual(stats.active_count, 3)
+        self.assertEqual(stats.unassigned_count, 1)
+        self.assertEqual(stats.overdue_count, 1)
+        self.assertEqual(stats.due_soon_count, 1)
+        self.assertEqual(stats.status_counts["assigned"], 1)
+        self.assertEqual(stats.status_counts["completed"], 1)
+        self.assertEqual(stats.priority_counts["urgent"], 1)
+        self.assertEqual(stats.active_statuses, ("assigned", "in_progress", "blocked"))
+        self.assertLessEqual(stats.oldest_due_at, now)
+        self.assertGreater(stats.next_due_at, now)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("SELECT assignment_status, priority, due_at, assigned_to", executed_sql)
+        self.assertIn("FROM entity_alias_candidate_reviews", executed_sql)
+        self.assertIn("WHERE project_id = %s", executed_sql)
 
     def test_postgres_repository_assigns_runtime_entity_alias_candidate_review(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

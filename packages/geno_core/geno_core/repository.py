@@ -52,6 +52,7 @@ from geno_core.models import (
     RuntimeEvidenceRun,
     RuntimeEntityAlias,
     RuntimeEntityAliasCandidate,
+    RuntimeEntityAliasCandidateAssignmentQueueStats,
     RuntimeEntityAliasCandidateBatchReviewResult,
     RuntimeEntityAliasCandidatePage,
     RuntimeEntityAliasCandidateReview,
@@ -404,6 +405,26 @@ def _row_dict(row: Any, columns: tuple[str, ...]) -> dict[str, Any]:
 
 def _rows_dict(rows: Any, columns: tuple[str, ...]) -> tuple[dict[str, Any], ...]:
     return tuple(_row_dict(row, columns) for row in rows)
+
+
+def _coerce_datetime(value: object) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        candidate = value.strip()
+        if not candidate:
+            return None
+        try:
+            parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _first_ref(value: object, default: object = None) -> object:
@@ -2560,6 +2581,71 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=records,
+        )
+
+    def get_entity_alias_candidate_assignment_queue_stats(
+        self,
+        *,
+        project_id: str,
+        due_soon_before: datetime | None = None,
+    ) -> RuntimeEntityAliasCandidateAssignmentQueueStats:
+        generated_at = datetime.now(UTC)
+        due_soon_cutoff = due_soon_before or generated_at + timedelta(days=7)
+        active_statuses = ("assigned", "in_progress", "blocked")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT assignment_status, priority, due_at, assigned_to
+                FROM entity_alias_candidate_reviews
+                WHERE project_id = %s
+                """,
+                (_uuid(project_id),),
+            )
+            rows = _rows_dict(cursor.fetchall(), ("assignment_status", "priority", "due_at", "assigned_to"))
+        status_counts: dict[str, int] = {}
+        priority_counts: dict[str, int] = {}
+        active_due_dates: list[datetime] = []
+        future_due_dates: list[datetime] = []
+        active_count = 0
+        unassigned_count = 0
+        overdue_count = 0
+        due_soon_count = 0
+        for row in rows:
+            status = str(row.get("assignment_status") or "unassigned").strip().lower() or "unassigned"
+            priority = str(row.get("priority") or "normal").strip().lower() or "normal"
+            assigned_to = str(row.get("assigned_to") or "").strip()
+            status_counts[status] = status_counts.get(status, 0) + 1
+            priority_counts[priority] = priority_counts.get(priority, 0) + 1
+            if status == "unassigned" or not assigned_to:
+                unassigned_count += 1
+            if status not in active_statuses:
+                continue
+            active_count += 1
+            due_at = _coerce_datetime(row.get("due_at"))
+            if due_at is None:
+                continue
+            active_due_dates.append(due_at)
+            if due_at < generated_at:
+                overdue_count += 1
+            elif due_at <= due_soon_cutoff:
+                due_soon_count += 1
+                future_due_dates.append(due_at)
+            else:
+                future_due_dates.append(due_at)
+        return RuntimeEntityAliasCandidateAssignmentQueueStats(
+            project_id=project_id,
+            generated_at=generated_at,
+            method_version="entity_alias_assignment_queue_stats_v1",
+            active_statuses=active_statuses,
+            total_count=len(rows),
+            active_count=active_count,
+            unassigned_count=unassigned_count,
+            overdue_count=overdue_count,
+            due_soon_count=due_soon_count,
+            status_counts=dict(sorted(status_counts.items())),
+            priority_counts=dict(sorted(priority_counts.items())),
+            oldest_due_at=min(active_due_dates) if active_due_dates else None,
+            next_due_at=min(future_due_dates) if future_due_dates else None,
         )
 
     def assign_entity_alias_candidate_review(

@@ -27,6 +27,7 @@ from tests.test_au_p0a_execution_checklist import AuP0aExecutionChecklistTest
 from tests.test_au_p0b_google_execution_checklist import AuP0bGoogleExecutionChecklistTest
 from geno_core.models import (
     RuntimeEntityAlias,
+    RuntimeEntityAliasCandidateAssignmentQueueStats,
     RuntimeEntityAliasCandidate,
     RuntimeEntityAliasCandidateBatchReviewResult,
     RuntimeEntityAliasCandidatePage,
@@ -2235,6 +2236,14 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_entity_alias_assignment_stats_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get(
+            "/v1/entity-aliases/runtime/candidates/assignment-stats"
+            "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_runtime_entity_alias_candidates_endpoint_returns_evidence_metadata(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         entity_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
@@ -2353,6 +2362,49 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["assignment_status"], "assigned")
         self.assertEqual(fake_repository.kwargs["priority"], "high")
         self.assertEqual(fake_repository.kwargs["due_before"].isoformat(), "2026-06-14T09:00:00+00:00")
+
+    def test_runtime_entity_alias_assignment_stats_endpoint_returns_queue_health(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+
+        class FakeRepository:
+            connection = type("Connection", (), {"close": lambda self: None})()
+
+            def get_entity_alias_candidate_assignment_queue_stats(self, **kwargs):
+                self.kwargs = kwargs
+                return RuntimeEntityAliasCandidateAssignmentQueueStats(
+                    project_id=kwargs["project_id"],
+                    generated_at=datetime(2026, 6, 13, 0, 0, tzinfo=UTC),
+                    method_version="entity_alias_assignment_queue_stats_v1",
+                    active_statuses=("assigned", "in_progress", "blocked"),
+                    total_count=5,
+                    active_count=3,
+                    unassigned_count=1,
+                    overdue_count=1,
+                    due_soon_count=2,
+                    status_counts={"assigned": 2, "blocked": 1, "completed": 1, "unassigned": 1},
+                    priority_counts={"high": 2, "normal": 2, "urgent": 1},
+                    oldest_due_at=datetime(2026, 6, 12, 0, 0, tzinfo=UTC),
+                    next_due_at=datetime(2026, 6, 14, 0, 0, tzinfo=UTC),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+            response = self.client.get(
+                f"/v1/entity-aliases/runtime/candidates/assignment-stats?project_id={project_id}"
+                "&due_soon_before=2026-06-20T00:00:00Z"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["method_version"], "entity_alias_assignment_queue_stats_v1")
+        self.assertEqual(payload["active_statuses"], ["assigned", "in_progress", "blocked"])
+        self.assertEqual(payload["total_count"], 5)
+        self.assertEqual(payload["overdue_count"], 1)
+        self.assertEqual(payload["due_soon_count"], 2)
+        self.assertEqual(payload["status_counts"]["assigned"], 2)
+        self.assertEqual(payload["priority_counts"]["urgent"], 1)
+        self.assertEqual(fake_repository.kwargs["project_id"], project_id)
+        self.assertEqual(fake_repository.kwargs["due_soon_before"].isoformat(), "2026-06-20T00:00:00+00:00")
 
     def test_runtime_entity_alias_candidate_review_endpoint_records_decision(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
@@ -4692,6 +4744,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEntityAliasCandidatePage", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasCandidateReview", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasCandidateReviewPage", payload["m1_bootstrap"])
+        self.assertIn("RuntimeEntityAliasCandidateAssignmentQueueStats", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasCandidateBatchReviewResult", payload["m1_bootstrap"])
         self.assertIn("EntityAliasCandidateAssignmentInput", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasPage", payload["m1_bootstrap"])
