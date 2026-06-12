@@ -43,6 +43,12 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
         self.assertIn("--health-check-only", steps["google_spike_health_check"]["command"])
         self.assertIn("--require-google-spike-gates", steps["google_spike_collect"]["command"])
         self.assertIn("--persist", steps["google_spike_collect"]["command"])
+        self.assertTrue(
+            any(
+                "verify-au-p0b-google-manual-backfill" in note
+                for note in steps["prepare_environment"]["notes"]
+            )
+        )
         self.assertEqual(steps["google_spike_collect"]["planned_runs"], 240)
         self.assertEqual(runbook["runbook_payload_hash"], compute_google_spike_runbook_hash(runbook))
 

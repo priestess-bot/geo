@@ -69,6 +69,16 @@ export GENO_BROWSER_ARTIFACT_DIR=/absolute/path/to/browser-artifacts
 
 兼容字段：`prompt_text` / `question` 可替代 `prompt`，`answer` / `content` 可替代 `answer_text`，`citations` / `sources` 可用字符串数组或 `{ "url": "..." }` 对象数组。health-only 预检会检查文件存在；真实采集时若 JSONL 为空、JSON 无效、目标 prompt/city 缺记录或缺 `answer_text`，worker 会把该样本写成可审计 collection failure。
 
+生成待填模板和校验文件覆盖率：
+
+```bash
+make au-p0b-google-manual-template
+MANUAL_BACKFILL_PATH=/absolute/path/to/google-ai-mode-manual-backfill.jsonl \
+  make verify-au-p0b-google-manual-backfill
+```
+
+`au-p0b-google-manual-template` 会生成 120 行模板：30 prompts × Australia/Sydney × k=2，只覆盖 `google_ai_mode` manual path。模板本身允许 `answer_text`、citation 和资产为空；真实运行前必须用 `verify-au-p0b-google-manual-backfill` strict 校验通过，它会要求 120 行全部填充、每个 prompt/city 有 2 条样本、每行有 answer、至少一个 citation、以及 screenshot 或 HTML snapshot 资产。
+
 所有运行产物默认写入 `docs/runtime_preflight/*.json`，该目录下 JSON 默认不提交，避免把真实 provider 状态、错误上下文或潜在敏感配置写入仓库。需要提交的是摘要、审计日志和代码。
 
 ## 3. 标准步骤

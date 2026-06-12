@@ -194,6 +194,7 @@ def build_au_p0b_google_spike_runbook(
                     "The first real Google spike path is selector-driven browser capture for google_aio.",
                     "Browser health fails fast with selector_missing, session_state_missing, or playwright_missing before collection.",
                     "The second path is manual backfill for google_ai_mode until AI Mode browser capture is implemented.",
+                    "Generate, fill, and verify MANUAL_BACKFILL_PATH with au-p0b-google-manual-template and verify-au-p0b-google-manual-backfill before collection.",
                     "Third-party SERP JSON capture is implemented as an alternate google_aio backend, but not part of the default 240-run matrix.",
                     "Do not persist secrets in generated JSON artifacts.",
                 ),
