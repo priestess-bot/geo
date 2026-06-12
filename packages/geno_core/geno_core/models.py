@@ -1496,6 +1496,16 @@ class RuntimeAlertNotificationResult:
 
 
 @dataclass(frozen=True)
+class RuntimeEntityAliasAssignmentNotificationResult:
+    project_id: str
+    notification_count: int
+    delivery_count: int
+    skipped_count: int
+    notifications: tuple[dict[str, Any], ...]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class RuntimeContentDraft:
     draft: dict[str, Any]
     target_questions: tuple[dict[str, Any], ...]

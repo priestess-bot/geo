@@ -86,6 +86,7 @@ from geno_core.models import (
     RuntimeEvidencePage,
     RuntimeEvidenceExport,
     RuntimeEntityAlias,
+    RuntimeEntityAliasAssignmentNotificationResult,
     RuntimeEntityAliasCandidateAssignmentQueueStats,
     RuntimeEntityAliasCandidateBatchReviewResult,
     RuntimeEntityAliasCandidatePage,
@@ -10067,6 +10068,129 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("SELECT assignment_status, priority, due_at, assigned_to", executed_sql)
         self.assertIn("FROM entity_alias_candidate_reviews", executed_sql)
         self.assertIn("WHERE project_id = %s", executed_sql)
+
+    def test_postgres_repository_enqueues_entity_alias_assignment_overdue_notifications(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        review_id = "60f1e5a4-d1d0-511e-b0c8-15dfc081ee9b"
+        candidate_id = "candidate-1"
+        brand_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+        now = datetime(2026, 6, 13, tzinfo=UTC)
+        review_row = {
+            "id": review_id,
+            "project_id": project_id,
+            "candidate_id": candidate_id,
+            "entity_id": brand_id,
+            "entity_kind": "brand",
+            "alias": "ExampleBrand AU",
+            "alias_type": "alias",
+            "source": "evidence_answer_text",
+            "confidence": 0.8,
+            "decision": "needs_review",
+            "reviewed_by": "analyst-1",
+            "reason": "review required",
+            "notes": "Needs reviewer assignment",
+            "assigned_to": "reviewer@example.com",
+            "assigned_by": "lead@example.com",
+            "assignment_status": "assigned",
+            "assignment_note": "Review by Monday",
+            "assigned_at": now,
+            "due_at": now - timedelta(days=1),
+            "priority": "urgent",
+            "evidence_answer_run_ids": ["answer-run-1"],
+            "evidence_urls": ["https://examplebrand.com.au/reviews"],
+            "payload": {"source_panel": "runtime_entity_alias_candidates"},
+            "created_at": now,
+            "updated_at": now,
+        }
+        notification_id = "dfaa703e-e168-58d1-b951-6853a7ba0810"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        delivery_id = "f204f229-b9af-5525-8a87-f0c6b79edc12"
+        notification_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "entity_alias_assignment_overdue",
+            "severity": "critical",
+            "title": "Alias assignment overdue: ExampleBrand AU",
+            "message": "ExampleBrand AU alias candidate review is overdue for reviewer@example.com.",
+            "target_type": "entity_alias_candidate_review",
+            "target_id": review_id,
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {"entity_alias_candidate_review_id": review_id, "priority": "urgent"},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        subscription_row = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "webhook",
+            "endpoint_url": "https://hooks.example.com/geno",
+            "event_types": ["entity_alias_assignment_overdue"],
+            "severity_threshold": "warning",
+            "status": "active",
+            "metadata": {},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        delivery_row = {
+            "id": delivery_id,
+            "project_id": project_id,
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "channel": "webhook",
+            "endpoint_url": "https://hooks.example.com/geno",
+            "status": "queued",
+            "attempt_count": 0,
+            "max_attempts": 3,
+            "lease_expires_at": None,
+            "next_attempt_at": None,
+            "response_status": None,
+            "response_body_hash": None,
+            "error_message": None,
+            "payload": {"delivery_version": "runtime_notification_delivery_v1"},
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                {"id": project_id},
+                [review_row],
+                notification_row,
+                [subscription_row],
+                delivery_row,
+            ]
+        )
+
+        result = PostgresEvidenceRepository(connection).enqueue_entity_alias_assignment_overdue_notifications(
+            project_id=project_id,
+            assigned_to="reviewer@example.com",
+            priority="urgent",
+            due_before=now,
+            created_by="runtime-console",
+            reason="notify overdue alias assignment",
+        )
+
+        self.assertIsInstance(result, RuntimeEntityAliasAssignmentNotificationResult)
+        self.assertEqual(result.notification_count, 1)
+        self.assertEqual(result.delivery_count, 1)
+        self.assertEqual(result.notifications[0]["notification_type"], "entity_alias_assignment_overdue")
+        self.assertTrue(any(event["event_type"] == "runtime_notification_created" for event in result.audit_events))
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM entity_alias_candidate_reviews", executed_sql)
+        self.assertIn("assignment_status = ANY(%s)", executed_sql)
+        self.assertIn("due_at < %s", executed_sql)
+        self.assertIn("assigned_to = %s", executed_sql)
+        self.assertIn("priority = %s", executed_sql)
+        self.assertIn("INSERT INTO runtime_notifications", executed_sql)
+        self.assertIn("INSERT INTO runtime_notification_deliveries", executed_sql)
+        self.assertIn("entity_alias_assignment_overdue", str(connection.calls))
 
     def test_postgres_repository_assigns_runtime_entity_alias_candidate_review(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

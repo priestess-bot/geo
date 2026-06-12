@@ -51,6 +51,7 @@ from geno_core.models import (
     RuntimeEvidencePage,
     RuntimeEvidenceRun,
     RuntimeEntityAlias,
+    RuntimeEntityAliasAssignmentNotificationResult,
     RuntimeEntityAliasCandidate,
     RuntimeEntityAliasCandidateAssignmentQueueStats,
     RuntimeEntityAliasCandidateBatchReviewResult,
@@ -2646,6 +2647,79 @@ class PostgresEvidenceRepository:
             priority_counts=dict(sorted(priority_counts.items())),
             oldest_due_at=min(active_due_dates) if active_due_dates else None,
             next_due_at=min(future_due_dates) if future_due_dates else None,
+        )
+
+    def enqueue_entity_alias_assignment_overdue_notifications(
+        self,
+        *,
+        project_id: str,
+        assigned_to: str | None = None,
+        priority: str | None = None,
+        due_before: datetime | None = None,
+        created_by: str = "runtime-console",
+        reason: str | None = None,
+    ) -> RuntimeEntityAliasAssignmentNotificationResult:
+        project_id = project_id.strip()
+        created_by = created_by.strip() or "runtime-console"
+        normalized_assigned_to = assigned_to.strip() if assigned_to else None
+        normalized_priority = priority.strip().lower() if priority else None
+        cutoff = due_before or datetime.now(UTC)
+        reason = reason.strip() if reason else "queue overdue entity alias assignment notifications"
+        if not project_id:
+            raise ValueError("project_id is required")
+        active_statuses = ("assigned", "in_progress", "blocked")
+        filters = [
+            "project_id = %s",
+            "assignment_status = ANY(%s)",
+            "due_at IS NOT NULL",
+            "due_at < %s",
+        ]
+        params: list[Any] = [_uuid(project_id), list(active_statuses), cutoff]
+        if normalized_assigned_to:
+            filters.append("assigned_to = %s")
+            params.append(normalized_assigned_to)
+        if normalized_priority:
+            filters.append("priority = %s")
+            params.append(normalized_priority)
+        where_clause = f"WHERE {' AND '.join(filters)}"
+        inserted_notifications: list[dict[str, Any]] = []
+        audit_events: list[AuditEvent] = []
+        delivery_count = 0
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM projects WHERE id = %s LIMIT 1", (_uuid(project_id),))
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)}
+                FROM entity_alias_candidate_reviews
+                {where_clause}
+                ORDER BY due_at ASC, priority DESC, updated_at DESC, candidate_id
+                LIMIT 200
+                """,
+                tuple(params),
+            )
+            reviews = _rows_dict(cursor.fetchall(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
+            for review in reviews:
+                notification, events = self._insert_entity_alias_assignment_overdue_notification(
+                    cursor=cursor,
+                    review=review,
+                    created_by=created_by,
+                    reason=reason,
+                )
+                inserted_notifications.append(notification)
+                audit_events.extend(events)
+                delivery_count += sum(1 for event in events if event.event_type == "runtime_notification_delivery_queued")
+            if audit_events:
+                self.save_audit_events(tuple(audit_events), cursor=cursor)
+        self.connection.commit()
+        return RuntimeEntityAliasAssignmentNotificationResult(
+            project_id=project_id,
+            notification_count=len(inserted_notifications),
+            delivery_count=delivery_count,
+            skipped_count=0,
+            notifications=tuple(inserted_notifications),
+            audit_events=tuple(asdict(event) for event in audit_events),
         )
 
     def assign_entity_alias_candidate_review(
@@ -7013,6 +7087,74 @@ class PostgresEvidenceRepository:
                 "alert_type": [alert_type],
                 "source": [source],
                 "source_id": [source_id],
+            },
+        )
+
+    def _insert_entity_alias_assignment_overdue_notification(
+        self,
+        *,
+        cursor: DbCursor,
+        review: dict[str, Any],
+        created_by: str,
+        reason: str,
+    ) -> tuple[dict[str, Any], tuple[AuditEvent, ...]]:
+        review_id = str(review.get("id") or "").strip()
+        project_id = str(review.get("project_id") or "").strip()
+        candidate_id = str(review.get("candidate_id") or "").strip()
+        alias = str(review.get("alias") or "alias candidate").strip()
+        assignee = str(review.get("assigned_to") or "unassigned").strip()
+        priority = str(review.get("priority") or "normal").strip().lower()
+        assignment_status = str(review.get("assignment_status") or "assigned").strip().lower()
+        severity = "critical" if priority == "urgent" else "warning"
+        due_at = _coerce_datetime(review.get("due_at"))
+        due_text = due_at.isoformat() if due_at else str(review.get("due_at") or "")
+        title = f"Alias assignment overdue: {alias}"
+        message = f"{alias} alias candidate review is overdue for {assignee}."
+        if due_text:
+            message = f"{message} due_at={due_text}."
+        payload = {
+            "entity_alias_candidate_review_id": review_id,
+            "candidate_id": candidate_id,
+            "entity_id": review.get("entity_id"),
+            "entity_kind": review.get("entity_kind"),
+            "alias": alias,
+            "alias_type": review.get("alias_type"),
+            "decision": review.get("decision"),
+            "assigned_to": assignee,
+            "assignment_status": assignment_status,
+            "priority": priority,
+            "due_at": due_text,
+            "source": review.get("source"),
+            "evidence_answer_run_ids": review.get("evidence_answer_run_ids") or [],
+            "evidence_urls": review.get("evidence_urls") or [],
+        }
+        notification_id = _stable_id(
+            "runtime-notification",
+            "entity-alias-assignment-overdue",
+            project_id,
+            review_id,
+            assignment_status,
+            due_text,
+        )
+        return self._insert_runtime_notification(
+            cursor=cursor,
+            notification_id=notification_id,
+            project_id=project_id,
+            notification_type="entity_alias_assignment_overdue",
+            severity=severity,
+            title=title,
+            message=message,
+            target_type="entity_alias_candidate_review",
+            target_id=review_id,
+            payload=payload,
+            created_by=created_by,
+            reason=reason,
+            input_refs={
+                "entity_alias_candidate_review_ids": [review_id],
+                "candidate_ids": [candidate_id],
+                "assignment_status": [assignment_status],
+                "priority": [priority],
+                "due_at": [due_text],
             },
         )
 

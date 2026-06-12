@@ -1499,6 +1499,7 @@ const endpoints = {
   actions: "/v1/action-plans/runtime",
   alerts: "/v1/runtime-alerts",
   alertNotifications: "/v1/runtime-alerts/notifications",
+  entityAliasAssignmentNotifications: "/v1/entity-aliases/runtime/candidates/assignment-notifications",
   content: "/v1/content-engines/runtime",
   traceability: "/v1/traceability/runtime"
 } as const;
@@ -1855,6 +1856,36 @@ async function enqueueRuntimeAlertNotifications(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`${endpoints.alertNotifications} returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function enqueueEntityAliasAssignmentNotifications(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  if (!projectId) {
+    throw new Error("project_id is required to enqueue alias assignment notifications");
+  }
+  const payload = {
+    project_id: projectId,
+    assigned_to: String(formData.get("assigned_to") || "").trim() || undefined,
+    priority: String(formData.get("priority") || "").trim() || undefined,
+    due_before: String(formData.get("due_before") || "").trim() || undefined,
+    created_by: String(formData.get("created_by") || "runtime-console").trim(),
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}${endpoints.entityAliasAssignmentNotifications}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`${endpoints.entityAliasAssignmentNotifications} returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -2477,7 +2508,9 @@ async function saveRuntimeNotificationSubscription(formData: FormData) {
   if (!projectId || !endpointUrl) {
     throw new Error("project_id and endpoint_url are required to save notification subscription");
   }
-  const eventTypes = String(formData.get("event_types") || "report_export_job,runtime_alert")
+  const eventTypes = String(
+    formData.get("event_types") || "report_export_job,runtime_alert,entity_alias_assignment_overdue"
+  )
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
@@ -2485,7 +2518,9 @@ async function saveRuntimeNotificationSubscription(formData: FormData) {
     project_id: projectId,
     channel,
     endpoint_url: endpointUrl,
-    event_types: eventTypes.length ? eventTypes : ["report_export_job", "runtime_alert"],
+    event_types: eventTypes.length
+      ? eventTypes
+      : ["report_export_job", "runtime_alert", "entity_alias_assignment_overdue"],
     severity_threshold: String(formData.get("severity_threshold") || "info").trim(),
     status: String(formData.get("status") || "active").trim(),
     metadata: {
@@ -2681,6 +2716,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     actions: runtimePath(endpoints.actions, { limit: 1 }),
     alerts: runtimePath(endpoints.alerts, { limit: 10 }),
     alertNotifications: endpoints.alertNotifications,
+    entityAliasAssignmentNotifications: endpoints.entityAliasAssignmentNotifications,
     content: runtimePath(endpoints.content, { limit: 1 }),
     traceability: endpoints.traceability
   };
@@ -2866,6 +2902,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     limit: 10
   });
   paths.alertNotifications = endpoints.alertNotifications;
+  paths.entityAliasAssignmentNotifications = endpoints.entityAliasAssignmentNotifications;
   paths.content = runtimePath(endpoints.content, {
     ...selectedProjectParams,
     limit: 1
@@ -4536,6 +4573,23 @@ export default async function Home({
                         ? ` · next due ${dateText(data.entityAliasAssignmentStats.next_due_at)}`
                         : " · no next due"}
                     </small>
+                    <form action={enqueueEntityAliasAssignmentNotifications} className="inlineAliasForm">
+                      <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+                      <input type="hidden" name="created_by" value="runtime-console" />
+                      <input
+                        type="hidden"
+                        name="reason"
+                        value="Queue overdue entity alias assignment notifications from console"
+                      />
+                      <button
+                        className="actionButton compactAction"
+                        type="submit"
+                        disabled={!selectedProjectId || data.entityAliasAssignmentStats.overdue_count < 1}
+                      >
+                        Queue overdue assignment notifications
+                      </button>
+                      <small>{paths.entityAliasAssignmentNotifications}</small>
+                    </form>
                     <ul className="plainList">
                       {visibleAliasAssignmentQueue.map((record) => {
                         const review = record.review;
@@ -5937,7 +5991,7 @@ export default async function Home({
             </label>
             <label>
               <span>Event types</span>
-              <input name="event_types" defaultValue="report_export_job,runtime_alert" />
+              <input name="event_types" defaultValue="report_export_job,runtime_alert,entity_alias_assignment_overdue" />
             </label>
             <label>
               <span>Signing env (webhook)</span>

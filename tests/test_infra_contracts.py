@@ -93,6 +93,7 @@ class InfraContractsTest(unittest.TestCase):
         scheduler = services["browser-fidelity-scheduler"]
         alert_worker = services["runtime-alert-notification-worker"]
         escalation_worker = services["runtime-alert-escalation-worker"]
+        alias_assignment_worker = services["entity-alias-assignment-notification-worker"]
 
         self.assertEqual(scheduler["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(scheduler["command"], ["python", "scripts/run_browser_fidelity_scheduler.py"])
@@ -127,6 +128,17 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("--severity-threshold-hours", escalation_worker["command"])
         self.assertIn("critical=4,high=24", escalation_worker["command"])
         self.assertIn("postgres", escalation_worker["depends_on"])
+
+        self.assertEqual(alias_assignment_worker["build"]["dockerfile"], "apps/api/Dockerfile")
+        self.assertEqual(alias_assignment_worker["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
+        self.assertEqual(alias_assignment_worker["environment"]["GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE"], "AU")
+        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", alias_assignment_worker["environment"])
+        self.assertIn("workers/notification_worker/run_entity_alias_assignment_notifications.py", alias_assignment_worker["command"])
+        self.assertIn("--market-code", alias_assignment_worker["command"])
+        self.assertIn("AU", alias_assignment_worker["command"])
+        self.assertIn("--max-projects", alias_assignment_worker["command"])
+        self.assertIn("50", alias_assignment_worker["command"])
+        self.assertIn("postgres", alias_assignment_worker["depends_on"])
 
     def test_observability_profile_wires_prometheus_and_grafana(self) -> None:
         config = self._compose_config("observability")
@@ -433,6 +445,11 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("runtime-alert-escalation-worker:", makefile)
         self.assertIn(
             "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_runtime_alert_escalations.py --market-code $${GENO_RUNTIME_ALERT_MARKET_CODE:-AU}",
+            makefile,
+        )
+        self.assertIn("entity-alias-assignment-notification-worker:", makefile)
+        self.assertIn(
+            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_notifications.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}",
             makefile,
         )
         self.assertIn("docker-config-scheduler:", makefile)
