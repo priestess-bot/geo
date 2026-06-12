@@ -65,6 +65,15 @@ class AuLaunchRemediationPlanTest(unittest.TestCase):
         self.assertEqual(plan["next_work_item_id"], "p0a_environment")
         self.assertIn("p0a_environment", [item["id"] for item in plan["work_items"]])
         self.assertIn("p0b_google_playwright_env", [item["id"] for item in plan["work_items"]])
+        work_items = {item["id"]: item for item in plan["work_items"]}
+        self.assertEqual(
+            [command["shell"] for command in work_items["p0b_google_spike_health"]["commands"]],
+            ["make au-p0b-google-spike-health", "make au-p0b-google-spike-health-manifest"],
+        )
+        self.assertEqual(
+            [command["shell"] for command in work_items["p0b_google_full_spike"]["commands"][:2]],
+            ["make au-p0b-google-spike", "make au-p0b-google-spike-manifest"],
+        )
         self.assertTrue(all(item["mapped"] for item in plan["blocker_remediations"]))
         self.assertEqual(plan["remediation_plan_hash"], compute_remediation_plan_hash(plan))
         self.assertEqual(verification["status"], "pass")

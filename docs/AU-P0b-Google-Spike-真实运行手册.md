@@ -165,36 +165,18 @@ docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json
 6. 做 collector health-only 预检：
 
 ```bash
-PYTHONPATH=packages/geno_core:apps/api \
-python3 workers/collector_worker/run_collection_slice.py \
-  --mode google-spike \
-  --require-ready-collectors \
-  --health-check-only \
-  --preflight-output-path docs/runtime_preflight/au-p0b-google-spike-health-latest.json
-
-PYTHONPATH=packages/geno_core:apps/api \
-python3 scripts/build_preflight_manifest.py \
-  docs/runtime_preflight/au-p0b-google-spike-health-latest.json \
-  --manifest-path docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json
+make au-p0b-google-spike-health
+make au-p0b-google-spike-health-manifest
 ```
 
 7. 运行真实 240-run spike：
 
 ```bash
-PYTHONPATH=packages/geno_core:apps/api \
-python3 workers/collector_worker/run_collection_slice.py \
-  --mode google-spike \
-  --require-ready-collectors \
-  --require-no-collection-failures \
-  --require-google-spike-gates \
-  --persist \
-  --preflight-output-path docs/runtime_preflight/au-p0b-google-spike-latest.json
-
-PYTHONPATH=packages/geno_core:apps/api \
-python3 scripts/build_preflight_manifest.py \
-  docs/runtime_preflight/au-p0b-google-spike-latest.json \
-  --manifest-path docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json
+make au-p0b-google-spike
+make au-p0b-google-spike-manifest
 ```
+
+`au-p0b-google-spike-health` 固定执行 `google-spike --require-ready-collectors --health-check-only`，默认写入 `docs/runtime_preflight/au-p0b-google-spike-health-latest.json`；`au-p0b-google-spike` 固定执行 `google-spike --require-ready-collectors --require-no-collection-failures --require-google-spike-gates --persist`，默认写入 `docs/runtime_preflight/au-p0b-google-spike-latest.json`。对应 manifest 目标会复用同名输入路径。需要覆盖路径时使用 `GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH`、`GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_MANIFEST_PATH`、`GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH` 和 `GENO_AU_P0B_GOOGLE_SPIKE_MANIFEST_PATH`；需要测试非持久化 full spike 命令时可设置 `GENO_AU_P0B_GOOGLE_SPIKE_PERSIST_ARGS=`。
 
 8. 汇总状态：
 

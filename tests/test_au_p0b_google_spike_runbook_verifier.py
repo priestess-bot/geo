@@ -35,11 +35,12 @@ class AuP0bGoogleSpikeRunbookVerifierTest(unittest.TestCase):
     def test_missing_google_gate_fails(self) -> None:
         runbook = self._runbook()
         steps = {step["id"]: step for step in runbook["steps"]}  # type: ignore[index]
-        steps["google_spike_collect"]["command"].remove("--require-google-spike-gates")
+        steps["google_spike_collect"]["command"] = ["make", "au-p0b-google-status"]
         result = verify_au_p0b_google_spike_runbook(runbook)
 
         self.assertEqual(result["status"], "fail")
-        self.assertIn("google_spike_gate_missing:--require-google-spike-gates", result["errors"])
+        self.assertIn("runbook_payload_hash_mismatch", result["errors"])
+        self.assertIn("collect_make_target_missing", result["errors"])
 
     def test_cli_reads_runbook_file(self) -> None:
         with TemporaryDirectory() as temp_dir:

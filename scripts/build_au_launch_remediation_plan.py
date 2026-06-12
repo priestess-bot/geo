@@ -297,18 +297,8 @@ def _p0b_spike_health_item() -> dict[str, Any]:
         "dependency_class": "google_collector_health",
         "required_inputs": ["Playwright smoke success", "manual backfill verification pass"],
         "commands": [
-            _command(
-                "PYTHONPATH=packages/geno_core:apps/api "
-                "python3 workers/collector_worker/run_collection_slice.py --mode google-spike "
-                "--require-ready-collectors --health-check-only "
-                "--preflight-output-path docs/runtime_preflight/au-p0b-google-spike-health-latest.json"
-            ),
-            _command(
-                "PYTHONPATH=packages/geno_core:apps/api "
-                "python3 scripts/build_preflight_manifest.py "
-                "docs/runtime_preflight/au-p0b-google-spike-health-latest.json "
-                "--manifest-path docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json"
-            ),
+            _command("make au-p0b-google-spike-health"),
+            _command("make au-p0b-google-spike-health-manifest"),
         ],
         "verification_commands": [_command("make au-p0b-google-status"), _command("make verify-au-p0b-google-status")],
         "evidence_outputs": [
@@ -329,17 +319,8 @@ def _p0b_full_spike_item() -> dict[str, Any]:
         "dependency_class": "google_browser_manual_spike_execution",
         "required_inputs": ["Google spike health pass"],
         "commands": [
-            _command(
-                "PYTHONPATH=packages/geno_core:apps/api "
-                "python3 workers/collector_worker/run_collection_slice.py --mode google-spike "
-                "--require-ready-collectors --require-no-collection-failures --require-google-spike-gates --persist "
-                "--preflight-output-path docs/runtime_preflight/au-p0b-google-spike-latest.json"
-            ),
-            _command(
-                "PYTHONPATH=packages/geno_core:apps/api "
-                "python3 scripts/build_preflight_manifest.py docs/runtime_preflight/au-p0b-google-spike-latest.json "
-                "--manifest-path docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json"
-            ),
+            _command("make au-p0b-google-spike"),
+            _command("make au-p0b-google-spike-manifest"),
             _command("make au-p0b-google-status"),
             _command("make au-p0b-google-package"),
             _command("make au-launch-status"),

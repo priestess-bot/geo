@@ -87,6 +87,11 @@ def _command_contains(step: dict[str, Any], expected: str) -> bool:
     return isinstance(command, list) and expected in {str(item) for item in command}
 
 
+def _env_contains(step: dict[str, Any], expected: str) -> bool:
+    env = step.get("env")
+    return isinstance(env, dict) and expected in {str(item) for item in env}
+
+
 def verify_au_p0b_google_spike_runbook(runbook: Any, *, path: Path | None = None) -> dict[str, Any]:
     errors: list[str] = []
     if not isinstance(runbook, dict):
@@ -140,7 +145,9 @@ def verify_au_p0b_google_spike_runbook(runbook: Any, *, path: Path | None = None
         smoke_verify_step = steps.get("google_playwright_smoke_verify", {})
         manual_backfill_verify_step = steps.get("google_manual_backfill_verify", {})
         health_step = steps.get("google_spike_health_check", {})
+        health_manifest_step = steps.get("google_spike_health_manifest", {})
         collect_step = steps.get("google_spike_collect", {})
+        spike_manifest_step = steps.get("google_spike_manifest", {})
         if not _command_contains(env_step, "scripts/build_au_p0b_google_playwright_env_report.py"):
             errors.append("playwright_env_command_missing")
         if not _command_contains(env_step, "--runbook-path"):
@@ -172,17 +179,28 @@ def verify_au_p0b_google_spike_runbook(runbook: Any, *, path: Path | None = None
         )
         if expected_manual_runs is not None and manual_backfill_verify_step.get("planned_runs") != expected_manual_runs:
             errors.append("manual_backfill_planned_runs_invalid")
-        if not _command_contains(health_step, "google-spike"):
-            errors.append("health_mode_google_spike_missing")
-        if not _command_contains(health_step, "--health-check-only"):
-            errors.append("health_check_only_missing")
-        if not _command_contains(health_step, "--require-ready-collectors"):
-            errors.append("health_ready_collectors_gate_missing")
-        if not _command_contains(collect_step, "google-spike"):
-            errors.append("collect_mode_google_spike_missing")
-        for flag in ("--require-ready-collectors", "--require-no-collection-failures", "--require-google-spike-gates"):
-            if not _command_contains(collect_step, flag):
-                errors.append(f"google_spike_gate_missing:{flag}")
+        if not _command_contains(health_step, "make") or not _command_contains(health_step, "au-p0b-google-spike-health"):
+            errors.append("health_make_target_missing")
+        if not _env_contains(health_step, "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH"):
+            errors.append("health_output_env_missing")
+        if (
+            not _command_contains(health_manifest_step, "make")
+            or not _command_contains(health_manifest_step, "au-p0b-google-spike-health-manifest")
+        ):
+            errors.append("health_manifest_make_target_missing")
+        if not _env_contains(health_manifest_step, "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_MANIFEST_PATH"):
+            errors.append("health_manifest_output_env_missing")
+        if not _command_contains(collect_step, "make") or not _command_contains(collect_step, "au-p0b-google-spike"):
+            errors.append("collect_make_target_missing")
+        if not _env_contains(collect_step, "GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH"):
+            errors.append("collect_output_env_missing")
+        if not _command_contains(spike_manifest_step, "make") or not _command_contains(
+            spike_manifest_step,
+            "au-p0b-google-spike-manifest",
+        ):
+            errors.append("spike_manifest_make_target_missing")
+        if not _env_contains(spike_manifest_step, "GENO_AU_P0B_GOOGLE_SPIKE_MANIFEST_PATH"):
+            errors.append("spike_manifest_output_env_missing")
 
     return {
         "status": "pass" if not errors else "fail",

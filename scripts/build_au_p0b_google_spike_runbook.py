@@ -43,23 +43,8 @@ def _planned_runs(prompt_count: int, geo_cities: tuple[str, ...], sample_size: i
     return prompt_count * len(geo_cities) * sample_size * surface_count
 
 
-def _worker_command(*, output_path: str, health_check_only: bool, persist: bool) -> list[str]:
-    command = [
-        "python3",
-        "workers/collector_worker/run_collection_slice.py",
-        "--mode",
-        "google-spike",
-        "--require-ready-collectors",
-        "--preflight-output-path",
-        output_path,
-    ]
-    if health_check_only:
-        command.append("--health-check-only")
-    else:
-        command.extend(("--require-no-collection-failures", "--require-google-spike-gates"))
-        if persist:
-            command.append("--persist")
-    return command
+def _make_command(target: str) -> list[str]:
+    return ["make", target]
 
 
 def _command_step(
@@ -292,29 +277,31 @@ def build_au_p0b_google_spike_runbook(
             _command_step(
                 step_id="google_spike_health_check",
                 title="Check Google spike collector readiness without external collection",
-                command=_worker_command(output_path=health_path, health_check_only=True, persist=False),
-                env=python_env,
+                command=_make_command("au-p0b-google-spike-health"),
+                env={
+                    "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH": health_path,
+                },
                 output_paths=(health_path,),
                 planned_runs=planned_runs,
             ),
             _command_step(
                 step_id="google_spike_health_manifest",
                 title="Build audit manifest for the Google spike health check",
-                command=[
-                    "python3",
-                    "scripts/build_preflight_manifest.py",
-                    health_path,
-                    "--manifest-path",
-                    health_manifest_path,
-                ],
-                env=python_env,
+                command=_make_command("au-p0b-google-spike-health-manifest"),
+                env={
+                    "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH": health_path,
+                    "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_MANIFEST_PATH": health_manifest_path,
+                },
                 output_paths=(health_manifest_path,),
             ),
             _command_step(
                 step_id="google_spike_collect",
                 title="Run the full Google spike matrix and require both Google gates",
-                command=_worker_command(output_path=spike_path, health_check_only=False, persist=persist),
-                env=python_env,
+                command=_make_command("au-p0b-google-spike"),
+                env={
+                    **({"GENO_AU_P0B_GOOGLE_SPIKE_PERSIST_ARGS": ""} if not persist else {}),
+                    "GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH": spike_path,
+                },
                 output_paths=(spike_path,),
                 planned_runs=planned_runs,
                 notes=(
@@ -325,14 +312,11 @@ def build_au_p0b_google_spike_runbook(
             _command_step(
                 step_id="google_spike_manifest",
                 title="Build audit manifest for the Google spike payload",
-                command=[
-                    "python3",
-                    "scripts/build_preflight_manifest.py",
-                    spike_path,
-                    "--manifest-path",
-                    spike_manifest_path,
-                ],
-                env=python_env,
+                command=_make_command("au-p0b-google-spike-manifest"),
+                env={
+                    "GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH": spike_path,
+                    "GENO_AU_P0B_GOOGLE_SPIKE_MANIFEST_PATH": spike_manifest_path,
+                },
                 output_paths=(spike_manifest_path,),
             ),
             {

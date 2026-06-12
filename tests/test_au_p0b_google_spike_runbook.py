@@ -45,7 +45,11 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
                 "google_spike_decision_handoff",
             ],
         )
-        self.assertIn("--health-check-only", steps["google_spike_health_check"]["command"])
+        self.assertEqual(steps["google_spike_health_check"]["command"], ["make", "au-p0b-google-spike-health"])
+        self.assertEqual(
+            steps["google_spike_health_check"]["env"]["GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH"],
+            "docs/runtime_preflight/au-p0b-google-spike-health-latest.json",
+        )
         self.assertIn("scripts/build_au_p0b_google_playwright_env_report.py", steps["google_playwright_env"]["command"])
         self.assertIn("--runbook-path", steps["google_playwright_env"]["command"])
         self.assertIn("docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json", steps["google_playwright_env"]["command"])
@@ -56,8 +60,13 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
         self.assertIn("--require-success", steps["google_playwright_smoke_verify"]["command"])
         self.assertIn("scripts/verify_au_p0b_manual_backfill.py", steps["google_manual_backfill_verify"]["command"])
         self.assertIn("--output-path", steps["google_manual_backfill_verify"]["command"])
-        self.assertIn("--require-google-spike-gates", steps["google_spike_collect"]["command"])
-        self.assertIn("--persist", steps["google_spike_collect"]["command"])
+        self.assertEqual(steps["google_spike_health_manifest"]["command"], ["make", "au-p0b-google-spike-health-manifest"])
+        self.assertEqual(steps["google_spike_collect"]["command"], ["make", "au-p0b-google-spike"])
+        self.assertEqual(
+            steps["google_spike_collect"]["env"]["GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH"],
+            "docs/runtime_preflight/au-p0b-google-spike-latest.json",
+        )
+        self.assertEqual(steps["google_spike_manifest"]["command"], ["make", "au-p0b-google-spike-manifest"])
         self.assertTrue(
             any(
                 "verify-au-p0b-google-manual-backfill" in note
@@ -88,7 +97,7 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
     def test_runbook_can_disable_persistence(self) -> None:
         runbook = build_au_p0b_google_spike_runbook(persist=False, generated_at="2026-06-12T00:00:00Z")
         steps = {step["id"]: step for step in runbook["steps"]}
-        self.assertNotIn("--persist", steps["google_spike_collect"]["command"])
+        self.assertEqual(steps["google_spike_collect"]["env"]["GENO_AU_P0B_GOOGLE_SPIKE_PERSIST_ARGS"], "")
 
     def test_cli_writes_runbook_json(self) -> None:
         with TemporaryDirectory() as temp_dir:
