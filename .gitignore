@@ -51,6 +51,8 @@ build/
 coverage/
 htmlcov/
 
-# 注意：docs/ 下的 .md / .html / .pdf 均为可审计证据链的一部分，应纳入版本管理，不在此忽略。
+# 注意：docs/ 下的手写 .md / .html / .pdf 均为可审计证据链的一部分，应纳入版本管理，不在此忽略。
+# docs/runtime_preflight/ 下的运行期生成物带时间戳/hash/本地环境状态，默认只本地留存。
 docs/runtime_preflight/*.json
 docs/runtime_preflight/*.jsonl
+docs/runtime_preflight/*.md
