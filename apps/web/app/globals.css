@@ -96,6 +96,16 @@ h3 {
   padding: 12px;
 }
 
+.noticeMini {
+  background: #fff8e5;
+  border: 1px solid #e5c36f;
+  border-radius: 6px;
+  color: #5f4b16;
+  font-size: 13px;
+  line-height: 1.35;
+  padding: 9px 10px;
+}
+
 code {
   background: #ffffff;
   border: 1px solid #e2d19a;
@@ -1855,6 +1865,51 @@ code {
   display: grid;
   gap: 14px;
   grid-template-columns: minmax(0, 1.3fr) minmax(220px, 0.85fr) minmax(220px, 0.85fr);
+}
+
+.traceabilityPage .topbar {
+  align-items: flex-start;
+}
+
+.traceabilitySubtitle {
+  color: #52616f;
+  font-size: 14px;
+  line-height: 1.4;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+
+.traceabilityFilter .filterForm {
+  grid-template-columns: minmax(260px, 0.4fr) auto;
+}
+
+.traceabilityMetrics {
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
+}
+
+.traceabilityDashboard {
+  align-items: start;
+}
+
+.traceLinkColumn {
+  display: grid;
+  gap: 8px;
+}
+
+.traceabilityStandaloneMap {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.traceabilityNodeList {
+  max-height: 520px;
+}
+
+.traceabilityTwoColumn {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .traceSummary,

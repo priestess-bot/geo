@@ -6211,6 +6211,11 @@ export default async function Home({
             <div className="traceGrid">
               <div className="traceSummary">
                 <p className="prompt">{traceability.traceability_bundle.explanation_summary}</p>
+                <div className="downloadRow">
+                  <a href={`/traceability${selectedProjectId ? `?project_id=${encodeURIComponent(selectedProjectId)}` : ""}`}>
+                    Open traceability detail
+                  </a>
+                </div>
                 <dl className="facts">
                   <Fact label="Reports" value={traceability.traceability_bundle.report_export_ids.length} />
                   <Fact label="Score snapshots" value={traceability.traceability_bundle.score_snapshot_ids.length} />

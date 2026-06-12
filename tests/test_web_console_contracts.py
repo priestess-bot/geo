@@ -7,6 +7,7 @@ import unittest
 class WebConsoleContractsTest(unittest.TestCase):
     def test_runtime_console_contains_traceability_links_and_graph_maps(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        traceability_source = Path("apps/web/app/traceability/page.tsx").read_text(encoding="utf-8")
 
         self.assertIn("function CitationGraphMap", page_source)
         self.assertIn("function TraceabilityMap", page_source)
@@ -16,6 +17,25 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn('id={anchorId("answer-run", run.answer_run.id)}', page_source)
         self.assertIn('href={anchorHref("answer-run", run.answer_run.id)}', page_source)
         self.assertIn('href={anchorHref("source-node", item.node.id)}', page_source)
+        self.assertIn("Open traceability detail", page_source)
+        self.assertIn("/traceability", page_source)
+        self.assertIn("Standalone runtime traceability map", traceability_source)
+        self.assertIn('traceability: "/v1/traceability/runtime"', traceability_source)
+        self.assertIn('graphs: "/v1/citation-graphs/runtime"', traceability_source)
+        self.assertIn('projects: "/v1/projects/runtime"', traceability_source)
+        self.assertIn("runtimePath(endpoints.traceability", traceability_source)
+        self.assertIn('fixtureTraceability: "/v1/traceability/au/p0a-fixture"', traceability_source)
+        self.assertIn('fixtureGraph: "/v1/citation-graphs/au/p0a-fixture"', traceability_source)
+        self.assertIn("Fixture fallback", traceability_source)
+        self.assertIn("normalizeFixtureTraceability", traceability_source)
+        self.assertIn("normalizeFixtureGraph", traceability_source)
+        self.assertIn("project_id", traceability_source)
+        self.assertIn('id={anchorId("answer-run", run.answer_run.id)}', traceability_source)
+        self.assertIn('id={anchorId("source-node", item.node.id)}', traceability_source)
+        self.assertIn('id={anchorId("action", action.id || action.title)}', traceability_source)
+        self.assertIn('id={anchorId("content-draft", item.draft.id || item.draft.title)}', traceability_source)
+        self.assertIn('href={anchorHref(node.kind, node.value)}', traceability_source)
+        self.assertIn("Back to console", traceability_source)
 
     def test_runtime_console_styles_highlight_deep_link_targets(self) -> None:
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
@@ -23,6 +43,10 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".graphCanvas", css_source)
         self.assertIn(".traceMapCanvas", css_source)
         self.assertIn(".nodeLink", css_source)
+        self.assertIn(".traceabilityPage", css_source)
+        self.assertIn(".traceabilityTwoColumn", css_source)
+        self.assertIn(".traceabilityStandaloneMap", css_source)
+        self.assertIn(".noticeMini", css_source)
         self.assertIn(":target", css_source)
 
     def test_runtime_console_discloses_report_method_boundaries(self) -> None:
