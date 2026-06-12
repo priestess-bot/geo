@@ -33,6 +33,8 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
             list(steps),
             [
                 "prepare_environment",
+                "google_playwright_env",
+                "google_playwright_env_verify",
                 "google_playwright_smoke",
                 "google_playwright_smoke_verify",
                 "google_spike_health_check",
@@ -43,6 +45,11 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
             ],
         )
         self.assertIn("--health-check-only", steps["google_spike_health_check"]["command"])
+        self.assertIn("scripts/build_au_p0b_google_playwright_env_report.py", steps["google_playwright_env"]["command"])
+        self.assertIn("--runbook-path", steps["google_playwright_env"]["command"])
+        self.assertIn("docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json", steps["google_playwright_env"]["command"])
+        self.assertIn("scripts/verify_au_p0b_google_playwright_env_report.py", steps["google_playwright_env_verify"]["command"])
+        self.assertIn("--require-ready-smoke", steps["google_playwright_env_verify"]["command"])
         self.assertIn("scripts/run_au_p0b_google_playwright_smoke.py", steps["google_playwright_smoke"]["command"])
         self.assertIn("scripts/verify_au_p0b_google_playwright_smoke.py", steps["google_playwright_smoke_verify"]["command"])
         self.assertIn("--require-success", steps["google_playwright_smoke_verify"]["command"])
@@ -57,8 +64,13 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
         self.assertTrue(
             any("au-p0b-google-playwright-smoke" in note for note in steps["prepare_environment"]["notes"])
         )
+        self.assertEqual(steps["google_playwright_env"]["output_paths"][0], "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json")
         self.assertEqual(steps["google_playwright_smoke"]["planned_runs"], 1)
         self.assertEqual(steps["google_spike_collect"]["planned_runs"], 240)
+        self.assertEqual(
+            runbook["artifact_paths"]["playwright_env_json"],
+            "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+        )
         self.assertEqual(
             runbook["artifact_paths"]["playwright_smoke_json"],
             "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json",
@@ -93,6 +105,8 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
 
         self.assertEqual(stdout_runbook, written_runbook)
         self.assertEqual(written_runbook["artifact_paths"]["spike_json"], "tmp/google/au-p0b-google-spike-latest.json")
+        steps = {step["id"]: step for step in written_runbook["steps"]}
+        self.assertIn(str(output_path), steps["google_playwright_env"]["command"])
 
 
 if __name__ == "__main__":

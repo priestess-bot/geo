@@ -21,7 +21,7 @@ class AuP0bGoogleSpikeRunbookVerifierTest(unittest.TestCase):
         self.assertEqual(result["status"], "pass")
         self.assertTrue(result["hash_valid"])
         self.assertEqual(result["planned_runs"], 240)
-        self.assertEqual(result["step_count"], 8)
+        self.assertEqual(result["step_count"], 10)
 
     def test_hash_mismatch_fails(self) -> None:
         runbook = self._runbook()

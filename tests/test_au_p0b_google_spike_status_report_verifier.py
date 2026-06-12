@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 from scripts.build_au_p0b_google_spike_runbook import build_au_p0b_google_spike_runbook
 from scripts.build_au_p0b_google_spike_status_report import build_au_p0b_google_spike_status_report
 from scripts.build_au_p0b_google_spike_status_report import compute_google_spike_status_hash
+from scripts.build_au_p0b_google_playwright_env_report import build_google_playwright_env_report
 from scripts.build_preflight_manifest import build_preflight_manifest
 from scripts.run_au_p0b_google_playwright_smoke import run_google_playwright_smoke, write_smoke_payload
 from scripts.run_au_p0b_google_spike_runbook import run_au_p0b_google_spike_runbook
@@ -80,6 +81,37 @@ class AuP0bGoogleSpikeStatusReportVerifierTest(unittest.TestCase):
         )
         write_smoke_payload(payload, smoke_path)
 
+    def _write_playwright_env(self, *, runbook_path: Path, env_path: Path, temp_dir: str) -> None:
+        manual_path = Path(temp_dir) / "manual.jsonl"
+        manual_path.write_text(
+            json.dumps(
+                {
+                    "prompt": "Best mattresses in Sydney?",
+                    "city": "Sydney",
+                    "answer_text": "Koala is visible.",
+                    "citation_urls": ["https://koala.com/en-au"],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        report = build_google_playwright_env_report(
+            runbook_path=runbook_path,
+            env_file_path=Path(temp_dir) / "missing.env",
+            output_path=env_path,
+            env={
+                "GOOGLE_PLAYWRIGHT_ENABLED": "1",
+                "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR": "#prompt",
+                "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR": ".answer",
+                "MANUAL_BACKFILL_PATH": str(manual_path),
+                "DATABASE_URL": "postgresql://user:pass@example.test/db",
+            },
+            playwright_available=True,
+            generated_at="2026-06-12T00:00:00Z",
+        )
+        env_path.parent.mkdir(parents=True, exist_ok=True)
+        env_path.write_text(json.dumps(report), encoding="utf-8")
+
     def _write_runbook_and_execution(self, temp_dir: str) -> tuple[Path, Path, dict[str, object]]:
         artifact_dir = str(Path(temp_dir) / "runtime")
         runbook = build_au_p0b_google_spike_runbook(
@@ -105,6 +137,11 @@ class AuP0bGoogleSpikeStatusReportVerifierTest(unittest.TestCase):
     def _ready_report(self, temp_dir: str) -> dict[str, object]:
         runbook_path, execution_path, runbook = self._write_runbook_and_execution(temp_dir)
         artifacts = runbook["artifact_paths"]  # type: ignore[index]
+        self._write_playwright_env(
+            runbook_path=runbook_path,
+            env_path=Path(artifacts["playwright_env_json"]),
+            temp_dir=temp_dir,
+        )
         self._write_smoke(Path(artifacts["playwright_smoke_json"]))
         self._write_manifest(Path(artifacts["health_json"]), Path(artifacts["health_manifest"]), google_ready=True)
         self._write_manifest(Path(artifacts["spike_json"]), Path(artifacts["spike_manifest"]), google_ready=True)

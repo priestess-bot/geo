@@ -16,11 +16,12 @@ from scripts.run_au_p0b_google_spike_runbook import (
 
 class AuP0bGoogleSpikeRunbookExecutionFixtureMixin:
     def _write_runbook(self, temp_dir: str) -> Path:
+        path = Path(temp_dir) / "runbook.json"
         runbook = build_au_p0b_google_spike_runbook(
             artifact_dir=str(Path(temp_dir) / "runtime"),
+            runbook_path=str(path),
             generated_at="2026-06-12T00:00:00Z",
         )
-        path = Path(temp_dir) / "runbook.json"
         path.write_text(json.dumps(runbook), encoding="utf-8")
         return path
 
@@ -38,12 +39,19 @@ class AuP0bGoogleSpikeRunbookExecutionTest(AuP0bGoogleSpikeRunbookExecutionFixtu
         self.assertEqual(result["status"], "pass")
         self.assertFalse(result["ready_to_execute"])
         self.assertFalse(result["execute_requested"])
-        self.assertEqual(result["planned_step_count"], 8)
-        self.assertEqual(result["recorded_step_count"], 8)
+        self.assertEqual(result["planned_step_count"], 10)
+        self.assertEqual(result["recorded_step_count"], 10)
         self.assertEqual(result["executed_command_count"], 0)
         self.assertEqual(result["execution_payload_hash"], compute_google_spike_execution_hash(result))
         steps = {step["id"]: step for step in result["steps"]}
         self.assertEqual(steps["prepare_environment"]["status"], "manual")
+        self.assertEqual(steps["google_playwright_env"]["status"], "dry_run")
+        self.assertEqual(steps["google_playwright_env"]["external_call_risk"], "local_environment_readiness_report")
+        self.assertEqual(steps["google_playwright_env_verify"]["status"], "dry_run")
+        self.assertEqual(
+            steps["google_playwright_env_verify"]["external_call_risk"],
+            "local_environment_readiness_verifier",
+        )
         self.assertEqual(steps["google_playwright_smoke"]["status"], "dry_run")
         self.assertEqual(steps["google_playwright_smoke"]["planned_runs"], 1)
         self.assertEqual(steps["google_playwright_smoke"]["external_call_risk"], "google_browser_smoke_capture")

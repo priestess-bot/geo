@@ -91,6 +91,7 @@ def _command_step(
 def build_au_p0b_google_spike_runbook(
     *,
     artifact_dir: str = DEFAULT_ARTIFACT_DIR,
+    runbook_path: str = DEFAULT_OUTPUT_PATH,
     prompt_count: int = DEFAULT_PROMPT_COUNT,
     sample_size: int = DEFAULT_SAMPLE_SIZE,
     geo_cities: tuple[str, ...] = DEFAULT_GEO_CITIES,
@@ -103,6 +104,7 @@ def build_au_p0b_google_spike_runbook(
     health_manifest_path = f"{artifact_root}/au-p0b-google-spike-health-manifest-latest.json"
     spike_path = f"{artifact_root}/au-p0b-google-spike-latest.json"
     spike_manifest_path = f"{artifact_root}/au-p0b-google-spike-manifest-latest.json"
+    playwright_env_path = f"{artifact_root}/au-p0b-google-playwright-env-latest.json"
     smoke_path = f"{artifact_root}/au-p0b-google-playwright-smoke-latest.json"
     planned_runs = _planned_runs(prompt_count, geo_cities, sample_size, DEFAULT_SURFACE_COUNT)
     python_env = {"PYTHONPATH": "packages/geno_core:apps/api"}
@@ -150,6 +152,7 @@ def build_au_p0b_google_spike_runbook(
             "GENO_BROWSER_ARTIFACT_DIR",
         ),
         "artifact_paths": {
+            "playwright_env_json": playwright_env_path,
             "playwright_smoke_json": smoke_path,
             "health_json": health_path,
             "health_manifest": health_manifest_path,
@@ -197,11 +200,44 @@ def build_au_p0b_google_spike_runbook(
                     "Browser health fails fast with selector_missing, session_state_missing, or playwright_missing before collection.",
                     "The second path is manual backfill for google_ai_mode until AI Mode browser capture is implemented.",
                     "Generate, fill, and verify MANUAL_BACKFILL_PATH with au-p0b-google-manual-template and verify-au-p0b-google-manual-backfill before collection.",
+                    "Run au-p0b-google-playwright-env and verify-au-p0b-google-playwright-env before the smoke capture to confirm selectors, Playwright package, and optional storage state are ready without leaking raw values.",
                     "Run au-p0b-google-playwright-smoke and verify-au-p0b-google-playwright-smoke before the 240-run matrix; use --require-success on the verifier before promoting the browser path.",
                     "Third-party SERP JSON capture is implemented as an alternate google_aio backend, but not part of the default 240-run matrix.",
                     "Do not persist secrets in generated JSON artifacts.",
                 ),
             },
+            _command_step(
+                step_id="google_playwright_env",
+                title="Build redacted Google Playwright environment readiness report",
+                command=[
+                    "python3",
+                    "scripts/build_au_p0b_google_playwright_env_report.py",
+                    "--runbook-path",
+                    runbook_path,
+                    "--env-file",
+                    ".env.au-p0b-google",
+                    "--output-path",
+                    playwright_env_path,
+                ],
+                env=python_env,
+                output_paths=(playwright_env_path,),
+                notes=(
+                    "The environment report records presence/source/length/hash prefixes only; it must not persist raw selectors, secrets, or database URLs.",
+                    "Default verification proves the readiness report is auditable; strict verification is used before smoke.",
+                ),
+            ),
+            _command_step(
+                step_id="google_playwright_env_verify",
+                title="Verify Google Playwright environment report and require smoke readiness",
+                command=[
+                    "python3",
+                    "scripts/verify_au_p0b_google_playwright_env_report.py",
+                    playwright_env_path,
+                    "--require-ready-smoke",
+                ],
+                env=python_env,
+                output_paths=(),
+            ),
             _command_step(
                 step_id="google_playwright_smoke",
                 title="Run one Google Playwright browser smoke capture before the full matrix",
@@ -320,6 +356,7 @@ def main() -> None:
         artifact_dir=args.artifact_dir,
         prompt_count=args.prompt_count,
         sample_size=args.sample_size,
+        runbook_path=args.output_path,
         persist=not args.no_persist,
         generated_at=args.generated_at,
     )

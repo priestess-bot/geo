@@ -99,7 +99,29 @@ make au-p0b-google-runbook-dry-run
 make verify-au-p0b-google-runbook-execution
 ```
 
-3. 运行 Google Playwright 单样本 smoke：
+3. 生成 Google Playwright 环境 readiness 报告：
+
+```bash
+make au-p0b-google-playwright-env
+make verify-au-p0b-google-playwright-env
+```
+
+默认输出：
+
+```text
+docs/runtime_preflight/au-p0b-google-playwright-env-latest.json
+```
+
+该报告会读取 P0b runbook、`.env.au-p0b-google` 和当前进程环境，只保存变量存在状态、来源、长度和 sha256 前缀，不保存原始 secret 或 selector。关键字段包括 `ready_for_playwright_smoke`、`ready_for_full_google_run`、`collector_health`、`missing_required`、`missing_selector_groups`、storage state 文件检查、Python Playwright 包检查和 `next_action`。默认 verifier 只证明报告 hash、脱敏结构和状态推导可复算；真实 smoke 前可用 strict gate：
+
+```bash
+PYTHONPATH=packages/geno_core:apps/api \
+python3 scripts/verify_au_p0b_google_playwright_env_report.py \
+  docs/runtime_preflight/au-p0b-google-playwright-env-latest.json \
+  --require-ready-smoke
+```
+
+4. 运行 Google Playwright 单样本 smoke：
 
 ```bash
 PYTHONPATH=packages/geno_core:apps/api \
@@ -118,7 +140,7 @@ python3 scripts/verify_au_p0b_google_playwright_smoke.py \
   --require-success
 ```
 
-4. 做 collector health-only 预检：
+5. 做 collector health-only 预检：
 
 ```bash
 PYTHONPATH=packages/geno_core:apps/api \
@@ -134,7 +156,7 @@ python3 scripts/build_preflight_manifest.py \
   --manifest-path docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json
 ```
 
-5. 运行真实 240-run spike：
+6. 运行真实 240-run spike：
 
 ```bash
 PYTHONPATH=packages/geno_core:apps/api \
@@ -152,14 +174,14 @@ python3 scripts/build_preflight_manifest.py \
   --manifest-path docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json
 ```
 
-6. 汇总状态：
+7. 汇总状态：
 
 ```bash
 make au-p0b-google-status
 make verify-au-p0b-google-status
 ```
 
-`au-p0b-google-status` 会读取 runbook、dry-run execution、Playwright smoke、health、spike 和 manifest 产物。若 Playwright smoke 没有通过 strict success gate，状态报告会输出 `next_action=run_google_playwright_smoke`，并把 `playwright_smoke:smoke_not_successful` 或对应文件/hash/结构错误放入 `remaining_blockers`；这时不要进入 health-only 或 240-run。
+`au-p0b-google-status` 会读取 runbook、dry-run execution、Playwright env readiness、Playwright smoke、health、spike 和 manifest 产物。若 env readiness 报告缺失，状态报告会输出 `next_action=run_google_playwright_env_report`；若 env strict gate 不通过，会优先返回 env 报告里的 `next_action`，例如补 selector、storage state 或 Playwright 包。若 Playwright smoke 没有通过 strict success gate，状态报告会输出 `next_action=run_google_playwright_smoke`，并把 `playwright_smoke:smoke_not_successful` 或对应文件/hash/结构错误放入 `remaining_blockers`；这时不要进入 health-only 或 240-run。
 
 需要硬门禁时：
 
@@ -240,6 +262,7 @@ make verify-au-p0b-google-serp-status
 
 - `verify-au-p0b-google-runbook` 失败：停止，先修步骤顺序、planned runs、gate 参数或 runbook hash。
 - dry-run verifier 失败：停止，先修 runbook execution payload 或环境判断。
+- Google Playwright env strict verifier 失败：停止，先按 `next_action` 修 `GOOGLE_PLAYWRIGHT_ENABLED`、prompt/answer selector、storage state 文件、Python Playwright 包、runbook 或 `.env.au-p0b-google`。
 - Google Playwright smoke strict verifier 失败：停止，先修 selector、session state、Playwright 安装、AU 地理环境、目标界面入口或账号状态，不进入 240-run。
 - health-only collector gate 失败：停止，先修 `GOOGLE_PLAYWRIGHT_ENABLED`、`GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR`、`GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR`、Playwright 安装、可选 storage state、`MANUAL_BACKFILL_PATH` 或人工补录文件。第三方对照切片另需检查 `SERP_API_KEY` 与 `SERP_API_ENDPOINT`。
 - 真实 spike 出现 collection failure：停止，先复盘 `failure_events` 和 `CollectionRunSummary`。
@@ -251,6 +274,7 @@ make verify-au-p0b-google-serp-status
 
 - `docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json`
 - `docs/runtime_preflight/au-p0b-google-spike-runbook-execution-latest.json`
+- `docs/runtime_preflight/au-p0b-google-playwright-env-latest.json`
 - `docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json`
 - `docs/runtime_preflight/au-p0b-google-spike-health-latest.json`
 - `docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json`
@@ -269,4 +293,4 @@ make verify-au-p0b-google-serp-status
 
 ## 6. 当前边界
 
-本手册固定真实 Google spike 的可审计执行路径。当前 `PlaywrightGoogleAIOCollector` / `PlaywrightAIModeCollector` 已具备 selector-driven browser capture、health gate、HTML/screenshot hash、fake-browser 合同测试和单样本 smoke runner/verifier，但不代表已经完成澳洲真实 Google 账号、真实 selector、真实 AI Mode 入口、第三方供应商凭证联调或 240-run 真实样本。当前第三方路径是通用 JSON adapter，不绑定单一供应商私有 schema；若选定供应商有更稳定的专用字段，应在保持 `RawCollectResult`、snapshot hash、`answer_present/surface_triggered` 语义不变的前提下新增轻量 mapping，并通过独立 120-run 对照切片进入 P0b 复盘。第三方对照结果不能绕过 `GoogleSpikeGateResult`、`GoogleSpikeReadinessGate` 和 `score_input_policy`。
+本手册固定真实 Google spike 的可审计执行路径。当前 `PlaywrightGoogleAIOCollector` / `PlaywrightAIModeCollector` 已具备 selector-driven browser capture、health gate、HTML/screenshot hash、fake-browser 合同测试、脱敏环境 readiness 报告和单样本 smoke runner/verifier，但不代表已经完成澳洲真实 Google 账号、真实 selector、真实 AI Mode 入口、第三方供应商凭证联调或 240-run 真实样本。当前第三方路径是通用 JSON adapter，不绑定单一供应商私有 schema；若选定供应商有更稳定的专用字段，应在保持 `RawCollectResult`、snapshot hash、`answer_present/surface_triggered` 语义不变的前提下新增轻量 mapping，并通过独立 120-run 对照切片进入 P0b 复盘。第三方对照结果不能绕过 `GoogleSpikeGateResult`、`GoogleSpikeReadinessGate` 和 `score_input_policy`。

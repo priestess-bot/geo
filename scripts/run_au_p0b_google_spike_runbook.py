@@ -74,6 +74,10 @@ def _env_status(runbook: dict[str, Any], env: dict[str, str] | None) -> dict[str
 
 def _external_call_risk(step: dict[str, Any]) -> str:
     step_id = str(step.get("id", ""))
+    if step_id == "google_playwright_env":
+        return "local_environment_readiness_report"
+    if step_id == "google_playwright_env_verify":
+        return "local_environment_readiness_verifier"
     if step_id == "google_playwright_smoke":
         return "google_browser_smoke_capture"
     if step_id == "google_spike_collect":

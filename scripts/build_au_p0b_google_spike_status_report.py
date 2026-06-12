@@ -19,6 +19,7 @@ from scripts.verify_au_p0b_google_spike_runbook import verify_au_p0b_google_spik
 from scripts.verify_au_p0b_google_spike_runbook_execution import (  # noqa: E402
     verify_au_p0b_google_spike_runbook_execution,
 )
+from scripts.verify_au_p0b_google_playwright_env_report import verify_google_playwright_env_report  # noqa: E402
 from scripts.verify_au_p0b_google_playwright_smoke import verify_google_playwright_smoke  # noqa: E402
 from scripts.verify_preflight_payload import verify_preflight_payload  # noqa: E402
 
@@ -121,6 +122,37 @@ def _smoke_status(path: Path, *, require_success: bool = False) -> dict[str, Any
     }
 
 
+def _playwright_env_status(path: Path, *, require_ready_smoke: bool = False) -> dict[str, Any]:
+    payload, file_entry = _load_json(path)
+    if not isinstance(payload, dict):
+        return {
+            "path": str(path),
+            "exists": file_entry["exists"],
+            "status": "fail",
+            "errors": file_entry["errors"],
+            "hash_valid": False,
+            "ready_for_playwright_smoke": False,
+            "ready_for_full_google_run": False,
+            "collector_health": "",
+            "next_action": "",
+        }
+    verification = verify_google_playwright_env_report(payload, path=path, require_ready_smoke=require_ready_smoke)
+    return {
+        "path": str(path),
+        "exists": True,
+        "status": verification["status"],
+        "errors": verification["errors"],
+        "hash_valid": verification["hash_valid"],
+        "ready_for_playwright_smoke": verification["ready_for_playwright_smoke"],
+        "ready_for_full_google_run": verification["ready_for_full_google_run"],
+        "collector_health": verification["collector_health"],
+        "missing_required": verification["missing_required"],
+        "missing_full_run_required": verification["missing_full_run_required"],
+        "missing_selector_groups": verification["missing_selector_groups"],
+        "next_action": verification["next_action"],
+    }
+
+
 def _preflight_status(
     path: Path,
     *,
@@ -200,6 +232,11 @@ def _next_action(items: dict[str, dict[str, Any]]) -> str:
         return "fix_google_spike_runbook"
     if items["execution"].get("status") != "pass":
         return "run_google_spike_runbook_dry_run"
+    if items["playwright_env"].get("status") != "pass":
+        if items["playwright_env"].get("exists") is False:
+            return "run_google_playwright_env_report"
+        next_action = str(items["playwright_env"].get("next_action") or "")
+        return next_action or "fix_google_playwright_environment"
     if items["playwright_smoke"].get("status") != "pass":
         return "run_google_playwright_smoke"
     if items["health"].get("status") != "pass":
@@ -224,6 +261,7 @@ def build_au_p0b_google_spike_status_report(
     spike_path: Path | None = None,
     spike_manifest_path: Path | None = None,
     playwright_smoke_path: Path | None = None,
+    playwright_env_path: Path | None = None,
     output_path: Path | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
@@ -244,10 +282,17 @@ def build_au_p0b_google_spike_status_report(
             or "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json"
         )
     )
+    playwright_env_path = playwright_env_path or Path(
+        str(
+            artifact_paths.get("playwright_env_json")
+            or "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json"
+        )
+    )
 
     items = {
         "runbook": _runbook_status(runbook_path),
         "execution": _execution_status(execution_path),
+        "playwright_env": _playwright_env_status(playwright_env_path, require_ready_smoke=True),
         "playwright_smoke": _smoke_status(playwright_smoke_path, require_success=True),
         "health": _preflight_status(health_path, require_collector_health=True),
         "health_manifest": _manifest_status(health_manifest_path),
@@ -273,6 +318,7 @@ def build_au_p0b_google_spike_status_report(
         "inputs": {
             "runbook_path": str(runbook_path),
             "execution_path": str(execution_path),
+            "playwright_env_path": str(playwright_env_path),
             "playwright_smoke_path": str(playwright_smoke_path),
             "health_path": str(health_path),
             "health_manifest_path": str(health_manifest_path),

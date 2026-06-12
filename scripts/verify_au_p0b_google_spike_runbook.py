@@ -21,6 +21,8 @@ from scripts.build_au_p0b_google_spike_runbook import (  # noqa: E402
 
 EXPECTED_STEP_IDS = (
     "prepare_environment",
+    "google_playwright_env",
+    "google_playwright_env_verify",
     "google_playwright_smoke",
     "google_playwright_smoke_verify",
     "google_spike_health_check",
@@ -31,6 +33,7 @@ EXPECTED_STEP_IDS = (
 )
 REQUIRED_ENV = ("GOOGLE_PLAYWRIGHT_ENABLED", "MANUAL_BACKFILL_PATH", "DATABASE_URL")
 REQUIRED_ARTIFACT_PATHS = (
+    "playwright_env_json",
     "playwright_smoke_json",
     "health_json",
     "health_manifest",
@@ -122,17 +125,29 @@ def verify_au_p0b_google_spike_runbook(runbook: Any, *, path: Path | None = None
             errors.append("prepare_environment_step_type_invalid")
         if steps["google_spike_decision_handoff"].get("type") != "manual":
             errors.append("decision_handoff_step_type_invalid")
-        for step_id in EXPECTED_STEP_IDS[1:7]:
+        for step_id in EXPECTED_STEP_IDS[1:9]:
             if steps.get(step_id, {}).get("stop_on_failure") is not True:
                 errors.append(f"step_must_stop_on_failure:{step_id}")
         if planned_expected is not None:
             for step_id in ("google_spike_health_check", "google_spike_collect"):
                 if steps.get(step_id, {}).get("planned_runs") != planned_expected:
                     errors.append(f"planned_runs_missing_or_invalid:{step_id}")
+        env_step = steps.get("google_playwright_env", {})
+        env_verify_step = steps.get("google_playwright_env_verify", {})
         smoke_step = steps.get("google_playwright_smoke", {})
         smoke_verify_step = steps.get("google_playwright_smoke_verify", {})
         health_step = steps.get("google_spike_health_check", {})
         collect_step = steps.get("google_spike_collect", {})
+        if not _command_contains(env_step, "scripts/build_au_p0b_google_playwright_env_report.py"):
+            errors.append("playwright_env_command_missing")
+        if not _command_contains(env_step, "--runbook-path"):
+            errors.append("playwright_env_runbook_path_missing")
+        if not _command_contains(env_step, "--output-path"):
+            errors.append("playwright_env_output_path_missing")
+        if not _command_contains(env_verify_step, "scripts/verify_au_p0b_google_playwright_env_report.py"):
+            errors.append("playwright_env_verify_command_missing")
+        if not _command_contains(env_verify_step, "--require-ready-smoke"):
+            errors.append("playwright_env_verify_ready_gate_missing")
         if not _command_contains(smoke_step, "scripts/run_au_p0b_google_playwright_smoke.py"):
             errors.append("playwright_smoke_command_missing")
         if smoke_step.get("planned_runs") != 1:
