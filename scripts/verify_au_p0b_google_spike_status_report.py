@@ -74,7 +74,7 @@ def verify_au_p0b_google_spike_status_report(
         errors.append("google_main_scoring_not_allowed")
 
     artifacts = _as_dict(report.get("artifacts"))
-    for name in ("runbook", "execution", "health", "health_manifest", "spike", "spike_manifest"):
+    for name in ("runbook", "execution", "playwright_smoke", "health", "health_manifest", "spike", "spike_manifest"):
         if name not in artifacts:
             errors.append(f"artifact_missing:{name}")
 

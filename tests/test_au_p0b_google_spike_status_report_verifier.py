@@ -11,9 +11,11 @@ from scripts.build_au_p0b_google_spike_runbook import build_au_p0b_google_spike_
 from scripts.build_au_p0b_google_spike_status_report import build_au_p0b_google_spike_status_report
 from scripts.build_au_p0b_google_spike_status_report import compute_google_spike_status_hash
 from scripts.build_preflight_manifest import build_preflight_manifest
+from scripts.run_au_p0b_google_playwright_smoke import run_google_playwright_smoke, write_smoke_payload
 from scripts.run_au_p0b_google_spike_runbook import run_au_p0b_google_spike_runbook
 from scripts.verify_preflight_payload import compute_preflight_payload_hash, verify_preflight_payload
 from scripts.verify_au_p0b_google_spike_status_report import verify_au_p0b_google_spike_status_report
+from tests.test_au_p0b_google_playwright_smoke import FakeReadyGoogleAIOCollector
 
 
 class AuP0bGoogleSpikeStatusReportVerifierTest(unittest.TestCase):
@@ -71,6 +73,13 @@ class AuP0bGoogleSpikeStatusReportVerifierTest(unittest.TestCase):
         )
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
+    def _write_smoke(self, smoke_path: Path) -> None:
+        payload = run_google_playwright_smoke(
+            collector=FakeReadyGoogleAIOCollector(),
+            generated_at="2026-06-12T00:00:00Z",
+        )
+        write_smoke_payload(payload, smoke_path)
+
     def _write_runbook_and_execution(self, temp_dir: str) -> tuple[Path, Path, dict[str, object]]:
         artifact_dir = str(Path(temp_dir) / "runtime")
         runbook = build_au_p0b_google_spike_runbook(
@@ -96,6 +105,7 @@ class AuP0bGoogleSpikeStatusReportVerifierTest(unittest.TestCase):
     def _ready_report(self, temp_dir: str) -> dict[str, object]:
         runbook_path, execution_path, runbook = self._write_runbook_and_execution(temp_dir)
         artifacts = runbook["artifact_paths"]  # type: ignore[index]
+        self._write_smoke(Path(artifacts["playwright_smoke_json"]))
         self._write_manifest(Path(artifacts["health_json"]), Path(artifacts["health_manifest"]), google_ready=True)
         self._write_manifest(Path(artifacts["spike_json"]), Path(artifacts["spike_manifest"]), google_ready=True)
 

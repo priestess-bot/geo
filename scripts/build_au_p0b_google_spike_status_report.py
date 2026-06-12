@@ -19,6 +19,7 @@ from scripts.verify_au_p0b_google_spike_runbook import verify_au_p0b_google_spik
 from scripts.verify_au_p0b_google_spike_runbook_execution import (  # noqa: E402
     verify_au_p0b_google_spike_runbook_execution,
 )
+from scripts.verify_au_p0b_google_playwright_smoke import verify_google_playwright_smoke  # noqa: E402
 from scripts.verify_preflight_payload import verify_preflight_payload  # noqa: E402
 
 
@@ -81,6 +82,42 @@ def _execution_status(path: Path) -> dict[str, Any]:
         "mode": verification["mode"],
         "planned_step_count": verification["planned_step_count"],
         "recorded_step_count": verification["recorded_step_count"],
+    }
+
+
+def _smoke_status(path: Path, *, require_success: bool = False) -> dict[str, Any]:
+    payload, file_entry = _load_json(path)
+    if not isinstance(payload, dict):
+        return {
+            "path": str(path),
+            "exists": file_entry["exists"],
+            "status": "fail",
+            "errors": file_entry["errors"],
+            "hash_valid": False,
+            "smoke_success": False,
+            "collector_health": "",
+            "phase": "",
+        }
+    verification = verify_google_playwright_smoke(payload, path=path, require_success=require_success)
+    return {
+        "path": str(path),
+        "exists": True,
+        "status": verification["status"],
+        "errors": verification["errors"],
+        "hash_valid": verification["hash_valid"],
+        "smoke_status": verification["smoke_status"],
+        "smoke_success": verification["smoke_success"],
+        "phase": verification["phase"],
+        "collector_health": verification["collector_health"],
+        "surface": verification["surface"],
+        "collector_backend_id": verification["collector_backend_id"],
+        "planned_runs": verification["planned_runs"],
+        "record_count": verification["record_count"],
+        "success_count": verification["success_count"],
+        "failure_count": verification["failure_count"],
+        "answer_present": verification["answer_present"],
+        "surface_triggered": verification["surface_triggered"],
+        "asset_count": verification["asset_count"],
     }
 
 
@@ -163,6 +200,8 @@ def _next_action(items: dict[str, dict[str, Any]]) -> str:
         return "fix_google_spike_runbook"
     if items["execution"].get("status") != "pass":
         return "run_google_spike_runbook_dry_run"
+    if items["playwright_smoke"].get("status") != "pass":
+        return "run_google_playwright_smoke"
     if items["health"].get("status") != "pass":
         return "run_google_spike_health_check"
     if items["health_manifest"].get("status") != "pass":
@@ -184,6 +223,7 @@ def build_au_p0b_google_spike_status_report(
     health_manifest_path: Path | None = None,
     spike_path: Path | None = None,
     spike_manifest_path: Path | None = None,
+    playwright_smoke_path: Path | None = None,
     output_path: Path | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
@@ -198,10 +238,17 @@ def build_au_p0b_google_spike_status_report(
     spike_manifest_path = spike_manifest_path or Path(
         str(artifact_paths.get("spike_manifest") or "docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json")
     )
+    playwright_smoke_path = playwright_smoke_path or Path(
+        str(
+            artifact_paths.get("playwright_smoke_json")
+            or "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json"
+        )
+    )
 
     items = {
         "runbook": _runbook_status(runbook_path),
         "execution": _execution_status(execution_path),
+        "playwright_smoke": _smoke_status(playwright_smoke_path, require_success=True),
         "health": _preflight_status(health_path, require_collector_health=True),
         "health_manifest": _manifest_status(health_manifest_path),
         "spike": _preflight_status(spike_path, require_google_gates=True),
@@ -226,6 +273,7 @@ def build_au_p0b_google_spike_status_report(
         "inputs": {
             "runbook_path": str(runbook_path),
             "execution_path": str(execution_path),
+            "playwright_smoke_path": str(playwright_smoke_path),
             "health_path": str(health_path),
             "health_manifest_path": str(health_manifest_path),
             "spike_path": str(spike_path),

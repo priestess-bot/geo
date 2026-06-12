@@ -13,8 +13,10 @@ from scripts.build_au_p0b_google_spike_status_report import (
     compute_google_spike_status_hash,
 )
 from scripts.build_preflight_manifest import build_preflight_manifest
+from scripts.run_au_p0b_google_playwright_smoke import run_google_playwright_smoke, write_smoke_payload
 from scripts.run_au_p0b_google_spike_runbook import run_au_p0b_google_spike_runbook
 from scripts.verify_preflight_payload import compute_preflight_payload_hash, verify_preflight_payload
+from tests.test_au_p0b_google_playwright_smoke import FakeReadyGoogleAIOCollector
 
 
 class AuP0bGoogleSpikeStatusReportTest(unittest.TestCase):
@@ -94,6 +96,13 @@ class AuP0bGoogleSpikeStatusReportTest(unittest.TestCase):
         )
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
+    def _write_smoke(self, smoke_path: Path) -> None:
+        payload = run_google_playwright_smoke(
+            collector=FakeReadyGoogleAIOCollector(),
+            generated_at="2026-06-12T00:00:00Z",
+        )
+        write_smoke_payload(payload, smoke_path)
+
     def _write_runbook_and_execution(self, temp_dir: str) -> tuple[Path, Path, dict[str, object]]:
         artifact_dir = str(Path(temp_dir) / "runtime")
         runbook = build_au_p0b_google_spike_runbook(
@@ -127,7 +136,8 @@ class AuP0bGoogleSpikeStatusReportTest(unittest.TestCase):
 
         self.assertEqual(report["status"], "fail")
         self.assertFalse(report["google_main_scoring_allowed"])
-        self.assertEqual(report["next_action"], "run_google_spike_health_check")
+        self.assertEqual(report["next_action"], "run_google_playwright_smoke")
+        self.assertIn("playwright_smoke:file_missing", report["remaining_blockers"])
         self.assertIn("health:file_missing", report["remaining_blockers"])
         self.assertEqual(report["status_report_hash"], compute_google_spike_status_hash(report))
 
@@ -135,6 +145,7 @@ class AuP0bGoogleSpikeStatusReportTest(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             runbook_path, execution_path, runbook = self._write_runbook_and_execution(temp_dir)
             artifacts = runbook["artifact_paths"]  # type: ignore[index]
+            self._write_smoke(Path(artifacts["playwright_smoke_json"]))
             self._write_manifest(Path(artifacts["health_json"]), Path(artifacts["health_manifest"]), google_ready=True)
             self._write_manifest(Path(artifacts["spike_json"]), Path(artifacts["spike_manifest"]), google_ready=True)
             report = build_au_p0b_google_spike_status_report(
@@ -149,6 +160,7 @@ class AuP0bGoogleSpikeStatusReportTest(unittest.TestCase):
         self.assertEqual(report["next_action"], "allow_google_into_main_scoring_denominator")
         self.assertEqual(report["remaining_blockers"], [])
         self.assertEqual(report["status_report_hash"], compute_google_spike_status_hash(report))
+        self.assertTrue(report["artifacts"]["playwright_smoke"]["smoke_success"])  # type: ignore[index]
 
     def test_cli_writes_status_report(self) -> None:
         with TemporaryDirectory() as temp_dir:

@@ -159,6 +159,8 @@ make au-p0b-google-status
 make verify-au-p0b-google-status
 ```
 
+`au-p0b-google-status` 会读取 runbook、dry-run execution、Playwright smoke、health、spike 和 manifest 产物。若 Playwright smoke 没有通过 strict success gate，状态报告会输出 `next_action=run_google_playwright_smoke`，并把 `playwright_smoke:smoke_not_successful` 或对应文件/hash/结构错误放入 `remaining_blockers`；这时不要进入 health-only 或 240-run。
+
 需要硬门禁时：
 
 ```bash
