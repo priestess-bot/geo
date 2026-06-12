@@ -37,6 +37,7 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
                 "google_playwright_env_verify",
                 "google_playwright_smoke",
                 "google_playwright_smoke_verify",
+                "google_manual_backfill_verify",
                 "google_spike_health_check",
                 "google_spike_health_manifest",
                 "google_spike_collect",
@@ -53,6 +54,8 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
         self.assertIn("scripts/run_au_p0b_google_playwright_smoke.py", steps["google_playwright_smoke"]["command"])
         self.assertIn("scripts/verify_au_p0b_google_playwright_smoke.py", steps["google_playwright_smoke_verify"]["command"])
         self.assertIn("--require-success", steps["google_playwright_smoke_verify"]["command"])
+        self.assertIn("scripts/verify_au_p0b_manual_backfill.py", steps["google_manual_backfill_verify"]["command"])
+        self.assertIn("--output-path", steps["google_manual_backfill_verify"]["command"])
         self.assertIn("--require-google-spike-gates", steps["google_spike_collect"]["command"])
         self.assertIn("--persist", steps["google_spike_collect"]["command"])
         self.assertTrue(
@@ -66,6 +69,7 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
         )
         self.assertEqual(steps["google_playwright_env"]["output_paths"][0], "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json")
         self.assertEqual(steps["google_playwright_smoke"]["planned_runs"], 1)
+        self.assertEqual(steps["google_manual_backfill_verify"]["planned_runs"], 120)
         self.assertEqual(steps["google_spike_collect"]["planned_runs"], 240)
         self.assertEqual(
             runbook["artifact_paths"]["playwright_env_json"],
@@ -74,6 +78,10 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
         self.assertEqual(
             runbook["artifact_paths"]["playwright_smoke_json"],
             "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json",
+        )
+        self.assertEqual(
+            runbook["artifact_paths"]["manual_backfill_verification_json"],
+            "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
         )
         self.assertEqual(runbook["runbook_payload_hash"], compute_google_spike_runbook_hash(runbook))
 

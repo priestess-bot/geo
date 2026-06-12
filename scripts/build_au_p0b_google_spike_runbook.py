@@ -106,6 +106,7 @@ def build_au_p0b_google_spike_runbook(
     spike_manifest_path = f"{artifact_root}/au-p0b-google-spike-manifest-latest.json"
     playwright_env_path = f"{artifact_root}/au-p0b-google-playwright-env-latest.json"
     smoke_path = f"{artifact_root}/au-p0b-google-playwright-smoke-latest.json"
+    manual_backfill_verification_path = f"{artifact_root}/au-p0b-google-manual-backfill-verification-latest.json"
     planned_runs = _planned_runs(prompt_count, geo_cities, sample_size, DEFAULT_SURFACE_COUNT)
     python_env = {"PYTHONPATH": "packages/geno_core:apps/api"}
     runbook: dict[str, Any] = {
@@ -154,6 +155,7 @@ def build_au_p0b_google_spike_runbook(
         "artifact_paths": {
             "playwright_env_json": playwright_env_path,
             "playwright_smoke_json": smoke_path,
+            "manual_backfill_verification_json": manual_backfill_verification_path,
             "health_json": health_path,
             "health_manifest": health_manifest_path,
             "spike_json": spike_path,
@@ -202,6 +204,7 @@ def build_au_p0b_google_spike_runbook(
                     "Generate, fill, and verify MANUAL_BACKFILL_PATH with au-p0b-google-manual-template and verify-au-p0b-google-manual-backfill before collection.",
                     "Run au-p0b-google-playwright-env and verify-au-p0b-google-playwright-env before the smoke capture to confirm selectors, Playwright package, and optional storage state are ready without leaking raw values.",
                     "Run au-p0b-google-playwright-smoke and verify-au-p0b-google-playwright-smoke before the 240-run matrix; use --require-success on the verifier before promoting the browser path.",
+                    "Run verify-au-p0b-google-manual-backfill after filling MANUAL_BACKFILL_PATH so the strict 120-row manual verification artifact can be read by the status report.",
                     "Third-party SERP JSON capture is implemented as an alternate google_aio backend, but not part of the default 240-run matrix.",
                     "Do not persist secrets in generated JSON artifacts.",
                 ),
@@ -267,6 +270,24 @@ def build_au_p0b_google_spike_runbook(
                 env=python_env,
                 output_paths=(),
                 planned_runs=1,
+            ),
+            _command_step(
+                step_id="google_manual_backfill_verify",
+                title="Verify strict Google AI Mode manual backfill coverage before the full matrix",
+                command=[
+                    "python3",
+                    "scripts/verify_au_p0b_manual_backfill.py",
+                    "--output-path",
+                    manual_backfill_verification_path,
+                ],
+                env=python_env,
+                output_paths=(manual_backfill_verification_path,),
+                planned_runs=prompt_count * len(geo_cities) * sample_size,
+                notes=(
+                    "The verifier reads MANUAL_BACKFILL_PATH when it is set, otherwise the generated template path.",
+                    "Strict mode requires 120 rows, two samples for each prompt/city, answer text, citation URLs, and screenshot or HTML evidence.",
+                    "The output JSON includes file_sha256 and verification_hash for status-report replay.",
+                ),
             ),
             _command_step(
                 step_id="google_spike_health_check",

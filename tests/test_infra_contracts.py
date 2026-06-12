@@ -300,6 +300,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("scripts/build_au_p0b_manual_backfill_template.py", makefile)
         self.assertIn("verify-au-p0b-google-manual-backfill:", makefile)
         self.assertIn("scripts/verify_au_p0b_manual_backfill.py", makefile)
+        self.assertIn("GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH", makefile)
         self.assertIn("au-p0b-google-playwright-env:", makefile)
         self.assertIn("scripts/build_au_p0b_google_playwright_env_report.py", makefile)
         self.assertIn("verify-au-p0b-google-playwright-env:", makefile)

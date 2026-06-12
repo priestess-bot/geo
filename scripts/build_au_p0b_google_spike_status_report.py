@@ -21,6 +21,7 @@ from scripts.verify_au_p0b_google_spike_runbook_execution import (  # noqa: E402
 )
 from scripts.verify_au_p0b_google_playwright_env_report import verify_google_playwright_env_report  # noqa: E402
 from scripts.verify_au_p0b_google_playwright_smoke import verify_google_playwright_smoke  # noqa: E402
+from scripts.verify_au_p0b_manual_backfill import verify_manual_backfill_verification_result  # noqa: E402
 from scripts.verify_preflight_payload import verify_preflight_payload  # noqa: E402
 
 
@@ -153,6 +154,44 @@ def _playwright_env_status(path: Path, *, require_ready_smoke: bool = False) -> 
     }
 
 
+def _manual_backfill_status(path: Path) -> dict[str, Any]:
+    payload, file_entry = _load_json(path)
+    if not isinstance(payload, dict):
+        return {
+            "path": str(path),
+            "exists": file_entry["exists"],
+            "status": "fail",
+            "errors": file_entry.get("errors", ["manual_backfill_verification_not_json_object"]),
+            "hash_valid": False,
+            "manual_backfill_ready": False,
+            "record_count": 0,
+            "expected_record_count": 0,
+            "covered_prompt_city_count": 0,
+            "file_sha256": "",
+            "verification_hash": "",
+        }
+    verification = verify_manual_backfill_verification_result(payload, path=path)
+    errors = list(verification["errors"])
+    manual_errors = [str(error) for error in payload.get("errors", [])] if isinstance(payload.get("errors"), list) else []
+    if payload.get("status") != "pass":
+        errors.extend(manual_errors or ["manual_backfill_not_ready"])
+    manual_ready = verification["status"] == "pass" and payload.get("status") == "pass"
+    return {
+        "path": str(path),
+        "exists": True,
+        "status": "pass" if manual_ready else "fail",
+        "errors": errors,
+        "hash_valid": verification["hash_valid"],
+        "manual_backfill_ready": manual_ready,
+        "manual_backfill_status": payload.get("status", ""),
+        "record_count": payload.get("record_count", 0),
+        "expected_record_count": payload.get("expected_record_count", 0),
+        "covered_prompt_city_count": payload.get("covered_prompt_city_count", 0),
+        "file_sha256": payload.get("file_sha256", ""),
+        "verification_hash": payload.get("verification_hash", ""),
+    }
+
+
 def _preflight_status(
     path: Path,
     *,
@@ -239,6 +278,13 @@ def _next_action(items: dict[str, dict[str, Any]]) -> str:
         return next_action or "fix_google_playwright_environment"
     if items["playwright_smoke"].get("status") != "pass":
         return "run_google_playwright_smoke"
+    if items["manual_backfill"].get("status") != "pass":
+        if items["manual_backfill"].get("exists") is False:
+            return "run_verify_google_manual_backfill"
+        manual_errors = {str(error) for error in items["manual_backfill"].get("errors") or []}
+        if "manual_backfill_file_missing" in manual_errors:
+            return "prepare_google_manual_backfill_file"
+        return "fix_google_manual_backfill_coverage"
     if items["health"].get("status") != "pass":
         return "run_google_spike_health_check"
     if items["health_manifest"].get("status") != "pass":
@@ -262,6 +308,7 @@ def build_au_p0b_google_spike_status_report(
     spike_manifest_path: Path | None = None,
     playwright_smoke_path: Path | None = None,
     playwright_env_path: Path | None = None,
+    manual_backfill_verification_path: Path | None = None,
     output_path: Path | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
@@ -288,12 +335,19 @@ def build_au_p0b_google_spike_status_report(
             or "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json"
         )
     )
+    manual_backfill_verification_path = manual_backfill_verification_path or Path(
+        str(
+            artifact_paths.get("manual_backfill_verification_json")
+            or "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json"
+        )
+    )
 
     items = {
         "runbook": _runbook_status(runbook_path),
         "execution": _execution_status(execution_path),
         "playwright_env": _playwright_env_status(playwright_env_path, require_ready_smoke=True),
         "playwright_smoke": _smoke_status(playwright_smoke_path, require_success=True),
+        "manual_backfill": _manual_backfill_status(manual_backfill_verification_path),
         "health": _preflight_status(health_path, require_collector_health=True),
         "health_manifest": _manifest_status(health_manifest_path),
         "spike": _preflight_status(spike_path, require_google_gates=True),
@@ -307,12 +361,13 @@ def build_au_p0b_google_spike_status_report(
             for error in (item.get("errors") or ["status_not_pass"])
         }
     )
+    google_main_scoring_allowed = not remaining_blockers and items["spike"].get("google_gates_ready") is True
     report: dict[str, Any] = {
         "status_report_version": STATUS_REPORT_VERSION,
         "generated_at": generated_at or _utc_now_iso(),
-        "status": "pass" if not remaining_blockers and items["spike"].get("google_gates_ready") is True else "fail",
-        "google_main_scoring_allowed": items["spike"].get("google_gates_ready") is True,
-        "limited_coverage": items["spike"].get("google_gates_ready") is not True,
+        "status": "pass" if google_main_scoring_allowed else "fail",
+        "google_main_scoring_allowed": google_main_scoring_allowed,
+        "limited_coverage": not google_main_scoring_allowed,
         "next_action": _next_action(items),
         "remaining_blockers": remaining_blockers,
         "inputs": {
@@ -320,6 +375,7 @@ def build_au_p0b_google_spike_status_report(
             "execution_path": str(execution_path),
             "playwright_env_path": str(playwright_env_path),
             "playwright_smoke_path": str(playwright_smoke_path),
+            "manual_backfill_verification_path": str(manual_backfill_verification_path),
             "health_path": str(health_path),
             "health_manifest_path": str(health_manifest_path),
             "spike_path": str(spike_path),

@@ -11,9 +11,11 @@ from scripts.build_au_p0b_google_spike_runbook import build_au_p0b_google_spike_
 from scripts.build_au_p0b_google_spike_status_report import build_au_p0b_google_spike_status_report
 from scripts.build_au_p0b_google_spike_status_report import compute_google_spike_status_hash
 from scripts.build_au_p0b_google_playwright_env_report import build_google_playwright_env_report
+from scripts.build_au_p0b_manual_backfill_template import build_manual_backfill_template
 from scripts.build_preflight_manifest import build_preflight_manifest
 from scripts.run_au_p0b_google_playwright_smoke import run_google_playwright_smoke, write_smoke_payload
 from scripts.run_au_p0b_google_spike_runbook import run_au_p0b_google_spike_runbook
+from scripts.verify_au_p0b_manual_backfill import verify_manual_backfill
 from scripts.verify_preflight_payload import compute_preflight_payload_hash, verify_preflight_payload
 from scripts.verify_au_p0b_google_spike_status_report import verify_au_p0b_google_spike_status_report
 from tests.test_au_p0b_google_playwright_smoke import FakeReadyGoogleAIOCollector
@@ -81,6 +83,33 @@ class AuP0bGoogleSpikeStatusReportVerifierTest(unittest.TestCase):
         )
         write_smoke_payload(payload, smoke_path)
 
+    def _write_manual_backfill_verification(self, path: Path, temp_dir: str) -> None:
+        lines, _manifest = build_manual_backfill_template(generated_at="2026-06-12T00:00:00Z")
+        manual_path = Path(temp_dir) / "manual.jsonl"
+        manual_path.write_text(
+            "".join(
+                json.dumps(
+                    {
+                        **line,
+                        "answer_text": f"Manual Google AI Mode answer {index}.",
+                        "citation_urls": [f"https://examplebrand.example/manual/{index}"],
+                        "screenshot_url": f"s3://manual-google-ai-mode/{index}.png",
+                        "html_snapshot_url": f"s3://manual-google-ai-mode/{index}.html",
+                        "submitted_by": "analyst@example.com",
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n"
+                for index, line in enumerate(lines, start=1)
+            ),
+            encoding="utf-8",
+        )
+        result = verify_manual_backfill(manual_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(result), encoding="utf-8")
+
     def _write_playwright_env(self, *, runbook_path: Path, env_path: Path, temp_dir: str) -> None:
         manual_path = Path(temp_dir) / "manual.jsonl"
         manual_path.write_text(
@@ -143,6 +172,7 @@ class AuP0bGoogleSpikeStatusReportVerifierTest(unittest.TestCase):
             temp_dir=temp_dir,
         )
         self._write_smoke(Path(artifacts["playwright_smoke_json"]))
+        self._write_manual_backfill_verification(Path(artifacts["manual_backfill_verification_json"]), temp_dir)
         self._write_manifest(Path(artifacts["health_json"]), Path(artifacts["health_manifest"]), google_ready=True)
         self._write_manifest(Path(artifacts["spike_json"]), Path(artifacts["spike_manifest"]), google_ready=True)
 

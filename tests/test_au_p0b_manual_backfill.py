@@ -12,7 +12,11 @@ from scripts.build_au_p0b_manual_backfill_template import (
     build_manual_backfill_template,
     write_template,
 )
-from scripts.verify_au_p0b_manual_backfill import verify_manual_backfill
+from scripts.verify_au_p0b_manual_backfill import (
+    compute_manual_backfill_verification_hash,
+    verify_manual_backfill,
+    verify_manual_backfill_verification_result,
+)
 
 
 class AuP0bManualBackfillTest(unittest.TestCase):
@@ -87,6 +91,9 @@ class AuP0bManualBackfillTest(unittest.TestCase):
         self.assertEqual(result["record_count"], 120)
         self.assertEqual(result["covered_prompt_city_count"], 60)
         self.assertRegex(result["file_sha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(result["verification_hash"], r"^[0-9a-f]{64}$")
+        self.assertEqual(result["verification_hash"], compute_manual_backfill_verification_hash(result))
+        self.assertEqual(verify_manual_backfill_verification_result(result)["status"], "pass")
 
     def test_verify_manual_backfill_fails_on_missing_record_and_answer(self) -> None:
         lines = self._filled_template()
@@ -113,6 +120,7 @@ class AuP0bManualBackfillTest(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "manual-template.jsonl"
             manifest_path = Path(temp_dir) / "manual-template-manifest.json"
+            verification_path = Path(temp_dir) / "manual-template-verification.json"
             build_result = subprocess.run(
                 [
                     sys.executable,
@@ -133,15 +141,20 @@ class AuP0bManualBackfillTest(unittest.TestCase):
                     sys.executable,
                     "scripts/verify_au_p0b_manual_backfill.py",
                     str(output_path),
+                    "--output-path",
+                    str(verification_path),
                     "--allow-template-placeholders",
                 ],
                 capture_output=True,
                 check=True,
                 text=True,
             )
+            verification_payload = json.loads(verification_path.read_text(encoding="utf-8"))
 
         self.assertEqual(json.loads(build_result.stdout)["record_count"], 120)
         self.assertEqual(json.loads(verify_result.stdout)["status"], "pass")
+        self.assertEqual(verification_payload, json.loads(verify_result.stdout))
+        self.assertEqual(verify_manual_backfill_verification_result(verification_payload)["status"], "pass")
 
 
 if __name__ == "__main__":

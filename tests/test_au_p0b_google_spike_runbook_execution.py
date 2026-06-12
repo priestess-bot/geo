@@ -39,8 +39,8 @@ class AuP0bGoogleSpikeRunbookExecutionTest(AuP0bGoogleSpikeRunbookExecutionFixtu
         self.assertEqual(result["status"], "pass")
         self.assertFalse(result["ready_to_execute"])
         self.assertFalse(result["execute_requested"])
-        self.assertEqual(result["planned_step_count"], 10)
-        self.assertEqual(result["recorded_step_count"], 10)
+        self.assertEqual(result["planned_step_count"], 11)
+        self.assertEqual(result["recorded_step_count"], 11)
         self.assertEqual(result["executed_command_count"], 0)
         self.assertEqual(result["execution_payload_hash"], compute_google_spike_execution_hash(result))
         steps = {step["id"]: step for step in result["steps"]}
@@ -56,6 +56,11 @@ class AuP0bGoogleSpikeRunbookExecutionTest(AuP0bGoogleSpikeRunbookExecutionFixtu
         self.assertEqual(steps["google_playwright_smoke"]["planned_runs"], 1)
         self.assertEqual(steps["google_playwright_smoke"]["external_call_risk"], "google_browser_smoke_capture")
         self.assertEqual(steps["google_playwright_smoke_verify"]["status"], "dry_run")
+        self.assertEqual(steps["google_manual_backfill_verify"]["status"], "dry_run")
+        self.assertEqual(
+            steps["google_manual_backfill_verify"]["external_call_risk"],
+            "local_manual_backfill_verifier",
+        )
         self.assertEqual(steps["google_spike_collect"]["status"], "dry_run")
         self.assertEqual(steps["google_spike_collect"]["external_call_risk"], "google_browser_or_manual_capture")
         self.assertIn("GOOGLE_PLAYWRIGHT_ENABLED", result["environment"]["missing_required"])

@@ -79,7 +79,7 @@ MANUAL_BACKFILL_PATH=/absolute/path/to/google-ai-mode-manual-backfill.jsonl \
   make verify-au-p0b-google-manual-backfill
 ```
 
-`au-p0b-google-manual-template` 会生成 120 行模板：30 prompts × Australia/Sydney × k=2，只覆盖 `google_ai_mode` manual path。模板本身允许 `answer_text`、citation 和资产为空；真实运行前必须用 `verify-au-p0b-google-manual-backfill` strict 校验通过，它会要求 120 行全部填充、每个 prompt/city 有 2 条样本、每行有 answer、至少一个 citation、以及 screenshot 或 HTML snapshot 资产。
+`au-p0b-google-manual-template` 会生成 120 行模板：30 prompts × Australia/Sydney × k=2，只覆盖 `google_ai_mode` manual path。模板本身允许 `answer_text`、citation 和资产为空；真实运行前必须用 `verify-au-p0b-google-manual-backfill` strict 校验通过，它会要求 120 行全部填充、每个 prompt/city 有 2 条样本、每行有 answer、至少一个 citation、以及 screenshot 或 HTML snapshot 资产。该校验会把结果写入 `docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json`，其中包含原始 JSONL 的 `file_sha256` 和 verification 自身的 `verification_hash`，供 status report 离线复算。
 
 所有运行产物默认写入 `docs/runtime_preflight/*.json`，该目录下 JSON 默认不提交，避免把真实 provider 状态、错误上下文或潜在敏感配置写入仓库。需要提交的是摘要、审计日志和代码。
 
@@ -140,7 +140,21 @@ python3 scripts/verify_au_p0b_google_playwright_smoke.py \
   --require-success
 ```
 
-5. 做 collector health-only 预检：
+5. 校验 Google AI Mode manual backfill 严格覆盖：
+
+```bash
+make verify-au-p0b-google-manual-backfill
+```
+
+默认输入为 `MANUAL_BACKFILL_PATH`；未设置时会读取 `docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl`。默认输出：
+
+```text
+docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json
+```
+
+只有 strict verifier 通过、verification hash 可复算，并且 status report 读取到该 artifact 后，才允许继续进入 collector health-only 和 240-run。
+
+6. 做 collector health-only 预检：
 
 ```bash
 PYTHONPATH=packages/geno_core:apps/api \
@@ -156,7 +170,7 @@ python3 scripts/build_preflight_manifest.py \
   --manifest-path docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json
 ```
 
-6. 运行真实 240-run spike：
+7. 运行真实 240-run spike：
 
 ```bash
 PYTHONPATH=packages/geno_core:apps/api \
@@ -174,14 +188,14 @@ python3 scripts/build_preflight_manifest.py \
   --manifest-path docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json
 ```
 
-7. 汇总状态：
+8. 汇总状态：
 
 ```bash
 make au-p0b-google-status
 make verify-au-p0b-google-status
 ```
 
-`au-p0b-google-status` 会读取 runbook、dry-run execution、Playwright env readiness、Playwright smoke、health、spike 和 manifest 产物。若 env readiness 报告缺失，状态报告会输出 `next_action=run_google_playwright_env_report`；若 env strict gate 不通过，会优先返回 env 报告里的 `next_action`，例如补 selector、storage state 或 Playwright 包。若 Playwright smoke 没有通过 strict success gate，状态报告会输出 `next_action=run_google_playwright_smoke`，并把 `playwright_smoke:smoke_not_successful` 或对应文件/hash/结构错误放入 `remaining_blockers`；这时不要进入 health-only 或 240-run。
+`au-p0b-google-status` 会读取 runbook、dry-run execution、Playwright env readiness、Playwright smoke、manual backfill strict verification、health、spike 和 manifest 产物。若 env readiness 报告缺失，状态报告会输出 `next_action=run_google_playwright_env_report`；若 env strict gate 不通过，会优先返回 env 报告里的 `next_action`，例如补 selector、storage state 或 Playwright 包。若 Playwright smoke 没有通过 strict success gate，状态报告会输出 `next_action=run_google_playwright_smoke`，并把 `playwright_smoke:smoke_not_successful` 或对应文件/hash/结构错误放入 `remaining_blockers`。若 manual verification 缺失或 strict 失败，状态报告会输出 `next_action=run_verify_google_manual_backfill`、`prepare_google_manual_backfill_file` 或 `fix_google_manual_backfill_coverage`；这时不要进入 health-only 或 240-run。
 
 需要硬门禁时：
 
@@ -264,6 +278,7 @@ make verify-au-p0b-google-serp-status
 - dry-run verifier 失败：停止，先修 runbook execution payload 或环境判断。
 - Google Playwright env strict verifier 失败：停止，先按 `next_action` 修 `GOOGLE_PLAYWRIGHT_ENABLED`、prompt/answer selector、storage state 文件、Python Playwright 包、runbook 或 `.env.au-p0b-google`。
 - Google Playwright smoke strict verifier 失败：停止，先修 selector、session state、Playwright 安装、AU 地理环境、目标界面入口或账号状态，不进入 240-run。
+- Google manual backfill strict verifier 失败：停止，先修 `MANUAL_BACKFILL_PATH`、120 行覆盖、每个 prompt/city 两条样本、answer、citation 和 screenshot/HTML 资产；没有通过 `manual_backfill_verification_json` 前不进入 health-only 或 240-run。
 - health-only collector gate 失败：停止，先修 `GOOGLE_PLAYWRIGHT_ENABLED`、`GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR`、`GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR`、Playwright 安装、可选 storage state、`MANUAL_BACKFILL_PATH` 或人工补录文件。第三方对照切片另需检查 `SERP_API_KEY` 与 `SERP_API_ENDPOINT`。
 - 真实 spike 出现 collection failure：停止，先复盘 `failure_events` 和 `CollectionRunSummary`。
 - `google_spike_gate` 失败：Google 不进入主评分，只进入 limited coverage 附录。
@@ -276,6 +291,7 @@ make verify-au-p0b-google-serp-status
 - `docs/runtime_preflight/au-p0b-google-spike-runbook-execution-latest.json`
 - `docs/runtime_preflight/au-p0b-google-playwright-env-latest.json`
 - `docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json`
+- `docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json`
 - `docs/runtime_preflight/au-p0b-google-spike-health-latest.json`
 - `docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json`
 - `docs/runtime_preflight/au-p0b-google-spike-latest.json`

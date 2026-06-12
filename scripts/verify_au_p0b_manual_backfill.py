@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -16,11 +17,36 @@ from geno_core.google_spike import (
 
 
 DEFAULT_INPUT_PATH = "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl"
+DEFAULT_VERIFICATION_PATH = "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json"
 VERIFIER_VERSION = "au_p0b_manual_backfill_verifier_v1"
+REQUIRED_VERIFICATION_FIELDS = (
+    "verifier_version",
+    "status",
+    "errors",
+    "path",
+    "file_sha256",
+    "allow_template_placeholders",
+    "expected_prompt_city_count",
+    "expected_sample_size",
+    "expected_record_count",
+    "record_count",
+    "covered_prompt_city_count",
+    "verification_hash",
+)
 
 
 def _file_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _stable_verification_bytes(result: dict[str, Any]) -> bytes:
+    return json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+
+
+def compute_manual_backfill_verification_hash(result: dict[str, Any]) -> str:
+    payload = dict(result)
+    payload.pop("verification_hash", None)
+    return hashlib.sha256(_stable_verification_bytes(payload)).hexdigest()
 
 
 def _entry_text(entry: dict[str, Any], *keys: str) -> str:
@@ -136,7 +162,7 @@ def verify_manual_backfill(path: Path, *, allow_template_placeholders: bool = Fa
             errors.append(f"evidence_asset_missing:{len(missing_asset_lines)}")
 
     file_exists = path.exists()
-    return {
+    result: dict[str, Any] = {
         "verifier_version": VERIFIER_VERSION,
         "status": "pass" if not errors else "fail",
         "errors": errors,
@@ -155,6 +181,50 @@ def verify_manual_backfill(path: Path, *, allow_template_placeholders: bool = Fa
         "missing_citation_line_numbers": missing_citation_lines[:20],
         "missing_asset_line_numbers": missing_asset_lines[:20],
     }
+    result["verification_hash"] = compute_manual_backfill_verification_hash(result)
+    return result
+
+
+def verify_manual_backfill_verification_result(
+    result: Any,
+    *,
+    path: Path | None = None,
+) -> dict[str, Any]:
+    if not isinstance(result, dict):
+        return {
+            "status": "fail",
+            "errors": ["manual_backfill_verification_not_json_object"],
+            "path": str(path) if path else "",
+            "hash_valid": False,
+            "manual_backfill_status": "",
+        }
+
+    errors: list[str] = []
+    for field in REQUIRED_VERIFICATION_FIELDS:
+        if field not in result:
+            errors.append(f"field_missing:{field}")
+    if result.get("verifier_version") != VERIFIER_VERSION:
+        errors.append("verifier_version_invalid")
+    if result.get("status") not in {"pass", "fail"}:
+        errors.append("manual_backfill_status_invalid")
+    if result.get("status") == "pass" and result.get("errors") not in ([], ()):
+        errors.append("manual_backfill_pass_has_errors")
+
+    expected_hash = result.get("verification_hash")
+    computed_hash = compute_manual_backfill_verification_hash(result)
+    hash_valid = isinstance(expected_hash, str) and expected_hash == computed_hash
+    if not hash_valid:
+        errors.append("manual_backfill_verification_hash_mismatch")
+
+    return {
+        "status": "pass" if not errors else "fail",
+        "errors": errors,
+        "path": str(path) if path else "",
+        "verification_hash": expected_hash if isinstance(expected_hash, str) else "",
+        "computed_verification_hash": computed_hash,
+        "hash_valid": hash_valid,
+        "manual_backfill_status": result.get("status", ""),
+    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -162,8 +232,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "path",
         nargs="?",
-        default=DEFAULT_INPUT_PATH,
+        default=os.environ.get("MANUAL_BACKFILL_PATH", DEFAULT_INPUT_PATH),
         help="Path to the manual backfill JSONL file.",
+    )
+    parser.add_argument(
+        "--output-path",
+        default="",
+        help=(
+            "Optional path to write the machine-readable verification result JSON. "
+            f"The Make target writes {DEFAULT_VERIFICATION_PATH}."
+        ),
     )
     parser.add_argument(
         "--allow-template-placeholders",
@@ -176,6 +254,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     result = verify_manual_backfill(Path(args.path), allow_template_placeholders=args.allow_template_placeholders)
+    if args.output_path:
+        output_path = Path(args.output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     raise SystemExit(0 if result["status"] == "pass" else 2)
 

@@ -79,6 +79,7 @@ def verify_au_p0b_google_spike_status_report(
         "execution",
         "playwright_env",
         "playwright_smoke",
+        "manual_backfill",
         "health",
         "health_manifest",
         "spike",

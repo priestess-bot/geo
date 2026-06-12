@@ -116,7 +116,7 @@ au-p0b-google-manual-template:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_p0b_manual_backfill_template.py --output-path $${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_TEMPLATE_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl} --manifest-path $${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_TEMPLATE_MANIFEST_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-template-manifest.json}
 
 verify-au-p0b-google-manual-backfill:
-	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_manual_backfill.py $${MANUAL_BACKFILL_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl}
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_manual_backfill.py $${MANUAL_BACKFILL_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl} --output-path $${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json}
 
 au-p0b-google-playwright-env:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_p0b_google_playwright_env_report.py --runbook-path $${GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json} --env-file $${GENO_AU_P0B_GOOGLE_ENV_FILE:-.env.au-p0b-google} --output-path $${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json}

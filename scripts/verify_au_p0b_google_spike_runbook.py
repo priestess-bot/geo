@@ -25,6 +25,7 @@ EXPECTED_STEP_IDS = (
     "google_playwright_env_verify",
     "google_playwright_smoke",
     "google_playwright_smoke_verify",
+    "google_manual_backfill_verify",
     "google_spike_health_check",
     "google_spike_health_manifest",
     "google_spike_collect",
@@ -35,6 +36,7 @@ REQUIRED_ENV = ("GOOGLE_PLAYWRIGHT_ENABLED", "MANUAL_BACKFILL_PATH", "DATABASE_U
 REQUIRED_ARTIFACT_PATHS = (
     "playwright_env_json",
     "playwright_smoke_json",
+    "manual_backfill_verification_json",
     "health_json",
     "health_manifest",
     "spike_json",
@@ -125,7 +127,7 @@ def verify_au_p0b_google_spike_runbook(runbook: Any, *, path: Path | None = None
             errors.append("prepare_environment_step_type_invalid")
         if steps["google_spike_decision_handoff"].get("type") != "manual":
             errors.append("decision_handoff_step_type_invalid")
-        for step_id in EXPECTED_STEP_IDS[1:9]:
+        for step_id in EXPECTED_STEP_IDS[1:10]:
             if steps.get(step_id, {}).get("stop_on_failure") is not True:
                 errors.append(f"step_must_stop_on_failure:{step_id}")
         if planned_expected is not None:
@@ -136,6 +138,7 @@ def verify_au_p0b_google_spike_runbook(runbook: Any, *, path: Path | None = None
         env_verify_step = steps.get("google_playwright_env_verify", {})
         smoke_step = steps.get("google_playwright_smoke", {})
         smoke_verify_step = steps.get("google_playwright_smoke_verify", {})
+        manual_backfill_verify_step = steps.get("google_manual_backfill_verify", {})
         health_step = steps.get("google_spike_health_check", {})
         collect_step = steps.get("google_spike_collect", {})
         if not _command_contains(env_step, "scripts/build_au_p0b_google_playwright_env_report.py"):
@@ -156,6 +159,19 @@ def verify_au_p0b_google_spike_runbook(runbook: Any, *, path: Path | None = None
             errors.append("playwright_smoke_verify_command_missing")
         if not _command_contains(smoke_verify_step, "--require-success"):
             errors.append("playwright_smoke_verify_success_gate_missing")
+        if not _command_contains(manual_backfill_verify_step, "scripts/verify_au_p0b_manual_backfill.py"):
+            errors.append("manual_backfill_verify_command_missing")
+        if not _command_contains(manual_backfill_verify_step, "--output-path"):
+            errors.append("manual_backfill_verify_output_path_missing")
+        expected_manual_runs = (
+            scope.get("prompt_count") * len(scope.get("geo_cities")) * scope.get("sample_size")
+            if isinstance(scope.get("prompt_count"), int)
+            and isinstance(scope.get("geo_cities"), list | tuple)
+            and isinstance(scope.get("sample_size"), int)
+            else None
+        )
+        if expected_manual_runs is not None and manual_backfill_verify_step.get("planned_runs") != expected_manual_runs:
+            errors.append("manual_backfill_planned_runs_invalid")
         if not _command_contains(health_step, "google-spike"):
             errors.append("health_mode_google_spike_missing")
         if not _command_contains(health_step, "--health-check-only"):

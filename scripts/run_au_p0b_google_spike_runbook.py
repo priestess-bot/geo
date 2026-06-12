@@ -80,6 +80,8 @@ def _external_call_risk(step: dict[str, Any]) -> str:
         return "local_environment_readiness_verifier"
     if step_id == "google_playwright_smoke":
         return "google_browser_smoke_capture"
+    if step_id == "google_manual_backfill_verify":
+        return "local_manual_backfill_verifier"
     if step_id == "google_spike_collect":
         return "google_browser_or_manual_capture"
     if step_id == "google_spike_health_check":
