@@ -104,6 +104,24 @@ class AuP0bGoogleExecutionChecklistTest(unittest.TestCase):
         self.assertTrue(checklist["env_file_hygiene"]["hygiene_ready"])
         self.assertEqual(checklist["summary"]["env_file_hygiene_error_count"], 0)
         self.assertIn("secure_env_file_permissions", {command["id"] for command in checklist["setup_commands"]})
+        self.assertFalse(checklist["environment_handoff"]["ready"])
+        self.assertEqual(checklist["environment_handoff"]["missing_required_count"], 5)
+        self.assertEqual(
+            sorted(checklist["environment_handoff"]["missing_required"]),
+            [
+                "full_run_env:DATABASE_URL",
+                "full_run_env:MANUAL_BACKFILL_PATH",
+                "selector_group:google_aio_answer_selector",
+                "selector_group:google_aio_prompt_selector",
+                "smoke_env:GOOGLE_PLAYWRIGHT_ENABLED",
+            ],
+        )
+        self.assertIn("chmod 600 .env.au-p0b-google", checklist["environment_handoff"]["setup_commands"])
+        self.assertFalse(checklist["environment_handoff"]["redaction_policy"]["raw_secret_values_allowed"])
+        self.assertTrue(checklist["environment_handoff"]["redaction_policy"]["forbidden_exact_secret_fields_redacted"])
+        self.assertFalse(checklist["summary"]["environment_handoff_ready"])
+        self.assertEqual(checklist["summary"]["environment_handoff_missing_required_count"], 5)
+        self.assertTrue(checklist["summary"]["environment_handoff_secret_redacted"])
         self.assertIn("run_smoke", {command["id"] for command in checklist["execution_commands"]})
         self.assertEqual(
             checklist["google_execution_checklist_hash"],
@@ -138,6 +156,9 @@ class AuP0bGoogleExecutionChecklistTest(unittest.TestCase):
         self.assertTrue(checklist["google_main_scoring_allowed"])
         self.assertEqual(checklist["next_action"], "allow_google_into_main_scoring_denominator")
         self.assertEqual(checklist["summary"]["remaining_blockers"], [])
+        self.assertTrue(checklist["environment_handoff"]["ready"])
+        self.assertEqual(checklist["environment_handoff"]["missing_required_count"], 0)
+        self.assertTrue(checklist["summary"]["environment_handoff_ready"])
         self.assertEqual(verification["status"], "pass")
 
     def test_verifier_detects_hash_and_summary_tampering(self) -> None:
@@ -207,6 +228,35 @@ class AuP0bGoogleExecutionChecklistTest(unittest.TestCase):
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_env_file_hygiene_ready_mismatch", verification["errors"])
         self.assertIn("summary_env_file_hygiene_error_count_mismatch", verification["errors"])
+
+    def test_verifier_requires_environment_handoff_to_match_google_inputs(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, execution_path, env_path, status_path, package_path, _runbook = self._write_status_and_package(
+                temp_dir,
+                google_ready=False,
+            )
+            checklist = build_au_p0b_google_execution_checklist(
+                runbook_path=runbook_path,
+                execution_path=execution_path,
+                playwright_env_path=env_path,
+                status_report_path=status_path,
+                package_path=package_path,
+                env_file_path=Path(temp_dir) / "missing.env",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            checklist["environment_handoff"]["missing_required"] = [  # type: ignore[index]
+                "smoke_env:GOOGLE_PLAYWRIGHT_ENABLED",
+            ]
+            checklist["environment_handoff"]["setup_commands"] = ["make verify-au-p0b-google-env-template"]  # type: ignore[index]
+            checklist["google_execution_checklist_hash"] = compute_google_execution_checklist_hash(checklist)
+            verification = verify_au_p0b_google_execution_checklist(checklist)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("environment_handoff_missing_required_mismatch", verification["errors"])
+        self.assertIn(
+            "environment_handoff_setup_command_missing:chmod 600 .env.au-p0b-google",
+            verification["errors"],
+        )
 
     def test_cli_writes_and_verifies_checklist(self) -> None:
         with TemporaryDirectory() as temp_dir:

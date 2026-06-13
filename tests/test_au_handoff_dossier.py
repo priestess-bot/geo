@@ -242,6 +242,22 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertEqual(dossier["p0b_google_execution_checklist"]["env_file_hygiene_error_count"], 0)
         self.assertTrue(dossier["summary"]["p0b_google_env_file_hygiene_ready"])
         self.assertEqual(dossier["summary"]["p0b_google_env_file_hygiene_error_count"], 0)
+        self.assertFalse(dossier["p0b_google_execution_checklist"]["environment_handoff_ready"])
+        self.assertEqual(dossier["p0b_google_execution_checklist"]["environment_handoff_missing_required_count"], 5)
+        self.assertEqual(
+            sorted(dossier["p0b_google_execution_checklist"]["environment_handoff_missing_required"]),
+            [
+                "full_run_env:DATABASE_URL",
+                "full_run_env:MANUAL_BACKFILL_PATH",
+                "selector_group:google_aio_answer_selector",
+                "selector_group:google_aio_prompt_selector",
+                "smoke_env:GOOGLE_PLAYWRIGHT_ENABLED",
+            ],
+        )
+        self.assertTrue(dossier["p0b_google_execution_checklist"]["environment_handoff_secret_redacted"])
+        self.assertFalse(dossier["summary"]["p0b_google_environment_handoff_ready"])
+        self.assertEqual(dossier["summary"]["p0b_google_environment_handoff_missing_required_count"], 5)
+        self.assertTrue(dossier["summary"]["p0b_google_environment_handoff_secret_redacted"])
         markdown = render_au_handoff_markdown(dossier)
         self.assertIn("AU 客户交付总包", markdown)
         self.assertIn("P0a 环境清单", markdown)
@@ -250,6 +266,8 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertIn("Env-file hygiene：ready", markdown)
         self.assertIn("Credential handoff：blocked", markdown)
         self.assertIn("Credential missing：PERPLEXITY_API_KEY, OPENAI_API_KEY, DATABASE_URL", markdown)
+        self.assertIn("Environment handoff：blocked", markdown)
+        self.assertIn("Environment handoff missing：smoke_env:GOOGLE_PLAYWRIGHT_ENABLED", markdown)
         self.assertIn("Runtime 复盘入口", markdown)
         self.assertIn("/v1/audit-events/runtime/export.csv", markdown)
         self.assertIn("/v1/projects/runtime/lifecycle-events/export.csv", markdown)
@@ -356,6 +374,32 @@ class AuHandoffDossierTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_p0a_credential_handoff_missing_required_count_mismatch", verification["errors"])
+
+    def test_verifier_detects_p0b_environment_handoff_summary_tampering(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path, remediation_plan_path = self._write_launch_status_and_plan(temp_dir, ready=False)
+            checklist_path = self._write_p0a_environment_checklist(temp_dir)
+            p0a_execution_checklist_path = self._write_p0a_execution_checklist(temp_dir)
+            p0b_checklist_path = self._write_p0b_google_execution_checklist(temp_dir)
+            dossier = build_au_handoff_dossier(
+                launch_status_path=launch_status_path,
+                remediation_plan_path=remediation_plan_path,
+                p0a_environment_checklist_path=checklist_path,
+                p0a_execution_checklist_path=p0a_execution_checklist_path,
+                p0b_google_execution_checklist_path=p0b_checklist_path,
+                output_path=Path(temp_dir) / "dossier.json",
+                markdown_output_path=Path(temp_dir) / "dossier.md",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            dossier["summary"]["p0b_google_environment_handoff_missing_required_count"] = 0  # type: ignore[index]
+            dossier["handoff_dossier_hash"] = compute_handoff_dossier_hash(dossier)
+            verification = verify_au_handoff_dossier(dossier)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn(
+            "summary_p0b_google_environment_handoff_missing_required_count_mismatch",
+            verification["errors"],
+        )
 
     def test_verifier_detects_hash_and_markdown_tampering(self) -> None:
         with TemporaryDirectory() as temp_dir:

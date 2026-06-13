@@ -182,14 +182,14 @@ DoD：
 - `[~]` (P0b·spike) `ManualBackfillCollector`：人工补录最小路径，保证样本可审计 — `Step4`（JSONL file-backed collector、health gate、顺序消费 k 样本、120-row template generator、strict coverage verifier、verification hash artifact、runbook/status manual gate、runtime manual backfill 单条 API、`POST /v1/evidence-runs/runtime/manual-backfill/import.csv` 项目级 CSV 批量导入和 Runtime Console Manual Backfill CSV 表单已落；CSV 导入会先整批校验 prompt 存在和项目归属，通过后逐条写 `manual_backfill_recorded` 并追加 `manual_backfill_batch_imported` 批次审计；真实 120-row/240-run 人工补录文件和 Google spike 运行仍待准备）
 - `[x]` (P0b·spike) Google spike 采样：30 prompts × 2 surfaces × 2 geo（Australia + Sydney）× k=2 = 240 planned_runs — `Step4 / Step9.3`
 - `[x]` (P0b·spike) 失败分类：not_triggered / layout_changed / blocked / timeout / geo_mismatch / account_state — `Step4`
-- `[~]` (P0b·spike) pass/fail gate 报告：成功率、触发率、截图/HTML 样本、成本/耗时、推荐路径 — `Step4 / Step13`（Google spike 结论由 `GoogleSpikeGateResult` 与 `GoogleSpikeReadinessGate` 承载；browser-only fixture 会通过 AIO 成功率 gate 但 fail 两路径 readiness gate；真实 `google-spike` worker 模式、Playwright env readiness、smoke gate、manual backfill strict verification gate、health-only/full spike Make 入口、runbook、dry-run、status report、evidence package 与 hash verifier 已落，真实 spike 报告待跑）
+- `[~]` (P0b·spike) pass/fail gate 报告：成功率、触发率、截图/HTML 样本、成本/耗时、推荐路径 — `Step4 / Step13`（Google spike 结论由 `GoogleSpikeGateResult` 与 `GoogleSpikeReadinessGate` 承载；browser-only fixture 会通过 AIO 成功率 gate 但 fail 两路径 readiness gate；真实 `google-spike` worker 模式、Playwright env readiness、smoke gate、manual backfill strict verification gate、health-only/full spike Make 入口、runbook、dry-run、status report、evidence package、execution checklist、P0b environment handoff ready/missing/redacted 摘要、handoff dossier/Console 上提与 hash verifier 已落，真实 spike 报告待跑）
 
 DoD：
 
 - `[~]` 至少两条 Google 采集路径完成对照（自建浏览器、第三方 API、人工补录三选二）（readiness gate 已可执行；browser+third_party fixture 可 pass；真实 `google-spike` 默认验证 browser + manual 两路径；manual 120-row strict verification artifact 已接入 runbook/status；第三方 API adapter 与独立 120-run 对照切片已实现，真实 supplier health/collection 待跑）
 - `[x]` 每条结果可靠记录 surface_triggered / answer_present
 
-补充状态：人工补录运营路径已新增 Runtime CSV 批量导入，但它是把已整理好的人工答案写入标准 RawEvidence/AuditEvent 链路，不替代 P0b 的 `MANUAL_BACKFILL_PATH` JSONL strict verifier。真实 Google spike 仍要求 30 prompts × Australia/Sydney × k=2 的 manual 样本填充、strict verification artifact、browser/manual 两路径 readiness gate 和最终 status/package hard gate。
+补充状态：人工补录运营路径已新增 Runtime CSV 批量导入，但它是把已整理好的人工答案写入标准 RawEvidence/AuditEvent 链路，不替代 P0b 的 `MANUAL_BACKFILL_PATH` JSONL strict verifier。P0b execution checklist 现在还会把 Google smoke/full-run 所需的开关、DB、manual path、selector groups、文件 gate、Playwright dependency 和 env-file hygiene 合成为脱敏 `environment_handoff`，并由 AU handoff dossier 与 Runtime Console 展示 `ready/missing/redacted`；真实 Google spike 仍要求 30 prompts × Australia/Sydney × k=2 的 manual 样本填充、strict verification artifact、browser/manual 两路径 readiness gate 和最终 status/package hard gate。
 - `[x]` 至少一个 google_aio 后端在同一窗口完成 >= 80% 计划样本，才允许进入主评分
 - `[x]` 未达标时，Google 只进 limited coverage 附录，报告明确标注不进入主评分分母（评分层 `score_input_policy` 会把未同时通过成功率 gate 与两路径 readiness gate 的 Google run 排除出 `VisibilityScoreSnapshot.answer_run_ids`）
 

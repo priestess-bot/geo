@@ -476,6 +476,14 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["remaining_blocker_count"], 7)
         self.assertTrue(payload["summary"]["env_file_hygiene_ready"])
         self.assertEqual(payload["summary"]["env_file_hygiene_error_count"], 0)
+        self.assertFalse(payload["summary"]["environment_handoff_ready"])
+        self.assertEqual(payload["summary"]["environment_handoff_missing_required_count"], 5)
+        self.assertTrue(payload["summary"]["environment_handoff_secret_redacted"])
+        self.assertIn("environment_handoff", payload)
+        self.assertIn(
+            "smoke_env:GOOGLE_PLAYWRIGHT_ENABLED",
+            payload["environment_handoff"]["missing_required"],
+        )
         self.assertIn("env_file_hygiene", payload)
         self.assertIn("google_aio_prompt_selector", payload["summary"]["missing_selector_groups"])
         self.assertIn("hard_package_gate", [command["id"] for command in payload["verification_commands"]])
@@ -568,6 +576,12 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["p0b_google_execution_checklist"]["remaining_blocker_count"], 7)
         self.assertTrue(payload["p0b_google_execution_checklist"]["env_file_hygiene_ready"])
         self.assertEqual(payload["p0b_google_execution_checklist"]["env_file_hygiene_error_count"], 0)
+        self.assertFalse(payload["p0b_google_execution_checklist"]["environment_handoff_ready"])
+        self.assertEqual(payload["p0b_google_execution_checklist"]["environment_handoff_missing_required_count"], 5)
+        self.assertTrue(payload["p0b_google_execution_checklist"]["environment_handoff_secret_redacted"])
+        self.assertFalse(payload["summary"]["p0b_google_environment_handoff_ready"])
+        self.assertEqual(payload["summary"]["p0b_google_environment_handoff_missing_required_count"], 5)
+        self.assertTrue(payload["summary"]["p0b_google_environment_handoff_secret_redacted"])
         self.assertEqual(payload["next_work_item"]["id"], "p0a_environment")
         self.assertEqual(payload["markdown_report"]["media_type"], "text/markdown; charset=utf-8")
         self.assertTrue(payload["handoff_dossier_hash"])

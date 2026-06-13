@@ -303,6 +303,192 @@ def _file_gate_issues(tasks: list[dict[str, Any]]) -> list[str]:
     return sorted(issues)
 
 
+def _environment_handoff_missing(
+    *,
+    missing_required: list[str],
+    missing_full_required: list[str],
+    missing_selector_groups: list[str],
+    missing_dependencies: list[str],
+    file_gate_issues: list[str],
+    env_file_hygiene: dict[str, Any],
+) -> list[str]:
+    missing = [
+        *[f"smoke_env:{name}" for name in missing_required],
+        *[f"full_run_env:{name}" for name in missing_full_required],
+        *[f"selector_group:{name}" for name in missing_selector_groups],
+        *[f"dependency:{name}" for name in missing_dependencies],
+    ]
+    for issue in file_gate_issues:
+        if issue == "MANUAL_BACKFILL_PATH:file_missing" and "MANUAL_BACKFILL_PATH" in missing_full_required:
+            continue
+        missing.append(f"file_gate:{issue}")
+    if env_file_hygiene.get("hygiene_ready") is not True:
+        errors = [str(item) for item in _as_list(env_file_hygiene.get("errors"))]
+        missing.extend([f"env_file_hygiene:{error}" for error in errors] or ["env_file_hygiene:not_ready"])
+    return missing
+
+
+def _environment_handoff(
+    *,
+    required_environment: list[dict[str, Any]],
+    full_run_required_environment: list[dict[str, Any]],
+    selector_groups: list[dict[str, Any]],
+    file_checks: list[dict[str, Any]],
+    dependency_checks: list[dict[str, Any]],
+    env_file_hygiene: dict[str, Any],
+    missing_required: list[str],
+    missing_full_required: list[str],
+    missing_selector_groups: list[str],
+    missing_dependencies: list[str],
+    file_gate_issues: list[str],
+    env_file_path: Path | None,
+) -> dict[str, Any]:
+    missing_inputs = _environment_handoff_missing(
+        missing_required=missing_required,
+        missing_full_required=missing_full_required,
+        missing_selector_groups=missing_selector_groups,
+        missing_dependencies=missing_dependencies,
+        file_gate_issues=file_gate_issues,
+        env_file_hygiene=env_file_hygiene,
+    )
+    owner_hints = {
+        "GOOGLE_PLAYWRIGHT_ENABLED": "browser_automation_operator",
+        "MANUAL_BACKFILL_PATH": "google_manual_backfill_operator",
+        "DATABASE_URL": "runtime_database_admin",
+        "GOOGLE_PLAYWRIGHT_STORAGE_STATE": "browser_automation_operator",
+        "GENO_BROWSER_ARTIFACT_DIR": "artifact_store_operator",
+    }
+    environment_items: list[dict[str, Any]] = []
+    for task in [*required_environment, *full_run_required_environment]:
+        name = str(task.get("name", ""))
+        environment_items.append(
+            {
+                "name": name,
+                "gate": task.get("gate", ""),
+                "required": task.get("required") is True,
+                "present": task.get("present") is True,
+                "truthy": task.get("truthy") if isinstance(task.get("truthy"), bool) else None,
+                "source": task.get("source", "missing"),
+                "owner_hint": owner_hints.get(name, "platform_operator"),
+                "accepted_injection_methods": ["process_environment", "GENO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"],
+                "env_file_key": name,
+                "value_length": task.get("value_length", 0),
+                "sha256_prefix": task.get("sha256_prefix", ""),
+                "secret_redacted": task.get("secret_redacted") is True,
+                "post_update_checks": [
+                    "make au-p0b-google-playwright-env",
+                    "make verify-au-p0b-google-playwright-env",
+                    "make au-p0b-google-execution-checklist",
+                    "make verify-au-p0b-google-execution-checklist",
+                ],
+            }
+        )
+    selector_items: list[dict[str, Any]] = []
+    for task in selector_groups:
+        group = str(task.get("group", ""))
+        selector_items.append(
+            {
+                "group": group,
+                "candidate_names": [str(name) for name in _as_list(task.get("candidate_names"))],
+                "present": task.get("present") is True,
+                "selected_name": str(task.get("selected_name", "")),
+                "source": task.get("source", "missing"),
+                "owner_hint": "browser_automation_operator",
+                "accepted_injection_methods": ["process_environment", "GENO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"],
+                "value_length": task.get("value_length", 0),
+                "sha256_prefix": task.get("sha256_prefix", ""),
+                "secret_redacted": task.get("secret_redacted") is True,
+                "post_update_checks": [
+                    "make au-p0b-google-playwright-env",
+                    "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py ${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} --require-ready-smoke",
+                ],
+            }
+        )
+    file_items: list[dict[str, Any]] = []
+    for task in file_checks:
+        name = str(task.get("name", ""))
+        file_items.append(
+            {
+                "name": name,
+                "expected_type": str(task.get("expected_type", "")),
+                "present": task.get("present") is True,
+                "exists": task.get("exists") is True,
+                "is_file": task.get("is_file") is True,
+                "is_dir": task.get("is_dir") is True,
+                "source": task.get("source", "missing"),
+                "owner_hint": owner_hints.get(name, "platform_operator"),
+                "accepted_injection_methods": ["process_environment", "GENO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"],
+                "value_length": task.get("value_length", 0),
+                "sha256_prefix": task.get("sha256_prefix", ""),
+                "secret_redacted": task.get("secret_redacted") is True,
+                "post_update_checks": [
+                    "make au-p0b-google-playwright-env",
+                    "make verify-au-p0b-google-playwright-env",
+                ],
+            }
+        )
+    dependency_items = [
+        {
+            "name": str(task.get("name", "")),
+            "present": task.get("present") is True,
+            "source": task.get("source", "unknown"),
+            "owner_hint": "runtime_operator",
+            "secret_redacted": task.get("secret_redacted") is True,
+            "post_update_checks": [
+                "make au-p0b-google-playwright-env",
+                "make verify-au-p0b-google-playwright-env",
+            ],
+        }
+        for task in dependency_checks
+    ]
+    return {
+        "version": "au_p0b_google_environment_handoff_v1",
+        "ready": not missing_inputs,
+        "missing_required_count": len(missing_inputs),
+        "missing_required": missing_inputs,
+        "target_env_file": str(env_file_path) if env_file_path else "",
+        "setup_commands": [
+            "make verify-au-p0b-google-env-template",
+            "cp .env.au-p0b-google.example .env.au-p0b-google",
+            "chmod 600 .env.au-p0b-google",
+        ],
+        "environment_items": environment_items,
+        "selector_items": selector_items,
+        "file_items": file_items,
+        "dependency_items": dependency_items,
+        "verification_commands": [
+            "make au-p0b-google-playwright-env",
+            "make verify-au-p0b-google-playwright-env",
+            "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py ${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} --require-ready-smoke",
+            "make au-p0b-google-manual-template",
+            "make verify-au-p0b-google-manual-backfill",
+            "make au-p0b-google-execution-checklist",
+            "make verify-au-p0b-google-execution-checklist",
+        ],
+        "evidence_outputs": [
+            "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+            "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
+            "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json",
+        ],
+        "redaction_policy": {
+            "raw_secret_values_allowed": False,
+            "recorded_fields": [
+                "present",
+                "source",
+                "truthy",
+                "value_length",
+                "sha256_prefix",
+                "exists",
+                "is_file",
+                "is_dir",
+                "secret_redacted",
+            ],
+            "forbidden_exact_secret_field_count": 2,
+            "forbidden_exact_secret_fields_redacted": True,
+        },
+    }
+
+
 def _setup_commands() -> list[dict[str, str]]:
     return [
         {
@@ -517,6 +703,20 @@ def build_au_p0b_google_execution_checklist(
     missing_selector_groups = sorted(task["group"] for task in selector_groups if task.get("present") is not True)
     missing_dependencies = sorted(task["name"] for task in dependency_checks if task.get("present") is not True)
     file_gate_issues = _file_gate_issues(file_checks)
+    environment_handoff = _environment_handoff(
+        required_environment=required_environment,
+        full_run_required_environment=full_run_required_environment,
+        selector_groups=selector_groups,
+        file_checks=file_checks,
+        dependency_checks=dependency_checks,
+        env_file_hygiene=env_file_hygiene,
+        missing_required=missing_required,
+        missing_full_required=missing_full_required,
+        missing_selector_groups=missing_selector_groups,
+        missing_dependencies=missing_dependencies,
+        file_gate_issues=file_gate_issues,
+        env_file_path=env_file_path,
+    )
     remaining_blockers = [str(item) for item in _as_list(package.get("remaining_blockers"))]
     runbook_ok = runbook_verifier.get("status") == "pass" and runbook_verifier.get("hash_valid") is True
     env_ok = env_verifier.get("status") == "pass" and env_verifier.get("hash_valid") is True
@@ -577,6 +777,19 @@ def build_au_p0b_google_execution_checklist(
             "env_file_hygiene_ready": env_file_hygiene["hygiene_ready"],
             "env_file_hygiene_error_count": len(env_file_hygiene["errors"]),
             "env_file_hygiene_warning_count": len(env_file_hygiene["warnings"]),
+            "environment_handoff_ready": environment_handoff["ready"],
+            "environment_handoff_missing_required_count": environment_handoff["missing_required_count"],
+            "environment_handoff_missing_required": environment_handoff["missing_required"],
+            "environment_handoff_target_env_file": environment_handoff["target_env_file"],
+            "environment_handoff_setup_command_count": len(environment_handoff["setup_commands"]),
+            "environment_handoff_verification_command_count": len(environment_handoff["verification_commands"]),
+            "environment_handoff_secret_redacted": (
+                _as_dict(environment_handoff.get("redaction_policy")).get("raw_secret_values_allowed") is False
+                and _as_dict(environment_handoff.get("redaction_policy")).get(
+                    "forbidden_exact_secret_fields_redacted"
+                )
+                is True
+            ),
             "remaining_blocker_count": len(remaining_blockers),
             "remaining_blockers": remaining_blockers,
             "runbook_verifier_status": runbook_verifier.get("status", ""),
@@ -625,6 +838,7 @@ def build_au_p0b_google_execution_checklist(
         "selector_groups": selector_groups,
         "file_checks": file_checks,
         "dependency_checks": dependency_checks,
+        "environment_handoff": environment_handoff,
         "setup_commands": _setup_commands(),
         "execution_commands": _execution_commands(),
         "verification_commands": _verification_commands(),

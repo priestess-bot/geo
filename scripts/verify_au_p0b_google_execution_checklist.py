@@ -45,6 +45,7 @@ REQUIRED_FIELDS = (
     "selector_groups",
     "file_checks",
     "dependency_checks",
+    "environment_handoff",
     "setup_commands",
     "execution_commands",
     "verification_commands",
@@ -234,6 +235,257 @@ def _file_gate_issues(tasks: list[object]) -> list[str]:
     return sorted(issues)
 
 
+def _environment_handoff_missing(
+    *,
+    missing_required: list[str],
+    missing_full_required: list[str],
+    missing_selectors: list[str],
+    missing_dependencies: list[str],
+    file_issues: list[str],
+    env_file_hygiene_ready: bool,
+    env_file_hygiene_errors: list[str],
+) -> list[str]:
+    missing = [
+        *[f"smoke_env:{name}" for name in missing_required],
+        *[f"full_run_env:{name}" for name in missing_full_required],
+        *[f"selector_group:{name}" for name in missing_selectors],
+        *[f"dependency:{name}" for name in missing_dependencies],
+    ]
+    for issue in file_issues:
+        if issue == "MANUAL_BACKFILL_PATH:file_missing" and "MANUAL_BACKFILL_PATH" in missing_full_required:
+            continue
+        missing.append(f"file_gate:{issue}")
+    if not env_file_hygiene_ready:
+        missing.extend([f"env_file_hygiene:{error}" for error in env_file_hygiene_errors] or ["env_file_hygiene:not_ready"])
+    return sorted(missing)
+
+
+def _validate_handoff_environment_items(tasks: list[object], errors: list[str]) -> tuple[int, list[str]]:
+    missing: list[str] = []
+    for item in tasks:
+        task = _as_dict(item)
+        name = task.get("name")
+        if not isinstance(name, str) or not name:
+            errors.append("environment_handoff_item_name_missing")
+            continue
+        for field in (
+            "gate",
+            "required",
+            "present",
+            "source",
+            "owner_hint",
+            "accepted_injection_methods",
+            "env_file_key",
+            "value_length",
+            "sha256_prefix",
+            "secret_redacted",
+            "post_update_checks",
+        ):
+            if field not in task:
+                errors.append(f"environment_handoff_item_field_missing:{name}:{field}")
+        if task.get("secret_redacted") is not True:
+            errors.append(f"environment_handoff_item_secret_redaction_missing:{name}")
+        if task.get("env_file_key") != name:
+            errors.append(f"environment_handoff_item_env_key_mismatch:{name}")
+        accepted_methods = {str(value) for value in _as_list(task.get("accepted_injection_methods"))}
+        if not {"process_environment", "GENO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"}.issubset(
+            accepted_methods
+        ):
+            errors.append(f"environment_handoff_item_injection_methods_incomplete:{name}")
+        present = task.get("present")
+        truthy = task.get("truthy")
+        if present is True:
+            if not isinstance(task.get("value_length"), int) or task.get("value_length") <= 0:
+                errors.append(f"environment_handoff_item_value_length_invalid:{name}")
+            if not isinstance(task.get("sha256_prefix"), str) or len(task.get("sha256_prefix")) != 12:
+                errors.append(f"environment_handoff_item_sha256_prefix_invalid:{name}")
+            if truthy is False:
+                missing.append(name)
+        elif present is False:
+            missing.append(name)
+        else:
+            errors.append(f"environment_handoff_item_present_invalid:{name}")
+    return len(tasks), sorted(missing)
+
+
+def _validate_handoff_selector_items(tasks: list[object], errors: list[str]) -> tuple[int, list[str]]:
+    missing: list[str] = []
+    for item in tasks:
+        task = _as_dict(item)
+        group = task.get("group")
+        if not isinstance(group, str) or not group:
+            errors.append("environment_handoff_selector_group_missing")
+            continue
+        for field in (
+            "candidate_names",
+            "present",
+            "selected_name",
+            "source",
+            "owner_hint",
+            "accepted_injection_methods",
+            "value_length",
+            "sha256_prefix",
+            "secret_redacted",
+            "post_update_checks",
+        ):
+            if field not in task:
+                errors.append(f"environment_handoff_selector_field_missing:{group}:{field}")
+        if task.get("secret_redacted") is not True:
+            errors.append(f"environment_handoff_selector_secret_redaction_missing:{group}")
+        accepted_methods = {str(value) for value in _as_list(task.get("accepted_injection_methods"))}
+        if not {"process_environment", "GENO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"}.issubset(
+            accepted_methods
+        ):
+            errors.append(f"environment_handoff_selector_injection_methods_incomplete:{group}")
+        present = task.get("present")
+        if present is True:
+            if not task.get("selected_name"):
+                errors.append(f"environment_handoff_selector_selected_name_missing:{group}")
+            if not isinstance(task.get("value_length"), int) or task.get("value_length") <= 0:
+                errors.append(f"environment_handoff_selector_value_length_invalid:{group}")
+            if not isinstance(task.get("sha256_prefix"), str) or len(task.get("sha256_prefix")) != 12:
+                errors.append(f"environment_handoff_selector_sha256_prefix_invalid:{group}")
+        elif present is False:
+            missing.append(group)
+        else:
+            errors.append(f"environment_handoff_selector_present_invalid:{group}")
+    return len(tasks), sorted(missing)
+
+
+def _validate_handoff_file_items(tasks: list[object], errors: list[str]) -> tuple[int, list[str]]:
+    issues: list[str] = []
+    for item in tasks:
+        task = _as_dict(item)
+        name = task.get("name")
+        if not isinstance(name, str) or not name:
+            errors.append("environment_handoff_file_name_missing")
+            continue
+        for field in (
+            "expected_type",
+            "present",
+            "exists",
+            "is_file",
+            "is_dir",
+            "source",
+            "owner_hint",
+            "accepted_injection_methods",
+            "value_length",
+            "sha256_prefix",
+            "secret_redacted",
+            "post_update_checks",
+        ):
+            if field not in task:
+                errors.append(f"environment_handoff_file_field_missing:{name}:{field}")
+        if task.get("secret_redacted") is not True:
+            errors.append(f"environment_handoff_file_secret_redaction_missing:{name}")
+        expected_type = str(task.get("expected_type", ""))
+        present = task.get("present") is True
+        if name == "MANUAL_BACKFILL_PATH" and (not present or task.get("is_file") is not True):
+            issues.append(f"{name}:file_missing")
+        elif present and expected_type == "file" and task.get("is_file") is not True:
+            issues.append(f"{name}:file_missing")
+        elif present and expected_type == "directory" and task.get("is_dir") is not True:
+            issues.append(f"{name}:directory_missing")
+    return len(tasks), sorted(issues)
+
+
+def _validate_handoff_dependency_items(tasks: list[object], errors: list[str]) -> tuple[int, list[str]]:
+    missing: list[str] = []
+    for item in tasks:
+        task = _as_dict(item)
+        name = task.get("name")
+        if not isinstance(name, str) or not name:
+            errors.append("environment_handoff_dependency_name_missing")
+            continue
+        if task.get("secret_redacted") is not True:
+            errors.append(f"environment_handoff_dependency_secret_redaction_missing:{name}")
+        if task.get("present") is False:
+            missing.append(name)
+        elif task.get("present") is not True:
+            errors.append(f"environment_handoff_dependency_present_invalid:{name}")
+    return len(tasks), sorted(missing)
+
+
+def _validate_environment_handoff(
+    handoff: dict[str, Any],
+    *,
+    missing_required: list[str],
+    missing_full_required: list[str],
+    missing_selectors: list[str],
+    missing_dependencies: list[str],
+    file_issues: list[str],
+    env_file_hygiene_ready: bool,
+    env_file_hygiene_errors: list[str],
+    errors: list[str],
+) -> list[str]:
+    if handoff.get("version") != "au_p0b_google_environment_handoff_v1":
+        errors.append("environment_handoff_version_invalid")
+    for field in (
+        "ready",
+        "missing_required_count",
+        "missing_required",
+        "target_env_file",
+        "setup_commands",
+        "environment_items",
+        "selector_items",
+        "file_items",
+        "dependency_items",
+        "verification_commands",
+        "evidence_outputs",
+        "redaction_policy",
+    ):
+        if field not in handoff:
+            errors.append(f"environment_handoff_field_missing:{field}")
+    _validate_handoff_environment_items(_as_list(handoff.get("environment_items")), errors)
+    _validate_handoff_selector_items(_as_list(handoff.get("selector_items")), errors)
+    _validate_handoff_file_items(_as_list(handoff.get("file_items")), errors)
+    _validate_handoff_dependency_items(_as_list(handoff.get("dependency_items")), errors)
+    expected_missing = _environment_handoff_missing(
+        missing_required=missing_required,
+        missing_full_required=missing_full_required,
+        missing_selectors=missing_selectors,
+        missing_dependencies=missing_dependencies,
+        file_issues=file_issues,
+        env_file_hygiene_ready=env_file_hygiene_ready,
+        env_file_hygiene_errors=env_file_hygiene_errors,
+    )
+    observed_missing = sorted(str(item) for item in _as_list(handoff.get("missing_required")))
+    if observed_missing != expected_missing:
+        errors.append("environment_handoff_missing_required_mismatch")
+    if handoff.get("missing_required_count") != len(observed_missing):
+        errors.append("environment_handoff_missing_required_count_mismatch")
+    if handoff.get("ready") is not (not observed_missing):
+        errors.append("environment_handoff_ready_mismatch")
+    setup_commands = [str(item) for item in _as_list(handoff.get("setup_commands"))]
+    for command in {
+        "make verify-au-p0b-google-env-template",
+        "cp .env.au-p0b-google.example .env.au-p0b-google",
+        "chmod 600 .env.au-p0b-google",
+    }:
+        if command not in setup_commands:
+            errors.append(f"environment_handoff_setup_command_missing:{command}")
+    verification_commands = [str(item) for item in _as_list(handoff.get("verification_commands"))]
+    for command in {
+        "make au-p0b-google-playwright-env",
+        "make verify-au-p0b-google-playwright-env",
+        "make verify-au-p0b-google-manual-backfill",
+        "make au-p0b-google-execution-checklist",
+        "make verify-au-p0b-google-execution-checklist",
+    }:
+        if command not in verification_commands:
+            errors.append(f"environment_handoff_verification_command_missing:{command}")
+    redaction_policy = _as_dict(handoff.get("redaction_policy"))
+    if redaction_policy.get("raw_secret_values_allowed") is not False:
+        errors.append("environment_handoff_raw_secret_policy_invalid")
+    if redaction_policy.get("forbidden_exact_secret_field_count") != 2:
+        errors.append("environment_handoff_forbidden_field_count_invalid")
+    if redaction_policy.get("forbidden_exact_secret_fields_redacted") is not True:
+        errors.append("environment_handoff_forbidden_field_redaction_missing")
+    if len(_as_list(handoff.get("evidence_outputs"))) < 3:
+        errors.append("environment_handoff_evidence_outputs_incomplete")
+    return observed_missing
+
+
 def _expected_next_action(
     *,
     runbook_ok: bool,
@@ -297,6 +549,7 @@ def verify_au_p0b_google_execution_checklist(
     status_verifier = _as_dict(checklist.get("status_report_verifier"))
     package = _as_dict(checklist.get("evidence_package"))
     package_verifier = _as_dict(checklist.get("evidence_package_verifier"))
+    environment_handoff = _as_dict(checklist.get("environment_handoff"))
     required_count, missing_required = _validate_env_tasks(
         "required_environment",
         _as_list(checklist.get("required_environment")),
@@ -314,6 +567,17 @@ def verify_au_p0b_google_execution_checklist(
         errors,
     )
     file_issues = _file_gate_issues(_as_list(checklist.get("file_checks")))
+    environment_handoff_missing = _validate_environment_handoff(
+        environment_handoff,
+        missing_required=missing_required,
+        missing_full_required=missing_full_required,
+        missing_selectors=missing_selectors,
+        missing_dependencies=missing_dependencies,
+        file_issues=file_issues,
+        env_file_hygiene_ready=env_file_hygiene_ready,
+        env_file_hygiene_errors=env_file_hygiene_errors,
+        errors=errors,
+    )
     remaining_blockers = [str(item) for item in _as_list(package.get("remaining_blockers"))]
     if not remaining_blockers:
         remaining_blockers = [str(item) for item in _as_list(summary.get("remaining_blockers"))]
@@ -350,6 +614,21 @@ def verify_au_p0b_google_execution_checklist(
         errors.append("summary_env_file_hygiene_error_count_mismatch")
     if summary.get("env_file_hygiene_warning_count") != len(env_file_hygiene_warnings):
         errors.append("summary_env_file_hygiene_warning_count_mismatch")
+    if summary.get("environment_handoff_ready") is not (not environment_handoff_missing):
+        errors.append("summary_environment_handoff_ready_mismatch")
+    if sorted(str(item) for item in _as_list(summary.get("environment_handoff_missing_required"))) != sorted(
+        environment_handoff_missing
+    ):
+        errors.append("summary_environment_handoff_missing_required_mismatch")
+    if summary.get("environment_handoff_missing_required_count") != len(environment_handoff_missing):
+        errors.append("summary_environment_handoff_missing_required_count_mismatch")
+    handoff_redaction = _as_dict(environment_handoff.get("redaction_policy"))
+    handoff_redacted = (
+        handoff_redaction.get("raw_secret_values_allowed") is False
+        and handoff_redaction.get("forbidden_exact_secret_fields_redacted") is True
+    )
+    if summary.get("environment_handoff_secret_redacted") is not handoff_redacted:
+        errors.append("summary_environment_handoff_secret_redacted_mismatch")
     if sorted(str(item) for item in _as_list(summary.get("remaining_blockers"))) != sorted(remaining_blockers):
         errors.append("summary_remaining_blockers_mismatch")
     if summary.get("remaining_blocker_count") != len(remaining_blockers):

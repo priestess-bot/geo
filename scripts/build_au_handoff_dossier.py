@@ -311,6 +311,8 @@ def _p0a_execution_checklist_summary(checklist: dict[str, Any]) -> dict[str, Any
 def _p0b_google_execution_checklist_summary(checklist: dict[str, Any]) -> dict[str, Any]:
     summary = _as_dict(checklist.get("summary"))
     env_file_hygiene = _as_dict(checklist.get("env_file_hygiene"))
+    environment_handoff = _as_dict(checklist.get("environment_handoff"))
+    redaction_policy = _as_dict(environment_handoff.get("redaction_policy"))
     env_file_hygiene_errors = [str(value) for value in _as_list(env_file_hygiene.get("errors"))]
     env_file_hygiene_warnings = [str(value) for value in _as_list(env_file_hygiene.get("warnings"))]
     return {
@@ -349,6 +351,16 @@ def _p0b_google_execution_checklist_summary(checklist: dict[str, Any]) -> dict[s
         "env_file_hygiene_git_safe": env_file_hygiene.get("git_safe") is True,
         "env_file_hygiene_permission_safe": env_file_hygiene.get("permission_safe") is True,
         "env_file_hygiene_required": env_file_hygiene.get("hygiene_required") is True,
+        "environment_handoff_ready": environment_handoff.get("ready") is True,
+        "environment_handoff_missing_required_count": environment_handoff.get("missing_required_count", 0),
+        "environment_handoff_missing_required": [
+            str(value) for value in _as_list(environment_handoff.get("missing_required"))
+        ],
+        "environment_handoff_target_env_file": str(environment_handoff.get("target_env_file") or ""),
+        "environment_handoff_setup_command_count": len(_as_list(environment_handoff.get("setup_commands"))),
+        "environment_handoff_verification_command_count": len(_as_list(environment_handoff.get("verification_commands"))),
+        "environment_handoff_secret_redacted": redaction_policy.get("raw_secret_values_allowed") is False
+        and redaction_policy.get("forbidden_exact_secret_fields_redacted") is True,
         "remaining_blocker_count": summary.get("remaining_blocker_count", 0),
         "remaining_blockers": [str(value) for value in _as_list(summary.get("remaining_blockers"))],
         "runbook_verifier_status": summary.get("runbook_verifier_status", ""),
@@ -581,6 +593,11 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
             f"（errors: {p0b_google_execution_checklist.get('env_file_hygiene_error_count', 0)}, "
             f"warnings: {p0b_google_execution_checklist.get('env_file_hygiene_warning_count', 0)}）",
             f"- Env-file hygiene path：{p0b_google_execution_checklist.get('env_file_hygiene_path') or 'none'}",
+            f"- Environment handoff：{'ready' if p0b_google_execution_checklist.get('environment_handoff_ready') else 'blocked'}"
+            f"（missing: {p0b_google_execution_checklist.get('environment_handoff_missing_required_count', 0)}, "
+            f"redacted: {'yes' if p0b_google_execution_checklist.get('environment_handoff_secret_redacted') else 'no'}）",
+            f"- Environment handoff missing：{', '.join(str(value) for value in _as_list(p0b_google_execution_checklist.get('environment_handoff_missing_required'))) or '无'}",
+            f"- Environment handoff target env file：{p0b_google_execution_checklist.get('environment_handoff_target_env_file') or 'none'}",
             f"- Remaining blockers：{p0b_google_execution_checklist.get('remaining_blocker_count', 0)}",
             f"- Status verifier：{p0b_google_execution_checklist.get('status_verifier_status', '')}",
             f"- Package verifier：{p0b_google_execution_checklist.get('package_verifier_status', '')}",
@@ -767,6 +784,16 @@ def build_au_handoff_dossier(
                 "env_file_hygiene_warning_count",
                 0,
             ),
+            "p0b_google_environment_handoff_ready": p0b_google_checklist_summary.get("environment_handoff_ready")
+            is True,
+            "p0b_google_environment_handoff_missing_required_count": p0b_google_checklist_summary.get(
+                "environment_handoff_missing_required_count",
+                0,
+            ),
+            "p0b_google_environment_handoff_secret_redacted": p0b_google_checklist_summary.get(
+                "environment_handoff_secret_redacted",
+            )
+            is True,
         },
         "runtime_endpoints": {
             "launch_status": "GET /v1/launch-status/au",

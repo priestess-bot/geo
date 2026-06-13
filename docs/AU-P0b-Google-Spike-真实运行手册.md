@@ -38,6 +38,8 @@ chmod 600 .env.au-p0b-google
 
 模板默认 `GOOGLE_PLAYWRIGHT_ENABLED=0`，不会误触发真实浏览器采集。填完真实 selector、storage state、manual backfill 路径、数据库和可选对象存储后，再运行 `make au-p0b-google-playwright-env`；报告只会保存变量来源、长度和 hash 前缀，不会保存原始值。
 
+执行清单会把这些输入进一步汇总为脱敏 `environment_handoff`。当前 handoff 必须覆盖 `GOOGLE_PLAYWRIGHT_ENABLED`、`DATABASE_URL`、`MANUAL_BACKFILL_PATH`、`google_aio_prompt_selector`、`google_aio_answer_selector`、文件 gate、Playwright dependency 和 env-file hygiene；它只记录 `present/source/truthy/value_length/sha256_prefix/exists/is_file/is_dir/secret_redacted` 等摘要，不记录 selector、storage state path、manual 文件路径、数据库 URL 或 secret 原文。`make verify-au-p0b-google-execution-checklist` 会复算 handoff 的 missing list、setup commands、verification commands 和 redaction policy；AU handoff dossier 和 Runtime Console 会展示同一组 ready/missing/redacted 摘要。
+
 必需变量：
 
 ```bash

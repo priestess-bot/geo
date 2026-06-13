@@ -917,6 +917,13 @@ type AuP0bGoogleExecutionChecklist = {
     env_file_hygiene_ready?: boolean;
     env_file_hygiene_error_count?: number;
     env_file_hygiene_warning_count?: number;
+    environment_handoff_ready?: boolean;
+    environment_handoff_missing_required_count?: number;
+    environment_handoff_missing_required?: string[];
+    environment_handoff_target_env_file?: string;
+    environment_handoff_setup_command_count?: number;
+    environment_handoff_verification_command_count?: number;
+    environment_handoff_secret_redacted?: boolean;
     remaining_blocker_count?: number;
     remaining_blockers?: string[];
     runbook_verifier_status?: string;
@@ -1036,6 +1043,9 @@ type AuHandoffDossier = {
     p0b_google_env_file_hygiene_ready?: boolean;
     p0b_google_env_file_hygiene_error_count?: number;
     p0b_google_env_file_hygiene_warning_count?: number;
+    p0b_google_environment_handoff_ready?: boolean;
+    p0b_google_environment_handoff_missing_required_count?: number;
+    p0b_google_environment_handoff_secret_redacted?: boolean;
   };
   markdown_report?: {
     path?: string;
@@ -3866,6 +3876,7 @@ export default async function Home({
   const missingP0bSmokeEnv = p0bGoogleExecutionSummary?.missing_required_environment || [];
   const missingP0bFullRunEnv = p0bGoogleExecutionSummary?.missing_full_run_required_environment || [];
   const missingP0bSelectors = p0bGoogleExecutionSummary?.missing_selector_groups || [];
+  const missingP0bEnvironmentHandoff = p0bGoogleExecutionSummary?.environment_handoff_missing_required || [];
   const p0bChecklistBlockers = p0bGoogleExecutionSummary?.remaining_blockers || [];
   const p0bEnvFileHygieneReady = p0bGoogleExecutionSummary?.env_file_hygiene_ready;
   const p0bEnvFileHygieneErrorCount = p0bGoogleExecutionSummary?.env_file_hygiene_error_count || 0;
@@ -4528,11 +4539,31 @@ export default async function Home({
                 <small>Selector groups are present.</small>
               )}
             </div>
+            <div>
+              <strong>Environment handoff</strong>
+              <small>
+                {p0bGoogleExecutionSummary?.environment_handoff_ready ? "ready" : "blocked"} · missing{" "}
+                {p0bGoogleExecutionSummary?.environment_handoff_missing_required_count || 0} · redacted{" "}
+                {p0bGoogleExecutionSummary?.environment_handoff_secret_redacted ? "yes" : "no"}
+              </small>
+              {missingP0bEnvironmentHandoff.length ? (
+                <ul className="plainList">
+                  {missingP0bEnvironmentHandoff.slice(0, 6).map((name) => (
+                    <li key={name}>{name}</li>
+                  ))}
+                </ul>
+              ) : (
+                <small>Google smoke/full-run handoff inputs are recorded as present.</small>
+              )}
+            </div>
           </div>
           <div className="handoffBoundary">
             <span>
               Remaining blockers {p0bGoogleExecutionSummary?.remaining_blocker_count || 0} · shown{" "}
               {Math.min(p0bChecklistBlockers.length, 4)}
+            </span>
+            <span>
+              Environment target env file {p0bGoogleExecutionSummary?.environment_handoff_target_env_file || "none"}
             </span>
             <span>
               Verifiers: env {p0bGoogleExecutionSummary?.playwright_env_verifier_status || "unknown"} · status{" "}
@@ -4628,6 +4659,12 @@ export default async function Home({
               {handoffSummary?.p0b_google_env_file_hygiene_ready ? "ready" : "blocked"} · errors{" "}
               {handoffSummary?.p0b_google_env_file_hygiene_error_count || 0} · warnings{" "}
               {handoffSummary?.p0b_google_env_file_hygiene_warning_count || 0}
+            </span>
+            <span>
+              P0b environment handoff{" "}
+              {handoffSummary?.p0b_google_environment_handoff_ready ? "ready" : "blocked"} · missing{" "}
+              {handoffSummary?.p0b_google_environment_handoff_missing_required_count || 0} · redacted{" "}
+              {handoffSummary?.p0b_google_environment_handoff_secret_redacted ? "yes" : "no"}
             </span>
             <span>Hard gate: scripts/verify_au_handoff_dossier.py --require-customer-ready</span>
             <span>{handoffDossier?.runtime_endpoints?.launch_remediation_plan || "GET /v1/launch-remediation-plan/au"}</span>
