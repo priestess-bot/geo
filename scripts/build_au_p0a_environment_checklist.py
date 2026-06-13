@@ -152,6 +152,11 @@ def _setup_commands() -> list[dict[str, str]]:
             "shell": "cp .env.au-p0a.example .env.au-p0a",
             "purpose": "Create a local env file for real AU P0a credentials without committing secrets.",
         },
+        {
+            "id": "chmod_env_file",
+            "shell": "chmod 600 .env.au-p0a",
+            "purpose": "Constrain the local P0a env file before writing provider/database credentials.",
+        },
         {"id": "build_runbook", "shell": "make au-p0a-runbook", "purpose": "Freeze the P0a command plan."},
         {"id": "build_env_report", "shell": "make au-p0a-env", "purpose": "Generate the redacted env report."},
         {"id": "verify_env_report", "shell": "make verify-au-p0a-env", "purpose": "Verify env report hash and schema."},

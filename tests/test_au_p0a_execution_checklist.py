@@ -233,7 +233,19 @@ class AuP0aExecutionChecklistTest(unittest.TestCase):
         self.assertEqual(checklist["next_action"], "configure_required_environment")
         self.assertIn("preflight_json", checklist["summary"]["missing_artifacts"])
         self.assertIn("verify_env_template", {command["id"] for command in checklist["setup_commands"]})
+        self.assertIn("chmod_env_file", {command["id"] for command in checklist["setup_commands"]})
         self.assertIn("hard_status_gate", {command["id"] for command in checklist["verification_commands"]})
+        self.assertFalse(checklist["credential_handoff"]["ready"])
+        self.assertEqual(checklist["credential_handoff"]["missing_required_count"], 3)
+        self.assertEqual(
+            sorted(checklist["credential_handoff"]["missing_required"]),
+            ["DATABASE_URL", "OPENAI_API_KEY", "PERPLEXITY_API_KEY"],
+        )
+        self.assertIn("chmod 600 .env.au-p0a", checklist["credential_handoff"]["setup_commands"])
+        self.assertFalse(checklist["credential_handoff"]["redaction_policy"]["raw_secret_values_allowed"])
+        self.assertEqual(checklist["credential_handoff"]["redaction_policy"]["forbidden_exact_secret_field_count"], 2)
+        self.assertTrue(checklist["credential_handoff"]["redaction_policy"]["forbidden_exact_secret_fields_redacted"])
+        self.assertNotIn("raw_value", json.dumps(checklist["credential_handoff"]))
         self.assertEqual(checklist["p0a_execution_checklist_hash"], compute_p0a_execution_checklist_hash(checklist))
         self.assertEqual(verification["status"], "pass")
         serialized = json.dumps(checklist)
@@ -302,6 +314,8 @@ class AuP0aExecutionChecklistTest(unittest.TestCase):
         self.assertTrue(checklist["ready_for_design_partner"])
         self.assertEqual(checklist["summary"]["missing_artifact_count"], 0)
         self.assertEqual(checklist["summary"]["remaining_blocker_count"], 0)
+        self.assertTrue(checklist["credential_handoff"]["ready"])
+        self.assertEqual(checklist["credential_handoff"]["missing_required_count"], 0)
         self.assertEqual(checklist["next_action"], "ready_for_design_partner_handoff")
         self.assertEqual(verification["status"], "pass")
 
@@ -340,6 +354,44 @@ class AuP0aExecutionChecklistTest(unittest.TestCase):
         self.assertEqual(verification["status"], "fail")
         self.assertIn("p0a_execution_checklist_hash_mismatch", verification["errors"])
         self.assertIn("summary_missing_artifact_count_mismatch", verification["errors"])
+
+    def test_verifier_requires_credential_handoff_to_match_missing_required_env(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, _runbook = self._write_runbook(temp_dir)
+            environment_path = Path(temp_dir) / "environment.json"
+            execution_path = Path(temp_dir) / "execution.json"
+            readiness_path = Path(temp_dir) / "readiness.json"
+            package_path = Path(temp_dir) / "package.json"
+            status_path = Path(temp_dir) / "status.json"
+            self._write_env_report(environment_path, runbook_path, ready=False)
+            self._write_runbook_execution(execution_path, runbook_path, ready=False)
+            self._write_readiness(readiness_path, ready=False)
+            self._write_package_and_status(
+                runbook_path=runbook_path,
+                environment_path=environment_path,
+                execution_path=execution_path,
+                readiness_path=readiness_path,
+                package_path=package_path,
+                status_path=status_path,
+                ready=False,
+            )
+            checklist = build_au_p0a_execution_checklist(
+                runbook_path=runbook_path,
+                environment_path=environment_path,
+                runbook_execution_path=execution_path,
+                readiness_path=readiness_path,
+                package_path=package_path,
+                status_path=status_path,
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            checklist["credential_handoff"]["missing_required"] = ["DATABASE_URL"]  # type: ignore[index]
+            checklist["credential_handoff"]["setup_commands"] = ["make verify-au-p0a-env-template"]  # type: ignore[index]
+            checklist["p0a_execution_checklist_hash"] = compute_p0a_execution_checklist_hash(checklist)
+            verification = verify_au_p0a_execution_checklist(checklist)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("credential_handoff_missing_required_mismatch", verification["errors"])
+        self.assertIn("credential_handoff_setup_command_missing:chmod 600 .env.au-p0a", verification["errors"])
 
     def test_verifier_rejects_forbidden_secret_fields_anywhere(self) -> None:
         with TemporaryDirectory() as temp_dir:

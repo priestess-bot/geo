@@ -250,7 +250,9 @@ status report 必须确认：
 execution checklist 必须确认：
 
 - `p0a_execution_checklist_hash` 可由 `make verify-au-p0a-execution-checklist` 复算
-- setup commands 固定 env template gate、env 模板复制、runbook、env report、environment checklist 和 dry-run 顺序
+- setup commands 固定 env template gate、env 模板复制、`chmod 600 .env.au-p0a`、runbook、env report、environment checklist 和 dry-run 顺序
+- `credential_handoff` 逐项列出 `PERPLEXITY_API_KEY`、`OPENAI_API_KEY`、`DATABASE_URL`，并记录 owner hint、允许注入方式（process env、`GENO_AU_P0A_ENV_FILE`、`.env.au-p0a`）、env-file key、缺失状态、填充后的验证命令和 redaction policy
+- `credential_handoff.missing_required` 必须与 status report 的 required env blockers 一致，`ready` 只在三项必填凭证均存在时为 true
 - execution commands 固定 preflight、preflight manifest、small batch、small manifest、full batch 和 full manifest 的运行/验证顺序
 - verification commands 固定 environment、runbook execution、preflight、package 和 status hard gates
 - evidence outputs 至少覆盖 runbook、environment report、environment checklist、runbook execution、readiness、preflight、small/full payload、manifest、package 和 status report

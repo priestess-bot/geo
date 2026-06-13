@@ -42,6 +42,7 @@ REQUIRED_FIELDS = (
     "status_report",
     "status_report_verifier",
     "setup_commands",
+    "credential_handoff",
     "execution_commands",
     "verification_commands",
     "work_items",
@@ -75,6 +76,99 @@ def _find_forbidden_secret_fields(value: object, *, path: str = "$") -> list[str
 
 def _command_ids(commands: list[object]) -> set[str]:
     return {str(_as_dict(item).get("id", "")) for item in commands}
+
+
+def _validate_credential_handoff(
+    handoff: dict[str, Any],
+    *,
+    remaining_blockers: list[str],
+    errors: list[str],
+) -> None:
+    if handoff.get("version") != "au_p0a_credential_handoff_v1":
+        errors.append("credential_handoff_version_invalid")
+    for field in (
+        "ready",
+        "missing_required_count",
+        "missing_required",
+        "target_env_file",
+        "setup_commands",
+        "credential_items",
+        "verification_commands",
+        "evidence_outputs",
+        "redaction_policy",
+    ):
+        if field not in handoff:
+            errors.append(f"credential_handoff_field_missing:{field}")
+    credential_items = [_as_dict(item) for item in _as_list(handoff.get("credential_items"))]
+    item_names = [str(item.get("name", "")) for item in credential_items]
+    for required_name in {"PERPLEXITY_API_KEY", "OPENAI_API_KEY", "DATABASE_URL"}:
+        if required_name not in item_names:
+            errors.append(f"credential_handoff_required_item_missing:{required_name}")
+    missing_required = sorted(str(item) for item in _as_list(handoff.get("missing_required")))
+    expected_missing = sorted(
+        {
+            blocker.rsplit(":", 1)[-1]
+            for blocker in remaining_blockers
+            if ":required_env_missing:" in blocker
+        }
+    )
+    if missing_required != expected_missing:
+        errors.append("credential_handoff_missing_required_mismatch")
+    if handoff.get("missing_required_count") != len(missing_required):
+        errors.append("credential_handoff_missing_required_count_mismatch")
+    if handoff.get("ready") is not (not missing_required):
+        errors.append("credential_handoff_ready_mismatch")
+    setup_commands = [str(item) for item in _as_list(handoff.get("setup_commands"))]
+    for command in {
+        "make verify-au-p0a-env-template",
+        "cp .env.au-p0a.example .env.au-p0a",
+        "chmod 600 .env.au-p0a",
+    }:
+        if command not in setup_commands:
+            errors.append(f"credential_handoff_setup_command_missing:{command}")
+    verification_commands = [str(item) for item in _as_list(handoff.get("verification_commands"))]
+    for command in {
+        "make au-p0a-env",
+        "make verify-au-p0a-env",
+        "make au-p0a-environment-checklist",
+        "make verify-au-p0a-environment-checklist",
+        "make au-p0a-runbook-dry-run",
+        "make verify-au-p0a-runbook-execution",
+        "make au-p0a-status",
+        "make verify-au-p0a-status",
+    }:
+        if command not in verification_commands:
+            errors.append(f"credential_handoff_verification_command_missing:{command}")
+    redaction_policy = _as_dict(handoff.get("redaction_policy"))
+    if redaction_policy.get("raw_secret_values_allowed") is not False:
+        errors.append("credential_handoff_raw_secret_policy_invalid")
+    if redaction_policy.get("forbidden_exact_secret_field_count") != 2:
+        errors.append("credential_handoff_forbidden_field_count_invalid")
+    if redaction_policy.get("forbidden_exact_secret_fields_redacted") is not True:
+        errors.append("credential_handoff_forbidden_field_redaction_missing")
+    for item in credential_items:
+        name = str(item.get("name", ""))
+        for field in (
+            "required",
+            "present",
+            "source",
+            "owner_hint",
+            "accepted_injection_methods",
+            "env_file_key",
+            "value_length",
+            "sha256_prefix",
+            "secret_redacted",
+            "post_update_checks",
+        ):
+            if field not in item:
+                errors.append(f"credential_handoff_item_field_missing:{name}:{field}")
+        if item.get("secret_redacted") is not True:
+            errors.append(f"credential_handoff_item_secret_redaction_missing:{name}")
+        if item.get("env_file_key") != name:
+            errors.append(f"credential_handoff_item_env_key_mismatch:{name}")
+        accepted_methods = {str(value) for value in _as_list(item.get("accepted_injection_methods"))}
+        if not {"process_environment", "GENO_AU_P0A_ENV_FILE", ".env.au-p0a"}.issubset(accepted_methods):
+            errors.append(f"credential_handoff_item_injection_methods_incomplete:{name}")
 
 
 def _expected_next_action(*, runbook_ok: bool, env_ok: bool, execution_ok: bool, status_next_action: str) -> str:
@@ -130,6 +224,7 @@ def verify_au_p0a_execution_checklist(
     package_verifier = _as_dict(checklist.get("evidence_package_verifier"))
     status_report = _as_dict(checklist.get("status_report"))
     status_verifier = _as_dict(checklist.get("status_report_verifier"))
+    credential_handoff = _as_dict(checklist.get("credential_handoff"))
 
     missing_artifacts = _string_list(package_summary.get("missing_artifacts"))
     failed_artifacts = _string_list(package_summary.get("failed_artifacts"))
@@ -198,6 +293,7 @@ def verify_au_p0a_execution_checklist(
     for command_id in {
         "verify_env_template",
         "copy_env_template",
+        "chmod_env_file",
         "build_runbook",
         "build_env_report",
         "verify_env_report",
@@ -206,6 +302,7 @@ def verify_au_p0a_execution_checklist(
     }:
         if command_id not in setup_ids:
             errors.append(f"setup_command_missing:{command_id}")
+    _validate_credential_handoff(credential_handoff, remaining_blockers=remaining_blockers, errors=errors)
     for command_id in {
         "preflight_collect",
         "preflight_verify_audit",

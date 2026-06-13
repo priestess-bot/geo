@@ -233,7 +233,14 @@ def verify_au_p0a_environment_checklist(
 
     setup_ids = _command_ids(_as_list(checklist.get("setup_commands")))
     verification_ids = _command_ids(_as_list(checklist.get("verification_commands")))
-    for command_id in {"verify_env_template", "copy_env_template", "build_runbook", "build_env_report", "verify_env_report"}:
+    for command_id in {
+        "verify_env_template",
+        "copy_env_template",
+        "chmod_env_file",
+        "build_runbook",
+        "build_env_report",
+        "verify_env_report",
+    }:
         if command_id not in setup_ids:
             errors.append(f"setup_command_missing:{command_id}")
     for command_id in {"hard_env_gate", "dry_run_runbook", "readiness_with_db", "refresh_status"}:

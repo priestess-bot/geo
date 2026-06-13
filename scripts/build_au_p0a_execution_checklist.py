@@ -208,6 +208,11 @@ def _setup_commands() -> list[dict[str, str]]:
             "shell": "cp .env.au-p0a.example .env.au-p0a",
             "purpose": "Create the local P0a env file without committing provider/database secrets.",
         },
+        {
+            "id": "chmod_env_file",
+            "shell": "chmod 600 .env.au-p0a",
+            "purpose": "Constrain the local P0a env file before writing provider/database credentials.",
+        },
         {"id": "build_runbook", "shell": "make au-p0a-runbook", "purpose": "Freeze the P0a command plan."},
         {"id": "build_env_report", "shell": "make au-p0a-env", "purpose": "Generate the redacted P0a env report."},
         {"id": "verify_env_report", "shell": "make verify-au-p0a-env", "purpose": "Verify env report hash and redaction."},
@@ -320,6 +325,82 @@ def _work_items() -> list[dict[str, Any]]:
             "hard_gate": "hard_status_gate",
         },
     ]
+
+
+def _credential_handoff(
+    environment_report: dict[str, Any],
+    *,
+    env_file_path: Path | None,
+) -> dict[str, Any]:
+    required_checks = [_as_dict(item) for item in _as_list(environment_report.get("required"))]
+    missing_required = [str(check.get("name", "")) for check in required_checks if check.get("present") is not True]
+    credential_items: list[dict[str, Any]] = []
+    owners = {
+        "PERPLEXITY_API_KEY": "provider_admin",
+        "OPENAI_API_KEY": "provider_admin",
+        "DATABASE_URL": "runtime_database_admin",
+    }
+    for check in required_checks:
+        name = str(check.get("name", ""))
+        credential_items.append(
+            {
+                "name": name,
+                "required": True,
+                "present": check.get("present") is True,
+                "source": check.get("source", "missing"),
+                "owner_hint": owners.get(name, "platform_operator"),
+                "accepted_injection_methods": ["process_environment", "GENO_AU_P0A_ENV_FILE", ".env.au-p0a"],
+                "env_file_key": name,
+                "value_length": check.get("value_length", 0),
+                "sha256_prefix": check.get("sha256_prefix", ""),
+                "secret_redacted": check.get("secret_redacted") is True,
+                "post_update_checks": [
+                    "make au-p0a-env",
+                    "make verify-au-p0a-env",
+                    "make au-p0a-environment-checklist",
+                    "make verify-au-p0a-environment-checklist",
+                    "make au-p0a-runbook-dry-run",
+                    "make verify-au-p0a-runbook-execution",
+                ],
+            }
+        )
+    return {
+        "version": "au_p0a_credential_handoff_v1",
+        "ready": not missing_required,
+        "missing_required_count": len(missing_required),
+        "missing_required": missing_required,
+        "target_env_file": str(env_file_path) if env_file_path else "",
+        "setup_commands": [
+            "make verify-au-p0a-env-template",
+            "cp .env.au-p0a.example .env.au-p0a",
+            "chmod 600 .env.au-p0a",
+        ],
+        "credential_items": credential_items,
+        "verification_commands": [
+            "make au-p0a-env",
+            "make verify-au-p0a-env",
+            "make au-p0a-environment-checklist",
+            "make verify-au-p0a-environment-checklist",
+            "make au-p0a-runbook-dry-run",
+            "make verify-au-p0a-runbook-execution",
+            "make au-p0a-readiness",
+            "make au-p0a-status",
+            "make verify-au-p0a-status",
+        ],
+        "evidence_outputs": [
+            "docs/runtime_preflight/au-p0a-env-latest.json",
+            "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
+            "docs/runtime_preflight/au-p0a-runbook-execution-latest.json",
+            "docs/runtime_preflight/au-p0a-readiness-latest.json",
+            "docs/runtime_preflight/au-p0a-status-latest.json",
+        ],
+        "redaction_policy": {
+            "raw_secret_values_allowed": False,
+            "recorded_fields": ["present", "source", "value_length", "sha256_prefix", "secret_redacted"],
+            "forbidden_exact_secret_field_count": 2,
+            "forbidden_exact_secret_fields_redacted": True,
+        },
+    }
 
 
 def _expected_next_action(*, runbook_ok: bool, env_ok: bool, execution_ok: bool, status_next_action: str) -> str:
@@ -487,6 +568,7 @@ def build_au_p0a_execution_checklist(
         },
         "status_report_verifier": status_verifier,
         "setup_commands": _setup_commands(),
+        "credential_handoff": _credential_handoff(environment_report, env_file_path=env_file_path),
         "execution_commands": _runbook_execution_commands(runbook),
         "verification_commands": _verification_commands(),
         "work_items": _work_items(),
