@@ -83,6 +83,7 @@ def _p0a_environment_item(blockers: list[str]) -> dict[str, Any]:
         "commands": [
             _command("make verify-au-p0a-env-template"),
             _command("cp .env.au-p0a.example .env.au-p0a"),
+            _command("chmod 600 .env.au-p0a"),
             _command("make au-p0a-runbook"),
             _command("make au-p0a-env"),
             _command("make verify-au-p0a-env"),
@@ -107,7 +108,10 @@ def _p0a_environment_item(blockers: list[str]) -> dict[str, Any]:
             "docs/runtime_preflight/au-p0a-readiness-latest.json",
             "docs/runtime_preflight/au-p0a-status-latest.json",
         ],
-        "acceptance": "P0a environment report is ready and AU P0a status no longer reports required_env_missing blockers.",
+        "acceptance": (
+            "P0a environment report is ready, the local env file passes hygiene, "
+            "and AU P0a status no longer reports required_env_missing blockers."
+        ),
     }
 
 

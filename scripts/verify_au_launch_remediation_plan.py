@@ -91,6 +91,10 @@ def verify_au_launch_remediation_plan(
     work_item_ids = [str(item.get("id", "")) for item in work_items]
     if len(work_item_ids) != len(set(work_item_ids)):
         errors.append("duplicate_work_item_id")
+    commands_by_work_item = {
+        str(item.get("id", "")): [str(command.get("shell", "")) for command in _as_list(item.get("commands"))]
+        for item in work_items
+    }
     for work_item in work_items:
         work_item_id = str(work_item.get("id", ""))
         if not work_item_id:
@@ -117,6 +121,13 @@ def verify_au_launch_remediation_plan(
             errors.append(f"work_item_verification_commands_missing:{work_item_id}")
         if int(work_item.get("blocker_count") or 0) != len(_as_list(work_item.get("clears_blockers"))):
             errors.append(f"work_item_blocker_count_mismatch:{work_item_id}")
+
+    p0a_environment_commands = commands_by_work_item.get("p0a_environment", [])
+    if p0a_environment_commands and "chmod 600 .env.au-p0a" not in p0a_environment_commands:
+        errors.append("work_item_command_missing:p0a_environment:chmod_600_env_file")
+    p0b_google_environment_commands = commands_by_work_item.get("p0b_google_playwright_env", [])
+    if p0b_google_environment_commands and "chmod 600 .env.au-p0b-google" not in p0b_google_environment_commands:
+        errors.append("work_item_command_missing:p0b_google_playwright_env:chmod_600_env_file")
 
     for remediation in remediations:
         blocker = str(remediation.get("blocker", ""))

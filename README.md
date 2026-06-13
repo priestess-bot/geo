@@ -113,6 +113,8 @@ handoff dossier 的 `runtime_endpoints` 现在也固定项目复盘入口：`GET
 
 Runtime API 也暴露 `GET /v1/launch-status/au` 和 `GET /v1/launch-remediation-plan/au`，按同一套环境变量路径覆盖规则读取或内存生成 AU launch status 与清障计划，不依赖数据库连接即可返回当前 `ready_for_customer_report_handoff`、`remaining_blockers`、`next_action`、`launch_status_hash`、`next_work_item_id`、work items 和 remediation plan hash。Runtime Console 首页 AU Launch Gate 面板直接展示 P0a/P0b/P0c 摘要、剩余 blocker、remediation plan 摘要、P0a environment checklist、P0b Google execution checklist、handoff dossier readiness、客户交付硬门禁状态、Markdown hash、前几个 work item、下一条命令、验证命令和查询路径，便于演示或交付前复核。
 
+P0a/P0b 清障计划现在也锁定 env-file 权限修复命令：`p0a_environment` 在复制 `.env.au-p0a` 后必须执行 `chmod 600 .env.au-p0a`，`p0b_google_playwright_env` 在复制 `.env.au-p0b-google` 后必须执行 `chmod 600 .env.au-p0b-google`，与 environment checklist、execution checklist 和 handoff dossier 的 env-file hygiene gate 保持同一口径。
+
 P0a 真实批次现在还补了一层总控执行清单：`make au-p0a-execution-checklist` / `make verify-au-p0a-execution-checklist` 会把 env template gate、environment checklist、runbook dry-run、preflight、small batch、full batch、package/status hard gates 和证据输出路径合成 `docs/runtime_preflight/au-p0a-execution-checklist-latest.json`，冻结 `p0a_execution_checklist_hash`、missing/failed artifacts、remaining blockers、completion/design-ready 百分比、setup/execution/verification commands。当前本地该清单预期为 `status=fail`、`ready_for_design_partner=false`，说明真实 P0a 还缺 provider env 与 small/full batch 证据，不代表真实 2400-run 已完成。Runtime API 同步暴露 `GET /v1/p0a-execution-checklist/au`，handoff dossier 和 Runtime Console AU Launch Gate 会展示同一份 P0a execution checklist 摘要、hash、阻塞项和查询路径。
 
 核心服务一键启动入口：
