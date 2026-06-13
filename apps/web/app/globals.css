@@ -2066,6 +2066,173 @@ code {
   padding: 0;
 }
 
+.interactiveTraceabilityMap {
+  background: #f7fafc;
+  border: 1px solid #e0e7ef;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.interactiveTraceabilityToolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.interactiveTraceabilityToolbar button {
+  background: #ffffff;
+  border: 1px solid #c8d4df;
+  border-radius: 4px;
+  color: #23313d;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  height: 30px;
+  min-width: 34px;
+  padding: 0 9px;
+}
+
+.interactiveTraceabilityToolbar span {
+  color: #586a78;
+  font-size: 12px;
+  min-width: 42px;
+  text-align: right;
+}
+
+.interactiveTraceabilityViewport {
+  aspect-ratio: 16 / 8;
+  background: #ffffff;
+  border: 1px solid #d8e2eb;
+  border-radius: 6px;
+  cursor: grab;
+  min-height: 360px;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.interactiveTraceabilityViewport:active {
+  cursor: grabbing;
+}
+
+.interactiveTraceabilityViewport svg {
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.interactiveTraceabilityEdge path {
+  fill: none;
+  marker-end: url("#interactiveTraceabilityArrow");
+  stroke: #8298a4;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+.interactiveTraceabilityEdge text {
+  fill: #647382;
+  font-size: 11px;
+  letter-spacing: 0;
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-width: 4px;
+}
+
+#interactiveTraceabilityArrow path {
+  fill: #8298a4;
+}
+
+.interactiveTraceabilityNode {
+  cursor: pointer;
+  outline: none;
+}
+
+.interactiveTraceabilityNode rect {
+  fill: #ffffff;
+  stroke: #527078;
+  stroke-width: 1.5;
+}
+
+.interactiveTraceabilityNode-report rect {
+  stroke: #245d61;
+}
+
+.interactiveTraceabilityNode-score rect {
+  stroke: #4d6792;
+}
+
+.interactiveTraceabilityNode-evidence rect {
+  stroke: #7a5a2b;
+}
+
+.interactiveTraceabilityNode-source rect {
+  stroke: #476f4f;
+}
+
+.interactiveTraceabilityNode-action rect {
+  stroke: #715b87;
+}
+
+.interactiveTraceabilityNode-draft rect {
+  stroke: #8a4f5d;
+}
+
+.interactiveTraceabilityNodeSelected rect,
+.interactiveTraceabilityNode:focus-visible rect {
+  fill: #eef7f7;
+  stroke-width: 3;
+}
+
+.interactiveTraceabilityNodeLabel,
+.interactiveTraceabilityNodeMeta {
+  letter-spacing: 0;
+  pointer-events: none;
+}
+
+.interactiveTraceabilityNodeLabel {
+  fill: #21323e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.interactiveTraceabilityNodeMeta {
+  fill: #60717f;
+  font-size: 10px;
+}
+
+.interactiveTraceabilityInspector {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d8e2eb;
+  border-radius: 6px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 8px 10px;
+}
+
+.interactiveTraceabilityInspector div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.interactiveTraceabilityInspector strong,
+.interactiveTraceabilityInspector span {
+  overflow-wrap: anywhere;
+}
+
+.interactiveTraceabilityInspector span {
+  color: #647382;
+  font-size: 12px;
+}
+
 .traceabilityNodeList {
   max-height: 520px;
 }
@@ -2310,6 +2477,20 @@ summary {
 
   .traceSummary {
     grid-column: auto;
+  }
+
+  .interactiveTraceabilityViewport {
+    aspect-ratio: 4 / 5;
+    min-height: 420px;
+  }
+
+  .interactiveTraceabilityInspector {
+    align-items: flex-start;
+    display: grid;
+  }
+
+  .interactiveTraceabilityToolbar {
+    justify-content: flex-start;
   }
 
   .panel {

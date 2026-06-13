@@ -1,3 +1,6 @@
+import { InteractiveTraceabilityMap } from "./InteractiveTraceabilityMap";
+import type { InteractiveTraceabilityEdge, InteractiveTraceabilityNode } from "./InteractiveTraceabilityMap";
+
 type PageResponse<T> = {
   total_count: number;
   records: T[];
@@ -232,6 +235,130 @@ function uniqueSorted(values: Array<string | undefined | null>): string[] {
   return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))).sort(
     (left, right) => left.localeCompare(right)
   );
+}
+
+function pushTraceNode(
+  nodes: InteractiveTraceabilityNode[],
+  seen: Set<string>,
+  node: InteractiveTraceabilityNode
+): void {
+  if (seen.has(node.id)) return;
+  seen.add(node.id);
+  nodes.push(node);
+}
+
+function buildInteractiveTraceabilityGraph({
+  bundle,
+  graph,
+  latestReportId,
+  latestScoreId,
+  workbench
+}: {
+  bundle: TraceabilityDetail["traceability_bundle"];
+  graph: CitationGraph | undefined;
+  latestReportId: string | undefined;
+  latestScoreId: string | undefined;
+  workbench: ReturnType<typeof buildTraceabilityWorkbench>;
+}): { nodes: InteractiveTraceabilityNode[]; edges: InteractiveTraceabilityEdge[] } {
+  const nodes: InteractiveTraceabilityNode[] = [];
+  const seen = new Set<string>();
+  const reportId = latestReportId || bundle.report_export_ids[0] || "report";
+  const scoreId = latestScoreId || bundle.score_snapshot_ids[0] || "score";
+  pushTraceNode(nodes, seen, {
+    id: `report:${reportId}`,
+    label: "Report",
+    meta: shortId(reportId),
+    href: anchorHref("report-export", reportId),
+    tone: "report",
+    x: 95,
+    y: 150
+  });
+  pushTraceNode(nodes, seen, {
+    id: `score:${scoreId}`,
+    label: "Score",
+    meta: shortId(scoreId),
+    href: anchorHref("score-snapshot", scoreId),
+    tone: "score",
+    x: 275,
+    y: 150
+  });
+  workbench.evidenceRuns.slice(0, 8).forEach((run, index) => {
+    pushTraceNode(nodes, seen, {
+      id: `run:${run.answer_run.id}`,
+      label: run.answer_run.platform || "Evidence",
+      meta: `${run.answer_run.city || "city"} / ${shortId(run.answer_run.id)}`,
+      href: anchorHref("answer-run", run.answer_run.id),
+      tone: "evidence",
+      x: 475,
+      y: 64 + index * 66
+    });
+  });
+  const evidenceNodeIds = new Set(workbench.evidenceRuns.slice(0, 8).map((run) => run.answer_run.id));
+  workbench.sourceNodes.slice(0, 8).forEach((item, index) => {
+    pushTraceNode(nodes, seen, {
+      id: `source:${item.node.id}`,
+      label: item.node.source_domain || item.node.source_type || "Source",
+      meta: item.node.source_gap_type || item.node.source_type || shortId(item.node.id),
+      href: anchorHref("source-node", item.node.id),
+      tone: "source",
+      x: 720,
+      y: 64 + index * 66
+    });
+  });
+  workbench.actions.slice(0, 4).forEach((action, index) => {
+    const value = action.id || action.title;
+    pushTraceNode(nodes, seen, {
+      id: `action:${value}`,
+      label: "Action",
+      meta: `${action.priority} / ${action.status}`,
+      href: anchorHref("action", value),
+      tone: "action",
+      x: 270,
+      y: 390 + index * 56
+    });
+  });
+  workbench.drafts.slice(0, 4).forEach((item, index) => {
+    const value = item.draft.id || item.draft.title;
+    pushTraceNode(nodes, seen, {
+      id: `draft:${value}`,
+      label: "Draft",
+      meta: item.draft.review_status,
+      href: anchorHref("content-draft", value),
+      tone: "draft",
+      x: 475,
+      y: 390 + index * 56
+    });
+  });
+  const edges: InteractiveTraceabilityEdge[] = [
+    { id: "report-score", from: `report:${reportId}`, to: `score:${scoreId}`, label: "freezes" }
+  ];
+  workbench.evidenceRuns.slice(0, 8).forEach((run) => {
+    edges.push({ id: `score-run-${run.answer_run.id}`, from: `score:${scoreId}`, to: `run:${run.answer_run.id}`, label: "uses" });
+  });
+  workbench.sourceNodes.slice(0, 8).forEach((item) => {
+    const linkedRun = item.answer_runs.find((run) => evidenceNodeIds.has(run.id));
+    if (linkedRun) {
+      edges.push({ id: `run-source-${linkedRun.id}-${item.node.id}`, from: `run:${linkedRun.id}`, to: `source:${item.node.id}`, label: "cites" });
+    }
+  });
+  workbench.actions.slice(0, 4).forEach((action) => {
+    const value = action.id || action.title;
+    edges.push({ id: `score-action-${value}`, from: `score:${scoreId}`, to: `action:${value}`, label: "drives" });
+  });
+  workbench.drafts.slice(0, 4).forEach((item) => {
+    const value = item.draft.id || item.draft.title;
+    edges.push({ id: `draft-${value}`, from: `score:${scoreId}`, to: `draft:${value}`, label: "supports" });
+  });
+  if (graph?.evidence_links?.length && workbench.sourceNodes.length && workbench.evidenceRuns.length) {
+    graph.evidence_links.slice(0, 8).forEach((link, index) => {
+      if (!link.answer_run_id || !link.source_graph_id) return;
+      const from = `run:${link.answer_run_id}`;
+      const to = `source:${link.source_graph_id}`;
+      if (!seen.has(from) || !seen.has(to)) return;
+      edges.push({ id: `graph-link-${index}-${link.answer_run_id}`, from, to, label: link.relation_type || "linked" });
+    });
+  }
+  return { nodes, edges };
 }
 
 type TraceabilityWorkbenchFilters = {
@@ -538,6 +665,16 @@ export default async function TraceabilityPage({
   const firstActionId = bundle?.action_recommendation_ids[0] || traceability?.action_recommendations[0]?.id;
   const firstDraftId = bundle?.content_draft_ids[0] || traceability?.content_drafts[0]?.draft.id;
   const workbench = traceability ? buildTraceabilityWorkbench(traceability, graph, workbenchFilters) : null;
+  const interactiveGraph =
+    traceability && workbench
+      ? buildInteractiveTraceabilityGraph({
+          bundle: traceability.traceability_bundle,
+          graph,
+          latestReportId: latestReport?.id || bundle?.report_export_ids[0],
+          latestScoreId: latestScore?.snapshot.id || bundle?.score_snapshot_ids[0],
+          workbench
+        })
+      : { nodes: [], edges: [] };
   const platformOptions = uniqueSorted([
     ...(traceability?.evidence_runs.map((run) => run.answer_run.platform) || []),
     ...(traceability?.content_drafts.map((item) => item.draft.target_platform) || []),
@@ -742,6 +879,15 @@ export default async function TraceabilityPage({
             </Panel>
 
             <Panel title="Traceability Map" subtitle="report to score to evidence to source" wide>
+              <div className="traceabilityWorkbenchSummary">
+                <FactPill label="Interactive nodes" value={interactiveGraph.nodes.length} />
+                <FactPill label="Interactive edges" value={interactiveGraph.edges.length} />
+                <FactPill label="Filtered nodes" value={workbench?.visibleTotal || 0} />
+                <FactPill label="Data mode" value={dataMode} />
+              </div>
+              {interactiveGraph.nodes.length ? (
+                <InteractiveTraceabilityMap edges={interactiveGraph.edges} nodes={interactiveGraph.nodes} />
+              ) : null}
               <TraceabilityMap
                 actionId={firstActionId}
                 draftId={firstDraftId}
