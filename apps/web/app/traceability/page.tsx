@@ -193,6 +193,12 @@ function cleanFilter(value: string | string[] | undefined): string | undefined {
   return trimmed || undefined;
 }
 
+function cleanNodeType(value: string | string[] | undefined): string {
+  const allowed = new Set(["all", "evidence", "source", "action", "draft", "audit", "link"]);
+  const candidate = cleanFilter(value) || "all";
+  return allowed.has(candidate) ? candidate : "all";
+}
+
 function anchorId(kind: string, value: string | undefined): string {
   const raw = value || "unknown";
   return `${kind}-${raw.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
@@ -214,6 +220,146 @@ function num(value: number | undefined): string {
 function clipText(value: string | undefined, maxLength: number): string {
   const text = value || "unknown";
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
+}
+
+function matchText(query: string | undefined, values: Array<string | number | undefined | null>): boolean {
+  if (!query) return true;
+  const needle = query.toLowerCase();
+  return values.some((value) => String(value || "").toLowerCase().includes(needle));
+}
+
+function uniqueSorted(values: Array<string | undefined | null>): string[] {
+  return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))).sort(
+    (left, right) => left.localeCompare(right)
+  );
+}
+
+type TraceabilityWorkbenchFilters = {
+  query?: string;
+  nodeType: string;
+  platform?: string;
+  sourceType?: string;
+  gapType?: string;
+};
+
+function buildTraceabilityWorkbench(
+  traceability: TraceabilityDetail,
+  graph: CitationGraph | undefined,
+  filters: TraceabilityWorkbenchFilters
+) {
+  const evidenceRuns = traceability.evidence_runs.filter((run) => {
+    const queryMatch = matchText(filters.query, [
+      run.answer_run.id,
+      run.answer_run.platform,
+      run.answer_run.surface,
+      run.answer_run.access_method,
+      run.answer_run.city,
+      run.answer_run.status,
+      run.answer_run.prompt_text,
+      run.raw_answer?.answer_text,
+      run.raw_answer?.raw_payload_hash,
+      ...run.citations.flatMap((citation) => [citation.domain, citation.url, citation.source_type]),
+      ...run.evidence_assets.flatMap((asset) => [asset.asset_type, asset.url, asset.content_hash]),
+      ...run.audit_events.flatMap((event) => [event.event_type, event.target_type, event.method_version])
+    ]);
+    const platformMatch = !filters.platform || run.answer_run.platform === filters.platform;
+    return queryMatch && platformMatch;
+  });
+  const evidenceRunIds = new Set(evidenceRuns.map((run) => run.answer_run.id));
+  const sourceNodes = (graph?.nodes || []).filter((item) => {
+    const linkedRunIds = item.answer_runs.map((run) => run.id);
+    const hasLinkedRunFilter = evidenceRunIds.size > 0 && linkedRunIds.some((runId) => evidenceRunIds.has(runId));
+    const queryMatch = matchText(filters.query, [
+      item.node.id,
+      item.node.source_url,
+      item.node.source_domain,
+      item.node.source_type,
+      item.node.topic,
+      item.node.source_gap_type,
+      ...item.answer_runs.flatMap((run) => [run.id, run.platform, run.city, run.prompt_text])
+    ]);
+    const sourceTypeMatch = !filters.sourceType || item.node.source_type === filters.sourceType;
+    const gapTypeMatch = !filters.gapType || item.node.source_gap_type === filters.gapType;
+    const platformMatch = !filters.platform || linkedRunIds.length === 0 || hasLinkedRunFilter;
+    return queryMatch && sourceTypeMatch && gapTypeMatch && platformMatch;
+  });
+  const actions = traceability.action_recommendations.filter((action) => {
+    const queryMatch = matchText(filters.query, [action.id, action.title, action.priority, action.status, action.source_gap_type]);
+    const gapTypeMatch = !filters.gapType || action.source_gap_type === filters.gapType;
+    return queryMatch && gapTypeMatch;
+  });
+  const drafts = traceability.content_drafts.filter((item) => {
+    const queryMatch = matchText(filters.query, [
+      item.draft.id,
+      item.draft.title,
+      item.draft.review_status,
+      item.draft.target_city,
+      item.draft.target_platform,
+      ...(item.target_questions?.map((question) => question.text) || []),
+      ...(item.answer_runs?.flatMap((run) => [run.prompt_text, run.platform, run.city]) || [])
+    ]);
+    const platformMatch = !filters.platform || item.draft.target_platform === filters.platform;
+    return queryMatch && platformMatch;
+  });
+  const auditEvents = traceability.audit_events.filter((event) =>
+    matchText(filters.query, [event.event_type, event.target_type, event.method_version])
+  );
+  const evidenceLinks = traceability.evidence_links.filter((link) => {
+    const queryMatch = matchText(filters.query, [link.source_type, link.target_type, link.relation_type, ...link.answer_run_ids]);
+    const platformMatch = !filters.platform || link.answer_run_ids.some((runId) => evidenceRunIds.has(runId));
+    return queryMatch && platformMatch;
+  });
+  const sourceGaps = (graph?.source_gaps || []).filter((gap) => {
+    const queryMatch = matchText(filters.query, [gap.gap_type, gap.source_type, gap.recommendation]);
+    const sourceTypeMatch = !filters.sourceType || gap.source_type === filters.sourceType;
+    const gapTypeMatch = !filters.gapType || gap.gap_type === filters.gapType;
+    return queryMatch && sourceTypeMatch && gapTypeMatch;
+  });
+  const competitorBenchmarks = (graph?.competitor_benchmarks || []).filter((benchmark) => {
+    const queryMatch = matchText(filters.query, [
+      benchmark.competitor_name,
+      benchmark.metric_scope,
+      ...(benchmark.answer_run_ids || [])
+    ]);
+    const platformMatch = !filters.platform || (benchmark.answer_run_ids || []).some((runId) => evidenceRunIds.has(runId));
+    return queryMatch && platformMatch;
+  });
+  const activeNodeVisible = {
+    evidence: filters.nodeType === "all" || filters.nodeType === "evidence",
+    source: filters.nodeType === "all" || filters.nodeType === "source",
+    action: filters.nodeType === "all" || filters.nodeType === "action",
+    draft: filters.nodeType === "all" || filters.nodeType === "draft",
+    audit: filters.nodeType === "all" || filters.nodeType === "audit",
+    link: filters.nodeType === "all" || filters.nodeType === "link"
+  };
+  return {
+    evidenceRuns,
+    sourceNodes,
+    sourceGaps,
+    competitorBenchmarks,
+    actions,
+    drafts,
+    auditEvents,
+    evidenceLinks,
+    activeNodeVisible,
+    totals: {
+      evidenceRuns: traceability.evidence_runs.length,
+      sourceNodes: graph?.nodes.length || 0,
+      sourceGaps: graph?.source_gaps.length || 0,
+      competitorBenchmarks: graph?.competitor_benchmarks.length || 0,
+      actions: traceability.action_recommendations.length,
+      drafts: traceability.content_drafts.length,
+      auditEvents: traceability.audit_events.length,
+      evidenceLinks: traceability.evidence_links.length
+    },
+    visibleTotal:
+      (activeNodeVisible.evidence ? evidenceRuns.length : 0) +
+      (activeNodeVisible.source ? sourceNodes.length : 0) +
+      (activeNodeVisible.action ? actions.length : 0) +
+      (activeNodeVisible.draft ? drafts.length : 0) +
+      (activeNodeVisible.audit ? auditEvents.length : 0) +
+      (activeNodeVisible.link ? evidenceLinks.length : 0)
+  };
 }
 
 function normalizeFixtureTraceability(payload: FixtureTraceability): TraceabilityDetail {
@@ -375,6 +521,13 @@ export default async function TraceabilityPage({
 }) {
   const resolvedSearchParams = (await searchParams) || {};
   const selectedProjectFilter = cleanFilter(resolvedSearchParams.project_id);
+  const workbenchFilters: TraceabilityWorkbenchFilters = {
+    query: cleanFilter(resolvedSearchParams.q),
+    nodeType: cleanNodeType(resolvedSearchParams.node_type),
+    platform: cleanFilter(resolvedSearchParams.platform),
+    sourceType: cleanFilter(resolvedSearchParams.source_type),
+    gapType: cleanFilter(resolvedSearchParams.gap_type)
+  };
   const { displayUrl, projects, selectedProjectId, selectedProject, traceability, graph, dataMode, paths, errors } =
     await fetchTraceabilityData(selectedProjectFilter);
   const bundle = traceability?.traceability_bundle;
@@ -384,6 +537,21 @@ export default async function TraceabilityPage({
   const firstSourceId = graph?.nodes[0]?.node.id || bundle?.source_graph_ids[0];
   const firstActionId = bundle?.action_recommendation_ids[0] || traceability?.action_recommendations[0]?.id;
   const firstDraftId = bundle?.content_draft_ids[0] || traceability?.content_drafts[0]?.draft.id;
+  const workbench = traceability ? buildTraceabilityWorkbench(traceability, graph, workbenchFilters) : null;
+  const platformOptions = uniqueSorted([
+    ...(traceability?.evidence_runs.map((run) => run.answer_run.platform) || []),
+    ...(traceability?.content_drafts.map((item) => item.draft.target_platform) || []),
+    ...(graph?.nodes.flatMap((item) => item.answer_runs.map((run) => run.platform)) || [])
+  ]);
+  const sourceTypeOptions = uniqueSorted([
+    ...(graph?.nodes.map((item) => item.node.source_type) || []),
+    ...(graph?.source_gaps.map((gap) => gap.source_type) || [])
+  ]);
+  const gapTypeOptions = uniqueSorted([
+    ...(graph?.nodes.map((item) => item.node.source_gap_type) || []),
+    ...(graph?.source_gaps.map((gap) => gap.gap_type) || []),
+    ...(traceability?.action_recommendations.map((action) => action.source_gap_type) || [])
+  ]);
 
   return (
     <main className="shell traceabilityPage">
@@ -421,7 +589,7 @@ export default async function TraceabilityPage({
           <strong>Project scope</strong>
           <span>{paths.traceability}</span>
         </div>
-        <form className="filterForm">
+        <form className="filterForm traceabilityWorkbenchForm">
           <label>
             <span>Project</span>
             <select name="project_id" defaultValue={selectedProjectId || ""}>
@@ -432,9 +600,61 @@ export default async function TraceabilityPage({
               ))}
             </select>
           </label>
+          <label>
+            <span>Keyword</span>
+            <input name="q" defaultValue={workbenchFilters.query || ""} placeholder="prompt, source, audit, hash" />
+          </label>
+          <label>
+            <span>Node type</span>
+            <select name="node_type" defaultValue={workbenchFilters.nodeType}>
+              <option value="all">All nodes</option>
+              <option value="evidence">Evidence</option>
+              <option value="source">Source</option>
+              <option value="action">Action</option>
+              <option value="draft">Draft</option>
+              <option value="audit">Audit</option>
+              <option value="link">Evidence link</option>
+            </select>
+          </label>
+          <label>
+            <span>Platform</span>
+            <select name="platform" defaultValue={workbenchFilters.platform || ""}>
+              <option value="">All platforms</option>
+              {platformOptions.map((platform) => (
+                <option key={platform} value={platform}>
+                  {platform}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Source type</span>
+            <select name="source_type" defaultValue={workbenchFilters.sourceType || ""}>
+              <option value="">All source types</option>
+              {sourceTypeOptions.map((sourceType) => (
+                <option key={sourceType} value={sourceType}>
+                  {sourceType}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Gap type</span>
+            <select name="gap_type" defaultValue={workbenchFilters.gapType || ""}>
+              <option value="">All gap types</option>
+              {gapTypeOptions.map((gapType) => (
+                <option key={gapType} value={gapType}>
+                  {gapType}
+                </option>
+              ))}
+            </select>
+          </label>
           <button className="actionButton" type="submit">
-            Load detail
+            Apply filters
           </button>
+          <a className="nodeLink" href={selectedProjectId ? `/traceability?project_id=${encodeURIComponent(selectedProjectId)}` : "/traceability"}>
+            Reset
+          </a>
         </form>
       </section>
 
@@ -443,10 +663,10 @@ export default async function TraceabilityPage({
           <section className="metrics traceabilityMetrics">
             <Metric label="Reports" value={bundle.report_export_ids.length} />
             <Metric label="Score snapshots" value={bundle.score_snapshot_ids.length} />
-            <Metric label="Answer runs" value={bundle.answer_run_ids.length} />
-            <Metric label="Sources" value={bundle.source_graph_ids.length} />
-            <Metric label="Actions" value={bundle.action_recommendation_ids.length} />
-            <Metric label="Drafts" value={bundle.content_draft_ids.length} />
+            <Metric label="Visible nodes" value={workbench?.visibleTotal || 0} />
+            <Metric label="Evidence runs" value={`${workbench?.evidenceRuns.length || 0}/${workbench?.totals.evidenceRuns || 0}`} />
+            <Metric label="Sources" value={`${workbench?.sourceNodes.length || 0}/${workbench?.totals.sourceNodes || 0}`} />
+            <Metric label="Actions" value={`${workbench?.actions.length || 0}/${workbench?.totals.actions || 0}`} />
           </section>
 
           <section className="dashboard traceabilityDashboard">
@@ -465,6 +685,23 @@ export default async function TraceabilityPage({
                 <Fact label="Assets" value={bundle.evidence_asset_ids.length} />
                 <Fact label="Audit events" value={bundle.audit_event_ids.length} />
               </dl>
+            </Panel>
+
+            <Panel title="Traceability Workbench" subtitle="URL-shareable filters" wide>
+              <div className="traceabilityWorkbenchSummary">
+                <FactPill label="Keyword" value={workbenchFilters.query || "all"} />
+                <FactPill label="Node type" value={workbenchFilters.nodeType} />
+                <FactPill label="Platform" value={workbenchFilters.platform || "all"} />
+                <FactPill label="Source type" value={workbenchFilters.sourceType || "all"} />
+                <FactPill label="Gap type" value={workbenchFilters.gapType || "all"} />
+                <FactPill label="Visible nodes" value={workbench?.visibleTotal || 0} />
+              </div>
+              <div className="traceabilityWorkbenchSummary">
+                <NodeLink label="First evidence" kind="answer-run" value={workbench?.evidenceRuns[0]?.answer_run.id || firstRunId} />
+                <NodeLink label="First source" kind="source-node" value={workbench?.sourceNodes[0]?.node.id || firstSourceId} />
+                <NodeLink label="First action" kind="action" value={workbench?.actions[0]?.id || firstActionId} />
+                <NodeLink label="First draft" kind="content-draft" value={workbench?.drafts[0]?.draft.id || firstDraftId} />
+              </div>
             </Panel>
 
             <Panel title="Score Explanation" subtitle={latestScore?.snapshot.formula_version || "No score"}>
@@ -515,9 +752,11 @@ export default async function TraceabilityPage({
               />
             </Panel>
 
-            <Panel title="Evidence Runs" subtitle={`${traceability.evidence_runs.length} runs`} wide>
-              <ul className="nodeList traceabilityNodeList">
-                {traceability.evidence_runs.map((run) => (
+            {workbench?.activeNodeVisible.evidence ? (
+              <Panel title="Evidence Runs" subtitle={`${workbench.evidenceRuns.length}/${workbench.totals.evidenceRuns} runs`} wide>
+                {workbench.evidenceRuns.length ? (
+                  <ul className="nodeList traceabilityNodeList">
+                    {workbench.evidenceRuns.map((run) => (
                   <li id={anchorId("answer-run", run.answer_run.id)} key={run.answer_run.id}>
                     <strong>
                       {run.answer_run.platform || "platform"} / {run.answer_run.city || "city"} / {shortId(run.answer_run.id)}
@@ -535,15 +774,20 @@ export default async function TraceabilityPage({
                       ))}
                     </div>
                   </li>
-                ))}
-              </ul>
-            </Panel>
+                    ))}
+                  </ul>
+                ) : (
+                  <EmptyState />
+                )}
+              </Panel>
+            ) : null}
 
-            <Panel title="Source Graph" subtitle={`${graph?.nodes.length || 0} sources`} wide>
-              {graph ? (
+            {workbench?.activeNodeVisible.source ? (
+              <Panel title="Source Graph" subtitle={`${workbench.sourceNodes.length}/${workbench.totals.sourceNodes} sources`} wide>
+                {graph && (workbench.sourceNodes.length || workbench.sourceGaps.length || workbench.competitorBenchmarks.length) ? (
                 <div className="traceabilityTwoColumn">
                   <ul className="nodeList">
-                    {graph.nodes.map((item) => (
+                    {workbench.sourceNodes.map((item) => (
                       <li id={anchorId("source-node", item.node.id)} key={item.node.id}>
                         <strong>{item.node.source_domain || item.node.source_type || "source"}</strong>
                         <span>{item.node.source_url || "No URL"}</span>
@@ -560,14 +804,14 @@ export default async function TraceabilityPage({
                     ))}
                   </ul>
                   <ul className="plainList">
-                    {graph.source_gaps.slice(0, 6).map((gap, index) => (
+                    {workbench.sourceGaps.slice(0, 6).map((gap, index) => (
                       <li key={`${gap.gap_type}-${index}`}>
                         <strong>{gap.gap_type}</strong>
                         <span>{gap.source_type}</span>
                         <small>{gap.recommendation}</small>
                       </li>
                     ))}
-                    {graph.competitor_benchmarks.slice(0, 4).map((benchmark) => (
+                    {workbench.competitorBenchmarks.slice(0, 4).map((benchmark) => (
                       <li key={benchmark.competitor_name}>
                         <strong>{benchmark.competitor_name}</strong>
                         <span>{benchmark.metric_scope || "benchmark"}</span>
@@ -579,12 +823,15 @@ export default async function TraceabilityPage({
               ) : (
                 <EmptyState />
               )}
-            </Panel>
+              </Panel>
+            ) : null}
 
-            <Panel title="Actions And Drafts" subtitle="evidence-backed follow-up" wide>
+            {(workbench?.activeNodeVisible.action || workbench?.activeNodeVisible.draft) ? (
+              <Panel title="Actions And Drafts" subtitle="evidence-backed follow-up" wide>
               <div className="traceabilityTwoColumn">
                 <ul className="nodeList">
-                  {traceability.action_recommendations.map((action) => (
+                  {workbench.activeNodeVisible.action && workbench.actions.length ? (
+                    workbench.actions.map((action) => (
                     <li id={anchorId("action", action.id || action.title)} key={action.id || action.title}>
                       <strong>
                         {action.priority} / {action.status}
@@ -592,10 +839,16 @@ export default async function TraceabilityPage({
                       <span>{action.title}</span>
                       <small>{action.source_gap_type || "no source gap"}</small>
                     </li>
-                  ))}
+                    ))
+                  ) : (
+                    <li>
+                      <span>No matching actions</span>
+                    </li>
+                  )}
                 </ul>
                 <ul className="nodeList">
-                  {traceability.content_drafts.map((item) => (
+                  {workbench.activeNodeVisible.draft && workbench.drafts.length ? (
+                    workbench.drafts.map((item) => (
                     <li id={anchorId("content-draft", item.draft.id || item.draft.title)} key={item.draft.id || item.draft.title}>
                       <strong>{item.draft.review_status}</strong>
                       <span>{item.draft.title}</span>
@@ -604,15 +857,23 @@ export default async function TraceabilityPage({
                         {item.answer_runs?.length || 0} evidence runs
                       </small>
                     </li>
-                  ))}
+                    ))
+                  ) : (
+                    <li>
+                      <span>No matching drafts</span>
+                    </li>
+                  )}
                 </ul>
               </div>
-            </Panel>
+              </Panel>
+            ) : null}
 
-            <Panel title="Audit And Evidence Links" subtitle={`${traceability.audit_events.length} audit events`} wide>
+            {(workbench?.activeNodeVisible.audit || workbench?.activeNodeVisible.link) ? (
+              <Panel title="Audit And Evidence Links" subtitle={`${workbench.auditEvents.length}/${workbench.totals.auditEvents} audit events`} wide>
               <div className="traceabilityTwoColumn">
                 <ul className="plainList">
-                  {traceability.evidence_links.map((link, index) => (
+                  {workbench.activeNodeVisible.link && workbench.evidenceLinks.length ? (
+                    workbench.evidenceLinks.map((link, index) => (
                     <li key={`${link.relation_type}-${index}`}>
                       <strong>{link.relation_type}</strong>
                       <span>
@@ -620,19 +881,31 @@ export default async function TraceabilityPage({
                       </span>
                       <small>{link.answer_run_ids.length} answer runs</small>
                     </li>
-                  ))}
+                    ))
+                  ) : (
+                    <li>
+                      <span>No matching evidence links</span>
+                    </li>
+                  )}
                 </ul>
                 <ul className="plainList">
-                  {traceability.audit_events.map((event, index) => (
+                  {workbench.activeNodeVisible.audit && workbench.auditEvents.length ? (
+                    workbench.auditEvents.map((event, index) => (
                     <li key={`${event.event_type}-${index}`}>
                       <strong>{event.event_type}</strong>
                       <span>{event.target_type}</span>
                       <small>{event.method_version || "no method version"}</small>
                     </li>
-                  ))}
+                    ))
+                  ) : (
+                    <li>
+                      <span>No matching audit events</span>
+                    </li>
+                  )}
                 </ul>
               </div>
-            </Panel>
+              </Panel>
+            ) : null}
           </section>
         </>
       ) : (
@@ -683,6 +956,15 @@ function Fact({ label, value }: { label: string; value: string | number }) {
       <dt>{label}</dt>
       <dd>{value}</dd>
     </>
+  );
+}
+
+function FactPill({ label, value }: { label: string; value: string | number }) {
+  return (
+    <span className="traceabilityFactPill">
+      <strong>{label}</strong>
+      <small>{value}</small>
+    </span>
   );
 }
 
