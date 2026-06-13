@@ -93,6 +93,7 @@ from geno_core.models import (
     RuntimeProjectBrandLogoUpload,
     RuntimeProject,
     RuntimeProjectLifecycleEvent,
+    RuntimeProjectLifecycleEventExport,
     RuntimeProjectLifecycleEventPage,
     RuntimeProjectMember,
     RuntimeProjectMemberDeleteInput,
@@ -1150,6 +1151,54 @@ def _render_runtime_evidence_csv(page: RuntimeEvidencePage) -> str:
     return output.getvalue()
 
 
+def _render_runtime_project_lifecycle_events_csv(page: RuntimeProjectLifecycleEventPage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "audit_event_id",
+            "project_id",
+            "event_type",
+            "actor_type",
+            "actor_id",
+            "target_id",
+            "reason",
+            "method_version",
+            "action",
+            "status_before",
+            "status_after",
+            "changed_fields",
+            "before_hash",
+            "after_hash",
+            "created_at",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        lifecycle_event = record.lifecycle_event
+        changed_fields = lifecycle_event.get("changed_fields") or []
+        writer.writerow(
+            {
+                "audit_event_id": lifecycle_event.get("id") or "",
+                "project_id": lifecycle_event.get("project_id") or "",
+                "event_type": lifecycle_event.get("event_type") or "",
+                "actor_type": lifecycle_event.get("actor_type") or "",
+                "actor_id": lifecycle_event.get("actor_id") or "",
+                "target_id": lifecycle_event.get("target_id") or "",
+                "reason": lifecycle_event.get("reason") or "",
+                "method_version": lifecycle_event.get("method_version") or "",
+                "action": lifecycle_event.get("action") or "",
+                "status_before": lifecycle_event.get("status_before") or "",
+                "status_after": lifecycle_event.get("status_after") or "",
+                "changed_fields": "|".join(str(field) for field in changed_fields),
+                "before_hash": lifecycle_event.get("before_hash") or "",
+                "after_hash": lifecycle_event.get("after_hash") or "",
+                "created_at": lifecycle_event.get("created_at") or "",
+            }
+        )
+    return output.getvalue()
+
+
 ANSWER_RUN_COLUMNS = (
     "id",
     "project_id",
@@ -2146,6 +2195,27 @@ class PostgresEvidenceRepository:
             }
             records.append(RuntimeProjectLifecycleEvent(lifecycle_event=lifecycle_event, audit_events=(row,)))
         return RuntimeProjectLifecycleEventPage(total_count=total_count, limit=limit, offset=offset, records=tuple(records))
+
+    def export_runtime_project_lifecycle_events_csv(
+        self,
+        *,
+        project_id: str,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeProjectLifecycleEventExport:
+        page = self.list_runtime_project_lifecycle_events(project_id=project_id, limit=limit, offset=offset)
+        content = _render_runtime_project_lifecycle_events_csv(page)
+        return RuntimeProjectLifecycleEventExport(
+            export_type="runtime_project_lifecycle_events_csv",
+            filename="runtime-project-lifecycle-events.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            project_id=project_id.strip(),
+            method_version="runtime_project_lifecycle_export_v1",
+            total_count=page.total_count,
+            row_count=len(page.records),
+        )
 
     def user_can_access_project(self, *, project_id: str, actor_id: str) -> bool:
         if not actor_id:

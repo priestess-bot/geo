@@ -1112,6 +1112,19 @@ class RuntimeProjectLifecycleEventPage:
 
 
 @dataclass(frozen=True)
+class RuntimeProjectLifecycleEventExport:
+    export_type: str
+    filename: str
+    media_type: str
+    content: str | bytes
+    content_hash: str
+    project_id: str
+    method_version: str
+    total_count: int
+    row_count: int
+
+
+@dataclass(frozen=True)
 class RuntimeProjectUpdateInput:
     project_id: str
     name: str | None = None

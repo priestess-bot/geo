@@ -1510,6 +1510,7 @@ const endpoints = {
   projects: "/v1/projects/runtime",
   projectAction: "/v1/projects/runtime/action",
   projectLifecycleEvents: "/v1/projects/runtime/lifecycle-events",
+  projectLifecycleExport: "/v1/projects/runtime/lifecycle-events/export.csv",
   projectMembers: "/v1/project-members/runtime",
   projectMemberInvitations: "/v1/project-member-invitations/runtime",
   projectMemberInvitationAction: "/v1/project-member-invitations/runtime/action",
@@ -2917,6 +2918,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     projects: runtimePath(endpoints.projects, projectListParams),
     projectAction: endpoints.projectAction,
     projectLifecycleEvents: endpoints.projectLifecycleEvents,
+    projectLifecycleExport: endpoints.projectLifecycleExport,
     projectMembers: endpoints.projectMembers,
     projectMemberInvitations: endpoints.projectMemberInvitations,
     projectMemberInvitationAction: endpoints.projectMemberInvitationAction,
@@ -3036,6 +3038,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.projectLifecycleEvents = selectedProjectId
     ? runtimePath(endpoints.projectLifecycleEvents, { project_id: selectedProjectId, limit: 20 })
     : endpoints.projectLifecycleEvents;
+  paths.projectLifecycleExport = selectedProjectId
+    ? runtimePath(endpoints.projectLifecycleExport, { project_id: selectedProjectId, limit: 200 })
+    : endpoints.projectLifecycleExport;
   paths.projectMembers = selectedProjectId
     ? runtimePath(endpoints.projectMembers, { project_id: selectedProjectId, limit: 20 })
     : endpoints.projectMembers;
@@ -3940,6 +3945,7 @@ export default async function Home({
     ? `${selectedProject.tenant.name} / ${selectedProject.project.name}`
     : "No runtime project";
   const evidenceExportUrl = `${displayUrl}${paths.evidenceExport}`;
+  const projectLifecycleExportUrl = `${displayUrl}${paths.projectLifecycleExport}`;
   const evidenceSort = data.evidence.sort || filters.sort || "collected_at_desc";
   const runtimeViewName = activeFilterCount
     ? `${selectedProject?.project.name || "Runtime project"} · ${filterLabel} · ${evidenceSort}`
@@ -4630,6 +4636,10 @@ export default async function Home({
                       project_archived · project_restored
                     </small>
                   </div>
+                  <div className="downloadRow">
+                    <a href={projectLifecycleExportUrl}>Download lifecycle CSV</a>
+                  </div>
+                  <Fact label="Lifecycle export" value={paths.projectLifecycleExport} />
                   {data.projectLifecycleEvents.records.length ? (
                     <ul className="plainList">
                       {data.projectLifecycleEvents.records.slice(0, 6).map((record) => (

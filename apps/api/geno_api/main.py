@@ -2104,6 +2104,49 @@ def runtime_project_lifecycle_events(
         close_repository_connection(repository)
 
 
+@app.get("/v1/projects/runtime/lifecycle-events/export.csv")
+def runtime_project_lifecycle_events_export_csv(
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=None,
+        )
+        try:
+            export = repository.export_runtime_project_lifecycle_events_csv(
+                project_id=project_id.strip(),
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GENO-Project-Lifecycle-Export-Hash": export.content_hash,
+                "X-GENO-Project-Lifecycle-Project-Id": export.project_id,
+                "X-GENO-Project-Lifecycle-Method-Version": export.method_version,
+                "X-GENO-Project-Lifecycle-Row-Count": str(export.row_count),
+                "X-GENO-Project-Lifecycle-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/project-members/runtime")
 def runtime_project_members(
     project_id: str = Query(min_length=1),
@@ -5284,6 +5327,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeProject",
             "RuntimeProjectPage",
             "RuntimeProjectLifecycleEvent",
+            "RuntimeProjectLifecycleEventExport",
             "RuntimeProjectLifecycleEventPage",
             "RuntimeProjectCreateRequest",
             "RuntimeProjectActionInput",
@@ -5423,6 +5467,7 @@ def contracts() -> dict[str, list[str]]:
             "POST /v1/projects/runtime/action",
             "PATCH /v1/projects/runtime",
             "/v1/projects/runtime/lifecycle-events",
+            "/v1/projects/runtime/lifecycle-events/export.csv",
             "/v1/project-members/runtime",
             "/v1/project-member-invitations/runtime",
             "/v1/project-member-invitations/runtime/action",

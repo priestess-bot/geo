@@ -135,7 +135,7 @@ DoD：
 - `[x]` (P0a) Prompt Pack：100 条 AU 英文问题集（上限 200），每条绑 intent_type/city/prompt_version，并可通过 runtime prompt API 分页/过滤读回 — `Step3 / E2-03..05`
 - `[x]` (P0a/P0b) 平台字典（P0a：chatgpt/perplexity；P0b：google_aio/google_ai_mode）+ 平台权重 + build_stage — `E2-01..02`
 - `[x]` (P1) 批量导入 prompt（CSV/XLSX）— `E2-06`（CSV 文本导入 API、raw-body 文件导入 API、`.csv/.txt` UTF-8 与 `.xlsx` 第一工作表解析、Runtime Console 文本/文件表单和 Prompt Import History 已落，写入并读回 `runtime_prompts_imported`；复杂多工作表、公式求值、导入前 diff 预览和错误行下载待接）
-- `[~]` (P1) 操作审计日志 — `E1-06`（启动包创建已生成 `project_bootstrap_created`；Project Lifecycle History 已可从 `AuditEvent` 投影 `project_bootstrap_created/project_updated/project_archived/project_restored`，通过 `GET /v1/projects/runtime/lifecycle-events` 和 Runtime Console 读回 actor、reason、method、before/after hash、changed fields 与 status before/after；prompt CSV/file 导入已生成并可通过 import history 读回 `runtime_prompts_imported`，记录 `source_format/source_filename/source_content_type/hash/prompt_count/method_version`；完整用户目录级 CRUD 审计、登录会话审计和生产 IAM 审计待接）
+- `[~]` (P1) 操作审计日志 — `E1-06`（启动包创建已生成 `project_bootstrap_created`；Project Lifecycle History 已可从 `AuditEvent` 投影 `project_bootstrap_created/project_updated/project_archived/project_restored`，通过 `GET /v1/projects/runtime/lifecycle-events`、`GET /v1/projects/runtime/lifecycle-events/export.csv` 和 Runtime Console 读回/导出 actor、reason、method、before/after hash、changed fields 与 status before/after；CSV 导出响应头会返回 lifecycle export hash、row count、total count、project id 和 method version，用于交付后离线复算；prompt CSV/file 导入已生成并可通过 import history 读回 `runtime_prompts_imported`，记录 `source_format/source_filename/source_content_type/hash/prompt_count/method_version`；完整用户目录级 CRUD 审计、登录会话审计和生产 IAM 审计待接）
 
 DoD：
 

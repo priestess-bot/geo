@@ -120,6 +120,7 @@ from geno_core.models import (
     RuntimeProjectBrandAssetVersionPage,
     RuntimeProjectBrandKitInput,
     RuntimeProjectBrandLogoUpload,
+    RuntimeProjectLifecycleEventExport,
     RuntimeProjectLifecycleEventPage,
     RuntimeProjectMember,
     RuntimeProjectMemberDeleteInput,
@@ -3908,6 +3909,55 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(
             connection.calls[1][1],
             (UUID(project_id), list(("project_bootstrap_created", "project_updated", "project_archived", "project_restored")), 5, 1),
+        )
+
+    def test_postgres_repository_exports_runtime_project_lifecycle_events_csv(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        audit_row = {
+            "id": "7f28023e-977f-4c14-9007-95e7e84db71a",
+            "event_type": "project_archived",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "agency-owner",
+            "target_type": "project",
+            "target_id": project_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {
+                "project_ids": [project_id],
+                "action": ["archive"],
+                "status_before": ["paused"],
+                "status_after": ["archived"],
+                "changed_fields": ["status"],
+            },
+            "output_refs": {"project_ids": [project_id], "status": ["archived"]},
+            "method_version": "runtime_project_archive_v1",
+            "reason": "archive stale pilot",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, [audit_row]])
+
+        export = PostgresEvidenceRepository(connection).export_runtime_project_lifecycle_events_csv(
+            project_id=project_id,
+            limit=10,
+            offset=0,
+        )
+
+        self.assertIsInstance(export, RuntimeProjectLifecycleEventExport)
+        self.assertEqual(export.export_type, "runtime_project_lifecycle_events_csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.method_version, "runtime_project_lifecycle_export_v1")
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.total_count, 1)
+        self.assertIn("audit_event_id,project_id,event_type", str(export.content))
+        self.assertIn("project_archived", str(export.content))
+        self.assertIn("archive stale pilot", str(export.content))
+        self.assertIn("status", str(export.content))
+        self.assertEqual(export.content_hash, hashlib.sha256(str(export.content).encode("utf-8")).hexdigest())
+        self.assertEqual(
+            connection.calls[1][1],
+            (UUID(project_id), list(("project_bootstrap_created", "project_updated", "project_archived", "project_restored")), 10, 0),
         )
 
     def test_postgres_repository_checks_project_membership(self) -> None:

@@ -64,6 +64,7 @@ from geno_core.models import (
     RuntimeProjectBrandAssetVersionPage,
     RuntimeProjectBrandLogoUpload,
     RuntimeProject,
+    RuntimeProjectLifecycleEventExport,
     RuntimeProjectLifecycleEvent,
     RuntimeProjectLifecycleEventPage,
     RuntimeProjectMember,
@@ -1079,6 +1080,44 @@ class ApiContractsTest(unittest.TestCase):
             )
         self.assertEqual(allowed.status_code, 200)
         self.assertEqual(allowed_repository.contexts, [("viewer-user", project_id)])
+
+    def test_runtime_project_lifecycle_events_export_endpoint_returns_csv_with_hash_headers(self) -> None:
+        class FakeRepository:
+            def export_runtime_project_lifecycle_events_csv(self, **kwargs: object) -> RuntimeProjectLifecycleEventExport:
+                self.kwargs = kwargs
+                return RuntimeProjectLifecycleEventExport(
+                    export_type="runtime_project_lifecycle_events_csv",
+                    filename="runtime-project-lifecycle-events.csv",
+                    media_type="text/csv; charset=utf-8",
+                    content="audit_event_id,event_type\n7f28023e-977f-4c14-9007-95e7e84db71a,project_archived\n",
+                    content_hash="hash-lifecycle-csv",
+                    project_id=str(kwargs["project_id"]),
+                    method_version="runtime_project_lifecycle_export_v1",
+                    total_count=3,
+                    row_count=1,
+                )
+
+        fake_repository = FakeRepository()
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                f"/v1/projects/runtime/lifecycle-events/export.csv?project_id={project_id}&limit=10&offset=2"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("project_archived", response.text)
+        self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
+        self.assertEqual(response.headers["x-geno-project-lifecycle-export-hash"], "hash-lifecycle-csv")
+        self.assertEqual(response.headers["x-geno-project-lifecycle-project-id"], project_id)
+        self.assertEqual(response.headers["x-geno-project-lifecycle-method-version"], "runtime_project_lifecycle_export_v1")
+        self.assertEqual(response.headers["x-geno-project-lifecycle-row-count"], "1")
+        self.assertEqual(response.headers["x-geno-project-lifecycle-total-count"], "3")
+        self.assertIn("runtime-project-lifecycle-events.csv", response.headers["content-disposition"])
+        self.assertEqual(fake_repository.kwargs["project_id"], project_id)
+        self.assertEqual(fake_repository.kwargs["limit"], 10)
+        self.assertEqual(fake_repository.kwargs["offset"], 2)
 
     def test_runtime_projects_endpoint_requires_actor_when_access_control_enabled(self) -> None:
         with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}):
@@ -5706,6 +5745,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeProject", payload["persistence"])
         self.assertIn("RuntimeProjectPage", payload["persistence"])
         self.assertIn("RuntimeProjectLifecycleEvent", payload["persistence"])
+        self.assertIn("RuntimeProjectLifecycleEventExport", payload["persistence"])
         self.assertIn("RuntimeProjectLifecycleEventPage", payload["persistence"])
         self.assertIn("RuntimeProjectActionInput", payload["persistence"])
         self.assertIn("RuntimeProjectActionRequest", payload["persistence"])
@@ -5808,6 +5848,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("archive_project_brand_logo", payload["persistence"])
         self.assertIn("/v1/projects/runtime", payload["persistence"])
         self.assertIn("/v1/projects/runtime/au/dtc-ecommerce", payload["persistence"])
+        self.assertIn("/v1/projects/runtime/lifecycle-events", payload["persistence"])
+        self.assertIn("/v1/projects/runtime/lifecycle-events/export.csv", payload["persistence"])
         self.assertIn("/v1/project-members/runtime", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates", payload["persistence"])
