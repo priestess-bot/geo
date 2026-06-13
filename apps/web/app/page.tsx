@@ -694,6 +694,23 @@ type TraceabilityDetail = {
   }>;
 };
 
+type RuntimeAuditEvent = {
+  audit_event: {
+    id?: string;
+    project_id?: string;
+    event_type?: string;
+    actor_type?: string;
+    actor_id?: string;
+    target_type?: string;
+    target_id?: string;
+    method_version?: string | null;
+    reason?: string | null;
+    before_hash?: string | null;
+    after_hash?: string | null;
+    created_at?: string | null;
+  };
+};
+
 type RuntimeData = {
   launchStatus: AuLaunchStatus | null;
   launchRemediationPlan: AuLaunchRemediationPlan | null;
@@ -706,6 +723,7 @@ type RuntimeData = {
   handoffDossier: AuHandoffDossier | null;
   projects: PageResponse<RuntimeProject>;
   projectLifecycleEvents: PageResponse<RuntimeProjectLifecycleEvent>;
+  auditEvents: PageResponse<RuntimeAuditEvent>;
   projectMembers: PageResponse<RuntimeProjectMember>;
   projectMemberInvitations: PageResponse<RuntimeProjectMemberInvitation>;
   brandKit: RuntimeProjectBrandKit | null;
@@ -1511,6 +1529,8 @@ const endpoints = {
   projectAction: "/v1/projects/runtime/action",
   projectLifecycleEvents: "/v1/projects/runtime/lifecycle-events",
   projectLifecycleExport: "/v1/projects/runtime/lifecycle-events/export.csv",
+  auditEvents: "/v1/audit-events/runtime",
+  auditEventsExport: "/v1/audit-events/runtime/export.csv",
   projectMembers: "/v1/project-members/runtime",
   projectMemberInvitations: "/v1/project-member-invitations/runtime",
   projectMemberInvitationAction: "/v1/project-member-invitations/runtime/action",
@@ -2919,6 +2939,8 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     projectAction: endpoints.projectAction,
     projectLifecycleEvents: endpoints.projectLifecycleEvents,
     projectLifecycleExport: endpoints.projectLifecycleExport,
+    auditEvents: endpoints.auditEvents,
+    auditEventsExport: endpoints.auditEventsExport,
     projectMembers: endpoints.projectMembers,
     projectMemberInvitations: endpoints.projectMemberInvitations,
     projectMemberInvitationAction: endpoints.projectMemberInvitationAction,
@@ -3041,6 +3063,12 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.projectLifecycleExport = selectedProjectId
     ? runtimePath(endpoints.projectLifecycleExport, { project_id: selectedProjectId, limit: 200 })
     : endpoints.projectLifecycleExport;
+  paths.auditEvents = selectedProjectId
+    ? runtimePath(endpoints.auditEvents, { project_id: selectedProjectId, limit: 20 })
+    : endpoints.auditEvents;
+  paths.auditEventsExport = selectedProjectId
+    ? runtimePath(endpoints.auditEventsExport, { project_id: selectedProjectId, limit: 200 })
+    : endpoints.auditEventsExport;
   paths.projectMembers = selectedProjectId
     ? runtimePath(endpoints.projectMembers, { project_id: selectedProjectId, limit: 20 })
     : endpoints.projectMembers;
@@ -3220,6 +3248,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     handoffDossier,
     prompts,
     projectLifecycleEvents,
+    auditEvents,
     projectMembers,
     projectMemberInvitations,
     promptImports,
@@ -3272,6 +3301,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
           emptyPage<RuntimeProjectLifecycleEvent>()
         )
       : Promise.resolve({ payload: emptyPage<RuntimeProjectLifecycleEvent>(), error: null }),
+    selectedProjectId
+      ? fetchRuntimeEndpoint<PageResponse<RuntimeAuditEvent>>(
+          baseUrl,
+          paths.auditEvents,
+          emptyPage<RuntimeAuditEvent>()
+        )
+      : Promise.resolve({ payload: emptyPage<RuntimeAuditEvent>(), error: null }),
     selectedProjectId
       ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectMember>>(
           baseUrl,
@@ -3419,6 +3455,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     projects,
     prompts,
     projectLifecycleEvents,
+    auditEvents,
     projectMembers,
     projectMemberInvitations,
     promptImports,
@@ -3469,6 +3506,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       handoffDossier: handoffDossier.payload,
       projects: projects.payload,
       projectLifecycleEvents: projectLifecycleEvents.payload,
+      auditEvents: auditEvents.payload,
       projectMembers: projectMembers.payload,
       projectMemberInvitations: projectMemberInvitations.payload,
       brandKit: brandKit.payload,
@@ -3851,6 +3889,7 @@ export default async function Home({
     ? `${displayUrl}/v1/reports/runtime/${latestReport.report_export.id}/artifact`
     : null;
   const totalAuditEvents =
+    data.auditEvents.total_count ||
     (latestEvidence?.audit_events.length || 0) +
     data.collectionRuns.records.reduce((total, item) => total + item.audit_events.length, 0) +
     data.fidelityChecks.records.reduce((total, item) => total + item.audit_events.length, 0) +
@@ -3946,6 +3985,7 @@ export default async function Home({
     : "No runtime project";
   const evidenceExportUrl = `${displayUrl}${paths.evidenceExport}`;
   const projectLifecycleExportUrl = `${displayUrl}${paths.projectLifecycleExport}`;
+  const auditEventsExportUrl = `${displayUrl}${paths.auditEventsExport}`;
   const evidenceSort = data.evidence.sort || filters.sort || "collected_at_desc";
   const runtimeViewName = activeFilterCount
     ? `${selectedProject?.project.name || "Runtime project"} · ${filterLabel} · ${evidenceSort}`
@@ -4661,6 +4701,37 @@ export default async function Home({
                     </ul>
                   ) : (
                     <small>No project lifecycle events found.</small>
+                  )}
+                </div>
+                <div className="projectLifecycleHistory projectAuditTrail">
+                  <div className="formHeader">
+                    <h3>Project Audit Trail</h3>
+                    <small>GET /v1/audit-events/runtime · append-only AuditEvent query</small>
+                  </div>
+                  <div className="downloadRow">
+                    <a href={auditEventsExportUrl}>Download audit CSV</a>
+                  </div>
+                  <Fact label="Audit query" value={paths.auditEvents} />
+                  <Fact label="Audit export" value={paths.auditEventsExport} />
+                  {data.auditEvents.records.length ? (
+                    <ul className="plainList">
+                      {data.auditEvents.records.slice(0, 6).map((record) => (
+                        <li key={record.audit_event.id || `${record.audit_event.event_type}-${record.audit_event.created_at}`}>
+                          <strong>{record.audit_event.event_type || "audit_event"}</strong>
+                          <span>{record.audit_event.reason || record.audit_event.method_version || "no reason"}</span>
+                          <small>
+                            {record.audit_event.actor_id || "system"} · {record.audit_event.target_type || "target"} ·{" "}
+                            {record.audit_event.method_version || "no method"}
+                          </small>
+                          <small>
+                            {record.audit_event.created_at || "no timestamp"} · hash{" "}
+                            {record.audit_event.after_hash || record.audit_event.before_hash || "no hash"}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <small>No project audit events found.</small>
                   )}
                 </div>
                 <div className="projectMembers">

@@ -138,6 +138,8 @@ from geno_core.models import (
     RuntimePromptImportHistoryPage,
     RuntimePromptImportResult,
     RuntimeAlertPage,
+    RuntimeAuditEventExport,
+    RuntimeAuditEventPage,
     RuntimeActionPlanPage,
     RuntimeAlertEvent,
     RuntimeAlertEventInput,
@@ -3959,6 +3961,92 @@ class CoreContractsTest(unittest.TestCase):
             connection.calls[1][1],
             (UUID(project_id), list(("project_bootstrap_created", "project_updated", "project_archived", "project_restored")), 10, 0),
         )
+
+    def test_postgres_repository_lists_runtime_audit_events_with_filters(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        audit_row = {
+            "id": "7f28023e-977f-4c14-9007-95e7e84db71a",
+            "event_type": "runtime_prompts_imported",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "agency-owner",
+            "target_type": "prompt_import",
+            "target_id": "prompt-import-1",
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"source_filename": ["prompts.csv"]},
+            "output_refs": {"prompt_question_ids": ["prompt-1"]},
+            "method_version": "runtime_prompt_import_csv_v1",
+            "reason": "import prompts",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, [audit_row]])
+
+        page = PostgresEvidenceRepository(connection).list_runtime_audit_events(
+            project_id=project_id,
+            event_type="runtime_prompts_imported",
+            target_type="prompt_import",
+            actor_id="agency-owner",
+            limit=10,
+            offset=2,
+        )
+
+        self.assertIsInstance(page, RuntimeAuditEventPage)
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.filters["project_id"], project_id)
+        self.assertEqual(page.filters["event_type"], "runtime_prompts_imported")
+        self.assertEqual(page.records[0].audit_event["method_version"], "runtime_prompt_import_csv_v1")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM audit_events", executed_sql)
+        self.assertIn("event_type = %s", executed_sql)
+        self.assertIn("target_type = %s", executed_sql)
+        self.assertIn("actor_id = %s", executed_sql)
+        self.assertEqual(
+            connection.calls[1][1],
+            (UUID(project_id), "runtime_prompts_imported", "prompt_import", "agency-owner", 10, 2),
+        )
+
+    def test_postgres_repository_exports_runtime_audit_events_csv(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        audit_row = {
+            "id": "7f28023e-977f-4c14-9007-95e7e84db71a",
+            "event_type": "runtime_prompts_imported",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "agency-owner",
+            "target_type": "prompt_import",
+            "target_id": "prompt-import-1",
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"source_filename": ["prompts.csv"]},
+            "output_refs": {"prompt_question_ids": ["prompt-1"]},
+            "method_version": "runtime_prompt_import_csv_v1",
+            "reason": "import prompts",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, [audit_row]])
+
+        export = PostgresEvidenceRepository(connection).export_runtime_audit_events_csv(
+            project_id=project_id,
+            event_type="runtime_prompts_imported",
+            limit=10,
+            offset=0,
+        )
+
+        self.assertIsInstance(export, RuntimeAuditEventExport)
+        self.assertEqual(export.export_type, "runtime_audit_events_csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.method_version, "runtime_audit_events_export_v1")
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertIn("audit_event_id,project_id,event_type", str(export.content))
+        self.assertIn("runtime_prompts_imported", str(export.content))
+        self.assertIn("source_filename", str(export.content))
+        self.assertIn("prompt_question_ids", str(export.content))
+        self.assertEqual(export.content_hash, hashlib.sha256(str(export.content).encode("utf-8")).hexdigest())
 
     def test_postgres_repository_checks_project_membership(self) -> None:
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"

@@ -38,6 +38,8 @@ Runtime Console 的 Brand Assets 面板已接入上述审计型版本库，可�
 
 补充：项目生命周期历史已从 `AuditEvent` 投影为只读 read model。`GET /v1/projects/runtime/lifecycle-events?project_id=...` 会返回 `project_bootstrap_created/project_updated/project_archived/project_restored` 事件、actor、reason、method version、before/after hash、changed fields 和 status before/after；`GET /v1/projects/runtime/lifecycle-events/export.csv?project_id=...` 会导出同一历史的 CSV，并在响应头返回 `X-GENO-Project-Lifecycle-Export-Hash`、row count、total count、project id 和 method version，便于交付包留档后离线复算。开启项目访问控制时，任意项目成员可读，非成员不可读。Runtime Console 的 Project Lifecycle 面板展示同一历史并提供 `Download lifecycle CSV` 入口，不新增可变状态表，也不改写审计事件本身。
 
+补充：项目级 Runtime Audit Trail 已从零散对象审计摘要补成统一只读入口。`GET /v1/audit-events/runtime?project_id=...` 可按 project、event_type、target_type、actor_id 分页读取 append-only `AuditEvent`；`GET /v1/audit-events/runtime/export.csv?project_id=...` 可导出同一结果，并返回 `X-GENO-Audit-Export-Hash`、method version、row count、total count 和 project id。Runtime Console 的 Project Audit Trail 面板展示最近项目级审计事件并提供 `Download audit CSV`。该入口用于项目交付复盘和内部审计检索，不新增可变审计状态，不替代签章、对象存储归档或全租户审计仓库。
+
 > 🛠 **开发与管理入口**：[PROJECT-PLAN.md](PROJECT-PLAN.md) —— 把澳大利亚首发规格拆成 8 个里程碑、任务清单与验收标准（DoD），是从 `docs/` 规格走向工程交付的待办层。
 >
 > 🗺 **架构图**：[ARCHITECTURE.md](ARCHITECTURE.md) —— GENO SaaS 澳洲首发系统的分层结构、可插拔点、证据优先数据流水线，以及 `AuditEvent / EvidenceLink / ScoreContribution / ReportExport` 审计、溯源、解释链（Mermaid）；出版级图注与设计规范见 [docs/figure-specs.md](docs/figure-specs.md)。

@@ -39,6 +39,8 @@ from geno_core.models import (
     RuntimeAlertItem,
     RuntimeAlertNotificationResult,
     RuntimeAlertPage,
+    RuntimeAuditEventExport,
+    RuntimeAuditEventPage,
     RuntimeFidelityCheck,
     RuntimeFidelityCheckPage,
     RuntimeFidelityTrend,
@@ -1118,6 +1120,101 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["project_id"], project_id)
         self.assertEqual(fake_repository.kwargs["limit"], 10)
         self.assertEqual(fake_repository.kwargs["offset"], 2)
+
+    def test_runtime_audit_events_endpoint_passes_filters_and_checks_access(self) -> None:
+        class FakeRepository:
+            def __init__(self) -> None:
+                self.contexts: list[tuple[str | None, str | None]] = []
+
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str | None:
+                self.role_project_id = project_id
+                self.role_actor_id = actor_id
+                return "viewer"
+
+            def set_runtime_project_access_context(self, *, actor_id: str, project_id: str | None = None) -> None:
+                self.contexts.append((actor_id, project_id))
+
+            def list_runtime_audit_events(self, **kwargs: object) -> RuntimeAuditEventPage:
+                self.kwargs = kwargs
+                return RuntimeAuditEventPage(
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    filters={
+                        "project_id": str(kwargs["project_id"]),
+                        "event_type": str(kwargs["event_type"]),
+                        "target_type": str(kwargs["target_type"]),
+                        "actor_id": str(kwargs["actor_id"]),
+                    },
+                    records=(
+                        {
+                            "audit_event": {
+                                "id": "audit-1",
+                                "event_type": "runtime_prompts_imported",
+                                "target_type": "prompt_import",
+                                "actor_id": "agency-owner",
+                            }
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.get(
+                f"/v1/audit-events/runtime?project_id={project_id}"
+                "&event_type=runtime_prompts_imported&target_type=prompt_import&actor_id=agency-owner&limit=10&offset=2",
+                headers={"X-GENO-Actor-Id": "viewer-user"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["records"][0]["audit_event"]["event_type"], "runtime_prompts_imported")
+        self.assertEqual(fake_repository.kwargs["project_id"], project_id)
+        self.assertEqual(fake_repository.kwargs["event_type"], "runtime_prompts_imported")
+        self.assertEqual(fake_repository.kwargs["target_type"], "prompt_import")
+        self.assertEqual(fake_repository.kwargs["actor_id"], "agency-owner")
+        self.assertEqual(fake_repository.contexts, [("viewer-user", project_id)])
+
+    def test_runtime_audit_events_export_endpoint_returns_csv_with_hash_headers(self) -> None:
+        class FakeRepository:
+            def export_runtime_audit_events_csv(self, **kwargs: object) -> RuntimeAuditEventExport:
+                self.kwargs = kwargs
+                return RuntimeAuditEventExport(
+                    export_type="runtime_audit_events_csv",
+                    filename="runtime-audit-events.csv",
+                    media_type="text/csv; charset=utf-8",
+                    content="audit_event_id,event_type\n7f28023e-977f-4c14-9007-95e7e84db71a,runtime_prompts_imported\n",
+                    content_hash="hash-audit-csv",
+                    filters={"project_id": str(kwargs["project_id"]), "event_type": str(kwargs["event_type"])},
+                    total_count=5,
+                    row_count=1,
+                    method_version="runtime_audit_events_export_v1",
+                )
+
+        fake_repository = FakeRepository()
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                f"/v1/audit-events/runtime/export.csv?project_id={project_id}&event_type=runtime_prompts_imported&limit=10"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("runtime_prompts_imported", response.text)
+        self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
+        self.assertEqual(response.headers["x-geno-audit-export-hash"], "hash-audit-csv")
+        self.assertEqual(response.headers["x-geno-audit-method-version"], "runtime_audit_events_export_v1")
+        self.assertEqual(response.headers["x-geno-audit-row-count"], "1")
+        self.assertEqual(response.headers["x-geno-audit-total-count"], "5")
+        self.assertEqual(response.headers["x-geno-audit-project-id"], project_id)
+        self.assertIn("runtime-audit-events.csv", response.headers["content-disposition"])
+        self.assertEqual(fake_repository.kwargs["project_id"], project_id)
+        self.assertEqual(fake_repository.kwargs["event_type"], "runtime_prompts_imported")
+        self.assertEqual(fake_repository.kwargs["limit"], 10)
 
     def test_runtime_projects_endpoint_requires_actor_when_access_control_enabled(self) -> None:
         with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}):
@@ -5846,10 +5943,15 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("runtime_auth_diagnostic", payload["persistence"])
         self.assertIn("build_object_store_from_env", payload["persistence"])
         self.assertIn("archive_project_brand_logo", payload["persistence"])
+        self.assertIn("RuntimeAuditEvent", payload["persistence"])
+        self.assertIn("RuntimeAuditEventPage", payload["persistence"])
+        self.assertIn("RuntimeAuditEventExport", payload["persistence"])
         self.assertIn("/v1/projects/runtime", payload["persistence"])
         self.assertIn("/v1/projects/runtime/au/dtc-ecommerce", payload["persistence"])
         self.assertIn("/v1/projects/runtime/lifecycle-events", payload["persistence"])
         self.assertIn("/v1/projects/runtime/lifecycle-events/export.csv", payload["persistence"])
+        self.assertIn("/v1/audit-events/runtime", payload["persistence"])
+        self.assertIn("/v1/audit-events/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/project-members/runtime", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates", payload["persistence"])

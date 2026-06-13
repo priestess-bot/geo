@@ -41,6 +41,9 @@ from geno_core.models import (
     RuntimeAlertItem,
     RuntimeAlertNotificationResult,
     RuntimeAlertPage,
+    RuntimeAuditEvent,
+    RuntimeAuditEventExport,
+    RuntimeAuditEventPage,
     RuntimeCitationGraph,
     RuntimeCitationGraphNode,
     RuntimeCitationGraphPage,
@@ -1199,6 +1202,53 @@ def _render_runtime_project_lifecycle_events_csv(page: RuntimeProjectLifecycleEv
     return output.getvalue()
 
 
+def _render_runtime_audit_events_csv(page: RuntimeAuditEventPage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "audit_event_id",
+            "project_id",
+            "event_type",
+            "actor_type",
+            "actor_id",
+            "target_type",
+            "target_id",
+            "method_version",
+            "reason",
+            "before_hash",
+            "after_hash",
+            "input_ref_keys",
+            "output_ref_keys",
+            "created_at",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        audit_event = record.audit_event
+        input_refs = audit_event.get("input_refs") if isinstance(audit_event.get("input_refs"), dict) else {}
+        output_refs = audit_event.get("output_refs") if isinstance(audit_event.get("output_refs"), dict) else {}
+        writer.writerow(
+            {
+                "audit_event_id": audit_event.get("id") or "",
+                "project_id": audit_event.get("project_id") or "",
+                "event_type": audit_event.get("event_type") or "",
+                "actor_type": audit_event.get("actor_type") or "",
+                "actor_id": audit_event.get("actor_id") or "",
+                "target_type": audit_event.get("target_type") or "",
+                "target_id": audit_event.get("target_id") or "",
+                "method_version": audit_event.get("method_version") or "",
+                "reason": audit_event.get("reason") or "",
+                "before_hash": audit_event.get("before_hash") or "",
+                "after_hash": audit_event.get("after_hash") or "",
+                "input_ref_keys": "|".join(sorted(str(key) for key in input_refs.keys())),
+                "output_ref_keys": "|".join(sorted(str(key) for key in output_refs.keys())),
+                "created_at": audit_event.get("created_at") or "",
+            }
+        )
+    return output.getvalue()
+
+
 ANSWER_RUN_COLUMNS = (
     "id",
     "project_id",
@@ -2215,6 +2265,96 @@ class PostgresEvidenceRepository:
             method_version="runtime_project_lifecycle_export_v1",
             total_count=page.total_count,
             row_count=len(page.records),
+        )
+
+    def list_runtime_audit_events(
+        self,
+        *,
+        project_id: str,
+        event_type: str | None = None,
+        target_type: str | None = None,
+        actor_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeAuditEventPage:
+        project_id = project_id.strip()
+        if not project_id:
+            raise ValueError("project_id is required")
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters = ["project_id = %s"]
+        params: list[object] = [_uuid(project_id)]
+        normalized_event_type = event_type.strip() if event_type else None
+        normalized_target_type = target_type.strip() if target_type else None
+        normalized_actor_id = actor_id.strip() if actor_id else None
+        if normalized_event_type:
+            filters.append("event_type = %s")
+            params.append(normalized_event_type)
+        if normalized_target_type:
+            filters.append("target_type = %s")
+            params.append(normalized_target_type)
+        if normalized_actor_id:
+            filters.append("actor_id = %s")
+            params.append(normalized_actor_id)
+        where_clause = f"WHERE {' AND '.join(filters)}"
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM audit_events {where_clause}", tuple(params))
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                {where_clause}
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            rows = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        page_filters = {
+            "project_id": project_id,
+            "event_type": normalized_event_type,
+            "target_type": normalized_target_type,
+            "actor_id": normalized_actor_id,
+        }
+        return RuntimeAuditEventPage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            filters={key: value for key, value in page_filters.items() if value},
+            records=tuple(RuntimeAuditEvent(audit_event=row) for row in rows),
+        )
+
+    def export_runtime_audit_events_csv(
+        self,
+        *,
+        project_id: str,
+        event_type: str | None = None,
+        target_type: str | None = None,
+        actor_id: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeAuditEventExport:
+        page = self.list_runtime_audit_events(
+            project_id=project_id,
+            event_type=event_type,
+            target_type=target_type,
+            actor_id=actor_id,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_audit_events_csv(page)
+        return RuntimeAuditEventExport(
+            export_type="runtime_audit_events_csv",
+            filename="runtime-audit-events.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters=page.filters,
+            total_count=page.total_count,
+            row_count=len(page.records),
+            method_version="runtime_audit_events_export_v1",
         )
 
     def user_can_access_project(self, *, project_id: str, actor_id: str) -> bool:

@@ -810,6 +810,33 @@ class RuntimeEvidenceExport:
 
 
 @dataclass(frozen=True)
+class RuntimeAuditEvent:
+    audit_event: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class RuntimeAuditEventPage:
+    total_count: int
+    limit: int
+    offset: int
+    filters: dict[str, Any]
+    records: tuple[RuntimeAuditEvent, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeAuditEventExport:
+    export_type: str
+    filename: str
+    media_type: str
+    content: str | bytes
+    content_hash: str
+    filters: dict[str, Any]
+    total_count: int
+    row_count: int
+    method_version: str
+
+
+@dataclass(frozen=True)
 class RuntimeSavedView:
     saved_view: dict[str, Any]
     audit_events: tuple[dict[str, Any], ...]
