@@ -7,6 +7,7 @@ from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 from uuid import NAMESPACE_URL, UUID, uuid5
 from zipfile import ZipFile
 
@@ -125,6 +126,7 @@ from geno_core.models import (
     RuntimeProjectMemberInvitation,
     RuntimeProjectMemberInvitationAcceptInput,
     RuntimeProjectMemberInvitationActionInput,
+    RuntimeProjectMemberInvitationEmailInput,
     RuntimeProjectMemberInvitationInput,
     RuntimeProjectMemberInvitationPage,
     RuntimeProjectMemberPage,
@@ -4139,6 +4141,129 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("INSERT INTO project_members", executed_sql)
         self.assertIn("UPDATE project_member_invitations SET status = %s, accepted_at = now()", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_sends_runtime_project_member_invitation_email_without_auditing_raw_token(
+        self,
+    ) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
+        invite_token = "geno-invite-token"
+        invite_token_hash = hashlib.sha256(invite_token.encode("utf-8")).hexdigest()
+        pending_invitation = {
+            "id": invitation_id,
+            "project_id": project_id,
+            "email": "viewer@example.com",
+            "role": "viewer",
+            "status": "pending",
+            "invite_token_hash": invite_token_hash,
+            "invited_by": "agency-owner",
+            "expires_at": now + timedelta(days=7),
+            "accepted_at": None,
+            "revoked_at": None,
+            "metadata": {"source": "runtime-console"},
+            "created_at": now,
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "2782a901-8cdf-47e7-bbdb-345d9ca66efe",
+            "event_type": "project_member_invitation_email_sent",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "agency-owner",
+            "target_type": "project_member_invitation",
+            "target_id": invitation_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {
+                "project_member_invitation_ids": [invitation_id],
+                "invite_token_hashes": [invite_token_hash],
+            },
+            "output_refs": {"delivery_status": ["sent"]},
+            "method_version": "project_member_invitation_email_v1",
+            "reason": "send invite email",
+            "created_at": now,
+        }
+        sent: list[tuple[dict[str, object], object, list[str]]] = []
+
+        def email_sender(config: dict[str, object], message: object, recipients: list[str]) -> tuple[int, bytes]:
+            sent.append((config, message, recipients))
+            return 250, b"queued"
+
+        connection = RecordingConnection(result_sets=[pending_invitation, [audit_row]])
+        with patch.dict(
+            "os.environ",
+            {
+                "GENO_TEST_SMTP_HOST": "smtp.example.com",
+                "GENO_TEST_SMTP_PORT": "2525",
+                "GENO_TEST_SMTP_TLS": "0",
+                "GENO_TEST_SMTP_FROM": "invites@example.com",
+            },
+        ):
+            record = PostgresEvidenceRepository(connection, email_sender=email_sender).send_runtime_project_member_invitation_email(
+                RuntimeProjectMemberInvitationEmailInput(
+                    project_id=project_id,
+                    invitation_id=invitation_id,
+                    invite_token=invite_token,
+                    accept_base_url="https://app.example.com/invite/accept",
+                    sent_by="agency-owner",
+                    smtp_env_prefix="GENO_TEST_SMTP",
+                    subject="Join GENO",
+                    message="Please join the workspace.",
+                    reason="send invite email",
+                )
+            )
+
+        self.assertEqual(record.invitation["status"], "pending")
+        self.assertEqual(record.audit_events[0]["event_type"], "project_member_invitation_email_sent")
+        self.assertEqual(sent[0][2], ["viewer@example.com"])
+        self.assertIn(invite_token, sent[0][1].get_content())
+        self.assertNotIn(invite_token, str(record.audit_events))
+        self.assertIn(invite_token_hash, str(record.audit_events))
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("WHERE project_id = %s AND id = %s AND invite_token_hash = %s FOR UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+        audit_params = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
+        self.assertNotIn(invite_token, str(audit_params))
+        self.assertNotIn("https://app.example.com/invite/accept?", str(audit_params))
+
+    def test_postgres_repository_rejects_invitation_email_for_non_pending_status(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
+        invite_token = "geno-invite-token"
+        connection = RecordingConnection(
+            result_sets=[
+                {
+                    "id": invitation_id,
+                    "project_id": "6624961f-36ae-539b-9d48-51619b42e37e",
+                    "email": "viewer@example.com",
+                    "role": "viewer",
+                    "status": "accepted",
+                    "invite_token_hash": hashlib.sha256(invite_token.encode("utf-8")).hexdigest(),
+                    "invited_by": "agency-owner",
+                    "expires_at": now + timedelta(days=7),
+                    "accepted_at": now,
+                    "revoked_at": None,
+                    "metadata": {"source": "runtime-console"},
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            ]
+        )
+
+        with self.assertRaisesRegex(ValueError, "cannot email invitation with status accepted"):
+            PostgresEvidenceRepository(connection).send_runtime_project_member_invitation_email(
+                RuntimeProjectMemberInvitationEmailInput(
+                    project_id="6624961f-36ae-539b-9d48-51619b42e37e",
+                    invitation_id=invitation_id,
+                    invite_token=invite_token,
+                    accept_base_url="https://app.example.com/invite/accept",
+                )
+            )
+
+        self.assertEqual(connection.commit_count, 0)
+        self.assertEqual(len([sql for sql, _ in connection.calls if "INSERT INTO audit_events" in sql]), 0)
 
     def test_postgres_repository_rejects_expired_runtime_project_member_invitation_acceptance(self) -> None:
         now = datetime.now(UTC)

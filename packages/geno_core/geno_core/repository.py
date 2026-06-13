@@ -9,10 +9,11 @@ from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 from typing import Any, Protocol
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlencode, unquote, urlparse
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from geno_core.audit import build_audit_event
+from geno_core.email_delivery import send_runtime_email_message
 from geno_core.models import (
     ActionRecommendation,
     AnswerAnalysis,
@@ -97,6 +98,7 @@ from geno_core.models import (
     RuntimeProjectMemberInvitation,
     RuntimeProjectMemberInvitationAcceptInput,
     RuntimeProjectMemberInvitationActionInput,
+    RuntimeProjectMemberInvitationEmailInput,
     RuntimeProjectMemberInvitationInput,
     RuntimeProjectMemberInvitationPage,
     RuntimeProjectMemberPage,
@@ -1762,8 +1764,9 @@ HUMAN_REVIEW_COLUMNS = (
 class PostgresEvidenceRepository:
     """DB-API style repository for the GENO runtime evidence chain."""
 
-    def __init__(self, connection: DbConnection) -> None:
+    def __init__(self, connection: DbConnection, *, email_sender: Any | None = None) -> None:
         self.connection = connection
+        self.email_sender = email_sender
 
     def set_runtime_project_access_context(self, *, actor_id: str, project_id: str | None = None) -> None:
         actor_id = actor_id.strip()
@@ -2523,6 +2526,142 @@ class PostgresEvidenceRepository:
             invitation=after_invitation,
             audit_events=(asdict(member_audit_event), asdict(invitation_audit_event)),
         )
+
+    def send_runtime_project_member_invitation_email(
+        self,
+        email_input: RuntimeProjectMemberInvitationEmailInput,
+    ) -> RuntimeProjectMemberInvitation:
+        project_id = email_input.project_id.strip()
+        invitation_id = email_input.invitation_id.strip()
+        invite_token = email_input.invite_token.strip()
+        accept_base_url = email_input.accept_base_url.strip()
+        sent_by = email_input.sent_by.strip() or "runtime-console"
+        smtp_env_prefix = email_input.smtp_env_prefix.strip() or "GENO_NOTIFICATION_SMTP"
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not invitation_id:
+            raise ValueError("invitation_id is required")
+        if not invite_token:
+            raise ValueError("invite_token is required")
+        if not accept_base_url:
+            raise ValueError("accept_base_url is required")
+        parsed_base_url = urlparse(accept_base_url)
+        if parsed_base_url.scheme not in {"http", "https"} or not parsed_base_url.netloc:
+            raise ValueError("accept_base_url must be an http or https URL")
+        invite_token_hash = hashlib.sha256(invite_token.encode("utf-8")).hexdigest()
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_MEMBER_INVITATION_COLUMNS)}
+                FROM project_member_invitations
+                WHERE project_id = %s AND id = %s AND invite_token_hash = %s
+                FOR UPDATE
+                """,
+                (_uuid(project_id), _uuid(invitation_id), invite_token_hash),
+            )
+            existing = cursor.fetchone()
+            if not existing:
+                raise ValueError("project member invitation not found")
+            invitation = _row_dict(existing, PROJECT_MEMBER_INVITATION_COLUMNS)
+            if invitation.get("status") != "pending":
+                raise ValueError(f"cannot email invitation with status {invitation.get('status')}")
+            expires_at = _coerce_datetime(invitation.get("expires_at"))
+            if expires_at and expires_at <= datetime.now(UTC):
+                raise ValueError("project member invitation expired")
+            project_id = str(invitation["project_id"])
+            email = str(invitation["email"]).strip().lower()
+            role = str(invitation["role"]).strip().lower()
+            accept_url = f"{accept_base_url.rstrip('/')}?{urlencode({'invitation_id': invitation_id, 'invite_token': invite_token})}"
+            accept_url_hash = hashlib.sha256(accept_url.encode("utf-8")).hexdigest()
+            subject = (
+                email_input.subject.strip()
+                if email_input.subject and email_input.subject.strip()
+                else "GENO project invitation"
+            )
+            custom_message = email_input.message.strip() if email_input.message and email_input.message.strip() else ""
+            body_lines = [
+                custom_message or "You have been invited to join a GENO project.",
+                "",
+                f"Role: {role}",
+                f"Invitation ID: {invitation_id}",
+                f"Expires at: {expires_at.isoformat() if expires_at else 'not set'}",
+                "",
+                "Open this invitation link to accept:",
+                accept_url,
+                "",
+                "This one-time link should not be forwarded.",
+            ]
+            delivery_result = send_runtime_email_message(
+                recipients=(email,),
+                subject=subject,
+                text="\n".join(body_lines),
+                headers={
+                    "X-GENO-Project-Id": project_id,
+                    "X-GENO-Invitation-Id": invitation_id,
+                    "X-GENO-Invitation-Token-Hash": invite_token_hash,
+                },
+                smtp_env_prefix=smtp_env_prefix,
+                email_sender=self.email_sender,
+            )
+            if not 200 <= delivery_result.response_status < 300:
+                raise RuntimeError(f"project member invitation email returned SMTP status {delivery_result.response_status}")
+            event_after = {
+                "invitation_id": invitation_id,
+                "project_id": project_id,
+                "email": email,
+                "role": role,
+                "status": invitation.get("status"),
+                "delivery_status": "sent",
+                "response_status": delivery_result.response_status,
+                "response_body_hash": delivery_result.response_body_hash,
+                "accept_url_hash": accept_url_hash,
+                "smtp_host": delivery_result.smtp_host,
+                "smtp_port": delivery_result.smtp_port,
+                "from_address": delivery_result.from_address,
+            }
+            audit_event = build_audit_event(
+                event_type="project_member_invitation_email_sent",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=sent_by,
+                target_type="project_member_invitation",
+                target_id=invitation_id,
+                before=invitation,
+                after=event_after,
+                input_refs={
+                    "project_ids": [project_id],
+                    "project_member_invitation_ids": [invitation_id],
+                    "emails": [email],
+                    "roles": [role],
+                    "invite_token_hashes": [invite_token_hash],
+                    "accept_url_hashes": [accept_url_hash],
+                    "smtp_env_prefix": [smtp_env_prefix],
+                },
+                output_refs={
+                    "project_member_invitation_ids": [invitation_id],
+                    "delivery_status": ["sent"],
+                    "response_status": [str(delivery_result.response_status)],
+                    "response_body_hashes": [delivery_result.response_body_hash],
+                },
+                method_version="project_member_invitation_email_v1",
+                reason=email_input.reason.strip()
+                if email_input.reason
+                else "runtime_project_member_invitation_email_sent",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE project_id = %s AND target_type = %s AND target_id = %s
+                ORDER BY created_at DESC
+                LIMIT 5
+                """,
+                (_uuid(project_id), "project_member_invitation", invitation_id),
+            )
+            audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        self.connection.commit()
+        return RuntimeProjectMemberInvitation(invitation=invitation, audit_events=tuple(audit_events))
 
     def delete_runtime_project_member(self, member: RuntimeProjectMemberDeleteInput) -> RuntimeProjectMember:
         project_id = member.project_id.strip()

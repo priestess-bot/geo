@@ -1489,6 +1489,7 @@ const endpoints = {
   projectMembers: "/v1/project-members/runtime",
   projectMemberInvitations: "/v1/project-member-invitations/runtime",
   projectMemberInvitationAction: "/v1/project-member-invitations/runtime/action",
+  projectMemberInvitationEmail: "/v1/project-member-invitations/runtime/email",
   projectMemberInvitationAccept: "/v1/project-member-invitations/runtime/accept",
   prompts: "/v1/prompts/runtime",
   promptImports: "/v1/prompts/runtime/imports",
@@ -2132,6 +2133,44 @@ async function actionRuntimeProjectMemberInvitation(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/project-member-invitations/runtime/action returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function emailRuntimeProjectMemberInvitation(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const invitationId = String(formData.get("invitation_id") || "").trim();
+  const inviteToken = String(formData.get("invite_token") || "").trim();
+  if (!projectId || !invitationId || !inviteToken) {
+    throw new Error("project_id, invitation_id and invite_token are required to email a project member invitation");
+  }
+  const acceptBaseUrl =
+    String(formData.get("accept_base_url") || "").trim() ||
+    `${process.env.NEXT_PUBLIC_APP_BASE_URL || "http://localhost:3000"}/invite/accept`;
+  const payload = {
+    project_id: projectId,
+    invitation_id: invitationId,
+    invite_token: inviteToken,
+    accept_base_url: acceptBaseUrl,
+    sent_by: String(formData.get("sent_by") || "runtime-console").trim(),
+    smtp_env_prefix: String(formData.get("smtp_env_prefix") || "GENO_NOTIFICATION_SMTP").trim(),
+    subject: String(formData.get("subject") || "").trim() || undefined,
+    message: String(formData.get("message") || "").trim() || undefined,
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/project-member-invitations/runtime/email`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/project-member-invitations/runtime/email returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -2795,6 +2834,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     projectMembers: endpoints.projectMembers,
     projectMemberInvitations: endpoints.projectMemberInvitations,
     projectMemberInvitationAction: endpoints.projectMemberInvitationAction,
+    projectMemberInvitationEmail: endpoints.projectMemberInvitationEmail,
     projectMemberInvitationAccept: endpoints.projectMemberInvitationAccept,
     prompts: runtimePath(endpoints.prompts, {
       market_code: "AU",
@@ -4480,7 +4520,8 @@ export default async function Home({
                     <h3>Member Invitations</h3>
                     <small>
                       project_member_invitation_created · project_member_invitation_revoked ·
-                      project_member_invitation_accepted · project_member_invitation_expired · hashed token
+                      project_member_invitation_email_sent · project_member_invitation_accepted ·
+                      project_member_invitation_expired · hashed token
                     </small>
                   </div>
                   {data.projectMemberInvitations.records.length ? (
@@ -4500,6 +4541,32 @@ export default async function Home({
                           {record.invitation.invite_token ? (
                             <>
                               <small>one-time token {record.invitation.invite_token}</small>
+                              <form action={emailRuntimeProjectMemberInvitation} className="inlineForm">
+                                <input type="hidden" name="project_id" value={latestProject.project.id} />
+                                <input type="hidden" name="invitation_id" value={record.invitation.id} />
+                                <input type="hidden" name="invite_token" value={record.invitation.invite_token} />
+                                <input
+                                  type="hidden"
+                                  name="accept_base_url"
+                                  value={`${process.env.NEXT_PUBLIC_APP_BASE_URL || "http://localhost:3000"}/invite/accept`}
+                                />
+                                <input type="hidden" name="sent_by" value="runtime-console" />
+                                <input type="hidden" name="smtp_env_prefix" value="GENO_NOTIFICATION_SMTP" />
+                                <input type="hidden" name="subject" value="GENO project invitation" />
+                                <input
+                                  type="hidden"
+                                  name="message"
+                                  value="You have been invited to join a GENO runtime project."
+                                />
+                                <input
+                                  type="hidden"
+                                  name="reason"
+                                  value="Email runtime project invitation with one-time token"
+                                />
+                                <button className="textButton" type="submit">
+                                  Email invite
+                                </button>
+                              </form>
                               <form action={acceptRuntimeProjectMemberInvitation} className="inlineForm">
                                 <input type="hidden" name="invitation_id" value={record.invitation.id} />
                                 <input type="hidden" name="invite_token" value={record.invitation.invite_token} />

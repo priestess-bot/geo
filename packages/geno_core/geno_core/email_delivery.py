@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+import hashlib
+import os
+import smtplib
+from dataclasses import dataclass
+from email.message import EmailMessage
+from typing import Any
+
+
+DEFAULT_RUNTIME_EMAIL_SMTP_ENV_PREFIX = "GENO_NOTIFICATION_SMTP"
+
+
+@dataclass(frozen=True)
+class RuntimeEmailDeliveryResult:
+    response_status: int
+    response_body: bytes
+    response_body_hash: str
+    recipients: tuple[str, ...]
+    smtp_host: str
+    smtp_port: int
+    from_address: str
+
+
+def runtime_email_body_hash(body: bytes | str | None) -> str:
+    if body is None:
+        raw = b""
+    elif isinstance(body, bytes):
+        raw = body
+    else:
+        raw = body.encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def runtime_smtp_config_from_env(env_prefix: str | None = DEFAULT_RUNTIME_EMAIL_SMTP_ENV_PREFIX) -> dict[str, Any]:
+    prefix = (env_prefix or DEFAULT_RUNTIME_EMAIL_SMTP_ENV_PREFIX).strip() or DEFAULT_RUNTIME_EMAIL_SMTP_ENV_PREFIX
+    host = os.environ.get(f"{prefix}_HOST", "").strip()
+    if not host:
+        raise RuntimeError(f"{prefix}_HOST is not configured")
+    try:
+        port = int(os.environ.get(f"{prefix}_PORT", "587"))
+    except ValueError as exc:
+        raise RuntimeError(f"{prefix}_PORT must be an integer") from exc
+    use_tls = os.environ.get(f"{prefix}_TLS", "1").strip().lower() not in {"0", "false", "no"}
+    username = os.environ.get(f"{prefix}_USERNAME", "").strip() or None
+    password = os.environ.get(f"{prefix}_PASSWORD", "")
+    from_address = os.environ.get(f"{prefix}_FROM", "").strip() or username
+    if not from_address:
+        raise RuntimeError(f"{prefix}_FROM or {prefix}_USERNAME is required")
+    try:
+        timeout = float(os.environ.get(f"{prefix}_TIMEOUT_SECONDS", "10"))
+    except ValueError as exc:
+        raise RuntimeError(f"{prefix}_TIMEOUT_SECONDS must be numeric") from exc
+    return {
+        "host": host,
+        "port": port,
+        "use_tls": use_tls,
+        "username": username,
+        "password": password,
+        "from_address": from_address,
+        "timeout": timeout,
+    }
+
+
+def send_runtime_email_message(
+    *,
+    recipients: tuple[str, ...] | list[str],
+    subject: str,
+    text: str,
+    headers: dict[str, str] | None = None,
+    smtp_env_prefix: str | None = DEFAULT_RUNTIME_EMAIL_SMTP_ENV_PREFIX,
+    email_sender: Any | None = None,
+) -> RuntimeEmailDeliveryResult:
+    recipient_addresses = tuple(str(recipient).strip() for recipient in recipients if str(recipient).strip())
+    if not recipient_addresses:
+        raise RuntimeError("email delivery requires at least one recipient")
+    config = runtime_smtp_config_from_env(smtp_env_prefix)
+    message = EmailMessage()
+    message["From"] = str(config["from_address"])
+    message["To"] = ", ".join(recipient_addresses)
+    message["Subject"] = subject.strip() or "GENO runtime email"
+    for header_name, header_value in (headers or {}).items():
+        header = str(header_name).strip()
+        if header and header.lower() not in {"from", "to", "subject"}:
+            message[header] = str(header_value)
+    message.set_content(text)
+    if email_sender is not None:
+        response_status, response_body = email_sender(config, message, list(recipient_addresses))
+    else:
+        with smtplib.SMTP(str(config["host"]), int(config["port"]), timeout=float(config["timeout"])) as smtp:
+            if config["use_tls"]:
+                smtp.starttls()
+            if config["username"]:
+                smtp.login(str(config["username"]), str(config["password"]))
+            smtp.send_message(message)
+        response_status, response_body = 250, b"sent"
+    response_body_bytes = response_body if isinstance(response_body, bytes) else str(response_body).encode("utf-8")
+    return RuntimeEmailDeliveryResult(
+        response_status=int(response_status),
+        response_body=response_body_bytes,
+        response_body_hash=runtime_email_body_hash(response_body_bytes),
+        recipients=recipient_addresses,
+        smtp_host=str(config["host"]),
+        smtp_port=int(config["port"]),
+        from_address=str(config["from_address"]),
+    )

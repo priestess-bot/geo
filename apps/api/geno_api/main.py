@@ -86,6 +86,7 @@ from geno_core.models import (
     RuntimeProjectMemberInput,
     RuntimeProjectMemberInvitationAcceptInput,
     RuntimeProjectMemberInvitationActionInput,
+    RuntimeProjectMemberInvitationEmailInput,
     RuntimeProjectMemberInvitationInput,
     RuntimePromptImportInput,
     RuntimeNotificationSubscriptionInput,
@@ -1553,6 +1554,18 @@ class ProjectMemberInvitationAcceptRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class ProjectMemberInvitationEmailRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    invitation_id: str = Field(min_length=1, max_length=80)
+    invite_token: str = Field(min_length=1, max_length=160)
+    accept_base_url: str = Field(min_length=1, max_length=1000)
+    sent_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    smtp_env_prefix: str = Field(default="GENO_NOTIFICATION_SMTP", min_length=1, max_length=120)
+    subject: str | None = Field(default=None, max_length=200)
+    message: str | None = Field(default=None, max_length=2000)
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class RuntimeFidelityCheckRequest(BaseModel):
     project_id: str = Field(min_length=1)
     report_export_id: str | None = Field(default=None, min_length=1)
@@ -2158,6 +2171,53 @@ def action_runtime_project_member_invitation(
             else:
                 status_code = 400
             raise HTTPException(status_code=status_code, detail=message) from exc
+        return asdict(invitation)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-member-invitations/runtime/email")
+def email_runtime_project_member_invitation(
+    payload: ProjectMemberInvitationEmailRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            invitation = repository.send_runtime_project_member_invitation_email(
+                RuntimeProjectMemberInvitationEmailInput(
+                    project_id=payload.project_id.strip(),
+                    invitation_id=payload.invitation_id.strip(),
+                    invite_token=payload.invite_token.strip(),
+                    accept_base_url=payload.accept_base_url.strip(),
+                    sent_by=actor_id or payload.sent_by.strip(),
+                    smtp_env_prefix=payload.smtp_env_prefix.strip(),
+                    subject=payload.subject.strip() if payload.subject else None,
+                    message=payload.message.strip() if payload.message else None,
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            message = str(exc)
+            if message == "project member invitation not found":
+                status_code = 404
+            elif message.startswith("cannot ") or message == "project member invitation expired":
+                status_code = 409
+            else:
+                status_code = 400
+            raise HTTPException(status_code=status_code, detail=message) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return asdict(invitation)
     finally:
         close_repository_connection(repository)
@@ -5103,9 +5163,11 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeProjectMemberInvitationInput",
             "RuntimeProjectMemberInvitationActionInput",
             "RuntimeProjectMemberInvitationAcceptInput",
+            "RuntimeProjectMemberInvitationEmailInput",
             "ProjectMemberInvitationRequest",
             "ProjectMemberInvitationActionRequest",
             "ProjectMemberInvitationAcceptRequest",
+            "ProjectMemberInvitationEmailRequest",
             "RuntimeProjectBrandKit",
             "RuntimeProjectBrandKitInput",
             "RuntimeProjectBrandAsset",
@@ -5223,6 +5285,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/project-members/runtime",
             "/v1/project-member-invitations/runtime",
             "/v1/project-member-invitations/runtime/action",
+            "/v1/project-member-invitations/runtime/email",
             "/v1/project-member-invitations/runtime/accept",
             "/v1/entity-aliases/runtime",
             "/v1/entity-aliases/runtime/candidates",

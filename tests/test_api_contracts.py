@@ -1705,6 +1705,113 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertIn("cannot revoke invitation", response.json()["detail"])
 
+    def test_runtime_project_member_invitation_email_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def send_runtime_project_member_invitation_email(self, email_input: object) -> RuntimeProjectMemberInvitation:
+                self.email_input = email_input
+                return RuntimeProjectMemberInvitation(
+                    invitation={
+                        "id": email_input.invitation_id,
+                        "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                        "email": "viewer@example.com",
+                        "role": "viewer",
+                        "status": "pending",
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "project_member_invitation_email_sent",
+                            "target_type": "project_member_invitation",
+                            "method_version": "project_member_invitation_email_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/project-member-invitations/runtime/email",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
+                    "invite_token": "geno-invite-token",
+                    "accept_base_url": "https://app.example.com/invite/accept",
+                    "sent_by": "agency-admin",
+                    "smtp_env_prefix": "GENO_TEST_SMTP",
+                    "subject": "Join GENO",
+                    "message": "Please join.",
+                    "reason": "send invitation",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["audit_events"][0]["event_type"], "project_member_invitation_email_sent")
+        self.assertEqual(fake_repository.email_input.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.email_input.invite_token, "geno-invite-token")
+        self.assertEqual(fake_repository.email_input.accept_base_url, "https://app.example.com/invite/accept")
+        self.assertEqual(fake_repository.email_input.smtp_env_prefix, "GENO_TEST_SMTP")
+
+    def test_runtime_project_member_invitation_email_endpoint_uses_actor_and_requires_admin_or_owner_role(
+        self,
+    ) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, **kwargs: object) -> str:
+                self.role_kwargs = kwargs
+                return "admin"
+
+            def set_runtime_project_access_context(self, **kwargs: object) -> None:
+                self.context_kwargs = kwargs
+
+            def send_runtime_project_member_invitation_email(self, email_input: object) -> RuntimeProjectMemberInvitation:
+                self.email_input = email_input
+                return RuntimeProjectMemberInvitation(
+                    invitation={"id": email_input.invitation_id, "status": "pending"},
+                    audit_events=(),
+                )
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.post(
+                "/v1/project-member-invitations/runtime/email",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
+                    "invite_token": "geno-invite-token",
+                    "accept_base_url": "https://app.example.com/invite/accept",
+                    "sent_by": "payload-user",
+                },
+                headers={"X-GENO-Actor-Id": "agency-admin"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(fake_repository.role_kwargs["actor_id"], "agency-admin")
+        self.assertEqual(fake_repository.context_kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.email_input.sent_by, "agency-admin")
+
+    def test_runtime_project_member_invitation_email_endpoint_returns_unavailable_for_smtp_failure(self) -> None:
+        class FakeRepository:
+            def send_runtime_project_member_invitation_email(self, email_input: object) -> object:
+                raise RuntimeError("GENO_NOTIFICATION_SMTP_HOST is not configured")
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/project-member-invitations/runtime/email",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
+                    "invite_token": "geno-invite-token",
+                    "accept_base_url": "https://app.example.com/invite/accept",
+                },
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("SMTP_HOST", response.json()["detail"])
+
     def test_runtime_project_member_invitation_accept_endpoint_adds_member(self) -> None:
         class FakeRepository:
             def accept_runtime_project_member_invitation(self, invitation: object) -> RuntimeProjectMemberInvitation:
@@ -5275,11 +5382,14 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeProjectMemberInvitationInput", payload["persistence"])
         self.assertIn("RuntimeProjectMemberInvitationActionInput", payload["persistence"])
         self.assertIn("RuntimeProjectMemberInvitationAcceptInput", payload["persistence"])
+        self.assertIn("RuntimeProjectMemberInvitationEmailInput", payload["persistence"])
         self.assertIn("ProjectMemberInvitationRequest", payload["persistence"])
         self.assertIn("ProjectMemberInvitationActionRequest", payload["persistence"])
         self.assertIn("ProjectMemberInvitationAcceptRequest", payload["persistence"])
+        self.assertIn("ProjectMemberInvitationEmailRequest", payload["persistence"])
         self.assertIn("/v1/project-member-invitations/runtime", payload["persistence"])
         self.assertIn("/v1/project-member-invitations/runtime/action", payload["persistence"])
+        self.assertIn("/v1/project-member-invitations/runtime/email", payload["persistence"])
         self.assertIn("/v1/project-member-invitations/runtime/accept", payload["persistence"])
         self.assertIn("RuntimeProjectBrandKit", payload["persistence"])
         self.assertIn("RuntimeProjectBrandKitInput", payload["persistence"])

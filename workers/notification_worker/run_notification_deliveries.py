@@ -3,14 +3,17 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import smtplib
 from datetime import UTC, datetime, timedelta
-from email.message import EmailMessage
 from typing import Any, Protocol
 from urllib.parse import unquote, urlparse
 
 import httpx
 
+from geno_core.email_delivery import (
+    DEFAULT_RUNTIME_EMAIL_SMTP_ENV_PREFIX,
+    runtime_smtp_config_from_env,
+    send_runtime_email_message,
+)
 from geno_core.models import RuntimeNotificationDeliveryStatusInput
 from geno_core.repository import PostgresEvidenceRepository
 from geno_core.runtime import build_repository_from_env, close_repository_connection
@@ -25,7 +28,7 @@ from geno_core.webhook_signing import (
 
 WORKER_ID = "notification-worker"
 DEFAULT_SIGNING_SECRET_ENV = "GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET"
-DEFAULT_SMTP_ENV_PREFIX = "GENO_NOTIFICATION_SMTP"
+DEFAULT_SMTP_ENV_PREFIX = DEFAULT_RUNTIME_EMAIL_SMTP_ENV_PREFIX
 
 
 class NotificationDeliveryRepository(Protocol):
@@ -95,27 +98,7 @@ def _email_recipients_from_endpoint(endpoint_url: str) -> list[str]:
 
 
 def _smtp_config(env_prefix: str | None = DEFAULT_SMTP_ENV_PREFIX) -> dict[str, Any]:
-    prefix = (env_prefix or DEFAULT_SMTP_ENV_PREFIX).strip() or DEFAULT_SMTP_ENV_PREFIX
-    host = os.environ.get(f"{prefix}_HOST", "").strip()
-    if not host:
-        raise RuntimeError(f"{prefix}_HOST is not configured")
-    port = int(os.environ.get(f"{prefix}_PORT", "587"))
-    use_tls = os.environ.get(f"{prefix}_TLS", "1").strip().lower() not in {"0", "false", "no"}
-    username = os.environ.get(f"{prefix}_USERNAME", "").strip() or None
-    password = os.environ.get(f"{prefix}_PASSWORD", "")
-    from_address = os.environ.get(f"{prefix}_FROM", "").strip() or username
-    if not from_address:
-        raise RuntimeError(f"{prefix}_FROM or {prefix}_USERNAME is required")
-    timeout = float(os.environ.get(f"{prefix}_TIMEOUT_SECONDS", "10"))
-    return {
-        "host": host,
-        "port": port,
-        "use_tls": use_tls,
-        "username": username,
-        "password": password,
-        "from_address": from_address,
-        "timeout": timeout,
-    }
+    return runtime_smtp_config_from_env(env_prefix)
 
 
 def _send_email_delivery(
@@ -125,32 +108,20 @@ def _send_email_delivery(
     smtp_env_prefix: str | None,
     email_sender: Any | None = None,
 ) -> tuple[int, bytes]:
-    config = _smtp_config(smtp_env_prefix)
     recipients = payload.get("to") if isinstance(payload.get("to"), list) else []
     recipient_addresses = [str(recipient).strip() for recipient in recipients if str(recipient).strip()]
     if not recipient_addresses:
         recipient_addresses = _email_recipients_from_endpoint(endpoint_url)
-    if not recipient_addresses:
-        raise RuntimeError("email notification has no recipients")
-    message = EmailMessage()
-    message["From"] = str(config["from_address"])
-    message["To"] = ", ".join(recipient_addresses)
-    message["Subject"] = str(payload.get("subject") or "GENO runtime notification")
     headers = payload.get("headers") if isinstance(payload.get("headers"), dict) else {}
-    for header_name, header_value in headers.items():
-        header = str(header_name).strip()
-        if header and header.lower() not in {"from", "to", "subject"}:
-            message[header] = str(header_value)
-    message.set_content(str(payload.get("text") or "GENO runtime notification"))
-    if email_sender is not None:
-        return email_sender(config, message, recipient_addresses)
-    with smtplib.SMTP(str(config["host"]), int(config["port"]), timeout=float(config["timeout"])) as smtp:
-        if config["use_tls"]:
-            smtp.starttls()
-        if config["username"]:
-            smtp.login(str(config["username"]), str(config["password"]))
-        smtp.send_message(message)
-    return 250, b"sent"
+    result = send_runtime_email_message(
+        recipients=tuple(recipient_addresses),
+        subject=str(payload.get("subject") or "GENO runtime notification"),
+        text=str(payload.get("text") or "GENO runtime notification"),
+        headers={str(key): str(value) for key, value in headers.items()},
+        smtp_env_prefix=smtp_env_prefix,
+        email_sender=email_sender,
+    )
+    return result.response_status, result.response_body
 
 
 def _webhook_signing_secret(

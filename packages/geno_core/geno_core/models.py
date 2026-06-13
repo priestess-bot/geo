@@ -1171,6 +1171,19 @@ class RuntimeProjectMemberInvitationAcceptInput:
 
 
 @dataclass(frozen=True)
+class RuntimeProjectMemberInvitationEmailInput:
+    project_id: str
+    invitation_id: str
+    invite_token: str
+    accept_base_url: str
+    sent_by: str = "runtime-console"
+    smtp_env_prefix: str = "GENO_NOTIFICATION_SMTP"
+    subject: str | None = None
+    message: str | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeProjectBrandKit:
     brand_kit: dict[str, Any]
     audit_events: tuple[dict[str, Any], ...]
