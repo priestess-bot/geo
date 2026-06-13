@@ -241,6 +241,26 @@ def verify_au_handoff_dossier(
         "environment_handoff_secret_redacted"
     ):
         errors.append("summary_p0b_google_environment_handoff_secret_redacted_mismatch")
+    if summary.get("p0b_google_manual_backfill_handoff_ready") is not p0b_google_execution_checklist.get(
+        "manual_backfill_handoff_ready"
+    ):
+        errors.append("summary_p0b_google_manual_backfill_handoff_ready_mismatch")
+    if summary.get("p0b_google_manual_backfill_handoff_expected_record_count") != p0b_google_execution_checklist.get(
+        "manual_backfill_handoff_expected_record_count"
+    ):
+        errors.append("summary_p0b_google_manual_backfill_handoff_expected_record_count_mismatch")
+    if summary.get("p0b_google_manual_backfill_handoff_record_count") != p0b_google_execution_checklist.get(
+        "manual_backfill_handoff_record_count"
+    ):
+        errors.append("summary_p0b_google_manual_backfill_handoff_record_count_mismatch")
+    if summary.get("p0b_google_manual_backfill_handoff_missing_reason_count") != p0b_google_execution_checklist.get(
+        "manual_backfill_handoff_missing_reason_count"
+    ):
+        errors.append("summary_p0b_google_manual_backfill_handoff_missing_reason_count_mismatch")
+    if summary.get("p0b_google_manual_backfill_handoff_content_redacted") is not p0b_google_execution_checklist.get(
+        "manual_backfill_handoff_content_redacted"
+    ):
+        errors.append("summary_p0b_google_manual_backfill_handoff_content_redacted_mismatch")
     if endpoints.get("au_retest_scheduler_plan") != "GET /v1/au-retest-scheduler-plan":
         errors.append("runtime_endpoint_au_retest_scheduler_plan_invalid")
     if endpoints.get("au_retest_execution_status") != "GET /v1/au-retest-execution-status":

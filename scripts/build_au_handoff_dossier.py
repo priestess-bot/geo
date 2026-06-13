@@ -319,7 +319,9 @@ def _p0b_google_execution_checklist_summary(checklist: dict[str, Any]) -> dict[s
     summary = _as_dict(checklist.get("summary"))
     env_file_hygiene = _as_dict(checklist.get("env_file_hygiene"))
     environment_handoff = _as_dict(checklist.get("environment_handoff"))
+    manual_backfill_handoff = _as_dict(checklist.get("manual_backfill_handoff"))
     redaction_policy = _as_dict(environment_handoff.get("redaction_policy"))
+    manual_redaction_policy = _as_dict(manual_backfill_handoff.get("redaction_policy"))
     env_file_hygiene_errors = [str(value) for value in _as_list(env_file_hygiene.get("errors"))]
     env_file_hygiene_warnings = [str(value) for value in _as_list(env_file_hygiene.get("warnings"))]
     return {
@@ -368,6 +370,30 @@ def _p0b_google_execution_checklist_summary(checklist: dict[str, Any]) -> dict[s
         "environment_handoff_verification_command_count": len(_as_list(environment_handoff.get("verification_commands"))),
         "environment_handoff_secret_redacted": redaction_policy.get("raw_secret_values_allowed") is False
         and redaction_policy.get("forbidden_exact_secret_fields_redacted") is True,
+        "manual_backfill_handoff_ready": manual_backfill_handoff.get("ready") is True,
+        "manual_backfill_handoff_status": str(manual_backfill_handoff.get("status") or ""),
+        "manual_backfill_handoff_expected_record_count": manual_backfill_handoff.get("expected_record_count", 0),
+        "manual_backfill_handoff_record_count": manual_backfill_handoff.get("record_count", 0),
+        "manual_backfill_handoff_expected_prompt_city_count": manual_backfill_handoff.get(
+            "expected_prompt_city_count",
+            0,
+        ),
+        "manual_backfill_handoff_covered_prompt_city_count": manual_backfill_handoff.get(
+            "covered_prompt_city_count",
+            0,
+        ),
+        "manual_backfill_handoff_missing_reason_count": manual_backfill_handoff.get("missing_reason_count", 0),
+        "manual_backfill_handoff_missing_reasons": [
+            str(value) for value in _as_list(manual_backfill_handoff.get("missing_reasons"))
+        ],
+        "manual_backfill_handoff_template_path": str(manual_backfill_handoff.get("template_path") or ""),
+        "manual_backfill_handoff_template_manifest_path": str(
+            manual_backfill_handoff.get("template_manifest_path") or "",
+        ),
+        "manual_backfill_handoff_verification_path": str(manual_backfill_handoff.get("verification_path") or ""),
+        "manual_backfill_handoff_content_redacted": manual_redaction_policy.get("raw_answer_values_allowed") is False
+        and manual_redaction_policy.get("raw_citation_values_allowed") is False
+        and manual_redaction_policy.get("raw_asset_urls_allowed") is False,
         "remaining_blocker_count": summary.get("remaining_blocker_count", 0),
         "remaining_blockers": [str(value) for value in _as_list(summary.get("remaining_blockers"))],
         "runbook_verifier_status": summary.get("runbook_verifier_status", ""),
@@ -611,6 +637,16 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
             f"redacted: {'yes' if p0b_google_execution_checklist.get('environment_handoff_secret_redacted') else 'no'}）",
             f"- Environment handoff missing：{', '.join(str(value) for value in _as_list(p0b_google_execution_checklist.get('environment_handoff_missing_required'))) or '无'}",
             f"- Environment handoff target env file：{p0b_google_execution_checklist.get('environment_handoff_target_env_file') or 'none'}",
+            f"- Manual backfill handoff：{'ready' if p0b_google_execution_checklist.get('manual_backfill_handoff_ready') else 'blocked'}"
+            f"（rows: {p0b_google_execution_checklist.get('manual_backfill_handoff_record_count', 0)}/"
+            f"{p0b_google_execution_checklist.get('manual_backfill_handoff_expected_record_count', 0)}, "
+            f"prompt-city: {p0b_google_execution_checklist.get('manual_backfill_handoff_covered_prompt_city_count', 0)}/"
+            f"{p0b_google_execution_checklist.get('manual_backfill_handoff_expected_prompt_city_count', 0)}, "
+            f"missing: {p0b_google_execution_checklist.get('manual_backfill_handoff_missing_reason_count', 0)}, "
+            f"redacted: {'yes' if p0b_google_execution_checklist.get('manual_backfill_handoff_content_redacted') else 'no'}）",
+            f"- Manual backfill missing：{', '.join(str(value) for value in _as_list(p0b_google_execution_checklist.get('manual_backfill_handoff_missing_reasons'))) or '无'}",
+            f"- Manual backfill template：{p0b_google_execution_checklist.get('manual_backfill_handoff_template_path') or 'none'}",
+            f"- Manual backfill verification：{p0b_google_execution_checklist.get('manual_backfill_handoff_verification_path') or 'none'}",
             f"- Remaining blockers：{p0b_google_execution_checklist.get('remaining_blocker_count', 0)}",
             f"- Status verifier：{p0b_google_execution_checklist.get('status_verifier_status', '')}",
             f"- Package verifier：{p0b_google_execution_checklist.get('package_verifier_status', '')}",
@@ -817,6 +853,26 @@ def build_au_handoff_dossier(
             ),
             "p0b_google_environment_handoff_secret_redacted": p0b_google_checklist_summary.get(
                 "environment_handoff_secret_redacted",
+            )
+            is True,
+            "p0b_google_manual_backfill_handoff_ready": p0b_google_checklist_summary.get(
+                "manual_backfill_handoff_ready",
+            )
+            is True,
+            "p0b_google_manual_backfill_handoff_expected_record_count": p0b_google_checklist_summary.get(
+                "manual_backfill_handoff_expected_record_count",
+                0,
+            ),
+            "p0b_google_manual_backfill_handoff_record_count": p0b_google_checklist_summary.get(
+                "manual_backfill_handoff_record_count",
+                0,
+            ),
+            "p0b_google_manual_backfill_handoff_missing_reason_count": p0b_google_checklist_summary.get(
+                "manual_backfill_handoff_missing_reason_count",
+                0,
+            ),
+            "p0b_google_manual_backfill_handoff_content_redacted": p0b_google_checklist_summary.get(
+                "manual_backfill_handoff_content_redacted",
             )
             is True,
         },

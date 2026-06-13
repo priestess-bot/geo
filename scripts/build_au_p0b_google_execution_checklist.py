@@ -30,6 +30,11 @@ from scripts.build_au_p0b_google_spike_status_report import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_STATUS_REPORT_PATH,
     build_au_p0b_google_spike_status_report,
 )
+from scripts.build_au_p0b_manual_backfill_template import (  # noqa: E402
+    DEFAULT_MANIFEST_PATH as DEFAULT_MANUAL_BACKFILL_TEMPLATE_MANIFEST_PATH,
+    DEFAULT_OUTPUT_PATH as DEFAULT_MANUAL_BACKFILL_TEMPLATE_PATH,
+    build_manual_backfill_template,
+)
 from scripts.run_au_p0b_google_playwright_smoke import DEFAULT_OUTPUT_PATH as DEFAULT_SMOKE_PATH  # noqa: E402
 from scripts.run_au_p0b_google_spike_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_EXECUTION_PATH  # noqa: E402
 from scripts.verify_au_p0b_google_evidence_package import verify_au_p0b_google_evidence_package  # noqa: E402
@@ -71,6 +76,10 @@ def _as_dict(value: object) -> dict[str, Any]:
 
 def _as_list(value: object) -> list[object]:
     return value if isinstance(value, list) else []
+
+
+def _as_sequence(value: object) -> list[object]:
+    return list(value) if isinstance(value, (list, tuple)) else []
 
 
 def _load_json(path: Path) -> tuple[Any | None, dict[str, Any]]:
@@ -489,6 +498,116 @@ def _environment_handoff(
     }
 
 
+def _manual_backfill_artifact(package: dict[str, Any], status_report: dict[str, Any]) -> dict[str, Any]:
+    package_artifact = _as_dict(_as_dict(package.get("artifacts")).get("manual_backfill"))
+    if package_artifact:
+        return package_artifact
+    return _as_dict(_as_dict(status_report.get("artifacts")).get("manual_backfill"))
+
+
+def _manual_backfill_missing_reasons(manual_artifact: dict[str, Any]) -> list[str]:
+    if (
+        manual_artifact.get("manual_backfill_ready") is True
+        and manual_artifact.get("status") == "pass"
+        and manual_artifact.get("hash_valid") is True
+    ):
+        return []
+    errors = [str(error) for error in _as_list(manual_artifact.get("errors"))]
+    if not errors:
+        errors = ["file_missing" if manual_artifact.get("exists") is False else "manual_backfill_not_ready"]
+    return sorted(f"manual_backfill:{error}" for error in errors)
+
+
+def _manual_backfill_handoff(
+    *,
+    package: dict[str, Any],
+    status_report: dict[str, Any],
+    generated_at: str | None,
+) -> dict[str, Any]:
+    _lines, template_manifest = build_manual_backfill_template(generated_at=generated_at)
+    expected_record_count = int(template_manifest.get("expected_record_count") or 0)
+    prompt_count = int(template_manifest.get("prompt_count") or 0)
+    geo_cities = [str(value) for value in _as_sequence(template_manifest.get("geo_cities"))]
+    expected_prompt_city_count = prompt_count * len(geo_cities)
+    sample_size = int(template_manifest.get("sample_size") or 0)
+    manual_artifact = _manual_backfill_artifact(package, status_report)
+    status = str(manual_artifact.get("status") or "fail")
+    hash_valid = manual_artifact.get("hash_valid") is True
+    ready = manual_artifact.get("manual_backfill_ready") is True and status == "pass" and hash_valid
+    missing_reasons = _manual_backfill_missing_reasons(manual_artifact)
+    artifact_expected_record_count = int(manual_artifact.get("expected_record_count") or 0)
+    artifact_record_count = int(manual_artifact.get("record_count") or 0)
+    artifact_covered_prompt_city_count = int(manual_artifact.get("covered_prompt_city_count") or 0)
+    return {
+        "version": "au_p0b_google_manual_backfill_handoff_v1",
+        "ready": ready,
+        "status": status,
+        "hash_valid": hash_valid,
+        "manual_backfill_ready": manual_artifact.get("manual_backfill_ready") is True,
+        "missing_reason_count": len(missing_reasons),
+        "missing_reasons": missing_reasons,
+        "manual_jsonl_env_var": "MANUAL_BACKFILL_PATH",
+        "target_jsonl_path": DEFAULT_MANUAL_BACKFILL_TEMPLATE_PATH,
+        "target_jsonl_path_source": "default_template_path_or_MANUAL_BACKFILL_PATH_env_when_configured",
+        "manual_jsonl_path_redacted": True,
+        "template_path": DEFAULT_MANUAL_BACKFILL_TEMPLATE_PATH,
+        "template_manifest_path": DEFAULT_MANUAL_BACKFILL_TEMPLATE_MANIFEST_PATH,
+        "verification_path": str(manual_artifact.get("path") or DEFAULT_MANUAL_BACKFILL_VERIFICATION_PATH),
+        "expected_record_count": artifact_expected_record_count or expected_record_count,
+        "record_count": artifact_record_count,
+        "expected_prompt_city_count": expected_prompt_city_count,
+        "covered_prompt_city_count": artifact_covered_prompt_city_count,
+        "expected_sample_size": sample_size,
+        "prompt_count": prompt_count,
+        "geo_cities": geo_cities,
+        "file_sha256": str(manual_artifact.get("file_sha256") or ""),
+        "verification_hash": str(manual_artifact.get("verification_hash") or ""),
+        "required_fields": [str(value) for value in _as_sequence(template_manifest.get("required_fields"))],
+        "operator_requirements": [
+            "fill_answer_text_for_each_record",
+            "include_at_least_one_citation_url_for_each_record",
+            "include_screenshot_url_or_html_snapshot_url_for_each_record",
+            "preserve_prompt_city_sample_index_and_sample_size",
+        ],
+        "setup_commands": [
+            "make au-p0b-google-manual-template",
+        ],
+        "verification_commands": [
+            "make verify-au-p0b-google-manual-backfill",
+            "make au-p0b-google-status",
+            "make verify-au-p0b-google-status",
+            "make au-p0b-google-package",
+            "make verify-au-p0b-google-package",
+            "make au-p0b-google-execution-checklist",
+            "make verify-au-p0b-google-execution-checklist",
+        ],
+        "evidence_outputs": [
+            DEFAULT_MANUAL_BACKFILL_TEMPLATE_PATH,
+            DEFAULT_MANUAL_BACKFILL_TEMPLATE_MANIFEST_PATH,
+            str(manual_artifact.get("path") or DEFAULT_MANUAL_BACKFILL_VERIFICATION_PATH),
+        ],
+        "redaction_policy": {
+            "raw_answer_values_allowed": False,
+            "raw_citation_values_allowed": False,
+            "raw_asset_urls_allowed": False,
+            "manual_jsonl_path_redacted": True,
+            "recorded_fields": [
+                "status",
+                "exists",
+                "hash_valid",
+                "record_count",
+                "expected_record_count",
+                "covered_prompt_city_count",
+                "file_sha256",
+                "verification_hash",
+                "missing_reasons",
+                "template_path",
+                "verification_path",
+            ],
+        },
+    }
+
+
 def _setup_commands() -> list[dict[str, str]]:
     return [
         {
@@ -717,6 +836,11 @@ def build_au_p0b_google_execution_checklist(
         file_gate_issues=file_gate_issues,
         env_file_path=env_file_path,
     )
+    manual_backfill_handoff = _manual_backfill_handoff(
+        package=package,
+        status_report=status_report,
+        generated_at=generated_at,
+    )
     remaining_blockers = [str(item) for item in _as_list(package.get("remaining_blockers"))]
     runbook_ok = runbook_verifier.get("status") == "pass" and runbook_verifier.get("hash_valid") is True
     env_ok = env_verifier.get("status") == "pass" and env_verifier.get("hash_valid") is True
@@ -790,6 +914,28 @@ def build_au_p0b_google_execution_checklist(
                 )
                 is True
             ),
+            "manual_backfill_handoff_ready": manual_backfill_handoff["ready"],
+            "manual_backfill_handoff_status": manual_backfill_handoff["status"],
+            "manual_backfill_handoff_expected_record_count": manual_backfill_handoff["expected_record_count"],
+            "manual_backfill_handoff_record_count": manual_backfill_handoff["record_count"],
+            "manual_backfill_handoff_expected_prompt_city_count": manual_backfill_handoff[
+                "expected_prompt_city_count"
+            ],
+            "manual_backfill_handoff_covered_prompt_city_count": manual_backfill_handoff[
+                "covered_prompt_city_count"
+            ],
+            "manual_backfill_handoff_missing_reason_count": manual_backfill_handoff["missing_reason_count"],
+            "manual_backfill_handoff_missing_reasons": manual_backfill_handoff["missing_reasons"],
+            "manual_backfill_handoff_template_path": manual_backfill_handoff["template_path"],
+            "manual_backfill_handoff_verification_path": manual_backfill_handoff["verification_path"],
+            "manual_backfill_handoff_content_redacted": (
+                _as_dict(manual_backfill_handoff.get("redaction_policy")).get("raw_answer_values_allowed") is False
+                and _as_dict(manual_backfill_handoff.get("redaction_policy")).get(
+                    "raw_citation_values_allowed"
+                )
+                is False
+                and _as_dict(manual_backfill_handoff.get("redaction_policy")).get("raw_asset_urls_allowed") is False
+            ),
             "remaining_blocker_count": len(remaining_blockers),
             "remaining_blockers": remaining_blockers,
             "runbook_verifier_status": runbook_verifier.get("status", ""),
@@ -839,6 +985,7 @@ def build_au_p0b_google_execution_checklist(
         "file_checks": file_checks,
         "dependency_checks": dependency_checks,
         "environment_handoff": environment_handoff,
+        "manual_backfill_handoff": manual_backfill_handoff,
         "setup_commands": _setup_commands(),
         "execution_commands": _execution_commands(),
         "verification_commands": _verification_commands(),
@@ -848,6 +995,8 @@ def build_au_p0b_google_execution_checklist(
             str(execution_path),
             str(playwright_env_path),
             str(artifact_paths.get("playwright_smoke_json") or DEFAULT_SMOKE_PATH),
+            DEFAULT_MANUAL_BACKFILL_TEMPLATE_PATH,
+            DEFAULT_MANUAL_BACKFILL_TEMPLATE_MANIFEST_PATH,
             str(artifact_paths.get("manual_backfill_verification_json") or DEFAULT_MANUAL_BACKFILL_VERIFICATION_PATH),
             str(artifact_paths.get("health_json") or DEFAULT_HEALTH_PATH),
             str(artifact_paths.get("health_manifest") or DEFAULT_HEALTH_MANIFEST_PATH),
@@ -859,6 +1008,7 @@ def build_au_p0b_google_execution_checklist(
         "current_boundary": [
             "This checklist proves the P0b Google execution path is auditable, ordered and redacted.",
             "It does not prove real Google selector/session readiness, smoke success, manual 120-row completion or 240-run completion.",
+            "The manual backfill handoff records only template paths, counts, hashes and missing reasons; raw answers, citations and asset URLs stay outside this checklist.",
             "Google can enter the main scoring denominator only when the status/package hard gates pass.",
         ],
     }

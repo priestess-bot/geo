@@ -924,6 +924,17 @@ type AuP0bGoogleExecutionChecklist = {
     environment_handoff_setup_command_count?: number;
     environment_handoff_verification_command_count?: number;
     environment_handoff_secret_redacted?: boolean;
+    manual_backfill_handoff_ready?: boolean;
+    manual_backfill_handoff_status?: string;
+    manual_backfill_handoff_expected_record_count?: number;
+    manual_backfill_handoff_record_count?: number;
+    manual_backfill_handoff_expected_prompt_city_count?: number;
+    manual_backfill_handoff_covered_prompt_city_count?: number;
+    manual_backfill_handoff_missing_reason_count?: number;
+    manual_backfill_handoff_missing_reasons?: string[];
+    manual_backfill_handoff_template_path?: string;
+    manual_backfill_handoff_verification_path?: string;
+    manual_backfill_handoff_content_redacted?: boolean;
     remaining_blocker_count?: number;
     remaining_blockers?: string[];
     runbook_verifier_status?: string;
@@ -1062,6 +1073,11 @@ type AuHandoffDossier = {
     p0b_google_environment_handoff_ready?: boolean;
     p0b_google_environment_handoff_missing_required_count?: number;
     p0b_google_environment_handoff_secret_redacted?: boolean;
+    p0b_google_manual_backfill_handoff_ready?: boolean;
+    p0b_google_manual_backfill_handoff_expected_record_count?: number;
+    p0b_google_manual_backfill_handoff_record_count?: number;
+    p0b_google_manual_backfill_handoff_missing_reason_count?: number;
+    p0b_google_manual_backfill_handoff_content_redacted?: boolean;
   };
   markdown_report?: {
     path?: string;
@@ -3893,6 +3909,7 @@ export default async function Home({
   const missingP0bFullRunEnv = p0bGoogleExecutionSummary?.missing_full_run_required_environment || [];
   const missingP0bSelectors = p0bGoogleExecutionSummary?.missing_selector_groups || [];
   const missingP0bEnvironmentHandoff = p0bGoogleExecutionSummary?.environment_handoff_missing_required || [];
+  const missingP0bManualBackfill = p0bGoogleExecutionSummary?.manual_backfill_handoff_missing_reasons || [];
   const p0bChecklistBlockers = p0bGoogleExecutionSummary?.remaining_blockers || [];
   const p0bEnvFileHygieneReady = p0bGoogleExecutionSummary?.env_file_hygiene_ready;
   const p0bEnvFileHygieneErrorCount = p0bGoogleExecutionSummary?.env_file_hygiene_error_count || 0;
@@ -4536,6 +4553,10 @@ export default async function Home({
               Env-file hygiene {p0bEnvFileHygieneReady ? "ready" : "blocked"} · errors{" "}
               {p0bEnvFileHygieneErrorCount} · warnings {p0bEnvFileHygieneWarningCount}
             </span>
+            <span>
+              Manual backfill rows {p0bGoogleExecutionSummary?.manual_backfill_handoff_record_count || 0}/
+              {p0bGoogleExecutionSummary?.manual_backfill_handoff_expected_record_count || 0}
+            </span>
           </div>
           <div className="environmentChecklistGrid">
             <div>
@@ -4579,6 +4600,24 @@ export default async function Home({
                 <small>Google smoke/full-run handoff inputs are recorded as present.</small>
               )}
             </div>
+            <div>
+              <strong>Manual backfill handoff</strong>
+              <small>
+                {p0bGoogleExecutionSummary?.manual_backfill_handoff_ready ? "ready" : "blocked"} · prompt-city{" "}
+                {p0bGoogleExecutionSummary?.manual_backfill_handoff_covered_prompt_city_count || 0}/
+                {p0bGoogleExecutionSummary?.manual_backfill_handoff_expected_prompt_city_count || 0} · missing{" "}
+                {p0bGoogleExecutionSummary?.manual_backfill_handoff_missing_reason_count || 0}
+              </small>
+              {missingP0bManualBackfill.length ? (
+                <ul className="plainList">
+                  {missingP0bManualBackfill.slice(0, 4).map((name) => (
+                    <li key={name}>{name}</li>
+                  ))}
+                </ul>
+              ) : (
+                <small>Manual JSONL verification is ready.</small>
+              )}
+            </div>
           </div>
           <div className="handoffBoundary">
             <span>
@@ -4587,6 +4626,13 @@ export default async function Home({
             </span>
             <span>
               Environment target env file {p0bGoogleExecutionSummary?.environment_handoff_target_env_file || "none"}
+            </span>
+            <span>
+              Manual backfill redacted {p0bGoogleExecutionSummary?.manual_backfill_handoff_content_redacted ? "yes" : "no"} · template{" "}
+              {p0bGoogleExecutionSummary?.manual_backfill_handoff_template_path || "none"}
+            </span>
+            <span>
+              Manual verification {p0bGoogleExecutionSummary?.manual_backfill_handoff_verification_path || "none"}
             </span>
             <span>
               Verifiers: env {p0bGoogleExecutionSummary?.playwright_env_verifier_status || "unknown"} · status{" "}
@@ -4694,6 +4740,14 @@ export default async function Home({
               {handoffSummary?.p0b_google_environment_handoff_ready ? "ready" : "blocked"} · missing{" "}
               {handoffSummary?.p0b_google_environment_handoff_missing_required_count || 0} · redacted{" "}
               {handoffSummary?.p0b_google_environment_handoff_secret_redacted ? "yes" : "no"}
+            </span>
+            <span>
+              P0b manual backfill handoff{" "}
+              {handoffSummary?.p0b_google_manual_backfill_handoff_ready ? "ready" : "blocked"} · rows{" "}
+              {handoffSummary?.p0b_google_manual_backfill_handoff_record_count || 0}/
+              {handoffSummary?.p0b_google_manual_backfill_handoff_expected_record_count || 0} · missing{" "}
+              {handoffSummary?.p0b_google_manual_backfill_handoff_missing_reason_count || 0} · redacted{" "}
+              {handoffSummary?.p0b_google_manual_backfill_handoff_content_redacted ? "yes" : "no"}
             </span>
             <span>Hard gate: scripts/verify_au_handoff_dossier.py --require-customer-ready</span>
             <span>{handoffDossier?.runtime_endpoints?.launch_remediation_plan || "GET /v1/launch-remediation-plan/au"}</span>

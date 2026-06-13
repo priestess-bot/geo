@@ -13,6 +13,8 @@ if str(ROOT) not in sys.path:
 
 from scripts.build_au_p0b_google_execution_checklist import (  # noqa: E402
     CHECKLIST_VERSION,
+    DEFAULT_MANUAL_BACKFILL_TEMPLATE_MANIFEST_PATH,
+    DEFAULT_MANUAL_BACKFILL_TEMPLATE_PATH,
     DEFAULT_OUTPUT_PATH,
     compute_google_execution_checklist_hash,
 )
@@ -46,6 +48,7 @@ REQUIRED_FIELDS = (
     "file_checks",
     "dependency_checks",
     "environment_handoff",
+    "manual_backfill_handoff",
     "setup_commands",
     "execution_commands",
     "verification_commands",
@@ -486,6 +489,172 @@ def _validate_environment_handoff(
     return observed_missing
 
 
+def _validate_manual_backfill_handoff(
+    handoff: dict[str, Any],
+    *,
+    remaining_blockers: list[str],
+    errors: list[str],
+) -> list[str]:
+    if handoff.get("version") != "au_p0b_google_manual_backfill_handoff_v1":
+        errors.append("manual_backfill_handoff_version_invalid")
+    for field in (
+        "ready",
+        "status",
+        "hash_valid",
+        "manual_backfill_ready",
+        "missing_reason_count",
+        "missing_reasons",
+        "manual_jsonl_env_var",
+        "target_jsonl_path",
+        "manual_jsonl_path_redacted",
+        "template_path",
+        "template_manifest_path",
+        "verification_path",
+        "expected_record_count",
+        "record_count",
+        "expected_prompt_city_count",
+        "covered_prompt_city_count",
+        "expected_sample_size",
+        "prompt_count",
+        "geo_cities",
+        "file_sha256",
+        "verification_hash",
+        "required_fields",
+        "operator_requirements",
+        "setup_commands",
+        "verification_commands",
+        "evidence_outputs",
+        "redaction_policy",
+    ):
+        if field not in handoff:
+            errors.append(f"manual_backfill_handoff_field_missing:{field}")
+
+    status = str(handoff.get("status") or "")
+    if status not in {"pass", "fail"}:
+        errors.append("manual_backfill_handoff_status_invalid")
+    observed_missing = sorted(str(item) for item in _as_list(handoff.get("missing_reasons")))
+    if handoff.get("missing_reason_count") != len(observed_missing):
+        errors.append("manual_backfill_handoff_missing_reason_count_mismatch")
+    expected_ready = (
+        status == "pass"
+        and handoff.get("hash_valid") is True
+        and handoff.get("manual_backfill_ready") is True
+        and not observed_missing
+    )
+    if handoff.get("ready") is not expected_ready:
+        errors.append("manual_backfill_handoff_ready_mismatch")
+
+    manual_blockers = sorted(str(blocker) for blocker in remaining_blockers if str(blocker).startswith("manual_backfill:"))
+    if manual_blockers and not any(reason.startswith("manual_backfill:") for reason in observed_missing):
+        errors.append("manual_backfill_handoff_missing_reasons_do_not_cover_manual_blocker")
+    if not manual_blockers and status == "pass" and observed_missing:
+        errors.append("manual_backfill_handoff_missing_reasons_unexpected")
+
+    expected_record_count = handoff.get("expected_record_count")
+    record_count = handoff.get("record_count")
+    expected_prompt_city_count = handoff.get("expected_prompt_city_count")
+    covered_prompt_city_count = handoff.get("covered_prompt_city_count")
+    expected_sample_size = handoff.get("expected_sample_size")
+    prompt_count = handoff.get("prompt_count")
+    geo_cities = [str(value) for value in _as_list(handoff.get("geo_cities"))]
+    for label, value in (
+        ("expected_record_count", expected_record_count),
+        ("record_count", record_count),
+        ("expected_prompt_city_count", expected_prompt_city_count),
+        ("covered_prompt_city_count", covered_prompt_city_count),
+        ("expected_sample_size", expected_sample_size),
+        ("prompt_count", prompt_count),
+    ):
+        if not isinstance(value, int) or value < 0:
+            errors.append(f"manual_backfill_handoff_{label}_invalid")
+    if isinstance(expected_record_count, int) and expected_record_count <= 0:
+        errors.append("manual_backfill_handoff_expected_record_count_empty")
+    if (
+        isinstance(expected_record_count, int)
+        and isinstance(expected_prompt_city_count, int)
+        and isinstance(expected_sample_size, int)
+        and expected_record_count != expected_prompt_city_count * expected_sample_size
+    ):
+        errors.append("manual_backfill_handoff_expected_record_count_mismatch")
+    if (
+        isinstance(prompt_count, int)
+        and isinstance(expected_prompt_city_count, int)
+        and expected_prompt_city_count != prompt_count * len(geo_cities)
+    ):
+        errors.append("manual_backfill_handoff_prompt_city_count_mismatch")
+    if isinstance(record_count, int) and isinstance(expected_record_count, int) and record_count > expected_record_count:
+        errors.append("manual_backfill_handoff_record_count_exceeds_expected")
+    if (
+        isinstance(covered_prompt_city_count, int)
+        and isinstance(expected_prompt_city_count, int)
+        and covered_prompt_city_count > expected_prompt_city_count
+    ):
+        errors.append("manual_backfill_handoff_covered_prompt_city_count_exceeds_expected")
+    if handoff.get("ready") is True:
+        if record_count != expected_record_count:
+            errors.append("manual_backfill_handoff_ready_record_count_mismatch")
+        if covered_prompt_city_count != expected_prompt_city_count:
+            errors.append("manual_backfill_handoff_ready_prompt_city_coverage_mismatch")
+        if not handoff.get("file_sha256") or not handoff.get("verification_hash"):
+            errors.append("manual_backfill_handoff_ready_hashes_missing")
+
+    if handoff.get("manual_jsonl_env_var") != "MANUAL_BACKFILL_PATH":
+        errors.append("manual_backfill_handoff_env_var_invalid")
+    if handoff.get("manual_jsonl_path_redacted") is not True:
+        errors.append("manual_backfill_handoff_manual_path_redaction_missing")
+    if handoff.get("template_path") != DEFAULT_MANUAL_BACKFILL_TEMPLATE_PATH:
+        errors.append("manual_backfill_handoff_template_path_invalid")
+    if handoff.get("template_manifest_path") != DEFAULT_MANUAL_BACKFILL_TEMPLATE_MANIFEST_PATH:
+        errors.append("manual_backfill_handoff_template_manifest_path_invalid")
+
+    required_fields = {str(value) for value in _as_list(handoff.get("required_fields"))}
+    for required in {"answer_text", "citation_urls", "screenshot_url or html_snapshot_url"}:
+        if required not in required_fields:
+            errors.append(f"manual_backfill_handoff_required_field_missing:{required}")
+    operator_requirements = {str(value) for value in _as_list(handoff.get("operator_requirements"))}
+    for requirement in {
+        "fill_answer_text_for_each_record",
+        "include_at_least_one_citation_url_for_each_record",
+        "include_screenshot_url_or_html_snapshot_url_for_each_record",
+        "preserve_prompt_city_sample_index_and_sample_size",
+    }:
+        if requirement not in operator_requirements:
+            errors.append(f"manual_backfill_handoff_operator_requirement_missing:{requirement}")
+    setup_commands = [str(value) for value in _as_list(handoff.get("setup_commands"))]
+    if "make au-p0b-google-manual-template" not in setup_commands:
+        errors.append("manual_backfill_handoff_setup_command_missing:make au-p0b-google-manual-template")
+    verification_commands = [str(value) for value in _as_list(handoff.get("verification_commands"))]
+    for command in {
+        "make verify-au-p0b-google-manual-backfill",
+        "make au-p0b-google-status",
+        "make verify-au-p0b-google-status",
+        "make au-p0b-google-package",
+        "make verify-au-p0b-google-package",
+        "make au-p0b-google-execution-checklist",
+        "make verify-au-p0b-google-execution-checklist",
+    }:
+        if command not in verification_commands:
+            errors.append(f"manual_backfill_handoff_verification_command_missing:{command}")
+    evidence_outputs = {str(value) for value in _as_list(handoff.get("evidence_outputs"))}
+    for output in {
+        DEFAULT_MANUAL_BACKFILL_TEMPLATE_PATH,
+        DEFAULT_MANUAL_BACKFILL_TEMPLATE_MANIFEST_PATH,
+        str(handoff.get("verification_path") or ""),
+    }:
+        if output not in evidence_outputs:
+            errors.append(f"manual_backfill_handoff_evidence_output_missing:{output}")
+    redaction_policy = _as_dict(handoff.get("redaction_policy"))
+    if redaction_policy.get("raw_answer_values_allowed") is not False:
+        errors.append("manual_backfill_handoff_raw_answer_policy_invalid")
+    if redaction_policy.get("raw_citation_values_allowed") is not False:
+        errors.append("manual_backfill_handoff_raw_citation_policy_invalid")
+    if redaction_policy.get("raw_asset_urls_allowed") is not False:
+        errors.append("manual_backfill_handoff_raw_asset_policy_invalid")
+    if redaction_policy.get("manual_jsonl_path_redacted") is not True:
+        errors.append("manual_backfill_handoff_redaction_policy_path_invalid")
+    return observed_missing
+
+
 def _expected_next_action(
     *,
     runbook_ok: bool,
@@ -550,6 +719,7 @@ def verify_au_p0b_google_execution_checklist(
     package = _as_dict(checklist.get("evidence_package"))
     package_verifier = _as_dict(checklist.get("evidence_package_verifier"))
     environment_handoff = _as_dict(checklist.get("environment_handoff"))
+    manual_backfill_handoff = _as_dict(checklist.get("manual_backfill_handoff"))
     required_count, missing_required = _validate_env_tasks(
         "required_environment",
         _as_list(checklist.get("required_environment")),
@@ -581,6 +751,11 @@ def verify_au_p0b_google_execution_checklist(
     remaining_blockers = [str(item) for item in _as_list(package.get("remaining_blockers"))]
     if not remaining_blockers:
         remaining_blockers = [str(item) for item in _as_list(summary.get("remaining_blockers"))]
+    manual_backfill_handoff_missing = _validate_manual_backfill_handoff(
+        manual_backfill_handoff,
+        remaining_blockers=remaining_blockers,
+        errors=errors,
+    )
 
     if summary.get("required_environment_count") != required_count:
         errors.append("summary_required_environment_count_mismatch")
@@ -629,6 +804,42 @@ def verify_au_p0b_google_execution_checklist(
     )
     if summary.get("environment_handoff_secret_redacted") is not handoff_redacted:
         errors.append("summary_environment_handoff_secret_redacted_mismatch")
+    if summary.get("manual_backfill_handoff_ready") is not (manual_backfill_handoff.get("ready") is True):
+        errors.append("summary_manual_backfill_handoff_ready_mismatch")
+    if summary.get("manual_backfill_handoff_status") != manual_backfill_handoff.get("status"):
+        errors.append("summary_manual_backfill_handoff_status_mismatch")
+    if summary.get("manual_backfill_handoff_expected_record_count") != manual_backfill_handoff.get(
+        "expected_record_count"
+    ):
+        errors.append("summary_manual_backfill_handoff_expected_record_count_mismatch")
+    if summary.get("manual_backfill_handoff_record_count") != manual_backfill_handoff.get("record_count"):
+        errors.append("summary_manual_backfill_handoff_record_count_mismatch")
+    if summary.get("manual_backfill_handoff_expected_prompt_city_count") != manual_backfill_handoff.get(
+        "expected_prompt_city_count"
+    ):
+        errors.append("summary_manual_backfill_handoff_expected_prompt_city_count_mismatch")
+    if summary.get("manual_backfill_handoff_covered_prompt_city_count") != manual_backfill_handoff.get(
+        "covered_prompt_city_count"
+    ):
+        errors.append("summary_manual_backfill_handoff_covered_prompt_city_count_mismatch")
+    if summary.get("manual_backfill_handoff_missing_reason_count") != len(manual_backfill_handoff_missing):
+        errors.append("summary_manual_backfill_handoff_missing_reason_count_mismatch")
+    if sorted(str(item) for item in _as_list(summary.get("manual_backfill_handoff_missing_reasons"))) != sorted(
+        manual_backfill_handoff_missing
+    ):
+        errors.append("summary_manual_backfill_handoff_missing_reasons_mismatch")
+    if summary.get("manual_backfill_handoff_template_path") != manual_backfill_handoff.get("template_path"):
+        errors.append("summary_manual_backfill_handoff_template_path_mismatch")
+    if summary.get("manual_backfill_handoff_verification_path") != manual_backfill_handoff.get("verification_path"):
+        errors.append("summary_manual_backfill_handoff_verification_path_mismatch")
+    manual_redaction = _as_dict(manual_backfill_handoff.get("redaction_policy"))
+    manual_content_redacted = (
+        manual_redaction.get("raw_answer_values_allowed") is False
+        and manual_redaction.get("raw_citation_values_allowed") is False
+        and manual_redaction.get("raw_asset_urls_allowed") is False
+    )
+    if summary.get("manual_backfill_handoff_content_redacted") is not manual_content_redacted:
+        errors.append("summary_manual_backfill_handoff_content_redacted_mismatch")
     if sorted(str(item) for item in _as_list(summary.get("remaining_blockers"))) != sorted(remaining_blockers):
         errors.append("summary_remaining_blockers_mismatch")
     if summary.get("remaining_blocker_count") != len(remaining_blockers):

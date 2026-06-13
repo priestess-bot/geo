@@ -122,6 +122,28 @@ class AuP0bGoogleExecutionChecklistTest(unittest.TestCase):
         self.assertFalse(checklist["summary"]["environment_handoff_ready"])
         self.assertEqual(checklist["summary"]["environment_handoff_missing_required_count"], 5)
         self.assertTrue(checklist["summary"]["environment_handoff_secret_redacted"])
+        self.assertFalse(checklist["manual_backfill_handoff"]["ready"])
+        self.assertEqual(checklist["manual_backfill_handoff"]["status"], "fail")
+        self.assertEqual(checklist["manual_backfill_handoff"]["expected_record_count"], 120)
+        self.assertEqual(checklist["manual_backfill_handoff"]["record_count"], 0)
+        self.assertEqual(checklist["manual_backfill_handoff"]["expected_prompt_city_count"], 60)
+        self.assertEqual(checklist["manual_backfill_handoff"]["covered_prompt_city_count"], 0)
+        self.assertEqual(
+            checklist["manual_backfill_handoff"]["template_path"],
+            "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl",
+        )
+        self.assertIn(
+            "manual_backfill:file_missing",
+            checklist["manual_backfill_handoff"]["missing_reasons"],
+        )
+        self.assertFalse(checklist["manual_backfill_handoff"]["redaction_policy"]["raw_answer_values_allowed"])
+        self.assertFalse(checklist["manual_backfill_handoff"]["redaction_policy"]["raw_citation_values_allowed"])
+        self.assertFalse(checklist["manual_backfill_handoff"]["redaction_policy"]["raw_asset_urls_allowed"])
+        self.assertFalse(checklist["summary"]["manual_backfill_handoff_ready"])
+        self.assertEqual(checklist["summary"]["manual_backfill_handoff_expected_record_count"], 120)
+        self.assertEqual(checklist["summary"]["manual_backfill_handoff_record_count"], 0)
+        self.assertEqual(checklist["summary"]["manual_backfill_handoff_missing_reason_count"], 1)
+        self.assertTrue(checklist["summary"]["manual_backfill_handoff_content_redacted"])
         self.assertIn("run_smoke", {command["id"] for command in checklist["execution_commands"]})
         self.assertEqual(
             checklist["google_execution_checklist_hash"],
@@ -159,6 +181,13 @@ class AuP0bGoogleExecutionChecklistTest(unittest.TestCase):
         self.assertTrue(checklist["environment_handoff"]["ready"])
         self.assertEqual(checklist["environment_handoff"]["missing_required_count"], 0)
         self.assertTrue(checklist["summary"]["environment_handoff_ready"])
+        self.assertTrue(checklist["manual_backfill_handoff"]["ready"])
+        self.assertEqual(checklist["manual_backfill_handoff"]["record_count"], 120)
+        self.assertEqual(checklist["manual_backfill_handoff"]["expected_record_count"], 120)
+        self.assertEqual(checklist["manual_backfill_handoff"]["covered_prompt_city_count"], 60)
+        self.assertEqual(checklist["manual_backfill_handoff"]["expected_prompt_city_count"], 60)
+        self.assertEqual(checklist["manual_backfill_handoff"]["missing_reasons"], [])
+        self.assertTrue(checklist["summary"]["manual_backfill_handoff_ready"])
         self.assertEqual(verification["status"], "pass")
 
     def test_verifier_detects_hash_and_summary_tampering(self) -> None:
@@ -257,6 +286,31 @@ class AuP0bGoogleExecutionChecklistTest(unittest.TestCase):
             "environment_handoff_setup_command_missing:chmod 600 .env.au-p0b-google",
             verification["errors"],
         )
+
+    def test_verifier_requires_manual_backfill_handoff_to_match_artifact_state(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, execution_path, env_path, status_path, package_path, _runbook = self._write_status_and_package(
+                temp_dir,
+                google_ready=False,
+            )
+            checklist = build_au_p0b_google_execution_checklist(
+                runbook_path=runbook_path,
+                execution_path=execution_path,
+                playwright_env_path=env_path,
+                status_report_path=status_path,
+                package_path=package_path,
+                env_file_path=Path(temp_dir) / "missing.env",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            checklist["manual_backfill_handoff"]["missing_reasons"] = []  # type: ignore[index]
+            checklist["manual_backfill_handoff"]["missing_reason_count"] = 0  # type: ignore[index]
+            checklist["summary"]["manual_backfill_handoff_missing_reasons"] = []  # type: ignore[index]
+            checklist["summary"]["manual_backfill_handoff_missing_reason_count"] = 0  # type: ignore[index]
+            checklist["google_execution_checklist_hash"] = compute_google_execution_checklist_hash(checklist)
+            verification = verify_au_p0b_google_execution_checklist(checklist)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("manual_backfill_handoff_missing_reasons_do_not_cover_manual_blocker", verification["errors"])
 
     def test_cli_writes_and_verifies_checklist(self) -> None:
         with TemporaryDirectory() as temp_dir:
