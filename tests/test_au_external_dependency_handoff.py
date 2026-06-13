@@ -121,7 +121,16 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
             " ".join(handoff["clearance_sequence"]["steps"][-1]["verification_commands"]),
         )
         self.assertEqual(handoff["dependency_groups"][0]["target_env_file"], ".env.au-p0a")
+        self.assertEqual(handoff["dependency_groups"][0]["next_command"], "make verify-au-p0a-env-template")
+        self.assertIn("make au-p0a-env-bootstrap", handoff["dependency_groups"][0]["commands"])
+        self.assertIn("missing_required:DATABASE_URL", handoff["dependency_groups"][0]["blocking_reasons"])
         self.assertTrue(handoff["dependency_groups"][2]["target_env_file"])
+        self.assertEqual(handoff["dependency_groups"][2]["next_command"], "make verify-au-p0b-google-env-template")
+        self.assertIn("make au-p0b-google-env-bootstrap", handoff["dependency_groups"][2]["commands"])
+        self.assertIn(
+            "missing_required:smoke_env:GOOGLE_PLAYWRIGHT_ENABLED",
+            handoff["dependency_groups"][2]["blocking_reasons"],
+        )
         self.assertFalse(handoff["redaction_policy"]["raw_secret_values_allowed"])
         self.assertFalse(handoff["redaction_policy"]["raw_database_url_allowed"])
         self.assertFalse(handoff["redaction_policy"]["raw_selector_values_allowed"])
@@ -151,6 +160,31 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_p0b_google_phase_next_phase_mismatch", verification["errors"])
+
+    def test_verifier_detects_dependency_group_execution_field_tampering(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path, remediation_plan_path, p0a_env_path, p0a_exec_path, p0b_path = self._write_inputs(
+                temp_dir
+            )
+            handoff = build_au_external_dependency_handoff(
+                launch_status_path=launch_status_path,
+                remediation_plan_path=remediation_plan_path,
+                p0a_environment_checklist_path=p0a_env_path,
+                p0a_execution_checklist_path=p0a_exec_path,
+                p0b_google_execution_checklist_path=p0b_path,
+                generated_at="2026-06-13T00:00:00Z",
+            )
+        tampered = copy.deepcopy(handoff)
+        tampered["dependency_groups"][0]["next_command"] = "make au-p0a-status"  # type: ignore[index]
+        tampered["dependency_groups"][2]["commands"] = []  # type: ignore[index]
+        tampered["dependency_groups"][2]["blocking_reasons"] = []  # type: ignore[index]
+        tampered["external_dependency_handoff_hash"] = compute_external_dependency_handoff_hash(tampered)
+        verification = verify_au_external_dependency_handoff(tampered)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("dependency_group_next_command_mismatch:p0a_provider_credentials", verification["errors"])
+        self.assertIn("dependency_group_commands_mismatch:p0b_google_environment", verification["errors"])
+        self.assertIn("dependency_group_blocking_reasons_mismatch:p0b_google_environment", verification["errors"])
 
     def test_verifier_detects_clearance_sequence_tampering(self) -> None:
         with TemporaryDirectory() as temp_dir:

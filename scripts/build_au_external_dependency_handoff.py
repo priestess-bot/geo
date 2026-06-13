@@ -296,6 +296,27 @@ def _blocking_reasons_for_group(group: dict[str, Any]) -> list[str]:
     return _unique_strings(reasons)
 
 
+def _commands_for_group(group: dict[str, Any], work_items: list[dict[str, Any]]) -> list[str]:
+    phase = _first_unready_phase(group)
+    work_item_ids = _strings(group.get("work_item_ids"))
+    return _unique_strings(
+        _commands(phase.get("commands"))
+        + _strings(group.get("setup_commands"))
+        + _work_item_field_values(work_items, work_item_ids, "commands")
+    )
+
+
+def _with_group_execution_fields(group: dict[str, Any], work_items: list[dict[str, Any]]) -> dict[str, Any]:
+    commands = _commands_for_group(group, work_items)
+    blocking_reasons = [] if group.get("ready") is True else _blocking_reasons_for_group(group)
+    return {
+        **group,
+        "commands": commands,
+        "next_command": "" if group.get("ready") is True or not commands else commands[0],
+        "blocking_reasons": blocking_reasons,
+    }
+
+
 def _clearance_step_from_group(
     group: dict[str, Any],
     *,
@@ -309,11 +330,7 @@ def _clearance_step_from_group(
     phase = _first_unready_phase(group)
     prerequisite_ready = all(prior_ready_by_id.get(step_id) is True for step_id in prerequisite_step_ids)
     ready = group.get("ready") is True
-    commands = _unique_strings(
-        _commands(phase.get("commands"))
-        + _strings(group.get("setup_commands"))
-        + _work_item_field_values(work_items, work_item_ids, "commands")
-    )
+    commands = _commands_for_group(group, work_items)
     verification_commands = _unique_strings(
         _strings(group.get("verification_commands"))
         + _work_item_field_values(work_items, work_item_ids, "verification_commands")
@@ -752,6 +769,7 @@ def build_au_external_dependency_handoff(
         _p0b_google_manual_backfill_group(p0b_google_execution_checklist, work_items),
         _p0b_google_phase_execution_group(p0b_google_execution_checklist, work_items),
     ]
+    dependency_groups = [_with_group_execution_fields(group, work_items) for group in dependency_groups]
     external_ready = (
         structural_ready
         and external_dependency_blocker_count == 0

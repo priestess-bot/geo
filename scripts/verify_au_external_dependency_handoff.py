@@ -76,6 +76,28 @@ def _strings(value: object) -> list[str]:
     return [str(item) for item in _as_list(value)]
 
 
+def _commands(value: object) -> list[str]:
+    commands: list[str] = []
+    for item in _as_list(value):
+        if isinstance(item, str):
+            commands.append(item)
+        else:
+            shell = str(_as_dict(item).get("shell") or "")
+            if shell:
+                commands.append(shell)
+    return commands
+
+
+def _unique_strings(values: list[str]) -> list[str]:
+    observed: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value and value not in observed:
+            observed.add(value)
+            result.append(value)
+    return result
+
+
 def _find_forbidden_fields(value: object, *, path: str = "$") -> list[str]:
     findings: list[str] = []
     if isinstance(value, dict):
@@ -96,6 +118,53 @@ def _group_by_id(handoff: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 def _work_item_ids(handoff: dict[str, Any]) -> list[str]:
     return [str(_as_dict(item).get("id") or "") for item in _as_list(handoff.get("work_items"))]
+
+
+def _work_items_by_id(handoff: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {str(_as_dict(item).get("id") or ""): _as_dict(item) for item in _as_list(handoff.get("work_items"))}
+
+
+def _work_item_field_values(handoff: dict[str, Any], work_item_ids: list[str], field: str) -> list[str]:
+    by_id = _work_items_by_id(handoff)
+    values: list[str] = []
+    for work_item_id in work_item_ids:
+        values.extend(_strings(_as_dict(by_id.get(work_item_id)).get(field)))
+    return _unique_strings(values)
+
+
+def _first_unready_phase(group: dict[str, Any]) -> dict[str, Any]:
+    next_phase = str(group.get("next_phase") or "")
+    phases = [_as_dict(item) for item in _as_list(group.get("phases"))]
+    for phase in phases:
+        if phase.get("id") == next_phase:
+            return phase
+    for phase in phases:
+        if phase.get("ready") is not True:
+            return phase
+    return {}
+
+
+def _expected_group_commands(handoff: dict[str, Any], group: dict[str, Any]) -> list[str]:
+    phase = _first_unready_phase(group)
+    work_item_ids = _strings(group.get("work_item_ids"))
+    return _unique_strings(
+        _commands(phase.get("commands"))
+        + _strings(group.get("setup_commands"))
+        + _work_item_field_values(handoff, work_item_ids, "commands")
+    )
+
+
+def _expected_group_blocking_reasons(group: dict[str, Any]) -> list[str]:
+    if group.get("ready") is True:
+        return []
+    reasons: list[str] = []
+    reasons.extend(f"missing_required:{value}" for value in _strings(group.get("missing_required")))
+    reasons.extend(_strings(group.get("missing_reasons")))
+    phase = _first_unready_phase(group)
+    reasons.extend(_strings(phase.get("blocking_reasons")))
+    if not reasons:
+        reasons.append(f"{group.get('id', 'dependency_group')}:not_ready")
+    return _unique_strings(reasons)
 
 
 def _validate_work_items(handoff: dict[str, Any], errors: list[str]) -> None:
@@ -135,7 +204,18 @@ def _validate_work_items(handoff: dict[str, Any], errors: list[str]) -> None:
 
 def _validate_group_common(group: dict[str, Any], *, errors: list[str]) -> None:
     group_id = str(group.get("id") or "")
-    for field in ("stage", "title", "status", "external_dependency", "dependency_class", "ready", "work_item_ids"):
+    for field in (
+        "stage",
+        "title",
+        "status",
+        "external_dependency",
+        "dependency_class",
+        "ready",
+        "work_item_ids",
+        "commands",
+        "next_command",
+        "blocking_reasons",
+    ):
         if field not in group:
             errors.append(f"dependency_group_field_missing:{group_id}:{field}")
     if group.get("external_dependency") is not True:
@@ -159,6 +239,15 @@ def _validate_groups(handoff: dict[str, Any], errors: list[str]) -> None:
         for work_item_id in _strings(group.get("work_item_ids")):
             if work_item_id not in work_item_ids:
                 errors.append(f"dependency_group_work_item_missing:{group_id}:{work_item_id}")
+        expected_commands = _expected_group_commands(handoff, group)
+        if _strings(group.get("commands")) != expected_commands:
+            errors.append(f"dependency_group_commands_mismatch:{group_id}")
+        expected_next_command = "" if group.get("ready") is True or not expected_commands else expected_commands[0]
+        if group.get("next_command") != expected_next_command:
+            errors.append(f"dependency_group_next_command_mismatch:{group_id}")
+        expected_blocking_reasons = _expected_group_blocking_reasons(group)
+        if _strings(group.get("blocking_reasons")) != expected_blocking_reasons:
+            errors.append(f"dependency_group_blocking_reasons_mismatch:{group_id}")
 
     p0a_credentials = groups.get("p0a_provider_credentials", {})
     p0a_missing = _strings(p0a_credentials.get("missing_required"))
