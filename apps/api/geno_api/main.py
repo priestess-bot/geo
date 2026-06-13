@@ -88,6 +88,7 @@ from geno_core.models import (
     RuntimeProjectMemberInvitationActionInput,
     RuntimeProjectMemberInvitationEmailInput,
     RuntimeProjectMemberInvitationInput,
+    RuntimeProjectUpdateInput,
     RuntimePromptImportInput,
     RuntimeNotificationSubscriptionInput,
     RuntimeNotificationStatusInput,
@@ -1514,6 +1515,16 @@ class RuntimeProjectCreateRequest(BaseModel):
     owner_user_id: str = Field(default="runtime-console", min_length=1, max_length=120)
 
 
+class RuntimeProjectUpdateRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    target_brand: str | None = Field(default=None, min_length=1, max_length=160)
+    category: str | None = Field(default=None, min_length=1, max_length=200)
+    status: str | None = Field(default=None, min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class ProjectMemberRequest(BaseModel):
     project_id: str = Field(min_length=1)
     user_id: str = Field(min_length=1, max_length=120)
@@ -1968,6 +1979,43 @@ def runtime_projects(
             offset=offset,
         )
         return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.patch("/v1/projects/runtime")
+def update_runtime_project(
+    payload: RuntimeProjectUpdateRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            project = repository.update_runtime_project(
+                RuntimeProjectUpdateInput(
+                    project_id=payload.project_id.strip(),
+                    name=payload.name.strip() if payload.name is not None else None,
+                    target_brand=payload.target_brand.strip() if payload.target_brand is not None else None,
+                    category=payload.category.strip() if payload.category is not None else None,
+                    status=payload.status.strip().lower() if payload.status is not None else None,
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(project)
     finally:
         close_repository_connection(repository)
 
@@ -5152,6 +5200,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeProject",
             "RuntimeProjectPage",
             "RuntimeProjectCreateRequest",
+            "RuntimeProjectUpdateInput",
+            "RuntimeProjectUpdateRequest",
             "RuntimeProjectMember",
             "RuntimeProjectMemberPage",
             "RuntimeProjectMemberInput",
@@ -5282,6 +5332,7 @@ def contracts() -> dict[str, list[str]]:
             "TraceabilityBundle",
             "/v1/projects/runtime",
             "/v1/projects/runtime/au/dtc-ecommerce",
+            "PATCH /v1/projects/runtime",
             "/v1/project-members/runtime",
             "/v1/project-member-invitations/runtime",
             "/v1/project-member-invitations/runtime/action",

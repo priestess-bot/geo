@@ -103,6 +103,7 @@ from geno_core.models import (
     RuntimeProjectMemberInvitationPage,
     RuntimeProjectMemberPage,
     RuntimeProjectPage,
+    RuntimeProjectUpdateInput,
     RuntimePromptImportHistoryItem,
     RuntimePromptImportHistoryPage,
     RuntimePromptImportInput,
@@ -1871,6 +1872,106 @@ class PostgresEvidenceRepository:
             projects = _rows_dict(cursor.fetchall(), PROJECT_COLUMNS)
             records = tuple(self._load_runtime_project(cursor=cursor, project=project) for project in projects)
         return RuntimeProjectPage(total_count=total_count, limit=limit, offset=offset, records=records)
+
+    def update_runtime_project(self, update: RuntimeProjectUpdateInput) -> RuntimeProject:
+        project_id = update.project_id.strip()
+        updated_by = update.updated_by.strip() or "runtime-console"
+        if not project_id:
+            raise ValueError("project_id is required")
+        name = update.name.strip() if update.name is not None else None
+        target_brand = update.target_brand.strip() if update.target_brand is not None else None
+        category = update.category.strip() if update.category is not None else None
+        status = update.status.strip().lower() if update.status is not None else None
+        if name is not None and not name:
+            raise ValueError("name cannot be empty")
+        if target_brand is not None and not target_brand:
+            raise ValueError("target_brand cannot be empty")
+        if category is not None and not category:
+            raise ValueError("category cannot be empty")
+        if status is not None and status not in {"configured", "active", "paused", "archived"}:
+            raise ValueError("status must be configured, active, paused, or archived")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_COLUMNS)}
+                FROM projects
+                WHERE id = %s
+                FOR UPDATE
+                """,
+                (_uuid(project_id),),
+            )
+            existing = cursor.fetchone()
+            if not existing:
+                raise ValueError("project not found")
+            before = _row_dict(existing, PROJECT_COLUMNS)
+            after_candidate = dict(before)
+            if name is not None:
+                after_candidate["name"] = name
+            if target_brand is not None:
+                after_candidate["target_brand"] = target_brand
+            if category is not None:
+                after_candidate["category"] = category
+            if status is not None:
+                after_candidate["status"] = status
+            cursor.execute(
+                """
+                UPDATE projects
+                SET name = %s,
+                    target_brand = %s,
+                    category = %s,
+                    status = %s
+                WHERE id = %s
+                """,
+                (
+                    after_candidate["name"],
+                    after_candidate["target_brand"],
+                    after_candidate["category"],
+                    after_candidate["status"],
+                    _uuid(project_id),
+                ),
+            )
+            if target_brand is not None:
+                cursor.execute(
+                    """
+                    UPDATE brand_entities
+                    SET canonical_name = %s
+                    WHERE project_id = %s
+                    """,
+                    (target_brand, _uuid(project_id)),
+                )
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_COLUMNS)}
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            after = _row_dict(cursor.fetchone(), PROJECT_COLUMNS)
+            changed_fields = tuple(
+                field
+                for field in ("name", "target_brand", "category", "status")
+                if before.get(field) != after.get(field)
+            )
+            audit_event = build_audit_event(
+                event_type="project_updated",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="project",
+                target_id=project_id,
+                before=before,
+                after=after,
+                input_refs={"project_ids": [project_id], "changed_fields": list(changed_fields)},
+                output_refs={"project_ids": [project_id], "status": [str(after.get("status"))]},
+                method_version="runtime_project_update_v1",
+                reason=update.reason.strip() if update.reason else "runtime_project_update",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            record = self._load_runtime_project(cursor=cursor, project=after)
+        self.connection.commit()
+        return record
 
     def user_can_access_project(self, *, project_id: str, actor_id: str) -> bool:
         if not actor_id:

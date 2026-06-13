@@ -130,6 +130,7 @@ from geno_core.models import (
     RuntimeProjectMemberInvitationInput,
     RuntimeProjectMemberInvitationPage,
     RuntimeProjectMemberPage,
+    RuntimeProjectUpdateInput,
     RuntimePromptImportInput,
     RuntimePromptImportHistoryPage,
     RuntimePromptImportResult,
@@ -3550,6 +3551,98 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("pm.project_id = p.id AND pm.user_id = %s", executed_sql)
         self.assertEqual(connection.calls[0][1], (UUID(project_id), "AU", "agency-owner"))
         self.assertEqual(connection.calls[1][1], (UUID(project_id), "AU", "agency-owner", 10, 0))
+
+    def test_postgres_repository_updates_runtime_project_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        tenant_id = "8330ea73-6914-5278-90cb-147f8369fed6"
+        before_project = {
+            "id": project_id,
+            "tenant_id": tenant_id,
+            "name": "AU DTC Evidence Pilot",
+            "market_code": "AU",
+            "industry_code": "dtc_ecommerce",
+            "target_brand": "ExampleBrand",
+            "category": "DTC ecommerce products",
+            "prompt_version": "au_dtc_ecommerce_v1",
+            "status": "configured",
+            "created_at": now,
+        }
+        after_project = {
+            **before_project,
+            "name": "Koala GEO Pilot",
+            "target_brand": "Koala",
+            "category": "mattresses",
+            "status": "active",
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                before_project,
+                after_project,
+                {
+                    "id": tenant_id,
+                    "name": "Design Partner AU",
+                    "slug": "design-partner-au",
+                    "created_at": now,
+                },
+                {
+                    "id": "a44c30bf-27e5-55ff-988e-cfe61130e2a9",
+                    "project_id": project_id,
+                    "canonical_name": "Koala",
+                    "official_domains": [],
+                    "parent_company": None,
+                    "product_lines": [],
+                    "status": "active",
+                },
+                [],
+                {"count": 100},
+                [
+                    {
+                        "id": "7f28023e-977f-4c14-9007-95e7e84db71a",
+                        "event_type": "project_updated",
+                        "project_id": project_id,
+                        "actor_type": "user",
+                        "actor_id": "agency-owner",
+                        "target_type": "project",
+                        "target_id": project_id,
+                        "before_hash": "before",
+                        "after_hash": "after",
+                        "input_refs": {"changed_fields": ["name", "target_brand", "category", "status"]},
+                        "output_refs": {"project_ids": [project_id]},
+                        "method_version": "runtime_project_update_v1",
+                        "reason": "refresh client metadata",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+
+        record = PostgresEvidenceRepository(connection).update_runtime_project(
+            RuntimeProjectUpdateInput(
+                project_id=project_id,
+                name="Koala GEO Pilot",
+                target_brand="Koala",
+                category="mattresses",
+                status="active",
+                updated_by="agency-owner",
+                reason="refresh client metadata",
+            )
+        )
+
+        self.assertEqual(record.project["name"], "Koala GEO Pilot")
+        self.assertEqual(record.project["target_brand"], "Koala")
+        self.assertEqual(record.project["status"], "active")
+        assert record.brand is not None
+        self.assertEqual(record.brand["canonical_name"], "Koala")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("SELECT id, tenant_id, name, market_code, industry_code, target_brand", executed_sql)
+        self.assertIn("FOR UPDATE", executed_sql)
+        self.assertIn("UPDATE projects SET name = %s, target_brand = %s, category = %s, status = %s", executed_sql)
+        self.assertIn("UPDATE brand_entities SET canonical_name = %s WHERE project_id = %s", executed_sql)
+        audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
+        self.assertEqual(audit_insert[1], "project_updated")
+        self.assertEqual(audit_insert[11], "runtime_project_update_v1")
+        self.assertEqual(connection.commit_count, 1)
 
     def test_postgres_repository_checks_project_membership(self) -> None:
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"

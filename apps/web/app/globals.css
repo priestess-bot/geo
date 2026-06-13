@@ -152,6 +152,7 @@ code {
 .filterForm label,
 .saveViewForm label,
 .projectCreateForm label,
+.projectUpdateForm label,
 .projectMemberForm label,
 .brandKitForm label,
 .brandAssetForm label,
@@ -167,6 +168,7 @@ code {
 .filterForm label span,
 .saveViewForm label span,
 .projectCreateForm label span,
+.projectUpdateForm label span,
 .projectMemberForm label span,
 .brandKitForm label span,
 .brandAssetForm label span,
@@ -182,6 +184,8 @@ code {
 .saveViewForm input,
 .projectCreateForm input,
 .projectCreateForm textarea,
+.projectUpdateForm input,
+.projectUpdateForm select,
 .projectMemberForm input,
 .projectMemberForm select,
 .brandKitForm input,
@@ -217,6 +221,7 @@ code {
 }
 
 .projectCreateForm,
+.projectUpdateForm,
 .projectMemberForm,
 .brandKitForm,
 .brandAssetForm,
@@ -231,6 +236,7 @@ code {
 }
 
 .projectCreateForm textarea,
+.projectUpdateForm textarea,
 .projectMemberForm textarea,
 .brandKitForm textarea,
 .brandAssetForm textarea {
@@ -2139,6 +2145,7 @@ summary {
   .questionTableHeader,
   .questionRow summary,
   .projectCreateForm,
+  .projectUpdateForm,
   .projectMemberForm,
   .brandKitForm,
   .brandAssetForm,
@@ -2212,6 +2219,7 @@ summary {
   .questionTableHeader,
   .questionRow summary,
   .projectCreateForm,
+  .projectUpdateForm,
   .projectMemberForm,
   .brandKitForm,
   .brandAssetForm,

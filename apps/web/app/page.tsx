@@ -1618,6 +1618,37 @@ async function createAuRuntimeProject(formData?: FormData) {
   revalidatePath("/");
 }
 
+async function updateRuntimeProject(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  if (!projectId) {
+    throw new Error("project_id is required to update a runtime project");
+  }
+  const payload = {
+    project_id: projectId,
+    name: String(formData.get("name") || "").trim(),
+    target_brand: String(formData.get("target_brand") || "").trim(),
+    category: String(formData.get("category") || "").trim(),
+    status: String(formData.get("status") || "").trim(),
+    updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
+    reason: String(formData.get("reason") || "Update runtime project metadata").trim()
+  };
+  const response = await fetch(`${baseUrl}/v1/projects/runtime`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/projects/runtime returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
 async function saveCurrentRuntimeView(formData: FormData) {
   "use server";
   const baseUrl =
@@ -4458,6 +4489,42 @@ export default async function Home({
                   {latestProject.audit_events[0]?.event_type || "no bootstrap audit"} ·{" "}
                   {latestProject.audit_events[0]?.method_version || "no method version"}
                 </small>
+                <form action={updateRuntimeProject} className="projectUpdateForm">
+                  <div className="formHeader">
+                    <h3>Project Metadata</h3>
+                    <small>PATCH /v1/projects/runtime · project_updated</small>
+                  </div>
+                  <input type="hidden" name="project_id" value={latestProject.project.id} />
+                  <label>
+                    <span>Project</span>
+                    <input name="name" defaultValue={latestProject.project.name} />
+                  </label>
+                  <label>
+                    <span>Brand</span>
+                    <input name="target_brand" defaultValue={latestProject.project.target_brand} />
+                  </label>
+                  <label>
+                    <span>Category</span>
+                    <input name="category" defaultValue={latestProject.project.category} />
+                  </label>
+                  <label>
+                    <span>Status</span>
+                    <select name="status" defaultValue={latestProject.project.status}>
+                      <option value="configured">configured</option>
+                      <option value="active">active</option>
+                      <option value="paused">paused</option>
+                      <option value="archived">archived</option>
+                    </select>
+                  </label>
+                  <label className="wideField">
+                    <span>Reason</span>
+                    <input name="reason" defaultValue="Update runtime project metadata" />
+                  </label>
+                  <input type="hidden" name="updated_by" value="runtime-console" />
+                  <button className="actionButton" type="submit">
+                    Save project
+                  </button>
+                </form>
                 <div className="projectMembers">
                   <div className="formHeader">
                     <h3>Project Members</h3>

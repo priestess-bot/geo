@@ -1098,6 +1098,17 @@ class RuntimeProjectPage:
 
 
 @dataclass(frozen=True)
+class RuntimeProjectUpdateInput:
+    project_id: str
+    name: str | None = None
+    target_brand: str | None = None
+    category: str | None = None
+    status: str | None = None
+    updated_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeProjectMember:
     member: dict[str, Any]
     audit_events: tuple[dict[str, Any], ...]
