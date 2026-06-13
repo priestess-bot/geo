@@ -55,6 +55,10 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
         self.assertEqual(handoff["summary"]["external_dependency_blocker_count"], 29)
         self.assertGreaterEqual(handoff["summary"]["work_item_count"], 8)
         self.assertEqual(handoff["summary"]["dependency_group_count"], 5)
+        self.assertEqual(handoff["summary"]["clearance_step_count"], 6)
+        self.assertEqual(handoff["summary"]["clearance_ready_step_count"], 0)
+        self.assertEqual(handoff["summary"]["clearance_blocked_step_count"], 6)
+        self.assertEqual(handoff["summary"]["clearance_current_step_id"], "p0a_provider_credentials")
         self.assertEqual(handoff["summary"]["runnable_now_work_item_count"], 0)
         self.assertEqual(handoff["next_dependency_item_id"], "p0a_environment")
         self.assertEqual(handoff["summary"]["p0a_required_secret_missing_count"], 3)
@@ -78,6 +82,39 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
                 "p0b_google_manual_backfill",
                 "p0b_google_phase_execution",
             ],
+        )
+        self.assertEqual(handoff["clearance_sequence"]["version"], "au_external_dependency_clearance_sequence_v1")
+        self.assertEqual(
+            handoff["clearance_sequence"]["step_ids"],
+            [
+                "p0a_provider_credentials",
+                "p0a_real_batches",
+                "p0b_google_environment",
+                "p0b_google_manual_backfill",
+                "p0b_google_phase_execution",
+                "customer_report_handoff_gate",
+            ],
+        )
+        self.assertEqual(handoff["clearance_sequence"]["current_step_id"], "p0a_provider_credentials")
+        self.assertEqual(handoff["clearance_sequence"]["steps"][0]["can_start"], True)
+        self.assertEqual(handoff["clearance_sequence"]["steps"][0]["status"], "requires_external_input")
+        self.assertIn("missing_required:DATABASE_URL", handoff["clearance_sequence"]["steps"][0]["blocked_by"])
+        self.assertEqual(
+            handoff["clearance_sequence"]["steps"][1]["status"],
+            "blocked_waiting_on_prerequisite",
+        )
+        self.assertIn(
+            "prerequisite_step_not_ready:p0a_provider_credentials",
+            handoff["clearance_sequence"]["steps"][1]["blocked_by"],
+        )
+        self.assertEqual(handoff["clearance_sequence"]["steps"][-1]["id"], "customer_report_handoff_gate")
+        self.assertIn(
+            "scripts/verify_au_external_dependency_handoff.py",
+            " ".join(handoff["clearance_sequence"]["steps"][-1]["verification_commands"]),
+        )
+        self.assertIn(
+            "scripts/verify_au_launch_status.py",
+            " ".join(handoff["clearance_sequence"]["steps"][-1]["verification_commands"]),
         )
         self.assertEqual(handoff["dependency_groups"][0]["target_env_file"], ".env.au-p0a")
         self.assertTrue(handoff["dependency_groups"][2]["target_env_file"])
@@ -110,6 +147,27 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_p0b_google_phase_next_phase_mismatch", verification["errors"])
+
+    def test_verifier_detects_clearance_sequence_tampering(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path, remediation_plan_path, p0a_env_path, p0a_exec_path, p0b_path = self._write_inputs(
+                temp_dir
+            )
+            handoff = build_au_external_dependency_handoff(
+                launch_status_path=launch_status_path,
+                remediation_plan_path=remediation_plan_path,
+                p0a_environment_checklist_path=p0a_env_path,
+                p0a_execution_checklist_path=p0a_exec_path,
+                p0b_google_execution_checklist_path=p0b_path,
+                generated_at="2026-06-13T00:00:00Z",
+            )
+        tampered = copy.deepcopy(handoff)
+        tampered["clearance_sequence"]["steps"][1]["prerequisite_step_ids"] = []  # type: ignore[index]
+        tampered["external_dependency_handoff_hash"] = compute_external_dependency_handoff_hash(tampered)
+        verification = verify_au_external_dependency_handoff(tampered)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("clearance_step_prerequisites_mismatch:p0a_real_batches", verification["errors"])
 
     def test_cli_writes_and_verifies_external_dependency_handoff(self) -> None:
         with TemporaryDirectory() as temp_dir:

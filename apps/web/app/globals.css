@@ -698,14 +698,16 @@ code {
 }
 
 .platformRegistryGrid,
-.dependencyGroupGrid {
+.dependencyGroupGrid,
+.clearanceStepGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 8px;
 }
 
 .platformCandidate,
-.dependencyGroup {
+.dependencyGroup,
+.clearanceStep {
   display: grid;
   gap: 6px;
   border: 1px solid #e5edf4;
@@ -717,13 +719,15 @@ code {
 
 .platformCandidate div,
 .platformCandidate small,
-.dependencyGroup small {
+.dependencyGroup small,
+.clearanceStep small {
   display: grid;
   gap: 2px;
   min-width: 0;
 }
 
-.dependencyGroup span {
+.dependencyGroup span,
+.clearanceStep span {
   color: #526575;
   font-size: 12px;
   overflow-wrap: anywhere;

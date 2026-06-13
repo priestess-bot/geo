@@ -12,6 +12,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.build_au_external_dependency_handoff import (  # noqa: E402
+    CLEARANCE_SEQUENCE_VERSION,
+    CLEARANCE_STEP_ORDER,
     DEFAULT_OUTPUT_PATH,
     HANDOFF_VERSION,
     compute_external_dependency_handoff_hash,
@@ -32,6 +34,7 @@ REQUIRED_FIELDS = (
     "source_verifiers",
     "source_artifacts",
     "dependency_groups",
+    "clearance_sequence",
     "work_items",
     "local_followup_items",
     "operator_sequence",
@@ -231,6 +234,110 @@ def _validate_groups(handoff: dict[str, Any], errors: list[str]) -> None:
         errors.append("p0b_google_phase_manual_expected_record_count_mismatch")
 
 
+def _validate_clearance_sequence(
+    handoff: dict[str, Any],
+    *,
+    expected_ready: bool,
+    expected_customer_ready: bool,
+    errors: list[str],
+) -> None:
+    sequence = _as_dict(handoff.get("clearance_sequence"))
+    steps = [_as_dict(item) for item in _as_list(sequence.get("steps"))]
+    groups = _group_by_id(handoff)
+    if sequence.get("version") != CLEARANCE_SEQUENCE_VERSION:
+        errors.append("clearance_sequence_version_invalid")
+    if sequence.get("mode") != "recommended_serial_clearance":
+        errors.append("clearance_sequence_mode_invalid")
+    observed_step_ids = tuple(str(step.get("id") or "") for step in steps)
+    if observed_step_ids != CLEARANCE_STEP_ORDER:
+        errors.append("clearance_sequence_step_order_mismatch")
+    if tuple(_strings(sequence.get("step_ids"))) != CLEARANCE_STEP_ORDER:
+        errors.append("clearance_sequence_step_ids_mismatch")
+    if sequence.get("step_count") != len(steps):
+        errors.append("clearance_sequence_step_count_mismatch")
+    ready_count = sum(1 for step in steps if step.get("ready") is True)
+    blocked_count = sum(1 for step in steps if step.get("ready") is not True)
+    if sequence.get("ready_step_count") != ready_count:
+        errors.append("clearance_sequence_ready_step_count_mismatch")
+    if sequence.get("blocked_step_count") != blocked_count:
+        errors.append("clearance_sequence_blocked_step_count_mismatch")
+
+    expected_prerequisites = {
+        "p0a_provider_credentials": [],
+        "p0a_real_batches": ["p0a_provider_credentials"],
+        "p0b_google_environment": ["p0a_real_batches"],
+        "p0b_google_manual_backfill": ["p0b_google_environment"],
+        "p0b_google_phase_execution": ["p0b_google_manual_backfill"],
+        "customer_report_handoff_gate": ["p0a_real_batches", "p0b_google_phase_execution"],
+    }
+    ready_by_step = {str(step.get("id") or ""): step.get("ready") is True for step in steps}
+    expected_current = "none"
+    for step in steps:
+        step_id = str(step.get("id") or "")
+        if step.get("ready") is not True and step.get("can_start") is True:
+            expected_current = step_id
+            break
+    if expected_current == "none":
+        for step in steps:
+            step_id = str(step.get("id") or "")
+            if step.get("ready") is not True:
+                expected_current = step_id
+                break
+    if sequence.get("current_step_id") != expected_current:
+        errors.append("clearance_sequence_current_step_id_mismatch")
+    current_step = next((step for step in steps if step.get("id") == expected_current), {})
+    current_commands = _strings(current_step.get("commands"))
+    expected_next_command = current_commands[0] if current_commands else ""
+    if sequence.get("next_command") != expected_next_command:
+        errors.append("clearance_sequence_next_command_mismatch")
+
+    work_item_ids = set(_work_item_ids(handoff))
+    for index, step in enumerate(steps, start=1):
+        step_id = str(step.get("id") or "")
+        if step.get("order") != index:
+            errors.append(f"clearance_step_order_mismatch:{step_id}")
+        if step.get("prerequisite_step_ids") != expected_prerequisites.get(step_id, []):
+            errors.append(f"clearance_step_prerequisites_mismatch:{step_id}")
+        prerequisite_ready = all(ready_by_step.get(required) is True for required in expected_prerequisites.get(step_id, []))
+        expected_can_start = prerequisite_ready and step.get("ready") is not True
+        if step.get("can_start") is not expected_can_start:
+            errors.append(f"clearance_step_can_start_mismatch:{step_id}")
+        if not _as_list(step.get("verification_commands")):
+            errors.append(f"clearance_step_verification_commands_missing:{step_id}")
+        if not _as_list(step.get("evidence_outputs")):
+            errors.append(f"clearance_step_evidence_outputs_missing:{step_id}")
+        if step.get("ready") is not True and not _as_list(step.get("blocked_by")):
+            errors.append(f"clearance_step_blocked_by_missing:{step_id}")
+        for work_item_id in _strings(step.get("work_item_ids")):
+            if work_item_id not in work_item_ids:
+                errors.append(f"clearance_step_work_item_missing:{step_id}:{work_item_id}")
+        if step_id != "customer_report_handoff_gate":
+            group = groups.get(step_id, {})
+            if step.get("ready") is not (group.get("ready") is True):
+                errors.append(f"clearance_step_group_ready_mismatch:{step_id}")
+            if step.get("group_id") != step_id:
+                errors.append(f"clearance_step_group_id_mismatch:{step_id}")
+            if step.get("dependency_class") != group.get("dependency_class"):
+                errors.append(f"clearance_step_dependency_class_mismatch:{step_id}")
+        else:
+            if step.get("ready") is not (expected_ready and expected_customer_ready):
+                errors.append("clearance_final_gate_ready_mismatch")
+            if "--require-ready" not in " ".join(_strings(step.get("verification_commands"))):
+                errors.append("clearance_final_gate_require_ready_command_missing")
+            if "scripts/verify_au_launch_status.py" not in " ".join(_strings(step.get("verification_commands"))):
+                errors.append("clearance_final_gate_launch_status_verifier_missing")
+
+    required_final_commands = {
+        "make verify-au-launch-status",
+        "make verify-au-handoff-dossier",
+        "make verify-au-external-dependency-handoff",
+    }
+    hard_gate_commands = set(_strings(sequence.get("hard_gate_commands")))
+    for command in required_final_commands:
+        if command not in hard_gate_commands:
+            errors.append(f"clearance_sequence_hard_gate_command_missing:{command}")
+
+
 def verify_au_external_dependency_handoff(
     handoff: Any,
     *,
@@ -302,6 +409,18 @@ def verify_au_external_dependency_handoff(
         errors.append("summary_local_followup_work_item_count_mismatch")
     if summary.get("dependency_group_count") != len(_as_list(handoff.get("dependency_groups"))):
         errors.append("summary_dependency_group_count_mismatch")
+    clearance_sequence = _as_dict(handoff.get("clearance_sequence"))
+    clearance_steps = [_as_dict(item) for item in _as_list(clearance_sequence.get("steps"))]
+    if summary.get("clearance_step_count") != clearance_sequence.get("step_count"):
+        errors.append("summary_clearance_step_count_mismatch")
+    if summary.get("clearance_ready_step_count") != clearance_sequence.get("ready_step_count"):
+        errors.append("summary_clearance_ready_step_count_mismatch")
+    if summary.get("clearance_blocked_step_count") != clearance_sequence.get("blocked_step_count"):
+        errors.append("summary_clearance_blocked_step_count_mismatch")
+    if summary.get("clearance_current_step_id") != clearance_sequence.get("current_step_id"):
+        errors.append("summary_clearance_current_step_id_mismatch")
+    if clearance_sequence.get("step_count") != len(clearance_steps):
+        errors.append("clearance_sequence_step_count_summary_mismatch")
     if summary.get("requires_external_input_work_item_count") != requires_external_input:
         errors.append("summary_requires_external_input_work_item_count_mismatch")
     if summary.get("pending_after_external_input_work_item_count") != pending_after:
@@ -373,6 +492,13 @@ def verify_au_external_dependency_handoff(
 
     all_groups_ready = all(_as_dict(group).get("ready") is True for group in _as_list(handoff.get("dependency_groups")))
     expected_ready = expected_structural_ready and external_blocker_count == 0 and all_groups_ready
+    expected_customer_ready = handoff.get("ready_for_customer_report_handoff") is True
+    _validate_clearance_sequence(
+        handoff,
+        expected_ready=expected_ready,
+        expected_customer_ready=expected_customer_ready,
+        errors=errors,
+    )
     if handoff.get("external_dependency_handoff_ready") is not expected_ready:
         errors.append("external_dependency_handoff_ready_mismatch")
     if summary.get("external_dependency_handoff_ready") is not expected_ready:

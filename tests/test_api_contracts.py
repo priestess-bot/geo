@@ -650,6 +650,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["external_dependency_blocker_count"], 29)
         self.assertGreaterEqual(payload["summary"]["work_item_count"], 8)
         self.assertEqual(payload["summary"]["dependency_group_count"], 5)
+        self.assertEqual(payload["summary"]["clearance_step_count"], 6)
+        self.assertEqual(payload["summary"]["clearance_current_step_id"], "p0a_provider_credentials")
         self.assertEqual(payload["next_dependency_item_id"], "p0a_environment")
         self.assertEqual(payload["summary"]["p0a_required_secret_missing_count"], 3)
         self.assertEqual(payload["summary"]["p0a_real_batch_phase_next_phase"], "preflight")
@@ -668,6 +670,10 @@ class ApiContractsTest(unittest.TestCase):
                 "p0b_google_phase_execution",
             ],
         )
+        self.assertEqual(payload["clearance_sequence"]["version"], "au_external_dependency_clearance_sequence_v1")
+        self.assertEqual(payload["clearance_sequence"]["current_step_id"], "p0a_provider_credentials")
+        self.assertIn("make verify-au-p0a-env-template", payload["clearance_sequence"]["next_command"])
+        self.assertEqual(payload["clearance_sequence"]["steps"][-1]["id"], "customer_report_handoff_gate")
         self.assertFalse(payload["redaction_policy"]["raw_secret_values_allowed"])
         self.assertFalse(payload["redaction_policy"]["raw_database_url_allowed"])
         self.assertFalse(payload["redaction_policy"]["raw_selector_values_allowed"])

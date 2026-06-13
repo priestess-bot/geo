@@ -42,6 +42,15 @@ from scripts.verify_au_p0b_google_execution_checklist import verify_au_p0b_googl
 
 HANDOFF_VERSION = "au_external_dependency_handoff_v1"
 DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-external-dependency-handoff-latest.json"
+CLEARANCE_SEQUENCE_VERSION = "au_external_dependency_clearance_sequence_v1"
+CLEARANCE_STEP_ORDER = (
+    "p0a_provider_credentials",
+    "p0a_real_batches",
+    "p0b_google_environment",
+    "p0b_google_manual_backfill",
+    "p0b_google_phase_execution",
+    "customer_report_handoff_gate",
+)
 
 
 def _utc_now_iso() -> str:
@@ -90,6 +99,16 @@ def _commands(value: object) -> list[str]:
             if shell:
                 commands.append(shell)
     return commands
+
+
+def _unique_strings(values: list[str]) -> list[str]:
+    observed: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value and value not in observed:
+            observed.add(value)
+            result.append(value)
+    return result
 
 
 def _load_json(path: Path) -> tuple[Any | None, dict[str, Any]]:
@@ -227,6 +246,213 @@ def _work_item_summary(item: dict[str, Any]) -> dict[str, Any]:
 def _matching_work_item_ids(work_items: list[dict[str, Any]], candidates: list[str]) -> list[str]:
     available = {str(item.get("id") or "") for item in work_items}
     return [item for item in candidates if item in available]
+
+
+def _work_items_by_id(work_items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {str(item.get("id") or ""): item for item in work_items}
+
+
+def _work_item_field_values(
+    work_items: list[dict[str, Any]],
+    work_item_ids: list[str],
+    field: str,
+) -> list[str]:
+    by_id = _work_items_by_id(work_items)
+    values: list[str] = []
+    for work_item_id in work_item_ids:
+        values.extend(_strings(_as_dict(by_id.get(work_item_id)).get(field)))
+    return _unique_strings(values)
+
+
+def _first_unready_phase(group: dict[str, Any]) -> dict[str, Any]:
+    next_phase = str(group.get("next_phase") or "")
+    phases = [_as_dict(item) for item in _as_list(group.get("phases"))]
+    for phase in phases:
+        if phase.get("id") == next_phase:
+            return phase
+    for phase in phases:
+        if phase.get("ready") is not True:
+            return phase
+    return {}
+
+
+def _planned_runs_for_group(group: dict[str, Any]) -> int:
+    for field in ("total_planned_runs", "full_spike_planned_runs", "expected_record_count"):
+        planned = int(group.get(field) or 0)
+        if planned > 0:
+            return planned
+    phase = _first_unready_phase(group)
+    return int(phase.get("planned_runs") or 0)
+
+
+def _blocking_reasons_for_group(group: dict[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    reasons.extend(f"missing_required:{value}" for value in _strings(group.get("missing_required")))
+    reasons.extend(_strings(group.get("missing_reasons")))
+    phase = _first_unready_phase(group)
+    reasons.extend(_strings(phase.get("blocking_reasons")))
+    if group.get("ready") is not True and not reasons:
+        reasons.append(f"{group.get('id', 'dependency_group')}:not_ready")
+    return _unique_strings(reasons)
+
+
+def _clearance_step_from_group(
+    group: dict[str, Any],
+    *,
+    order: int,
+    prerequisite_step_ids: list[str],
+    prior_ready_by_id: dict[str, bool],
+    work_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    group_id = str(group.get("id") or "")
+    work_item_ids = _strings(group.get("work_item_ids"))
+    phase = _first_unready_phase(group)
+    prerequisite_ready = all(prior_ready_by_id.get(step_id) is True for step_id in prerequisite_step_ids)
+    ready = group.get("ready") is True
+    commands = _unique_strings(
+        _commands(phase.get("commands"))
+        + _strings(group.get("setup_commands"))
+        + _work_item_field_values(work_items, work_item_ids, "commands")
+    )
+    verification_commands = _unique_strings(
+        _strings(group.get("verification_commands"))
+        + _work_item_field_values(work_items, work_item_ids, "verification_commands")
+    )
+    evidence_outputs = _unique_strings(
+        _strings(group.get("evidence_outputs"))
+        + _work_item_field_values(work_items, work_item_ids, "evidence_outputs")
+    )
+    blocked_by = _blocking_reasons_for_group(group)
+    if not prerequisite_ready:
+        blocked_by = _unique_strings(
+            [f"prerequisite_step_not_ready:{step_id}" for step_id in prerequisite_step_ids if prior_ready_by_id.get(step_id) is not True]
+            + blocked_by
+        )
+    if ready:
+        status = "ready"
+    elif not prerequisite_ready:
+        status = "blocked_waiting_on_prerequisite"
+    else:
+        status = str(group.get("status") or "blocked")
+    return {
+        "id": group_id,
+        "order": order,
+        "stage": str(group.get("stage") or ""),
+        "title": str(group.get("title") or group_id),
+        "type": "dependency_group",
+        "group_id": group_id,
+        "work_item_ids": work_item_ids,
+        "dependency_class": str(group.get("dependency_class") or ""),
+        "status": status,
+        "ready": ready,
+        "can_start": prerequisite_ready and not ready,
+        "external_input_required": str(group.get("status") or "") == "requires_external_input"
+        or bool(_strings(group.get("missing_required")))
+        or bool(_strings(group.get("missing_reasons"))),
+        "prerequisite_step_ids": prerequisite_step_ids,
+        "current_phase": str(phase.get("id") or group.get("next_phase") or "none"),
+        "planned_runs": _planned_runs_for_group(group),
+        "commands": commands,
+        "verification_commands": verification_commands,
+        "evidence_outputs": evidence_outputs,
+        "blocked_by": [] if ready else blocked_by,
+        "acceptance": "ready=true and all verification commands pass with redacted evidence artifacts present",
+    }
+
+
+def _build_clearance_sequence(
+    dependency_groups: list[dict[str, Any]],
+    work_items: list[dict[str, Any]],
+    *,
+    external_ready: bool,
+    customer_ready: bool,
+) -> dict[str, Any]:
+    groups = {str(group.get("id") or ""): group for group in dependency_groups}
+    prerequisites = {
+        "p0a_provider_credentials": [],
+        "p0a_real_batches": ["p0a_provider_credentials"],
+        "p0b_google_environment": ["p0a_real_batches"],
+        "p0b_google_manual_backfill": ["p0b_google_environment"],
+        "p0b_google_phase_execution": ["p0b_google_manual_backfill"],
+    }
+    steps: list[dict[str, Any]] = []
+    ready_by_id: dict[str, bool] = {}
+    for index, step_id in enumerate(CLEARANCE_STEP_ORDER[:-1], start=1):
+        step = _clearance_step_from_group(
+            groups.get(step_id, {"id": step_id, "ready": False}),
+            order=index,
+            prerequisite_step_ids=prerequisites[step_id],
+            prior_ready_by_id=ready_by_id,
+            work_items=work_items,
+        )
+        steps.append(step)
+        ready_by_id[step["id"]] = step["ready"] is True
+
+    final_prerequisites = ["p0a_real_batches", "p0b_google_phase_execution"]
+    final_prerequisite_ready = all(ready_by_id.get(step_id) is True for step_id in final_prerequisites)
+    final_ready = external_ready and customer_ready
+    final_blockers = [
+        f"prerequisite_step_not_ready:{step_id}" for step_id in final_prerequisites if ready_by_id.get(step_id) is not True
+    ]
+    if not external_ready:
+        final_blockers.append("external_dependency_handoff_not_ready")
+    if not customer_ready:
+        final_blockers.append("customer_report_handoff_not_ready")
+    final_step = {
+        "id": "customer_report_handoff_gate",
+        "order": len(CLEARANCE_STEP_ORDER),
+        "stage": "Launch",
+        "title": "Customer report handoff hard gates",
+        "type": "final_gate",
+        "group_id": "",
+        "work_item_ids": [],
+        "dependency_class": "customer_report_handoff",
+        "status": "ready" if final_ready else "blocked_waiting_on_prerequisite",
+        "ready": final_ready,
+        "can_start": final_prerequisite_ready and not final_ready,
+        "external_input_required": False,
+        "prerequisite_step_ids": final_prerequisites,
+        "current_phase": "final_hard_gate",
+        "planned_runs": 0,
+        "commands": [
+            "make au-launch-status",
+            "make au-handoff-dossier",
+            "make au-external-dependency-handoff",
+        ],
+        "verification_commands": [
+            "make verify-au-launch-status",
+            "make verify-au-handoff-dossier",
+            "make verify-au-external-dependency-handoff",
+            "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_external_dependency_handoff.py ${GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH:-docs/runtime_preflight/au-external-dependency-handoff-latest.json} --require-ready",
+            "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_launch_status.py ${GENO_AU_LAUNCH_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-launch-status-latest.json} --require-ready",
+        ],
+        "evidence_outputs": [
+            DEFAULT_OUTPUT_PATH,
+            "docs/runtime_preflight/au-launch-status-latest.json",
+            "docs/runtime_preflight/au-handoff-dossier-latest.json",
+            "docs/runtime_preflight/au-handoff-dossier-latest.md",
+        ],
+        "blocked_by": [] if final_ready else _unique_strings(final_blockers),
+        "acceptance": "all external dependency groups ready and customer report launch hard gates pass",
+    }
+    steps.append(final_step)
+
+    current_step = next((step for step in steps if step.get("ready") is not True and step.get("can_start") is True), None)
+    if current_step is None:
+        current_step = next((step for step in steps if step.get("ready") is not True), {"id": "none", "commands": []})
+    next_commands = _strings(_as_dict(current_step).get("commands"))
+    return {
+        "version": CLEARANCE_SEQUENCE_VERSION,
+        "mode": "recommended_serial_clearance",
+        "step_ids": [step["id"] for step in steps],
+        "step_count": len(steps),
+        "ready_step_count": sum(1 for step in steps if step.get("ready") is True),
+        "blocked_step_count": sum(1 for step in steps if step.get("ready") is not True),
+        "current_step_id": str(_as_dict(current_step).get("id") or "none"),
+        "next_command": next_commands[0] if next_commands else "",
+        "hard_gate_commands": _strings(final_step.get("verification_commands")),
+        "steps": steps,
+    }
 
 
 def _p0a_provider_credentials_group(
@@ -531,6 +757,12 @@ def build_au_external_dependency_handoff(
         and external_dependency_blocker_count == 0
         and all(group.get("ready") is True for group in dependency_groups)
     )
+    clearance_sequence = _build_clearance_sequence(
+        dependency_groups,
+        work_items,
+        external_ready=external_ready,
+        customer_ready=launch_status.get("ready_for_customer_report_handoff") is True,
+    )
     requires_external_input_count = sum(1 for item in work_items if item.get("status") == "requires_external_input")
     pending_after_count = sum(1 for item in work_items if str(item.get("status") or "").startswith("pending_after"))
     runnable_now = [str(item.get("id")) for item in work_items if item.get("status") == "runnable_now"]
@@ -570,6 +802,10 @@ def build_au_external_dependency_handoff(
             "work_item_count": len(work_items),
             "local_followup_work_item_count": len(local_followup_items),
             "dependency_group_count": len(dependency_groups),
+            "clearance_step_count": int(clearance_sequence.get("step_count") or 0),
+            "clearance_ready_step_count": int(clearance_sequence.get("ready_step_count") or 0),
+            "clearance_blocked_step_count": int(clearance_sequence.get("blocked_step_count") or 0),
+            "clearance_current_step_id": str(clearance_sequence.get("current_step_id") or "none"),
             "external_dependency_blocker_count": external_dependency_blocker_count,
             "requires_external_input_work_item_count": requires_external_input_count,
             "pending_after_external_input_work_item_count": pending_after_count,
@@ -617,6 +853,7 @@ def build_au_external_dependency_handoff(
             _source_file_entry("p0b_google_execution_checklist", p0b_google_execution_checklist_path),
         ],
         "dependency_groups": dependency_groups,
+        "clearance_sequence": clearance_sequence,
         "work_items": work_items,
         "local_followup_items": local_followup_items,
         "operator_sequence": [str(item.get("id")) for item in work_items],

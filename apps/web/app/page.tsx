@@ -1136,6 +1136,10 @@ type AuExternalDependencyHandoff = {
     external_dependency_blocker_count?: number;
     work_item_count?: number;
     dependency_group_count?: number;
+    clearance_step_count?: number;
+    clearance_ready_step_count?: number;
+    clearance_blocked_step_count?: number;
+    clearance_current_step_id?: string;
     requires_external_input_work_item_count?: number;
     pending_after_external_input_work_item_count?: number;
     runnable_now_work_item_count?: number;
@@ -1172,6 +1176,24 @@ type AuExternalDependencyHandoff = {
     record_count?: number;
     work_item_ids?: string[];
   }>;
+  clearance_sequence?: {
+    version?: string;
+    current_step_id?: string;
+    next_command?: string;
+    step_count?: number;
+    ready_step_count?: number;
+    blocked_step_count?: number;
+    steps?: Array<{
+      id: string;
+      order?: number;
+      title?: string;
+      status?: string;
+      ready?: boolean;
+      can_start?: boolean;
+      blocked_by?: string[];
+      verification_commands?: string[];
+    }>;
+  };
   work_items?: Array<{
     id: string;
     stage?: string;
@@ -4009,6 +4031,9 @@ export default async function Home({
   const externalDependencyGroups = externalDependencyHandoff?.dependency_groups || [];
   const topExternalDependencyGroups = externalDependencyGroups.slice(0, 5);
   const externalNextDependencyItem = externalDependencyHandoff?.next_dependency_item;
+  const externalClearanceSequence = externalDependencyHandoff?.clearance_sequence;
+  const externalClearanceSteps = externalClearanceSequence?.steps || [];
+  const topExternalClearanceSteps = externalClearanceSteps.slice(0, 6);
   const broaderPlatformRegistry = data.broaderPlatformRegistry;
   const broaderPlatformSummary = broaderPlatformRegistry?.summary;
   const broaderPlatformCandidates = broaderPlatformRegistry?.candidate_platforms || [];
@@ -4909,6 +4934,11 @@ export default async function Home({
               Blockers {externalDependencySummary?.external_dependency_blocker_count || 0} · groups{" "}
               {externalDependencySummary?.dependency_group_count || 0}
             </span>
+            <span>
+              Clearance {externalDependencySummary?.clearance_ready_step_count || 0}/
+              {externalDependencySummary?.clearance_step_count || 0} · current{" "}
+              {externalDependencySummary?.clearance_current_step_id || externalClearanceSequence?.current_step_id || "none"}
+            </span>
           </div>
           <div className="handoffBoundary">
             <span>
@@ -4930,6 +4960,20 @@ export default async function Home({
               {externalDependencySummary?.p0b_google_manual_backfill_expected_record_count || 0}
             </span>
             <span>Hard gate: scripts/verify_au_external_dependency_handoff.py --require-ready</span>
+            <span>Next clearance command {externalClearanceSequence?.next_command || "none"}</span>
+          </div>
+          <div className="clearanceStepGrid">
+            {topExternalClearanceSteps.map((step) => (
+              <div className="clearanceStep" key={step.id}>
+                <strong>
+                  {step.order || 0}. {step.title || step.id}
+                </strong>
+                <span>
+                  {step.can_start ? "can start" : step.ready ? "ready" : step.status || "blocked"}
+                </span>
+                <small>{(step.blocked_by || []).slice(0, 2).join(" · ") || "gate clear"}</small>
+              </div>
+            ))}
           </div>
           <div className="dependencyGroupGrid">
             {topExternalDependencyGroups.map((group) => (
