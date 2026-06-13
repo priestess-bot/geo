@@ -724,6 +724,7 @@ type RuntimeData = {
   retestExecutionStatus: AuRetestExecutionStatus | null;
   handoffDossier: AuHandoffDossier | null;
   customerHandoffReadiness: AuCustomerHandoffReadiness | null;
+  nextWorkItemPacket: AuNextWorkItemPacket | null;
   projects: PageResponse<RuntimeProject>;
   projectLifecycleEvents: PageResponse<RuntimeProjectLifecycleEvent>;
   auditEvents: PageResponse<RuntimeAuditEvent>;
@@ -1191,6 +1192,70 @@ type AuCustomerHandoffReadiness = {
     handoff_dossier?: string;
     launch_status?: string;
     external_dependency_handoff?: string;
+    external_dependency_clearance?: string;
+  };
+  hard_gate_commands?: string[];
+};
+
+type AuNextWorkItemPacket = {
+  next_work_item_packet_version: string;
+  generated_at: string;
+  status: string;
+  next_work_item_packet_ready: boolean;
+  ready_for_customer_report_handoff: boolean;
+  next_work_item_packet_hash: string;
+  summary?: {
+    next_work_item_id?: string;
+    next_action?: string;
+    stage?: string;
+    title?: string;
+    status?: string;
+    dependency_class?: string;
+    external_dependency?: boolean;
+    blocker_count?: number;
+    remaining_blocker_count?: number;
+    external_dependency_blocker_count?: number;
+    customer_report_handoff_readiness_percent?: number;
+    structural_auditability_percent?: number;
+    runnable_now?: boolean;
+    command_count?: number;
+    verification_command_count?: number;
+    evidence_output_count?: number;
+    blocked_customer_gate_count?: number;
+    blocked_customer_gate_ids?: string[];
+  };
+  source_handoff_dossier?: {
+    handoff_dossier_hash?: string;
+    handoff_dossier_ready?: boolean;
+    ready_for_customer_report_handoff?: boolean;
+    path?: string;
+  };
+  handoff_dossier_verifier?: {
+    status?: string;
+    hash_valid?: boolean;
+    handoff_dossier_hash?: string;
+    handoff_posture?: string;
+    remaining_blocker_count?: number;
+    work_item_count?: number;
+    next_work_item_id?: string;
+  };
+  next_work_item?: {
+    id?: string;
+    stage?: string;
+    title?: string;
+    status?: string;
+    external_dependency?: boolean;
+    dependency_class?: string;
+    blocker_count?: number;
+  };
+  commands?: string[];
+  verification_commands?: string[];
+  evidence_outputs?: string[];
+  runtime_endpoints?: {
+    next_work_item?: string;
+    handoff_dossier?: string;
+    launch_remediation_plan?: string;
+    customer_handoff_readiness?: string;
     external_dependency_clearance?: string;
   };
   hard_gate_commands?: string[];
@@ -1811,6 +1876,7 @@ const endpoints = {
   retestExecutionStatus: "/v1/au-retest-execution-status",
   handoffDossier: "/v1/handoff-dossier/au",
   customerHandoffReadiness: "/v1/customer-handoff-readiness/au",
+  nextWorkItem: "/v1/next-work-item/au",
   projects: "/v1/projects/runtime",
   projectAction: "/v1/projects/runtime/action",
   projectLifecycleEvents: "/v1/projects/runtime/lifecycle-events",
@@ -3224,6 +3290,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     retestExecutionStatus: endpoints.retestExecutionStatus,
     handoffDossier: endpoints.handoffDossier,
     customerHandoffReadiness: endpoints.customerHandoffReadiness,
+    nextWorkItem: endpoints.nextWorkItem,
     projects: runtimePath(endpoints.projects, projectListParams),
     projectAction: endpoints.projectAction,
     projectLifecycleEvents: endpoints.projectLifecycleEvents,
@@ -3538,6 +3605,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     retestExecutionStatus,
     handoffDossier,
     customerHandoffReadiness,
+    nextWorkItemPacket,
     prompts,
     projectLifecycleEvents,
     auditEvents,
@@ -3588,6 +3656,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuRetestExecutionStatus | null>(baseUrl, paths.retestExecutionStatus, null),
     fetchRuntimeEndpoint<AuHandoffDossier | null>(baseUrl, paths.handoffDossier, null),
     fetchRuntimeEndpoint<AuCustomerHandoffReadiness | null>(baseUrl, paths.customerHandoffReadiness, null),
+    fetchRuntimeEndpoint<AuNextWorkItemPacket | null>(baseUrl, paths.nextWorkItem, null),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     selectedProjectId
       ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectLifecycleEvent>>(
@@ -3750,6 +3819,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     retestExecutionStatus,
     handoffDossier,
     customerHandoffReadiness,
+    nextWorkItemPacket,
     projects,
     prompts,
     projectLifecycleEvents,
@@ -3805,6 +3875,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       retestExecutionStatus: retestExecutionStatus.payload,
       handoffDossier: handoffDossier.payload,
       customerHandoffReadiness: customerHandoffReadiness.payload,
+      nextWorkItemPacket: nextWorkItemPacket.payload,
       projects: projects.payload,
       projectLifecycleEvents: projectLifecycleEvents.payload,
       auditEvents: auditEvents.payload,
@@ -4177,6 +4248,11 @@ export default async function Home({
   const customerHandoffReadinessSummary = customerHandoffReadiness?.summary;
   const customerHandoffReadinessBlockedGateIds =
     customerHandoffReadinessSummary?.blocked_customer_gate_ids || [];
+  const nextWorkItemPacket = data.nextWorkItemPacket;
+  const nextWorkItemSummary = nextWorkItemPacket?.summary;
+  const nextWorkItemCommands = nextWorkItemPacket?.commands || [];
+  const nextWorkItemVerificationCommands = nextWorkItemPacket?.verification_commands || [];
+  const nextWorkItemEvidenceOutputs = nextWorkItemPacket?.evidence_outputs || [];
   const scoreWeightConfig = data.scoreWeights?.score_weight_config || null;
   const savedScoreWeightConfig = scoreWeightConfig?.id ? scoreWeightConfig : null;
   const scoreWeightAuditEvent = data.scoreWeights?.audit_events[0]?.event_type || "default weights";
@@ -5121,6 +5197,68 @@ export default async function Home({
             </span>
           </div>
           <code>{paths.customerHandoffReadiness}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>Next work item packet</strong>
+            <span>
+              {nextWorkItemPacket?.next_work_item_packet_version || "au_next_work_item_packet_v1"} · next_work_item_packet_hash{" "}
+              {shortHash(nextWorkItemPacket?.next_work_item_packet_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>Packet ready {nextWorkItemPacket?.next_work_item_packet_ready ? "yes" : "no"}</span>
+            <span>
+              Customer report {nextWorkItemPacket?.ready_for_customer_report_handoff ? "ready" : "blocked"}
+            </span>
+            <span>Work item {nextWorkItemSummary?.next_work_item_id || "none"}</span>
+            <span>Stage {nextWorkItemSummary?.stage || "unknown"}</span>
+            <span>External dependency {nextWorkItemSummary?.external_dependency ? "yes" : "no"}</span>
+            <span>Runnable now {nextWorkItemSummary?.runnable_now ? "yes" : "no"}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>Title {nextWorkItemSummary?.title || nextWorkItemPacket?.next_work_item?.title || "none"}</span>
+            <span>Dependency class {nextWorkItemSummary?.dependency_class || "none"}</span>
+            <span>
+              Blockers {nextWorkItemSummary?.blocker_count || 0} · remaining{" "}
+              {nextWorkItemSummary?.remaining_blocker_count || 0} · external{" "}
+              {nextWorkItemSummary?.external_dependency_blocker_count || 0}
+            </span>
+            <span>
+              Customer readiness {nextWorkItemSummary?.customer_report_handoff_readiness_percent ?? 0}% · auditability{" "}
+              {nextWorkItemSummary?.structural_auditability_percent ?? 0}%
+            </span>
+            <span>
+              Commands {nextWorkItemSummary?.command_count || 0} · verifiers{" "}
+              {nextWorkItemSummary?.verification_command_count || 0} · evidence outputs{" "}
+              {nextWorkItemSummary?.evidence_output_count || 0}
+            </span>
+            <span>Next command {nextWorkItemCommands[0] || "none"}</span>
+            <span>Next verifier {nextWorkItemVerificationCommands[0] || "none"}</span>
+            <span>First evidence output {nextWorkItemEvidenceOutputs[0] || "none"}</span>
+            <span>
+              Source dossier hash {shortHash(nextWorkItemPacket?.source_handoff_dossier?.handoff_dossier_hash)}
+            </span>
+            <span>
+              {nextWorkItemPacket?.runtime_endpoints?.next_work_item || "GET /v1/next-work-item/au"}
+            </span>
+            <span>Hard gate: make verify-au-next-work-item</span>
+            <span>
+              Customer hard gate:{" "}
+              {nextWorkItemPacket?.hard_gate_commands?.find((command) =>
+                command.endsWith("--require-customer-ready")
+              ) ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_readiness.py docs/runtime_preflight/au-customer-handoff-readiness-latest.json --require-customer-ready"}
+            </span>
+          </div>
+          {nextWorkItemEvidenceOutputs.length ? (
+            <ul className="plainList compactList">
+              {nextWorkItemEvidenceOutputs.slice(0, 5).map((output) => (
+                <li key={output}>{output}</li>
+              ))}
+            </ul>
+          ) : null}
+          <code>{paths.nextWorkItem}</code>
         </div>
         <div className="externalDependencyHandoff">
           <div className="launchRemediationHeader">

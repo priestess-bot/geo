@@ -677,6 +677,40 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(payload["source_handoff_dossier"]["handoff_dossier_hash"])
         self.assertTrue(payload["customer_handoff_readiness_hash"])
 
+    def test_au_next_work_item_endpoint_returns_current_execution_packet(self) -> None:
+        helper = AuHandoffDossierTest()
+        helper.setUp()
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
+            status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
+            plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
+            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geno_api.main.build_au_launch_remediation_plan",
+                return_value=plan_payload,
+            ):
+                response = self.client.get("/v1/next-work-item/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["next_work_item_packet_version"], "au_next_work_item_packet_v1")
+        self.assertEqual(payload["status"], "pass")
+        self.assertTrue(payload["next_work_item_packet_ready"])
+        self.assertFalse(payload["ready_for_customer_report_handoff"])
+        self.assertEqual(payload["summary"]["next_work_item_id"], "p0a_environment")
+        self.assertEqual(payload["summary"]["stage"], "P0a")
+        self.assertEqual(payload["summary"]["dependency_class"], "provider_keys_and_database")
+        self.assertEqual(payload["summary"]["remaining_blocker_count"], 29)
+        self.assertEqual(payload["summary"]["command_count"], len(payload["commands"]))
+        self.assertEqual(payload["commands"][0], "make verify-au-p0a-env-template")
+        self.assertIn("make verify-au-p0a-status", payload["verification_commands"])
+        self.assertIn("docs/runtime_preflight/au-p0a-env-latest.json", payload["evidence_outputs"])
+        self.assertEqual(payload["runtime_endpoints"]["next_work_item"], "GET /v1/next-work-item/au")
+        self.assertEqual(payload["runtime_endpoints"]["handoff_dossier"], "GET /v1/handoff-dossier/au")
+        self.assertIn("make verify-au-next-work-item", payload["hard_gate_commands"])
+        self.assertTrue(any(command.endswith("--require-customer-ready") for command in payload["hard_gate_commands"]))
+        self.assertTrue(payload["source_handoff_dossier"]["handoff_dossier_hash"])
+        self.assertTrue(payload["next_work_item_packet_hash"])
+
     def test_au_external_dependency_handoff_endpoint_returns_current_dependency_boundary(self) -> None:
         helper = AuHandoffDossierTest()
         helper.setUp()
@@ -6241,6 +6275,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/au-retest-execution-status", payload["persistence"])
         self.assertIn("/v1/handoff-dossier/au", payload["persistence"])
         self.assertIn("/v1/customer-handoff-readiness/au", payload["persistence"])
+        self.assertIn("/v1/next-work-item/au", payload["persistence"])
         self.assertIn("/v1/external-dependency-handoff/au", payload["persistence"])
         self.assertIn("/v1/external-dependency-clearance/au", payload["persistence"])
         self.assertIn("/metrics", payload["persistence"])

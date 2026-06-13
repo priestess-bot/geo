@@ -137,6 +137,10 @@ from scripts.build_au_customer_handoff_readiness import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH,
     build_au_customer_handoff_readiness,
 )
+from scripts.build_au_next_work_item_packet import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_NEXT_WORK_ITEM_OUTPUT_PATH,
+    build_au_next_work_item_packet,
+)
 from scripts.build_au_external_dependency_handoff import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
     build_au_external_dependency_handoff,
@@ -1909,6 +1913,18 @@ def au_customer_handoff_readiness() -> dict[str, object]:
                 DEFAULT_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH,
             )
         ),
+    )
+
+
+@app.get("/v1/next-work-item/au")
+def au_next_work_item() -> dict[str, object]:
+    handoff_dossier_path = Path(
+        os.getenv("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH)
+    )
+    return build_au_next_work_item_packet(
+        handoff_dossier_path=handoff_dossier_path,
+        handoff_dossier=au_handoff_dossier(),
+        output_path=Path(os.getenv("GENO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_AU_NEXT_WORK_ITEM_OUTPUT_PATH)),
     )
 
 
@@ -5746,6 +5762,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/au-retest-execution-status",
             "/v1/handoff-dossier/au",
             "/v1/customer-handoff-readiness/au",
+            "/v1/next-work-item/au",
             "/v1/external-dependency-handoff/au",
             "/v1/external-dependency-clearance/au",
             "/metrics",
