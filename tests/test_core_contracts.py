@@ -3749,10 +3749,11 @@ class CoreContractsTest(unittest.TestCase):
             "status": "archived",
             "created_at": now,
         }
-        after_project = {**before_project, "status": "active"}
+        after_project = {**before_project, "status": "paused"}
         connection = RecordingConnection(
             result_sets=[
                 before_project,
+                ({"status_before": ["paused"], "status_after": ["archived"]},),
                 after_project,
                 {
                     "id": tenant_id,
@@ -3775,7 +3776,7 @@ class CoreContractsTest(unittest.TestCase):
                         "before_hash": "before",
                         "after_hash": "after",
                         "input_refs": {"action": ["restore"]},
-                        "output_refs": {"status": ["active"]},
+                        "output_refs": {"status": ["paused"]},
                         "method_version": "runtime_project_restore_v1",
                         "reason": "restore pilot",
                         "created_at": now,
@@ -3793,11 +3794,62 @@ class CoreContractsTest(unittest.TestCase):
             )
         )
 
-        self.assertEqual(record.project["status"], "active")
+        self.assertEqual(record.project["status"], "paused")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("event_type = 'project_archived'", executed_sql)
         audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
         self.assertEqual(audit_insert[1], "project_restored")
         self.assertEqual(audit_insert[11], "runtime_project_restore_v1")
         self.assertEqual(connection.commit_count, 1)
+
+    def test_postgres_repository_restores_runtime_project_to_active_without_archive_audit(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        tenant_id = "8330ea73-6914-5278-90cb-147f8369fed6"
+        before_project = {
+            "id": project_id,
+            "tenant_id": tenant_id,
+            "name": "AU DTC Evidence Pilot",
+            "market_code": "AU",
+            "industry_code": "dtc_ecommerce",
+            "target_brand": "ExampleBrand",
+            "category": "DTC ecommerce products",
+            "prompt_version": "au_dtc_ecommerce_v1",
+            "status": "archived",
+            "created_at": now,
+        }
+        after_project = {**before_project, "status": "active"}
+        connection = RecordingConnection(
+            result_sets=[
+                before_project,
+                None,
+                after_project,
+                {
+                    "id": tenant_id,
+                    "name": "Design Partner AU",
+                    "slug": "design-partner-au",
+                    "created_at": now,
+                },
+                None,
+                [],
+                {"count": 100},
+                [],
+            ]
+        )
+
+        record = PostgresEvidenceRepository(connection).apply_runtime_project_action(
+            RuntimeProjectActionInput(
+                project_id=project_id,
+                action="restore",
+                updated_by="agency-owner",
+                reason="restore legacy archived pilot",
+            )
+        )
+
+        self.assertEqual(record.project["status"], "active")
+        audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
+        self.assertEqual(audit_insert[1], "project_restored")
+        self.assertEqual(audit_insert[11], "runtime_project_restore_v1")
 
     def test_postgres_repository_checks_project_membership(self) -> None:
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"

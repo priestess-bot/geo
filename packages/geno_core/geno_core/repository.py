@@ -2015,7 +2015,24 @@ class PostgresEvidenceRepository:
             else:
                 if before_status != "archived":
                     raise ValueError("project is not archived")
-                after_status = "active"
+                cursor.execute(
+                    """
+                    SELECT input_refs
+                    FROM audit_events
+                    WHERE project_id = %s
+                      AND target_type = 'project'
+                      AND target_id = %s
+                      AND event_type = 'project_archived'
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT 1
+                    """,
+                    (_uuid(project_id), project_id),
+                )
+                archive_audit = cursor.fetchone()
+                archive_input_refs = _row_dict(archive_audit, ("input_refs",)).get("input_refs")
+                prior_status_values = archive_input_refs.get("status_before") if isinstance(archive_input_refs, dict) else None
+                prior_status = str(prior_status_values[0]).lower() if prior_status_values else ""
+                after_status = prior_status if prior_status in {"configured", "active", "paused"} else "active"
                 event_type = "project_restored"
                 method_version = "runtime_project_restore_v1"
             cursor.execute(
