@@ -1,0 +1,3 @@
+DROP POLICY IF EXISTS project_member_invitations_runtime_project_isolation ON project_member_invitations;
+DROP INDEX IF EXISTS idx_project_member_invitations_project_status;
+DROP TABLE IF EXISTS project_member_invitations;

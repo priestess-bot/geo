@@ -1112,6 +1112,20 @@ class RuntimeProjectMemberPage:
 
 
 @dataclass(frozen=True)
+class RuntimeProjectMemberInvitation:
+    invitation: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeProjectMemberInvitationPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeProjectMemberInvitation, ...]
+
+
+@dataclass(frozen=True)
 class RuntimeProjectMemberInput:
     project_id: str
     user_id: str
@@ -1125,6 +1139,17 @@ class RuntimeProjectMemberDeleteInput:
     project_id: str
     user_id: str
     deleted_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeProjectMemberInvitationInput:
+    project_id: str
+    email: str
+    role: ProjectRole
+    invited_by: str = "runtime-console"
+    expires_at: datetime | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
     reason: str | None = None
 
 

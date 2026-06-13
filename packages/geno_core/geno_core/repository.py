@@ -94,6 +94,9 @@ from geno_core.models import (
     RuntimeProjectMember,
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
+    RuntimeProjectMemberInvitation,
+    RuntimeProjectMemberInvitationInput,
+    RuntimeProjectMemberInvitationPage,
     RuntimeProjectMemberPage,
     RuntimeProjectPage,
     RuntimePromptImportHistoryItem,
@@ -1187,6 +1190,21 @@ PROJECT_MEMBER_COLUMNS = (
     "role",
     "created_at",
 )
+PROJECT_MEMBER_INVITATION_COLUMNS = (
+    "id",
+    "project_id",
+    "email",
+    "role",
+    "status",
+    "invite_token_hash",
+    "invited_by",
+    "expires_at",
+    "accepted_at",
+    "revoked_at",
+    "metadata",
+    "created_at",
+    "updated_at",
+)
 BRAND_ENTITY_COLUMNS = (
     "id",
     "project_id",
@@ -2053,6 +2071,191 @@ class PostgresEvidenceRepository:
             audit_events=(asdict(audit_event),),
         )
 
+    def list_runtime_project_member_invitations(
+        self,
+        *,
+        project_id: str,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeProjectMemberInvitationPage:
+        project_id = project_id.strip()
+        normalized_status = status.strip().lower() if status else None
+        if not project_id:
+            raise ValueError("project_id is required")
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        params: list[object] = [_uuid(project_id)]
+        filters = "project_id = %s"
+        if normalized_status:
+            filters += " AND status = %s"
+            params.append(normalized_status)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT count(*)
+                FROM project_member_invitations
+                WHERE {filters}
+                """,
+                tuple(params),
+            )
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_MEMBER_INVITATION_COLUMNS)}
+                FROM project_member_invitations
+                WHERE {filters}
+                ORDER BY
+                  CASE status
+                    WHEN 'pending' THEN 1
+                    WHEN 'accepted' THEN 2
+                    WHEN 'revoked' THEN 3
+                    WHEN 'expired' THEN 4
+                    ELSE 5
+                  END,
+                  created_at DESC,
+                  email ASC
+                LIMIT %s OFFSET %s
+                """,
+                tuple([*params, limit, offset]),
+            )
+            rows = _rows_dict(cursor.fetchall(), PROJECT_MEMBER_INVITATION_COLUMNS)
+            records = tuple(
+                self._load_runtime_project_member_invitation(cursor=cursor, invitation=row) for row in rows
+            )
+        return RuntimeProjectMemberInvitationPage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=records,
+        )
+
+    def create_runtime_project_member_invitation(
+        self,
+        invitation: RuntimeProjectMemberInvitationInput,
+    ) -> RuntimeProjectMemberInvitation:
+        project_id = invitation.project_id.strip()
+        email = invitation.email.strip().lower()
+        role = invitation.role.strip().lower()
+        invited_by = invitation.invited_by.strip() or "runtime-console"
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not email or "@" not in email:
+            raise ValueError("email is required")
+        if role not in {"owner", "admin", "analyst", "viewer"}:
+            raise ValueError("role must be owner, admin, analyst, or viewer")
+        metadata = _json_compatible(invitation.metadata or {})
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be an object")
+        status = "pending"
+        invitation_id = _stable_id("project-member-invitation", project_id, email, role, status)
+        invite_token = f"geno-invite-{uuid4().hex}"
+        invite_token_hash = hashlib.sha256(invite_token.encode("utf-8")).hexdigest()
+        after = {
+            "id": invitation_id,
+            "project_id": project_id,
+            "email": email,
+            "role": role,
+            "status": status,
+            "invite_token_hash": invite_token_hash,
+            "invited_by": invited_by,
+            "expires_at": invitation.expires_at,
+            "accepted_at": None,
+            "revoked_at": None,
+            "metadata": metadata,
+        }
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_MEMBER_INVITATION_COLUMNS)}
+                FROM project_member_invitations
+                WHERE project_id = %s AND email = %s AND role = %s AND status = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id), email, role, status),
+            )
+            existing = cursor.fetchone()
+            before = _row_dict(existing, PROJECT_MEMBER_INVITATION_COLUMNS) if existing else None
+            cursor.execute(
+                """
+                INSERT INTO project_member_invitations (
+                  id, project_id, email, role, status, invite_token_hash, invited_by,
+                  expires_at, metadata
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (project_id, email, role, status) DO UPDATE SET
+                  invite_token_hash = EXCLUDED.invite_token_hash,
+                  invited_by = EXCLUDED.invited_by,
+                  expires_at = EXCLUDED.expires_at,
+                  metadata = EXCLUDED.metadata,
+                  updated_at = now()
+                """,
+                (
+                    _uuid(invitation_id),
+                    _uuid(project_id),
+                    email,
+                    role,
+                    status,
+                    invite_token_hash,
+                    invited_by,
+                    _datetime(invitation.expires_at),
+                    _json_payload(metadata),
+                ),
+            )
+            audit_event = build_audit_event(
+                event_type="project_member_invitation_created",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=invited_by,
+                target_type="project_member_invitation",
+                target_id=invitation_id,
+                before=before,
+                after=after,
+                input_refs={
+                    "project_ids": [project_id],
+                    "emails": [email],
+                    "roles": [role],
+                    "status": [status],
+                },
+                output_refs={
+                    "project_member_invitation_ids": [invitation_id],
+                    "invite_token_hashes": [invite_token_hash],
+                    "expires_at": [invitation.expires_at.isoformat() if invitation.expires_at else None],
+                },
+                method_version="project_member_invitation_v1",
+                reason=invitation.reason.strip() if invitation.reason else "runtime_project_member_invitation_create",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_MEMBER_INVITATION_COLUMNS)}
+                FROM project_member_invitations
+                WHERE project_id = %s AND email = %s AND role = %s AND status = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id), email, role, status),
+            )
+            saved_row = cursor.fetchone()
+        self.connection.commit()
+        saved_invitation = _row_dict(saved_row, PROJECT_MEMBER_INVITATION_COLUMNS)
+        saved_invitation["invite_token"] = invite_token
+        return RuntimeProjectMemberInvitation(
+            invitation=saved_invitation,
+            audit_events=(asdict(audit_event),),
+        )
+
     def delete_runtime_project_member(self, member: RuntimeProjectMemberDeleteInput) -> RuntimeProjectMember:
         project_id = member.project_id.strip()
         user_id = member.user_id.strip()
@@ -2129,6 +2332,24 @@ class PostgresEvidenceRepository:
         )
         audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
         return RuntimeProjectMember(member=member, audit_events=audit_events)
+
+    def _load_runtime_project_member_invitation(
+        self,
+        *,
+        cursor: DbCursor,
+        invitation: dict[str, Any],
+    ) -> RuntimeProjectMemberInvitation:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            """,
+            (_uuid(invitation["project_id"]), "project_member_invitation", str(invitation["id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeProjectMemberInvitation(invitation=invitation, audit_events=audit_events)
 
     def _load_runtime_project(self, *, cursor: DbCursor, project: dict[str, Any]) -> RuntimeProject:
         cursor.execute(

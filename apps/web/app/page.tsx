@@ -36,6 +36,25 @@ type RuntimeProjectMember = {
   audit_events: Array<{ event_type?: string; actor_id?: string; method_version?: string | null; after_hash?: string | null }>;
 };
 
+type RuntimeProjectMemberInvitation = {
+  invitation: {
+    id: string;
+    project_id: string;
+    email: string;
+    role: string;
+    status: string;
+    invite_token_hash?: string;
+    invite_token?: string;
+    invited_by?: string;
+    expires_at?: string | null;
+    accepted_at?: string | null;
+    revoked_at?: string | null;
+    created_at?: string;
+    updated_at?: string;
+  };
+  audit_events: Array<{ event_type?: string; actor_id?: string; method_version?: string | null; after_hash?: string | null }>;
+};
+
 type RuntimePrompt = {
   id: string;
   market_code: string;
@@ -665,6 +684,7 @@ type RuntimeData = {
   handoffDossier: AuHandoffDossier | null;
   projects: PageResponse<RuntimeProject>;
   projectMembers: PageResponse<RuntimeProjectMember>;
+  projectMemberInvitations: PageResponse<RuntimeProjectMemberInvitation>;
   brandKit: RuntimeProjectBrandKit | null;
   brandAssets: PageResponse<RuntimeProjectBrandAssetVersion>;
   brandAssetLibrary: PageResponse<RuntimeProjectBrandAsset>;
@@ -1466,6 +1486,7 @@ const endpoints = {
   handoffDossier: "/v1/handoff-dossier/au",
   projects: "/v1/projects/runtime",
   projectMembers: "/v1/project-members/runtime",
+  projectMemberInvitations: "/v1/project-member-invitations/runtime",
   prompts: "/v1/prompts/runtime",
   promptImports: "/v1/prompts/runtime/imports",
   evidence: "/v1/evidence-runs/runtime",
@@ -2041,6 +2062,42 @@ async function deleteRuntimeProjectMember(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/project-members/runtime DELETE returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function createRuntimeProjectMemberInvitation(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const email = String(formData.get("email") || "").trim();
+  if (!projectId || !email) {
+    throw new Error("project_id and email are required to create a project member invitation");
+  }
+  const expiresAt = String(formData.get("expires_at") || "").trim();
+  const payload = {
+    project_id: projectId,
+    email,
+    role: String(formData.get("role") || "viewer").trim(),
+    invited_by: String(formData.get("invited_by") || "runtime-console").trim(),
+    expires_at: expiresAt || undefined,
+    metadata: {
+      source: "runtime-console",
+      invite_note: String(formData.get("invite_note") || "").trim() || undefined
+    },
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/project-member-invitations/runtime`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/project-member-invitations/runtime returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -2673,6 +2730,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     handoffDossier: endpoints.handoffDossier,
     projects: runtimePath(endpoints.projects, projectListParams),
     projectMembers: endpoints.projectMembers,
+    projectMemberInvitations: endpoints.projectMemberInvitations,
     prompts: runtimePath(endpoints.prompts, {
       market_code: "AU",
       intent_type: filters.intent_type,
@@ -2786,6 +2844,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.projectMembers = selectedProjectId
     ? runtimePath(endpoints.projectMembers, { project_id: selectedProjectId, limit: 20 })
     : endpoints.projectMembers;
+  paths.projectMemberInvitations = selectedProjectId
+    ? runtimePath(endpoints.projectMemberInvitations, {
+        project_id: selectedProjectId,
+        status: "pending",
+        limit: 20
+      })
+    : endpoints.projectMemberInvitations;
   paths.prompts = runtimePath(endpoints.prompts, {
     ...selectedProjectParams,
     market_code: "AU",
@@ -2955,6 +3020,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     handoffDossier,
     prompts,
     projectMembers,
+    projectMemberInvitations,
     promptImports,
     evidence,
     questionEvidence,
@@ -3005,6 +3071,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
           emptyPage<RuntimeProjectMember>()
         )
       : Promise.resolve({ payload: emptyPage<RuntimeProjectMember>(), error: null }),
+    selectedProjectId
+      ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectMemberInvitation>>(
+          baseUrl,
+          paths.projectMemberInvitations,
+          emptyPage<RuntimeProjectMemberInvitation>()
+        )
+      : Promise.resolve({ payload: emptyPage<RuntimeProjectMemberInvitation>(), error: null }),
     fetchRuntimeEndpoint<PageResponse<RuntimePromptImportHistoryItem>>(
       baseUrl,
       paths.promptImports,
@@ -3138,6 +3211,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     projects,
     prompts,
     projectMembers,
+    projectMemberInvitations,
     promptImports,
     evidence,
     questionEvidence,
@@ -3186,6 +3260,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       handoffDossier: handoffDossier.payload,
       projects: projects.payload,
       projectMembers: projectMembers.payload,
+      projectMemberInvitations: projectMemberInvitations.payload,
       brandKit: brandKit.payload,
       brandAssets: brandAssets.payload,
       brandAssetLibrary: brandAssetLibrary.payload,
@@ -4283,7 +4358,7 @@ export default async function Home({
                     <h3>Project Members</h3>
                     <small>
                       {data.projectMembers.total_count} members · project_members gate · project_member_saved ·
-                      project_member_deleted
+                      project_member_deleted · {data.projectMemberInvitations.total_count} pending invites
                     </small>
                   </div>
                   {data.projectMembers.records.length ? (
@@ -4334,6 +4409,65 @@ export default async function Home({
                     <input type="hidden" name="updated_by" value="runtime-console" />
                     <button className="actionButton" type="submit">
                       Save member
+                    </button>
+                  </form>
+                  <div className="formHeader">
+                    <h3>Member Invitations</h3>
+                    <small>project_member_invitation_created · hashed token · owner/admin only</small>
+                  </div>
+                  {data.projectMemberInvitations.records.length ? (
+                    <ul className="plainList">
+                      {data.projectMemberInvitations.records.slice(0, 6).map((record) => (
+                        <li key={record.invitation.id}>
+                          <strong>{record.invitation.role}</strong>
+                          <span>{record.invitation.email}</span>
+                          <small>
+                            {record.invitation.status} · {record.audit_events[0]?.event_type || "no audit"} ·{" "}
+                            {record.invitation.invited_by || record.audit_events[0]?.actor_id || "runtime-console"}
+                          </small>
+                          <small>
+                            hash {record.invitation.invite_token_hash?.slice(0, 16) || "pending"} · expires{" "}
+                            {record.invitation.expires_at || "not set"}
+                          </small>
+                          {record.invitation.invite_token ? (
+                            <small>one-time token {record.invitation.invite_token}</small>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <small>No pending member invitations found.</small>
+                  )}
+                  <form action={createRuntimeProjectMemberInvitation} className="projectMemberForm">
+                    <input type="hidden" name="project_id" value={latestProject.project.id} />
+                    <label>
+                      <span>Email</span>
+                      <input name="email" type="email" defaultValue="viewer@example.com" />
+                    </label>
+                    <label>
+                      <span>Role</span>
+                      <select name="role" defaultValue="viewer">
+                        <option value="owner">owner</option>
+                        <option value="admin">admin</option>
+                        <option value="analyst">analyst</option>
+                        <option value="viewer">viewer</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Expires At</span>
+                      <input name="expires_at" type="datetime-local" />
+                    </label>
+                    <label>
+                      <span>Invite Note</span>
+                      <input name="invite_note" defaultValue="Design partner runtime access" />
+                    </label>
+                    <label className="wideField">
+                      <span>Reason</span>
+                      <input name="reason" defaultValue="Invite runtime project collaborator" />
+                    </label>
+                    <input type="hidden" name="invited_by" value="runtime-console" />
+                    <button className="actionButton" type="submit">
+                      Create invite
                     </button>
                   </form>
                 </div>

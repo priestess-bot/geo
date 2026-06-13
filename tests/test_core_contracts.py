@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import unittest
 from dataclasses import FrozenInstanceError
@@ -121,6 +122,9 @@ from geno_core.models import (
     RuntimeProjectMember,
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
+    RuntimeProjectMemberInvitation,
+    RuntimeProjectMemberInvitationInput,
+    RuntimeProjectMemberInvitationPage,
     RuntimeProjectMemberPage,
     RuntimePromptImportInput,
     RuntimePromptImportHistoryPage,
@@ -3792,6 +3796,124 @@ class CoreContractsTest(unittest.TestCase):
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("role = %s AND user_id <> %s", executed_sql)
         self.assertNotIn("ON CONFLICT (project_id, user_id) DO UPDATE", executed_sql)
+
+    def test_postgres_repository_lists_runtime_project_member_invitations_with_audit_events(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [
+                    {
+                        "id": invitation_id,
+                        "project_id": project_id,
+                        "email": "viewer@example.com",
+                        "role": "viewer",
+                        "status": "pending",
+                        "invite_token_hash": "hash",
+                        "invited_by": "agency-owner",
+                        "expires_at": now + timedelta(days=7),
+                        "accepted_at": None,
+                        "revoked_at": None,
+                        "metadata": {"source": "runtime-console"},
+                        "created_at": now,
+                        "updated_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": "2782a901-8cdf-47e7-bbdb-345d9ca66efe",
+                        "event_type": "project_member_invitation_created",
+                        "project_id": project_id,
+                        "actor_type": "user",
+                        "actor_id": "agency-owner",
+                        "target_type": "project_member_invitation",
+                        "target_id": invitation_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"project_ids": [project_id], "emails": ["viewer@example.com"]},
+                        "output_refs": {"project_member_invitation_ids": [invitation_id]},
+                        "method_version": "project_member_invitation_v1",
+                        "reason": "invite viewer",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+
+        page = PostgresEvidenceRepository(connection).list_runtime_project_member_invitations(
+            project_id=project_id,
+            status="pending",
+            limit=10,
+            offset=0,
+        )
+
+        self.assertIsInstance(page, RuntimeProjectMemberInvitationPage)
+        self.assertEqual(page.total_count, 1)
+        self.assertIsInstance(page.records[0], RuntimeProjectMemberInvitation)
+        self.assertEqual(page.records[0].invitation["email"], "viewer@example.com")
+        self.assertEqual(page.records[0].audit_events[0]["event_type"], "project_member_invitation_created")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM project_member_invitations WHERE project_id = %s AND status = %s", executed_sql)
+        self.assertIn("target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_creates_runtime_project_member_invitation_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        expires_at = now + timedelta(days=7)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
+        connection = RecordingConnection(
+            result_sets=[
+                {"id": project_id},
+                None,
+                {
+                    "id": invitation_id,
+                    "project_id": project_id,
+                    "email": "viewer@example.com",
+                    "role": "viewer",
+                    "status": "pending",
+                    "invite_token_hash": "hash",
+                    "invited_by": "agency-owner",
+                    "expires_at": expires_at,
+                    "accepted_at": None,
+                    "revoked_at": None,
+                    "metadata": {"source": "runtime-console"},
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            ]
+        )
+
+        record = PostgresEvidenceRepository(connection).create_runtime_project_member_invitation(
+            RuntimeProjectMemberInvitationInput(
+                project_id=project_id,
+                email="Viewer@Example.com",
+                role="viewer",
+                invited_by="agency-owner",
+                expires_at=expires_at,
+                metadata={"source": "runtime-console"},
+                reason="invite viewer",
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeProjectMemberInvitation)
+        self.assertEqual(record.invitation["email"], "viewer@example.com")
+        self.assertEqual(record.invitation["role"], "viewer")
+        self.assertEqual(record.invitation["status"], "pending")
+        self.assertIn("invite_token", record.invitation)
+        self.assertEqual(
+            hashlib.sha256(record.invitation["invite_token"].encode("utf-8")).hexdigest(),
+            record.audit_events[0]["output_refs"]["invite_token_hashes"][0],
+        )
+        self.assertEqual(record.audit_events[0]["event_type"], "project_member_invitation_created")
+        self.assertEqual(record.audit_events[0]["actor_id"], "agency-owner")
+        self.assertEqual(record.audit_events[0]["method_version"], "project_member_invitation_v1")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO project_member_invitations", executed_sql)
+        self.assertIn("ON CONFLICT (project_id, email, role, status) DO UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
 
     def test_postgres_repository_reads_runtime_prompt_page(self) -> None:
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"

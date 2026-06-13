@@ -64,6 +64,8 @@ from geno_core.models import (
     RuntimeProjectBrandAssetVersionPage,
     RuntimeProjectBrandLogoUpload,
     RuntimeProjectMember,
+    RuntimeProjectMemberInvitation,
+    RuntimeProjectMemberInvitationPage,
     RuntimeProjectMemberPage,
     RuntimePromptImportHistoryItem,
     RuntimePromptImportHistoryPage,
@@ -1473,6 +1475,171 @@ class ApiContractsTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("last project owner", response.json()["detail"])
+
+    def test_runtime_project_member_invitations_endpoint_passes_project_filter(self) -> None:
+        class FakeRepository:
+            def list_runtime_project_member_invitations(self, **kwargs: object) -> RuntimeProjectMemberInvitationPage:
+                self.kwargs = kwargs
+                return RuntimeProjectMemberInvitationPage(
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(
+                        RuntimeProjectMemberInvitation(
+                            invitation={
+                                "id": "invite-1",
+                                "project_id": kwargs["project_id"],
+                                "email": "viewer@example.com",
+                                "role": "viewer",
+                                "status": kwargs["status"],
+                                "invite_token_hash": "hash",
+                            },
+                            audit_events=(),
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/project-member-invitations/runtime"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c&status=pending&limit=5&offset=1"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["records"][0]["invitation"]["email"], "viewer@example.com")
+        self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.kwargs["status"], "pending")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+        self.assertEqual(fake_repository.kwargs["offset"], 1)
+
+    def test_runtime_project_member_invitations_endpoint_requires_admin_or_owner_role(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, **kwargs: object) -> str:
+                self.role_kwargs = kwargs
+                return "viewer"
+
+            def list_runtime_project_member_invitations(self, **kwargs: object) -> object:
+                raise AssertionError("list_runtime_project_member_invitations should not be called for viewer role")
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.get(
+                "/v1/project-member-invitations/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                headers={"X-GENO-Actor-Id": "agency-viewer"},
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("requires owner, admin", response.json()["detail"])
+        self.assertEqual(fake_repository.role_kwargs["actor_id"], "agency-viewer")
+
+    def test_runtime_project_member_invitation_create_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def create_runtime_project_member_invitation(self, invitation: object) -> RuntimeProjectMemberInvitation:
+                self.invitation = invitation
+                return RuntimeProjectMemberInvitation(
+                    invitation={
+                        "id": "invite-1",
+                        "project_id": invitation.project_id,
+                        "email": invitation.email,
+                        "role": invitation.role,
+                        "status": "pending",
+                        "invite_token": "geno-invite-token",
+                        "invite_token_hash": "hash",
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "project_member_invitation_created",
+                            "target_type": "project_member_invitation",
+                            "method_version": "project_member_invitation_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/project-member-invitations/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "email": "Viewer@Example.com",
+                    "role": "viewer",
+                    "invited_by": "agency-owner",
+                    "expires_at": "2026-06-17T00:00:00+00:00",
+                    "metadata": {"source": "runtime-console"},
+                    "reason": "invite viewer",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["invitation"]["email"], "Viewer@Example.com")
+        self.assertEqual(response.json()["audit_events"][0]["event_type"], "project_member_invitation_created")
+        self.assertEqual(fake_repository.invitation.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.invitation.email, "Viewer@Example.com")
+        self.assertEqual(fake_repository.invitation.role, "viewer")
+        self.assertEqual(fake_repository.invitation.invited_by, "agency-owner")
+        self.assertEqual(fake_repository.invitation.metadata["source"], "runtime-console")
+        self.assertIsNotNone(fake_repository.invitation.expires_at)
+
+    def test_runtime_project_member_invitation_create_endpoint_uses_actor_and_requires_admin_or_owner_role(
+        self,
+    ) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, **kwargs: object) -> str:
+                self.role_kwargs = kwargs
+                return "admin"
+
+            def set_runtime_project_access_context(self, **kwargs: object) -> None:
+                self.context_kwargs = kwargs
+
+            def create_runtime_project_member_invitation(self, invitation: object) -> RuntimeProjectMemberInvitation:
+                self.invitation = invitation
+                return RuntimeProjectMemberInvitation(
+                    invitation={"id": "invite-1", "project_id": invitation.project_id},
+                    audit_events=(),
+                )
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.post(
+                "/v1/project-member-invitations/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "email": "viewer@example.com",
+                    "role": "viewer",
+                    "invited_by": "payload-user",
+                },
+                headers={"X-GENO-Actor-Id": "agency-admin"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(fake_repository.role_kwargs["actor_id"], "agency-admin")
+        self.assertEqual(fake_repository.context_kwargs["actor_id"], "agency-admin")
+        self.assertEqual(fake_repository.invitation.invited_by, "agency-admin")
+
+    def test_runtime_project_member_invitation_create_endpoint_rejects_bad_expiry(self) -> None:
+        with patch("geno_api.main.build_repository_from_env", return_value=object()), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/project-member-invitations/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "email": "viewer@example.com",
+                    "expires_at": "not-a-date",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("expires_at must be ISO-8601 datetime", response.json()["detail"])
 
     def test_runtime_prompts_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/prompts/runtime")
@@ -4948,6 +5115,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeProjectMemberPage", payload["persistence"])
         self.assertIn("RuntimeProjectMemberInput", payload["persistence"])
         self.assertIn("ProjectMemberRequest", payload["persistence"])
+        self.assertIn("RuntimeProjectMemberInvitation", payload["persistence"])
+        self.assertIn("RuntimeProjectMemberInvitationPage", payload["persistence"])
+        self.assertIn("RuntimeProjectMemberInvitationInput", payload["persistence"])
+        self.assertIn("ProjectMemberInvitationRequest", payload["persistence"])
+        self.assertIn("/v1/project-member-invitations/runtime", payload["persistence"])
         self.assertIn("RuntimeProjectBrandKit", payload["persistence"])
         self.assertIn("RuntimeProjectBrandKitInput", payload["persistence"])
         self.assertIn("RuntimeProjectBrandAsset", payload["persistence"])

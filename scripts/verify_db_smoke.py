@@ -15,6 +15,7 @@ EXPECTED_TABLES = (
     "tenants",
     "projects",
     "project_members",
+    "project_member_invitations",
     "prompt_questions",
     "geo_samples",
     "answer_runs",
@@ -143,6 +144,15 @@ CRITICAL_COLUMNS = {
         "response_body_hash",
     ),
     "llm_call_logs": ("estimated_cost", "latency_ms", "status"),
+    "project_member_invitations": (
+        "email",
+        "role",
+        "status",
+        "invite_token_hash",
+        "invited_by",
+        "expires_at",
+        "metadata",
+    ),
 }
 
 EXPECTED_FUNCTIONS = (
@@ -155,6 +165,7 @@ EXPECTED_FUNCTIONS = (
 EXPECTED_RLS_TABLES = (
     "projects",
     "project_members",
+    "project_member_invitations",
     "prompt_questions",
     "answer_runs",
     "raw_answers",
@@ -205,6 +216,7 @@ EXPECTED_RLS_TABLES = (
 EXPECTED_POLICIES = (
     "projects_runtime_project_isolation",
     "project_members_runtime_project_isolation",
+    "project_member_invitations_runtime_project_isolation",
     "answer_runs_runtime_project_isolation",
     "raw_answers_runtime_project_isolation",
     "score_contributions_runtime_project_isolation",

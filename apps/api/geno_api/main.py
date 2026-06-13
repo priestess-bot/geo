@@ -84,6 +84,7 @@ from geno_core.models import (
     RuntimeProjectBrandLogoUpload,
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
+    RuntimeProjectMemberInvitationInput,
     RuntimePromptImportInput,
     RuntimeNotificationSubscriptionInput,
     RuntimeNotificationStatusInput,
@@ -1525,6 +1526,16 @@ class ProjectMemberDeleteRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class ProjectMemberInvitationRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    email: str = Field(min_length=1, max_length=320)
+    role: str = Field(default="viewer", min_length=1, max_length=40)
+    invited_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    expires_at: str | None = Field(default=None, max_length=80)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class RuntimeFidelityCheckRequest(BaseModel):
     project_id: str = Field(min_length=1)
     report_export_id: str | None = Field(default=None, min_length=1)
@@ -2016,6 +2027,80 @@ def delete_runtime_project_member(
             status_code = 404 if str(exc) == "project member not found" else 400
             raise HTTPException(status_code=status_code, detail=str(exc)) from exc
         return asdict(member)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/project-member-invitations/runtime")
+def runtime_project_member_invitations(
+    project_id: str = Query(min_length=1),
+    status: str | None = Query(default=None, min_length=1, max_length=40),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        page = repository.list_runtime_project_member_invitations(
+            project_id=project_id,
+            status=status.strip().lower() if status else None,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-member-invitations/runtime")
+def create_runtime_project_member_invitation(
+    payload: ProjectMemberInvitationRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        expires_at: datetime | None = None
+        if payload.expires_at:
+            try:
+                expires_at = datetime.fromisoformat(payload.expires_at.strip().replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="expires_at must be ISO-8601 datetime") from exc
+        try:
+            invitation = repository.create_runtime_project_member_invitation(
+                RuntimeProjectMemberInvitationInput(
+                    project_id=payload.project_id.strip(),
+                    email=payload.email.strip(),
+                    role=payload.role.strip().lower(),
+                    invited_by=actor_id or payload.invited_by.strip(),
+                    expires_at=expires_at,
+                    metadata=payload.metadata,
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(invitation)
     finally:
         close_repository_connection(repository)
 
@@ -4910,6 +4995,10 @@ def contracts() -> dict[str, list[str]]:
             "ProjectMemberRequest",
             "RuntimeProjectMemberDeleteInput",
             "ProjectMemberDeleteRequest",
+            "RuntimeProjectMemberInvitation",
+            "RuntimeProjectMemberInvitationPage",
+            "RuntimeProjectMemberInvitationInput",
+            "ProjectMemberInvitationRequest",
             "RuntimeProjectBrandKit",
             "RuntimeProjectBrandKitInput",
             "RuntimeProjectBrandAsset",
@@ -5025,6 +5114,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/projects/runtime",
             "/v1/projects/runtime/au/dtc-ecommerce",
             "/v1/project-members/runtime",
+            "/v1/project-member-invitations/runtime",
             "/v1/entity-aliases/runtime",
             "/v1/entity-aliases/runtime/candidates",
             "/v1/entity-aliases/runtime/candidates/reviews",

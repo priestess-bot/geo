@@ -289,6 +289,26 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("DROP FUNCTION IF EXISTS geno_runtime_can_access_project(uuid)", rollback)
         self.assertIn("DROP ROLE IF EXISTS geno_runtime_app", rollback)
 
+    def test_project_member_invitation_migration_is_project_scoped_and_auditable(self) -> None:
+        migration = (ROOT / "infra/db/migrations/up/0013_project_member_invitations.sql").read_text(encoding="utf-8")
+        rollback = (ROOT / "infra/db/migrations/down/0013_project_member_invitations.down.sql").read_text(
+            encoding="utf-8"
+        )
+        db_smoke_source = (ROOT / "scripts/verify_db_smoke.py").read_text(encoding="utf-8")
+
+        self.assertIn("CREATE TABLE IF NOT EXISTS project_member_invitations", migration)
+        self.assertIn("project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE", migration)
+        self.assertIn("invite_token_hash text NOT NULL", migration)
+        self.assertIn("UNIQUE(project_id, email, role, status)", migration)
+        self.assertIn("idx_project_member_invitations_project_status", migration)
+        self.assertIn("ALTER TABLE project_member_invitations FORCE ROW LEVEL SECURITY", migration)
+        self.assertIn("project_member_invitations_runtime_project_isolation", migration)
+        self.assertIn("geno_runtime_can_access_project(project_id)", migration)
+        self.assertIn("DROP TABLE IF EXISTS project_member_invitations", rollback)
+        self.assertIn('"project_member_invitations"', db_smoke_source)
+        self.assertIn('"invite_token_hash"', db_smoke_source)
+        self.assertIn('"project_member_invitations_runtime_project_isolation"', db_smoke_source)
+
     def test_browser_fidelity_plan_make_target_outputs_machine_readable_json(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
