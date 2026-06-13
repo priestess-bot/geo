@@ -718,6 +718,7 @@ type RuntimeData = {
   p0aExecutionChecklist: AuP0aExecutionChecklist | null;
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
   externalDependencyHandoff: AuExternalDependencyHandoff | null;
+  externalDependencyClearance: AuExternalDependencyClearance | null;
   broaderPlatformRegistry: AuBroaderPlatformRegistry | null;
   retestSchedulerPlan: AuRetestSchedulerPlan | null;
   retestExecutionStatus: AuRetestExecutionStatus | null;
@@ -1213,6 +1214,38 @@ type AuExternalDependencyHandoff = {
   };
 };
 
+type AuExternalDependencyClearance = {
+  clearance_execution_version: string;
+  generated_at: string;
+  mode: string;
+  status: string;
+  ready_to_execute: boolean;
+  external_dependency_handoff_ready: boolean;
+  clearance_execution_hash: string;
+  clearance_sequence_version: string;
+  planned_step_count: number;
+  recorded_step_count: number;
+  ready_step_count: number;
+  blocked_step_count: number;
+  would_execute_step_count: number;
+  current_step_id: string;
+  next_command: string;
+  hard_gate_commands?: string[];
+  errors?: string[];
+  steps?: Array<{
+    id: string;
+    index?: number;
+    title?: string;
+    status?: string;
+    ready?: boolean;
+    can_start?: boolean;
+    would_execute?: boolean;
+    blocked_by?: string[];
+    verification_commands?: string[];
+    evidence_outputs?: string[];
+  }>;
+};
+
 type RuntimeProjectBrandKit = {
   brand_kit: {
     id: string;
@@ -1696,6 +1729,7 @@ const endpoints = {
   p0aExecutionChecklist: "/v1/p0a-execution-checklist/au",
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
   externalDependencyHandoff: "/v1/external-dependency-handoff/au",
+  externalDependencyClearance: "/v1/external-dependency-clearance/au",
   broaderPlatformRegistry: "/v1/au-broader-platform-registry",
   retestSchedulerPlan: "/v1/au-retest-scheduler-plan",
   retestExecutionStatus: "/v1/au-retest-execution-status",
@@ -3107,6 +3141,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aExecutionChecklist: endpoints.p0aExecutionChecklist,
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
     externalDependencyHandoff: endpoints.externalDependencyHandoff,
+    externalDependencyClearance: endpoints.externalDependencyClearance,
     broaderPlatformRegistry: endpoints.broaderPlatformRegistry,
     retestSchedulerPlan: endpoints.retestSchedulerPlan,
     retestExecutionStatus: endpoints.retestExecutionStatus,
@@ -3419,6 +3454,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aExecutionChecklist,
     p0bGoogleExecutionChecklist,
     externalDependencyHandoff,
+    externalDependencyClearance,
     broaderPlatformRegistry,
     retestSchedulerPlan,
     retestExecutionStatus,
@@ -3467,6 +3503,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0aExecutionChecklist | null>(baseUrl, paths.p0aExecutionChecklist, null),
     fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
     fetchRuntimeEndpoint<AuExternalDependencyHandoff | null>(baseUrl, paths.externalDependencyHandoff, null),
+    fetchRuntimeEndpoint<AuExternalDependencyClearance | null>(baseUrl, paths.externalDependencyClearance, null),
     fetchRuntimeEndpoint<AuBroaderPlatformRegistry | null>(baseUrl, paths.broaderPlatformRegistry, null),
     fetchRuntimeEndpoint<AuRetestSchedulerPlan | null>(baseUrl, paths.retestSchedulerPlan, null),
     fetchRuntimeEndpoint<AuRetestExecutionStatus | null>(baseUrl, paths.retestExecutionStatus, null),
@@ -3680,6 +3717,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0aExecutionChecklist: p0aExecutionChecklist.payload,
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
       externalDependencyHandoff: externalDependencyHandoff.payload,
+      externalDependencyClearance: externalDependencyClearance.payload,
       broaderPlatformRegistry: broaderPlatformRegistry.payload,
       retestSchedulerPlan: retestSchedulerPlan.payload,
       retestExecutionStatus: retestExecutionStatus.payload,
@@ -4034,6 +4072,10 @@ export default async function Home({
   const externalClearanceSequence = externalDependencyHandoff?.clearance_sequence;
   const externalClearanceSteps = externalClearanceSequence?.steps || [];
   const topExternalClearanceSteps = externalClearanceSteps.slice(0, 6);
+  const externalDependencyClearance = data.externalDependencyClearance;
+  const externalDependencyClearanceSteps = externalDependencyClearance?.steps || [];
+  const topExternalDependencyClearanceSteps = externalDependencyClearanceSteps.slice(0, 6);
+  const externalDependencyWouldExecuteStep = externalDependencyClearanceSteps.find((step) => step.would_execute);
   const broaderPlatformRegistry = data.broaderPlatformRegistry;
   const broaderPlatformSummary = broaderPlatformRegistry?.summary;
   const broaderPlatformCandidates = broaderPlatformRegistry?.candidate_platforms || [];
@@ -4961,6 +5003,57 @@ export default async function Home({
             </span>
             <span>Hard gate: scripts/verify_au_external_dependency_handoff.py --require-ready</span>
             <span>Next clearance command {externalClearanceSequence?.next_command || "none"}</span>
+          </div>
+          <div className="clearanceDryRun">
+            <div className="launchRemediationHeader">
+              <strong>Clearance dry-run</strong>
+              <span>
+                {externalDependencyClearance?.clearance_execution_version ||
+                  "au_external_dependency_clearance_execution_v1"} · hash{" "}
+                {shortHash(externalDependencyClearance?.clearance_execution_hash)}
+              </span>
+            </div>
+            <div className="launchEvidenceGrid">
+              <span>Mode {externalDependencyClearance?.mode || "dry_run"}</span>
+              <span>Status {externalDependencyClearance?.status || "unknown"}</span>
+              <span>Ready to execute {externalDependencyClearance?.ready_to_execute ? "yes" : "no"}</span>
+              <span>
+                Handoff ready {externalDependencyClearance?.external_dependency_handoff_ready ? "yes" : "no"}
+              </span>
+              <span>
+                Current step {externalDependencyClearance?.current_step_id || externalClearanceSequence?.current_step_id || "none"}
+              </span>
+              <span>Would execute {externalDependencyClearance?.would_execute_step_count || 0}</span>
+            </div>
+            <div className="handoffBoundary">
+              <span>Dry-run does not execute provider, DB, Google, manual, or customer handoff commands.</span>
+              <span>
+                Next command {externalDependencyClearance?.next_command || externalClearanceSequence?.next_command || "none"}
+              </span>
+              <span>
+                Steps {externalDependencyClearance?.recorded_step_count || 0}/
+                {externalDependencyClearance?.planned_step_count || 0} · blocked{" "}
+                {externalDependencyClearance?.blocked_step_count || 0}
+              </span>
+              <span>
+                Hard gate: scripts/verify_au_external_dependency_clearance.py --require-handoff-ready
+              </span>
+              <span>Would-execute step {externalDependencyWouldExecuteStep?.id || "none"}</span>
+            </div>
+            <div className="clearanceStepGrid">
+              {topExternalDependencyClearanceSteps.map((step) => (
+                <div className="clearanceStep" key={step.id}>
+                  <strong>
+                    {step.index || 0}. {step.title || step.id}
+                  </strong>
+                  <span>
+                    {step.would_execute ? "would execute" : step.ready ? "ready" : step.status || "blocked"}
+                  </span>
+                  <small>{(step.blocked_by || []).slice(0, 2).join(" · ") || "gate clear"}</small>
+                </div>
+              ))}
+            </div>
+            <code>{paths.externalDependencyClearance}</code>
           </div>
           <div className="clearanceStepGrid">
             {topExternalClearanceSteps.map((step) => (

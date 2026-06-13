@@ -801,6 +801,14 @@ code {
   padding: 9px;
 }
 
+.clearanceDryRun {
+  border: 1px solid #cfe0ed;
+  border-radius: 4px;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
 .environmentChecklistGrid li,
 .environmentChecklistGrid small {
   color: #526575;

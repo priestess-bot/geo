@@ -99,11 +99,14 @@ def _step_result(step: dict[str, Any], *, stop_after_step: str | None) -> dict[s
 def run_au_external_dependency_clearance(
     *,
     handoff_path: Path = Path(DEFAULT_HANDOFF_PATH),
+    handoff: dict[str, Any] | None = None,
     output_path: Path | None = None,
     stop_after_step: str | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
-    handoff, load_errors = _load_handoff(handoff_path)
+    load_errors: list[str] = []
+    if handoff is None:
+        handoff, load_errors = _load_handoff(handoff_path)
     if handoff is None:
         return _with_hash(
             {

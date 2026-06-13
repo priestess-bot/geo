@@ -137,6 +137,10 @@ from scripts.build_au_external_dependency_handoff import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
     build_au_external_dependency_handoff,
 )
+from scripts.run_au_external_dependency_clearance import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+    run_au_external_dependency_clearance,
+)
 from scripts.build_au_broader_platform_registry import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_BROADER_PLATFORM_REGISTRY_OUTPUT_PATH,
     build_au_broader_platform_registry,
@@ -1889,6 +1893,10 @@ def au_handoff_dossier() -> dict[str, object]:
 
 @app.get("/v1/external-dependency-handoff/au")
 def au_external_dependency_handoff() -> dict[str, object]:
+    return _build_au_external_dependency_handoff_from_env()
+
+
+def _build_au_external_dependency_handoff_from_env() -> dict[str, object]:
     launch_status_path = Path(os.getenv("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH))
     remediation_plan_path = Path(
         os.getenv(
@@ -1935,6 +1943,26 @@ def au_external_dependency_handoff() -> dict[str, object]:
             os.getenv(
                 "GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",
                 DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/external-dependency-clearance/au")
+def au_external_dependency_clearance() -> dict[str, object]:
+    handoff_path = Path(
+        os.getenv(
+            "GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
+        )
+    )
+    return run_au_external_dependency_clearance(
+        handoff_path=handoff_path,
+        handoff=_build_au_external_dependency_handoff_from_env(),
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
             )
         ),
     )
@@ -5697,6 +5725,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/au-retest-execution-status",
             "/v1/handoff-dossier/au",
             "/v1/external-dependency-handoff/au",
+            "/v1/external-dependency-clearance/au",
             "/metrics",
         ],
     }

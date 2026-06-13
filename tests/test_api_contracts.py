@@ -680,6 +680,37 @@ class ApiContractsTest(unittest.TestCase):
         self.assertFalse(payload["redaction_policy"]["raw_manual_answer_values_allowed"])
         self.assertEqual(payload["external_dependency_handoff_hash"], compute_external_dependency_handoff_hash(payload))
 
+    def test_au_external_dependency_clearance_endpoint_returns_current_dry_run(self) -> None:
+        helper = AuHandoffDossierTest()
+        helper.setUp()
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
+            status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
+            plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
+            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geno_api.main.build_au_launch_remediation_plan",
+                return_value=plan_payload,
+            ):
+                response = self.client.get("/v1/external-dependency-clearance/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["clearance_execution_version"], "au_external_dependency_clearance_execution_v1")
+        self.assertEqual(payload["mode"], "dry_run")
+        self.assertEqual(payload["status"], "pass")
+        self.assertTrue(payload["ready_to_execute"])
+        self.assertFalse(payload["external_dependency_handoff_ready"])
+        self.assertEqual(payload["clearance_sequence_version"], "au_external_dependency_clearance_sequence_v1")
+        self.assertEqual(payload["planned_step_count"], 6)
+        self.assertEqual(payload["recorded_step_count"], 6)
+        self.assertEqual(payload["blocked_step_count"], 6)
+        self.assertEqual(payload["would_execute_step_count"], 1)
+        self.assertEqual(payload["current_step_id"], "p0a_provider_credentials")
+        self.assertEqual(payload["next_command"], "make verify-au-p0a-env-template")
+        self.assertTrue(payload["clearance_execution_hash"])
+        self.assertEqual(payload["steps"][0]["status"], "dry_run_ready_to_start")
+        self.assertTrue(payload["steps"][0]["would_execute"])
+
     def test_metrics_endpoint_exports_request_and_pool_metrics(self) -> None:
         self.client.get("/health")
         with patch(
@@ -6159,6 +6190,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/au-retest-execution-status", payload["persistence"])
         self.assertIn("/v1/handoff-dossier/au", payload["persistence"])
         self.assertIn("/v1/external-dependency-handoff/au", payload["persistence"])
+        self.assertIn("/v1/external-dependency-clearance/au", payload["persistence"])
         self.assertIn("/metrics", payload["persistence"])
 
 
