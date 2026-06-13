@@ -678,6 +678,7 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
             f"- 项目审计轨道：`{runtime_endpoints.get('runtime_audit_events', '')}`",
             f"- 项目审计 CSV：`{runtime_endpoints.get('runtime_audit_events_export', '')}`",
             f"- 外部依赖交接：`{runtime_endpoints.get('external_dependency_handoff', '')}`",
+            f"- 外部依赖清零 dry-run：`{runtime_endpoints.get('external_dependency_clearance', '')}`",
         ]
     )
     lines.extend(["", "## 证据来源", "", "| 名称 | 存在 | sha256 | 路径 |", "| --- | --- | --- | --- |"])
@@ -922,6 +923,7 @@ def build_au_handoff_dossier(
             "runtime_audit_events": "GET /v1/audit-events/runtime?project_id={project_id}",
             "runtime_audit_events_export": "GET /v1/audit-events/runtime/export.csv?project_id={project_id}",
             "external_dependency_handoff": "GET /v1/external-dependency-handoff/au",
+            "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
         },
         "launch_status": {
             "path": str(launch_status_path),

@@ -296,6 +296,8 @@ def verify_au_handoff_dossier(
         errors.append("runtime_endpoint_runtime_audit_events_export_invalid")
     if endpoints.get("external_dependency_handoff") != "GET /v1/external-dependency-handoff/au":
         errors.append("runtime_endpoint_external_dependency_handoff_invalid")
+    if endpoints.get("external_dependency_clearance") != "GET /v1/external-dependency-clearance/au":
+        errors.append("runtime_endpoint_external_dependency_clearance_invalid")
 
     next_work_item_id = str(summary.get("next_work_item_id") or "")
     if next_work_item_id != remediation.get("next_work_item_id"):

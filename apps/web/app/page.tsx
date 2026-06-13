@@ -1108,6 +1108,7 @@ type AuHandoffDossier = {
     runtime_audit_events?: string;
     runtime_audit_events_export?: string;
     external_dependency_handoff?: string;
+    external_dependency_clearance?: string;
   };
   next_work_item?: {
     id?: string;
@@ -4953,6 +4954,11 @@ export default async function Home({
               External dependency replay{" "}
               {handoffDossier?.runtime_endpoints?.external_dependency_handoff ||
                 "GET /v1/external-dependency-handoff/au"}
+            </span>
+            <span>
+              External clearance dry-run{" "}
+              {handoffDossier?.runtime_endpoints?.external_dependency_clearance ||
+                "GET /v1/external-dependency-clearance/au"}
             </span>
           </div>
           <code>{paths.handoffDossier}</code>

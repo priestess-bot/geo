@@ -581,6 +581,10 @@ class ApiContractsTest(unittest.TestCase):
             payload["runtime_endpoints"]["external_dependency_handoff"],
             "GET /v1/external-dependency-handoff/au",
         )
+        self.assertEqual(
+            payload["runtime_endpoints"]["external_dependency_clearance"],
+            "GET /v1/external-dependency-clearance/au",
+        )
         self.assertIn("p0a_environment_checklist", payload)
         self.assertEqual(payload["p0a_environment_checklist"]["missing_required_count"], 3)
         self.assertTrue(payload["p0a_environment_checklist"]["env_file_hygiene_ready"])
