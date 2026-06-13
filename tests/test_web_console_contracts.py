@@ -367,6 +367,22 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".projectMemberDeleteForm", css_source)
         self.assertIn(".inlineActions", css_source)
         self.assertIn(".inlineForm", css_source)
+
+    def test_invite_accept_page_exchanges_token_without_login_assumption(self) -> None:
+        page_source = Path("apps/web/app/invite/accept/page.tsx").read_text(encoding="utf-8")
+        css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
+
+        self.assertIn("InviteAcceptPage", page_source)
+        self.assertIn("acceptProjectInvitation", page_source)
+        self.assertIn("GENO_WEB_INVITE_ACCEPT_AUTO_SUBMIT", page_source)
+        self.assertIn("/v1/project-member-invitations/runtime/accept", page_source)
+        self.assertIn('name="invitation_id"', page_source)
+        self.assertIn('name="invite_token"', page_source)
+        self.assertIn("project_member_invitation_accepted", page_source)
+        self.assertIn("Accept invitation", page_source)
+        self.assertIn(".inviteShell", css_source)
+        self.assertIn(".inviteAcceptForm", css_source)
+        self.assertIn(".inviteResult", css_source)
         self.assertIn(".textButton", css_source)
 
     def test_runtime_console_surfaces_runtime_alerts(self) -> None:

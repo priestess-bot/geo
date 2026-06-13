@@ -1058,6 +1058,75 @@ code {
   margin-top: 6px;
 }
 
+.inviteShell {
+  align-items: center;
+  display: grid;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.invitePanel {
+  background: #ffffff;
+  border: 1px solid #d5dde6;
+  border-radius: 6px;
+  display: grid;
+  gap: 16px;
+  margin: 0 auto;
+  max-width: 560px;
+  padding: 18px;
+  width: 100%;
+}
+
+.inviteAcceptForm {
+  display: grid;
+  gap: 12px;
+}
+
+.inviteAcceptForm label {
+  display: grid;
+  gap: 5px;
+}
+
+.inviteAcceptForm label span {
+  color: #647382;
+  font-size: 12px;
+}
+
+.inviteAcceptForm input {
+  border: 1px solid #cfd7e1;
+  border-radius: 5px;
+  font-size: 14px;
+  min-height: 38px;
+  padding: 8px 9px;
+  width: 100%;
+}
+
+.inviteAcceptForm button {
+  background: #214e76;
+  border: 1px solid #214e76;
+  border-radius: 5px;
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 700;
+  min-height: 40px;
+  padding: 8px 12px;
+}
+
+.inviteResult {
+  background: #edf7f0;
+  border: 1px solid #a9d3b5;
+  border-radius: 6px;
+  display: grid;
+  gap: 5px;
+  padding: 11px;
+}
+
+.inviteResult span,
+.inviteResult small {
+  color: #48606f;
+  font-size: 12px;
+}
+
 .textButton {
   background: transparent;
   border: 0;
