@@ -64,6 +64,8 @@ from geno_core.models import (
     RuntimeProjectBrandAssetVersionPage,
     RuntimeProjectBrandLogoUpload,
     RuntimeProject,
+    RuntimeProjectLifecycleEvent,
+    RuntimeProjectLifecycleEventPage,
     RuntimeProjectMember,
     RuntimeProjectMemberInvitation,
     RuntimeProjectMemberInvitationPage,
@@ -996,6 +998,87 @@ class ApiContractsTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 409)
         self.assertIn("project already archived", response.json()["detail"])
+
+    def test_runtime_project_lifecycle_events_endpoint_passes_project_filter(self) -> None:
+        class FakeRepository:
+            def list_runtime_project_lifecycle_events(self, **kwargs: object) -> RuntimeProjectLifecycleEventPage:
+                self.kwargs = kwargs
+                return RuntimeProjectLifecycleEventPage(
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(
+                        RuntimeProjectLifecycleEvent(
+                            lifecycle_event={
+                                "id": "event-1",
+                                "project_id": kwargs["project_id"],
+                                "event_type": "project_archived",
+                                "actor_id": "agency-owner",
+                                "status_before": "paused",
+                                "status_after": "archived",
+                            },
+                            audit_events=({"event_type": "project_archived", "method_version": "runtime_project_archive_v1"},),
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/projects/runtime/lifecycle-events"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c&limit=5&offset=1"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_count"], 1)
+        self.assertEqual(payload["records"][0]["lifecycle_event"]["event_type"], "project_archived")
+        self.assertEqual(payload["records"][0]["lifecycle_event"]["status_before"], "paused")
+        self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+        self.assertEqual(fake_repository.kwargs["offset"], 1)
+
+    def test_runtime_project_lifecycle_events_endpoint_checks_access_control(self) -> None:
+        class FakeRepository:
+            def __init__(self, role: str | None) -> None:
+                self.role = role
+                self.contexts: list[tuple[str | None, str | None]] = []
+
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str | None:
+                self.role_project_id = project_id
+                self.role_actor_id = actor_id
+                return self.role
+
+            def set_runtime_project_access_context(self, *, actor_id: str, project_id: str | None = None) -> None:
+                self.contexts.append((actor_id, project_id))
+
+            def list_runtime_project_lifecycle_events(self, **kwargs: object) -> RuntimeProjectLifecycleEventPage:
+                self.kwargs = kwargs
+                return RuntimeProjectLifecycleEventPage(total_count=0, limit=int(kwargs["limit"]), offset=int(kwargs["offset"]), records=())
+
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        denied_repository = FakeRepository(role=None)
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=denied_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            denied = self.client.get(
+                f"/v1/projects/runtime/lifecycle-events?project_id={project_id}",
+                headers={"X-GENO-Actor-Id": "outsider"},
+            )
+        self.assertEqual(denied.status_code, 403)
+
+        allowed_repository = FakeRepository(role="viewer")
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=allowed_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            allowed = self.client.get(
+                f"/v1/projects/runtime/lifecycle-events?project_id={project_id}",
+                headers={"X-GENO-Actor-Id": "viewer-user"},
+            )
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(allowed_repository.contexts, [("viewer-user", project_id)])
 
     def test_runtime_projects_endpoint_requires_actor_when_access_control_enabled(self) -> None:
         with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}):
@@ -5622,6 +5705,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeSavedViewPage", payload["persistence"])
         self.assertIn("RuntimeProject", payload["persistence"])
         self.assertIn("RuntimeProjectPage", payload["persistence"])
+        self.assertIn("RuntimeProjectLifecycleEvent", payload["persistence"])
+        self.assertIn("RuntimeProjectLifecycleEventPage", payload["persistence"])
         self.assertIn("RuntimeProjectActionInput", payload["persistence"])
         self.assertIn("RuntimeProjectActionRequest", payload["persistence"])
         self.assertIn("RuntimeProjectUpdateInput", payload["persistence"])
@@ -5642,6 +5727,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("ProjectMemberInvitationEmailRequest", payload["persistence"])
         self.assertIn("POST /v1/projects/runtime/action", payload["persistence"])
         self.assertIn("PATCH /v1/projects/runtime", payload["persistence"])
+        self.assertIn("/v1/projects/runtime/lifecycle-events", payload["persistence"])
         self.assertIn("/v1/project-member-invitations/runtime", payload["persistence"])
         self.assertIn("/v1/project-member-invitations/runtime/action", payload["persistence"])
         self.assertIn("/v1/project-member-invitations/runtime/email", payload["persistence"])

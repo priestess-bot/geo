@@ -92,6 +92,8 @@ from geno_core.models import (
     RuntimeProjectBrandAssetVersionPage,
     RuntimeProjectBrandLogoUpload,
     RuntimeProject,
+    RuntimeProjectLifecycleEvent,
+    RuntimeProjectLifecycleEventPage,
     RuntimeProjectMember,
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
@@ -2076,6 +2078,74 @@ class PostgresEvidenceRepository:
             record = self._load_runtime_project(cursor=cursor, project=after)
         self.connection.commit()
         return record
+
+    def list_runtime_project_lifecycle_events(
+        self,
+        *,
+        project_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeProjectLifecycleEventPage:
+        project_id = project_id.strip()
+        if not project_id:
+            raise ValueError("project_id is required")
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        lifecycle_event_types = (
+            "project_bootstrap_created",
+            "project_updated",
+            "project_archived",
+            "project_restored",
+        )
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT count(*)
+                FROM audit_events
+                WHERE project_id = %s
+                  AND target_type = 'project'
+                  AND event_type = ANY(%s)
+                """,
+                (_uuid(project_id), list(lifecycle_event_types)),
+            )
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE project_id = %s
+                  AND target_type = 'project'
+                  AND event_type = ANY(%s)
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (_uuid(project_id), list(lifecycle_event_types), limit, offset),
+            )
+            audit_rows = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        records: list[RuntimeProjectLifecycleEvent] = []
+        for row in audit_rows:
+            input_refs = row.get("input_refs") if isinstance(row.get("input_refs"), dict) else {}
+            output_refs = row.get("output_refs") if isinstance(row.get("output_refs"), dict) else {}
+            lifecycle_event = {
+                "id": row.get("id"),
+                "project_id": row.get("project_id"),
+                "event_type": row.get("event_type"),
+                "actor_type": row.get("actor_type"),
+                "actor_id": row.get("actor_id"),
+                "target_id": row.get("target_id"),
+                "method_version": row.get("method_version"),
+                "reason": row.get("reason"),
+                "created_at": row.get("created_at"),
+                "before_hash": row.get("before_hash"),
+                "after_hash": row.get("after_hash"),
+                "action": _first_ref(input_refs.get("action")),
+                "status_before": _first_ref(input_refs.get("status_before")),
+                "status_after": _first_ref(input_refs.get("status_after") or output_refs.get("status")),
+                "changed_fields": input_refs.get("changed_fields") or [],
+            }
+            records.append(RuntimeProjectLifecycleEvent(lifecycle_event=lifecycle_event, audit_events=(row,)))
+        return RuntimeProjectLifecycleEventPage(total_count=total_count, limit=limit, offset=offset, records=tuple(records))
 
     def user_can_access_project(self, *, project_id: str, actor_id: str) -> bool:
         if not actor_id:

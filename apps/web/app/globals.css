@@ -223,6 +223,7 @@ code {
 .projectCreateForm,
 .projectUpdateForm,
 .projectLifecycleActions,
+.projectLifecycleHistory,
 .projectMemberForm,
 .brandKitForm,
 .brandAssetForm,
@@ -259,6 +260,10 @@ code {
 }
 
 .projectLifecycleActions {
+  grid-template-columns: 1fr;
+}
+
+.projectLifecycleHistory {
   grid-template-columns: 1fr;
 }
 

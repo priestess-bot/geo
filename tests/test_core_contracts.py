@@ -120,6 +120,7 @@ from geno_core.models import (
     RuntimeProjectBrandAssetVersionPage,
     RuntimeProjectBrandKitInput,
     RuntimeProjectBrandLogoUpload,
+    RuntimeProjectLifecycleEventPage,
     RuntimeProjectMember,
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
@@ -3850,6 +3851,64 @@ class CoreContractsTest(unittest.TestCase):
         audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
         self.assertEqual(audit_insert[1], "project_restored")
         self.assertEqual(audit_insert[11], "runtime_project_restore_v1")
+
+    def test_postgres_repository_lists_runtime_project_lifecycle_events(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        archive_audit = {
+            "id": "7f28023e-977f-4c14-9007-95e7e84db71a",
+            "event_type": "project_archived",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "agency-owner",
+            "target_type": "project",
+            "target_id": project_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {
+                "project_ids": [project_id],
+                "action": ["archive"],
+                "status_before": ["paused"],
+                "status_after": ["archived"],
+            },
+            "output_refs": {"project_ids": [project_id], "status": ["archived"]},
+            "method_version": "runtime_project_archive_v1",
+            "reason": "archive stale pilot",
+            "created_at": now,
+        }
+        update_audit = {
+            **archive_audit,
+            "id": "23a979b2-e258-4847-92e7-9a0d6e5e9777",
+            "event_type": "project_updated",
+            "input_refs": {"project_ids": [project_id], "changed_fields": ["name", "status"]},
+            "output_refs": {"project_ids": [project_id], "status": ["paused"]},
+            "method_version": "runtime_project_update_v1",
+            "reason": "pause client project",
+        }
+        connection = RecordingConnection(result_sets=[{"count": 2}, [archive_audit, update_audit]])
+
+        page = PostgresEvidenceRepository(connection).list_runtime_project_lifecycle_events(
+            project_id=project_id,
+            limit=5,
+            offset=1,
+        )
+
+        self.assertIsInstance(page, RuntimeProjectLifecycleEventPage)
+        self.assertEqual(page.total_count, 2)
+        self.assertEqual(page.records[0].lifecycle_event["event_type"], "project_archived")
+        self.assertEqual(page.records[0].lifecycle_event["action"], "archive")
+        self.assertEqual(page.records[0].lifecycle_event["status_before"], "paused")
+        self.assertEqual(page.records[0].lifecycle_event["status_after"], "archived")
+        self.assertEqual(page.records[1].lifecycle_event["changed_fields"], ["name", "status"])
+        self.assertEqual(page.records[1].audit_events[0]["method_version"], "runtime_project_update_v1")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM audit_events", executed_sql)
+        self.assertIn("event_type = ANY", executed_sql)
+        self.assertEqual(connection.calls[0][1], (UUID(project_id), list(("project_bootstrap_created", "project_updated", "project_archived", "project_restored"))))
+        self.assertEqual(
+            connection.calls[1][1],
+            (UUID(project_id), list(("project_bootstrap_created", "project_updated", "project_archived", "project_restored")), 5, 1),
+        )
 
     def test_postgres_repository_checks_project_membership(self) -> None:
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"

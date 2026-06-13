@@ -2072,6 +2072,38 @@ def action_runtime_project(
         close_repository_connection(repository)
 
 
+@app.get("/v1/projects/runtime/lifecycle-events")
+def runtime_project_lifecycle_events(
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=None,
+        )
+        try:
+            events = repository.list_runtime_project_lifecycle_events(
+                project_id=project_id.strip(),
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return asdict(events)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/project-members/runtime")
 def runtime_project_members(
     project_id: str = Query(min_length=1),
@@ -5251,6 +5283,8 @@ def contracts() -> dict[str, list[str]]:
             "archive_project_brand_logo",
             "RuntimeProject",
             "RuntimeProjectPage",
+            "RuntimeProjectLifecycleEvent",
+            "RuntimeProjectLifecycleEventPage",
             "RuntimeProjectCreateRequest",
             "RuntimeProjectActionInput",
             "RuntimeProjectActionRequest",
@@ -5388,6 +5422,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/projects/runtime/au/dtc-ecommerce",
             "POST /v1/projects/runtime/action",
             "PATCH /v1/projects/runtime",
+            "/v1/projects/runtime/lifecycle-events",
             "/v1/project-members/runtime",
             "/v1/project-member-invitations/runtime",
             "/v1/project-member-invitations/runtime/action",

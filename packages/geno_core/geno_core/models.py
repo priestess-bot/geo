@@ -1098,6 +1098,20 @@ class RuntimeProjectPage:
 
 
 @dataclass(frozen=True)
+class RuntimeProjectLifecycleEvent:
+    lifecycle_event: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeProjectLifecycleEventPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeProjectLifecycleEvent, ...]
+
+
+@dataclass(frozen=True)
 class RuntimeProjectUpdateInput:
     project_id: str
     name: str | None = None

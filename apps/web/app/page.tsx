@@ -56,6 +56,27 @@ type RuntimeProjectMemberInvitation = {
   audit_events: Array<{ event_type?: string; actor_id?: string; method_version?: string | null; after_hash?: string | null }>;
 };
 
+type RuntimeProjectLifecycleEvent = {
+  lifecycle_event: {
+    id?: string;
+    project_id?: string;
+    event_type?: string;
+    actor_type?: string;
+    actor_id?: string;
+    target_id?: string;
+    method_version?: string | null;
+    reason?: string | null;
+    created_at?: string | null;
+    before_hash?: string | null;
+    after_hash?: string | null;
+    action?: string | null;
+    status_before?: string | null;
+    status_after?: string | null;
+    changed_fields?: string[];
+  };
+  audit_events: Array<{ event_type?: string; method_version?: string | null; after_hash?: string | null }>;
+};
+
 type RuntimePrompt = {
   id: string;
   market_code: string;
@@ -684,6 +705,7 @@ type RuntimeData = {
   retestExecutionStatus: AuRetestExecutionStatus | null;
   handoffDossier: AuHandoffDossier | null;
   projects: PageResponse<RuntimeProject>;
+  projectLifecycleEvents: PageResponse<RuntimeProjectLifecycleEvent>;
   projectMembers: PageResponse<RuntimeProjectMember>;
   projectMemberInvitations: PageResponse<RuntimeProjectMemberInvitation>;
   brandKit: RuntimeProjectBrandKit | null;
@@ -1487,6 +1509,7 @@ const endpoints = {
   handoffDossier: "/v1/handoff-dossier/au",
   projects: "/v1/projects/runtime",
   projectAction: "/v1/projects/runtime/action",
+  projectLifecycleEvents: "/v1/projects/runtime/lifecycle-events",
   projectMembers: "/v1/project-members/runtime",
   projectMemberInvitations: "/v1/project-member-invitations/runtime",
   projectMemberInvitationAction: "/v1/project-member-invitations/runtime/action",
@@ -2893,6 +2916,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     handoffDossier: endpoints.handoffDossier,
     projects: runtimePath(endpoints.projects, projectListParams),
     projectAction: endpoints.projectAction,
+    projectLifecycleEvents: endpoints.projectLifecycleEvents,
     projectMembers: endpoints.projectMembers,
     projectMemberInvitations: endpoints.projectMemberInvitations,
     projectMemberInvitationAction: endpoints.projectMemberInvitationAction,
@@ -3009,6 +3033,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       ? filters.project_id
       : undefined) || projectRecords[0]?.project.id;
   const selectedProjectParams = selectedProjectId ? { project_id: selectedProjectId } : {};
+  paths.projectLifecycleEvents = selectedProjectId
+    ? runtimePath(endpoints.projectLifecycleEvents, { project_id: selectedProjectId, limit: 20 })
+    : endpoints.projectLifecycleEvents;
   paths.projectMembers = selectedProjectId
     ? runtimePath(endpoints.projectMembers, { project_id: selectedProjectId, limit: 20 })
     : endpoints.projectMembers;
@@ -3187,6 +3214,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     retestExecutionStatus,
     handoffDossier,
     prompts,
+    projectLifecycleEvents,
     projectMembers,
     projectMemberInvitations,
     promptImports,
@@ -3232,6 +3260,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuRetestExecutionStatus | null>(baseUrl, paths.retestExecutionStatus, null),
     fetchRuntimeEndpoint<AuHandoffDossier | null>(baseUrl, paths.handoffDossier, null),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
+    selectedProjectId
+      ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectLifecycleEvent>>(
+          baseUrl,
+          paths.projectLifecycleEvents,
+          emptyPage<RuntimeProjectLifecycleEvent>()
+        )
+      : Promise.resolve({ payload: emptyPage<RuntimeProjectLifecycleEvent>(), error: null }),
     selectedProjectId
       ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectMember>>(
           baseUrl,
@@ -3378,6 +3413,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     handoffDossier,
     projects,
     prompts,
+    projectLifecycleEvents,
     projectMembers,
     projectMemberInvitations,
     promptImports,
@@ -3427,6 +3463,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       retestExecutionStatus: retestExecutionStatus.payload,
       handoffDossier: handoffDossier.payload,
       projects: projects.payload,
+      projectLifecycleEvents: projectLifecycleEvents.payload,
       projectMembers: projectMembers.payload,
       projectMemberInvitations: projectMemberInvitations.payload,
       brandKit: brandKit.payload,
@@ -4584,6 +4621,37 @@ export default async function Home({
                       {latestProject.project.status === "archived" ? "Restore project" : "Archive project"}
                     </button>
                   </form>
+                </div>
+                <div className="projectLifecycleHistory">
+                  <div className="formHeader">
+                    <h3>Project Lifecycle</h3>
+                    <small>
+                      GET /v1/projects/runtime/lifecycle-events · project_bootstrap_created · project_updated ·
+                      project_archived · project_restored
+                    </small>
+                  </div>
+                  {data.projectLifecycleEvents.records.length ? (
+                    <ul className="plainList">
+                      {data.projectLifecycleEvents.records.slice(0, 6).map((record) => (
+                        <li key={record.lifecycle_event.id || `${record.lifecycle_event.event_type}-${record.lifecycle_event.created_at}`}>
+                          <strong>{record.lifecycle_event.event_type || "project_lifecycle_event"}</strong>
+                          <span>{record.lifecycle_event.reason || record.lifecycle_event.method_version || "no reason"}</span>
+                          <small>
+                            {record.lifecycle_event.actor_id || "system"} ·{" "}
+                            {record.lifecycle_event.status_before || "none"} →{" "}
+                            {record.lifecycle_event.status_after || "none"} ·{" "}
+                            {record.lifecycle_event.method_version || "no method"}
+                          </small>
+                          <small>
+                            {record.lifecycle_event.created_at || "no timestamp"} · hash{" "}
+                            {record.lifecycle_event.after_hash || record.audit_events[0]?.after_hash || "no hash"}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <small>No project lifecycle events found.</small>
+                  )}
                 </div>
                 <div className="projectMembers">
                   <div className="formHeader">
