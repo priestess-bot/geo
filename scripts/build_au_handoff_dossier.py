@@ -269,6 +269,7 @@ def _p0a_environment_checklist_summary(checklist: dict[str, Any]) -> dict[str, A
 def _p0a_execution_checklist_summary(checklist: dict[str, Any]) -> dict[str, Any]:
     summary = _as_dict(checklist.get("summary"))
     credential_handoff = _as_dict(checklist.get("credential_handoff"))
+    real_batch_phase_handoff = _as_dict(checklist.get("real_batch_phase_handoff"))
     redaction_policy = _as_dict(credential_handoff.get("redaction_policy"))
     return {
         "path": str(_as_dict(checklist.get("paths")).get("output", "")),
@@ -305,6 +306,12 @@ def _p0a_execution_checklist_summary(checklist: dict[str, Any]) -> dict[str, Any
         "credential_handoff_verification_command_count": len(_as_list(credential_handoff.get("verification_commands"))),
         "credential_handoff_secret_redacted": redaction_policy.get("raw_secret_values_allowed") is False
         and redaction_policy.get("forbidden_exact_secret_fields_redacted") is True,
+        "real_batch_phase_handoff_ready": real_batch_phase_handoff.get("ready") is True,
+        "real_batch_phase_handoff_next_phase": str(real_batch_phase_handoff.get("next_phase") or ""),
+        "real_batch_phase_handoff_ready_phase_count": real_batch_phase_handoff.get("ready_phase_count", 0),
+        "real_batch_phase_handoff_blocked_phase_count": real_batch_phase_handoff.get("blocked_phase_count", 0),
+        "real_batch_phase_handoff_total_planned_runs": real_batch_phase_handoff.get("total_planned_runs", 0),
+        "real_batch_phase_order": [str(value) for value in _as_list(real_batch_phase_handoff.get("phase_order"))],
     }
 
 
@@ -577,6 +584,12 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
             f"redacted: {'yes' if p0a_execution_checklist.get('credential_handoff_secret_redacted') else 'no'}）",
             f"- Credential missing：{', '.join(str(value) for value in _as_list(p0a_execution_checklist.get('credential_handoff_missing_required'))) or '无'}",
             f"- Credential target env file：{p0a_execution_checklist.get('credential_handoff_target_env_file') or 'none'}",
+            f"- Real batch phase handoff：{'ready' if p0a_execution_checklist.get('real_batch_phase_handoff_ready') else 'blocked'}"
+            f"（next: {p0a_execution_checklist.get('real_batch_phase_handoff_next_phase') or 'none'}, "
+            f"ready phases: {p0a_execution_checklist.get('real_batch_phase_handoff_ready_phase_count', 0)}, "
+            f"blocked phases: {p0a_execution_checklist.get('real_batch_phase_handoff_blocked_phase_count', 0)}, "
+            f"planned runs: {p0a_execution_checklist.get('real_batch_phase_handoff_total_planned_runs', 0)}）",
+            f"- Real batch phase order：{', '.join(str(value) for value in _as_list(p0a_execution_checklist.get('real_batch_phase_order'))) or '无'}",
             f"- Status verifier：{p0a_execution_checklist.get('status_verifier_status', '')}",
             "",
             "## P0b Google 执行清单",
@@ -769,6 +782,18 @@ def build_au_handoff_dossier(
                 "credential_handoff_secret_redacted",
             )
             is True,
+            "p0a_real_batch_phase_handoff_ready": p0a_execution_checklist_summary.get(
+                "real_batch_phase_handoff_ready",
+            )
+            is True,
+            "p0a_real_batch_phase_handoff_next_phase": p0a_execution_checklist_summary.get(
+                "real_batch_phase_handoff_next_phase",
+                "",
+            ),
+            "p0a_real_batch_phase_handoff_blocked_phase_count": p0a_execution_checklist_summary.get(
+                "real_batch_phase_handoff_blocked_phase_count",
+                0,
+            ),
             "p0b_google_execution_checklist_ready": p0b_google_checklist_summary.get(
                 "google_execution_checklist_ready"
             )

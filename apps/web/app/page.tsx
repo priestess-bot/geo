@@ -969,6 +969,19 @@ type AuP0aExecutionChecklist = {
     credential_handoff_setup_command_count?: number;
     credential_handoff_verification_command_count?: number;
     credential_handoff_secret_redacted?: boolean;
+    real_batch_phase_handoff_ready?: boolean;
+    real_batch_phase_handoff_next_phase?: string;
+    real_batch_phase_handoff_ready_phase_count?: number;
+    real_batch_phase_handoff_blocked_phase_count?: number;
+    real_batch_phase_handoff_total_planned_runs?: number;
+  };
+  real_batch_phase_handoff?: {
+    ready?: boolean;
+    next_phase?: string;
+    ready_phase_count?: number;
+    blocked_phase_count?: number;
+    total_planned_runs?: number;
+    phase_order?: string[];
   };
   verification_commands?: Array<{ id?: string; shell?: string; purpose?: string }>;
   evidence_outputs?: string[];
@@ -1035,6 +1048,9 @@ type AuHandoffDossier = {
     p0a_credential_handoff_ready?: boolean;
     p0a_credential_handoff_missing_required_count?: number;
     p0a_credential_handoff_secret_redacted?: boolean;
+    p0a_real_batch_phase_handoff_ready?: boolean;
+    p0a_real_batch_phase_handoff_next_phase?: string;
+    p0a_real_batch_phase_handoff_blocked_phase_count?: number;
     p0a_env_file_hygiene_ready?: boolean;
     p0a_env_file_hygiene_error_count?: number;
     p0a_env_file_hygiene_warning_count?: number;
@@ -4482,6 +4498,13 @@ export default async function Home({
             </span>
             <span>Credential target env file {p0aExecutionSummary?.credential_handoff_target_env_file || "none"}</span>
             <span>
+              Real batch phase handoff{" "}
+              {p0aExecutionSummary?.real_batch_phase_handoff_ready ? "ready" : "blocked"} · next{" "}
+              {p0aExecutionSummary?.real_batch_phase_handoff_next_phase || "none"} · blocked phases{" "}
+              {p0aExecutionSummary?.real_batch_phase_handoff_blocked_phase_count || 0}
+            </span>
+            <span>Real batch planned runs {p0aExecutionSummary?.real_batch_phase_handoff_total_planned_runs || 0}</span>
+            <span>
               Verifiers: execution {p0aExecutionSummary?.runbook_execution_verifier_status || "unknown"} · package{" "}
               {p0aExecutionSummary?.package_verifier_status || "unknown"} · status{" "}
               {p0aExecutionSummary?.status_verifier_status || "unknown"}
@@ -4653,6 +4676,12 @@ export default async function Home({
               P0a credential handoff {handoffSummary?.p0a_credential_handoff_ready ? "ready" : "blocked"} · missing{" "}
               {handoffSummary?.p0a_credential_handoff_missing_required_count || 0} · redacted{" "}
               {handoffSummary?.p0a_credential_handoff_secret_redacted ? "yes" : "no"}
+            </span>
+            <span>
+              P0a real batch phase handoff{" "}
+              {handoffSummary?.p0a_real_batch_phase_handoff_ready ? "ready" : "blocked"} · next{" "}
+              {handoffSummary?.p0a_real_batch_phase_handoff_next_phase || "none"} · blocked phases{" "}
+              {handoffSummary?.p0a_real_batch_phase_handoff_blocked_phase_count || 0}
             </span>
             <span>
               P0b env-file hygiene{" "}

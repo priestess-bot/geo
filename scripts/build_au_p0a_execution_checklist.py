@@ -169,16 +169,17 @@ def _runbook_execution_commands(runbook: dict[str, Any]) -> list[dict[str, Any]]
         command_text = _command_text(item.get("command"))
         if not step_id or not command_text:
             continue
-        commands.append(
-            {
-                "id": step_id,
-                "shell": command_text,
-                "purpose": str(item.get("description") or item.get("name") or step_id),
-                "output_paths": [str(path) for path in _as_list(item.get("output_paths"))],
-                "external_call_risk": item.get("external_call_risk") is True,
-                "stop_on_failure": item.get("stop_on_failure") is not False,
-            }
-        )
+        command = {
+            "id": step_id,
+            "shell": command_text,
+            "purpose": str(item.get("description") or item.get("name") or step_id),
+            "output_paths": [str(path) for path in _as_list(item.get("output_paths"))],
+            "external_call_risk": item.get("external_call_risk") is True,
+            "stop_on_failure": item.get("stop_on_failure") is not False,
+        }
+        if isinstance(item.get("planned_runs"), int):
+            command["planned_runs"] = item["planned_runs"]
+        commands.append(command)
     return commands
 
 
@@ -325,6 +326,176 @@ def _work_items() -> list[dict[str, Any]]:
             "hard_gate": "hard_status_gate",
         },
     ]
+
+
+def _commands_by_id(runbook: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {str(command.get("id", "")): command for command in _runbook_execution_commands(runbook)}
+
+
+def _commands_for_phase(commands_by_id: dict[str, dict[str, Any]], command_ids: tuple[str, ...]) -> list[dict[str, Any]]:
+    return [commands_by_id[command_id] for command_id in command_ids if command_id in commands_by_id]
+
+
+def _artifact_gate_entry(package: dict[str, Any], artifact_key: str) -> dict[str, Any]:
+    artifact = _as_dict(_as_dict(package.get("artifacts")).get(artifact_key))
+    status = str(artifact.get("status") or "missing")
+    errors = [str(value) for value in _as_list(artifact.get("errors"))]
+    ready_for_design_partner = artifact.get("ready_for_design_partner") is True
+    hash_valid = artifact.get("hash_valid")
+    ready = status == "pass" and ready_for_design_partner
+    return {
+        "key": artifact_key,
+        "path": str(artifact.get("path") or ""),
+        "exists": artifact.get("exists") is True,
+        "status": status,
+        "ready_for_design_partner": ready_for_design_partner,
+        "hash_valid": hash_valid,
+        "ready": ready,
+        "errors": errors,
+    }
+
+
+def _phase_blocking_reasons(
+    *,
+    artifact_entries: list[dict[str, Any]],
+    package_summary: dict[str, Any],
+    credential_handoff: dict[str, Any],
+) -> list[str]:
+    reasons: list[str] = []
+    if credential_handoff.get("ready") is not True:
+        for name in _as_list(credential_handoff.get("missing_required")):
+            reasons.append(f"credential_handoff_missing_required:{name}")
+    package_blocking_reasons = [str(value) for value in _as_list(package_summary.get("blocking_reasons"))]
+    for artifact in artifact_entries:
+        key = str(artifact.get("key", ""))
+        if artifact.get("ready") is True:
+            continue
+        for error in _as_list(artifact.get("errors")):
+            reasons.append(f"{key}:{error}")
+        if artifact.get("status") != "pass":
+            reasons.append(f"{key}:status_not_pass")
+        if artifact.get("ready_for_design_partner") is not True:
+            reasons.append(f"{key}:design_partner_not_ready")
+        for reason in package_blocking_reasons:
+            if reason.startswith(f"{key}:") and reason not in reasons:
+                reasons.append(reason)
+    return sorted(dict.fromkeys(reasons))
+
+
+def _phase_handoff_phase(
+    *,
+    phase_id: str,
+    title: str,
+    planned_runs: int,
+    command_ids: tuple[str, ...],
+    artifact_keys: tuple[str, ...],
+    prerequisite_gate_ids: tuple[str, ...],
+    commands_by_id: dict[str, dict[str, Any]],
+    package: dict[str, Any],
+    package_summary: dict[str, Any],
+    credential_handoff: dict[str, Any],
+    can_start: bool,
+) -> dict[str, Any]:
+    artifact_entries = [_artifact_gate_entry(package, key) for key in artifact_keys]
+    ready = all(entry.get("ready") is True for entry in artifact_entries)
+    blocking_reasons = _phase_blocking_reasons(
+        artifact_entries=artifact_entries,
+        package_summary=package_summary,
+        credential_handoff=credential_handoff,
+    )
+    return {
+        "id": phase_id,
+        "title": title,
+        "planned_runs": planned_runs,
+        "ready": ready,
+        "can_start": can_start,
+        "command_ids": list(command_ids),
+        "commands": _commands_for_phase(commands_by_id, command_ids),
+        "artifact_keys": list(artifact_keys),
+        "artifacts": artifact_entries,
+        "evidence_outputs": [str(entry.get("path") or "") for entry in artifact_entries],
+        "prerequisite_gate_ids": list(prerequisite_gate_ids),
+        "blocking_reasons": blocking_reasons,
+    }
+
+
+def _real_batch_phase_handoff(
+    runbook: dict[str, Any],
+    package: dict[str, Any],
+    *,
+    credential_handoff: dict[str, Any],
+) -> dict[str, Any]:
+    commands_by_id = _commands_by_id(runbook)
+    scope = _as_dict(runbook.get("scope"))
+    small_scope = _as_dict(scope.get("small_batch"))
+    full_scope = _as_dict(scope.get("full_batch"))
+    package_summary = _as_dict(package.get("summary"))
+    preflight_planned_runs = int(commands_by_id.get("preflight_collect", {}).get("planned_runs") or 0)
+    small_planned_runs = int(small_scope.get("planned_runs") or commands_by_id.get("small_batch_collect", {}).get("planned_runs") or 0)
+    full_planned_runs = int(full_scope.get("planned_runs") or commands_by_id.get("full_batch_collect", {}).get("planned_runs") or 0)
+    preflight_can_start = credential_handoff.get("ready") is True
+    preflight = _phase_handoff_phase(
+        phase_id="preflight",
+        title="Provider preflight and manifest gate",
+        planned_runs=preflight_planned_runs,
+        command_ids=(
+            "preflight_collect",
+            "preflight_verify_audit",
+            "preflight_manifest_audit",
+            "preflight_design_partner_gate",
+        ),
+        artifact_keys=("preflight_json", "preflight_manifest"),
+        prerequisite_gate_ids=("hard_environment_gate", "hard_runbook_execution_gate"),
+        commands_by_id=commands_by_id,
+        package=package,
+        package_summary=package_summary,
+        credential_handoff=credential_handoff,
+        can_start=preflight_can_start,
+    )
+    small_batch = _phase_handoff_phase(
+        phase_id="small_batch",
+        title="Small AU batch and manifest gate",
+        planned_runs=small_planned_runs,
+        command_ids=("small_batch_collect", "small_batch_manifest_gate"),
+        artifact_keys=("small_batch_json", "small_batch_manifest"),
+        prerequisite_gate_ids=("hard_preflight_gate",),
+        commands_by_id=commands_by_id,
+        package=package,
+        package_summary=package_summary,
+        credential_handoff=credential_handoff,
+        can_start=preflight.get("ready") is True,
+    )
+    full_batch = _phase_handoff_phase(
+        phase_id="full_batch",
+        title="Full AU P0a batch and package/status gate",
+        planned_runs=full_planned_runs,
+        command_ids=("full_batch_collect", "full_batch_manifest_gate"),
+        artifact_keys=("full_batch_json", "full_batch_manifest"),
+        prerequisite_gate_ids=("hard_package_gate", "hard_status_gate"),
+        commands_by_id=commands_by_id,
+        package=package,
+        package_summary=package_summary,
+        credential_handoff=credential_handoff,
+        can_start=small_batch.get("ready") is True,
+    )
+    phases = [preflight, small_batch, full_batch]
+    ready_phase_count = sum(1 for phase in phases if phase.get("ready") is True)
+    next_phase = next((str(phase.get("id")) for phase in phases if phase.get("ready") is not True), "complete")
+    return {
+        "version": "au_p0a_real_batch_phase_handoff_v1",
+        "ready": ready_phase_count == len(phases),
+        "phase_count": len(phases),
+        "ready_phase_count": ready_phase_count,
+        "blocked_phase_count": len(phases) - ready_phase_count,
+        "next_phase": next_phase,
+        "total_planned_runs": sum(int(phase.get("planned_runs") or 0) for phase in phases),
+        "phase_order": [str(phase.get("id")) for phase in phases],
+        "phases": phases,
+        "redaction_policy": {
+            "raw_secret_values_allowed": False,
+            "phase_entries_reference_command_ids_and_artifact_paths_only": True,
+        },
+    }
 
 
 def _credential_handoff(
@@ -474,6 +645,12 @@ def build_au_p0a_execution_checklist(
         execution_ok=execution_ok,
         status_next_action=str(status_report.get("next_action") or ""),
     )
+    credential_handoff = _credential_handoff(environment_report, env_file_path=env_file_path)
+    real_batch_phase_handoff = _real_batch_phase_handoff(
+        runbook,
+        package,
+        credential_handoff=credential_handoff,
+    )
     checklist: dict[str, Any] = {
         "execution_checklist_version": CHECKLIST_VERSION,
         "generated_at": generated_at or _utc_now_iso(),
@@ -525,6 +702,11 @@ def build_au_p0a_execution_checklist(
             "runbook_execution_verifier_status": execution_verifier.get("status", ""),
             "package_verifier_status": package_verifier.get("status", ""),
             "status_verifier_status": status_verifier.get("status", ""),
+            "real_batch_phase_handoff_ready": real_batch_phase_handoff.get("ready") is True,
+            "real_batch_phase_handoff_next_phase": real_batch_phase_handoff.get("next_phase", ""),
+            "real_batch_phase_handoff_ready_phase_count": real_batch_phase_handoff.get("ready_phase_count", 0),
+            "real_batch_phase_handoff_blocked_phase_count": real_batch_phase_handoff.get("blocked_phase_count", 0),
+            "real_batch_phase_handoff_total_planned_runs": real_batch_phase_handoff.get("total_planned_runs", 0),
         },
         "runbook_source": runbook_source,
         "runbook_verifier": runbook_verifier,
@@ -568,7 +750,8 @@ def build_au_p0a_execution_checklist(
         },
         "status_report_verifier": status_verifier,
         "setup_commands": _setup_commands(),
-        "credential_handoff": _credential_handoff(environment_report, env_file_path=env_file_path),
+        "credential_handoff": credential_handoff,
+        "real_batch_phase_handoff": real_batch_phase_handoff,
         "execution_commands": _runbook_execution_commands(runbook),
         "verification_commands": _verification_commands(),
         "work_items": _work_items(),

@@ -236,6 +236,12 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertFalse(dossier["summary"]["p0a_credential_handoff_ready"])
         self.assertEqual(dossier["summary"]["p0a_credential_handoff_missing_required_count"], 3)
         self.assertTrue(dossier["summary"]["p0a_credential_handoff_secret_redacted"])
+        self.assertFalse(dossier["p0a_execution_checklist"]["real_batch_phase_handoff_ready"])
+        self.assertEqual(dossier["p0a_execution_checklist"]["real_batch_phase_handoff_next_phase"], "preflight")
+        self.assertEqual(dossier["p0a_execution_checklist"]["real_batch_phase_handoff_blocked_phase_count"], 3)
+        self.assertFalse(dossier["summary"]["p0a_real_batch_phase_handoff_ready"])
+        self.assertEqual(dossier["summary"]["p0a_real_batch_phase_handoff_next_phase"], "preflight")
+        self.assertEqual(dossier["summary"]["p0a_real_batch_phase_handoff_blocked_phase_count"], 3)
         self.assertFalse(dossier["p0b_google_execution_checklist"]["google_execution_checklist_ready"])
         self.assertEqual(dossier["summary"]["p0b_google_remaining_blocker_count"], 7)
         self.assertTrue(dossier["p0b_google_execution_checklist"]["env_file_hygiene_ready"])
@@ -262,6 +268,7 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertIn("AU 客户交付总包", markdown)
         self.assertIn("P0a 环境清单", markdown)
         self.assertIn("P0a 执行清单", markdown)
+        self.assertIn("Real batch phase handoff", markdown)
         self.assertIn("P0b Google 执行清单", markdown)
         self.assertIn("Env-file hygiene：ready", markdown)
         self.assertIn("Credential handoff：blocked", markdown)
@@ -374,6 +381,28 @@ class AuHandoffDossierTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_p0a_credential_handoff_missing_required_count_mismatch", verification["errors"])
+
+    def test_verifier_detects_p0a_real_batch_phase_handoff_summary_tampering(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            launch_path, plan_path = self._write_launch_status_and_plan(temp_dir, ready=False)
+            checklist_path = self._write_p0a_environment_checklist(temp_dir)
+            p0a_execution_checklist_path = self._write_p0a_execution_checklist(temp_dir)
+            p0b_google_execution_checklist_path = self._write_p0b_google_execution_checklist(temp_dir)
+            dossier = build_au_handoff_dossier(
+                launch_status_path=launch_path,
+                remediation_plan_path=plan_path,
+                p0a_environment_checklist_path=checklist_path,
+                p0a_execution_checklist_path=p0a_execution_checklist_path,
+                p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+                output_path=Path(temp_dir) / "dossier.json",
+                markdown_output_path=Path(temp_dir) / "dossier.md",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            dossier["summary"]["p0a_real_batch_phase_handoff_next_phase"] = "complete"  # type: ignore[index]
+            verification = verify_au_handoff_dossier(dossier)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("summary_p0a_real_batch_phase_handoff_next_phase_mismatch", verification["errors"])
 
     def test_verifier_detects_p0b_environment_handoff_summary_tampering(self) -> None:
         with TemporaryDirectory() as temp_dir:

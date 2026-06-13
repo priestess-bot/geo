@@ -197,6 +197,18 @@ def verify_au_handoff_dossier(
         "credential_handoff_secret_redacted"
     ):
         errors.append("summary_p0a_credential_handoff_secret_redacted_mismatch")
+    if summary.get("p0a_real_batch_phase_handoff_ready") is not p0a_execution_checklist.get(
+        "real_batch_phase_handoff_ready"
+    ):
+        errors.append("summary_p0a_real_batch_phase_handoff_ready_mismatch")
+    if summary.get("p0a_real_batch_phase_handoff_next_phase") != p0a_execution_checklist.get(
+        "real_batch_phase_handoff_next_phase"
+    ):
+        errors.append("summary_p0a_real_batch_phase_handoff_next_phase_mismatch")
+    if summary.get("p0a_real_batch_phase_handoff_blocked_phase_count") != p0a_execution_checklist.get(
+        "real_batch_phase_handoff_blocked_phase_count"
+    ):
+        errors.append("summary_p0a_real_batch_phase_handoff_blocked_phase_count_mismatch")
     if summary.get("p0b_google_execution_checklist_ready") is not p0b_google_execution_checklist.get(
         "google_execution_checklist_ready"
     ):

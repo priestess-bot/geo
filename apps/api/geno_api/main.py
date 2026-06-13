@@ -1844,6 +1844,12 @@ def au_handoff_dossier() -> dict[str, object]:
             DEFAULT_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH,
         )
     )
+    p0a_execution_checklist_path = Path(
+        os.getenv(
+            "GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
     p0b_google_execution_checklist_path = Path(
         os.getenv(
             "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
@@ -1857,15 +1863,18 @@ def au_handoff_dossier() -> dict[str, object]:
         output_path=remediation_plan_path,
     )
     p0a_environment_checklist = au_p0a_environment_checklist()
+    p0a_execution_checklist = au_p0a_execution_checklist()
     p0b_google_execution_checklist = au_p0b_google_execution_checklist()
     return build_au_handoff_dossier(
         launch_status_path=launch_status_path,
         remediation_plan_path=remediation_plan_path,
         p0a_environment_checklist_path=p0a_environment_checklist_path,
+        p0a_execution_checklist_path=p0a_execution_checklist_path,
         p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
         launch_status=launch_status,
         remediation_plan=remediation_plan,
         p0a_environment_checklist=p0a_environment_checklist,
+        p0a_execution_checklist=p0a_execution_checklist,
         p0b_google_execution_checklist=p0b_google_execution_checklist,
         output_path=Path(os.getenv("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH)),
         markdown_output_path=Path(

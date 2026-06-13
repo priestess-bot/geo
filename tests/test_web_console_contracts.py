@@ -152,6 +152,8 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("P0a credential handoff", page_source)
         self.assertIn("credential_handoff_missing_required", page_source)
         self.assertIn("p0a_credential_handoff_missing_required_count", page_source)
+        self.assertIn("real_batch_phase_handoff_next_phase", page_source)
+        self.assertIn("p0a_real_batch_phase_handoff_next_phase", page_source)
         self.assertIn("paths.p0aExecutionChecklist", page_source)
         self.assertIn("python3 scripts/verify_au_p0a_status_report.py --require-design-partner-ready", page_source)
         self.assertIn("P0b Google execution checklist", page_source)

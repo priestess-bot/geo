@@ -43,6 +43,7 @@ REQUIRED_FIELDS = (
     "status_report_verifier",
     "setup_commands",
     "credential_handoff",
+    "real_batch_phase_handoff",
     "execution_commands",
     "verification_commands",
     "work_items",
@@ -171,6 +172,130 @@ def _validate_credential_handoff(
             errors.append(f"credential_handoff_item_injection_methods_incomplete:{name}")
 
 
+def _artifact_ready(artifact: dict[str, Any]) -> bool:
+    return artifact.get("status") == "pass" and artifact.get("ready_for_design_partner") is True
+
+
+def _phase_expected_ready(phase: dict[str, Any]) -> bool:
+    return all(_artifact_ready(_as_dict(artifact)) for artifact in _as_list(phase.get("artifacts")))
+
+
+def _validate_real_batch_phase_handoff(
+    handoff: dict[str, Any],
+    *,
+    summary: dict[str, Any],
+    credential_handoff: dict[str, Any],
+    errors: list[str],
+) -> None:
+    if handoff.get("version") != "au_p0a_real_batch_phase_handoff_v1":
+        errors.append("real_batch_phase_handoff_version_invalid")
+    for field in (
+        "ready",
+        "phase_count",
+        "ready_phase_count",
+        "blocked_phase_count",
+        "next_phase",
+        "total_planned_runs",
+        "phase_order",
+        "phases",
+        "redaction_policy",
+    ):
+        if field not in handoff:
+            errors.append(f"real_batch_phase_handoff_field_missing:{field}")
+
+    expected_order = ["preflight", "small_batch", "full_batch"]
+    if _string_list(handoff.get("phase_order")) != expected_order:
+        errors.append("real_batch_phase_handoff_phase_order_invalid")
+    phases = [_as_dict(phase) for phase in _as_list(handoff.get("phases"))]
+    if [str(phase.get("id", "")) for phase in phases] != expected_order:
+        errors.append("real_batch_phase_handoff_phases_invalid")
+    if handoff.get("phase_count") != len(expected_order):
+        errors.append("real_batch_phase_handoff_phase_count_mismatch")
+
+    expected_commands = {
+        "preflight": {
+            "preflight_collect",
+            "preflight_verify_audit",
+            "preflight_manifest_audit",
+            "preflight_design_partner_gate",
+        },
+        "small_batch": {"small_batch_collect", "small_batch_manifest_gate"},
+        "full_batch": {"full_batch_collect", "full_batch_manifest_gate"},
+    }
+    expected_artifacts = {
+        "preflight": {"preflight_json", "preflight_manifest"},
+        "small_batch": {"small_batch_json", "small_batch_manifest"},
+        "full_batch": {"full_batch_json", "full_batch_manifest"},
+    }
+    expected_gate_ids = {
+        "preflight": {"hard_environment_gate", "hard_runbook_execution_gate"},
+        "small_batch": {"hard_preflight_gate"},
+        "full_batch": {"hard_package_gate", "hard_status_gate"},
+    }
+
+    ready_phase_count = 0
+    total_planned_runs = 0
+    expected_next_phase = "complete"
+    previous_ready = credential_handoff.get("ready") is True
+    for phase in phases:
+        phase_id = str(phase.get("id", ""))
+        artifacts = [_as_dict(artifact) for artifact in _as_list(phase.get("artifacts"))]
+        artifact_keys = {str(artifact.get("key", "")) for artifact in artifacts}
+        command_ids = set(_string_list(phase.get("command_ids")))
+        command_item_ids = {str(_as_dict(command).get("id", "")) for command in _as_list(phase.get("commands"))}
+        prerequisite_gate_ids = set(_string_list(phase.get("prerequisite_gate_ids")))
+        if phase_id in expected_commands and command_ids != expected_commands[phase_id]:
+            errors.append(f"real_batch_phase_handoff_command_ids_mismatch:{phase_id}")
+        if phase_id in expected_commands and command_item_ids != expected_commands[phase_id]:
+            errors.append(f"real_batch_phase_handoff_commands_mismatch:{phase_id}")
+        if phase_id in expected_artifacts and artifact_keys != expected_artifacts[phase_id]:
+            errors.append(f"real_batch_phase_handoff_artifact_keys_mismatch:{phase_id}")
+        if phase_id in expected_gate_ids and prerequisite_gate_ids != expected_gate_ids[phase_id]:
+            errors.append(f"real_batch_phase_handoff_gate_ids_mismatch:{phase_id}")
+        expected_ready = _phase_expected_ready(phase)
+        if phase.get("ready") is not expected_ready:
+            errors.append(f"real_batch_phase_handoff_phase_ready_mismatch:{phase_id}")
+        if phase.get("can_start") is not previous_ready:
+            errors.append(f"real_batch_phase_handoff_can_start_mismatch:{phase_id}")
+        if expected_ready:
+            ready_phase_count += 1
+        elif expected_next_phase == "complete":
+            expected_next_phase = phase_id
+        previous_ready = expected_ready
+        planned_runs = phase.get("planned_runs", 0)
+        if not isinstance(planned_runs, int):
+            errors.append(f"real_batch_phase_handoff_planned_runs_invalid:{phase_id}")
+            planned_runs = 0
+        total_planned_runs += planned_runs
+        for artifact in artifacts:
+            if "path" not in artifact or "status" not in artifact or "ready_for_design_partner" not in artifact:
+                errors.append(f"real_batch_phase_handoff_artifact_incomplete:{phase_id}:{artifact.get('key', '')}")
+
+    if handoff.get("ready_phase_count") != ready_phase_count:
+        errors.append("real_batch_phase_handoff_ready_phase_count_mismatch")
+    if handoff.get("blocked_phase_count") != len(expected_order) - ready_phase_count:
+        errors.append("real_batch_phase_handoff_blocked_phase_count_mismatch")
+    if handoff.get("ready") is not (ready_phase_count == len(expected_order)):
+        errors.append("real_batch_phase_handoff_ready_mismatch")
+    if handoff.get("next_phase") != expected_next_phase:
+        errors.append("real_batch_phase_handoff_next_phase_mismatch")
+    if handoff.get("total_planned_runs") != total_planned_runs:
+        errors.append("real_batch_phase_handoff_total_planned_runs_mismatch")
+    if summary.get("real_batch_phase_handoff_ready") is not handoff.get("ready"):
+        errors.append("summary_real_batch_phase_handoff_ready_mismatch")
+    if summary.get("real_batch_phase_handoff_next_phase") != handoff.get("next_phase"):
+        errors.append("summary_real_batch_phase_handoff_next_phase_mismatch")
+    if summary.get("real_batch_phase_handoff_ready_phase_count") != handoff.get("ready_phase_count"):
+        errors.append("summary_real_batch_phase_handoff_ready_phase_count_mismatch")
+    if summary.get("real_batch_phase_handoff_blocked_phase_count") != handoff.get("blocked_phase_count"):
+        errors.append("summary_real_batch_phase_handoff_blocked_phase_count_mismatch")
+    if summary.get("real_batch_phase_handoff_total_planned_runs") != handoff.get("total_planned_runs"):
+        errors.append("summary_real_batch_phase_handoff_total_planned_runs_mismatch")
+    redaction_policy = _as_dict(handoff.get("redaction_policy"))
+    if redaction_policy.get("raw_secret_values_allowed") is not False:
+        errors.append("real_batch_phase_handoff_raw_secret_policy_invalid")
+
+
 def _expected_next_action(*, runbook_ok: bool, env_ok: bool, execution_ok: bool, status_next_action: str) -> str:
     if not runbook_ok:
         return "run_make_au_p0a_runbook"
@@ -225,6 +350,7 @@ def verify_au_p0a_execution_checklist(
     status_report = _as_dict(checklist.get("status_report"))
     status_verifier = _as_dict(checklist.get("status_report_verifier"))
     credential_handoff = _as_dict(checklist.get("credential_handoff"))
+    real_batch_phase_handoff = _as_dict(checklist.get("real_batch_phase_handoff"))
 
     missing_artifacts = _string_list(package_summary.get("missing_artifacts"))
     failed_artifacts = _string_list(package_summary.get("failed_artifacts"))
@@ -303,6 +429,12 @@ def verify_au_p0a_execution_checklist(
         if command_id not in setup_ids:
             errors.append(f"setup_command_missing:{command_id}")
     _validate_credential_handoff(credential_handoff, remaining_blockers=remaining_blockers, errors=errors)
+    _validate_real_batch_phase_handoff(
+        real_batch_phase_handoff,
+        summary=summary,
+        credential_handoff=credential_handoff,
+        errors=errors,
+    )
     for command_id in {
         "preflight_collect",
         "preflight_verify_audit",
