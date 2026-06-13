@@ -91,13 +91,18 @@ class AuLaunchRemediationPlanTest(unittest.TestCase):
             [command["shell"] for command in work_items["p0b_google_playwright_env"]["commands"][:3]],
             [
                 "make verify-au-p0b-google-env-template",
-                "cp .env.au-p0b-google.example .env.au-p0b-google",
-                "chmod 600 .env.au-p0b-google",
+                "make au-p0b-google-env-bootstrap",
+                "make verify-au-p0b-google-env-bootstrap",
             ],
         )
+        self.assertIn("env-bootstrap", work_items["p0b_google_playwright_env"]["commands"][1]["shell"])
         self.assertIn(
             "make verify-au-p0b-google-execution-checklist",
             [command["shell"] for command in work_items["p0b_google_playwright_env"]["verification_commands"]],
+        )
+        self.assertIn(
+            "docs/runtime_preflight/au-p0b-google-env-bootstrap-latest.json",
+            work_items["p0b_google_playwright_env"]["evidence_outputs"],
         )
         self.assertIn(
             "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json",
@@ -173,6 +178,26 @@ class AuLaunchRemediationPlanTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("work_item_command_missing:p0a_environment:env_bootstrap", verification["errors"])
+
+    def test_verifier_requires_p0b_google_env_file_bootstrap_commands(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path = self._write_launch_status(temp_dir, ready=False)
+            launch_status = json.loads(launch_status_path.read_text(encoding="utf-8"))
+            plan = build_au_launch_remediation_plan(
+                launch_status=launch_status,
+                launch_status_path=launch_status_path,
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            for work_item in plan["work_items"]:
+                if work_item["id"] == "p0b_google_playwright_env":
+                    work_item["commands"] = [
+                        command for command in work_item["commands"] if command["shell"] != "make au-p0b-google-env-bootstrap"
+                    ]
+            plan["remediation_plan_hash"] = compute_remediation_plan_hash(plan)
+            verification = verify_au_launch_remediation_plan(plan)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("work_item_command_missing:p0b_google_playwright_env:env_bootstrap", verification["errors"])
 
     def test_cli_writes_and_verifies_remediation_plan(self) -> None:
         with TemporaryDirectory() as temp_dir:

@@ -24,15 +24,17 @@ google_ai_mode -> ManualBackfillCollector      -> access_method=manual
 
 ## 2. 运行前环境
 
-推荐先校验并复制脱敏模板：
+推荐先校验脱敏模板，并用 bootstrap 创建或校验本地 env 文件：
 
 ```bash
 make verify-au-p0b-google-env-template
-cp .env.au-p0b-google.example .env.au-p0b-google
-chmod 600 .env.au-p0b-google
+make au-p0b-google-env-bootstrap
+make verify-au-p0b-google-env-bootstrap
 ```
 
 `make verify-au-p0b-google-env-template` 只校验已提交的 `.env.au-p0b-google.example`：模板必须默认 `GOOGLE_PLAYWRIGHT_ENABLED=0`，selector、storage state、manual backfill、数据库、SERP 和对象存储字段必须为空，安全默认值和运行产物路径必须稳定，且不能出现疑似真实 secret 标记。该门禁不读取也不证明本地真实 `.env.au-p0b-google`、Google session、selector、数据库或第三方 SERP 已 ready。
+
+`make au-p0b-google-env-bootstrap` 会在本地 `.env.au-p0b-google` 缺失时从模板创建文件、设置 `0600` 权限，并把 template hash、env-file path/mode、gitignored/not tracked 状态和 `env_file_bootstrap_hash` 写入 `docs/runtime_preflight/au-p0b-google-env-bootstrap-latest.json`；不会落任何 selector、session path、数据库 URL 或 raw secret。`make verify-au-p0b-google-env-bootstrap` 会离线复算 hash、权限、git hygiene 和脱敏约束。
 
 真实 `.env.au-p0b-google` 存在且含条目时，会进入 env-file hygiene gate：文件必须被 `.gitignore` 忽略、不能被 git 跟踪，且权限必须为 `0600`。完全用进程环境注入 selector/session path/database URL 时，缺失本地 env 文件不触发该 hard error。
 
@@ -123,8 +125,8 @@ make verify-au-p0b-google-runbook-execution
 
 ```bash
 make verify-au-p0b-google-env-template
-cp .env.au-p0b-google.example .env.au-p0b-google
-chmod 600 .env.au-p0b-google
+make au-p0b-google-env-bootstrap
+make verify-au-p0b-google-env-bootstrap
 make au-p0b-google-playwright-env
 make verify-au-p0b-google-playwright-env
 ```
@@ -208,7 +210,7 @@ make verify-au-p0b-google-execution-checklist
 
 `au-p0b-google-package` 会把 status report 作为最终 gate，再把 runbook、execution、Playwright env、smoke、manual verification、health/spike payload 与 manifest 的存在状态、文件 sha256、verifier hash、ready 字段、`remaining_blockers` 和 `google_main_scoring_allowed` 汇总到 `docs/runtime_preflight/au-p0b-google-evidence-package-latest.json`。`verify-au-p0b-google-package` 默认只校验 package hash 与 summary/artifacts 自洽；需要把它作为 Google 主评分硬门禁时，运行 `python3 scripts/verify_au_p0b_google_evidence_package.py docs/runtime_preflight/au-p0b-google-evidence-package-latest.json --require-google-main-scoring-allowed`。
 
-`au-p0b-google-execution-checklist` 会把 runbook、dry-run execution、Playwright env readiness、status report 和 evidence package 汇总成 `docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json`。该清单会列出当前缺失的 `GOOGLE_PLAYWRIGHT_ENABLED`、selector group、`MANUAL_BACKFILL_PATH`、`DATABASE_URL`、Playwright dependency、file gate issue、env-file hygiene、remaining blockers、setup commands、execution commands、hard gate commands 和证据输出路径；setup commands 的前三项是 `make verify-au-p0b-google-env-template`、复制 `.env.au-p0b-google`、`chmod 600 .env.au-p0b-google`，确保填写真实 selector/session/database 前先验提交模板并收紧本地文件权限。清单只保留来源、长度、sha256 前缀和 hygiene 元数据，不保存 selector 原文、secret 或数据库 URL；`manual_backfill_handoff` 也只保存 120-row 模板、manifest、verification 路径、行数、prompt-city 覆盖、hash 和缺失原因，不保存人工答案、citation 或资产 URL 原文；`google_spike_phase_handoff` 会把 environment、browser_smoke、manual_backfill、health_check、full_spike、main_scoring 六个阶段的命令、证据、ready/can-start、阻塞原因、next phase、blocked phase count 和 240 planned runs 写入同一 hash。`verify-au-p0b-google-execution-checklist` 只证明清单 hash、计数、脱敏约束、env-file hygiene、manual/phase handoff 和 next action 推导自洽；需要作为 Google 主评分硬门禁时，应继续运行 status/package 的 `--require-google-main-scoring-allowed`。
+`au-p0b-google-execution-checklist` 会把 runbook、dry-run execution、Playwright env readiness、status report 和 evidence package 汇总成 `docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json`。该清单会列出当前缺失的 `GOOGLE_PLAYWRIGHT_ENABLED`、selector group、`MANUAL_BACKFILL_PATH`、`DATABASE_URL`、Playwright dependency、file gate issue、env-file hygiene、remaining blockers、setup commands、execution commands、hard gate commands 和证据输出路径；setup commands 的前三项是 `make verify-au-p0b-google-env-template`、`make au-p0b-google-env-bootstrap`、`make verify-au-p0b-google-env-bootstrap`，确保填写真实 selector/session/database 前先验提交模板并用 bootstrap 证明本地文件权限和 git hygiene。清单只保留来源、长度、sha256 前缀和 hygiene 元数据，不保存 selector 原文、secret 或数据库 URL；`manual_backfill_handoff` 也只保存 120-row 模板、manifest、verification 路径、行数、prompt-city 覆盖、hash 和缺失原因，不保存人工答案、citation 或资产 URL 原文；`google_spike_phase_handoff` 会把 environment、browser_smoke、manual_backfill、health_check、full_spike、main_scoring 六个阶段的命令、证据、ready/can-start、阻塞原因、next phase、blocked phase count 和 240 planned runs 写入同一 hash。`verify-au-p0b-google-execution-checklist` 只证明清单 hash、计数、脱敏约束、env-file hygiene、manual/phase handoff 和 next action 推导自洽；需要作为 Google 主评分硬门禁时，应继续运行 status/package 的 `--require-google-main-scoring-allowed`。
 
 同一份清单也可以通过 Runtime API 与交接总包读取：`GET /v1/p0b-google-execution-checklist/au` 会按当前 `GENO_AU_P0B_GOOGLE_*` 路径覆盖规则内存生成脱敏 checklist；`GET /v1/handoff-dossier/au` 会纳入 `p0b_google_execution_checklist` 摘要、hash、缺失 env/selector、manual backfill rows/prompt-city/missing/redacted、Google phase next/blocked/full spike runs、remaining blockers 和 verifier status；Runtime Console 首页 AU Launch Gate 会展示 P0b Google execution checklist 面板，便于执行前确认 Google 主评分仍被 hard gate 阻断还是已经允许。
 

@@ -232,8 +232,8 @@ def _p0b_playwright_env_item() -> dict[str, Any]:
         ],
         "commands": [
             _command("make verify-au-p0b-google-env-template"),
-            _command("cp .env.au-p0b-google.example .env.au-p0b-google"),
-            _command("chmod 600 .env.au-p0b-google"),
+            _command("make au-p0b-google-env-bootstrap"),
+            _command("make verify-au-p0b-google-env-bootstrap"),
             _command("make au-p0b-google-runbook"),
             _command("make au-p0b-google-playwright-env"),
             _command("make au-p0b-google-execution-checklist"),
@@ -248,6 +248,7 @@ def _p0b_playwright_env_item() -> dict[str, Any]:
             )
         ],
         "evidence_outputs": [
+            "docs/runtime_preflight/au-p0b-google-env-bootstrap-latest.json",
             "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
             "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
             "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json",

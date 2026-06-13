@@ -97,13 +97,14 @@ class AuP0bGoogleExecutionChecklistTest(unittest.TestCase):
             checklist["work_items"][0]["commands"][:3],
             [
                 "make verify-au-p0b-google-env-template",
-                "cp .env.au-p0b-google.example .env.au-p0b-google",
-                "chmod 600 .env.au-p0b-google",
+                "make au-p0b-google-env-bootstrap",
+                "make verify-au-p0b-google-env-bootstrap",
             ],
         )
         self.assertTrue(checklist["env_file_hygiene"]["hygiene_ready"])
         self.assertEqual(checklist["summary"]["env_file_hygiene_error_count"], 0)
-        self.assertIn("secure_env_file_permissions", {command["id"] for command in checklist["setup_commands"]})
+        self.assertIn("bootstrap_env_file", {command["id"] for command in checklist["setup_commands"]})
+        self.assertIn("verify_env_bootstrap", {command["id"] for command in checklist["setup_commands"]})
         self.assertFalse(checklist["environment_handoff"]["ready"])
         self.assertEqual(checklist["environment_handoff"]["missing_required_count"], 5)
         self.assertEqual(
@@ -116,7 +117,8 @@ class AuP0bGoogleExecutionChecklistTest(unittest.TestCase):
                 "smoke_env:GOOGLE_PLAYWRIGHT_ENABLED",
             ],
         )
-        self.assertIn("chmod 600 .env.au-p0b-google", checklist["environment_handoff"]["setup_commands"])
+        self.assertIn("make au-p0b-google-env-bootstrap", checklist["environment_handoff"]["setup_commands"])
+        self.assertIn("make verify-au-p0b-google-env-bootstrap", checklist["environment_handoff"]["setup_commands"])
         self.assertFalse(checklist["environment_handoff"]["redaction_policy"]["raw_secret_values_allowed"])
         self.assertTrue(checklist["environment_handoff"]["redaction_policy"]["forbidden_exact_secret_fields_redacted"])
         self.assertFalse(checklist["summary"]["environment_handoff_ready"])
@@ -306,7 +308,7 @@ class AuP0bGoogleExecutionChecklistTest(unittest.TestCase):
         self.assertEqual(verification["status"], "fail")
         self.assertIn("environment_handoff_missing_required_mismatch", verification["errors"])
         self.assertIn(
-            "environment_handoff_setup_command_missing:chmod 600 .env.au-p0b-google",
+            "environment_handoff_setup_command_missing:make au-p0b-google-env-bootstrap",
             verification["errors"],
         )
 

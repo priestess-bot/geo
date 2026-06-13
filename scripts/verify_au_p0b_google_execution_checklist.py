@@ -463,8 +463,8 @@ def _validate_environment_handoff(
     setup_commands = [str(item) for item in _as_list(handoff.get("setup_commands"))]
     for command in {
         "make verify-au-p0b-google-env-template",
-        "cp .env.au-p0b-google.example .env.au-p0b-google",
-        "chmod 600 .env.au-p0b-google",
+        "make au-p0b-google-env-bootstrap",
+        "make verify-au-p0b-google-env-bootstrap",
     }:
         if command not in setup_commands:
             errors.append(f"environment_handoff_setup_command_missing:{command}")
@@ -1051,10 +1051,10 @@ def verify_au_p0b_google_execution_checklist(
     )
     for command_id in {
         "verify_env_template",
-        "copy_env_template",
+        "bootstrap_env_file",
+        "verify_env_bootstrap",
         "build_runbook",
         "dry_run_runbook",
-        "secure_env_file_permissions",
         "build_playwright_env",
         "build_execution_checklist",
     }:

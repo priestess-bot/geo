@@ -47,6 +47,7 @@ from scripts.verify_au_p0b_google_spike_status_report import (  # noqa: E402
 
 CHECKLIST_VERSION = "au_p0b_google_execution_checklist_v1"
 DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json"
+DEFAULT_ENV_BOOTSTRAP_PATH = "docs/runtime_preflight/au-p0b-google-env-bootstrap-latest.json"
 DEFAULT_MANUAL_BACKFILL_VERIFICATION_PATH = (
     "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json"
 )
@@ -458,8 +459,8 @@ def _environment_handoff(
         "target_env_file": str(env_file_path) if env_file_path else "",
         "setup_commands": [
             "make verify-au-p0b-google-env-template",
-            "cp .env.au-p0b-google.example .env.au-p0b-google",
-            "chmod 600 .env.au-p0b-google",
+            "make au-p0b-google-env-bootstrap",
+            "make verify-au-p0b-google-env-bootstrap",
         ],
         "environment_items": environment_items,
         "selector_items": selector_items,
@@ -475,6 +476,7 @@ def _environment_handoff(
             "make verify-au-p0b-google-execution-checklist",
         ],
         "evidence_outputs": [
+            DEFAULT_ENV_BOOTSTRAP_PATH,
             "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
             "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
             "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json",
@@ -920,14 +922,14 @@ def _setup_commands() -> list[dict[str, str]]:
             "purpose": "Verify the committed Google env template is complete, disabled by default, and free of selectors/secrets.",
         },
         {
-            "id": "copy_env_template",
-            "shell": "cp .env.au-p0b-google.example .env.au-p0b-google",
-            "purpose": "Create a local Google spike env file without committing selectors or secrets.",
+            "id": "bootstrap_env_file",
+            "shell": "make au-p0b-google-env-bootstrap",
+            "purpose": "Create or confirm the local Google spike env file with 0600 permissions and git hygiene audit.",
         },
         {
-            "id": "secure_env_file_permissions",
-            "shell": "chmod 600 .env.au-p0b-google",
-            "purpose": "Ensure local Google selectors, session paths and database URL metadata are not group/world-readable.",
+            "id": "verify_env_bootstrap",
+            "shell": "make verify-au-p0b-google-env-bootstrap",
+            "purpose": "Verify the bootstrap hash, env-file permissions, gitignored/not tracked state and redaction policy.",
         },
         {"id": "build_runbook", "shell": "make au-p0b-google-runbook", "purpose": "Freeze the Google spike command plan."},
         {
@@ -1019,8 +1021,8 @@ def _work_items() -> list[dict[str, Any]]:
             "stage": "P0b",
             "commands": [
                 "make verify-au-p0b-google-env-template",
-                "cp .env.au-p0b-google.example .env.au-p0b-google",
-                "chmod 600 .env.au-p0b-google",
+                "make au-p0b-google-env-bootstrap",
+                "make verify-au-p0b-google-env-bootstrap",
                 "make au-p0b-google-playwright-env",
             ],
             "hard_gate": "hard_playwright_env_gate",
@@ -1316,6 +1318,7 @@ def build_au_p0b_google_execution_checklist(
         "evidence_outputs": [
             str(runbook_path),
             str(execution_path),
+            DEFAULT_ENV_BOOTSTRAP_PATH,
             str(playwright_env_path),
             str(artifact_paths.get("playwright_smoke_json") or DEFAULT_SMOKE_PATH),
             DEFAULT_MANUAL_BACKFILL_TEMPLATE_PATH,

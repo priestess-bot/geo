@@ -128,8 +128,10 @@ def verify_au_launch_remediation_plan(
     if p0a_environment_commands and "make verify-au-p0a-env-bootstrap" not in p0a_environment_commands:
         errors.append("work_item_command_missing:p0a_environment:verify_env_bootstrap")
     p0b_google_environment_commands = commands_by_work_item.get("p0b_google_playwright_env", [])
-    if p0b_google_environment_commands and "chmod 600 .env.au-p0b-google" not in p0b_google_environment_commands:
-        errors.append("work_item_command_missing:p0b_google_playwright_env:chmod_600_env_file")
+    if p0b_google_environment_commands and "make au-p0b-google-env-bootstrap" not in p0b_google_environment_commands:
+        errors.append("work_item_command_missing:p0b_google_playwright_env:env_bootstrap")
+    if p0b_google_environment_commands and "make verify-au-p0b-google-env-bootstrap" not in p0b_google_environment_commands:
+        errors.append("work_item_command_missing:p0b_google_playwright_env:verify_env_bootstrap")
 
     for remediation in remediations:
         blocker = str(remediation.get("blocker", ""))
