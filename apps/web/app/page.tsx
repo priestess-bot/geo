@@ -911,6 +911,9 @@ type AuP0bGoogleExecutionChecklist = {
     missing_dependencies?: string[];
     file_gate_issue_count?: number;
     file_gate_issues?: string[];
+    env_file_hygiene_ready?: boolean;
+    env_file_hygiene_error_count?: number;
+    env_file_hygiene_warning_count?: number;
     remaining_blocker_count?: number;
     remaining_blockers?: string[];
     runbook_verifier_status?: string;
@@ -1014,6 +1017,9 @@ type AuHandoffDossier = {
     p0a_execution_remaining_blocker_count?: number;
     p0b_google_execution_checklist_ready?: boolean;
     p0b_google_remaining_blocker_count?: number;
+    p0b_google_env_file_hygiene_ready?: boolean;
+    p0b_google_env_file_hygiene_error_count?: number;
+    p0b_google_env_file_hygiene_warning_count?: number;
   };
   markdown_report?: {
     path?: string;
@@ -3841,6 +3847,9 @@ export default async function Home({
   const missingP0bFullRunEnv = p0bGoogleExecutionSummary?.missing_full_run_required_environment || [];
   const missingP0bSelectors = p0bGoogleExecutionSummary?.missing_selector_groups || [];
   const p0bChecklistBlockers = p0bGoogleExecutionSummary?.remaining_blockers || [];
+  const p0bEnvFileHygieneReady = p0bGoogleExecutionSummary?.env_file_hygiene_ready;
+  const p0bEnvFileHygieneErrorCount = p0bGoogleExecutionSummary?.env_file_hygiene_error_count || 0;
+  const p0bEnvFileHygieneWarningCount = p0bGoogleExecutionSummary?.env_file_hygiene_warning_count || 0;
   const broaderPlatformRegistry = data.broaderPlatformRegistry;
   const broaderPlatformSummary = broaderPlatformRegistry?.summary;
   const broaderPlatformCandidates = broaderPlatformRegistry?.candidate_platforms || [];
@@ -4447,6 +4456,10 @@ export default async function Home({
             <span>Google scoring {p0bGoogleExecutionChecklist?.google_main_scoring_allowed ? "allowed" : "blocked"}</span>
             <span>Next action {p0bGoogleExecutionChecklist?.next_action || "run checklist"}</span>
             <span>Planned runs {p0bGoogleExecutionSummary?.planned_runs || 0}</span>
+            <span>
+              Env-file hygiene {p0bEnvFileHygieneReady ? "ready" : "blocked"} · errors{" "}
+              {p0bEnvFileHygieneErrorCount} · warnings {p0bEnvFileHygieneWarningCount}
+            </span>
           </div>
           <div className="environmentChecklistGrid">
             <div>
@@ -4557,6 +4570,12 @@ export default async function Home({
             <span>
               Blockers {handoffSummary?.remaining_blocker_count || 0} · work items{" "}
               {handoffSummary?.work_item_count || 0} · unmapped {handoffSummary?.unmapped_blocker_count || 0}
+            </span>
+            <span>
+              P0b env-file hygiene{" "}
+              {handoffSummary?.p0b_google_env_file_hygiene_ready ? "ready" : "blocked"} · errors{" "}
+              {handoffSummary?.p0b_google_env_file_hygiene_error_count || 0} · warnings{" "}
+              {handoffSummary?.p0b_google_env_file_hygiene_warning_count || 0}
             </span>
             <span>Hard gate: scripts/verify_au_handoff_dossier.py --require-customer-ready</span>
             <span>{handoffDossier?.runtime_endpoints?.launch_remediation_plan || "GET /v1/launch-remediation-plan/au"}</span>

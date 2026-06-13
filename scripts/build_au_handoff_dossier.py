@@ -282,6 +282,9 @@ def _p0a_execution_checklist_summary(checklist: dict[str, Any]) -> dict[str, Any
 
 def _p0b_google_execution_checklist_summary(checklist: dict[str, Any]) -> dict[str, Any]:
     summary = _as_dict(checklist.get("summary"))
+    env_file_hygiene = _as_dict(checklist.get("env_file_hygiene"))
+    env_file_hygiene_errors = [str(value) for value in _as_list(env_file_hygiene.get("errors"))]
+    env_file_hygiene_warnings = [str(value) for value in _as_list(env_file_hygiene.get("warnings"))]
     return {
         "path": str(_as_dict(checklist.get("paths")).get("output", "")),
         "execution_checklist_version": checklist.get("execution_checklist_version", ""),
@@ -305,6 +308,19 @@ def _p0b_google_execution_checklist_summary(checklist: dict[str, Any]) -> dict[s
         "missing_dependencies": [str(value) for value in _as_list(summary.get("missing_dependencies"))],
         "file_gate_issue_count": summary.get("file_gate_issue_count", 0),
         "file_gate_issues": [str(value) for value in _as_list(summary.get("file_gate_issues"))],
+        "env_file_hygiene_ready": summary.get("env_file_hygiene_ready") is True,
+        "env_file_hygiene_error_count": summary.get("env_file_hygiene_error_count", len(env_file_hygiene_errors)),
+        "env_file_hygiene_warning_count": summary.get(
+            "env_file_hygiene_warning_count",
+            len(env_file_hygiene_warnings),
+        ),
+        "env_file_hygiene_errors": env_file_hygiene_errors,
+        "env_file_hygiene_warnings": env_file_hygiene_warnings,
+        "env_file_hygiene_path": str(env_file_hygiene.get("path") or ""),
+        "env_file_hygiene_file_mode": str(env_file_hygiene.get("file_mode") or ""),
+        "env_file_hygiene_git_safe": env_file_hygiene.get("git_safe") is True,
+        "env_file_hygiene_permission_safe": env_file_hygiene.get("permission_safe") is True,
+        "env_file_hygiene_required": env_file_hygiene.get("hygiene_required") is True,
         "remaining_blocker_count": summary.get("remaining_blocker_count", 0),
         "remaining_blockers": [str(value) for value in _as_list(summary.get("remaining_blockers"))],
         "runbook_verifier_status": summary.get("runbook_verifier_status", ""),
@@ -524,6 +540,10 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
             f"- 缺失 smoke env：{', '.join(str(value) for value in _as_list(p0b_google_execution_checklist.get('missing_required_environment'))) or '无'}",
             f"- 缺失 full-run env：{', '.join(str(value) for value in _as_list(p0b_google_execution_checklist.get('missing_full_run_required_environment'))) or '无'}",
             f"- 缺失 selector group：{', '.join(str(value) for value in _as_list(p0b_google_execution_checklist.get('missing_selector_groups'))) or '无'}",
+            f"- Env-file hygiene：{'ready' if p0b_google_execution_checklist.get('env_file_hygiene_ready') else 'blocked'}"
+            f"（errors: {p0b_google_execution_checklist.get('env_file_hygiene_error_count', 0)}, "
+            f"warnings: {p0b_google_execution_checklist.get('env_file_hygiene_warning_count', 0)}）",
+            f"- Env-file hygiene path：{p0b_google_execution_checklist.get('env_file_hygiene_path') or 'none'}",
             f"- Remaining blockers：{p0b_google_execution_checklist.get('remaining_blocker_count', 0)}",
             f"- Status verifier：{p0b_google_execution_checklist.get('status_verifier_status', '')}",
             f"- Package verifier：{p0b_google_execution_checklist.get('package_verifier_status', '')}",
@@ -688,6 +708,16 @@ def build_au_handoff_dossier(
             )
             is True,
             "p0b_google_remaining_blocker_count": p0b_google_checklist_summary.get("remaining_blocker_count", 0),
+            "p0b_google_env_file_hygiene_ready": p0b_google_checklist_summary.get("env_file_hygiene_ready")
+            is True,
+            "p0b_google_env_file_hygiene_error_count": p0b_google_checklist_summary.get(
+                "env_file_hygiene_error_count",
+                0,
+            ),
+            "p0b_google_env_file_hygiene_warning_count": p0b_google_checklist_summary.get(
+                "env_file_hygiene_warning_count",
+                0,
+            ),
         },
         "runtime_endpoints": {
             "launch_status": "GET /v1/launch-status/au",

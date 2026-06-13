@@ -185,6 +185,18 @@ def verify_au_handoff_dossier(
         "remaining_blocker_count"
     ):
         errors.append("summary_p0b_google_remaining_blocker_count_mismatch")
+    if summary.get("p0b_google_env_file_hygiene_ready") is not p0b_google_execution_checklist.get(
+        "env_file_hygiene_ready"
+    ):
+        errors.append("summary_p0b_google_env_file_hygiene_ready_mismatch")
+    if summary.get("p0b_google_env_file_hygiene_error_count") != p0b_google_execution_checklist.get(
+        "env_file_hygiene_error_count"
+    ):
+        errors.append("summary_p0b_google_env_file_hygiene_error_count_mismatch")
+    if summary.get("p0b_google_env_file_hygiene_warning_count") != p0b_google_execution_checklist.get(
+        "env_file_hygiene_warning_count"
+    ):
+        errors.append("summary_p0b_google_env_file_hygiene_warning_count_mismatch")
     if endpoints.get("au_retest_scheduler_plan") != "GET /v1/au-retest-scheduler-plan":
         errors.append("runtime_endpoint_au_retest_scheduler_plan_invalid")
     if endpoints.get("au_retest_execution_status") != "GET /v1/au-retest-execution-status":
