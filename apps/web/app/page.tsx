@@ -1317,6 +1317,9 @@ type AuExternalDependencyHandoff = {
     expected_record_count?: number;
     record_count?: number;
     work_item_ids?: string[];
+    commands?: string[];
+    next_command?: string | null;
+    blocking_reasons?: string[];
   }>;
   clearance_sequence?: {
     version?: string;
@@ -5381,6 +5384,13 @@ export default async function Home({
                 <small>
                   {group.dependency_class || "dependency"} · missing{" "}
                   {group.missing_required_count ?? group.missing_reason_count ?? group.blocked_phase_count ?? 0}
+                </small>
+                <small>Next {group.next_command || "none"}</small>
+                <small>{group.commands?.length || 0} commands</small>
+                <small>
+                  Blocked {(group.blocking_reasons || group.missing_required || group.missing_reasons || [])
+                    .slice(0, 3)
+                    .join(" · ") || "gate clear"}
                 </small>
               </div>
             ))}

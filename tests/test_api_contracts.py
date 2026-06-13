@@ -787,6 +787,24 @@ class ApiContractsTest(unittest.TestCase):
                 "p0b_google_phase_execution",
             ],
         )
+        dependency_groups_by_id = {group["id"]: group for group in payload["dependency_groups"]}
+        self.assertEqual(
+            dependency_groups_by_id["p0a_provider_credentials"]["next_command"],
+            "make verify-au-p0a-env-template",
+        )
+        self.assertIn(
+            "missing_required:OPENAI_API_KEY",
+            dependency_groups_by_id["p0a_provider_credentials"]["blocking_reasons"],
+        )
+        self.assertIn(
+            "make api-preflight",
+            dependency_groups_by_id["p0a_real_batches"]["commands"],
+        )
+        self.assertIn(
+            "manual_backfill:file_missing",
+            dependency_groups_by_id["p0b_google_manual_backfill"]["blocking_reasons"],
+        )
+        self.assertGreaterEqual(len(dependency_groups_by_id["p0b_google_phase_execution"]["commands"]), 1)
         self.assertEqual(payload["clearance_sequence"]["version"], "au_external_dependency_clearance_sequence_v1")
         self.assertEqual(payload["clearance_sequence"]["current_step_id"], "p0a_provider_credentials")
         self.assertIn("make verify-au-p0a-env-template", payload["clearance_sequence"]["next_command"])
