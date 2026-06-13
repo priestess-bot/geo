@@ -34,6 +34,8 @@ Runtime Console 的 Brand Assets 面板已接入上述审计型版本库，可�
 
 补充：实体别名 overdue 通知现在也纳入 Runtime Notification 体系。通知类型固定为 `entity_alias_assignment_overdue`，创建时写 `runtime_notification_created`，匹配订阅时写 `runtime_notification_delivery_queued`，后续仍由 `make notification-delivery-worker` 统一投递和记录 delivered/retry/dead_letter 状态。它与 Runtime Alert 的 SLA 升级扫描分开：alias assignment 只负责 overdue 分配通知，不改变审核记录本身，也不自动创建 escalation 状态。
 
+补充：项目生命周期已采用证据保留型 soft archive。`GET /v1/projects/runtime` 默认排除 `status=archived` 的项目，可通过 `status=archived` 或 `include_archived=true` 显式读回；`POST /v1/projects/runtime/action` 支持 owner/admin 执行 `archive` / `restore`，分别写入 `project_archived` / `project_restored` 审计事件，恢复时把项目状态置回 `active`。普通 `PATCH /v1/projects/runtime` 仍用于 Project Metadata，状态只允许 `configured/active/paused`，避免绕过专用归档审计。Runtime Console 的 Project Actions 面板已提供 Archive project / Restore project，直接打开归档项目 URL 时会用 `include_archived=true` 读回以便恢复。该能力保留 prompts、evidence、score、report、members 和 audit history，不做级联删除；项目物理删除、客户级数据保留策略、项目转移审批和账单隔离仍待后续设计。
+
 > 🛠 **开发与管理入口**：[PROJECT-PLAN.md](PROJECT-PLAN.md) —— 把澳大利亚首发规格拆成 8 个里程碑、任务清单与验收标准（DoD），是从 `docs/` 规格走向工程交付的待办层。
 >
 > 🗺 **架构图**：[ARCHITECTURE.md](ARCHITECTURE.md) —— GENO SaaS 澳洲首发系统的分层结构、可插拔点、证据优先数据流水线，以及 `AuditEvent / EvidenceLink / ScoreContribution / ReportExport` 审计、溯源、解释链（Mermaid）；出版级图注与设计规范见 [docs/figure-specs.md](docs/figure-specs.md)。

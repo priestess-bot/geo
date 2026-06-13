@@ -222,6 +222,7 @@ code {
 
 .projectCreateForm,
 .projectUpdateForm,
+.projectLifecycleActions,
 .projectMemberForm,
 .brandKitForm,
 .brandAssetForm,
@@ -254,6 +255,10 @@ code {
 }
 
 .brandAssetLibrary {
+  grid-template-columns: 1fr;
+}
+
+.projectLifecycleActions {
   grid-template-columns: 1fr;
 }
 

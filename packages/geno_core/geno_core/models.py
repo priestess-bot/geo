@@ -1109,6 +1109,14 @@ class RuntimeProjectUpdateInput:
 
 
 @dataclass(frozen=True)
+class RuntimeProjectActionInput:
+    project_id: str
+    action: str
+    updated_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeProjectMember:
     member: dict[str, Any]
     audit_events: tuple[dict[str, Any], ...]

@@ -88,6 +88,7 @@ from geno_core.models import (
     RuntimeProjectMemberInvitationActionInput,
     RuntimeProjectMemberInvitationEmailInput,
     RuntimeProjectMemberInvitationInput,
+    RuntimeProjectActionInput,
     RuntimeProjectUpdateInput,
     RuntimePromptImportInput,
     RuntimeNotificationSubscriptionInput,
@@ -1525,6 +1526,13 @@ class RuntimeProjectUpdateRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class RuntimeProjectActionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    action: str = Field(min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class ProjectMemberRequest(BaseModel):
     project_id: str = Field(min_length=1)
     user_id: str = Field(min_length=1, max_length=120)
@@ -1956,6 +1964,8 @@ def create_runtime_au_dtc_project(
 def runtime_projects(
     project_id: str | None = None,
     market_code: str | None = None,
+    status: str | None = None,
+    include_archived: bool = False,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
@@ -1974,6 +1984,8 @@ def runtime_projects(
         page = repository.list_runtime_projects(
             project_id=project_id,
             market_code=market_code,
+            status=status,
+            include_archived=include_archived,
             actor_id=actor_id if runtime_project_access_control_enabled() else None,
             limit=limit,
             offset=offset,
@@ -2014,6 +2026,46 @@ def update_runtime_project(
             )
         except ValueError as exc:
             status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(project)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/projects/runtime/action")
+def action_runtime_project(
+    payload: RuntimeProjectActionRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            project = repository.apply_runtime_project_action(
+                RuntimeProjectActionInput(
+                    project_id=payload.project_id.strip(),
+                    action=payload.action.strip().lower(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            conflict_messages = {"project already archived", "project is not archived"}
+            if str(exc) == "project not found":
+                status_code = 404
+            elif str(exc) in conflict_messages:
+                status_code = 409
+            else:
+                status_code = 400
             raise HTTPException(status_code=status_code, detail=str(exc)) from exc
         return asdict(project)
     finally:
@@ -5200,6 +5252,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeProject",
             "RuntimeProjectPage",
             "RuntimeProjectCreateRequest",
+            "RuntimeProjectActionInput",
+            "RuntimeProjectActionRequest",
             "RuntimeProjectUpdateInput",
             "RuntimeProjectUpdateRequest",
             "RuntimeProjectMember",
@@ -5332,6 +5386,7 @@ def contracts() -> dict[str, list[str]]:
             "TraceabilityBundle",
             "/v1/projects/runtime",
             "/v1/projects/runtime/au/dtc-ecommerce",
+            "POST /v1/projects/runtime/action",
             "PATCH /v1/projects/runtime",
             "/v1/project-members/runtime",
             "/v1/project-member-invitations/runtime",

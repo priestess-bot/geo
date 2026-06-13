@@ -68,6 +68,7 @@ from geno_core.models import (
     RuntimeProjectMemberInvitation,
     RuntimeProjectMemberInvitationPage,
     RuntimeProjectMemberPage,
+    RuntimeProjectActionInput,
     RuntimeProjectUpdateInput,
     RuntimePromptImportHistoryItem,
     RuntimePromptImportHistoryPage,
@@ -747,8 +748,29 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.json()["total_count"], 0)
         self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
         self.assertEqual(fake_repository.kwargs["market_code"], "AU")
+        self.assertIsNone(fake_repository.kwargs["status"])
+        self.assertFalse(fake_repository.kwargs["include_archived"])
         self.assertEqual(fake_repository.kwargs["limit"], 2)
         self.assertEqual(fake_repository.kwargs["offset"], 1)
+
+    def test_runtime_projects_endpoint_passes_status_and_archive_filters(self) -> None:
+        class FakeRepository:
+            def list_runtime_projects(self, **kwargs: object) -> RuntimeProjectPage:
+                self.kwargs = kwargs
+                return RuntimeProjectPage(total_count=0, limit=int(kwargs["limit"]), offset=int(kwargs["offset"]), records=())
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/projects/runtime?market_code=AU&status=archived&include_archived=true&limit=2&offset=1"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(fake_repository.kwargs["market_code"], "AU")
+        self.assertEqual(fake_repository.kwargs["status"], "archived")
+        self.assertTrue(fake_repository.kwargs["include_archived"])
 
     def test_runtime_project_update_endpoint_passes_payload(self) -> None:
         class FakeRepository:
@@ -855,6 +877,125 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(allowed.status_code, 200)
         self.assertEqual(allowed_repository.project.updated_by, "agency-owner")
         self.assertEqual(allowed_repository.contexts, [("agency-owner", project_id)])
+
+    def test_runtime_project_action_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def apply_runtime_project_action(self, project_action: RuntimeProjectActionInput) -> RuntimeProject:
+                self.project_action = project_action
+                return RuntimeProject(
+                    project={
+                        "id": project_action.project_id,
+                        "name": "Koala GEO Pilot",
+                        "market_code": "AU",
+                        "industry_code": "dtc_ecommerce",
+                        "target_brand": "Koala",
+                        "category": "mattresses",
+                        "prompt_version": "au_dtc_ecommerce_v1",
+                        "status": "archived",
+                    },
+                    tenant={"id": "tenant-1", "name": "Design Partner AU"},
+                    brand=None,
+                    competitors=(),
+                    prompt_count=100,
+                    audit_events=({"event_type": "project_archived", "method_version": "runtime_project_archive_v1"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/projects/runtime/action",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "action": "archive",
+                    "updated_by": "agency-owner",
+                    "reason": "archive stale pilot",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["project"]["status"], "archived")
+        self.assertIsInstance(fake_repository.project_action, RuntimeProjectActionInput)
+        self.assertEqual(fake_repository.project_action.action, "archive")
+        self.assertEqual(fake_repository.project_action.updated_by, "agency-owner")
+        self.assertEqual(fake_repository.project_action.reason, "archive stale pilot")
+
+    def test_runtime_project_action_endpoint_requires_admin_or_owner_role(self) -> None:
+        class FakeRepository:
+            def __init__(self, role: str) -> None:
+                self.role = role
+                self.contexts: list[tuple[str | None, str | None]] = []
+
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str | None:
+                self.role_project_id = project_id
+                self.role_actor_id = actor_id
+                return self.role
+
+            def set_runtime_project_access_context(self, *, actor_id: str, project_id: str | None = None) -> None:
+                self.contexts.append((actor_id, project_id))
+
+            def apply_runtime_project_action(self, project_action: RuntimeProjectActionInput) -> RuntimeProject:
+                self.project_action = project_action
+                return RuntimeProject(
+                    project={
+                        "id": project_action.project_id,
+                        "name": "Koala GEO Pilot",
+                        "market_code": "AU",
+                        "industry_code": "dtc_ecommerce",
+                        "target_brand": "Koala",
+                        "category": "mattresses",
+                        "prompt_version": "au_dtc_ecommerce_v1",
+                        "status": "active",
+                    },
+                    tenant={"id": "tenant-1", "name": "Design Partner AU"},
+                    brand=None,
+                    competitors=(),
+                    prompt_count=100,
+                    audit_events=({"event_type": "project_restored", "method_version": "runtime_project_restore_v1"},),
+                )
+
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        denied_repository = FakeRepository(role="analyst")
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=denied_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            denied = self.client.post(
+                "/v1/projects/runtime/action",
+                json={"project_id": project_id, "action": "restore"},
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+        self.assertEqual(denied.status_code, 403)
+        self.assertIn("requires owner, admin", denied.json()["detail"])
+
+        allowed_repository = FakeRepository(role="owner")
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=allowed_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            allowed = self.client.post(
+                "/v1/projects/runtime/action",
+                json={"project_id": project_id, "action": "restore", "updated_by": "payload-user"},
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(allowed_repository.project_action.updated_by, "agency-owner")
+        self.assertEqual(allowed_repository.contexts, [("agency-owner", project_id)])
+
+    def test_runtime_project_action_endpoint_returns_conflict_for_invalid_lifecycle_state(self) -> None:
+        class FakeRepository:
+            def apply_runtime_project_action(self, project_action: RuntimeProjectActionInput) -> object:
+                raise ValueError("project already archived")
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/projects/runtime/action",
+                json={"project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c", "action": "archive"},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("project already archived", response.json()["detail"])
 
     def test_runtime_projects_endpoint_requires_actor_when_access_control_enabled(self) -> None:
         with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}):
@@ -5481,6 +5622,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeSavedViewPage", payload["persistence"])
         self.assertIn("RuntimeProject", payload["persistence"])
         self.assertIn("RuntimeProjectPage", payload["persistence"])
+        self.assertIn("RuntimeProjectActionInput", payload["persistence"])
+        self.assertIn("RuntimeProjectActionRequest", payload["persistence"])
         self.assertIn("RuntimeProjectUpdateInput", payload["persistence"])
         self.assertIn("RuntimeProjectUpdateRequest", payload["persistence"])
         self.assertIn("RuntimeProjectMember", payload["persistence"])
@@ -5497,6 +5640,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("ProjectMemberInvitationActionRequest", payload["persistence"])
         self.assertIn("ProjectMemberInvitationAcceptRequest", payload["persistence"])
         self.assertIn("ProjectMemberInvitationEmailRequest", payload["persistence"])
+        self.assertIn("POST /v1/projects/runtime/action", payload["persistence"])
         self.assertIn("PATCH /v1/projects/runtime", payload["persistence"])
         self.assertIn("/v1/project-member-invitations/runtime", payload["persistence"])
         self.assertIn("/v1/project-member-invitations/runtime/action", payload["persistence"])

@@ -103,6 +103,7 @@ from geno_core.models import (
     RuntimeProjectMemberInvitationPage,
     RuntimeProjectMemberPage,
     RuntimeProjectPage,
+    RuntimeProjectActionInput,
     RuntimeProjectUpdateInput,
     RuntimePromptImportHistoryItem,
     RuntimePromptImportHistoryPage,
@@ -1822,6 +1823,8 @@ class PostgresEvidenceRepository:
         *,
         project_id: str | None = None,
         market_code: str | None = None,
+        status: str | None = None,
+        include_archived: bool = False,
         actor_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
@@ -1836,6 +1839,13 @@ class PostgresEvidenceRepository:
         if market_code:
             filters.append("p.market_code = %s")
             params.append(market_code)
+        normalized_status = status.strip().lower() if status else None
+        if normalized_status:
+            filters.append("p.status = %s")
+            params.append(normalized_status)
+        elif not include_archived:
+            filters.append("p.status <> %s")
+            params.append("archived")
         if actor_id:
             filters.append(
                 """
@@ -1888,8 +1898,8 @@ class PostgresEvidenceRepository:
             raise ValueError("target_brand cannot be empty")
         if category is not None and not category:
             raise ValueError("category cannot be empty")
-        if status is not None and status not in {"configured", "active", "paused", "archived"}:
-            raise ValueError("status must be configured, active, paused, or archived")
+        if status is not None and status not in {"configured", "active", "paused"}:
+            raise ValueError("status must be configured, active, or paused")
         with self.connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -1967,6 +1977,83 @@ class PostgresEvidenceRepository:
                 output_refs={"project_ids": [project_id], "status": [str(after.get("status"))]},
                 method_version="runtime_project_update_v1",
                 reason=update.reason.strip() if update.reason else "runtime_project_update",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            record = self._load_runtime_project(cursor=cursor, project=after)
+        self.connection.commit()
+        return record
+
+    def apply_runtime_project_action(self, action_input: RuntimeProjectActionInput) -> RuntimeProject:
+        project_id = action_input.project_id.strip()
+        action = action_input.action.strip().lower()
+        updated_by = action_input.updated_by.strip() or "runtime-console"
+        if not project_id:
+            raise ValueError("project_id is required")
+        if action not in {"archive", "restore"}:
+            raise ValueError("action must be archive or restore")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_COLUMNS)}
+                FROM projects
+                WHERE id = %s
+                FOR UPDATE
+                """,
+                (_uuid(project_id),),
+            )
+            existing = cursor.fetchone()
+            if not existing:
+                raise ValueError("project not found")
+            before = _row_dict(existing, PROJECT_COLUMNS)
+            before_status = str(before.get("status") or "")
+            if action == "archive":
+                if before_status == "archived":
+                    raise ValueError("project already archived")
+                after_status = "archived"
+                event_type = "project_archived"
+                method_version = "runtime_project_archive_v1"
+            else:
+                if before_status != "archived":
+                    raise ValueError("project is not archived")
+                after_status = "active"
+                event_type = "project_restored"
+                method_version = "runtime_project_restore_v1"
+            cursor.execute(
+                """
+                UPDATE projects
+                SET status = %s
+                WHERE id = %s
+                """,
+                (after_status, _uuid(project_id)),
+            )
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_COLUMNS)}
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            after = _row_dict(cursor.fetchone(), PROJECT_COLUMNS)
+            audit_event = build_audit_event(
+                event_type=event_type,
+                project_id=project_id,
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="project",
+                target_id=project_id,
+                before=before,
+                after=after,
+                input_refs={
+                    "project_ids": [project_id],
+                    "action": [action],
+                    "status_before": [before_status],
+                    "status_after": [after_status],
+                },
+                output_refs={"project_ids": [project_id], "status": [after_status]},
+                method_version=method_version,
+                reason=action_input.reason.strip() if action_input.reason else f"runtime_project_{action}",
             )
             self.save_audit_events((audit_event,), cursor=cursor)
             record = self._load_runtime_project(cursor=cursor, project=after)

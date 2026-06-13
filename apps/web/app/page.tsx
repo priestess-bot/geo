@@ -1486,6 +1486,7 @@ const endpoints = {
   retestExecutionStatus: "/v1/au-retest-execution-status",
   handoffDossier: "/v1/handoff-dossier/au",
   projects: "/v1/projects/runtime",
+  projectAction: "/v1/projects/runtime/action",
   projectMembers: "/v1/project-members/runtime",
   projectMemberInvitations: "/v1/project-member-invitations/runtime",
   projectMemberInvitationAction: "/v1/project-member-invitations/runtime/action",
@@ -1645,6 +1646,35 @@ async function updateRuntimeProject(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/projects/runtime returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function actionRuntimeProject(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const action = String(formData.get("action") || "").trim();
+  if (!projectId || !action) {
+    throw new Error("project_id and action are required to change a runtime project lifecycle state");
+  }
+  const payload = {
+    project_id: projectId,
+    action,
+    updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
+    reason: String(formData.get("reason") || `Runtime project ${action}`).trim()
+  };
+  const response = await fetch(`${baseUrl}${endpoints.projectAction}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`${endpoints.projectAction} returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -2862,6 +2892,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     retestExecutionStatus: endpoints.retestExecutionStatus,
     handoffDossier: endpoints.handoffDossier,
     projects: runtimePath(endpoints.projects, projectListParams),
+    projectAction: endpoints.projectAction,
     projectMembers: endpoints.projectMembers,
     projectMemberInvitations: endpoints.projectMemberInvitations,
     projectMemberInvitationAction: endpoints.projectMemberInvitationAction,
@@ -2959,6 +2990,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       runtimePath(endpoints.projects, {
         project_id: filters.project_id,
         market_code: "AU",
+        include_archived: "true",
         limit: 1
       }),
       emptyPage<RuntimeProject>()
@@ -4513,7 +4545,6 @@ export default async function Home({
                       <option value="configured">configured</option>
                       <option value="active">active</option>
                       <option value="paused">paused</option>
-                      <option value="archived">archived</option>
                     </select>
                   </label>
                   <label className="wideField">
@@ -4525,6 +4556,35 @@ export default async function Home({
                     Save project
                   </button>
                 </form>
+                <div className="projectLifecycleActions">
+                  <div className="formHeader">
+                    <h3>Project Actions</h3>
+                    <small>
+                      POST /v1/projects/runtime/action · project_archived · project_restored · evidence preserved
+                    </small>
+                  </div>
+                  <form action={actionRuntimeProject} className="inlineForm">
+                    <input type="hidden" name="project_id" value={latestProject.project.id} />
+                    <input
+                      type="hidden"
+                      name="action"
+                      value={latestProject.project.status === "archived" ? "restore" : "archive"}
+                    />
+                    <input type="hidden" name="updated_by" value="runtime-console" />
+                    <input
+                      type="hidden"
+                      name="reason"
+                      value={
+                        latestProject.project.status === "archived"
+                          ? "Restore runtime project from archive"
+                          : "Archive runtime project and preserve evidence history"
+                      }
+                    />
+                    <button className="textButton" type="submit">
+                      {latestProject.project.status === "archived" ? "Restore project" : "Archive project"}
+                    </button>
+                  </form>
+                </div>
                 <div className="projectMembers">
                   <div className="formHeader">
                     <h3>Project Members</h3>
