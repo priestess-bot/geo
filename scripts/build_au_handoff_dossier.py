@@ -268,6 +268,8 @@ def _p0a_environment_checklist_summary(checklist: dict[str, Any]) -> dict[str, A
 
 def _p0a_execution_checklist_summary(checklist: dict[str, Any]) -> dict[str, Any]:
     summary = _as_dict(checklist.get("summary"))
+    credential_handoff = _as_dict(checklist.get("credential_handoff"))
+    redaction_policy = _as_dict(credential_handoff.get("redaction_policy"))
     return {
         "path": str(_as_dict(checklist.get("paths")).get("output", "")),
         "execution_checklist_version": checklist.get("execution_checklist_version", ""),
@@ -293,6 +295,16 @@ def _p0a_execution_checklist_summary(checklist: dict[str, Any]) -> dict[str, Any
         "runbook_execution_verifier_status": summary.get("runbook_execution_verifier_status", ""),
         "package_verifier_status": summary.get("package_verifier_status", ""),
         "status_verifier_status": summary.get("status_verifier_status", ""),
+        "credential_handoff_ready": credential_handoff.get("ready") is True,
+        "credential_handoff_missing_required_count": credential_handoff.get("missing_required_count", 0),
+        "credential_handoff_missing_required": [
+            str(value) for value in _as_list(credential_handoff.get("missing_required"))
+        ],
+        "credential_handoff_target_env_file": str(credential_handoff.get("target_env_file") or ""),
+        "credential_handoff_setup_command_count": len(_as_list(credential_handoff.get("setup_commands"))),
+        "credential_handoff_verification_command_count": len(_as_list(credential_handoff.get("verification_commands"))),
+        "credential_handoff_secret_redacted": redaction_policy.get("raw_secret_values_allowed") is False
+        and redaction_policy.get("forbidden_exact_secret_fields_redacted") is True,
     }
 
 
@@ -548,6 +560,11 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
             f"- Full batch planned runs：{p0a_execution_checklist.get('full_batch_planned_runs', '')}",
             f"- 缺失 artifact：{', '.join(str(value) for value in _as_list(p0a_execution_checklist.get('missing_artifacts'))) or '无'}",
             f"- Remaining blockers：{p0a_execution_checklist.get('remaining_blocker_count', 0)}",
+            f"- Credential handoff：{'ready' if p0a_execution_checklist.get('credential_handoff_ready') else 'blocked'}"
+            f"（missing: {p0a_execution_checklist.get('credential_handoff_missing_required_count', 0)}, "
+            f"redacted: {'yes' if p0a_execution_checklist.get('credential_handoff_secret_redacted') else 'no'}）",
+            f"- Credential missing：{', '.join(str(value) for value in _as_list(p0a_execution_checklist.get('credential_handoff_missing_required'))) or '无'}",
+            f"- Credential target env file：{p0a_execution_checklist.get('credential_handoff_target_env_file') or 'none'}",
             f"- Status verifier：{p0a_execution_checklist.get('status_verifier_status', '')}",
             "",
             "## P0b Google 执行清单",
@@ -726,6 +743,15 @@ def build_au_handoff_dossier(
             "p0a_execution_checklist_ready": p0a_execution_checklist_summary.get("p0a_execution_checklist_ready")
             is True,
             "p0a_execution_remaining_blocker_count": p0a_execution_checklist_summary.get("remaining_blocker_count", 0),
+            "p0a_credential_handoff_ready": p0a_execution_checklist_summary.get("credential_handoff_ready") is True,
+            "p0a_credential_handoff_missing_required_count": p0a_execution_checklist_summary.get(
+                "credential_handoff_missing_required_count",
+                0,
+            ),
+            "p0a_credential_handoff_secret_redacted": p0a_execution_checklist_summary.get(
+                "credential_handoff_secret_redacted",
+            )
+            is True,
             "p0b_google_execution_checklist_ready": p0b_google_checklist_summary.get(
                 "google_execution_checklist_ready"
             )

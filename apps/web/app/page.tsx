@@ -955,6 +955,13 @@ type AuP0aExecutionChecklist = {
     runbook_execution_verifier_status?: string;
     package_verifier_status?: string;
     status_verifier_status?: string;
+    credential_handoff_ready?: boolean;
+    credential_handoff_missing_required_count?: number;
+    credential_handoff_missing_required?: string[];
+    credential_handoff_target_env_file?: string;
+    credential_handoff_setup_command_count?: number;
+    credential_handoff_verification_command_count?: number;
+    credential_handoff_secret_redacted?: boolean;
   };
   verification_commands?: Array<{ id?: string; shell?: string; purpose?: string }>;
   evidence_outputs?: string[];
@@ -1018,6 +1025,9 @@ type AuHandoffDossier = {
     external_dependency_blocker_count?: number;
     p0a_execution_checklist_ready?: boolean;
     p0a_execution_remaining_blocker_count?: number;
+    p0a_credential_handoff_ready?: boolean;
+    p0a_credential_handoff_missing_required_count?: number;
+    p0a_credential_handoff_secret_redacted?: boolean;
     p0a_env_file_hygiene_ready?: boolean;
     p0a_env_file_hygiene_error_count?: number;
     p0a_env_file_hygiene_warning_count?: number;
@@ -3850,6 +3860,7 @@ export default async function Home({
   const p0aExecutionSummary = p0aExecutionChecklist?.summary;
   const missingP0aArtifacts = p0aExecutionSummary?.missing_artifacts || [];
   const p0aExecutionBlockers = p0aExecutionSummary?.remaining_blockers || [];
+  const missingP0aCredentials = p0aExecutionSummary?.credential_handoff_missing_required || [];
   const p0bGoogleExecutionChecklist = data.p0bGoogleExecutionChecklist;
   const p0bGoogleExecutionSummary = p0bGoogleExecutionChecklist?.summary;
   const missingP0bSmokeEnv = p0bGoogleExecutionSummary?.missing_required_environment || [];
@@ -4435,12 +4446,30 @@ export default async function Home({
                 <small>No P0a execution blockers recorded.</small>
               )}
             </div>
+            <div>
+              <strong>Credential handoff</strong>
+              <small>
+                {p0aExecutionSummary?.credential_handoff_ready ? "ready" : "blocked"} · missing{" "}
+                {p0aExecutionSummary?.credential_handoff_missing_required_count || 0} · redacted{" "}
+                {p0aExecutionSummary?.credential_handoff_secret_redacted ? "yes" : "no"}
+              </small>
+              {missingP0aCredentials.length ? (
+                <ul className="plainList">
+                  {missingP0aCredentials.map((name) => (
+                    <li key={name}>{name}</li>
+                  ))}
+                </ul>
+              ) : (
+                <small>All required P0a credentials are recorded as present.</small>
+              )}
+            </div>
           </div>
           <div className="handoffBoundary">
             <span>
               Completion {p0aExecutionSummary?.completion_percent || 0}% · design-ready{" "}
               {p0aExecutionSummary?.design_ready_artifact_percent || 0}%
             </span>
+            <span>Credential target env file {p0aExecutionSummary?.credential_handoff_target_env_file || "none"}</span>
             <span>
               Verifiers: execution {p0aExecutionSummary?.runbook_execution_verifier_status || "unknown"} · package{" "}
               {p0aExecutionSummary?.package_verifier_status || "unknown"} · status{" "}
@@ -4588,6 +4617,11 @@ export default async function Home({
               P0a env-file hygiene {handoffSummary?.p0a_env_file_hygiene_ready ? "ready" : "blocked"} · errors{" "}
               {handoffSummary?.p0a_env_file_hygiene_error_count || 0} · warnings{" "}
               {handoffSummary?.p0a_env_file_hygiene_warning_count || 0}
+            </span>
+            <span>
+              P0a credential handoff {handoffSummary?.p0a_credential_handoff_ready ? "ready" : "blocked"} · missing{" "}
+              {handoffSummary?.p0a_credential_handoff_missing_required_count || 0} · redacted{" "}
+              {handoffSummary?.p0a_credential_handoff_secret_redacted ? "yes" : "no"}
             </span>
             <span>
               P0b env-file hygiene{" "}

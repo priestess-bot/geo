@@ -187,6 +187,16 @@ def verify_au_handoff_dossier(
         "remaining_blocker_count"
     ):
         errors.append("summary_p0a_execution_remaining_blocker_count_mismatch")
+    if summary.get("p0a_credential_handoff_ready") is not p0a_execution_checklist.get("credential_handoff_ready"):
+        errors.append("summary_p0a_credential_handoff_ready_mismatch")
+    if summary.get("p0a_credential_handoff_missing_required_count") != p0a_execution_checklist.get(
+        "credential_handoff_missing_required_count"
+    ):
+        errors.append("summary_p0a_credential_handoff_missing_required_count_mismatch")
+    if summary.get("p0a_credential_handoff_secret_redacted") is not p0a_execution_checklist.get(
+        "credential_handoff_secret_redacted"
+    ):
+        errors.append("summary_p0a_credential_handoff_secret_redacted_mismatch")
     if summary.get("p0b_google_execution_checklist_ready") is not p0b_google_execution_checklist.get(
         "google_execution_checklist_ready"
     ):
