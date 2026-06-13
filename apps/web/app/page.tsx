@@ -723,6 +723,7 @@ type RuntimeData = {
   retestSchedulerPlan: AuRetestSchedulerPlan | null;
   retestExecutionStatus: AuRetestExecutionStatus | null;
   handoffDossier: AuHandoffDossier | null;
+  customerHandoffReadiness: AuCustomerHandoffReadiness | null;
   projects: PageResponse<RuntimeProject>;
   projectLifecycleEvents: PageResponse<RuntimeProjectLifecycleEvent>;
   auditEvents: PageResponse<RuntimeAuditEvent>;
@@ -1136,6 +1137,63 @@ type AuHandoffDossier = {
     commands?: string[];
     verification_commands?: string[];
   };
+};
+
+type AuCustomerHandoffReadiness = {
+  customer_handoff_readiness_version: string;
+  generated_at: string;
+  status: string;
+  readiness_audit_ready: boolean;
+  ready_for_customer_report_handoff: boolean;
+  customer_handoff_readiness_hash: string;
+  summary?: {
+    customer_report_handoff_readiness_percent?: number;
+    structural_auditability_percent?: number;
+    customer_ready_gate_count?: number;
+    customer_total_gate_count?: number;
+    blocked_customer_gate_count?: number;
+    blocked_customer_gate_ids?: string[];
+    structural_ready_gate_count?: number;
+    structural_total_gate_count?: number;
+    next_action?: string;
+    next_work_item_id?: string;
+    remaining_blocker_count?: number;
+    external_dependency_blocker_count?: number;
+    readiness_statement?: string;
+  };
+  source_handoff_dossier?: {
+    handoff_dossier_hash?: string;
+    handoff_dossier_ready?: boolean;
+    ready_for_customer_report_handoff?: boolean;
+    path?: string;
+  };
+  readiness_audit?: {
+    audit_version?: string;
+    customer_gates?: Array<{
+      id?: string;
+      label?: string;
+      stage?: string;
+      ready?: boolean;
+      status?: string;
+      next_action?: string;
+      evidence_ref?: string;
+    }>;
+    structural_gates?: Array<{
+      id?: string;
+      label?: string;
+      ready?: boolean;
+      status?: string;
+      evidence_ref?: string;
+    }>;
+  };
+  runtime_endpoints?: {
+    customer_handoff_readiness?: string;
+    handoff_dossier?: string;
+    launch_status?: string;
+    external_dependency_handoff?: string;
+    external_dependency_clearance?: string;
+  };
+  hard_gate_commands?: string[];
 };
 
 type AuExternalDependencyHandoff = {
@@ -1752,6 +1810,7 @@ const endpoints = {
   retestSchedulerPlan: "/v1/au-retest-scheduler-plan",
   retestExecutionStatus: "/v1/au-retest-execution-status",
   handoffDossier: "/v1/handoff-dossier/au",
+  customerHandoffReadiness: "/v1/customer-handoff-readiness/au",
   projects: "/v1/projects/runtime",
   projectAction: "/v1/projects/runtime/action",
   projectLifecycleEvents: "/v1/projects/runtime/lifecycle-events",
@@ -3164,6 +3223,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     retestSchedulerPlan: endpoints.retestSchedulerPlan,
     retestExecutionStatus: endpoints.retestExecutionStatus,
     handoffDossier: endpoints.handoffDossier,
+    customerHandoffReadiness: endpoints.customerHandoffReadiness,
     projects: runtimePath(endpoints.projects, projectListParams),
     projectAction: endpoints.projectAction,
     projectLifecycleEvents: endpoints.projectLifecycleEvents,
@@ -3477,6 +3537,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     retestSchedulerPlan,
     retestExecutionStatus,
     handoffDossier,
+    customerHandoffReadiness,
     prompts,
     projectLifecycleEvents,
     auditEvents,
@@ -3526,6 +3587,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuRetestSchedulerPlan | null>(baseUrl, paths.retestSchedulerPlan, null),
     fetchRuntimeEndpoint<AuRetestExecutionStatus | null>(baseUrl, paths.retestExecutionStatus, null),
     fetchRuntimeEndpoint<AuHandoffDossier | null>(baseUrl, paths.handoffDossier, null),
+    fetchRuntimeEndpoint<AuCustomerHandoffReadiness | null>(baseUrl, paths.customerHandoffReadiness, null),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     selectedProjectId
       ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectLifecycleEvent>>(
@@ -3682,10 +3744,12 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aExecutionChecklist,
     p0bGoogleExecutionChecklist,
     externalDependencyHandoff,
+    externalDependencyClearance,
     broaderPlatformRegistry,
     retestSchedulerPlan,
     retestExecutionStatus,
     handoffDossier,
+    customerHandoffReadiness,
     projects,
     prompts,
     projectLifecycleEvents,
@@ -3740,6 +3804,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       retestSchedulerPlan: retestSchedulerPlan.payload,
       retestExecutionStatus: retestExecutionStatus.payload,
       handoffDossier: handoffDossier.payload,
+      customerHandoffReadiness: customerHandoffReadiness.payload,
       projects: projects.payload,
       projectLifecycleEvents: projectLifecycleEvents.payload,
       auditEvents: auditEvents.payload,
@@ -4108,6 +4173,10 @@ export default async function Home({
   const handoffSummary = handoffDossier?.summary;
   const handoffReadinessAudit = handoffDossier?.customer_handoff_readiness_audit;
   const handoffNextWorkItem = handoffDossier?.next_work_item;
+  const customerHandoffReadiness = data.customerHandoffReadiness;
+  const customerHandoffReadinessSummary = customerHandoffReadiness?.summary;
+  const customerHandoffReadinessBlockedGateIds =
+    customerHandoffReadinessSummary?.blocked_customer_gate_ids || [];
   const scoreWeightConfig = data.scoreWeights?.score_weight_config || null;
   const savedScoreWeightConfig = scoreWeightConfig?.id ? scoreWeightConfig : null;
   const scoreWeightAuditEvent = data.scoreWeights?.audit_events[0]?.event_type || "default weights";
@@ -4995,6 +5064,63 @@ export default async function Home({
             </span>
           </div>
           <code>{paths.handoffDossier}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>Customer handoff readiness</strong>
+            <span>
+              {customerHandoffReadiness?.customer_handoff_readiness_version ||
+                "au_customer_handoff_readiness_v1"} · customer_handoff_readiness_hash{" "}
+              {shortHash(customerHandoffReadiness?.customer_handoff_readiness_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>
+              customer_report_handoff_readiness_percent{" "}
+              {customerHandoffReadinessSummary?.customer_report_handoff_readiness_percent ?? 0}%
+            </span>
+            <span>
+              structural_auditability_percent{" "}
+              {customerHandoffReadinessSummary?.structural_auditability_percent ?? 0}%
+            </span>
+            <span>
+              Audit ready {customerHandoffReadiness?.readiness_audit_ready ? "yes" : "no"}
+            </span>
+            <span>
+              Customer report {customerHandoffReadiness?.ready_for_customer_report_handoff ? "ready" : "blocked"}
+            </span>
+          </div>
+          <div className="handoffBoundary">
+            <span>
+              Customer gates {customerHandoffReadinessSummary?.customer_ready_gate_count || 0}/
+              {customerHandoffReadinessSummary?.customer_total_gate_count || 0} · blocked{" "}
+              {customerHandoffReadinessSummary?.blocked_customer_gate_count || 0}
+            </span>
+            <span>
+              Structural gates {customerHandoffReadinessSummary?.structural_ready_gate_count || 0}/
+              {customerHandoffReadinessSummary?.structural_total_gate_count || 0}
+            </span>
+            <span>
+              Blocked gate ids {customerHandoffReadinessBlockedGateIds.slice(0, 5).join(", ") || "none"}
+            </span>
+            <span>Next work item {customerHandoffReadinessSummary?.next_work_item_id || "none"}</span>
+            <span>
+              Source dossier hash {shortHash(customerHandoffReadiness?.source_handoff_dossier?.handoff_dossier_hash)}
+            </span>
+            <span>
+              {customerHandoffReadiness?.runtime_endpoints?.customer_handoff_readiness ||
+                "GET /v1/customer-handoff-readiness/au"}
+            </span>
+            <span>Hard gate: make verify-au-customer-handoff-readiness</span>
+            <span>
+              Hard gate:{" "}
+              {customerHandoffReadiness?.hard_gate_commands?.find((command) =>
+                command.endsWith("--require-customer-ready")
+              ) ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_readiness.py docs/runtime_preflight/au-customer-handoff-readiness-latest.json --require-customer-ready"}
+            </span>
+          </div>
+          <code>{paths.customerHandoffReadiness}</code>
         </div>
         <div className="externalDependencyHandoff">
           <div className="launchRemediationHeader">
