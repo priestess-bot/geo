@@ -184,6 +184,21 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertGreaterEqual(dossier["summary"]["work_item_count"], 8)
         self.assertEqual(dossier["summary"]["next_work_item_id"], "p0a_environment")
         self.assertEqual(dossier["next_work_item"]["id"], "p0a_environment")
+        audit = dossier["customer_handoff_readiness_audit"]
+        self.assertEqual(audit["audit_version"], "au_customer_handoff_readiness_audit_v1")
+        self.assertFalse(audit["customer_report_handoff_ready"])
+        self.assertEqual(audit["customer_report_handoff_readiness_percent"], 10.0)
+        self.assertEqual(audit["customer_ready_gate_count"], 1)
+        self.assertEqual(audit["customer_total_gate_count"], 10)
+        self.assertEqual(audit["blocked_customer_gate_count"], 9)
+        self.assertEqual(audit["structural_auditability_percent"], 100.0)
+        self.assertEqual(audit["next_work_item_id"], "p0a_environment")
+        self.assertEqual(audit["remaining_blocker_count"], 29)
+        self.assertEqual(audit["external_dependency_blocker_count"], 29)
+        self.assertEqual(audit["readiness_statement"], "blocked_external_dependencies")
+        self.assertIn("p0a_credentials_configured", audit["blocked_customer_gate_ids"])
+        self.assertIn("customer_report_handoff_gate", audit["blocked_customer_gate_ids"])
+        self.assertIn("make verify-au-handoff-dossier", audit["hard_gate_commands"])
         self.assertEqual(dossier["runtime_endpoints"]["launch_status"], "GET /v1/launch-status/au")
         self.assertEqual(
             dossier["runtime_endpoints"]["p0a_environment_checklist"],
@@ -294,6 +309,10 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertIn("AU 客户交付总包", markdown)
         self.assertIn("P0a 环境清单", markdown)
         self.assertIn("P0a 执行清单", markdown)
+        self.assertIn("客户交付 Readiness Audit", markdown)
+        self.assertIn("客户报告交付 readiness：10.0%", markdown)
+        self.assertIn("结构化可审计度：100.0%", markdown)
+        self.assertIn("Blocked customer gates：p0a_credentials_configured", markdown)
         self.assertIn("Real batch phase handoff", markdown)
         self.assertIn("P0b Google 执行清单", markdown)
         self.assertIn("Env-file hygiene：ready", markdown)
@@ -338,6 +357,13 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertEqual(dossier["summary"]["handoff_posture"], "ready_for_customer_report_handoff")
         self.assertEqual(dossier["summary"]["remaining_blocker_count"], 0)
         self.assertEqual(dossier["summary"]["next_work_item_id"], "none")
+        audit = dossier["customer_handoff_readiness_audit"]
+        self.assertTrue(audit["customer_report_handoff_ready"])
+        self.assertEqual(audit["customer_report_handoff_readiness_percent"], 100.0)
+        self.assertEqual(audit["customer_ready_gate_count"], 10)
+        self.assertEqual(audit["blocked_customer_gate_count"], 0)
+        self.assertEqual(audit["blocked_customer_gate_ids"], [])
+        self.assertEqual(audit["readiness_statement"], "ready_for_customer_report_handoff")
         self.assertTrue(dossier["summary"]["p0b_google_manual_backfill_handoff_ready"])
         self.assertEqual(dossier["summary"]["p0b_google_manual_backfill_handoff_record_count"], 120)
         self.assertTrue(dossier["summary"]["p0b_google_spike_phase_handoff_ready"])
@@ -516,6 +542,31 @@ class AuHandoffDossierTest(unittest.TestCase):
             "summary_p0b_google_spike_phase_handoff_next_phase_mismatch",
             verification["errors"],
         )
+
+    def test_verifier_detects_customer_handoff_readiness_audit_tampering(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path, remediation_plan_path = self._write_launch_status_and_plan(temp_dir, ready=False)
+            checklist_path = self._write_p0a_environment_checklist(temp_dir)
+            p0a_execution_checklist_path = self._write_p0a_execution_checklist(temp_dir)
+            p0b_checklist_path = self._write_p0b_google_execution_checklist(temp_dir)
+            dossier = build_au_handoff_dossier(
+                launch_status_path=launch_status_path,
+                remediation_plan_path=remediation_plan_path,
+                p0a_environment_checklist_path=checklist_path,
+                p0a_execution_checklist_path=p0a_execution_checklist_path,
+                p0b_google_execution_checklist_path=p0b_checklist_path,
+                output_path=Path(temp_dir) / "dossier.json",
+                markdown_output_path=Path(temp_dir) / "dossier.md",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            dossier["customer_handoff_readiness_audit"]["customer_report_handoff_readiness_percent"] = 77.0  # type: ignore[index]
+            dossier["customer_handoff_readiness_audit"]["blocked_customer_gate_ids"] = []  # type: ignore[index]
+            dossier["handoff_dossier_hash"] = compute_handoff_dossier_hash(dossier)
+            verification = verify_au_handoff_dossier(dossier)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("customer_handoff_readiness_percent_mismatch", verification["errors"])
+        self.assertIn("customer_handoff_readiness_blocked_customer_gate_ids_mismatch", verification["errors"])
 
     def test_verifier_detects_hash_and_markdown_tampering(self) -> None:
         with TemporaryDirectory() as temp_dir:

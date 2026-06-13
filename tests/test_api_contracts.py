@@ -543,6 +543,19 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["next_work_item_id"], "p0a_environment")
         self.assertEqual(payload["summary"]["remaining_blocker_count"], 29)
         self.assertEqual(payload["summary"]["unmapped_blocker_count"], 0)
+        self.assertEqual(
+            payload["customer_handoff_readiness_audit"]["audit_version"],
+            "au_customer_handoff_readiness_audit_v1",
+        )
+        self.assertFalse(payload["customer_handoff_readiness_audit"]["customer_report_handoff_ready"])
+        self.assertEqual(payload["customer_handoff_readiness_audit"]["customer_report_handoff_readiness_percent"], 10.0)
+        self.assertEqual(payload["customer_handoff_readiness_audit"]["customer_ready_gate_count"], 1)
+        self.assertEqual(payload["customer_handoff_readiness_audit"]["customer_total_gate_count"], 10)
+        self.assertEqual(payload["customer_handoff_readiness_audit"]["structural_auditability_percent"], 100.0)
+        self.assertIn(
+            "customer_report_handoff_gate",
+            payload["customer_handoff_readiness_audit"]["blocked_customer_gate_ids"],
+        )
         self.assertTrue(payload["summary"]["p0a_env_file_hygiene_ready"])
         self.assertEqual(payload["summary"]["p0a_env_file_hygiene_error_count"], 0)
         self.assertTrue(payload["summary"]["p0b_google_env_file_hygiene_ready"])

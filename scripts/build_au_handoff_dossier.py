@@ -38,6 +38,7 @@ from scripts.verify_au_launch_status import verify_au_launch_status  # noqa: E40
 
 
 DOSSIER_VERSION = "au_handoff_dossier_v1"
+CUSTOMER_HANDOFF_READINESS_AUDIT_VERSION = "au_customer_handoff_readiness_audit_v1"
 DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-handoff-dossier-latest.json"
 DEFAULT_MARKDOWN_OUTPUT_PATH = "docs/runtime_preflight/au-handoff-dossier-latest.md"
 
@@ -517,8 +518,261 @@ def _handoff_posture(*, dossier_ready: bool, customer_ready: bool, external_bloc
     return "blocked_internal_followup"
 
 
+def _percent(ready_count: int, total_count: int) -> float:
+    if total_count <= 0:
+        return 0.0
+    return round((ready_count / total_count) * 100, 1)
+
+
+def _readiness_gate(
+    gate_id: str,
+    *,
+    label: str,
+    stage: str,
+    ready: bool,
+    evidence_ref: str,
+    blocked_by: list[str] | None = None,
+    next_action: str = "",
+) -> dict[str, Any]:
+    return {
+        "id": gate_id,
+        "label": label,
+        "stage": stage,
+        "ready": ready,
+        "status": "ready" if ready else "blocked",
+        "blocked_by": [] if ready else blocked_by or [],
+        "next_action": next_action,
+        "evidence_ref": evidence_ref,
+    }
+
+
+def _customer_handoff_readiness_audit(
+    *,
+    customer_ready: bool,
+    handoff_dossier_ready: bool,
+    launch_verification: dict[str, Any],
+    remediation_verification: dict[str, Any],
+    summary: dict[str, Any],
+    p0a_execution_checklist: dict[str, Any],
+    p0b_google_execution_checklist: dict[str, Any],
+    stage_summaries: list[dict[str, Any]],
+    next_work_item: dict[str, Any],
+    required_runtime_endpoints_present: bool,
+) -> dict[str, Any]:
+    stage_ready = {str(item.get("id") or ""): item.get("ready") is True for item in stage_summaries}
+    p0a_missing_credentials = [str(value) for value in _as_list(
+        p0a_execution_checklist.get("credential_handoff_missing_required")
+    )]
+    p0b_missing_environment = [str(value) for value in _as_list(
+        p0b_google_execution_checklist.get("environment_handoff_missing_required")
+    )]
+    p0b_manual_missing = [str(value) for value in _as_list(
+        p0b_google_execution_checklist.get("manual_backfill_handoff_missing_reasons")
+    )]
+    customer_gates = [
+        _readiness_gate(
+            "p0a_credentials_configured",
+            label="P0a provider credentials and database configured",
+            stage="P0a",
+            ready=p0a_execution_checklist.get("credential_handoff_ready") is True,
+            blocked_by=p0a_missing_credentials,
+            next_action="configure_required_environment",
+            evidence_ref="p0a_execution_checklist.credential_handoff",
+        ),
+        _readiness_gate(
+            "p0a_real_batches_ready",
+            label="P0a preflight, small batch, and full batch evidence ready",
+            stage="P0a",
+            ready=p0a_execution_checklist.get("real_batch_phase_handoff_ready") is True,
+            blocked_by=[str(p0a_execution_checklist.get("real_batch_phase_handoff_next_phase") or "preflight")],
+            next_action=str(p0a_execution_checklist.get("real_batch_phase_handoff_next_phase") or ""),
+            evidence_ref="p0a_execution_checklist.real_batch_phase_handoff",
+        ),
+        _readiness_gate(
+            "p0a_design_partner_data_ready",
+            label="P0a design partner data ready",
+            stage="P0a",
+            ready=stage_ready.get("p0a_design_partner", False),
+            blocked_by=[f"remaining:{p0a_execution_checklist.get('remaining_blocker_count', 0)}"],
+            next_action=str(p0a_execution_checklist.get("next_action") or ""),
+            evidence_ref="stage_summaries.p0a_design_partner",
+        ),
+        _readiness_gate(
+            "p0b_google_environment_ready",
+            label="P0b Google environment and selectors ready",
+            stage="P0b",
+            ready=p0b_google_execution_checklist.get("environment_handoff_ready") is True,
+            blocked_by=p0b_missing_environment,
+            next_action=str(p0b_google_execution_checklist.get("next_action") or ""),
+            evidence_ref="p0b_google_execution_checklist.environment_handoff",
+        ),
+        _readiness_gate(
+            "p0b_google_manual_backfill_ready",
+            label="P0b Google manual backfill coverage ready",
+            stage="P0b",
+            ready=p0b_google_execution_checklist.get("manual_backfill_handoff_ready") is True,
+            blocked_by=p0b_manual_missing,
+            next_action="make au-p0b-google-manual-template",
+            evidence_ref="p0b_google_execution_checklist.manual_backfill_handoff",
+        ),
+        _readiness_gate(
+            "p0b_google_phase_execution_ready",
+            label="P0b Google phase execution ready",
+            stage="P0b",
+            ready=p0b_google_execution_checklist.get("google_spike_phase_handoff_ready") is True,
+            blocked_by=[str(p0b_google_execution_checklist.get("google_spike_phase_handoff_next_phase") or "environment")],
+            next_action=str(p0b_google_execution_checklist.get("google_spike_phase_handoff_next_phase") or ""),
+            evidence_ref="p0b_google_execution_checklist.google_spike_phase_handoff",
+        ),
+        _readiness_gate(
+            "p0b_google_main_scoring_ready",
+            label="P0b Google main scoring allowed",
+            stage="P0b",
+            ready=p0b_google_execution_checklist.get("google_main_scoring_allowed") is True,
+            blocked_by=[f"remaining:{p0b_google_execution_checklist.get('remaining_blocker_count', 0)}"],
+            next_action=str(p0b_google_execution_checklist.get("next_action") or ""),
+            evidence_ref="p0b_google_execution_checklist.google_main_scoring_allowed",
+        ),
+        _readiness_gate(
+            "p0c_report_contract_ready",
+            label="P0c report contract ready",
+            stage="P0c",
+            ready=stage_ready.get("p0c_customer_report", False),
+            evidence_ref="stage_summaries.p0c_customer_report",
+        ),
+        _readiness_gate(
+            "external_dependencies_clear",
+            label="External dependency blockers cleared",
+            stage="handoff",
+            ready=int(summary.get("external_dependency_blocker_count") or 0) == 0,
+            blocked_by=[f"external_dependency_blockers:{summary.get('external_dependency_blocker_count', 0)}"],
+            next_action=str(next_work_item.get("id") or "none"),
+            evidence_ref="summary.external_dependency_blocker_count",
+        ),
+        _readiness_gate(
+            "customer_report_handoff_gate",
+            label="Customer report handoff hard gate ready",
+            stage="handoff",
+            ready=customer_ready,
+            blocked_by=[] if customer_ready else [str(summary.get("handoff_posture") or "blocked")],
+            next_action=str(summary.get("next_action") or ""),
+            evidence_ref="launch_status.ready_for_customer_report_handoff",
+        ),
+    ]
+    structural_gates = [
+        _readiness_gate(
+            "launch_status_verifier_pass",
+            label="Launch status verifier passes",
+            stage="audit",
+            ready=launch_verification.get("status") == "pass",
+            evidence_ref="launch_status_verifier.status",
+        ),
+        _readiness_gate(
+            "launch_status_hash_valid",
+            label="Launch status hash is valid",
+            stage="audit",
+            ready=launch_verification.get("hash_valid") is True,
+            evidence_ref="launch_status_verifier.hash_valid",
+        ),
+        _readiness_gate(
+            "remediation_plan_verifier_pass",
+            label="Remediation plan verifier passes",
+            stage="audit",
+            ready=remediation_verification.get("status") == "pass",
+            evidence_ref="remediation_plan_verifier.status",
+        ),
+        _readiness_gate(
+            "remediation_plan_hash_valid",
+            label="Remediation plan hash is valid",
+            stage="audit",
+            ready=remediation_verification.get("hash_valid") is True,
+            evidence_ref="remediation_plan_verifier.hash_valid",
+        ),
+        _readiness_gate(
+            "all_blockers_mapped",
+            label="All launch blockers are mapped to work items",
+            stage="audit",
+            ready=int(summary.get("unmapped_blocker_count") or 0) == 0,
+            evidence_ref="summary.unmapped_blocker_count",
+        ),
+        _readiness_gate(
+            "handoff_dossier_structural_ready",
+            label="Handoff dossier structural gate passes",
+            stage="audit",
+            ready=handoff_dossier_ready,
+            evidence_ref="handoff_dossier_ready",
+        ),
+        _readiness_gate(
+            "p0a_secret_redaction_ready",
+            label="P0a credential handoff is redacted",
+            stage="audit",
+            ready=p0a_execution_checklist.get("credential_handoff_secret_redacted") is True,
+            evidence_ref="p0a_execution_checklist.credential_handoff_secret_redacted",
+        ),
+        _readiness_gate(
+            "p0b_environment_redaction_ready",
+            label="P0b environment handoff is redacted",
+            stage="audit",
+            ready=p0b_google_execution_checklist.get("environment_handoff_secret_redacted") is True,
+            evidence_ref="p0b_google_execution_checklist.environment_handoff_secret_redacted",
+        ),
+        _readiness_gate(
+            "p0b_manual_content_redaction_ready",
+            label="P0b manual backfill content is redacted",
+            stage="audit",
+            ready=p0b_google_execution_checklist.get("manual_backfill_handoff_content_redacted") is True,
+            evidence_ref="p0b_google_execution_checklist.manual_backfill_handoff_content_redacted",
+        ),
+        _readiness_gate(
+            "runtime_replay_endpoints_present",
+            label="Runtime replay endpoints are present",
+            stage="audit",
+            ready=required_runtime_endpoints_present,
+            evidence_ref="runtime_endpoints",
+        ),
+    ]
+    ready_customer_gates = [gate for gate in customer_gates if gate["ready"]]
+    blocked_customer_gates = [gate for gate in customer_gates if not gate["ready"]]
+    ready_structural_gates = [gate for gate in structural_gates if gate["ready"]]
+    return {
+        "audit_version": CUSTOMER_HANDOFF_READINESS_AUDIT_VERSION,
+        "scope": "customer_report_handoff_gate",
+        "customer_report_handoff_ready": customer_ready,
+        "customer_report_handoff_readiness_percent": _percent(len(ready_customer_gates), len(customer_gates)),
+        "customer_ready_gate_count": len(ready_customer_gates),
+        "customer_total_gate_count": len(customer_gates),
+        "blocked_customer_gate_count": len(blocked_customer_gates),
+        "blocked_customer_gate_ids": [str(gate["id"]) for gate in blocked_customer_gates],
+        "structural_auditability_percent": _percent(len(ready_structural_gates), len(structural_gates)),
+        "structural_ready_gate_count": len(ready_structural_gates),
+        "structural_total_gate_count": len(structural_gates),
+        "next_action": str(summary.get("next_action") or ""),
+        "next_work_item_id": str(summary.get("next_work_item_id") or "none"),
+        "remaining_blocker_count": int(summary.get("remaining_blocker_count") or 0),
+        "external_dependency_blocker_count": int(summary.get("external_dependency_blocker_count") or 0),
+        "readiness_statement": "ready_for_customer_report_handoff" if customer_ready else str(
+            summary.get("handoff_posture") or "blocked"
+        ),
+        "hard_gate_commands": [
+            "make au-launch-status",
+            "make verify-au-launch-status",
+            "make au-external-dependency-handoff",
+            "make verify-au-external-dependency-handoff",
+            "make au-external-dependency-clearance",
+            "make verify-au-external-dependency-clearance",
+            "make au-handoff-dossier",
+            "make verify-au-handoff-dossier",
+            "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_launch_status.py ${GENO_AU_LAUNCH_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-launch-status-latest.json} --require-ready",
+            "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_handoff_dossier.py ${GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH:-docs/runtime_preflight/au-handoff-dossier-latest.json} --require-customer-ready",
+        ],
+        "customer_gates": customer_gates,
+        "structural_gates": structural_gates,
+    }
+
+
 def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
     summary = _as_dict(dossier.get("summary"))
+    readiness_audit = _as_dict(dossier.get("customer_handoff_readiness_audit"))
     launch_status = _as_dict(dossier.get("launch_status"))
     remediation_plan = _as_dict(dossier.get("remediation_plan"))
     p0a_environment_checklist = _as_dict(dossier.get("p0a_environment_checklist"))
@@ -539,10 +793,21 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
         f"- Remediation plan hash：{remediation_plan.get('remediation_plan_hash', '')}",
         f"- P0a environment checklist hash：{p0a_environment_checklist.get('environment_checklist_hash', '')}",
         f"- P0a execution checklist hash：{p0a_execution_checklist.get('p0a_execution_checklist_hash', '')}",
-        f"- P0b Google execution checklist hash：{p0b_google_execution_checklist.get('google_execution_checklist_hash', '')}",
-        "",
-        "## 阶段门禁",
-        "",
+            f"- P0b Google execution checklist hash：{p0b_google_execution_checklist.get('google_execution_checklist_hash', '')}",
+            "",
+            "## 客户交付 Readiness Audit",
+            "",
+            f"- Audit version：{readiness_audit.get('audit_version', '')}",
+            f"- 客户报告交付 readiness：{readiness_audit.get('customer_report_handoff_readiness_percent', 0.0)}%",
+            f"- 结构化可审计度：{readiness_audit.get('structural_auditability_percent', 0.0)}%",
+            f"- 客户交付 gates：{readiness_audit.get('customer_ready_gate_count', 0)}/"
+            f"{readiness_audit.get('customer_total_gate_count', 0)} ready",
+            f"- Blocked customer gates：{', '.join(str(value) for value in _as_list(readiness_audit.get('blocked_customer_gate_ids'))) or '无'}",
+            f"- 外部依赖 blocker：{readiness_audit.get('external_dependency_blocker_count', 0)}",
+            f"- Readiness statement：{readiness_audit.get('readiness_statement', '')}",
+            "",
+            "## 阶段门禁",
+            "",
         "| 阶段 | 状态 | Ready | 下一步 | Blockers |",
         "| --- | --- | --- | --- | ---: |",
     ]
@@ -783,6 +1048,139 @@ def build_au_handoff_dossier(
     )
     customer_ready = launch_status.get("ready_for_customer_report_handoff") is True
     external_blocker_count = int(remediation_summary.get("external_dependency_blocker_count") or 0)
+    runtime_endpoints = {
+        "launch_status": "GET /v1/launch-status/au",
+        "launch_remediation_plan": "GET /v1/launch-remediation-plan/au",
+        "p0a_environment_checklist": "GET /v1/p0a-environment-checklist/au",
+        "p0a_execution_checklist": "GET /v1/p0a-execution-checklist/au",
+        "p0b_google_execution_checklist": "GET /v1/p0b-google-execution-checklist/au",
+        "au_retest_scheduler_plan": "GET /v1/au-retest-scheduler-plan",
+        "au_retest_execution_status": "GET /v1/au-retest-execution-status",
+        "project_lifecycle_events": "GET /v1/projects/runtime/lifecycle-events?project_id={project_id}",
+        "project_lifecycle_events_export": "GET /v1/projects/runtime/lifecycle-events/export.csv?project_id={project_id}",
+        "runtime_audit_events": "GET /v1/audit-events/runtime?project_id={project_id}",
+        "runtime_audit_events_export": "GET /v1/audit-events/runtime/export.csv?project_id={project_id}",
+        "external_dependency_handoff": "GET /v1/external-dependency-handoff/au",
+        "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
+    }
+    stage_summaries = _stage_summaries(launch_status)
+    summary = {
+        "handoff_posture": _handoff_posture(
+            dossier_ready=handoff_dossier_ready,
+            customer_ready=customer_ready,
+            external_blockers=external_blocker_count,
+        ),
+        "ready_for_customer_report_handoff": customer_ready,
+        "next_action": launch_status.get("next_action", ""),
+        "next_work_item_id": next_work_item_id,
+        "remaining_blocker_count": len(remaining_blockers),
+        "blocker_stage_counts": _blocker_stage_counts(remaining_blockers),
+        "covered_blocker_count": remediation_summary.get("covered_blocker_count", 0),
+        "unmapped_blocker_count": remediation_summary.get("unmapped_blocker_count", 0),
+        "work_item_count": remediation_summary.get("work_item_count", 0),
+        "external_dependency_blocker_count": external_blocker_count,
+        "runnable_now_work_item_count": remediation_summary.get("runnable_now_work_item_count", 0),
+        "p0a_environment_checklist_ready": checklist_summary.get("environment_checklist_ready") is True,
+        "p0a_missing_required_environment_count": checklist_summary.get("missing_required_count", 0),
+        "p0a_env_file_hygiene_ready": checklist_summary.get("env_file_hygiene_ready") is True,
+        "p0a_env_file_hygiene_error_count": checklist_summary.get("env_file_hygiene_error_count", 0),
+        "p0a_env_file_hygiene_warning_count": checklist_summary.get("env_file_hygiene_warning_count", 0),
+        "p0a_execution_checklist_ready": p0a_execution_checklist_summary.get("p0a_execution_checklist_ready") is True,
+        "p0a_execution_remaining_blocker_count": p0a_execution_checklist_summary.get("remaining_blocker_count", 0),
+        "p0a_credential_handoff_ready": p0a_execution_checklist_summary.get("credential_handoff_ready") is True,
+        "p0a_credential_handoff_missing_required_count": p0a_execution_checklist_summary.get(
+            "credential_handoff_missing_required_count",
+            0,
+        ),
+        "p0a_credential_handoff_secret_redacted": p0a_execution_checklist_summary.get(
+            "credential_handoff_secret_redacted",
+        )
+        is True,
+        "p0a_real_batch_phase_handoff_ready": p0a_execution_checklist_summary.get(
+            "real_batch_phase_handoff_ready",
+        )
+        is True,
+        "p0a_real_batch_phase_handoff_next_phase": p0a_execution_checklist_summary.get(
+            "real_batch_phase_handoff_next_phase",
+            "",
+        ),
+        "p0a_real_batch_phase_handoff_blocked_phase_count": p0a_execution_checklist_summary.get(
+            "real_batch_phase_handoff_blocked_phase_count",
+            0,
+        ),
+        "p0b_google_execution_checklist_ready": p0b_google_checklist_summary.get(
+            "google_execution_checklist_ready"
+        )
+        is True,
+        "p0b_google_remaining_blocker_count": p0b_google_checklist_summary.get("remaining_blocker_count", 0),
+        "p0b_google_env_file_hygiene_ready": p0b_google_checklist_summary.get("env_file_hygiene_ready") is True,
+        "p0b_google_env_file_hygiene_error_count": p0b_google_checklist_summary.get(
+            "env_file_hygiene_error_count",
+            0,
+        ),
+        "p0b_google_env_file_hygiene_warning_count": p0b_google_checklist_summary.get(
+            "env_file_hygiene_warning_count",
+            0,
+        ),
+        "p0b_google_environment_handoff_ready": p0b_google_checklist_summary.get("environment_handoff_ready")
+        is True,
+        "p0b_google_environment_handoff_missing_required_count": p0b_google_checklist_summary.get(
+            "environment_handoff_missing_required_count",
+            0,
+        ),
+        "p0b_google_environment_handoff_secret_redacted": p0b_google_checklist_summary.get(
+            "environment_handoff_secret_redacted",
+        )
+        is True,
+        "p0b_google_manual_backfill_handoff_ready": p0b_google_checklist_summary.get(
+            "manual_backfill_handoff_ready",
+        )
+        is True,
+        "p0b_google_manual_backfill_handoff_expected_record_count": p0b_google_checklist_summary.get(
+            "manual_backfill_handoff_expected_record_count",
+            0,
+        ),
+        "p0b_google_manual_backfill_handoff_record_count": p0b_google_checklist_summary.get(
+            "manual_backfill_handoff_record_count",
+            0,
+        ),
+        "p0b_google_manual_backfill_handoff_missing_reason_count": p0b_google_checklist_summary.get(
+            "manual_backfill_handoff_missing_reason_count",
+            0,
+        ),
+        "p0b_google_manual_backfill_handoff_content_redacted": p0b_google_checklist_summary.get(
+            "manual_backfill_handoff_content_redacted",
+        )
+        is True,
+        "p0b_google_spike_phase_handoff_ready": p0b_google_checklist_summary.get(
+            "google_spike_phase_handoff_ready",
+        )
+        is True,
+        "p0b_google_spike_phase_handoff_next_phase": p0b_google_checklist_summary.get(
+            "google_spike_phase_handoff_next_phase",
+            "",
+        ),
+        "p0b_google_spike_phase_handoff_blocked_phase_count": p0b_google_checklist_summary.get(
+            "google_spike_phase_handoff_blocked_phase_count",
+            0,
+        ),
+        "p0b_google_spike_phase_handoff_full_spike_planned_runs": p0b_google_checklist_summary.get(
+            "google_spike_phase_handoff_full_spike_planned_runs",
+            0,
+        ),
+    }
+    readiness_audit = _customer_handoff_readiness_audit(
+        customer_ready=customer_ready,
+        handoff_dossier_ready=handoff_dossier_ready,
+        launch_verification=launch_verification,
+        remediation_verification=remediation_verification,
+        summary=summary,
+        p0a_execution_checklist=p0a_execution_checklist_summary,
+        p0b_google_execution_checklist=p0b_google_checklist_summary,
+        stage_summaries=stage_summaries,
+        next_work_item=next_work_item,
+        required_runtime_endpoints_present=all(bool(value) for value in runtime_endpoints.values()),
+    )
     inputs = _as_dict(launch_status.get("inputs"))
     evidence_sources = [
         _source_file_entry("launch_status", launch_status_path),
@@ -803,128 +1201,9 @@ def build_au_handoff_dossier(
         "ready_for_customer_report_handoff": customer_ready,
         "output_path": str(output_path) if output_path else "",
         "markdown_output_path": str(markdown_output_path) if markdown_output_path else "",
-        "summary": {
-            "handoff_posture": _handoff_posture(
-                dossier_ready=handoff_dossier_ready,
-                customer_ready=customer_ready,
-                external_blockers=external_blocker_count,
-            ),
-            "ready_for_customer_report_handoff": customer_ready,
-            "next_action": launch_status.get("next_action", ""),
-            "next_work_item_id": next_work_item_id,
-            "remaining_blocker_count": len(remaining_blockers),
-            "blocker_stage_counts": _blocker_stage_counts(remaining_blockers),
-            "covered_blocker_count": remediation_summary.get("covered_blocker_count", 0),
-            "unmapped_blocker_count": remediation_summary.get("unmapped_blocker_count", 0),
-            "work_item_count": remediation_summary.get("work_item_count", 0),
-            "external_dependency_blocker_count": external_blocker_count,
-            "runnable_now_work_item_count": remediation_summary.get("runnable_now_work_item_count", 0),
-            "p0a_environment_checklist_ready": checklist_summary.get("environment_checklist_ready") is True,
-            "p0a_missing_required_environment_count": checklist_summary.get("missing_required_count", 0),
-            "p0a_env_file_hygiene_ready": checklist_summary.get("env_file_hygiene_ready") is True,
-            "p0a_env_file_hygiene_error_count": checklist_summary.get("env_file_hygiene_error_count", 0),
-            "p0a_env_file_hygiene_warning_count": checklist_summary.get("env_file_hygiene_warning_count", 0),
-            "p0a_execution_checklist_ready": p0a_execution_checklist_summary.get("p0a_execution_checklist_ready")
-            is True,
-            "p0a_execution_remaining_blocker_count": p0a_execution_checklist_summary.get("remaining_blocker_count", 0),
-            "p0a_credential_handoff_ready": p0a_execution_checklist_summary.get("credential_handoff_ready") is True,
-            "p0a_credential_handoff_missing_required_count": p0a_execution_checklist_summary.get(
-                "credential_handoff_missing_required_count",
-                0,
-            ),
-            "p0a_credential_handoff_secret_redacted": p0a_execution_checklist_summary.get(
-                "credential_handoff_secret_redacted",
-            )
-            is True,
-            "p0a_real_batch_phase_handoff_ready": p0a_execution_checklist_summary.get(
-                "real_batch_phase_handoff_ready",
-            )
-            is True,
-            "p0a_real_batch_phase_handoff_next_phase": p0a_execution_checklist_summary.get(
-                "real_batch_phase_handoff_next_phase",
-                "",
-            ),
-            "p0a_real_batch_phase_handoff_blocked_phase_count": p0a_execution_checklist_summary.get(
-                "real_batch_phase_handoff_blocked_phase_count",
-                0,
-            ),
-            "p0b_google_execution_checklist_ready": p0b_google_checklist_summary.get(
-                "google_execution_checklist_ready"
-            )
-            is True,
-            "p0b_google_remaining_blocker_count": p0b_google_checklist_summary.get("remaining_blocker_count", 0),
-            "p0b_google_env_file_hygiene_ready": p0b_google_checklist_summary.get("env_file_hygiene_ready")
-            is True,
-            "p0b_google_env_file_hygiene_error_count": p0b_google_checklist_summary.get(
-                "env_file_hygiene_error_count",
-                0,
-            ),
-            "p0b_google_env_file_hygiene_warning_count": p0b_google_checklist_summary.get(
-                "env_file_hygiene_warning_count",
-                0,
-            ),
-            "p0b_google_environment_handoff_ready": p0b_google_checklist_summary.get("environment_handoff_ready")
-            is True,
-            "p0b_google_environment_handoff_missing_required_count": p0b_google_checklist_summary.get(
-                "environment_handoff_missing_required_count",
-                0,
-            ),
-            "p0b_google_environment_handoff_secret_redacted": p0b_google_checklist_summary.get(
-                "environment_handoff_secret_redacted",
-            )
-            is True,
-            "p0b_google_manual_backfill_handoff_ready": p0b_google_checklist_summary.get(
-                "manual_backfill_handoff_ready",
-            )
-            is True,
-            "p0b_google_manual_backfill_handoff_expected_record_count": p0b_google_checklist_summary.get(
-                "manual_backfill_handoff_expected_record_count",
-                0,
-            ),
-            "p0b_google_manual_backfill_handoff_record_count": p0b_google_checklist_summary.get(
-                "manual_backfill_handoff_record_count",
-                0,
-            ),
-            "p0b_google_manual_backfill_handoff_missing_reason_count": p0b_google_checklist_summary.get(
-                "manual_backfill_handoff_missing_reason_count",
-                0,
-            ),
-            "p0b_google_manual_backfill_handoff_content_redacted": p0b_google_checklist_summary.get(
-                "manual_backfill_handoff_content_redacted",
-            )
-            is True,
-            "p0b_google_spike_phase_handoff_ready": p0b_google_checklist_summary.get(
-                "google_spike_phase_handoff_ready",
-            )
-            is True,
-            "p0b_google_spike_phase_handoff_next_phase": p0b_google_checklist_summary.get(
-                "google_spike_phase_handoff_next_phase",
-                "",
-            ),
-            "p0b_google_spike_phase_handoff_blocked_phase_count": p0b_google_checklist_summary.get(
-                "google_spike_phase_handoff_blocked_phase_count",
-                0,
-            ),
-            "p0b_google_spike_phase_handoff_full_spike_planned_runs": p0b_google_checklist_summary.get(
-                "google_spike_phase_handoff_full_spike_planned_runs",
-                0,
-            ),
-        },
-        "runtime_endpoints": {
-            "launch_status": "GET /v1/launch-status/au",
-            "launch_remediation_plan": "GET /v1/launch-remediation-plan/au",
-            "p0a_environment_checklist": "GET /v1/p0a-environment-checklist/au",
-            "p0a_execution_checklist": "GET /v1/p0a-execution-checklist/au",
-            "p0b_google_execution_checklist": "GET /v1/p0b-google-execution-checklist/au",
-            "au_retest_scheduler_plan": "GET /v1/au-retest-scheduler-plan",
-            "au_retest_execution_status": "GET /v1/au-retest-execution-status",
-            "project_lifecycle_events": "GET /v1/projects/runtime/lifecycle-events?project_id={project_id}",
-            "project_lifecycle_events_export": "GET /v1/projects/runtime/lifecycle-events/export.csv?project_id={project_id}",
-            "runtime_audit_events": "GET /v1/audit-events/runtime?project_id={project_id}",
-            "runtime_audit_events_export": "GET /v1/audit-events/runtime/export.csv?project_id={project_id}",
-            "external_dependency_handoff": "GET /v1/external-dependency-handoff/au",
-            "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
-        },
+        "summary": summary,
+        "customer_handoff_readiness_audit": readiness_audit,
+        "runtime_endpoints": runtime_endpoints,
         "launch_status": {
             "path": str(launch_status_path),
             "status": launch_status.get("status", ""),
@@ -951,7 +1230,7 @@ def build_au_handoff_dossier(
         "p0a_execution_checklist_source": p0a_execution_checklist_source,
         "p0b_google_execution_checklist": p0b_google_checklist_summary,
         "p0b_google_execution_checklist_source": p0b_google_checklist_source,
-        "stage_summaries": _stage_summaries(launch_status),
+        "stage_summaries": stage_summaries,
         "work_items": work_items,
         "next_work_item": next_work_item,
         "blocker_remediations": _as_list(remediation_plan.get("blocker_remediations")),

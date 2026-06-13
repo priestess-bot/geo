@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.build_au_handoff_dossier import (  # noqa: E402
+    CUSTOMER_HANDOFF_READINESS_AUDIT_VERSION,
     DEFAULT_OUTPUT_PATH,
     DOSSIER_VERSION,
     compute_handoff_dossier_hash,
@@ -29,6 +30,7 @@ REQUIRED_FIELDS = (
     "output_path",
     "markdown_output_path",
     "summary",
+    "customer_handoff_readiness_audit",
     "runtime_endpoints",
     "launch_status",
     "launch_status_source",
@@ -75,6 +77,20 @@ def _blocker_stage_counts(blockers: list[object]) -> dict[str, int]:
     return counts
 
 
+def _percent(ready_count: int, total_count: int) -> float:
+    if total_count <= 0:
+        return 0.0
+    return round((ready_count / total_count) * 100, 1)
+
+
+def _ready_count(gates: list[dict[str, Any]]) -> int:
+    return len([gate for gate in gates if gate.get("ready") is True])
+
+
+def _blocked_gate_ids(gates: list[dict[str, Any]]) -> list[str]:
+    return [str(gate.get("id") or "") for gate in gates if gate.get("ready") is not True]
+
+
 def verify_au_handoff_dossier(
     dossier: Any,
     *,
@@ -111,6 +127,7 @@ def verify_au_handoff_dossier(
     p0a_execution_checklist = _as_dict(dossier.get("p0a_execution_checklist"))
     p0b_google_execution_checklist = _as_dict(dossier.get("p0b_google_execution_checklist"))
     summary = _as_dict(dossier.get("summary"))
+    readiness_audit = _as_dict(dossier.get("customer_handoff_readiness_audit"))
     endpoints = _as_dict(dossier.get("runtime_endpoints"))
     markdown_report = _as_dict(dossier.get("markdown_report"))
     blockers = _as_list(launch.get("remaining_blockers"))
@@ -144,6 +161,54 @@ def verify_au_handoff_dossier(
         errors.append("summary_ready_for_customer_report_handoff_mismatch")
     if require_customer_ready and not customer_ready:
         errors.append("customer_handoff_not_ready")
+
+    customer_gates = [_as_dict(item) for item in _as_list(readiness_audit.get("customer_gates"))]
+    structural_gates = [_as_dict(item) for item in _as_list(readiness_audit.get("structural_gates"))]
+    customer_ready_gate_count = _ready_count(customer_gates)
+    structural_ready_gate_count = _ready_count(structural_gates)
+    blocked_customer_gate_ids = _blocked_gate_ids(customer_gates)
+    if readiness_audit.get("audit_version") != CUSTOMER_HANDOFF_READINESS_AUDIT_VERSION:
+        errors.append("customer_handoff_readiness_audit_version_invalid")
+    if readiness_audit.get("customer_report_handoff_ready") is not customer_ready:
+        errors.append("customer_handoff_readiness_customer_ready_mismatch")
+    if readiness_audit.get("customer_total_gate_count") != len(customer_gates):
+        errors.append("customer_handoff_readiness_customer_total_gate_count_mismatch")
+    if readiness_audit.get("customer_ready_gate_count") != customer_ready_gate_count:
+        errors.append("customer_handoff_readiness_customer_ready_gate_count_mismatch")
+    if readiness_audit.get("blocked_customer_gate_count") != len(blocked_customer_gate_ids):
+        errors.append("customer_handoff_readiness_blocked_customer_gate_count_mismatch")
+    if readiness_audit.get("blocked_customer_gate_ids") != blocked_customer_gate_ids:
+        errors.append("customer_handoff_readiness_blocked_customer_gate_ids_mismatch")
+    if readiness_audit.get("customer_report_handoff_readiness_percent") != _percent(
+        customer_ready_gate_count,
+        len(customer_gates),
+    ):
+        errors.append("customer_handoff_readiness_percent_mismatch")
+    if readiness_audit.get("structural_total_gate_count") != len(structural_gates):
+        errors.append("customer_handoff_readiness_structural_total_gate_count_mismatch")
+    if readiness_audit.get("structural_ready_gate_count") != structural_ready_gate_count:
+        errors.append("customer_handoff_readiness_structural_ready_gate_count_mismatch")
+    if readiness_audit.get("structural_auditability_percent") != _percent(
+        structural_ready_gate_count,
+        len(structural_gates),
+    ):
+        errors.append("customer_handoff_readiness_structural_percent_mismatch")
+    if readiness_audit.get("next_work_item_id") != summary.get("next_work_item_id"):
+        errors.append("customer_handoff_readiness_next_work_item_id_mismatch")
+    if readiness_audit.get("remaining_blocker_count") != len(blockers):
+        errors.append("customer_handoff_readiness_remaining_blocker_count_mismatch")
+    if readiness_audit.get("external_dependency_blocker_count") != summary.get("external_dependency_blocker_count"):
+        errors.append("customer_handoff_readiness_external_dependency_blocker_count_mismatch")
+    expected_readiness_statement = (
+        "ready_for_customer_report_handoff" if customer_ready else str(summary.get("handoff_posture") or "blocked")
+    )
+    if readiness_audit.get("readiness_statement") != expected_readiness_statement:
+        errors.append("customer_handoff_readiness_statement_mismatch")
+    hard_gate_commands = [str(command) for command in _as_list(readiness_audit.get("hard_gate_commands"))]
+    if "make verify-au-handoff-dossier" not in hard_gate_commands:
+        errors.append("customer_handoff_readiness_hard_gate_missing:make verify-au-handoff-dossier")
+    if not any(command.endswith("--require-customer-ready") for command in hard_gate_commands):
+        errors.append("customer_handoff_readiness_hard_gate_missing:require_customer_ready")
 
     if summary.get("remaining_blocker_count") != len(blockers):
         errors.append("summary_remaining_blocker_count_mismatch")

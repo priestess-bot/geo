@@ -1097,6 +1097,23 @@ type AuHandoffDossier = {
     content_sha256?: string;
     media_type?: string;
   };
+  customer_handoff_readiness_audit?: {
+    audit_version?: string;
+    customer_report_handoff_ready?: boolean;
+    customer_report_handoff_readiness_percent?: number;
+    customer_ready_gate_count?: number;
+    customer_total_gate_count?: number;
+    blocked_customer_gate_count?: number;
+    blocked_customer_gate_ids?: string[];
+    structural_auditability_percent?: number;
+    structural_ready_gate_count?: number;
+    structural_total_gate_count?: number;
+    next_action?: string;
+    next_work_item_id?: string;
+    remaining_blocker_count?: number;
+    external_dependency_blocker_count?: number;
+    readiness_statement?: string;
+  };
   runtime_endpoints?: {
     launch_status?: string;
     launch_remediation_plan?: string;
@@ -4089,6 +4106,7 @@ export default async function Home({
   const retestExecutionWindows = retestExecutionStatus?.windows || [];
   const handoffDossier = data.handoffDossier;
   const handoffSummary = handoffDossier?.summary;
+  const handoffReadinessAudit = handoffDossier?.customer_handoff_readiness_audit;
   const handoffNextWorkItem = handoffDossier?.next_work_item;
   const scoreWeightConfig = data.scoreWeights?.score_weight_config || null;
   const savedScoreWeightConfig = scoreWeightConfig?.id ? scoreWeightConfig : null;
@@ -4878,8 +4896,23 @@ export default async function Home({
             <span>Customer handoff {handoffDossier?.ready_for_customer_report_handoff ? "ready" : "blocked"}</span>
             <span>Posture {handoffSummary?.handoff_posture || "unknown"}</span>
             <span>Markdown hash {shortHash(handoffDossier?.markdown_report?.content_sha256)}</span>
+            <span>
+              Customer readiness {handoffReadinessAudit?.customer_report_handoff_readiness_percent ?? 0}%
+            </span>
+            <span>Auditability {handoffReadinessAudit?.structural_auditability_percent ?? 0}%</span>
           </div>
           <div className="handoffBoundary">
+            <span>Readiness audit {handoffReadinessAudit?.audit_version || "au_customer_handoff_readiness_audit_v1"}</span>
+            <span>
+              Customer gates {handoffReadinessAudit?.customer_ready_gate_count || 0}/
+              {handoffReadinessAudit?.customer_total_gate_count || 0} · blocked{" "}
+              {handoffReadinessAudit?.blocked_customer_gate_count || 0}
+            </span>
+            <span>
+              Blocked gate ids{" "}
+              {handoffReadinessAudit?.blocked_customer_gate_ids?.slice(0, 4).join(", ") || "none"}
+            </span>
+            <span>Readiness statement {handoffReadinessAudit?.readiness_statement || "unknown"}</span>
             <span>Next work item {handoffSummary?.next_work_item_id || handoffNextWorkItem?.id || "none"}</span>
             <span>
               Blockers {handoffSummary?.remaining_blocker_count || 0} · work items{" "}
