@@ -36,6 +36,7 @@ class AuP0aRunbookExecutionTest(AuP0aRunbookExecutionFixtureMixin, unittest.Test
             ),
             encoding="utf-8",
         )
+        env_file.chmod(0o600)
         return env_file
 
     def test_dry_run_records_all_steps_without_executing_commands(self) -> None:
@@ -74,12 +75,29 @@ class AuP0aRunbookExecutionTest(AuP0aRunbookExecutionFixtureMixin, unittest.Test
         self.assertEqual(result["status"], "pass")
         self.assertTrue(result["ready_to_execute"])
         self.assertEqual(result["environment"]["status"], "pass")
+        self.assertTrue(result["environment"]["env_file"]["hygiene"]["hygiene_ready"])
         self.assertEqual(result["environment"]["missing_required"], [])
         checks = {check["name"]: check for check in result["environment"]["required"]}
         self.assertEqual(checks["PERPLEXITY_API_KEY"]["source"], "env_file")
         self.assertEqual(len(checks["PERPLEXITY_API_KEY"]["sha256_prefix"]), 12)
         self.assertNotIn("perplexity-secret", json.dumps(result))
         self.assertNotIn("openai-secret", json.dumps(result))
+
+    def test_dry_run_rejects_world_readable_env_file_with_secrets(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path = self._write_runbook(temp_dir)
+            env_file = self._write_env_file(temp_dir)
+            env_file.chmod(0o644)
+            result = run_au_p0a_runbook(
+                runbook_path=runbook_path,
+                env={},
+                env_file_path=env_file,
+                generated_at="2026-06-11T00:00:00Z",
+            )
+
+        self.assertEqual(result["environment"]["status"], "fail")
+        self.assertFalse(result["ready_to_execute"])
+        self.assertIn("env_file:env_file_permissions_not_0600", result["environment"]["errors"])
 
     def test_process_environment_overrides_env_file_in_execution_plan(self) -> None:
         with TemporaryDirectory() as temp_dir:

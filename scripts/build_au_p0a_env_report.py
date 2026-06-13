@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess
 import sys
 from collections.abc import Mapping
 from datetime import datetime, timezone
@@ -60,13 +61,123 @@ def _strip_env_value(value: str) -> str:
     return value
 
 
+def _relative_to_root(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(ROOT.resolve()))
+    except (OSError, ValueError):
+        return ""
+
+
+def _git_status_flag(args: list[str]) -> bool | None:
+    try:
+        result = subprocess.run(
+            args,
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except (FileNotFoundError, OSError):
+        return None
+    return result.returncode == 0
+
+
+def _env_file_hygiene(path: Path | None, *, exists: bool, entry_count: int) -> dict[str, Any]:
+    if path is None:
+        return {
+            "path": "",
+            "exists": False,
+            "entry_count": 0,
+            "inside_workspace": False,
+            "relative_path": "",
+            "git_ignored": None,
+            "git_tracked": None,
+            "git_safe": True,
+            "file_mode": "",
+            "permission_safe": True,
+            "hygiene_required": False,
+            "hygiene_ready": True,
+            "errors": [],
+            "warnings": [],
+            "secret_redacted": True,
+        }
+
+    relative_path = _relative_to_root(path)
+    inside_workspace = bool(relative_path)
+    git_ignored: bool | None = None
+    git_tracked: bool | None = None
+    if inside_workspace:
+        git_ignored = _git_status_flag(["git", "check-ignore", "--quiet", "--", relative_path])
+        git_tracked = _git_status_flag(["git", "ls-files", "--error-unmatch", "--", relative_path])
+
+    file_mode = ""
+    permission_safe = True
+    if exists:
+        try:
+            mode = path.stat().st_mode & 0o777
+        except OSError:
+            mode = None
+            permission_safe = False
+        if mode is not None:
+            file_mode = f"{mode:04o}"
+            permission_safe = bool(mode & 0o400) and bool(mode & 0o200) and not bool(mode & 0o077)
+
+    git_safe = True
+    if inside_workspace:
+        git_safe = git_tracked is False and git_ignored is True
+    hygiene_required = exists and entry_count > 0
+    errors: list[str] = []
+    warnings: list[str] = []
+    if hygiene_required and not permission_safe:
+        errors.append("env_file_permissions_not_0600")
+    if hygiene_required and not git_safe:
+        if git_tracked is True:
+            errors.append("env_file_tracked_by_git")
+        if git_ignored is not True:
+            errors.append("env_file_not_gitignored")
+        if git_tracked is None or git_ignored is None:
+            warnings.append("env_file_git_status_unavailable")
+    hygiene_ready = not hygiene_required or (permission_safe and git_safe)
+    return {
+        "path": str(path),
+        "exists": exists,
+        "entry_count": entry_count,
+        "inside_workspace": inside_workspace,
+        "relative_path": relative_path,
+        "git_ignored": git_ignored,
+        "git_tracked": git_tracked,
+        "git_safe": git_safe,
+        "file_mode": file_mode,
+        "permission_safe": permission_safe,
+        "hygiene_required": hygiene_required,
+        "hygiene_ready": hygiene_ready,
+        "errors": errors,
+        "warnings": warnings,
+        "secret_redacted": True,
+    }
+
+
 def _load_env_file(path: Path | None) -> tuple[dict[str, str], dict[str, Any]]:
     if path is None:
-        return {}, {"path": "", "exists": False, "loaded": False, "errors": []}
+        return {}, {
+            "path": "",
+            "exists": False,
+            "loaded": False,
+            "entry_count": 0,
+            "errors": [],
+            "hygiene": _env_file_hygiene(None, exists=False, entry_count=0),
+        }
     try:
         raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return {}, {"path": str(path), "exists": False, "loaded": False, "errors": []}
+        return {}, {
+            "path": str(path),
+            "exists": False,
+            "loaded": False,
+            "entry_count": 0,
+            "errors": [],
+            "hygiene": _env_file_hygiene(path, exists=False, entry_count=0),
+        }
 
     values: dict[str, str] = {}
     errors: list[str] = []
@@ -91,6 +202,7 @@ def _load_env_file(path: Path | None) -> tuple[dict[str, str], dict[str, Any]]:
         "loaded": True,
         "entry_count": len(values),
         "errors": errors,
+        "hygiene": _env_file_hygiene(path, exists=True, entry_count=len(values)),
         "secrets_redacted": True,
     }
 
@@ -179,7 +291,8 @@ def _check_env_names(
 def _next_action(runbook_status: dict[str, Any], env_file: dict[str, Any], missing_required: list[str]) -> str:
     if runbook_status.get("status") != "pass":
         return "run_or_fix_au_p0a_runbook"
-    if env_file.get("errors"):
+    hygiene = env_file.get("hygiene") if isinstance(env_file.get("hygiene"), dict) else {}
+    if env_file.get("errors") or hygiene.get("errors"):
         return "fix_environment_file"
     if missing_required:
         return "populate_required_environment"
@@ -202,8 +315,15 @@ def build_au_p0a_env_report(
     recommended = _check_env_names(recommended_names, env_file_values=env_file_values, process_env=process_env)
     missing_required = [item["name"] for item in required if not item["present"]]
     missing_recommended = [item["name"] for item in recommended if not item["present"]]
-    env_file_errors = list(env_file.get("errors", []))
-    ready_for_real_batch = runbook_status.get("status") == "pass" and not missing_required and not env_file_errors
+    env_file_hygiene = env_file.get("hygiene") if isinstance(env_file.get("hygiene"), dict) else {}
+    env_file_errors = [*list(env_file.get("errors", [])), *list(env_file_hygiene.get("errors", []))]
+    env_file_hygiene_ready = env_file_hygiene.get("hygiene_ready") is True
+    ready_for_real_batch = (
+        runbook_status.get("status") == "pass"
+        and not missing_required
+        and not env_file_errors
+        and env_file_hygiene_ready
+    )
     report: dict[str, Any] = {
         "environment_report_version": ENV_REPORT_VERSION,
         "generated_at": generated_at or _utc_now_iso(),

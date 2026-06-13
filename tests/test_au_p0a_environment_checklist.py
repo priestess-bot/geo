@@ -67,10 +67,14 @@ class AuP0aEnvironmentChecklistTest(unittest.TestCase):
         self.assertEqual(checklist["next_action"], "populate_required_environment")
         self.assertEqual(checklist["summary"]["missing_required_count"], 3)
         self.assertIn("PERPLEXITY_API_KEY", checklist["summary"]["missing_required"])
+        self.assertTrue(checklist["summary"]["env_file_hygiene_ready"])
+        self.assertEqual(checklist["summary"]["env_file_hygiene_error_count"], 0)
+        self.assertTrue(checklist["env_file_hygiene"]["secret_redacted"])
         self.assertIn("hard_env_gate", {command["id"] for command in checklist["verification_commands"]})
         self.assertEqual(checklist["environment_checklist_hash"], compute_environment_checklist_hash(checklist))
         self.assertEqual(verification["status"], "pass")
         self.assertEqual(verification["environment_checklist_ready"], False)
+        self.assertTrue(verification["env_file_hygiene_ready"])
         self.assertNotIn("perplexity-key", json.dumps(checklist))
 
     def test_checklist_passes_when_required_environment_is_present(self) -> None:
@@ -130,6 +134,27 @@ class AuP0aEnvironmentChecklistTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("forbidden_secret_field:$.environment_report.raw_value", verification["errors"])
+
+    def test_verifier_rejects_env_file_hygiene_tampering(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path = self._write_runbook(temp_dir)
+            env_path = self._write_env_report(temp_dir, runbook_path, ready=False)
+            checklist = build_au_p0a_environment_checklist(
+                runbook_path=runbook_path,
+                environment_path=env_path,
+                status_path=Path(temp_dir) / "missing-status.json",
+                env_file_path=Path(temp_dir) / "missing.env",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            checklist["env_file_hygiene"]["hygiene_ready"] = False  # type: ignore[index]
+            checklist["env_file_hygiene"]["errors"] = ["env_file_permissions_not_0600"]  # type: ignore[index]
+            checklist["environment_checklist_hash"] = compute_environment_checklist_hash(checklist)
+            verification = verify_au_p0a_environment_checklist(checklist)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("summary_env_file_hygiene_ready_mismatch", verification["errors"])
+        self.assertIn("summary_env_file_hygiene_error_count_mismatch", verification["errors"])
+        self.assertEqual(verification["env_file_hygiene_errors"], ["env_file_permissions_not_0600"])
 
     def test_cli_writes_and_verifies_checklist(self) -> None:
         with TemporaryDirectory() as temp_dir:

@@ -50,9 +50,10 @@ def _as_list(value: object) -> list[object]:
 def _expected_next_action(report: dict[str, Any], missing_required: list[str]) -> str:
     runbook = _as_dict(report.get("runbook"))
     env_file = _as_dict(report.get("env_file"))
+    hygiene = _as_dict(env_file.get("hygiene"))
     if runbook.get("status") != "pass":
         return "run_or_fix_au_p0a_runbook"
-    if env_file.get("errors"):
+    if env_file.get("errors") or hygiene.get("errors"):
         return "fix_environment_file"
     if missing_required:
         return "populate_required_environment"
@@ -126,6 +127,21 @@ def verify_au_p0a_env_report(
 
     runbook = _as_dict(report.get("runbook"))
     env_file = _as_dict(report.get("env_file"))
+    hygiene = _as_dict(env_file.get("hygiene"))
+    if "hygiene" not in env_file:
+        errors.append("env_file_hygiene_missing")
+    elif hygiene.get("secret_redacted") is not True:
+        errors.append("env_file_hygiene_secret_redaction_missing")
+    hygiene_errors = [str(item) for item in _as_list(hygiene.get("errors"))]
+    hygiene_warnings = [str(item) for item in _as_list(hygiene.get("warnings"))]
+    if hygiene.get("hygiene_ready") is not True and hygiene.get("hygiene_ready") is not False:
+        errors.append("env_file_hygiene_ready_invalid")
+    if hygiene.get("hygiene_required") is not True and hygiene.get("hygiene_required") is not False:
+        errors.append("env_file_hygiene_required_invalid")
+    if hygiene.get("exists") is not env_file.get("exists"):
+        errors.append("env_file_hygiene_exists_mismatch")
+    if "value" in hygiene or "raw_value" in hygiene:
+        errors.append("env_file_hygiene_raw_value_leaked")
     required_missing = _validate_checks("required", _as_list(report.get("required")), errors)
     recommended_missing = _validate_checks("recommended", _as_list(report.get("recommended")), errors)
     if sorted(str(item) for item in _as_list(report.get("missing_required"))) != sorted(required_missing):
@@ -133,7 +149,13 @@ def verify_au_p0a_env_report(
     if sorted(str(item) for item in _as_list(report.get("missing_recommended"))) != sorted(recommended_missing):
         errors.append("missing_recommended_mismatch")
 
-    expected_ready = runbook.get("status") == "pass" and not required_missing and not _as_list(env_file.get("errors"))
+    expected_ready = (
+        runbook.get("status") == "pass"
+        and not required_missing
+        and not _as_list(env_file.get("errors"))
+        and not hygiene_errors
+        and hygiene.get("hygiene_ready") is True
+    )
     if report.get("ready_for_real_batch") is not expected_ready:
         errors.append("ready_for_real_batch_mismatch")
     expected_status = "pass" if expected_ready else "fail"
@@ -159,6 +181,9 @@ def verify_au_p0a_env_report(
         "ready_for_real_batch": expected_ready,
         "missing_required": sorted(required_missing),
         "missing_recommended": sorted(recommended_missing),
+        "env_file_hygiene_ready": hygiene.get("hygiene_ready") is True,
+        "env_file_hygiene_errors": hygiene_errors,
+        "env_file_hygiene_warnings": hygiene_warnings,
         "next_action": expected_next_action,
     }
 

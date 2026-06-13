@@ -65,6 +65,18 @@ class AuP0aEnvReportVerifierTest(unittest.TestCase):
         self.assertEqual(result["status"], "fail")
         self.assertIn("required_check_raw_value_leaked:PERPLEXITY_API_KEY", result["errors"])
 
+    def test_hygiene_error_fails_even_when_hash_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            report = self._report(temp_dir, ready=True)
+            report["env_file"]["hygiene"]["errors"] = ["env_file_permissions_not_0600"]  # type: ignore[index]
+            report["env_file"]["hygiene"]["hygiene_ready"] = False  # type: ignore[index]
+            report["environment_report_hash"] = compute_env_report_hash(report)
+            result = verify_au_p0a_env_report(report)
+
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("ready_for_real_batch_mismatch", result["errors"])
+        self.assertEqual(result["env_file_hygiene_errors"], ["env_file_permissions_not_0600"])
+
     def test_require_ready_environment_fails_incomplete_report(self) -> None:
         with TemporaryDirectory() as temp_dir:
             report = self._report(temp_dir, ready=False)

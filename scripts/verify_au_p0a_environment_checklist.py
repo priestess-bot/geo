@@ -31,6 +31,7 @@ REQUIRED_FIELDS = (
     "environment_report_source",
     "environment_report",
     "environment_report_verifier",
+    "env_file_hygiene",
     "status_report_summary",
     "required_environment",
     "recommended_environment",
@@ -98,6 +99,40 @@ def _command_ids(commands: list[object]) -> set[str]:
     return {str(_as_dict(item).get("id", "")) for item in commands}
 
 
+def _validate_env_file_hygiene(hygiene: dict[str, Any], errors: list[str]) -> tuple[bool, list[str], list[str]]:
+    for field in (
+        "path",
+        "exists",
+        "entry_count",
+        "inside_workspace",
+        "relative_path",
+        "git_ignored",
+        "git_tracked",
+        "git_safe",
+        "file_mode",
+        "permission_safe",
+        "hygiene_required",
+        "hygiene_ready",
+        "errors",
+        "warnings",
+        "secret_redacted",
+    ):
+        if field not in hygiene:
+            errors.append(f"env_file_hygiene_field_missing:{field}")
+    if hygiene.get("secret_redacted") is not True:
+        errors.append("env_file_hygiene_secret_redaction_missing")
+    if "value" in hygiene or "raw_value" in hygiene:
+        errors.append("env_file_hygiene_raw_value_leaked")
+    hygiene_errors = [str(item) for item in _as_list(hygiene.get("errors"))]
+    hygiene_warnings = [str(item) for item in _as_list(hygiene.get("warnings"))]
+    if hygiene.get("hygiene_required") is True and hygiene.get("permission_safe") is not True:
+        errors.append("env_file_hygiene_permission_unsafe")
+    if hygiene.get("hygiene_required") is True and hygiene.get("git_safe") is not True:
+        errors.append("env_file_hygiene_git_unsafe")
+    expected_ready = not hygiene_errors and hygiene.get("hygiene_ready") is True
+    return expected_ready, hygiene_errors, hygiene_warnings
+
+
 def _find_forbidden_secret_fields(value: object, *, path: str = "$") -> list[str]:
     findings: list[str] = []
     if isinstance(value, dict):
@@ -145,6 +180,10 @@ def verify_au_p0a_environment_checklist(
     runbook_verifier = _as_dict(checklist.get("runbook_verifier"))
     env_report = _as_dict(checklist.get("environment_report"))
     env_verifier = _as_dict(checklist.get("environment_report_verifier"))
+    env_file_hygiene = _as_dict(checklist.get("env_file_hygiene"))
+    env_file_hygiene_ready, env_file_hygiene_errors, env_file_hygiene_warnings = _validate_env_file_hygiene(
+        env_file_hygiene, errors
+    )
     required_total, required_present, required_missing = _validate_tasks(
         "required", _as_list(checklist.get("required_environment")), errors
     )
@@ -165,11 +204,15 @@ def verify_au_p0a_environment_checklist(
         errors.append("summary_missing_recommended_count_mismatch")
     if sorted(str(item) for item in _as_list(summary.get("missing_recommended"))) != recommended_missing:
         errors.append("summary_missing_recommended_mismatch")
+    if summary.get("env_file_hygiene_ready") is not env_file_hygiene_ready:
+        errors.append("summary_env_file_hygiene_ready_mismatch")
+    if summary.get("env_file_hygiene_error_count") != len(env_file_hygiene_errors):
+        errors.append("summary_env_file_hygiene_error_count_mismatch")
 
     runbook_ok = runbook_verifier.get("status") == "pass" and runbook_verifier.get("hash_valid") is True
     env_ok = env_verifier.get("status") == "pass" and env_verifier.get("hash_valid") is True
     env_ready = env_report.get("ready_for_real_batch") is True
-    expected_ready = runbook_ok and env_ok and env_ready and not required_missing
+    expected_ready = runbook_ok and env_ok and env_ready and env_file_hygiene_ready and not required_missing
     if checklist.get("environment_checklist_ready") is not expected_ready:
         errors.append("environment_checklist_ready_mismatch")
     if checklist.get("status") != ("pass" if expected_ready else "fail"):
@@ -211,6 +254,9 @@ def verify_au_p0a_environment_checklist(
         "next_action": expected_next,
         "missing_required": required_missing,
         "missing_recommended": recommended_missing,
+        "env_file_hygiene_ready": env_file_hygiene_ready,
+        "env_file_hygiene_errors": env_file_hygiene_errors,
+        "env_file_hygiene_warnings": env_file_hygiene_warnings,
     }
 
 

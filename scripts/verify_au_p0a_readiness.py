@@ -143,7 +143,11 @@ def _environment_check(
     recommended_checks = _check_env_names(recommended, env_file_values=env_file_values, process_env=process_env)
     missing_required = [item["name"] for item in required_checks if not item["present"]]
     missing_recommended = [item["name"] for item in recommended_checks if not item["present"]]
-    env_file_errors = [str(item) for item in _as_sequence(env_file.get("errors"))]
+    env_file_hygiene = _as_dict(env_file.get("hygiene"))
+    env_file_errors = [
+        *[str(item) for item in _as_sequence(env_file.get("errors"))],
+        *[str(item) for item in _as_sequence(env_file_hygiene.get("errors"))],
+    ]
     return {
         "status": "pass" if not missing_required and not env_file_errors else "fail",
         "env_file": env_file,

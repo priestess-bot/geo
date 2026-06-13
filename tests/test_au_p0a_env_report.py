@@ -58,6 +58,7 @@ class AuP0aEnvReportTest(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            env_file.chmod(0o600)
             report = build_au_p0a_env_report(
                 runbook_path=runbook_path,
                 env_file_path=env_file,
@@ -69,10 +70,43 @@ class AuP0aEnvReportTest(unittest.TestCase):
         self.assertTrue(report["ready_for_real_batch"])
         self.assertEqual(report["missing_required"], [])
         self.assertEqual(report["next_action"], "run_au_p0a_runbook_dry_run")
+        self.assertTrue(report["env_file"]["hygiene"]["hygiene_ready"])
+        self.assertTrue(report["env_file"]["hygiene"]["permission_safe"])
+        self.assertIsNone(report["env_file"]["hygiene"]["git_tracked"])
+        self.assertEqual(report["env_file"]["hygiene"]["file_mode"], "0600")
         for check in report["required"]:
             self.assertEqual(check["source"], "env_file")
             self.assertEqual(len(check["sha256_prefix"]), 12)
             self.assertNotIn("value", check)
+        self.assertNotIn("openai-secret", json.dumps(report))
+
+    def test_report_blocks_world_readable_env_file_with_secrets(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path = self._write_runbook(temp_dir)
+            env_file = Path(temp_dir) / ".env.au-p0a"
+            env_file.write_text(
+                "\n".join(
+                    [
+                        "PERPLEXITY_API_KEY=perplexity-secret",
+                        "OPENAI_API_KEY=openai-secret",
+                        "DATABASE_URL=postgresql://user:pass@example.test/db",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env_file.chmod(0o644)
+            report = build_au_p0a_env_report(
+                runbook_path=runbook_path,
+                env_file_path=env_file,
+                env={},
+                generated_at="2026-06-11T00:00:00Z",
+            )
+
+        self.assertEqual(report["status"], "fail")
+        self.assertFalse(report["ready_for_real_batch"])
+        self.assertEqual(report["next_action"], "fix_environment_file")
+        self.assertIn("env_file:env_file_permissions_not_0600", report["errors"])
+        self.assertFalse(report["env_file"]["hygiene"]["permission_safe"])
         self.assertNotIn("openai-secret", json.dumps(report))
 
     def test_process_environment_overrides_env_file_source(self) -> None:

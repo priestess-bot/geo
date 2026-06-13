@@ -184,6 +184,28 @@ def _verification_commands() -> list[dict[str, str]]:
     ]
 
 
+def _env_file_hygiene_summary(environment_report: dict[str, Any]) -> dict[str, Any]:
+    env_file = _as_dict(environment_report.get("env_file"))
+    hygiene = _as_dict(env_file.get("hygiene"))
+    return {
+        "path": hygiene.get("path", env_file.get("path", "")),
+        "exists": hygiene.get("exists", env_file.get("exists") is True),
+        "entry_count": hygiene.get("entry_count", env_file.get("entry_count", 0)),
+        "inside_workspace": hygiene.get("inside_workspace") is True,
+        "relative_path": hygiene.get("relative_path", ""),
+        "git_ignored": hygiene.get("git_ignored"),
+        "git_tracked": hygiene.get("git_tracked"),
+        "git_safe": hygiene.get("git_safe") is True,
+        "file_mode": hygiene.get("file_mode", ""),
+        "permission_safe": hygiene.get("permission_safe") is True,
+        "hygiene_required": hygiene.get("hygiene_required") is True,
+        "hygiene_ready": hygiene.get("hygiene_ready") is True,
+        "errors": [str(item) for item in _as_list(hygiene.get("errors"))],
+        "warnings": [str(item) for item in _as_list(hygiene.get("warnings"))],
+        "secret_redacted": hygiene.get("secret_redacted") is True,
+    }
+
+
 def _next_action(*, runbook_ok: bool, env_report_ok: bool, missing_required: list[str]) -> str:
     if not runbook_ok:
         return "run_make_au_p0a_runbook"
@@ -218,6 +240,7 @@ def build_au_p0a_environment_checklist(
     missing_recommended = [task["name"] for task in recommended_tasks if not task["present"]]
     runbook_ok = runbook_verifier.get("status") == "pass" and runbook_verifier.get("hash_valid") is True
     env_report_ok = environment_verifier.get("status") == "pass" and environment_verifier.get("hash_valid") is True
+    env_file_hygiene = _env_file_hygiene_summary(environment_report)
     ready = runbook_ok and env_report_ok and environment_report.get("ready_for_real_batch") is True and not missing_required
     next_action = _next_action(runbook_ok=runbook_ok, env_report_ok=env_report_ok, missing_required=missing_required)
     checklist: dict[str, Any] = {
@@ -247,6 +270,8 @@ def build_au_p0a_environment_checklist(
             "runbook_verifier_status": runbook_verifier.get("status", ""),
             "environment_verifier_status": environment_verifier.get("status", ""),
             "environment_report_ready": environment_report.get("ready_for_real_batch") is True,
+            "env_file_hygiene_ready": env_file_hygiene["hygiene_ready"],
+            "env_file_hygiene_error_count": len(env_file_hygiene["errors"]),
         },
         "runbook_source": runbook_source,
         "runbook_verifier": runbook_verifier,
@@ -260,6 +285,7 @@ def build_au_p0a_environment_checklist(
             "secrets_redacted": environment_report.get("secrets_redacted") is True,
         },
         "environment_report_verifier": environment_verifier,
+        "env_file_hygiene": env_file_hygiene,
         "status_report_summary": _load_status_summary(status_path),
         "required_environment": required_tasks,
         "recommended_environment": recommended_tasks,

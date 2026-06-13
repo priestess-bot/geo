@@ -25,6 +25,7 @@ class AuP0aRunbookExecutionVerifierTest(AuP0aRunbookExecutionFixtureMixin, unitt
             ),
             encoding="utf-8",
         )
+        env_file.chmod(0o600)
         return env_file
 
     def _execution(self, temp_dir: str) -> dict[str, object]:

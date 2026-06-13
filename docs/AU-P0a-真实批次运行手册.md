@@ -28,6 +28,7 @@ make verify-au-p0a-runbook
 ```bash
 make verify-au-p0a-env-template
 cp .env.au-p0a.example .env.au-p0a
+chmod 600 .env.au-p0a
 ```
 
 再把 `.env.au-p0a` 中的 provider key、数据库连接和对象存储配置替换为真实值，或直接在 shell 中导出变量：
@@ -180,8 +181,10 @@ environment report 必须确认：
 
 - environment_report_hash 可由 `make verify-au-p0a-env` 复算
 - `PERPLEXITY_API_KEY`、`OPENAI_API_KEY`、`DATABASE_URL` 必需变量只记录存在状态、来源、长度和 sha256 前缀，不输出原始 secret
-- `.env.au-p0a` 可作为本地模板文件，真实 `.env.au-p0a` 不提交 git；`GENO_AU_P0A_ENV_FILE` 可指向其它本地 secret 文件
-- `ready_for_real_batch` 只在 runbook verifier 通过且必需环境存在时为 true
+- `.env.au-p0a` 可作为本地 secret 文件，真实 `.env.au-p0a` 不提交 git；`GENO_AU_P0A_ENV_FILE` 可指向其它本地 secret 文件
+- env-file hygiene 会记录 `exists/entry_count/inside_workspace/git_ignored/git_tracked/file_mode/permission_safe/hygiene_ready/errors/warnings`，不记录原始值；当本地 env 文件存在且含条目时，必须保持 gitignored、not tracked，并设置为 `0600`，否则 `ready_for_real_batch` 为 false
+- 如果完全通过进程环境注入 secret，`.env.au-p0a` 缺失不会触发 env-file hygiene hard error
+- `ready_for_real_batch` 只在 runbook verifier 通过、必需环境存在且 env-file hygiene 通过时为 true
 
 env template verifier 必须确认：
 
@@ -196,6 +199,7 @@ environment checklist 必须确认：
 
 - environment_checklist_hash 可由 `make verify-au-p0a-environment-checklist` 复算
 - 必填变量、推荐变量、present/source/value_length/sha256_prefix 与 env report 一致
+- `env_file_hygiene` 摘要与 env report 一致，summary 必须包含 `env_file_hygiene_ready` 和 `env_file_hygiene_error_count`
 - 不包含 `value` 或 `raw_value` 等原始 secret 字段
 - setup_commands 固定 env 模板校验、env 模板复制、runbook、env report 和 checklist 生成顺序
 - verification_commands 固定 `--require-ready-environment`、runbook dry-run、DB readiness 和 status refresh
@@ -208,12 +212,14 @@ runbook dry-run 必须确认：
 - 默认 `mode=dry_run`、`executed_command_count=0`
 - 每个 command step 的 command、output_paths、stop_on_failure 和 external_call_risk 可审计
 - `ready_to_execute` 只在 runbook verifier 通过且必需环境存在时为 true
-- env-file metadata 必须记录 path/exists/loaded/errors，但 required/recommended 检查只能记录 source、value_length、sha256_prefix 和 `secret_redacted=true`
+- env-file metadata 必须记录 path/exists/loaded/errors/hygiene，但 required/recommended 检查只能记录 source、value_length、sha256_prefix 和 `secret_redacted=true`
+- 含真实条目的 env-file 若权限不是 `0600`，或在工作区内未被 gitignore / 已被 git tracked，dry-run 必须停在 `environment.status=fail`
 - process env 必须优先于 env-file；env-file 只补缺失值；执行 JSON 不允许出现 `value` 或 `raw_value` 字段
 
 readiness gate 必须确认：
 
-- readiness output 只记录 env-file path/exists/loaded/errors、变量来源、长度和 sha256 前缀，不输出原始 secret
+- readiness output 只记录 env-file path/exists/loaded/errors/hygiene、变量来源、长度和 sha256 前缀，不输出原始 secret
+- 含真实条目的 env-file 若权限不是 `0600`，或在工作区内未被 gitignore / 已被 git tracked，readiness 必须返回 fail
 - process env 必须优先于 env-file；env-file 只补缺失值
 - `GENO_AU_P0A_REQUIRE_DB_CHECK=1` 时，DB gate 使用合并后的 `DATABASE_URL` 做只读 `SELECT 1`，仍不得输出连接串
 - preflight/small_batch/full_batch 三个阶段的上游 payload 和 manifest gate 必须按阶段递进，不允许跳过缺失产物

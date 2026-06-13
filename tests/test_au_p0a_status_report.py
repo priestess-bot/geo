@@ -152,6 +152,7 @@ class AuP0aStatusReportFixtureMixin:
             ),
             encoding="utf-8",
         )
+        env_file.chmod(0o600)
         return env_file
 
     def _write_complete_package(self, temp_dir: str) -> tuple[Path, Path, Path, Path, Path]:

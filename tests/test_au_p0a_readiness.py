@@ -33,6 +33,7 @@ class AuP0aReadinessTest(unittest.TestCase):
             ),
             encoding="utf-8",
         )
+        env_file.chmod(0o600)
         return env_file
 
     def _payload(self, *, path: Path, ready: bool = True) -> dict[str, object]:
@@ -176,11 +177,29 @@ class AuP0aReadinessTest(unittest.TestCase):
         self.assertEqual(result["status"], "pass")
         self.assertEqual(result["environment"]["status"], "pass")
         self.assertEqual(result["environment"]["env_file"]["path"], str(env_file))
+        self.assertTrue(result["environment"]["env_file"]["hygiene"]["hygiene_ready"])
         checks = {check["name"]: check for check in result["environment"]["required"]}
         self.assertEqual(checks["PERPLEXITY_API_KEY"]["source"], "env_file")
         self.assertEqual(len(checks["PERPLEXITY_API_KEY"]["sha256_prefix"]), 12)
         self.assertNotIn("env-file-perplexity", json.dumps(result))
         self.assertNotIn("env-file-openai", json.dumps(result))
+
+    def test_preflight_phase_fails_world_readable_env_file_with_secrets(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, _runbook = self._write_runbook(temp_dir)
+            env_file = self._write_env_file(temp_dir)
+            env_file.chmod(0o644)
+            result = verify_au_p0a_readiness(
+                phase="preflight",
+                runbook_path=runbook_path,
+                env={},
+                env_file_path=env_file,
+                generated_at="2026-06-11T00:00:00Z",
+            )
+
+        self.assertEqual(result["status"], "fail")
+        self.assertEqual(result["environment"]["status"], "fail")
+        self.assertIn("env_file:env_file_permissions_not_0600", result["environment"]["errors"])
 
     def test_preflight_phase_process_env_overrides_env_file(self) -> None:
         with TemporaryDirectory() as temp_dir:
