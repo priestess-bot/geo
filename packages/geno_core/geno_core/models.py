@@ -1163,6 +1163,14 @@ class RuntimeProjectMemberInvitationActionInput:
 
 
 @dataclass(frozen=True)
+class RuntimeProjectMemberInvitationAcceptInput:
+    invitation_id: str
+    invite_token: str
+    accepted_by: str | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeProjectBrandKit:
     brand_kit: dict[str, Any]
     audit_events: tuple[dict[str, Any], ...]

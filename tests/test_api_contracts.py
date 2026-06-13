@@ -1705,6 +1705,97 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertIn("cannot revoke invitation", response.json()["detail"])
 
+    def test_runtime_project_member_invitation_accept_endpoint_adds_member(self) -> None:
+        class FakeRepository:
+            def accept_runtime_project_member_invitation(self, invitation: object) -> RuntimeProjectMemberInvitation:
+                self.invitation = invitation
+                return RuntimeProjectMemberInvitation(
+                    invitation={
+                        "id": invitation.invitation_id,
+                        "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                        "email": "viewer@example.com",
+                        "role": "viewer",
+                        "status": "accepted",
+                        "member": {"user_id": "viewer@example.com", "role": "viewer"},
+                    },
+                    audit_events=(
+                        {"event_type": "project_member_saved"},
+                        {"event_type": "project_member_invitation_accepted"},
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/project-member-invitations/runtime/accept",
+                json={
+                    "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
+                    "invite_token": "geno-invite-token",
+                    "accepted_by": "viewer@example.com",
+                    "reason": "accept invite",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["invitation"]["status"], "accepted")
+        self.assertEqual(response.json()["invitation"]["member"]["user_id"], "viewer@example.com")
+        self.assertEqual(response.json()["audit_events"][1]["event_type"], "project_member_invitation_accepted")
+        self.assertEqual(fake_repository.invitation.invite_token, "geno-invite-token")
+        self.assertEqual(fake_repository.invitation.accepted_by, "viewer@example.com")
+
+    def test_runtime_project_member_invitation_accept_endpoint_sets_token_context_when_access_control_enabled(
+        self,
+    ) -> None:
+        class FakeRepository:
+            def set_runtime_project_invitation_accept_context(self, **kwargs: object) -> None:
+                self.context_kwargs = kwargs
+
+            def accept_runtime_project_member_invitation(self, invitation: object) -> RuntimeProjectMemberInvitation:
+                self.invitation = invitation
+                return RuntimeProjectMemberInvitation(
+                    invitation={"id": invitation.invitation_id, "status": "accepted"},
+                    audit_events=(),
+                )
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.post(
+                "/v1/project-member-invitations/runtime/accept",
+                json={
+                    "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
+                    "invite_token": "geno-invite-token",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            fake_repository.context_kwargs["invite_token_hash"],
+            hashlib.sha256("geno-invite-token".encode("utf-8")).hexdigest(),
+        )
+
+    def test_runtime_project_member_invitation_accept_endpoint_returns_conflict_for_expired_invitation(self) -> None:
+        class FakeRepository:
+            def accept_runtime_project_member_invitation(self, invitation: object) -> object:
+                raise ValueError("project member invitation expired")
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/project-member-invitations/runtime/accept",
+                json={
+                    "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
+                    "invite_token": "geno-invite-token",
+                },
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("expired", response.json()["detail"])
+
     def test_runtime_prompts_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/prompts/runtime")
         self.assertEqual(response.status_code, 503)
@@ -5183,10 +5274,13 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeProjectMemberInvitationPage", payload["persistence"])
         self.assertIn("RuntimeProjectMemberInvitationInput", payload["persistence"])
         self.assertIn("RuntimeProjectMemberInvitationActionInput", payload["persistence"])
+        self.assertIn("RuntimeProjectMemberInvitationAcceptInput", payload["persistence"])
         self.assertIn("ProjectMemberInvitationRequest", payload["persistence"])
         self.assertIn("ProjectMemberInvitationActionRequest", payload["persistence"])
+        self.assertIn("ProjectMemberInvitationAcceptRequest", payload["persistence"])
         self.assertIn("/v1/project-member-invitations/runtime", payload["persistence"])
         self.assertIn("/v1/project-member-invitations/runtime/action", payload["persistence"])
+        self.assertIn("/v1/project-member-invitations/runtime/accept", payload["persistence"])
         self.assertIn("RuntimeProjectBrandKit", payload["persistence"])
         self.assertIn("RuntimeProjectBrandKitInput", payload["persistence"])
         self.assertIn("RuntimeProjectBrandAsset", payload["persistence"])

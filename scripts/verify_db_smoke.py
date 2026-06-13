@@ -159,7 +159,9 @@ EXPECTED_FUNCTIONS = (
     "geno_runtime_rls_enabled",
     "geno_runtime_actor_id",
     "geno_runtime_project_id",
+    "geno_runtime_invitation_token_hash",
     "geno_runtime_can_access_project",
+    "geno_runtime_can_accept_project_invitation",
 )
 
 EXPECTED_RLS_TABLES = (

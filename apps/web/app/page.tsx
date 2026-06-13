@@ -51,6 +51,7 @@ type RuntimeProjectMemberInvitation = {
     revoked_at?: string | null;
     created_at?: string;
     updated_at?: string;
+    member?: { id?: string; user_id?: string; role?: string };
   };
   audit_events: Array<{ event_type?: string; actor_id?: string; method_version?: string | null; after_hash?: string | null }>;
 };
@@ -1488,6 +1489,7 @@ const endpoints = {
   projectMembers: "/v1/project-members/runtime",
   projectMemberInvitations: "/v1/project-member-invitations/runtime",
   projectMemberInvitationAction: "/v1/project-member-invitations/runtime/action",
+  projectMemberInvitationAccept: "/v1/project-member-invitations/runtime/accept",
   prompts: "/v1/prompts/runtime",
   promptImports: "/v1/prompts/runtime/imports",
   evidence: "/v1/evidence-runs/runtime",
@@ -2134,6 +2136,35 @@ async function actionRuntimeProjectMemberInvitation(formData: FormData) {
   revalidatePath("/");
 }
 
+async function acceptRuntimeProjectMemberInvitation(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const invitationId = String(formData.get("invitation_id") || "").trim();
+  const inviteToken = String(formData.get("invite_token") || "").trim();
+  if (!invitationId || !inviteToken) {
+    throw new Error("invitation_id and invite_token are required to accept a project member invitation");
+  }
+  const payload = {
+    invitation_id: invitationId,
+    invite_token: inviteToken,
+    accepted_by: String(formData.get("accepted_by") || "").trim() || undefined,
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/project-member-invitations/runtime/accept`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/project-member-invitations/runtime/accept returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
 async function uploadProjectBrandLogo(formData: FormData) {
   "use server";
   const baseUrl =
@@ -2764,6 +2795,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     projectMembers: endpoints.projectMembers,
     projectMemberInvitations: endpoints.projectMemberInvitations,
     projectMemberInvitationAction: endpoints.projectMemberInvitationAction,
+    projectMemberInvitationAccept: endpoints.projectMemberInvitationAccept,
     prompts: runtimePath(endpoints.prompts, {
       market_code: "AU",
       intent_type: filters.intent_type,
@@ -4448,7 +4480,7 @@ export default async function Home({
                     <h3>Member Invitations</h3>
                     <small>
                       project_member_invitation_created · project_member_invitation_revoked ·
-                      project_member_invitation_expired · hashed token · owner/admin only
+                      project_member_invitation_accepted · project_member_invitation_expired · hashed token
                     </small>
                   </div>
                   {data.projectMemberInvitations.records.length ? (
@@ -4466,7 +4498,26 @@ export default async function Home({
                             {record.invitation.expires_at || "not set"}
                           </small>
                           {record.invitation.invite_token ? (
-                            <small>one-time token {record.invitation.invite_token}</small>
+                            <>
+                              <small>one-time token {record.invitation.invite_token}</small>
+                              <form action={acceptRuntimeProjectMemberInvitation} className="inlineForm">
+                                <input type="hidden" name="invitation_id" value={record.invitation.id} />
+                                <input type="hidden" name="invite_token" value={record.invitation.invite_token} />
+                                <input
+                                  type="hidden"
+                                  name="accepted_by"
+                                  value={record.invitation.email || "runtime-invitee"}
+                                />
+                                <input
+                                  type="hidden"
+                                  name="reason"
+                                  value="Accept runtime project invitation from one-time token"
+                                />
+                                <button className="textButton" type="submit">
+                                  Accept invite
+                                </button>
+                              </form>
+                            </>
                           ) : null}
                           {record.invitation.status === "pending" ? (
                             <div className="inlineActions">

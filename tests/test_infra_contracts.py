@@ -309,6 +309,26 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn('"invite_token_hash"', db_smoke_source)
         self.assertIn('"project_member_invitations_runtime_project_isolation"', db_smoke_source)
 
+    def test_project_member_invitation_acceptance_migration_is_token_scoped(self) -> None:
+        migration = (ROOT / "infra/db/migrations/up/0014_project_member_invitation_acceptance.sql").read_text(
+            encoding="utf-8"
+        )
+        rollback = (ROOT / "infra/db/migrations/down/0014_project_member_invitation_acceptance.down.sql").read_text(
+            encoding="utf-8"
+        )
+        db_smoke_source = (ROOT / "scripts/verify_db_smoke.py").read_text(encoding="utf-8")
+
+        self.assertIn("CREATE OR REPLACE FUNCTION geno_runtime_invitation_token_hash", migration)
+        self.assertIn("current_setting('geno.runtime_invitation_token_hash', true)", migration)
+        self.assertIn("CREATE OR REPLACE FUNCTION geno_runtime_can_accept_project_invitation", migration)
+        self.assertIn("invite_token_hash = geno_runtime_invitation_token_hash()", migration)
+        self.assertIn("status = 'pending'", migration)
+        self.assertIn("status IN ('pending', 'accepted')", migration)
+        self.assertIn("DROP FUNCTION IF EXISTS geno_runtime_can_accept_project_invitation(uuid)", rollback)
+        self.assertIn("DROP FUNCTION IF EXISTS geno_runtime_invitation_token_hash()", rollback)
+        self.assertIn('"geno_runtime_invitation_token_hash"', db_smoke_source)
+        self.assertIn('"geno_runtime_can_accept_project_invitation"', db_smoke_source)
+
     def test_browser_fidelity_plan_make_target_outputs_machine_readable_json(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")

@@ -95,6 +95,7 @@ from geno_core.models import (
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
     RuntimeProjectMemberInvitation,
+    RuntimeProjectMemberInvitationAcceptInput,
     RuntimeProjectMemberInvitationActionInput,
     RuntimeProjectMemberInvitationInput,
     RuntimeProjectMemberInvitationPage,
@@ -1783,7 +1784,32 @@ class PostgresEvidenceRepository:
                     "geno.runtime_actor_id",
                     actor_id,
                     "geno.runtime_project_id",
-                    project_id,
+                        project_id,
+                ),
+            )
+
+    def set_runtime_project_invitation_accept_context(self, *, invite_token_hash: str) -> None:
+        invite_token_hash = invite_token_hash.strip()
+        if not invite_token_hash:
+            raise ValueError("invite_token_hash is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false)
+                """,
+                (
+                    "geno.runtime_project_access_control",
+                    "1",
+                    "geno.runtime_actor_id",
+                    "",
+                    "geno.runtime_project_id",
+                    "",
+                    "geno.runtime_invitation_token_hash",
+                    invite_token_hash,
                 ),
             )
 
@@ -2342,6 +2368,160 @@ class PostgresEvidenceRepository:
         return RuntimeProjectMemberInvitation(
             invitation=after,
             audit_events=(asdict(audit_event),),
+        )
+
+    def accept_runtime_project_member_invitation(
+        self,
+        invitation_input: RuntimeProjectMemberInvitationAcceptInput,
+    ) -> RuntimeProjectMemberInvitation:
+        invitation_id = invitation_input.invitation_id.strip()
+        invite_token = invitation_input.invite_token.strip()
+        if not invitation_id:
+            raise ValueError("invitation_id is required")
+        if not invite_token:
+            raise ValueError("invite_token is required")
+        invite_token_hash = hashlib.sha256(invite_token.encode("utf-8")).hexdigest()
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_MEMBER_INVITATION_COLUMNS)}
+                FROM project_member_invitations
+                WHERE id = %s AND invite_token_hash = %s
+                FOR UPDATE
+                """,
+                (_uuid(invitation_id), invite_token_hash),
+            )
+            existing = cursor.fetchone()
+            if not existing:
+                raise ValueError("project member invitation not found")
+            before_invitation = _row_dict(existing, PROJECT_MEMBER_INVITATION_COLUMNS)
+            if before_invitation.get("status") != "pending":
+                raise ValueError(f"cannot accept invitation with status {before_invitation.get('status')}")
+            expires_at = _coerce_datetime(before_invitation.get("expires_at"))
+            if expires_at and expires_at <= datetime.now(UTC):
+                raise ValueError("project member invitation expired")
+            project_id = str(before_invitation["project_id"])
+            email = str(before_invitation["email"]).strip().lower()
+            role = str(before_invitation["role"]).strip().lower()
+            accepted_by = (invitation_input.accepted_by or "").strip() or email
+            member_id = _stable_id("project-member", project_id, email)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_MEMBER_COLUMNS)}
+                FROM project_members
+                WHERE project_id = %s AND user_id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id), email),
+            )
+            existing_member = cursor.fetchone()
+            before_member = _row_dict(existing_member, PROJECT_MEMBER_COLUMNS) if existing_member else None
+            cursor.execute(
+                """
+                SELECT
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false)
+                """,
+                (
+                    "geno.runtime_actor_id",
+                    email,
+                    "geno.runtime_project_id",
+                    project_id,
+                    "geno.runtime_invitation_token_hash",
+                    invite_token_hash,
+                ),
+            )
+            cursor.execute(
+                """
+                INSERT INTO project_members (id, project_id, user_id, role)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (project_id, user_id) DO UPDATE SET
+                  role = EXCLUDED.role
+                """,
+                (_uuid(member_id), _uuid(project_id), email, role),
+            )
+            cursor.execute(
+                """
+                UPDATE project_member_invitations
+                SET status = %s,
+                    accepted_at = now(),
+                    updated_at = now()
+                WHERE id = %s
+                """,
+                ("accepted", _uuid(invitation_id)),
+            )
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_MEMBER_COLUMNS)}
+                FROM project_members
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(member_id),),
+            )
+            saved_member = _row_dict(cursor.fetchone(), PROJECT_MEMBER_COLUMNS)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROJECT_MEMBER_INVITATION_COLUMNS)}
+                FROM project_member_invitations
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(invitation_id),),
+            )
+            after_invitation = _row_dict(cursor.fetchone(), PROJECT_MEMBER_INVITATION_COLUMNS)
+            member_audit_event = build_audit_event(
+                event_type="project_member_saved",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=accepted_by,
+                target_type="project_member",
+                target_id=member_id,
+                before=before_member,
+                after=saved_member,
+                input_refs={
+                    "project_ids": [project_id],
+                    "user_ids": [email],
+                    "project_member_invitation_ids": [invitation_id],
+                },
+                output_refs={"project_member_ids": [member_id]},
+                method_version="project_member_invitation_accept_v1",
+                reason=invitation_input.reason.strip()
+                if invitation_input.reason
+                else "runtime_project_member_invitation_accept_member",
+            )
+            invitation_audit_event = build_audit_event(
+                event_type="project_member_invitation_accepted",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=accepted_by,
+                target_type="project_member_invitation",
+                target_id=invitation_id,
+                before=before_invitation,
+                after=after_invitation,
+                input_refs={
+                    "project_ids": [project_id],
+                    "emails": [email],
+                    "roles": [role],
+                    "project_member_invitation_ids": [invitation_id],
+                },
+                output_refs={
+                    "project_member_invitation_ids": [invitation_id],
+                    "project_member_ids": [member_id],
+                    "status": ["accepted"],
+                },
+                method_version="project_member_invitation_accept_v1",
+                reason=invitation_input.reason.strip()
+                if invitation_input.reason
+                else "runtime_project_member_invitation_accept",
+            )
+            self.save_audit_events((member_audit_event, invitation_audit_event), cursor=cursor)
+        self.connection.commit()
+        after_invitation["member"] = saved_member
+        return RuntimeProjectMemberInvitation(
+            invitation=after_invitation,
+            audit_events=(asdict(member_audit_event), asdict(invitation_audit_event)),
         )
 
     def delete_runtime_project_member(self, member: RuntimeProjectMemberDeleteInput) -> RuntimeProjectMember:

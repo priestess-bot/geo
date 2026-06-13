@@ -123,6 +123,7 @@ from geno_core.models import (
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
     RuntimeProjectMemberInvitation,
+    RuntimeProjectMemberInvitationAcceptInput,
     RuntimeProjectMemberInvitationActionInput,
     RuntimeProjectMemberInvitationInput,
     RuntimeProjectMemberInvitationPage,
@@ -3576,13 +3577,36 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("set_config(%s, %s, false)", executed_sql)
         self.assertEqual(
             connection.calls[0][1],
+                (
+                    "geno.runtime_project_access_control",
+                    "1",
+                    "geno.runtime_actor_id",
+                    "agency-owner",
+                    "geno.runtime_project_id",
+                    project_id,
+                ),
+        )
+
+    def test_postgres_repository_sets_runtime_invitation_accept_context(self) -> None:
+        connection = RecordingConnection()
+
+        PostgresEvidenceRepository(connection).set_runtime_project_invitation_accept_context(
+            invite_token_hash="token-hash",
+        )
+
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("set_config", executed_sql)
+        self.assertEqual(
+            connection.calls[0][1],
             (
                 "geno.runtime_project_access_control",
                 "1",
                 "geno.runtime_actor_id",
-                "agency-owner",
+                "",
                 "geno.runtime_project_id",
-                project_id,
+                "",
+                "geno.runtime_invitation_token_hash",
+                "token-hash",
             ),
         )
 
@@ -4055,6 +4079,105 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FOR UPDATE", executed_sql)
         self.assertNotIn("UPDATE project_member_invitations SET status", executed_sql)
 
+    def test_postgres_repository_accepts_runtime_project_member_invitation_with_audit_events(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
+        invite_token = "geno-invite-token"
+        invite_token_hash = hashlib.sha256(invite_token.encode("utf-8")).hexdigest()
+        pending_invitation = {
+            "id": invitation_id,
+            "project_id": project_id,
+            "email": "viewer@example.com",
+            "role": "viewer",
+            "status": "pending",
+            "invite_token_hash": invite_token_hash,
+            "invited_by": "agency-owner",
+            "expires_at": now + timedelta(days=7),
+            "accepted_at": None,
+            "revoked_at": None,
+            "metadata": {"source": "runtime-console"},
+            "created_at": now,
+            "updated_at": now,
+        }
+        member_id = str(uuid5(NAMESPACE_URL, f"geno:project-member:{project_id}:viewer@example.com"))
+        saved_member = {
+            "id": member_id,
+            "project_id": project_id,
+            "user_id": "viewer@example.com",
+            "role": "viewer",
+            "created_at": now,
+        }
+        accepted_invitation = {
+            **pending_invitation,
+            "status": "accepted",
+            "accepted_at": now,
+            "updated_at": now,
+        }
+        connection = RecordingConnection(result_sets=[pending_invitation, None, saved_member, accepted_invitation])
+
+        record = PostgresEvidenceRepository(connection).accept_runtime_project_member_invitation(
+            RuntimeProjectMemberInvitationAcceptInput(
+                invitation_id=invitation_id,
+                invite_token=invite_token,
+                accepted_by="viewer@example.com",
+                reason="accept invite",
+            )
+        )
+
+        self.assertEqual(record.invitation["status"], "accepted")
+        self.assertEqual(record.invitation["member"]["user_id"], "viewer@example.com")
+        self.assertEqual(
+            [event["event_type"] for event in record.audit_events],
+            ["project_member_saved", "project_member_invitation_accepted"],
+        )
+        self.assertEqual(record.audit_events[1]["method_version"], "project_member_invitation_accept_v1")
+        self.assertNotIn("geno-invite-token", str(record.audit_events))
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("WHERE id = %s AND invite_token_hash = %s FOR UPDATE", executed_sql)
+        self.assertIn("INSERT INTO project_members", executed_sql)
+        self.assertIn("UPDATE project_member_invitations SET status = %s, accepted_at = now()", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_rejects_expired_runtime_project_member_invitation_acceptance(self) -> None:
+        now = datetime.now(UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
+        invite_token = "geno-invite-token"
+        connection = RecordingConnection(
+            result_sets=[
+                {
+                    "id": invitation_id,
+                    "project_id": project_id,
+                    "email": "viewer@example.com",
+                    "role": "viewer",
+                    "status": "pending",
+                    "invite_token_hash": hashlib.sha256(invite_token.encode("utf-8")).hexdigest(),
+                    "invited_by": "agency-owner",
+                    "expires_at": now - timedelta(seconds=1),
+                    "accepted_at": None,
+                    "revoked_at": None,
+                    "metadata": {"source": "runtime-console"},
+                    "created_at": now - timedelta(days=7),
+                    "updated_at": now,
+                }
+            ]
+        )
+
+        with self.assertRaisesRegex(ValueError, "project member invitation expired"):
+            PostgresEvidenceRepository(connection).accept_runtime_project_member_invitation(
+                RuntimeProjectMemberInvitationAcceptInput(
+                    invitation_id=invitation_id,
+                    invite_token=invite_token,
+                )
+            )
+
+        self.assertEqual(connection.commit_count, 0)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FOR UPDATE", executed_sql)
+        self.assertNotIn("INSERT INTO project_members", executed_sql)
+
     def test_postgres_repository_reads_runtime_prompt_page(self) -> None:
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
         prompt_id = "5b9615f3-533b-5f18-96fb-5c8cbcb934c1"
@@ -4283,6 +4406,8 @@ class CoreContractsTest(unittest.TestCase):
                     "geno.runtime_actor_id",
                     "",
                     "geno.runtime_project_id",
+                    "",
+                    "geno.runtime_invitation_token_hash",
                     "",
                 ),
             )

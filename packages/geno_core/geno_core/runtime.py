@@ -223,6 +223,7 @@ class RuntimePostgresConnectionPool:
                     SELECT
                       set_config(%s, %s, false),
                       set_config(%s, %s, false),
+                      set_config(%s, %s, false),
                       set_config(%s, %s, false)
                     """,
                     (
@@ -231,6 +232,8 @@ class RuntimePostgresConnectionPool:
                         "geno.runtime_actor_id",
                         "",
                         "geno.runtime_project_id",
+                        "",
+                        "geno.runtime_invitation_token_hash",
                         "",
                     ),
                 )

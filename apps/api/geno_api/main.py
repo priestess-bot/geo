@@ -84,6 +84,7 @@ from geno_core.models import (
     RuntimeProjectBrandLogoUpload,
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
+    RuntimeProjectMemberInvitationAcceptInput,
     RuntimeProjectMemberInvitationActionInput,
     RuntimeProjectMemberInvitationInput,
     RuntimePromptImportInput,
@@ -1545,6 +1546,13 @@ class ProjectMemberInvitationActionRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class ProjectMemberInvitationAcceptRequest(BaseModel):
+    invitation_id: str = Field(min_length=1, max_length=80)
+    invite_token: str = Field(min_length=1, max_length=160)
+    accepted_by: str | None = Field(default=None, max_length=320)
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class RuntimeFidelityCheckRequest(BaseModel):
     project_id: str = Field(min_length=1)
     report_export_id: str | None = Field(default=None, min_length=1)
@@ -2146,6 +2154,51 @@ def action_runtime_project_member_invitation(
             if message == "project member invitation not found":
                 status_code = 404
             elif message.startswith("cannot "):
+                status_code = 409
+            else:
+                status_code = 400
+            raise HTTPException(status_code=status_code, detail=message) from exc
+        return asdict(invitation)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-member-invitations/runtime/accept")
+def accept_runtime_project_member_invitation(
+    payload: ProjectMemberInvitationAcceptRequest,
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        if runtime_project_access_control_enabled():
+            set_invitation_context = getattr(repository, "set_runtime_project_invitation_accept_context", None)
+            if not callable(set_invitation_context):
+                raise HTTPException(
+                    status_code=503,
+                    detail="runtime invitation acceptance requires repository.set_runtime_project_invitation_accept_context",
+                )
+            try:
+                set_invitation_context(
+                    invite_token_hash=hashlib.sha256(payload.invite_token.strip().encode("utf-8")).hexdigest()
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            invitation = repository.accept_runtime_project_member_invitation(
+                RuntimeProjectMemberInvitationAcceptInput(
+                    invitation_id=payload.invitation_id.strip(),
+                    invite_token=payload.invite_token.strip(),
+                    accepted_by=payload.accepted_by.strip() if payload.accepted_by else None,
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            message = str(exc)
+            if message == "project member invitation not found":
+                status_code = 404
+            elif message.startswith("cannot ") or message == "project member invitation expired":
                 status_code = 409
             else:
                 status_code = 400
@@ -5049,8 +5102,10 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeProjectMemberInvitationPage",
             "RuntimeProjectMemberInvitationInput",
             "RuntimeProjectMemberInvitationActionInput",
+            "RuntimeProjectMemberInvitationAcceptInput",
             "ProjectMemberInvitationRequest",
             "ProjectMemberInvitationActionRequest",
+            "ProjectMemberInvitationAcceptRequest",
             "RuntimeProjectBrandKit",
             "RuntimeProjectBrandKitInput",
             "RuntimeProjectBrandAsset",
@@ -5168,6 +5223,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/project-members/runtime",
             "/v1/project-member-invitations/runtime",
             "/v1/project-member-invitations/runtime/action",
+            "/v1/project-member-invitations/runtime/accept",
             "/v1/entity-aliases/runtime",
             "/v1/entity-aliases/runtime/candidates",
             "/v1/entity-aliases/runtime/candidates/reviews",
