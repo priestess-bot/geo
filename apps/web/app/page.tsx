@@ -864,6 +864,9 @@ type AuP0aEnvironmentChecklist = {
     runbook_verifier_status?: string;
     environment_verifier_status?: string;
     environment_report_ready?: boolean;
+    env_file_hygiene_ready?: boolean;
+    env_file_hygiene_error_count?: number;
+    env_file_hygiene_warning_count?: number;
   };
   required_environment?: Array<{
     name?: string;
@@ -1015,6 +1018,9 @@ type AuHandoffDossier = {
     external_dependency_blocker_count?: number;
     p0a_execution_checklist_ready?: boolean;
     p0a_execution_remaining_blocker_count?: number;
+    p0a_env_file_hygiene_ready?: boolean;
+    p0a_env_file_hygiene_error_count?: number;
+    p0a_env_file_hygiene_warning_count?: number;
     p0b_google_execution_checklist_ready?: boolean;
     p0b_google_remaining_blocker_count?: number;
     p0b_google_env_file_hygiene_ready?: boolean;
@@ -3837,6 +3843,9 @@ export default async function Home({
   const p0aEnvironmentSummary = p0aEnvironmentChecklist?.summary;
   const missingP0aRequired = p0aEnvironmentSummary?.missing_required || [];
   const missingP0aRecommended = p0aEnvironmentSummary?.missing_recommended || [];
+  const p0aEnvFileHygieneReady = p0aEnvironmentSummary?.env_file_hygiene_ready;
+  const p0aEnvFileHygieneErrorCount = p0aEnvironmentSummary?.env_file_hygiene_error_count || 0;
+  const p0aEnvFileHygieneWarningCount = p0aEnvironmentSummary?.env_file_hygiene_warning_count || 0;
   const p0aExecutionChecklist = data.p0aExecutionChecklist;
   const p0aExecutionSummary = p0aExecutionChecklist?.summary;
   const missingP0aArtifacts = p0aExecutionSummary?.missing_artifacts || [];
@@ -4342,6 +4351,10 @@ export default async function Home({
               {p0aEnvironmentSummary?.required_count || 0}
             </span>
             <span>Recommended missing {p0aEnvironmentSummary?.missing_recommended_count || 0}</span>
+            <span>
+              Env-file hygiene {p0aEnvFileHygieneReady ? "ready" : "blocked"} · errors{" "}
+              {p0aEnvFileHygieneErrorCount} · warnings {p0aEnvFileHygieneWarningCount}
+            </span>
           </div>
           <div className="environmentChecklistGrid">
             <div>
@@ -4570,6 +4583,11 @@ export default async function Home({
             <span>
               Blockers {handoffSummary?.remaining_blocker_count || 0} · work items{" "}
               {handoffSummary?.work_item_count || 0} · unmapped {handoffSummary?.unmapped_blocker_count || 0}
+            </span>
+            <span>
+              P0a env-file hygiene {handoffSummary?.p0a_env_file_hygiene_ready ? "ready" : "blocked"} · errors{" "}
+              {handoffSummary?.p0a_env_file_hygiene_error_count || 0} · warnings{" "}
+              {handoffSummary?.p0a_env_file_hygiene_warning_count || 0}
             </span>
             <span>
               P0b env-file hygiene{" "}

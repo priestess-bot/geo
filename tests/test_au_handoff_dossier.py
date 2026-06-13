@@ -220,6 +220,10 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertFalse(dossier["p0a_environment_checklist"]["environment_checklist_ready"])
         self.assertEqual(dossier["p0a_environment_checklist"]["missing_required_count"], 3)
         self.assertEqual(dossier["summary"]["p0a_missing_required_environment_count"], 3)
+        self.assertTrue(dossier["p0a_environment_checklist"]["env_file_hygiene_ready"])
+        self.assertEqual(dossier["p0a_environment_checklist"]["env_file_hygiene_error_count"], 0)
+        self.assertTrue(dossier["summary"]["p0a_env_file_hygiene_ready"])
+        self.assertEqual(dossier["summary"]["p0a_env_file_hygiene_error_count"], 0)
         self.assertFalse(dossier["p0a_execution_checklist"]["p0a_execution_checklist_ready"])
         self.assertEqual(dossier["summary"]["p0a_execution_remaining_blocker_count"], 22)
         self.assertFalse(dossier["p0b_google_execution_checklist"]["google_execution_checklist_ready"])
@@ -267,6 +271,31 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertEqual(dossier["summary"]["remaining_blocker_count"], 0)
         self.assertEqual(dossier["summary"]["next_work_item_id"], "none")
         self.assertEqual(verification["status"], "pass")
+
+    def test_verifier_detects_p0a_hygiene_summary_tampering(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path, remediation_plan_path = self._write_launch_status_and_plan(temp_dir, ready=False)
+            checklist_path = self._write_p0a_environment_checklist(temp_dir)
+            p0a_execution_checklist_path = self._write_p0a_execution_checklist(temp_dir)
+            p0b_checklist_path = self._write_p0b_google_execution_checklist(temp_dir)
+            dossier = build_au_handoff_dossier(
+                launch_status_path=launch_status_path,
+                remediation_plan_path=remediation_plan_path,
+                p0a_environment_checklist_path=checklist_path,
+                p0a_execution_checklist_path=p0a_execution_checklist_path,
+                p0b_google_execution_checklist_path=p0b_checklist_path,
+                output_path=Path(temp_dir) / "dossier.json",
+                markdown_output_path=Path(temp_dir) / "dossier.md",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            dossier["summary"]["p0a_env_file_hygiene_ready"] = False  # type: ignore[index]
+            dossier["summary"]["p0a_env_file_hygiene_error_count"] = 1  # type: ignore[index]
+            dossier["handoff_dossier_hash"] = compute_handoff_dossier_hash(dossier)
+            verification = verify_au_handoff_dossier(dossier)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("summary_p0a_env_file_hygiene_ready_mismatch", verification["errors"])
+        self.assertIn("summary_p0a_env_file_hygiene_error_count_mismatch", verification["errors"])
 
     def test_verifier_detects_p0b_hygiene_summary_tampering(self) -> None:
         with TemporaryDirectory() as temp_dir:

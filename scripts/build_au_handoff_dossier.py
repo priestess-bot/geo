@@ -230,6 +230,9 @@ def _load_or_build_p0b_google_execution_checklist(
 
 def _p0a_environment_checklist_summary(checklist: dict[str, Any]) -> dict[str, Any]:
     summary = _as_dict(checklist.get("summary"))
+    env_file_hygiene = _as_dict(checklist.get("env_file_hygiene"))
+    env_file_hygiene_errors = [str(value) for value in _as_list(env_file_hygiene.get("errors"))]
+    env_file_hygiene_warnings = [str(value) for value in _as_list(env_file_hygiene.get("warnings"))]
     return {
         "path": str(_as_dict(checklist.get("paths")).get("output", "")),
         "environment_checklist_version": checklist.get("environment_checklist_version", ""),
@@ -247,6 +250,19 @@ def _p0a_environment_checklist_summary(checklist: dict[str, Any]) -> dict[str, A
         "runbook_verifier_status": summary.get("runbook_verifier_status", ""),
         "environment_verifier_status": summary.get("environment_verifier_status", ""),
         "environment_report_ready": summary.get("environment_report_ready") is True,
+        "env_file_hygiene_ready": summary.get("env_file_hygiene_ready") is True,
+        "env_file_hygiene_error_count": summary.get("env_file_hygiene_error_count", len(env_file_hygiene_errors)),
+        "env_file_hygiene_warning_count": summary.get(
+            "env_file_hygiene_warning_count",
+            len(env_file_hygiene_warnings),
+        ),
+        "env_file_hygiene_errors": env_file_hygiene_errors,
+        "env_file_hygiene_warnings": env_file_hygiene_warnings,
+        "env_file_hygiene_path": str(env_file_hygiene.get("path") or ""),
+        "env_file_hygiene_file_mode": str(env_file_hygiene.get("file_mode") or ""),
+        "env_file_hygiene_git_safe": env_file_hygiene.get("git_safe") is True,
+        "env_file_hygiene_permission_safe": env_file_hygiene.get("permission_safe") is True,
+        "env_file_hygiene_required": env_file_hygiene.get("hygiene_required") is True,
     }
 
 
@@ -515,6 +531,10 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
             f"- 必填变量：{p0a_environment_checklist.get('required_present_count', 0)}/{p0a_environment_checklist.get('required_count', 0)}",
             f"- 缺失必填：{', '.join(str(value) for value in _as_list(p0a_environment_checklist.get('missing_required'))) or '无'}",
             f"- 缺失推荐：{', '.join(str(value) for value in _as_list(p0a_environment_checklist.get('missing_recommended'))) or '无'}",
+            f"- Env-file hygiene：{'ready' if p0a_environment_checklist.get('env_file_hygiene_ready') else 'blocked'}"
+            f"（errors: {p0a_environment_checklist.get('env_file_hygiene_error_count', 0)}, "
+            f"warnings: {p0a_environment_checklist.get('env_file_hygiene_warning_count', 0)}）",
+            f"- Env-file hygiene path：{p0a_environment_checklist.get('env_file_hygiene_path') or 'none'}",
             f"- Runbook verifier：{p0a_environment_checklist.get('runbook_verifier_status', '')}",
             f"- Environment verifier：{p0a_environment_checklist.get('environment_verifier_status', '')}",
             "",
@@ -700,6 +720,9 @@ def build_au_handoff_dossier(
             "runnable_now_work_item_count": remediation_summary.get("runnable_now_work_item_count", 0),
             "p0a_environment_checklist_ready": checklist_summary.get("environment_checklist_ready") is True,
             "p0a_missing_required_environment_count": checklist_summary.get("missing_required_count", 0),
+            "p0a_env_file_hygiene_ready": checklist_summary.get("env_file_hygiene_ready") is True,
+            "p0a_env_file_hygiene_error_count": checklist_summary.get("env_file_hygiene_error_count", 0),
+            "p0a_env_file_hygiene_warning_count": checklist_summary.get("env_file_hygiene_warning_count", 0),
             "p0a_execution_checklist_ready": p0a_execution_checklist_summary.get("p0a_execution_checklist_ready")
             is True,
             "p0a_execution_remaining_blocker_count": p0a_execution_checklist_summary.get("remaining_blocker_count", 0),

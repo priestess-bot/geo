@@ -128,6 +128,8 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Remediation plan", page_source)
         self.assertIn("P0a environment checklist", page_source)
         self.assertIn("P0a execution checklist", page_source)
+        self.assertIn("p0a_env_file_hygiene_ready", page_source)
+        self.assertIn("P0a env-file hygiene", page_source)
         self.assertIn("p0a_execution_checklist_hash", page_source)
         self.assertIn("paths.p0aExecutionChecklist", page_source)
         self.assertIn("python3 scripts/verify_au_p0a_status_report.py --require-design-partner-ready", page_source)

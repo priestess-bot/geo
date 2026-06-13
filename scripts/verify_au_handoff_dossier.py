@@ -169,6 +169,16 @@ def verify_au_handoff_dossier(
         "missing_required_count"
     ):
         errors.append("summary_p0a_missing_required_environment_count_mismatch")
+    if summary.get("p0a_env_file_hygiene_ready") is not p0a_environment_checklist.get("env_file_hygiene_ready"):
+        errors.append("summary_p0a_env_file_hygiene_ready_mismatch")
+    if summary.get("p0a_env_file_hygiene_error_count") != p0a_environment_checklist.get(
+        "env_file_hygiene_error_count"
+    ):
+        errors.append("summary_p0a_env_file_hygiene_error_count_mismatch")
+    if summary.get("p0a_env_file_hygiene_warning_count") != p0a_environment_checklist.get(
+        "env_file_hygiene_warning_count"
+    ):
+        errors.append("summary_p0a_env_file_hygiene_warning_count_mismatch")
     if summary.get("p0a_execution_checklist_ready") is not p0a_execution_checklist.get(
         "p0a_execution_checklist_ready"
     ):
