@@ -2174,6 +2174,10 @@ code {
   outline: none;
 }
 
+.interactiveTraceabilityNodeDragging {
+  cursor: grabbing;
+}
+
 .interactiveTraceabilityNode rect {
   fill: #ffffff;
   stroke: #527078;
@@ -2205,6 +2209,7 @@ code {
 }
 
 .interactiveTraceabilityNodeSelected rect,
+.interactiveTraceabilityNodeDragging rect,
 .interactiveTraceabilityNode:focus-visible rect {
   fill: #eef7f7;
   stroke-width: 3;
