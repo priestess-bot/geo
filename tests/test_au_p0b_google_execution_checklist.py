@@ -94,9 +94,16 @@ class AuP0bGoogleExecutionChecklistTest(unittest.TestCase):
         )
         self.assertIn("verify_env_template", {command["id"] for command in checklist["setup_commands"]})
         self.assertEqual(
-            checklist["work_items"][0]["commands"][:2],
-            ["make verify-au-p0b-google-env-template", "cp .env.au-p0b-google.example .env.au-p0b-google"],
+            checklist["work_items"][0]["commands"][:3],
+            [
+                "make verify-au-p0b-google-env-template",
+                "cp .env.au-p0b-google.example .env.au-p0b-google",
+                "chmod 600 .env.au-p0b-google",
+            ],
         )
+        self.assertTrue(checklist["env_file_hygiene"]["hygiene_ready"])
+        self.assertEqual(checklist["summary"]["env_file_hygiene_error_count"], 0)
+        self.assertIn("secure_env_file_permissions", {command["id"] for command in checklist["setup_commands"]})
         self.assertIn("run_smoke", {command["id"] for command in checklist["execution_commands"]})
         self.assertEqual(
             checklist["google_execution_checklist_hash"],
@@ -176,6 +183,30 @@ class AuP0bGoogleExecutionChecklistTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("forbidden_secret_field:$.selector_groups[0].raw_value", verification["errors"])
+
+    def test_verifier_detects_env_file_hygiene_summary_tampering(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, execution_path, env_path, status_path, package_path, _runbook = self._write_status_and_package(
+                temp_dir,
+                google_ready=False,
+            )
+            checklist = build_au_p0b_google_execution_checklist(
+                runbook_path=runbook_path,
+                execution_path=execution_path,
+                playwright_env_path=env_path,
+                status_report_path=status_path,
+                package_path=package_path,
+                env_file_path=Path(temp_dir) / "missing.env",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            checklist["env_file_hygiene"]["hygiene_ready"] = False  # type: ignore[index]
+            checklist["env_file_hygiene"]["errors"] = ["env_file_permissions_not_0600"]  # type: ignore[index]
+            checklist["google_execution_checklist_hash"] = compute_google_execution_checklist_hash(checklist)
+            verification = verify_au_p0b_google_execution_checklist(checklist)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("summary_env_file_hygiene_ready_mismatch", verification["errors"])
+        self.assertIn("summary_env_file_hygiene_error_count_mismatch", verification["errors"])
 
     def test_cli_writes_and_verifies_checklist(self) -> None:
         with TemporaryDirectory() as temp_dir:

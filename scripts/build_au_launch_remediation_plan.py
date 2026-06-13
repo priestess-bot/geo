@@ -228,6 +228,7 @@ def _p0b_playwright_env_item() -> dict[str, Any]:
         "commands": [
             _command("make verify-au-p0b-google-env-template"),
             _command("cp .env.au-p0b-google.example .env.au-p0b-google"),
+            _command("chmod 600 .env.au-p0b-google"),
             _command("make au-p0b-google-runbook"),
             _command("make au-p0b-google-playwright-env"),
             _command("make au-p0b-google-execution-checklist"),
@@ -246,7 +247,7 @@ def _p0b_playwright_env_item() -> dict[str, Any]:
             "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
             "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json",
         ],
-        "acceptance": "Google Playwright environment report is ready for smoke and contains no raw secret values.",
+        "acceptance": "Google Playwright environment report is ready for smoke, the local env file passes hygiene, and no raw secret values are present.",
     }
 
 

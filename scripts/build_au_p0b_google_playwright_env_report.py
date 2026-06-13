@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 
 from scripts.build_au_p0b_google_spike_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_RUNBOOK_PATH  # noqa: E402
 from scripts.verify_au_p0b_google_spike_runbook import verify_au_p0b_google_spike_runbook  # noqa: E402
+from scripts.build_au_p0a_env_report import _env_file_hygiene  # noqa: E402
 
 
 ENV_REPORT_VERSION = "au_p0b_google_playwright_environment_report_v1"
@@ -76,11 +77,25 @@ def _env_truthy(value: str | None) -> bool:
 
 def _load_env_file(path: Path | None) -> tuple[dict[str, str], dict[str, Any]]:
     if path is None:
-        return {}, {"path": "", "exists": False, "loaded": False, "errors": []}
+        return {}, {
+            "path": "",
+            "exists": False,
+            "loaded": False,
+            "entry_count": 0,
+            "errors": [],
+            "hygiene": _env_file_hygiene(None, exists=False, entry_count=0),
+        }
     try:
         raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return {}, {"path": str(path), "exists": False, "loaded": False, "errors": []}
+        return {}, {
+            "path": str(path),
+            "exists": False,
+            "loaded": False,
+            "entry_count": 0,
+            "errors": [],
+            "hygiene": _env_file_hygiene(path, exists=False, entry_count=0),
+        }
     values: dict[str, str] = {}
     errors: list[str] = []
     for line_number, line in enumerate(raw.splitlines(), start=1):
@@ -104,6 +119,7 @@ def _load_env_file(path: Path | None) -> tuple[dict[str, str], dict[str, Any]]:
         "loaded": True,
         "entry_count": len(values),
         "errors": errors,
+        "hygiene": _env_file_hygiene(path, exists=True, entry_count=len(values)),
         "secrets_redacted": True,
     }
 
@@ -271,7 +287,8 @@ def _next_action(
 ) -> str:
     if runbook.get("status") != "pass":
         return "run_or_fix_au_p0b_google_runbook"
-    if env_file.get("errors"):
+    hygiene = env_file.get("hygiene") if isinstance(env_file.get("hygiene"), dict) else {}
+    if env_file.get("errors") or hygiene.get("errors"):
         return "fix_google_playwright_env_file"
     if missing_required or missing_selector_groups:
         return "populate_google_playwright_smoke_environment"
@@ -344,10 +361,13 @@ def build_google_playwright_env_report(
         file_checks=file_checks,
         playwright_available=playwright_ok,
     )
-    env_file_errors = list(env_file.get("errors", []))
+    env_file_hygiene = env_file.get("hygiene") if isinstance(env_file.get("hygiene"), dict) else {}
+    env_file_errors = [*list(env_file.get("errors", [])), *list(env_file_hygiene.get("errors", []))]
+    env_file_hygiene_ready = env_file_hygiene.get("hygiene_ready") is True
     ready_for_smoke = (
         runbook.get("status") == "pass"
         and not env_file_errors
+        and env_file_hygiene_ready
         and not missing_required
         and not missing_selector_groups
         and storage_state_ok

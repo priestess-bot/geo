@@ -121,9 +121,10 @@ def _validate_selector_groups(groups: list[object], errors: list[str]) -> list[s
 def _expected_next_action(report: dict[str, Any], *, ready_for_smoke: bool, collector_health: str) -> str:
     runbook = _as_dict(report.get("runbook"))
     env_file = _as_dict(report.get("env_file"))
+    hygiene = _as_dict(env_file.get("hygiene"))
     if runbook.get("status") != "pass":
         return "run_or_fix_au_p0b_google_runbook"
-    if env_file.get("errors"):
+    if env_file.get("errors") or hygiene.get("errors"):
         return "fix_google_playwright_env_file"
     if _as_list(report.get("missing_required")) or _as_list(report.get("missing_selector_groups")):
         return "populate_google_playwright_smoke_environment"
@@ -195,6 +196,21 @@ def verify_google_playwright_env_report(
 
     runbook = _as_dict(report.get("runbook"))
     env_file = _as_dict(report.get("env_file"))
+    hygiene = _as_dict(env_file.get("hygiene"))
+    if "hygiene" not in env_file:
+        errors.append("env_file_hygiene_missing")
+    elif hygiene.get("secret_redacted") is not True:
+        errors.append("env_file_hygiene_secret_redaction_missing")
+    hygiene_errors = [str(item) for item in _as_list(hygiene.get("errors"))]
+    hygiene_warnings = [str(item) for item in _as_list(hygiene.get("warnings"))]
+    if hygiene.get("hygiene_ready") is not True and hygiene.get("hygiene_ready") is not False:
+        errors.append("env_file_hygiene_ready_invalid")
+    if hygiene.get("hygiene_required") is not True and hygiene.get("hygiene_required") is not False:
+        errors.append("env_file_hygiene_required_invalid")
+    if hygiene.get("exists") is not env_file.get("exists"):
+        errors.append("env_file_hygiene_exists_mismatch")
+    if "value" in hygiene or "raw_value" in hygiene:
+        errors.append("env_file_hygiene_raw_value_leaked")
     storage_state_ok = not any(
         _as_dict(item).get("name") == "GOOGLE_PLAYWRIGHT_STORAGE_STATE"
         and _as_dict(item).get("present")
@@ -210,6 +226,8 @@ def verify_google_playwright_env_report(
     expected_ready = (
         runbook.get("status") == "pass"
         and not _as_list(env_file.get("errors"))
+        and not hygiene_errors
+        and hygiene.get("hygiene_ready") is True
         and not missing_required
         and not missing_selector_groups
         and storage_state_ok
@@ -254,6 +272,9 @@ def verify_google_playwright_env_report(
         "missing_required": sorted(missing_required),
         "missing_full_run_required": sorted(missing_full_required),
         "missing_selector_groups": sorted(missing_selector_groups),
+        "env_file_hygiene_ready": hygiene.get("hygiene_ready") is True,
+        "env_file_hygiene_errors": hygiene_errors,
+        "env_file_hygiene_warnings": hygiene_warnings,
         "next_action": expected_next_action,
     }
 

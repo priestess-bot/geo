@@ -79,8 +79,12 @@ class AuLaunchRemediationPlanTest(unittest.TestCase):
             [command["shell"] for command in work_items["p0b_google_playwright_env"]["commands"]],
         )
         self.assertEqual(
-            [command["shell"] for command in work_items["p0b_google_playwright_env"]["commands"][:2]],
-            ["make verify-au-p0b-google-env-template", "cp .env.au-p0b-google.example .env.au-p0b-google"],
+            [command["shell"] for command in work_items["p0b_google_playwright_env"]["commands"][:3]],
+            [
+                "make verify-au-p0b-google-env-template",
+                "cp .env.au-p0b-google.example .env.au-p0b-google",
+                "chmod 600 .env.au-p0b-google",
+            ],
         )
         self.assertIn(
             "make verify-au-p0b-google-execution-checklist",

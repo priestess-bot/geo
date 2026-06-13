@@ -88,6 +88,7 @@ def _env_file_hygiene(path: Path | None, *, exists: bool, entry_count: int) -> d
             "path": "",
             "exists": False,
             "entry_count": 0,
+            "template_file": False,
             "inside_workspace": False,
             "relative_path": "",
             "git_ignored": None,
@@ -104,6 +105,7 @@ def _env_file_hygiene(path: Path | None, *, exists: bool, entry_count: int) -> d
 
     relative_path = _relative_to_root(path)
     inside_workspace = bool(relative_path)
+    template_file = path.name.endswith(".example") or relative_path.endswith(".example")
     git_ignored: bool | None = None
     git_tracked: bool | None = None
     if inside_workspace:
@@ -124,8 +126,8 @@ def _env_file_hygiene(path: Path | None, *, exists: bool, entry_count: int) -> d
 
     git_safe = True
     if inside_workspace:
-        git_safe = git_tracked is False and git_ignored is True
-    hygiene_required = exists and entry_count > 0
+        git_safe = template_file or (git_tracked is False and git_ignored is True)
+    hygiene_required = exists and entry_count > 0 and not template_file
     errors: list[str] = []
     warnings: list[str] = []
     if hygiene_required and not permission_safe:
@@ -142,6 +144,7 @@ def _env_file_hygiene(path: Path | None, *, exists: bool, entry_count: int) -> d
         "path": str(path),
         "exists": exists,
         "entry_count": entry_count,
+        "template_file": template_file,
         "inside_workspace": inside_workspace,
         "relative_path": relative_path,
         "git_ignored": git_ignored,

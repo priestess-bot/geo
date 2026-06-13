@@ -181,6 +181,7 @@ class AuP0bGooglePlaywrightEnvReportTest(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            env_file.chmod(0o600)
             report = build_google_playwright_env_report(
                 runbook_path=runbook_path,
                 env_file_path=env_file,
@@ -190,12 +191,42 @@ class AuP0bGooglePlaywrightEnvReportTest(unittest.TestCase):
             )
 
         self.assertTrue(report["ready_for_playwright_smoke"])
+        self.assertTrue(report["env_file"]["hygiene"]["hygiene_ready"])
+        self.assertTrue(report["env_file"]["hygiene"]["permission_safe"])
+        self.assertEqual(report["env_file"]["hygiene"]["file_mode"], "0600")
         self.assertEqual(report["required"][0]["source"], "env_file")
         for group in report["selector_groups"]:
             self.assertEqual(group["source"], "env_file")
             self.assertEqual(len(group["sha256_prefix"]), 12)
         self.assertNotIn("#prompt", json.dumps(report))
         self.assertNotIn(".answer", json.dumps(report))
+
+    def test_report_blocks_world_readable_env_file_with_sensitive_values(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path = self._write_runbook(temp_dir)
+            env_file = Path(temp_dir) / ".env.au-p0b-google"
+            env_file.write_text(
+                "GOOGLE_PLAYWRIGHT_ENABLED=1\n"
+                "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR=#prompt\n"
+                "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR=.answer\n",
+                encoding="utf-8",
+            )
+            env_file.chmod(0o644)
+            report = build_google_playwright_env_report(
+                runbook_path=runbook_path,
+                env_file_path=env_file,
+                env={},
+                playwright_available=True,
+                generated_at="2026-06-12T00:00:00Z",
+            )
+
+        self.assertEqual(report["status"], "fail")
+        self.assertFalse(report["ready_for_playwright_smoke"])
+        self.assertEqual(report["next_action"], "fix_google_playwright_env_file")
+        self.assertIn("env_file:env_file_permissions_not_0600", report["errors"])
+        self.assertFalse(report["env_file"]["hygiene"]["permission_safe"])
+        self.assertFalse(report["env_file"]["hygiene"]["hygiene_ready"])
+        self.assertNotIn("#prompt", json.dumps(report))
 
     def test_verifier_fails_raw_secret_field_even_when_hash_recomputed(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -218,6 +249,30 @@ class AuP0bGooglePlaywrightEnvReportTest(unittest.TestCase):
         self.assertEqual(result["status"], "fail")
         self.assertIn("required_check_raw_value_leaked:GOOGLE_PLAYWRIGHT_ENABLED", result["errors"])
 
+    def test_verifier_fails_hygiene_error_even_when_hash_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path = self._write_runbook(temp_dir)
+            report = build_google_playwright_env_report(
+                runbook_path=runbook_path,
+                env_file_path=Path(temp_dir) / "missing.env",
+                env={
+                    "GOOGLE_PLAYWRIGHT_ENABLED": "1",
+                    "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR": "#prompt",
+                    "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR": ".answer",
+                },
+                playwright_available=True,
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            report["env_file"]["hygiene"]["hygiene_ready"] = False  # type: ignore[index]
+            report["env_file"]["hygiene"]["errors"] = ["env_file_permissions_not_0600"]  # type: ignore[index]
+            report["environment_report_hash"] = compute_google_playwright_env_report_hash(report)
+            result = verify_google_playwright_env_report(report)
+
+        self.assertEqual(result["status"], "fail")
+        self.assertFalse(result["env_file_hygiene_ready"])
+        self.assertIn("env_file_permissions_not_0600", result["env_file_hygiene_errors"])
+        self.assertIn("ready_for_playwright_smoke_mismatch", result["errors"])
+
     def test_cli_writes_report_and_verifier_cli_reads_it(self) -> None:
         with TemporaryDirectory() as temp_dir:
             runbook_path = self._write_runbook(temp_dir)
@@ -228,6 +283,7 @@ class AuP0bGooglePlaywrightEnvReportTest(unittest.TestCase):
                 "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR=.answer\n",
                 encoding="utf-8",
             )
+            env_file.chmod(0o600)
             output_path = Path(temp_dir) / "env-report.json"
             build_result = subprocess.run(
                 [
@@ -280,6 +336,9 @@ class AuP0bGooglePlaywrightEnvReportTest(unittest.TestCase):
         self.assertFalse(report["ready_for_playwright_smoke"])
         self.assertFalse(report["ready_for_full_google_run"])
         self.assertEqual(report["next_action"], "populate_google_playwright_smoke_environment")
+        self.assertTrue(report["env_file"]["hygiene"]["template_file"])
+        self.assertFalse(report["env_file"]["hygiene"]["hygiene_required"])
+        self.assertTrue(report["env_file"]["hygiene"]["hygiene_ready"])
         self.assertIn("GOOGLE_PLAYWRIGHT_ENABLED", report["missing_required"])
         self.assertIn("google_aio_prompt_selector", report["missing_selector_groups"])
         self.assertNotIn("raw_value", json.dumps(report))

@@ -252,6 +252,34 @@ def _dependency_tasks(checks: list[object]) -> list[dict[str, Any]]:
     return tasks
 
 
+def _env_file_hygiene_summary(playwright_env: dict[str, Any], env_verifier: dict[str, Any]) -> dict[str, Any]:
+    env_file = _as_dict(playwright_env.get("env_file"))
+    hygiene = _as_dict(env_file.get("hygiene"))
+    errors = [str(item) for item in _as_list(hygiene.get("errors"))]
+    warnings = [str(item) for item in _as_list(hygiene.get("warnings"))]
+    return {
+        "path": str(env_file.get("path") or ""),
+        "exists": env_file.get("exists") is True,
+        "loaded": env_file.get("loaded") is True,
+        "entry_count": int(env_file.get("entry_count") or 0),
+        "template_file": hygiene.get("template_file") is True,
+        "inside_workspace": hygiene.get("inside_workspace") is True,
+        "relative_path": str(hygiene.get("relative_path") or ""),
+        "git_ignored": hygiene.get("git_ignored") if hygiene.get("git_ignored") in {True, False, None} else None,
+        "git_tracked": hygiene.get("git_tracked") if hygiene.get("git_tracked") in {True, False, None} else None,
+        "git_safe": hygiene.get("git_safe") is True,
+        "file_mode": str(hygiene.get("file_mode") or ""),
+        "permission_safe": hygiene.get("permission_safe") is True,
+        "hygiene_required": hygiene.get("hygiene_required") is True,
+        "hygiene_ready": hygiene.get("hygiene_ready") is True,
+        "errors": errors,
+        "warnings": warnings,
+        "verifier_ready": env_verifier.get("env_file_hygiene_ready") is True,
+        "verifier_errors": [str(item) for item in _as_list(env_verifier.get("env_file_hygiene_errors"))],
+        "secret_redacted": hygiene.get("secret_redacted") is True,
+    }
+
+
 def _missing_env_names(tasks: list[dict[str, Any]]) -> list[str]:
     return sorted(
         task["name"]
@@ -286,6 +314,11 @@ def _setup_commands() -> list[dict[str, str]]:
             "id": "copy_env_template",
             "shell": "cp .env.au-p0b-google.example .env.au-p0b-google",
             "purpose": "Create a local Google spike env file without committing selectors or secrets.",
+        },
+        {
+            "id": "secure_env_file_permissions",
+            "shell": "chmod 600 .env.au-p0b-google",
+            "purpose": "Ensure local Google selectors, session paths and database URL metadata are not group/world-readable.",
         },
         {"id": "build_runbook", "shell": "make au-p0b-google-runbook", "purpose": "Freeze the Google spike command plan."},
         {
@@ -378,6 +411,7 @@ def _work_items() -> list[dict[str, Any]]:
             "commands": [
                 "make verify-au-p0b-google-env-template",
                 "cp .env.au-p0b-google.example .env.au-p0b-google",
+                "chmod 600 .env.au-p0b-google",
                 "make au-p0b-google-playwright-env",
             ],
             "hard_gate": "hard_playwright_env_gate",
@@ -476,6 +510,7 @@ def build_au_p0b_google_execution_checklist(
     selector_groups = _selector_tasks(_as_list(playwright_env.get("selector_groups")))
     file_checks = _file_tasks(_as_list(playwright_env.get("file_checks")))
     dependency_checks = _dependency_tasks(_as_list(playwright_env.get("dependency_checks")))
+    env_file_hygiene = _env_file_hygiene_summary(playwright_env, env_verifier)
 
     missing_required = _missing_env_names(required_environment)
     missing_full_required = _missing_env_names(full_run_required_environment)
@@ -539,6 +574,9 @@ def build_au_p0b_google_execution_checklist(
             "missing_dependencies": missing_dependencies,
             "file_gate_issue_count": len(file_gate_issues),
             "file_gate_issues": file_gate_issues,
+            "env_file_hygiene_ready": env_file_hygiene["hygiene_ready"],
+            "env_file_hygiene_error_count": len(env_file_hygiene["errors"]),
+            "env_file_hygiene_warning_count": len(env_file_hygiene["warnings"]),
             "remaining_blocker_count": len(remaining_blockers),
             "remaining_blockers": remaining_blockers,
             "runbook_verifier_status": runbook_verifier.get("status", ""),
@@ -560,6 +598,7 @@ def build_au_p0b_google_execution_checklist(
             "secrets_redacted": playwright_env.get("secrets_redacted") is True,
         },
         "playwright_environment_verifier": env_verifier,
+        "env_file_hygiene": env_file_hygiene,
         "status_report_source": status_source,
         "status_report": {
             "status_report_version": status_report.get("status_report_version", ""),

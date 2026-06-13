@@ -33,6 +33,7 @@ REQUIRED_FIELDS = (
     "playwright_environment_source",
     "playwright_environment",
     "playwright_environment_verifier",
+    "env_file_hygiene",
     "status_report_source",
     "status_report",
     "status_report_verifier",
@@ -178,6 +179,45 @@ def _validate_dependency_tasks(tasks: list[object], errors: list[str]) -> list[s
     return sorted(missing)
 
 
+def _validate_env_file_hygiene(hygiene: dict[str, Any], errors: list[str]) -> tuple[bool, list[str], list[str]]:
+    required_fields = (
+        "path",
+        "exists",
+        "loaded",
+        "entry_count",
+        "inside_workspace",
+        "relative_path",
+        "git_safe",
+        "file_mode",
+        "permission_safe",
+        "hygiene_required",
+        "hygiene_ready",
+        "errors",
+        "warnings",
+        "verifier_ready",
+        "verifier_errors",
+        "secret_redacted",
+    )
+    for field in required_fields:
+        if field not in hygiene:
+            errors.append(f"env_file_hygiene_field_missing:{field}")
+    if hygiene.get("secret_redacted") is not True:
+        errors.append("env_file_hygiene_secret_redaction_missing")
+    if "value" in hygiene or "raw_value" in hygiene:
+        errors.append("env_file_hygiene_raw_value_leaked")
+    if hygiene.get("hygiene_ready") is not True and hygiene.get("hygiene_ready") is not False:
+        errors.append("env_file_hygiene_ready_invalid")
+    if hygiene.get("hygiene_required") is not True and hygiene.get("hygiene_required") is not False:
+        errors.append("env_file_hygiene_required_invalid")
+    hygiene_errors = [str(item) for item in _as_list(hygiene.get("errors"))]
+    hygiene_warnings = [str(item) for item in _as_list(hygiene.get("warnings"))]
+    if sorted(str(item) for item in _as_list(hygiene.get("verifier_errors"))) != sorted(hygiene_errors):
+        errors.append("env_file_hygiene_verifier_errors_mismatch")
+    if hygiene.get("verifier_ready") is not (hygiene.get("hygiene_ready") is True):
+        errors.append("env_file_hygiene_verifier_ready_mismatch")
+    return hygiene.get("hygiene_ready") is True, hygiene_errors, hygiene_warnings
+
+
 def _file_gate_issues(tasks: list[object]) -> list[str]:
     issues: list[str] = []
     for item in tasks:
@@ -253,6 +293,7 @@ def verify_au_p0b_google_execution_checklist(
     runbook_verifier = _as_dict(checklist.get("runbook_verifier"))
     env_summary = _as_dict(checklist.get("playwright_environment"))
     env_verifier = _as_dict(checklist.get("playwright_environment_verifier"))
+    env_file_hygiene = _as_dict(checklist.get("env_file_hygiene"))
     status_verifier = _as_dict(checklist.get("status_report_verifier"))
     package = _as_dict(checklist.get("evidence_package"))
     package_verifier = _as_dict(checklist.get("evidence_package_verifier"))
@@ -268,6 +309,10 @@ def verify_au_p0b_google_execution_checklist(
     )
     selector_count, missing_selectors = _validate_selector_tasks(_as_list(checklist.get("selector_groups")), errors)
     missing_dependencies = _validate_dependency_tasks(_as_list(checklist.get("dependency_checks")), errors)
+    env_file_hygiene_ready, env_file_hygiene_errors, env_file_hygiene_warnings = _validate_env_file_hygiene(
+        env_file_hygiene,
+        errors,
+    )
     file_issues = _file_gate_issues(_as_list(checklist.get("file_checks")))
     remaining_blockers = [str(item) for item in _as_list(package.get("remaining_blockers"))]
     if not remaining_blockers:
@@ -299,6 +344,12 @@ def verify_au_p0b_google_execution_checklist(
         errors.append("summary_file_gate_issues_mismatch")
     if summary.get("file_gate_issue_count") != len(file_issues):
         errors.append("summary_file_gate_issue_count_mismatch")
+    if summary.get("env_file_hygiene_ready") is not env_file_hygiene_ready:
+        errors.append("summary_env_file_hygiene_ready_mismatch")
+    if summary.get("env_file_hygiene_error_count") != len(env_file_hygiene_errors):
+        errors.append("summary_env_file_hygiene_error_count_mismatch")
+    if summary.get("env_file_hygiene_warning_count") != len(env_file_hygiene_warnings):
+        errors.append("summary_env_file_hygiene_warning_count_mismatch")
     if sorted(str(item) for item in _as_list(summary.get("remaining_blockers"))) != sorted(remaining_blockers):
         errors.append("summary_remaining_blockers_mismatch")
     if summary.get("remaining_blocker_count") != len(remaining_blockers):
@@ -339,6 +390,7 @@ def verify_au_p0b_google_execution_checklist(
         "copy_env_template",
         "build_runbook",
         "dry_run_runbook",
+        "secure_env_file_permissions",
         "build_playwright_env",
         "build_execution_checklist",
     }:

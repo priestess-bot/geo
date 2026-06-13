@@ -29,9 +29,12 @@ google_ai_mode -> ManualBackfillCollector      -> access_method=manual
 ```bash
 make verify-au-p0b-google-env-template
 cp .env.au-p0b-google.example .env.au-p0b-google
+chmod 600 .env.au-p0b-google
 ```
 
 `make verify-au-p0b-google-env-template` 只校验已提交的 `.env.au-p0b-google.example`：模板必须默认 `GOOGLE_PLAYWRIGHT_ENABLED=0`，selector、storage state、manual backfill、数据库、SERP 和对象存储字段必须为空，安全默认值和运行产物路径必须稳定，且不能出现疑似真实 secret 标记。该门禁不读取也不证明本地真实 `.env.au-p0b-google`、Google session、selector、数据库或第三方 SERP 已 ready。
+
+真实 `.env.au-p0b-google` 存在且含条目时，会进入 env-file hygiene gate：文件必须被 `.gitignore` 忽略、不能被 git 跟踪，且权限必须为 `0600`。完全用进程环境注入 selector/session path/database URL 时，缺失本地 env 文件不触发该 hard error。
 
 模板默认 `GOOGLE_PLAYWRIGHT_ENABLED=0`，不会误触发真实浏览器采集。填完真实 selector、storage state、manual backfill 路径、数据库和可选对象存储后，再运行 `make au-p0b-google-playwright-env`；报告只会保存变量来源、长度和 hash 前缀，不会保存原始值。
 
@@ -114,6 +117,8 @@ make verify-au-p0b-google-runbook-execution
 
 ```bash
 make verify-au-p0b-google-env-template
+cp .env.au-p0b-google.example .env.au-p0b-google
+chmod 600 .env.au-p0b-google
 make au-p0b-google-playwright-env
 make verify-au-p0b-google-playwright-env
 ```
@@ -124,7 +129,7 @@ make verify-au-p0b-google-playwright-env
 docs/runtime_preflight/au-p0b-google-playwright-env-latest.json
 ```
 
-该报告会读取 P0b runbook、`.env.au-p0b-google` 和当前进程环境，只保存变量存在状态、来源、长度和 sha256 前缀，不保存原始 secret 或 selector。关键字段包括 `ready_for_playwright_smoke`、`ready_for_full_google_run`、`collector_health`、`missing_required`、`missing_selector_groups`、storage state 文件检查、Python Playwright 包检查和 `next_action`。默认 verifier 只证明报告 hash、脱敏结构和状态推导可复算；真实 smoke 前可用 strict gate：
+该报告会读取 P0b runbook、`.env.au-p0b-google` 和当前进程环境，只保存变量存在状态、来源、长度和 sha256 前缀，不保存原始 secret 或 selector。关键字段包括 `ready_for_playwright_smoke`、`ready_for_full_google_run`、`collector_health`、`missing_required`、`missing_selector_groups`、storage state 文件检查、Python Playwright 包检查、`env_file.hygiene` 和 `next_action`。当本地 env-file 存在且含条目时，hygiene gate 要求文件 gitignored、not tracked 且权限为 `0600`；失败时 `ready_for_playwright_smoke=false` 且 `next_action=fix_google_playwright_env_file`。默认 verifier 只证明报告 hash、脱敏结构、env-file hygiene 和状态推导可复算；真实 smoke 前可用 strict gate：
 
 ```bash
 PYTHONPATH=packages/geno_core:apps/api \
@@ -197,7 +202,7 @@ make verify-au-p0b-google-execution-checklist
 
 `au-p0b-google-package` 会把 status report 作为最终 gate，再把 runbook、execution、Playwright env、smoke、manual verification、health/spike payload 与 manifest 的存在状态、文件 sha256、verifier hash、ready 字段、`remaining_blockers` 和 `google_main_scoring_allowed` 汇总到 `docs/runtime_preflight/au-p0b-google-evidence-package-latest.json`。`verify-au-p0b-google-package` 默认只校验 package hash 与 summary/artifacts 自洽；需要把它作为 Google 主评分硬门禁时，运行 `python3 scripts/verify_au_p0b_google_evidence_package.py docs/runtime_preflight/au-p0b-google-evidence-package-latest.json --require-google-main-scoring-allowed`。
 
-`au-p0b-google-execution-checklist` 会把 runbook、dry-run execution、Playwright env readiness、status report 和 evidence package 汇总成 `docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json`。该清单会列出当前缺失的 `GOOGLE_PLAYWRIGHT_ENABLED`、selector group、`MANUAL_BACKFILL_PATH`、`DATABASE_URL`、Playwright dependency、file gate issue、remaining blockers、setup commands、execution commands、hard gate commands 和证据输出路径；setup commands 的首项是 `make verify-au-p0b-google-env-template`，确保复制和填写真实 `.env.au-p0b-google` 前先验提交模板。清单只保留来源、长度和 sha256 前缀，不保存 selector 原文、secret 或数据库 URL。`verify-au-p0b-google-execution-checklist` 只证明清单 hash、计数、脱敏约束和 next action 推导自洽；需要作为 Google 主评分硬门禁时，应继续运行 status/package 的 `--require-google-main-scoring-allowed`。
+`au-p0b-google-execution-checklist` 会把 runbook、dry-run execution、Playwright env readiness、status report 和 evidence package 汇总成 `docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json`。该清单会列出当前缺失的 `GOOGLE_PLAYWRIGHT_ENABLED`、selector group、`MANUAL_BACKFILL_PATH`、`DATABASE_URL`、Playwright dependency、file gate issue、env-file hygiene、remaining blockers、setup commands、execution commands、hard gate commands 和证据输出路径；setup commands 的前三项是 `make verify-au-p0b-google-env-template`、复制 `.env.au-p0b-google`、`chmod 600 .env.au-p0b-google`，确保填写真实 selector/session/database 前先验提交模板并收紧本地文件权限。清单只保留来源、长度、sha256 前缀和 hygiene 元数据，不保存 selector 原文、secret 或数据库 URL。`verify-au-p0b-google-execution-checklist` 只证明清单 hash、计数、脱敏约束、env-file hygiene 和 next action 推导自洽；需要作为 Google 主评分硬门禁时，应继续运行 status/package 的 `--require-google-main-scoring-allowed`。
 
 同一份清单也可以通过 Runtime API 与交接总包读取：`GET /v1/p0b-google-execution-checklist/au` 会按当前 `GENO_AU_P0B_GOOGLE_*` 路径覆盖规则内存生成脱敏 checklist；`GET /v1/handoff-dossier/au` 会纳入 `p0b_google_execution_checklist` 摘要、hash、缺失 env/selector、remaining blockers 和 verifier status；Runtime Console 首页 AU Launch Gate 会展示 P0b Google execution checklist 面板，便于执行前确认 Google 主评分仍被 hard gate 阻断还是已经允许。
 
@@ -280,7 +285,7 @@ make verify-au-p0b-google-serp-status
 
 - `verify-au-p0b-google-runbook` 失败：停止，先修步骤顺序、planned runs、gate 参数或 runbook hash。
 - dry-run verifier 失败：停止，先修 runbook execution payload 或环境判断。
-- Google Playwright env strict verifier 失败：停止，先按 `next_action` 修 `GOOGLE_PLAYWRIGHT_ENABLED`、prompt/answer selector、storage state 文件、Python Playwright 包、runbook 或 `.env.au-p0b-google`。
+- Google Playwright env strict verifier 失败：停止，先按 `next_action` 修 `GOOGLE_PLAYWRIGHT_ENABLED`、prompt/answer selector、storage state 文件、Python Playwright 包、runbook 或 `.env.au-p0b-google`；若原因是 `env_file_permissions_not_0600`、`env_file_tracked_by_git` 或 `env_file_not_gitignored`，先修本地 env-file hygiene。
 - Google Playwright smoke strict verifier 失败：停止，先修 selector、session state、Playwright 安装、AU 地理环境、目标界面入口或账号状态，不进入 240-run。
 - Google manual backfill strict verifier 失败：停止，先修 `MANUAL_BACKFILL_PATH`、120 行覆盖、每个 prompt/city 两条样本、answer、citation 和 screenshot/HTML 资产；没有通过 `manual_backfill_verification_json` 前不进入 health-only 或 240-run。
 - health-only collector gate 失败：停止，先修 `GOOGLE_PLAYWRIGHT_ENABLED`、`GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR`、`GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR`、Playwright 安装、可选 storage state、`MANUAL_BACKFILL_PATH` 或人工补录文件。第三方对照切片另需检查 `SERP_API_KEY` 与 `SERP_API_ENDPOINT`。
