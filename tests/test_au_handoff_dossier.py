@@ -217,6 +217,10 @@ class AuHandoffDossierTest(unittest.TestCase):
             dossier["runtime_endpoints"]["runtime_audit_events_export"],
             "GET /v1/audit-events/runtime/export.csv?project_id={project_id}",
         )
+        self.assertEqual(
+            dossier["runtime_endpoints"]["external_dependency_handoff"],
+            "GET /v1/external-dependency-handoff/au",
+        )
         self.assertFalse(dossier["p0a_environment_checklist"]["environment_checklist_ready"])
         self.assertEqual(dossier["p0a_environment_checklist"]["missing_required_count"], 3)
         self.assertEqual(dossier["summary"]["p0a_missing_required_environment_count"], 3)
@@ -304,6 +308,7 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertIn("Runtime 复盘入口", markdown)
         self.assertIn("/v1/audit-events/runtime/export.csv", markdown)
         self.assertIn("/v1/projects/runtime/lifecycle-events/export.csv", markdown)
+        self.assertIn("/v1/external-dependency-handoff/au", markdown)
         self.assertIn("PERPLEXITY_API_KEY", markdown)
         self.assertEqual(dossier["handoff_dossier_hash"], compute_handoff_dossier_hash(dossier))
         self.assertEqual(verification["status"], "pass")

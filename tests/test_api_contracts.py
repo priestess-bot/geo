@@ -21,6 +21,7 @@ from cryptography.hazmat.primitives import hashes
 from geno_api.main import app, close_runtime_resources, reset_runtime_auth_caches, reset_runtime_metrics
 from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
 from scripts.build_au_launch_status import compute_launch_status_hash
+from scripts.build_au_external_dependency_handoff import compute_external_dependency_handoff_hash
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
 from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTest
 from tests.test_au_p0a_execution_checklist import AuP0aExecutionChecklistTest
@@ -576,6 +577,10 @@ class ApiContractsTest(unittest.TestCase):
             payload["runtime_endpoints"]["runtime_audit_events_export"],
             "GET /v1/audit-events/runtime/export.csv?project_id={project_id}",
         )
+        self.assertEqual(
+            payload["runtime_endpoints"]["external_dependency_handoff"],
+            "GET /v1/external-dependency-handoff/au",
+        )
         self.assertIn("p0a_environment_checklist", payload)
         self.assertEqual(payload["p0a_environment_checklist"]["missing_required_count"], 3)
         self.assertTrue(payload["p0a_environment_checklist"]["env_file_hygiene_ready"])
@@ -620,6 +625,54 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["next_work_item"]["id"], "p0a_environment")
         self.assertEqual(payload["markdown_report"]["media_type"], "text/markdown; charset=utf-8")
         self.assertTrue(payload["handoff_dossier_hash"])
+
+    def test_au_external_dependency_handoff_endpoint_returns_current_dependency_boundary(self) -> None:
+        helper = AuHandoffDossierTest()
+        helper.setUp()
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
+            status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
+            plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
+            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geno_api.main.build_au_launch_remediation_plan",
+                return_value=plan_payload,
+            ):
+                response = self.client.get("/v1/external-dependency-handoff/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["external_dependency_handoff_version"], "au_external_dependency_handoff_v1")
+        self.assertEqual(payload["status"], "pass")
+        self.assertFalse(payload["external_dependency_handoff_ready"])
+        self.assertFalse(payload["ready_for_customer_report_handoff"])
+        self.assertEqual(payload["summary"]["handoff_posture"], "blocked_external_dependencies")
+        self.assertTrue(payload["summary"]["structural_ready"])
+        self.assertEqual(payload["summary"]["external_dependency_blocker_count"], 29)
+        self.assertGreaterEqual(payload["summary"]["work_item_count"], 8)
+        self.assertEqual(payload["summary"]["dependency_group_count"], 5)
+        self.assertEqual(payload["next_dependency_item_id"], "p0a_environment")
+        self.assertEqual(payload["summary"]["p0a_required_secret_missing_count"], 3)
+        self.assertEqual(payload["summary"]["p0a_real_batch_phase_next_phase"], "preflight")
+        self.assertEqual(payload["summary"]["p0a_real_batch_total_planned_runs"], 2436)
+        self.assertEqual(payload["summary"]["p0b_google_required_input_missing_count"], 6)
+        self.assertEqual(payload["summary"]["p0b_google_manual_backfill_expected_record_count"], 120)
+        self.assertEqual(payload["summary"]["p0b_google_phase_next_phase"], "environment")
+        self.assertEqual(payload["summary"]["p0b_google_full_spike_planned_runs"], 240)
+        self.assertEqual(
+            [group["id"] for group in payload["dependency_groups"]],
+            [
+                "p0a_provider_credentials",
+                "p0a_real_batches",
+                "p0b_google_environment",
+                "p0b_google_manual_backfill",
+                "p0b_google_phase_execution",
+            ],
+        )
+        self.assertFalse(payload["redaction_policy"]["raw_secret_values_allowed"])
+        self.assertFalse(payload["redaction_policy"]["raw_database_url_allowed"])
+        self.assertFalse(payload["redaction_policy"]["raw_selector_values_allowed"])
+        self.assertFalse(payload["redaction_policy"]["raw_manual_answer_values_allowed"])
+        self.assertEqual(payload["external_dependency_handoff_hash"], compute_external_dependency_handoff_hash(payload))
 
     def test_metrics_endpoint_exports_request_and_pool_metrics(self) -> None:
         self.client.get("/health")
@@ -6099,6 +6152,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/au-retest-scheduler-plan", payload["persistence"])
         self.assertIn("/v1/au-retest-execution-status", payload["persistence"])
         self.assertIn("/v1/handoff-dossier/au", payload["persistence"])
+        self.assertIn("/v1/external-dependency-handoff/au", payload["persistence"])
         self.assertIn("/metrics", payload["persistence"])
 
 

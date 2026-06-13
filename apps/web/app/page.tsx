@@ -717,6 +717,7 @@ type RuntimeData = {
   p0aEnvironmentChecklist: AuP0aEnvironmentChecklist | null;
   p0aExecutionChecklist: AuP0aExecutionChecklist | null;
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
+  externalDependencyHandoff: AuExternalDependencyHandoff | null;
   broaderPlatformRegistry: AuBroaderPlatformRegistry | null;
   retestSchedulerPlan: AuRetestSchedulerPlan | null;
   retestExecutionStatus: AuRetestExecutionStatus | null;
@@ -1105,6 +1106,7 @@ type AuHandoffDossier = {
     project_lifecycle_events_export?: string;
     runtime_audit_events?: string;
     runtime_audit_events_export?: string;
+    external_dependency_handoff?: string;
   };
   next_work_item?: {
     id?: string;
@@ -1114,6 +1116,78 @@ type AuHandoffDossier = {
     blocker_count?: number;
     commands?: string[];
     verification_commands?: string[];
+  };
+};
+
+type AuExternalDependencyHandoff = {
+  external_dependency_handoff_version: string;
+  generated_at: string;
+  status: string;
+  external_dependency_handoff_ready: boolean;
+  ready_for_customer_report_handoff: boolean;
+  next_dependency_item_id: string;
+  external_dependency_handoff_hash: string;
+  summary?: {
+    handoff_posture?: string;
+    structural_ready?: boolean;
+    external_dependency_handoff_ready?: boolean;
+    all_blockers_mapped?: boolean;
+    blocker_count?: number;
+    external_dependency_blocker_count?: number;
+    work_item_count?: number;
+    dependency_group_count?: number;
+    requires_external_input_work_item_count?: number;
+    pending_after_external_input_work_item_count?: number;
+    runnable_now_work_item_count?: number;
+    p0a_required_secret_missing_count?: number;
+    p0a_required_secret_missing?: string[];
+    p0a_real_batch_phase_next_phase?: string;
+    p0a_real_batch_blocked_phase_count?: number;
+    p0a_real_batch_total_planned_runs?: number;
+    p0b_google_required_input_missing_count?: number;
+    p0b_google_environment_missing_required_count?: number;
+    p0b_google_manual_backfill_missing_reason_count?: number;
+    p0b_google_manual_backfill_record_count?: number;
+    p0b_google_manual_backfill_expected_record_count?: number;
+    p0b_google_phase_next_phase?: string;
+    p0b_google_phase_blocked_phase_count?: number;
+    p0b_google_full_spike_planned_runs?: number;
+  };
+  dependency_groups?: Array<{
+    id: string;
+    stage?: string;
+    title?: string;
+    status?: string;
+    ready?: boolean;
+    dependency_class?: string;
+    missing_required_count?: number;
+    missing_required?: string[];
+    missing_reason_count?: number;
+    missing_reasons?: string[];
+    next_phase?: string;
+    blocked_phase_count?: number;
+    total_planned_runs?: number;
+    full_spike_planned_runs?: number;
+    expected_record_count?: number;
+    record_count?: number;
+    work_item_ids?: string[];
+  }>;
+  work_items?: Array<{
+    id: string;
+    stage?: string;
+    status?: string;
+    title?: string;
+    dependency_class?: string;
+    blocker_count?: number;
+    required_inputs?: string[];
+  }>;
+  next_dependency_item?: {
+    id?: string;
+    stage?: string;
+    title?: string;
+    status?: string;
+    dependency_class?: string;
+    blocker_count?: number;
   };
 };
 
@@ -1599,6 +1673,7 @@ const endpoints = {
   p0aEnvironmentChecklist: "/v1/p0a-environment-checklist/au",
   p0aExecutionChecklist: "/v1/p0a-execution-checklist/au",
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
+  externalDependencyHandoff: "/v1/external-dependency-handoff/au",
   broaderPlatformRegistry: "/v1/au-broader-platform-registry",
   retestSchedulerPlan: "/v1/au-retest-scheduler-plan",
   retestExecutionStatus: "/v1/au-retest-execution-status",
@@ -3009,6 +3084,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aEnvironmentChecklist: endpoints.p0aEnvironmentChecklist,
     p0aExecutionChecklist: endpoints.p0aExecutionChecklist,
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
+    externalDependencyHandoff: endpoints.externalDependencyHandoff,
     broaderPlatformRegistry: endpoints.broaderPlatformRegistry,
     retestSchedulerPlan: endpoints.retestSchedulerPlan,
     retestExecutionStatus: endpoints.retestExecutionStatus,
@@ -3320,6 +3396,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aEnvironmentChecklist,
     p0aExecutionChecklist,
     p0bGoogleExecutionChecklist,
+    externalDependencyHandoff,
     broaderPlatformRegistry,
     retestSchedulerPlan,
     retestExecutionStatus,
@@ -3367,6 +3444,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0aEnvironmentChecklist | null>(baseUrl, paths.p0aEnvironmentChecklist, null),
     fetchRuntimeEndpoint<AuP0aExecutionChecklist | null>(baseUrl, paths.p0aExecutionChecklist, null),
     fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
+    fetchRuntimeEndpoint<AuExternalDependencyHandoff | null>(baseUrl, paths.externalDependencyHandoff, null),
     fetchRuntimeEndpoint<AuBroaderPlatformRegistry | null>(baseUrl, paths.broaderPlatformRegistry, null),
     fetchRuntimeEndpoint<AuRetestSchedulerPlan | null>(baseUrl, paths.retestSchedulerPlan, null),
     fetchRuntimeEndpoint<AuRetestExecutionStatus | null>(baseUrl, paths.retestExecutionStatus, null),
@@ -3526,6 +3604,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aEnvironmentChecklist,
     p0aExecutionChecklist,
     p0bGoogleExecutionChecklist,
+    externalDependencyHandoff,
     broaderPlatformRegistry,
     retestSchedulerPlan,
     retestExecutionStatus,
@@ -3578,6 +3657,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0aEnvironmentChecklist: p0aEnvironmentChecklist.payload,
       p0aExecutionChecklist: p0aExecutionChecklist.payload,
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
+      externalDependencyHandoff: externalDependencyHandoff.payload,
       broaderPlatformRegistry: broaderPlatformRegistry.payload,
       retestSchedulerPlan: retestSchedulerPlan.payload,
       retestExecutionStatus: retestExecutionStatus.payload,
@@ -3924,6 +4004,11 @@ export default async function Home({
   const p0bEnvFileHygieneReady = p0bGoogleExecutionSummary?.env_file_hygiene_ready;
   const p0bEnvFileHygieneErrorCount = p0bGoogleExecutionSummary?.env_file_hygiene_error_count || 0;
   const p0bEnvFileHygieneWarningCount = p0bGoogleExecutionSummary?.env_file_hygiene_warning_count || 0;
+  const externalDependencyHandoff = data.externalDependencyHandoff;
+  const externalDependencySummary = externalDependencyHandoff?.summary;
+  const externalDependencyGroups = externalDependencyHandoff?.dependency_groups || [];
+  const topExternalDependencyGroups = externalDependencyGroups.slice(0, 5);
+  const externalNextDependencyItem = externalDependencyHandoff?.next_dependency_item;
   const broaderPlatformRegistry = data.broaderPlatformRegistry;
   const broaderPlatformSummary = broaderPlatformRegistry?.summary;
   const broaderPlatformCandidates = broaderPlatformRegistry?.candidate_platforms || [];
@@ -4797,8 +4882,70 @@ export default async function Home({
               {handoffDossier?.runtime_endpoints?.runtime_audit_events_export ||
                 "GET /v1/audit-events/runtime/export.csv?project_id={project_id}"}
             </span>
+            <span>
+              External dependency replay{" "}
+              {handoffDossier?.runtime_endpoints?.external_dependency_handoff ||
+                "GET /v1/external-dependency-handoff/au"}
+            </span>
           </div>
           <code>{paths.handoffDossier}</code>
+        </div>
+        <div className="externalDependencyHandoff">
+          <div className="launchRemediationHeader">
+            <strong>External dependency handoff</strong>
+            <span>
+              {externalDependencyHandoff?.external_dependency_handoff_version ||
+                "au_external_dependency_handoff_v1"} · hash{" "}
+              {shortHash(externalDependencyHandoff?.external_dependency_handoff_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>Structural ready {externalDependencySummary?.structural_ready ? "yes" : "no"}</span>
+            <span>
+              External ready {externalDependencyHandoff?.external_dependency_handoff_ready ? "yes" : "no"}
+            </span>
+            <span>Posture {externalDependencySummary?.handoff_posture || "unknown"}</span>
+            <span>
+              Blockers {externalDependencySummary?.external_dependency_blocker_count || 0} · groups{" "}
+              {externalDependencySummary?.dependency_group_count || 0}
+            </span>
+          </div>
+          <div className="handoffBoundary">
+            <span>
+              Next dependency item{" "}
+              {externalDependencyHandoff?.next_dependency_item_id || externalNextDependencyItem?.id || "none"}
+            </span>
+            <span>
+              P0a credentials missing {externalDependencySummary?.p0a_required_secret_missing_count || 0} · real batch{" "}
+              {externalDependencySummary?.p0a_real_batch_phase_next_phase || "none"} · planned{" "}
+              {externalDependencySummary?.p0a_real_batch_total_planned_runs || 0}
+            </span>
+            <span>
+              P0b required inputs missing {externalDependencySummary?.p0b_google_required_input_missing_count || 0} · Google phase{" "}
+              {externalDependencySummary?.p0b_google_phase_next_phase || "none"} · full spike{" "}
+              {externalDependencySummary?.p0b_google_full_spike_planned_runs || 0}
+            </span>
+            <span>
+              Manual rows {externalDependencySummary?.p0b_google_manual_backfill_record_count || 0}/
+              {externalDependencySummary?.p0b_google_manual_backfill_expected_record_count || 0}
+            </span>
+            <span>Hard gate: scripts/verify_au_external_dependency_handoff.py --require-ready</span>
+          </div>
+          <div className="dependencyGroupGrid">
+            {topExternalDependencyGroups.map((group) => (
+              <div className="dependencyGroup" key={group.id}>
+                <strong>{group.title || group.id}</strong>
+                <span>
+                  {group.stage || "stage"} · {group.ready ? "ready" : group.status || "blocked"}
+                </span>
+                <small>
+                  {group.dependency_class || "dependency"} · missing{" "}
+                  {group.missing_required_count ?? group.missing_reason_count ?? group.blocked_phase_count ?? 0}
+                </small>
+              </div>
+            ))}
+          </div>
+          <code>{paths.externalDependencyHandoff}</code>
         </div>
         <code>{paths.launchStatus}</code>
       </section>

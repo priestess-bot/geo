@@ -688,7 +688,8 @@ code {
 .p0aExecutionChecklist,
 .p0bGoogleExecutionChecklist,
 .broaderPlatformRegistry,
-.handoffDossier {
+.handoffDossier,
+.externalDependencyHandoff {
   border: 1px solid #d9e2ec;
   border-radius: 4px;
   display: grid;
@@ -696,13 +697,15 @@ code {
   padding: 10px;
 }
 
-.platformRegistryGrid {
+.platformRegistryGrid,
+.dependencyGroupGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 8px;
 }
 
-.platformCandidate {
+.platformCandidate,
+.dependencyGroup {
   display: grid;
   gap: 6px;
   border: 1px solid #e5edf4;
@@ -713,10 +716,17 @@ code {
 }
 
 .platformCandidate div,
-.platformCandidate small {
+.platformCandidate small,
+.dependencyGroup small {
   display: grid;
   gap: 2px;
   min-width: 0;
+}
+
+.dependencyGroup span {
+  color: #526575;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .launchRemediationHeader {
