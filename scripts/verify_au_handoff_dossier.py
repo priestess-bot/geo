@@ -191,6 +191,17 @@ def verify_au_handoff_dossier(
         errors.append("runtime_endpoint_au_retest_execution_status_invalid")
     if endpoints.get("p0a_execution_checklist") != "GET /v1/p0a-execution-checklist/au":
         errors.append("runtime_endpoint_p0a_execution_checklist_invalid")
+    if endpoints.get("project_lifecycle_events") != "GET /v1/projects/runtime/lifecycle-events?project_id={project_id}":
+        errors.append("runtime_endpoint_project_lifecycle_events_invalid")
+    if (
+        endpoints.get("project_lifecycle_events_export")
+        != "GET /v1/projects/runtime/lifecycle-events/export.csv?project_id={project_id}"
+    ):
+        errors.append("runtime_endpoint_project_lifecycle_events_export_invalid")
+    if endpoints.get("runtime_audit_events") != "GET /v1/audit-events/runtime?project_id={project_id}":
+        errors.append("runtime_endpoint_runtime_audit_events_invalid")
+    if endpoints.get("runtime_audit_events_export") != "GET /v1/audit-events/runtime/export.csv?project_id={project_id}":
+        errors.append("runtime_endpoint_runtime_audit_events_export_invalid")
 
     next_work_item_id = str(summary.get("next_work_item_id") or "")
     if next_work_item_id != remediation.get("next_work_item_id"):

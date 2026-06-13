@@ -1027,6 +1027,10 @@ type AuHandoffDossier = {
     p0a_environment_checklist?: string;
     p0a_execution_checklist?: string;
     p0b_google_execution_checklist?: string;
+    project_lifecycle_events?: string;
+    project_lifecycle_events_export?: string;
+    runtime_audit_events?: string;
+    runtime_audit_events_export?: string;
   };
   next_work_item?: {
     id?: string;
@@ -4556,6 +4560,26 @@ export default async function Home({
             </span>
             <span>Hard gate: scripts/verify_au_handoff_dossier.py --require-customer-ready</span>
             <span>{handoffDossier?.runtime_endpoints?.launch_remediation_plan || "GET /v1/launch-remediation-plan/au"}</span>
+            <span>
+              Lifecycle replay{" "}
+              {handoffDossier?.runtime_endpoints?.project_lifecycle_events ||
+                "GET /v1/projects/runtime/lifecycle-events?project_id={project_id}"}
+            </span>
+            <span>
+              Lifecycle CSV{" "}
+              {handoffDossier?.runtime_endpoints?.project_lifecycle_events_export ||
+                "GET /v1/projects/runtime/lifecycle-events/export.csv?project_id={project_id}"}
+            </span>
+            <span>
+              Audit replay{" "}
+              {handoffDossier?.runtime_endpoints?.runtime_audit_events ||
+                "GET /v1/audit-events/runtime?project_id={project_id}"}
+            </span>
+            <span>
+              Audit CSV{" "}
+              {handoffDossier?.runtime_endpoints?.runtime_audit_events_export ||
+                "GET /v1/audit-events/runtime/export.csv?project_id={project_id}"}
+            </span>
           </div>
           <code>{paths.handoffDossier}</code>
         </div>

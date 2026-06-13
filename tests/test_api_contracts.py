@@ -526,6 +526,22 @@ class ApiContractsTest(unittest.TestCase):
             payload["runtime_endpoints"]["p0b_google_execution_checklist"],
             "GET /v1/p0b-google-execution-checklist/au",
         )
+        self.assertEqual(
+            payload["runtime_endpoints"]["project_lifecycle_events"],
+            "GET /v1/projects/runtime/lifecycle-events?project_id={project_id}",
+        )
+        self.assertEqual(
+            payload["runtime_endpoints"]["project_lifecycle_events_export"],
+            "GET /v1/projects/runtime/lifecycle-events/export.csv?project_id={project_id}",
+        )
+        self.assertEqual(
+            payload["runtime_endpoints"]["runtime_audit_events"],
+            "GET /v1/audit-events/runtime?project_id={project_id}",
+        )
+        self.assertEqual(
+            payload["runtime_endpoints"]["runtime_audit_events_export"],
+            "GET /v1/audit-events/runtime/export.csv?project_id={project_id}",
+        )
         self.assertIn("p0a_environment_checklist", payload)
         self.assertEqual(payload["p0a_environment_checklist"]["missing_required_count"], 3)
         self.assertIn("p0a_execution_checklist", payload)

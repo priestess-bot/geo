@@ -425,6 +425,7 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
     p0a_environment_checklist = _as_dict(dossier.get("p0a_environment_checklist"))
     p0a_execution_checklist = _as_dict(dossier.get("p0a_execution_checklist"))
     p0b_google_execution_checklist = _as_dict(dossier.get("p0b_google_execution_checklist"))
+    runtime_endpoints = _as_dict(dossier.get("runtime_endpoints"))
     next_work_item = _as_dict(dossier.get("next_work_item"))
     lines = [
         "# AU 客户交付总包",
@@ -526,6 +527,17 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
             f"- Remaining blockers：{p0b_google_execution_checklist.get('remaining_blocker_count', 0)}",
             f"- Status verifier：{p0b_google_execution_checklist.get('status_verifier_status', '')}",
             f"- Package verifier：{p0b_google_execution_checklist.get('package_verifier_status', '')}",
+        ]
+    )
+    lines.extend(
+        [
+            "",
+            "## Runtime 复盘入口",
+            "",
+            f"- 项目生命周期：`{runtime_endpoints.get('project_lifecycle_events', '')}`",
+            f"- 项目生命周期 CSV：`{runtime_endpoints.get('project_lifecycle_events_export', '')}`",
+            f"- 项目审计轨道：`{runtime_endpoints.get('runtime_audit_events', '')}`",
+            f"- 项目审计 CSV：`{runtime_endpoints.get('runtime_audit_events_export', '')}`",
         ]
     )
     lines.extend(["", "## 证据来源", "", "| 名称 | 存在 | sha256 | 路径 |", "| --- | --- | --- | --- |"])
@@ -685,6 +697,10 @@ def build_au_handoff_dossier(
             "p0b_google_execution_checklist": "GET /v1/p0b-google-execution-checklist/au",
             "au_retest_scheduler_plan": "GET /v1/au-retest-scheduler-plan",
             "au_retest_execution_status": "GET /v1/au-retest-execution-status",
+            "project_lifecycle_events": "GET /v1/projects/runtime/lifecycle-events?project_id={project_id}",
+            "project_lifecycle_events_export": "GET /v1/projects/runtime/lifecycle-events/export.csv?project_id={project_id}",
+            "runtime_audit_events": "GET /v1/audit-events/runtime?project_id={project_id}",
+            "runtime_audit_events_export": "GET /v1/audit-events/runtime/export.csv?project_id={project_id}",
         },
         "launch_status": {
             "path": str(launch_status_path),

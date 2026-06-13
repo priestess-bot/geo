@@ -201,6 +201,22 @@ class AuHandoffDossierTest(unittest.TestCase):
             dossier["runtime_endpoints"]["au_retest_execution_status"],
             "GET /v1/au-retest-execution-status",
         )
+        self.assertEqual(
+            dossier["runtime_endpoints"]["project_lifecycle_events"],
+            "GET /v1/projects/runtime/lifecycle-events?project_id={project_id}",
+        )
+        self.assertEqual(
+            dossier["runtime_endpoints"]["project_lifecycle_events_export"],
+            "GET /v1/projects/runtime/lifecycle-events/export.csv?project_id={project_id}",
+        )
+        self.assertEqual(
+            dossier["runtime_endpoints"]["runtime_audit_events"],
+            "GET /v1/audit-events/runtime?project_id={project_id}",
+        )
+        self.assertEqual(
+            dossier["runtime_endpoints"]["runtime_audit_events_export"],
+            "GET /v1/audit-events/runtime/export.csv?project_id={project_id}",
+        )
         self.assertFalse(dossier["p0a_environment_checklist"]["environment_checklist_ready"])
         self.assertEqual(dossier["p0a_environment_checklist"]["missing_required_count"], 3)
         self.assertEqual(dossier["summary"]["p0a_missing_required_environment_count"], 3)
@@ -213,6 +229,9 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertIn("P0a 环境清单", markdown)
         self.assertIn("P0a 执行清单", markdown)
         self.assertIn("P0b Google 执行清单", markdown)
+        self.assertIn("Runtime 复盘入口", markdown)
+        self.assertIn("/v1/audit-events/runtime/export.csv", markdown)
+        self.assertIn("/v1/projects/runtime/lifecycle-events/export.csv", markdown)
         self.assertIn("PERPLEXITY_API_KEY", markdown)
         self.assertEqual(dossier["handoff_dossier_hash"], compute_handoff_dossier_hash(dossier))
         self.assertEqual(verification["status"], "pass")
