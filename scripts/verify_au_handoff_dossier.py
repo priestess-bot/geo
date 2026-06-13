@@ -261,6 +261,22 @@ def verify_au_handoff_dossier(
         "manual_backfill_handoff_content_redacted"
     ):
         errors.append("summary_p0b_google_manual_backfill_handoff_content_redacted_mismatch")
+    if summary.get("p0b_google_spike_phase_handoff_ready") is not p0b_google_execution_checklist.get(
+        "google_spike_phase_handoff_ready"
+    ):
+        errors.append("summary_p0b_google_spike_phase_handoff_ready_mismatch")
+    if summary.get("p0b_google_spike_phase_handoff_next_phase") != p0b_google_execution_checklist.get(
+        "google_spike_phase_handoff_next_phase"
+    ):
+        errors.append("summary_p0b_google_spike_phase_handoff_next_phase_mismatch")
+    if summary.get("p0b_google_spike_phase_handoff_blocked_phase_count") != p0b_google_execution_checklist.get(
+        "google_spike_phase_handoff_blocked_phase_count"
+    ):
+        errors.append("summary_p0b_google_spike_phase_handoff_blocked_phase_count_mismatch")
+    if summary.get("p0b_google_spike_phase_handoff_full_spike_planned_runs") != p0b_google_execution_checklist.get(
+        "google_spike_phase_handoff_full_spike_planned_runs"
+    ):
+        errors.append("summary_p0b_google_spike_phase_handoff_full_spike_planned_runs_mismatch")
     if endpoints.get("au_retest_scheduler_plan") != "GET /v1/au-retest-scheduler-plan":
         errors.append("runtime_endpoint_au_retest_scheduler_plan_invalid")
     if endpoints.get("au_retest_execution_status") != "GET /v1/au-retest-execution-status":

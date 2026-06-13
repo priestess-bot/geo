@@ -935,6 +935,12 @@ type AuP0bGoogleExecutionChecklist = {
     manual_backfill_handoff_template_path?: string;
     manual_backfill_handoff_verification_path?: string;
     manual_backfill_handoff_content_redacted?: boolean;
+    google_spike_phase_handoff_ready?: boolean;
+    google_spike_phase_handoff_next_phase?: string;
+    google_spike_phase_handoff_ready_phase_count?: number;
+    google_spike_phase_handoff_blocked_phase_count?: number;
+    google_spike_phase_handoff_full_spike_planned_runs?: number;
+    google_spike_phase_order?: string[];
     remaining_blocker_count?: number;
     remaining_blockers?: string[];
     runbook_verifier_status?: string;
@@ -1078,6 +1084,10 @@ type AuHandoffDossier = {
     p0b_google_manual_backfill_handoff_record_count?: number;
     p0b_google_manual_backfill_handoff_missing_reason_count?: number;
     p0b_google_manual_backfill_handoff_content_redacted?: boolean;
+    p0b_google_spike_phase_handoff_ready?: boolean;
+    p0b_google_spike_phase_handoff_next_phase?: string;
+    p0b_google_spike_phase_handoff_blocked_phase_count?: number;
+    p0b_google_spike_phase_handoff_full_spike_planned_runs?: number;
   };
   markdown_report?: {
     path?: string;
@@ -4557,6 +4567,10 @@ export default async function Home({
               Manual backfill rows {p0bGoogleExecutionSummary?.manual_backfill_handoff_record_count || 0}/
               {p0bGoogleExecutionSummary?.manual_backfill_handoff_expected_record_count || 0}
             </span>
+            <span>
+              Google phase next {p0bGoogleExecutionSummary?.google_spike_phase_handoff_next_phase || "none"} · blocked{" "}
+              {p0bGoogleExecutionSummary?.google_spike_phase_handoff_blocked_phase_count || 0}
+            </span>
           </div>
           <div className="environmentChecklistGrid">
             <div>
@@ -4634,6 +4648,11 @@ export default async function Home({
             <span>
               Manual verification {p0bGoogleExecutionSummary?.manual_backfill_handoff_verification_path || "none"}
             </span>
+            <span>
+              Google phase handoff {p0bGoogleExecutionSummary?.google_spike_phase_handoff_ready ? "ready" : "blocked"} · full spike runs{" "}
+              {p0bGoogleExecutionSummary?.google_spike_phase_handoff_full_spike_planned_runs || 0}
+            </span>
+            <span>Google phase order {(p0bGoogleExecutionSummary?.google_spike_phase_order || []).join(" / ") || "none"}</span>
             <span>
               Verifiers: env {p0bGoogleExecutionSummary?.playwright_env_verifier_status || "unknown"} · status{" "}
               {p0bGoogleExecutionSummary?.status_verifier_status || "unknown"} · package{" "}
@@ -4748,6 +4767,13 @@ export default async function Home({
               {handoffSummary?.p0b_google_manual_backfill_handoff_expected_record_count || 0} · missing{" "}
               {handoffSummary?.p0b_google_manual_backfill_handoff_missing_reason_count || 0} · redacted{" "}
               {handoffSummary?.p0b_google_manual_backfill_handoff_content_redacted ? "yes" : "no"}
+            </span>
+            <span>
+              P0b Google phase handoff{" "}
+              {handoffSummary?.p0b_google_spike_phase_handoff_ready ? "ready" : "blocked"} · next{" "}
+              {handoffSummary?.p0b_google_spike_phase_handoff_next_phase || "none"} · blocked phases{" "}
+              {handoffSummary?.p0b_google_spike_phase_handoff_blocked_phase_count || 0} · full spike runs{" "}
+              {handoffSummary?.p0b_google_spike_phase_handoff_full_spike_planned_runs || 0}
             </span>
             <span>Hard gate: scripts/verify_au_handoff_dossier.py --require-customer-ready</span>
             <span>{handoffDossier?.runtime_endpoints?.launch_remediation_plan || "GET /v1/launch-remediation-plan/au"}</span>

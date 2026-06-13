@@ -278,6 +278,14 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertEqual(dossier["summary"]["p0b_google_manual_backfill_handoff_record_count"], 0)
         self.assertEqual(dossier["summary"]["p0b_google_manual_backfill_handoff_missing_reason_count"], 1)
         self.assertTrue(dossier["summary"]["p0b_google_manual_backfill_handoff_content_redacted"])
+        self.assertFalse(dossier["p0b_google_execution_checklist"]["google_spike_phase_handoff_ready"])
+        self.assertEqual(dossier["p0b_google_execution_checklist"]["google_spike_phase_handoff_next_phase"], "environment")
+        self.assertEqual(dossier["p0b_google_execution_checklist"]["google_spike_phase_handoff_blocked_phase_count"], 6)
+        self.assertEqual(dossier["p0b_google_execution_checklist"]["google_spike_phase_handoff_full_spike_planned_runs"], 240)
+        self.assertFalse(dossier["summary"]["p0b_google_spike_phase_handoff_ready"])
+        self.assertEqual(dossier["summary"]["p0b_google_spike_phase_handoff_next_phase"], "environment")
+        self.assertEqual(dossier["summary"]["p0b_google_spike_phase_handoff_blocked_phase_count"], 6)
+        self.assertEqual(dossier["summary"]["p0b_google_spike_phase_handoff_full_spike_planned_runs"], 240)
         markdown = render_au_handoff_markdown(dossier)
         self.assertIn("AU 客户交付总包", markdown)
         self.assertIn("P0a 环境清单", markdown)
@@ -291,6 +299,8 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertIn("Environment handoff missing：smoke_env:GOOGLE_PLAYWRIGHT_ENABLED", markdown)
         self.assertIn("Manual backfill handoff：blocked", markdown)
         self.assertIn("Manual backfill missing：manual_backfill:file_missing", markdown)
+        self.assertIn("Google spike phase handoff：blocked", markdown)
+        self.assertIn("Google spike phase order：environment, browser_smoke, manual_backfill", markdown)
         self.assertIn("Runtime 复盘入口", markdown)
         self.assertIn("/v1/audit-events/runtime/export.csv", markdown)
         self.assertIn("/v1/projects/runtime/lifecycle-events/export.csv", markdown)
@@ -325,6 +335,8 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertEqual(dossier["summary"]["next_work_item_id"], "none")
         self.assertTrue(dossier["summary"]["p0b_google_manual_backfill_handoff_ready"])
         self.assertEqual(dossier["summary"]["p0b_google_manual_backfill_handoff_record_count"], 120)
+        self.assertTrue(dossier["summary"]["p0b_google_spike_phase_handoff_ready"])
+        self.assertEqual(dossier["summary"]["p0b_google_spike_phase_handoff_next_phase"], "complete")
         self.assertEqual(verification["status"], "pass")
 
     def test_verifier_detects_p0a_hygiene_summary_tampering(self) -> None:
@@ -471,6 +483,32 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertEqual(verification["status"], "fail")
         self.assertIn(
             "summary_p0b_google_manual_backfill_handoff_record_count_mismatch",
+            verification["errors"],
+        )
+
+    def test_verifier_detects_p0b_google_spike_phase_handoff_summary_tampering(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path, remediation_plan_path = self._write_launch_status_and_plan(temp_dir, ready=False)
+            checklist_path = self._write_p0a_environment_checklist(temp_dir)
+            p0a_execution_checklist_path = self._write_p0a_execution_checklist(temp_dir)
+            p0b_checklist_path = self._write_p0b_google_execution_checklist(temp_dir)
+            dossier = build_au_handoff_dossier(
+                launch_status_path=launch_status_path,
+                remediation_plan_path=remediation_plan_path,
+                p0a_environment_checklist_path=checklist_path,
+                p0a_execution_checklist_path=p0a_execution_checklist_path,
+                p0b_google_execution_checklist_path=p0b_checklist_path,
+                output_path=Path(temp_dir) / "dossier.json",
+                markdown_output_path=Path(temp_dir) / "dossier.md",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            dossier["summary"]["p0b_google_spike_phase_handoff_next_phase"] = "complete"  # type: ignore[index]
+            dossier["handoff_dossier_hash"] = compute_handoff_dossier_hash(dossier)
+            verification = verify_au_handoff_dossier(dossier)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn(
+            "summary_p0b_google_spike_phase_handoff_next_phase_mismatch",
             verification["errors"],
         )
 

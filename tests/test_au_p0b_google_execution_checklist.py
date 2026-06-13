@@ -144,6 +144,24 @@ class AuP0bGoogleExecutionChecklistTest(unittest.TestCase):
         self.assertEqual(checklist["summary"]["manual_backfill_handoff_record_count"], 0)
         self.assertEqual(checklist["summary"]["manual_backfill_handoff_missing_reason_count"], 1)
         self.assertTrue(checklist["summary"]["manual_backfill_handoff_content_redacted"])
+        self.assertFalse(checklist["google_spike_phase_handoff"]["ready"])
+        self.assertEqual(
+            checklist["google_spike_phase_handoff"]["phase_order"],
+            ["environment", "browser_smoke", "manual_backfill", "health_check", "full_spike", "main_scoring"],
+        )
+        self.assertEqual(checklist["google_spike_phase_handoff"]["next_phase"], "environment")
+        self.assertEqual(checklist["google_spike_phase_handoff"]["ready_phase_count"], 0)
+        self.assertEqual(checklist["google_spike_phase_handoff"]["blocked_phase_count"], 6)
+        self.assertEqual(checklist["google_spike_phase_handoff"]["full_spike_planned_runs"], 240)
+        self.assertEqual(checklist["google_spike_phase_handoff"]["manual_expected_record_count"], 120)
+        first_phase = checklist["google_spike_phase_handoff"]["phases"][0]
+        self.assertEqual(first_phase["id"], "environment")
+        self.assertTrue(first_phase["can_start"])
+        self.assertEqual(first_phase["artifact_keys"], ["playwright_env"])
+        self.assertIn("environment_handoff:smoke_env:GOOGLE_PLAYWRIGHT_ENABLED", first_phase["blocking_reasons"])
+        self.assertFalse(checklist["google_spike_phase_handoff"]["redaction_policy"]["raw_answer_values_allowed"])
+        self.assertEqual(checklist["summary"]["google_spike_phase_handoff_next_phase"], "environment")
+        self.assertEqual(checklist["summary"]["google_spike_phase_handoff_blocked_phase_count"], 6)
         self.assertIn("run_smoke", {command["id"] for command in checklist["execution_commands"]})
         self.assertEqual(
             checklist["google_execution_checklist_hash"],
@@ -188,6 +206,11 @@ class AuP0bGoogleExecutionChecklistTest(unittest.TestCase):
         self.assertEqual(checklist["manual_backfill_handoff"]["expected_prompt_city_count"], 60)
         self.assertEqual(checklist["manual_backfill_handoff"]["missing_reasons"], [])
         self.assertTrue(checklist["summary"]["manual_backfill_handoff_ready"])
+        self.assertTrue(checklist["google_spike_phase_handoff"]["ready"])
+        self.assertEqual(checklist["google_spike_phase_handoff"]["ready_phase_count"], 6)
+        self.assertEqual(checklist["google_spike_phase_handoff"]["blocked_phase_count"], 0)
+        self.assertEqual(checklist["google_spike_phase_handoff"]["next_phase"], "complete")
+        self.assertTrue(checklist["summary"]["google_spike_phase_handoff_ready"])
         self.assertEqual(verification["status"], "pass")
 
     def test_verifier_detects_hash_and_summary_tampering(self) -> None:
@@ -311,6 +334,34 @@ class AuP0bGoogleExecutionChecklistTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("manual_backfill_handoff_missing_reasons_do_not_cover_manual_blocker", verification["errors"])
+
+    def test_verifier_requires_google_spike_phase_handoff_to_match_artifact_state(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, execution_path, env_path, status_path, package_path, _runbook = self._write_status_and_package(
+                temp_dir,
+                google_ready=False,
+            )
+            checklist = build_au_p0b_google_execution_checklist(
+                runbook_path=runbook_path,
+                execution_path=execution_path,
+                playwright_env_path=env_path,
+                status_report_path=status_path,
+                package_path=package_path,
+                env_file_path=Path(temp_dir) / "missing.env",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            checklist["google_spike_phase_handoff"]["next_phase"] = "complete"  # type: ignore[index]
+            checklist["google_spike_phase_handoff"]["ready_phase_count"] = 6  # type: ignore[index]
+            checklist["google_spike_phase_handoff"]["phases"][0]["command_ids"] = ["run_smoke"]  # type: ignore[index]
+            checklist["summary"]["google_spike_phase_handoff_next_phase"] = "complete"  # type: ignore[index]
+            checklist["summary"]["google_spike_phase_handoff_ready_phase_count"] = 6  # type: ignore[index]
+            checklist["google_execution_checklist_hash"] = compute_google_execution_checklist_hash(checklist)
+            verification = verify_au_p0b_google_execution_checklist(checklist)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("google_spike_phase_handoff_next_phase_mismatch", verification["errors"])
+        self.assertIn("google_spike_phase_handoff_ready_phase_count_mismatch", verification["errors"])
+        self.assertIn("google_spike_phase_handoff_command_ids_mismatch:environment", verification["errors"])
 
     def test_cli_writes_and_verifies_checklist(self) -> None:
         with TemporaryDirectory() as temp_dir:

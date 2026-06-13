@@ -49,6 +49,7 @@ REQUIRED_FIELDS = (
     "dependency_checks",
     "environment_handoff",
     "manual_backfill_handoff",
+    "google_spike_phase_handoff",
     "setup_commands",
     "execution_commands",
     "verification_commands",
@@ -655,6 +656,170 @@ def _validate_manual_backfill_handoff(
     return observed_missing
 
 
+def _phase_expected_ready(phase: dict[str, Any]) -> bool:
+    return all(_as_dict(artifact).get("ready") is True for artifact in _as_list(phase.get("artifacts")))
+
+
+def _validate_google_spike_phase_handoff(
+    handoff: dict[str, Any],
+    *,
+    summary: dict[str, Any],
+    execution_command_ids: set[str],
+    remaining_blockers: list[str],
+    google_allowed: bool,
+    errors: list[str],
+) -> None:
+    expected_order = (
+        "environment",
+        "browser_smoke",
+        "manual_backfill",
+        "health_check",
+        "full_spike",
+        "main_scoring",
+    )
+    expected_command_ids = {
+        "environment": ("verify_playwright_env",),
+        "browser_smoke": ("run_smoke", "verify_smoke_strict"),
+        "manual_backfill": ("build_manual_template", "verify_manual_backfill"),
+        "health_check": ("run_health", "manifest_health"),
+        "full_spike": ("run_full_spike", "manifest_full_spike"),
+        "main_scoring": ("refresh_status", "refresh_package"),
+    }
+    expected_artifact_keys = {
+        "environment": ("playwright_env",),
+        "browser_smoke": ("playwright_smoke",),
+        "manual_backfill": ("manual_backfill",),
+        "health_check": ("health", "health_manifest"),
+        "full_spike": ("spike", "spike_manifest"),
+        "main_scoring": ("status_report", "evidence_package"),
+    }
+    expected_prerequisites = {
+        "environment": "",
+        "browser_smoke": "environment",
+        "manual_backfill": "browser_smoke",
+        "health_check": "manual_backfill",
+        "full_spike": "health_check",
+        "main_scoring": "full_spike",
+    }
+    if handoff.get("version") != "au_p0b_google_spike_phase_handoff_v1":
+        errors.append("google_spike_phase_handoff_version_invalid")
+    for field in (
+        "ready",
+        "phase_count",
+        "ready_phase_count",
+        "blocked_phase_count",
+        "next_phase",
+        "full_spike_planned_runs",
+        "manual_expected_record_count",
+        "phase_order",
+        "phases",
+        "redaction_policy",
+    ):
+        if field not in handoff:
+            errors.append(f"google_spike_phase_handoff_field_missing:{field}")
+    observed_order = tuple(str(value) for value in _as_list(handoff.get("phase_order")))
+    if observed_order != expected_order:
+        errors.append("google_spike_phase_handoff_phase_order_invalid")
+    phases = [_as_dict(value) for value in _as_list(handoff.get("phases"))]
+    if len(phases) != len(expected_order):
+        errors.append("google_spike_phase_handoff_phase_count_mismatch")
+    if handoff.get("phase_count") != len(expected_order):
+        errors.append("google_spike_phase_handoff_phase_count_field_mismatch")
+
+    ready_phase_count = 0
+    expected_next_phase = "complete"
+    previous_ready_by_id: dict[str, bool] = {"": True}
+    expected_total_full_spike_runs = summary.get("planned_runs")
+    expected_manual_runs = summary.get("manual_backfill_handoff_expected_record_count")
+    for index, expected_phase_id in enumerate(expected_order):
+        if index >= len(phases):
+            break
+        phase = phases[index]
+        phase_id = str(phase.get("id") or "")
+        if phase_id != expected_phase_id:
+            errors.append(f"google_spike_phase_handoff_phase_id_mismatch:{expected_phase_id}")
+            continue
+        command_ids = tuple(str(value) for value in _as_list(phase.get("command_ids")))
+        if command_ids != expected_command_ids[phase_id]:
+            errors.append(f"google_spike_phase_handoff_command_ids_mismatch:{phase_id}")
+        for command_id in command_ids:
+            if command_id not in execution_command_ids:
+                errors.append(f"google_spike_phase_handoff_unknown_command_id:{phase_id}:{command_id}")
+        command_entries = _as_list(phase.get("commands"))
+        if [str(_as_dict(command).get("id", "")) for command in command_entries] != list(command_ids):
+            errors.append(f"google_spike_phase_handoff_commands_mismatch:{phase_id}")
+        artifact_keys = tuple(str(value) for value in _as_list(phase.get("artifact_keys")))
+        if artifact_keys != expected_artifact_keys[phase_id]:
+            errors.append(f"google_spike_phase_handoff_artifact_keys_mismatch:{phase_id}")
+        artifact_entries = [_as_dict(artifact) for artifact in _as_list(phase.get("artifacts"))]
+        if tuple(str(artifact.get("key") or "") for artifact in artifact_entries) != artifact_keys:
+            errors.append(f"google_spike_phase_handoff_artifacts_mismatch:{phase_id}")
+        prerequisite_phase_id = str(phase.get("prerequisite_phase_id") or "")
+        if prerequisite_phase_id != expected_prerequisites[phase_id]:
+            errors.append(f"google_spike_phase_handoff_prerequisite_phase_mismatch:{phase_id}")
+        expected_can_start = previous_ready_by_id.get(prerequisite_phase_id, False)
+        if phase.get("can_start") is not expected_can_start:
+            errors.append(f"google_spike_phase_handoff_can_start_mismatch:{phase_id}")
+        expected_ready = _phase_expected_ready(phase)
+        if phase_id == "main_scoring":
+            expected_ready = expected_ready and google_allowed and not remaining_blockers
+        if phase.get("ready") is not expected_ready:
+            errors.append(f"google_spike_phase_handoff_phase_ready_mismatch:{phase_id}")
+        if expected_ready:
+            ready_phase_count += 1
+        elif expected_next_phase == "complete":
+            expected_next_phase = phase_id
+        previous_ready_by_id[phase_id] = expected_ready
+
+        planned_runs = phase.get("planned_runs")
+        if not isinstance(planned_runs, int) or planned_runs < 0:
+            errors.append(f"google_spike_phase_handoff_planned_runs_invalid:{phase_id}")
+        if phase_id in {"health_check", "full_spike"} and planned_runs != expected_total_full_spike_runs:
+            errors.append(f"google_spike_phase_handoff_full_spike_planned_runs_mismatch:{phase_id}")
+        if phase_id == "manual_backfill" and planned_runs != expected_manual_runs:
+            errors.append("google_spike_phase_handoff_manual_expected_record_count_mismatch")
+        if phase_id == "browser_smoke" and planned_runs != 1:
+            errors.append("google_spike_phase_handoff_browser_smoke_planned_runs_mismatch")
+        if phase_id == "main_scoring" and google_allowed is not True:
+            blocking_reasons = [str(value) for value in _as_list(phase.get("blocking_reasons"))]
+            if remaining_blockers and not any(reason.startswith("google_main_scoring_blocker:") for reason in blocking_reasons):
+                errors.append("google_spike_phase_handoff_main_scoring_blockers_missing")
+
+    if handoff.get("ready_phase_count") != ready_phase_count:
+        errors.append("google_spike_phase_handoff_ready_phase_count_mismatch")
+    if handoff.get("blocked_phase_count") != len(expected_order) - ready_phase_count:
+        errors.append("google_spike_phase_handoff_blocked_phase_count_mismatch")
+    if handoff.get("ready") is not (ready_phase_count == len(expected_order)):
+        errors.append("google_spike_phase_handoff_ready_mismatch")
+    if handoff.get("next_phase") != expected_next_phase:
+        errors.append("google_spike_phase_handoff_next_phase_mismatch")
+    if handoff.get("full_spike_planned_runs") != expected_total_full_spike_runs:
+        errors.append("google_spike_phase_handoff_full_spike_planned_runs_summary_mismatch")
+    if handoff.get("manual_expected_record_count") != expected_manual_runs:
+        errors.append("google_spike_phase_handoff_manual_expected_record_count_summary_mismatch")
+    if summary.get("google_spike_phase_handoff_ready") is not handoff.get("ready"):
+        errors.append("summary_google_spike_phase_handoff_ready_mismatch")
+    if summary.get("google_spike_phase_handoff_next_phase") != handoff.get("next_phase"):
+        errors.append("summary_google_spike_phase_handoff_next_phase_mismatch")
+    if summary.get("google_spike_phase_handoff_ready_phase_count") != handoff.get("ready_phase_count"):
+        errors.append("summary_google_spike_phase_handoff_ready_phase_count_mismatch")
+    if summary.get("google_spike_phase_handoff_blocked_phase_count") != handoff.get("blocked_phase_count"):
+        errors.append("summary_google_spike_phase_handoff_blocked_phase_count_mismatch")
+    if summary.get("google_spike_phase_handoff_full_spike_planned_runs") != handoff.get("full_spike_planned_runs"):
+        errors.append("summary_google_spike_phase_handoff_full_spike_planned_runs_mismatch")
+    if tuple(str(value) for value in _as_list(summary.get("google_spike_phase_order"))) != expected_order:
+        errors.append("summary_google_spike_phase_order_mismatch")
+    redaction_policy = _as_dict(handoff.get("redaction_policy"))
+    if redaction_policy.get("raw_secret_values_allowed") is not False:
+        errors.append("google_spike_phase_handoff_raw_secret_policy_invalid")
+    if redaction_policy.get("raw_answer_values_allowed") is not False:
+        errors.append("google_spike_phase_handoff_raw_answer_policy_invalid")
+    if redaction_policy.get("raw_citation_values_allowed") is not False:
+        errors.append("google_spike_phase_handoff_raw_citation_policy_invalid")
+    if redaction_policy.get("raw_asset_urls_allowed") is not False:
+        errors.append("google_spike_phase_handoff_raw_asset_policy_invalid")
+
+
 def _expected_next_action(
     *,
     runbook_ok: bool,
@@ -720,6 +885,7 @@ def verify_au_p0b_google_execution_checklist(
     package_verifier = _as_dict(checklist.get("evidence_package_verifier"))
     environment_handoff = _as_dict(checklist.get("environment_handoff"))
     manual_backfill_handoff = _as_dict(checklist.get("manual_backfill_handoff"))
+    google_spike_phase_handoff = _as_dict(checklist.get("google_spike_phase_handoff"))
     required_count, missing_required = _validate_env_tasks(
         "required_environment",
         _as_list(checklist.get("required_environment")),
@@ -875,6 +1041,14 @@ def verify_au_p0b_google_execution_checklist(
     setup_ids = _command_ids(_as_list(checklist.get("setup_commands")))
     execution_ids = _command_ids(_as_list(checklist.get("execution_commands")))
     verification_ids = _command_ids(_as_list(checklist.get("verification_commands")))
+    _validate_google_spike_phase_handoff(
+        google_spike_phase_handoff,
+        summary=summary,
+        execution_command_ids=execution_ids,
+        remaining_blockers=remaining_blockers,
+        google_allowed=google_allowed,
+        errors=errors,
+    )
     for command_id in {
         "verify_env_template",
         "copy_env_template",

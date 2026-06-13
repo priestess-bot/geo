@@ -320,6 +320,7 @@ def _p0b_google_execution_checklist_summary(checklist: dict[str, Any]) -> dict[s
     env_file_hygiene = _as_dict(checklist.get("env_file_hygiene"))
     environment_handoff = _as_dict(checklist.get("environment_handoff"))
     manual_backfill_handoff = _as_dict(checklist.get("manual_backfill_handoff"))
+    google_spike_phase_handoff = _as_dict(checklist.get("google_spike_phase_handoff"))
     redaction_policy = _as_dict(environment_handoff.get("redaction_policy"))
     manual_redaction_policy = _as_dict(manual_backfill_handoff.get("redaction_policy"))
     env_file_hygiene_errors = [str(value) for value in _as_list(env_file_hygiene.get("errors"))]
@@ -394,6 +395,15 @@ def _p0b_google_execution_checklist_summary(checklist: dict[str, Any]) -> dict[s
         "manual_backfill_handoff_content_redacted": manual_redaction_policy.get("raw_answer_values_allowed") is False
         and manual_redaction_policy.get("raw_citation_values_allowed") is False
         and manual_redaction_policy.get("raw_asset_urls_allowed") is False,
+        "google_spike_phase_handoff_ready": google_spike_phase_handoff.get("ready") is True,
+        "google_spike_phase_handoff_next_phase": str(google_spike_phase_handoff.get("next_phase") or ""),
+        "google_spike_phase_handoff_ready_phase_count": google_spike_phase_handoff.get("ready_phase_count", 0),
+        "google_spike_phase_handoff_blocked_phase_count": google_spike_phase_handoff.get("blocked_phase_count", 0),
+        "google_spike_phase_handoff_full_spike_planned_runs": google_spike_phase_handoff.get(
+            "full_spike_planned_runs",
+            0,
+        ),
+        "google_spike_phase_order": [str(value) for value in _as_list(google_spike_phase_handoff.get("phase_order"))],
         "remaining_blocker_count": summary.get("remaining_blocker_count", 0),
         "remaining_blockers": [str(value) for value in _as_list(summary.get("remaining_blockers"))],
         "runbook_verifier_status": summary.get("runbook_verifier_status", ""),
@@ -647,6 +657,12 @@ def render_au_handoff_markdown(dossier: dict[str, Any]) -> str:
             f"- Manual backfill missing：{', '.join(str(value) for value in _as_list(p0b_google_execution_checklist.get('manual_backfill_handoff_missing_reasons'))) or '无'}",
             f"- Manual backfill template：{p0b_google_execution_checklist.get('manual_backfill_handoff_template_path') or 'none'}",
             f"- Manual backfill verification：{p0b_google_execution_checklist.get('manual_backfill_handoff_verification_path') or 'none'}",
+            f"- Google spike phase handoff：{'ready' if p0b_google_execution_checklist.get('google_spike_phase_handoff_ready') else 'blocked'}"
+            f"（next: {p0b_google_execution_checklist.get('google_spike_phase_handoff_next_phase') or 'none'}, "
+            f"ready phases: {p0b_google_execution_checklist.get('google_spike_phase_handoff_ready_phase_count', 0)}, "
+            f"blocked phases: {p0b_google_execution_checklist.get('google_spike_phase_handoff_blocked_phase_count', 0)}, "
+            f"full spike runs: {p0b_google_execution_checklist.get('google_spike_phase_handoff_full_spike_planned_runs', 0)}）",
+            f"- Google spike phase order：{', '.join(str(value) for value in _as_list(p0b_google_execution_checklist.get('google_spike_phase_order'))) or '无'}",
             f"- Remaining blockers：{p0b_google_execution_checklist.get('remaining_blocker_count', 0)}",
             f"- Status verifier：{p0b_google_execution_checklist.get('status_verifier_status', '')}",
             f"- Package verifier：{p0b_google_execution_checklist.get('package_verifier_status', '')}",
@@ -875,6 +891,22 @@ def build_au_handoff_dossier(
                 "manual_backfill_handoff_content_redacted",
             )
             is True,
+            "p0b_google_spike_phase_handoff_ready": p0b_google_checklist_summary.get(
+                "google_spike_phase_handoff_ready",
+            )
+            is True,
+            "p0b_google_spike_phase_handoff_next_phase": p0b_google_checklist_summary.get(
+                "google_spike_phase_handoff_next_phase",
+                "",
+            ),
+            "p0b_google_spike_phase_handoff_blocked_phase_count": p0b_google_checklist_summary.get(
+                "google_spike_phase_handoff_blocked_phase_count",
+                0,
+            ),
+            "p0b_google_spike_phase_handoff_full_spike_planned_runs": p0b_google_checklist_summary.get(
+                "google_spike_phase_handoff_full_spike_planned_runs",
+                0,
+            ),
         },
         "runtime_endpoints": {
             "launch_status": "GET /v1/launch-status/au",

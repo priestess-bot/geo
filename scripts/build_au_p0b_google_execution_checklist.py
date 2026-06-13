@@ -608,6 +608,310 @@ def _manual_backfill_handoff(
     }
 
 
+def _execution_commands_by_id() -> dict[str, dict[str, str]]:
+    return {command["id"]: command for command in _execution_commands()}
+
+
+def _phase_commands(commands_by_id: dict[str, dict[str, str]], command_ids: tuple[str, ...]) -> list[dict[str, str]]:
+    return [commands_by_id[command_id] for command_id in command_ids if command_id in commands_by_id]
+
+
+def _google_phase_artifact_entry(
+    *,
+    package: dict[str, Any],
+    artifact_key: str,
+    manual_backfill_handoff: dict[str, Any],
+    google_allowed: bool,
+    remaining_blockers: list[str],
+) -> dict[str, Any]:
+    if artifact_key == "evidence_package":
+        status = str(package.get("status") or "fail")
+        errors = [str(value) for value in _as_list(_as_dict(package.get("summary")).get("blocking_reasons"))]
+        ready = status == "pass" and google_allowed and not remaining_blockers
+        return {
+            "key": artifact_key,
+            "path": str(package.get("output_path") or ""),
+            "exists": True,
+            "status": status,
+            "ready": ready,
+            "hash_valid": bool(package.get("package_payload_hash")),
+            "google_main_scoring_allowed": google_allowed,
+            "errors": errors,
+        }
+
+    artifact = _as_dict(_as_dict(package.get("artifacts")).get(artifact_key))
+    status = str(artifact.get("status") or "missing")
+    errors = [str(value) for value in _as_list(artifact.get("errors"))]
+    ready = status == "pass"
+    if artifact_key == "playwright_env":
+        ready = (
+            ready
+            and artifact.get("ready_for_playwright_smoke") is True
+            and artifact.get("ready_for_full_google_run") is True
+        )
+    elif artifact_key == "playwright_smoke":
+        ready = ready and artifact.get("smoke_success") is True
+    elif artifact_key == "manual_backfill":
+        ready = manual_backfill_handoff.get("ready") is True
+    elif artifact_key == "health":
+        ready = ready and artifact.get("collector_health_ready") is True
+    elif artifact_key == "spike":
+        ready = ready and artifact.get("google_gates_ready") is True
+    elif artifact_key == "status_report":
+        ready = ready and artifact.get("google_main_scoring_allowed") is True
+    return {
+        "key": artifact_key,
+        "path": str(artifact.get("path") or ""),
+        "exists": artifact.get("exists") is True,
+        "status": status,
+        "ready": ready,
+        "hash_valid": artifact.get("hash_valid") if "hash_valid" in artifact else None,
+        "errors": errors,
+        "ready_for_playwright_smoke": artifact.get("ready_for_playwright_smoke")
+        if "ready_for_playwright_smoke" in artifact
+        else None,
+        "ready_for_full_google_run": artifact.get("ready_for_full_google_run")
+        if "ready_for_full_google_run" in artifact
+        else None,
+        "smoke_success": artifact.get("smoke_success") if "smoke_success" in artifact else None,
+        "manual_backfill_ready": artifact.get("manual_backfill_ready") if "manual_backfill_ready" in artifact else None,
+        "collector_health_ready": artifact.get("collector_health_ready") if "collector_health_ready" in artifact else None,
+        "google_gates_ready": artifact.get("google_gates_ready") if "google_gates_ready" in artifact else None,
+        "google_main_scoring_allowed": artifact.get("google_main_scoring_allowed")
+        if "google_main_scoring_allowed" in artifact
+        else None,
+    }
+
+
+def _google_phase_blocking_reasons(
+    *,
+    phase_id: str,
+    artifact_entries: list[dict[str, Any]],
+    environment_handoff: dict[str, Any],
+    manual_backfill_handoff: dict[str, Any],
+    remaining_blockers: list[str],
+    google_allowed: bool,
+    prerequisite_phase_id: str,
+    prerequisite_ready: bool,
+) -> list[str]:
+    reasons: list[str] = []
+    if prerequisite_phase_id and not prerequisite_ready:
+        reasons.append(f"prerequisite_phase_not_ready:{prerequisite_phase_id}")
+    if phase_id == "environment":
+        reasons.extend(f"environment_handoff:{value}" for value in _as_list(environment_handoff.get("missing_required")))
+    if phase_id == "manual_backfill":
+        reasons.extend(str(value) for value in _as_list(manual_backfill_handoff.get("missing_reasons")))
+    if phase_id == "main_scoring" and not google_allowed:
+        reasons.extend(f"google_main_scoring_blocker:{blocker}" for blocker in remaining_blockers)
+    for artifact in artifact_entries:
+        key = str(artifact.get("key") or "")
+        if artifact.get("ready") is True:
+            continue
+        for error in _as_list(artifact.get("errors")):
+            reasons.append(f"{key}:{error}")
+        if artifact.get("exists") is False:
+            reasons.append(f"{key}:file_missing")
+        if artifact.get("status") != "pass":
+            reasons.append(f"{key}:status_not_pass")
+        if artifact.get("ready") is not True:
+            reasons.append(f"{key}:not_ready")
+    return sorted(dict.fromkeys(reasons))
+
+
+def _google_phase_handoff_phase(
+    *,
+    phase_id: str,
+    title: str,
+    planned_runs: int,
+    command_ids: tuple[str, ...],
+    artifact_keys: tuple[str, ...],
+    prerequisite_gate_ids: tuple[str, ...],
+    prerequisite_phase_id: str,
+    prerequisite_ready: bool,
+    can_start: bool,
+    commands_by_id: dict[str, dict[str, str]],
+    package: dict[str, Any],
+    environment_handoff: dict[str, Any],
+    manual_backfill_handoff: dict[str, Any],
+    google_allowed: bool,
+    remaining_blockers: list[str],
+) -> dict[str, Any]:
+    artifact_entries = [
+        _google_phase_artifact_entry(
+            package=package,
+            artifact_key=key,
+            manual_backfill_handoff=manual_backfill_handoff,
+            google_allowed=google_allowed,
+            remaining_blockers=remaining_blockers,
+        )
+        for key in artifact_keys
+    ]
+    ready = all(entry.get("ready") is True for entry in artifact_entries)
+    blocking_reasons = _google_phase_blocking_reasons(
+        phase_id=phase_id,
+        artifact_entries=artifact_entries,
+        environment_handoff=environment_handoff,
+        manual_backfill_handoff=manual_backfill_handoff,
+        remaining_blockers=remaining_blockers,
+        google_allowed=google_allowed,
+        prerequisite_phase_id=prerequisite_phase_id,
+        prerequisite_ready=prerequisite_ready,
+    )
+    return {
+        "id": phase_id,
+        "title": title,
+        "planned_runs": planned_runs,
+        "ready": ready,
+        "can_start": can_start,
+        "command_ids": list(command_ids),
+        "commands": _phase_commands(commands_by_id, command_ids),
+        "artifact_keys": list(artifact_keys),
+        "artifacts": artifact_entries,
+        "evidence_outputs": [str(entry.get("path") or "") for entry in artifact_entries],
+        "prerequisite_gate_ids": list(prerequisite_gate_ids),
+        "prerequisite_phase_id": prerequisite_phase_id,
+        "blocking_reasons": blocking_reasons,
+    }
+
+
+def _google_spike_phase_handoff(
+    *,
+    package: dict[str, Any],
+    runbook_ok: bool,
+    environment_handoff: dict[str, Any],
+    manual_backfill_handoff: dict[str, Any],
+    remaining_blockers: list[str],
+    google_allowed: bool,
+    full_spike_planned_runs: int,
+) -> dict[str, Any]:
+    commands_by_id = _execution_commands_by_id()
+    manual_expected_record_count = int(manual_backfill_handoff.get("expected_record_count") or 0)
+    environment = _google_phase_handoff_phase(
+        phase_id="environment",
+        title="Google Playwright and full-run input readiness",
+        planned_runs=0,
+        command_ids=("verify_playwright_env",),
+        artifact_keys=("playwright_env",),
+        prerequisite_gate_ids=("verify_env_template", "hard_playwright_env_gate"),
+        prerequisite_phase_id="",
+        prerequisite_ready=runbook_ok,
+        can_start=runbook_ok,
+        commands_by_id=commands_by_id,
+        package=package,
+        environment_handoff=environment_handoff,
+        manual_backfill_handoff=manual_backfill_handoff,
+        google_allowed=google_allowed,
+        remaining_blockers=remaining_blockers,
+    )
+    browser_smoke = _google_phase_handoff_phase(
+        phase_id="browser_smoke",
+        title="Single Google browser smoke capture",
+        planned_runs=1,
+        command_ids=("run_smoke", "verify_smoke_strict"),
+        artifact_keys=("playwright_smoke",),
+        prerequisite_gate_ids=("hard_playwright_env_gate",),
+        prerequisite_phase_id="environment",
+        prerequisite_ready=environment.get("ready") is True,
+        can_start=environment.get("ready") is True,
+        commands_by_id=commands_by_id,
+        package=package,
+        environment_handoff=environment_handoff,
+        manual_backfill_handoff=manual_backfill_handoff,
+        google_allowed=google_allowed,
+        remaining_blockers=remaining_blockers,
+    )
+    manual_backfill = _google_phase_handoff_phase(
+        phase_id="manual_backfill",
+        title="Strict 120-row Google AI Mode manual verification",
+        planned_runs=manual_expected_record_count,
+        command_ids=("build_manual_template", "verify_manual_backfill"),
+        artifact_keys=("manual_backfill",),
+        prerequisite_gate_ids=("verify_manual_backfill",),
+        prerequisite_phase_id="browser_smoke",
+        prerequisite_ready=browser_smoke.get("ready") is True,
+        can_start=browser_smoke.get("ready") is True,
+        commands_by_id=commands_by_id,
+        package=package,
+        environment_handoff=environment_handoff,
+        manual_backfill_handoff=manual_backfill_handoff,
+        google_allowed=google_allowed,
+        remaining_blockers=remaining_blockers,
+    )
+    health_check = _google_phase_handoff_phase(
+        phase_id="health_check",
+        title="Collector health-only matrix preflight",
+        planned_runs=full_spike_planned_runs,
+        command_ids=("run_health", "manifest_health"),
+        artifact_keys=("health", "health_manifest"),
+        prerequisite_gate_ids=("verify_smoke_strict", "verify_manual_backfill"),
+        prerequisite_phase_id="manual_backfill",
+        prerequisite_ready=manual_backfill.get("ready") is True,
+        can_start=manual_backfill.get("ready") is True,
+        commands_by_id=commands_by_id,
+        package=package,
+        environment_handoff=environment_handoff,
+        manual_backfill_handoff=manual_backfill_handoff,
+        google_allowed=google_allowed,
+        remaining_blockers=remaining_blockers,
+    )
+    full_spike = _google_phase_handoff_phase(
+        phase_id="full_spike",
+        title="Full 240-run browser plus manual Google spike",
+        planned_runs=full_spike_planned_runs,
+        command_ids=("run_full_spike", "manifest_full_spike"),
+        artifact_keys=("spike", "spike_manifest"),
+        prerequisite_gate_ids=("make verify-au-p0b-google-status",),
+        prerequisite_phase_id="health_check",
+        prerequisite_ready=health_check.get("ready") is True,
+        can_start=health_check.get("ready") is True,
+        commands_by_id=commands_by_id,
+        package=package,
+        environment_handoff=environment_handoff,
+        manual_backfill_handoff=manual_backfill_handoff,
+        google_allowed=google_allowed,
+        remaining_blockers=remaining_blockers,
+    )
+    main_scoring = _google_phase_handoff_phase(
+        phase_id="main_scoring",
+        title="Google main scoring denominator promotion",
+        planned_runs=0,
+        command_ids=("refresh_status", "refresh_package"),
+        artifact_keys=("status_report", "evidence_package"),
+        prerequisite_gate_ids=("hard_status_gate", "hard_package_gate"),
+        prerequisite_phase_id="full_spike",
+        prerequisite_ready=full_spike.get("ready") is True,
+        can_start=full_spike.get("ready") is True,
+        commands_by_id=commands_by_id,
+        package=package,
+        environment_handoff=environment_handoff,
+        manual_backfill_handoff=manual_backfill_handoff,
+        google_allowed=google_allowed,
+        remaining_blockers=remaining_blockers,
+    )
+    phases = [environment, browser_smoke, manual_backfill, health_check, full_spike, main_scoring]
+    ready_phase_count = sum(1 for phase in phases if phase.get("ready") is True)
+    next_phase = next((str(phase.get("id")) for phase in phases if phase.get("ready") is not True), "complete")
+    return {
+        "version": "au_p0b_google_spike_phase_handoff_v1",
+        "ready": ready_phase_count == len(phases),
+        "phase_count": len(phases),
+        "ready_phase_count": ready_phase_count,
+        "blocked_phase_count": len(phases) - ready_phase_count,
+        "next_phase": next_phase,
+        "full_spike_planned_runs": full_spike_planned_runs,
+        "manual_expected_record_count": manual_expected_record_count,
+        "phase_order": [str(phase.get("id")) for phase in phases],
+        "phases": phases,
+        "redaction_policy": {
+            "raw_secret_values_allowed": False,
+            "raw_answer_values_allowed": False,
+            "raw_citation_values_allowed": False,
+            "raw_asset_urls_allowed": False,
+            "phase_entries_reference_command_ids_and_artifact_paths_only": True,
+        },
+    }
+
+
 def _setup_commands() -> list[dict[str, str]]:
     return [
         {
@@ -847,6 +1151,16 @@ def build_au_p0b_google_execution_checklist(
     status_ok = status_verifier.get("status") == "pass" and status_verifier.get("hash_valid") is True
     package_ok = package_verifier.get("status") == "pass" and package_verifier.get("hash_valid") is True
     google_allowed = package.get("google_main_scoring_allowed") is True
+    full_spike_planned_runs = int(runbook_verifier.get("planned_runs") or 0)
+    google_spike_phase_handoff = _google_spike_phase_handoff(
+        package=package,
+        runbook_ok=runbook_ok,
+        environment_handoff=environment_handoff,
+        manual_backfill_handoff=manual_backfill_handoff,
+        remaining_blockers=remaining_blockers,
+        google_allowed=google_allowed,
+        full_spike_planned_runs=full_spike_planned_runs,
+    )
     ready = runbook_ok and env_ok and status_ok and package_ok and google_allowed and not remaining_blockers
     next_action = _expected_next_action(
         runbook_ok=runbook_ok,
@@ -936,6 +1250,14 @@ def build_au_p0b_google_execution_checklist(
                 is False
                 and _as_dict(manual_backfill_handoff.get("redaction_policy")).get("raw_asset_urls_allowed") is False
             ),
+            "google_spike_phase_handoff_ready": google_spike_phase_handoff["ready"],
+            "google_spike_phase_handoff_next_phase": google_spike_phase_handoff["next_phase"],
+            "google_spike_phase_handoff_ready_phase_count": google_spike_phase_handoff["ready_phase_count"],
+            "google_spike_phase_handoff_blocked_phase_count": google_spike_phase_handoff["blocked_phase_count"],
+            "google_spike_phase_handoff_full_spike_planned_runs": google_spike_phase_handoff[
+                "full_spike_planned_runs"
+            ],
+            "google_spike_phase_order": google_spike_phase_handoff["phase_order"],
             "remaining_blocker_count": len(remaining_blockers),
             "remaining_blockers": remaining_blockers,
             "runbook_verifier_status": runbook_verifier.get("status", ""),
@@ -986,6 +1308,7 @@ def build_au_p0b_google_execution_checklist(
         "dependency_checks": dependency_checks,
         "environment_handoff": environment_handoff,
         "manual_backfill_handoff": manual_backfill_handoff,
+        "google_spike_phase_handoff": google_spike_phase_handoff,
         "setup_commands": _setup_commands(),
         "execution_commands": _execution_commands(),
         "verification_commands": _verification_commands(),
