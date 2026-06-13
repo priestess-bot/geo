@@ -1641,6 +1641,70 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("expires_at must be ISO-8601 datetime", response.json()["detail"])
 
+    def test_runtime_project_member_invitation_action_endpoint_revokes_invitation(self) -> None:
+        class FakeRepository:
+            def apply_runtime_project_member_invitation_action(self, action: object) -> RuntimeProjectMemberInvitation:
+                self.action = action
+                return RuntimeProjectMemberInvitation(
+                    invitation={
+                        "id": action.invitation_id,
+                        "project_id": action.project_id,
+                        "email": "viewer@example.com",
+                        "role": "viewer",
+                        "status": "revoked",
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "project_member_invitation_revoked",
+                            "target_type": "project_member_invitation",
+                            "method_version": "project_member_invitation_action_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/project-member-invitations/runtime/action",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
+                    "action": "revoke",
+                    "updated_by": "agency-admin",
+                    "reason": "wrong email",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["invitation"]["status"], "revoked")
+        self.assertEqual(response.json()["audit_events"][0]["event_type"], "project_member_invitation_revoked")
+        self.assertEqual(fake_repository.action.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.action.invitation_id, "21a98a17-7930-5504-a6fa-cd08990fbf07")
+        self.assertEqual(fake_repository.action.action, "revoke")
+        self.assertEqual(fake_repository.action.updated_by, "agency-admin")
+
+    def test_runtime_project_member_invitation_action_endpoint_returns_conflict_for_non_pending_status(self) -> None:
+        class FakeRepository:
+            def apply_runtime_project_member_invitation_action(self, action: object) -> object:
+                raise ValueError("cannot revoke invitation with status revoked")
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/project-member-invitations/runtime/action",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
+                    "action": "revoke",
+                },
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("cannot revoke invitation", response.json()["detail"])
+
     def test_runtime_prompts_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/prompts/runtime")
         self.assertEqual(response.status_code, 503)
@@ -5118,8 +5182,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeProjectMemberInvitation", payload["persistence"])
         self.assertIn("RuntimeProjectMemberInvitationPage", payload["persistence"])
         self.assertIn("RuntimeProjectMemberInvitationInput", payload["persistence"])
+        self.assertIn("RuntimeProjectMemberInvitationActionInput", payload["persistence"])
         self.assertIn("ProjectMemberInvitationRequest", payload["persistence"])
+        self.assertIn("ProjectMemberInvitationActionRequest", payload["persistence"])
         self.assertIn("/v1/project-member-invitations/runtime", payload["persistence"])
+        self.assertIn("/v1/project-member-invitations/runtime/action", payload["persistence"])
         self.assertIn("RuntimeProjectBrandKit", payload["persistence"])
         self.assertIn("RuntimeProjectBrandKitInput", payload["persistence"])
         self.assertIn("RuntimeProjectBrandAsset", payload["persistence"])

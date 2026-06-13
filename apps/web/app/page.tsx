@@ -1487,6 +1487,7 @@ const endpoints = {
   projects: "/v1/projects/runtime",
   projectMembers: "/v1/project-members/runtime",
   projectMemberInvitations: "/v1/project-member-invitations/runtime",
+  projectMemberInvitationAction: "/v1/project-member-invitations/runtime/action",
   prompts: "/v1/prompts/runtime",
   promptImports: "/v1/prompts/runtime/imports",
   evidence: "/v1/evidence-runs/runtime",
@@ -2098,6 +2099,37 @@ async function createRuntimeProjectMemberInvitation(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/project-member-invitations/runtime returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function actionRuntimeProjectMemberInvitation(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const invitationId = String(formData.get("invitation_id") || "").trim();
+  const action = String(formData.get("action") || "").trim();
+  if (!projectId || !invitationId || !action) {
+    throw new Error("project_id, invitation_id and action are required to update a project member invitation");
+  }
+  const payload = {
+    project_id: projectId,
+    invitation_id: invitationId,
+    action,
+    updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/project-member-invitations/runtime/action`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/project-member-invitations/runtime/action returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -2731,6 +2763,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     projects: runtimePath(endpoints.projects, projectListParams),
     projectMembers: endpoints.projectMembers,
     projectMemberInvitations: endpoints.projectMemberInvitations,
+    projectMemberInvitationAction: endpoints.projectMemberInvitationAction,
     prompts: runtimePath(endpoints.prompts, {
       market_code: "AU",
       intent_type: filters.intent_type,
@@ -4413,7 +4446,10 @@ export default async function Home({
                   </form>
                   <div className="formHeader">
                     <h3>Member Invitations</h3>
-                    <small>project_member_invitation_created · hashed token · owner/admin only</small>
+                    <small>
+                      project_member_invitation_created · project_member_invitation_revoked ·
+                      project_member_invitation_expired · hashed token · owner/admin only
+                    </small>
                   </div>
                   {data.projectMemberInvitations.records.length ? (
                     <ul className="plainList">
@@ -4431,6 +4467,38 @@ export default async function Home({
                           </small>
                           {record.invitation.invite_token ? (
                             <small>one-time token {record.invitation.invite_token}</small>
+                          ) : null}
+                          {record.invitation.status === "pending" ? (
+                            <div className="inlineActions">
+                              <form action={actionRuntimeProjectMemberInvitation}>
+                                <input type="hidden" name="project_id" value={latestProject.project.id} />
+                                <input type="hidden" name="invitation_id" value={record.invitation.id} />
+                                <input type="hidden" name="action" value="revoke" />
+                                <input type="hidden" name="updated_by" value="runtime-console" />
+                                <input
+                                  type="hidden"
+                                  name="reason"
+                                  value="Revoke pending runtime project invitation"
+                                />
+                                <button className="textButton" type="submit">
+                                  Revoke invite
+                                </button>
+                              </form>
+                              <form action={actionRuntimeProjectMemberInvitation}>
+                                <input type="hidden" name="project_id" value={latestProject.project.id} />
+                                <input type="hidden" name="invitation_id" value={record.invitation.id} />
+                                <input type="hidden" name="action" value="expire" />
+                                <input type="hidden" name="updated_by" value="runtime-console" />
+                                <input
+                                  type="hidden"
+                                  name="reason"
+                                  value="Expire pending runtime project invitation"
+                                />
+                                <button className="textButton" type="submit">
+                                  Expire invite
+                                </button>
+                              </form>
+                            </div>
                           ) : null}
                         </li>
                       ))}

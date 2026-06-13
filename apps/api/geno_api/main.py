@@ -84,6 +84,7 @@ from geno_core.models import (
     RuntimeProjectBrandLogoUpload,
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
+    RuntimeProjectMemberInvitationActionInput,
     RuntimeProjectMemberInvitationInput,
     RuntimePromptImportInput,
     RuntimeNotificationSubscriptionInput,
@@ -1536,6 +1537,14 @@ class ProjectMemberInvitationRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class ProjectMemberInvitationActionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    invitation_id: str = Field(min_length=1, max_length=80)
+    action: str = Field(min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class RuntimeFidelityCheckRequest(BaseModel):
     project_id: str = Field(min_length=1)
     report_export_id: str | None = Field(default=None, min_length=1)
@@ -2100,6 +2109,47 @@ def create_runtime_project_member_invitation(
         except ValueError as exc:
             status_code = 404 if str(exc) == "project not found" else 400
             raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(invitation)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-member-invitations/runtime/action")
+def action_runtime_project_member_invitation(
+    payload: ProjectMemberInvitationActionRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            invitation = repository.apply_runtime_project_member_invitation_action(
+                RuntimeProjectMemberInvitationActionInput(
+                    project_id=payload.project_id.strip(),
+                    invitation_id=payload.invitation_id.strip(),
+                    action=payload.action.strip().lower(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            message = str(exc)
+            if message == "project member invitation not found":
+                status_code = 404
+            elif message.startswith("cannot "):
+                status_code = 409
+            else:
+                status_code = 400
+            raise HTTPException(status_code=status_code, detail=message) from exc
         return asdict(invitation)
     finally:
         close_repository_connection(repository)
@@ -4998,7 +5048,9 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeProjectMemberInvitation",
             "RuntimeProjectMemberInvitationPage",
             "RuntimeProjectMemberInvitationInput",
+            "RuntimeProjectMemberInvitationActionInput",
             "ProjectMemberInvitationRequest",
+            "ProjectMemberInvitationActionRequest",
             "RuntimeProjectBrandKit",
             "RuntimeProjectBrandKitInput",
             "RuntimeProjectBrandAsset",
@@ -5115,6 +5167,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/projects/runtime/au/dtc-ecommerce",
             "/v1/project-members/runtime",
             "/v1/project-member-invitations/runtime",
+            "/v1/project-member-invitations/runtime/action",
             "/v1/entity-aliases/runtime",
             "/v1/entity-aliases/runtime/candidates",
             "/v1/entity-aliases/runtime/candidates/reviews",

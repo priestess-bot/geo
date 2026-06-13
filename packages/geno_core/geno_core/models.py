@@ -1154,6 +1154,15 @@ class RuntimeProjectMemberInvitationInput:
 
 
 @dataclass(frozen=True)
+class RuntimeProjectMemberInvitationActionInput:
+    project_id: str
+    invitation_id: str
+    action: str
+    updated_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeProjectBrandKit:
     brand_kit: dict[str, Any]
     audit_events: tuple[dict[str, Any], ...]

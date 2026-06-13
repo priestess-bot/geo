@@ -7,7 +7,7 @@ from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from tempfile import TemporaryDirectory
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 from zipfile import ZipFile
 
 from geno_core.action_plan import (
@@ -123,6 +123,7 @@ from geno_core.models import (
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
     RuntimeProjectMemberInvitation,
+    RuntimeProjectMemberInvitationActionInput,
     RuntimeProjectMemberInvitationInput,
     RuntimeProjectMemberInvitationPage,
     RuntimeProjectMemberPage,
@@ -3914,6 +3915,145 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("INSERT INTO project_member_invitations", executed_sql)
         self.assertIn("ON CONFLICT (project_id, email, role, status) DO UPDATE", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
+        insert_params = next(params for sql, params in connection.calls if "INSERT INTO project_member_invitations" in sql)
+        old_stable_id = uuid5(
+            NAMESPACE_URL,
+            "geno:project-member-invitation:"
+            f"{project_id}:viewer@example.com:viewer:pending",
+        )
+        self.assertNotEqual(str(insert_params[0]), str(old_stable_id))
+
+    def test_postgres_repository_revokes_runtime_project_member_invitation_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
+        pending_invitation = {
+            "id": invitation_id,
+            "project_id": project_id,
+            "email": "viewer@example.com",
+            "role": "viewer",
+            "status": "pending",
+            "invite_token_hash": "hash",
+            "invited_by": "agency-owner",
+            "expires_at": now + timedelta(days=7),
+            "accepted_at": None,
+            "revoked_at": None,
+            "metadata": {"source": "runtime-console"},
+            "created_at": now,
+            "updated_at": now,
+        }
+        revoked_invitation = {
+            **pending_invitation,
+            "status": "revoked",
+            "revoked_at": now,
+            "updated_at": now,
+        }
+        connection = RecordingConnection(result_sets=[pending_invitation, revoked_invitation])
+
+        record = PostgresEvidenceRepository(connection).apply_runtime_project_member_invitation_action(
+            RuntimeProjectMemberInvitationActionInput(
+                project_id=project_id,
+                invitation_id=invitation_id,
+                action="revoke",
+                updated_by="agency-admin",
+                reason="wrong email",
+            )
+        )
+
+        self.assertEqual(record.invitation["status"], "revoked")
+        self.assertEqual(record.audit_events[0]["event_type"], "project_member_invitation_revoked")
+        self.assertEqual(record.audit_events[0]["actor_id"], "agency-admin")
+        self.assertEqual(record.audit_events[0]["method_version"], "project_member_invitation_action_v1")
+        self.assertEqual(record.audit_events[0]["input_refs"]["actions"], ["revoke"])
+        self.assertEqual(record.audit_events[0]["output_refs"]["status"], ["revoked"])
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FOR UPDATE", executed_sql)
+        self.assertIn("UPDATE project_member_invitations SET status = %s, revoked_at = now()", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+
+    def test_postgres_repository_expires_runtime_project_member_invitation_with_audit_event(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
+        pending_invitation = {
+            "id": invitation_id,
+            "project_id": project_id,
+            "email": "viewer@example.com",
+            "role": "viewer",
+            "status": "pending",
+            "invite_token_hash": "hash",
+            "invited_by": "agency-owner",
+            "expires_at": now - timedelta(days=1),
+            "accepted_at": None,
+            "revoked_at": None,
+            "metadata": {"source": "runtime-console"},
+            "created_at": now - timedelta(days=8),
+            "updated_at": now,
+        }
+        expired_invitation = {
+            **pending_invitation,
+            "status": "expired",
+            "updated_at": now,
+        }
+        connection = RecordingConnection(result_sets=[pending_invitation, expired_invitation])
+
+        record = PostgresEvidenceRepository(connection).apply_runtime_project_member_invitation_action(
+            RuntimeProjectMemberInvitationActionInput(
+                project_id=project_id,
+                invitation_id=invitation_id,
+                action="expire",
+                updated_by="agency-admin",
+                reason="past validity window",
+            )
+        )
+
+        self.assertEqual(record.invitation["status"], "expired")
+        self.assertEqual(record.audit_events[0]["event_type"], "project_member_invitation_expired")
+        self.assertEqual(record.audit_events[0]["input_refs"]["actions"], ["expire"])
+        self.assertEqual(record.audit_events[0]["output_refs"]["status"], ["expired"])
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FOR UPDATE", executed_sql)
+        self.assertIn("UPDATE project_member_invitations SET status = %s, updated_at = now()", executed_sql)
+
+    def test_postgres_repository_rejects_project_member_invitation_action_for_non_pending_status(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
+        connection = RecordingConnection(
+            result_sets=[
+                {
+                    "id": invitation_id,
+                    "project_id": project_id,
+                    "email": "viewer@example.com",
+                    "role": "viewer",
+                    "status": "revoked",
+                    "invite_token_hash": "hash",
+                    "invited_by": "agency-owner",
+                    "expires_at": now + timedelta(days=7),
+                    "accepted_at": None,
+                    "revoked_at": now,
+                    "metadata": {"source": "runtime-console"},
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            ]
+        )
+
+        with self.assertRaisesRegex(ValueError, "cannot revoke invitation with status revoked"):
+            PostgresEvidenceRepository(connection).apply_runtime_project_member_invitation_action(
+                RuntimeProjectMemberInvitationActionInput(
+                    project_id=project_id,
+                    invitation_id=invitation_id,
+                    action="revoke",
+                    updated_by="agency-admin",
+                )
+            )
+
+        self.assertEqual(connection.commit_count, 0)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FOR UPDATE", executed_sql)
+        self.assertNotIn("UPDATE project_member_invitations SET status", executed_sql)
 
     def test_postgres_repository_reads_runtime_prompt_page(self) -> None:
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
