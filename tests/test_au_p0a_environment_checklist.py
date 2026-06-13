@@ -70,7 +70,8 @@ class AuP0aEnvironmentChecklistTest(unittest.TestCase):
         self.assertTrue(checklist["summary"]["env_file_hygiene_ready"])
         self.assertEqual(checklist["summary"]["env_file_hygiene_error_count"], 0)
         self.assertTrue(checklist["env_file_hygiene"]["secret_redacted"])
-        self.assertIn("chmod_env_file", {command["id"] for command in checklist["setup_commands"]})
+        self.assertIn("bootstrap_env_file", {command["id"] for command in checklist["setup_commands"]})
+        self.assertIn("verify_env_file_bootstrap", {command["id"] for command in checklist["setup_commands"]})
         self.assertIn("hard_env_gate", {command["id"] for command in checklist["verification_commands"]})
         self.assertEqual(checklist["environment_checklist_hash"], compute_environment_checklist_hash(checklist))
         self.assertEqual(verification["status"], "pass")
@@ -130,13 +131,13 @@ class AuP0aEnvironmentChecklistTest(unittest.TestCase):
                 generated_at="2026-06-12T00:00:00Z",
             )
             checklist["setup_commands"] = [
-                command for command in checklist["setup_commands"] if command["id"] != "chmod_env_file"
+                command for command in checklist["setup_commands"] if command["id"] != "bootstrap_env_file"
             ]
             checklist["environment_checklist_hash"] = compute_environment_checklist_hash(checklist)
             verification = verify_au_p0a_environment_checklist(checklist)
 
         self.assertEqual(verification["status"], "fail")
-        self.assertIn("setup_command_missing:chmod_env_file", verification["errors"])
+        self.assertIn("setup_command_missing:bootstrap_env_file", verification["errors"])
 
     def test_verifier_rejects_forbidden_secret_fields_anywhere(self) -> None:
         with TemporaryDirectory() as temp_dir:

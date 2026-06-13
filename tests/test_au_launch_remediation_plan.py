@@ -74,11 +74,11 @@ class AuLaunchRemediationPlanTest(unittest.TestCase):
             [command["shell"] for command in work_items["p0a_environment"]["commands"][:3]],
             [
                 "make verify-au-p0a-env-template",
-                "cp .env.au-p0a.example .env.au-p0a",
-                "chmod 600 .env.au-p0a",
+                "make au-p0a-env-bootstrap",
+                "make verify-au-p0a-env-bootstrap",
             ],
         )
-        self.assertIn("env file passes hygiene", work_items["p0a_environment"]["acceptance"])
+        self.assertIn("env bootstrap audit passes", work_items["p0a_environment"]["acceptance"])
         self.assertIn(
             "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
             work_items["p0a_environment"]["evidence_outputs"],
@@ -154,7 +154,7 @@ class AuLaunchRemediationPlanTest(unittest.TestCase):
         self.assertIn("remediation_plan_hash_mismatch", verification["errors"])
         self.assertIn("blocker_remediation_coverage_mismatch", verification["errors"])
 
-    def test_verifier_requires_env_file_chmod_commands(self) -> None:
+    def test_verifier_requires_env_file_bootstrap_commands(self) -> None:
         with TemporaryDirectory() as temp_dir:
             launch_status_path = self._write_launch_status(temp_dir, ready=False)
             launch_status = json.loads(launch_status_path.read_text(encoding="utf-8"))
@@ -166,13 +166,13 @@ class AuLaunchRemediationPlanTest(unittest.TestCase):
             for work_item in plan["work_items"]:
                 if work_item["id"] == "p0a_environment":
                     work_item["commands"] = [
-                        command for command in work_item["commands"] if command["shell"] != "chmod 600 .env.au-p0a"
+                        command for command in work_item["commands"] if command["shell"] != "make au-p0a-env-bootstrap"
                     ]
             plan["remediation_plan_hash"] = compute_remediation_plan_hash(plan)
             verification = verify_au_launch_remediation_plan(plan)
 
         self.assertEqual(verification["status"], "fail")
-        self.assertIn("work_item_command_missing:p0a_environment:chmod_600_env_file", verification["errors"])
+        self.assertIn("work_item_command_missing:p0a_environment:env_bootstrap", verification["errors"])
 
     def test_cli_writes_and_verifies_remediation_plan(self) -> None:
         with TemporaryDirectory() as temp_dir:

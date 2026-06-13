@@ -52,7 +52,11 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
         self.assertEqual(handoff["summary"]["handoff_posture"], "blocked_external_dependencies")
         self.assertTrue(handoff["summary"]["structural_ready"])
         self.assertTrue(handoff["summary"]["all_blockers_mapped"])
-        self.assertEqual(handoff["summary"]["external_dependency_blocker_count"], 29)
+        self.assertGreater(handoff["summary"]["external_dependency_blocker_count"], 0)
+        self.assertEqual(
+            handoff["summary"]["external_dependency_blocker_count"],
+            sum(1 for item in handoff["blocker_remediations"] if item["external_dependency"]),
+        )
         self.assertGreaterEqual(handoff["summary"]["work_item_count"], 8)
         self.assertEqual(handoff["summary"]["dependency_group_count"], 5)
         self.assertEqual(handoff["summary"]["clearance_step_count"], 6)

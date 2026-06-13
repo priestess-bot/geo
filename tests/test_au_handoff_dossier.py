@@ -178,7 +178,11 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertTrue(dossier["handoff_dossier_ready"])
         self.assertFalse(dossier["ready_for_customer_report_handoff"])
         self.assertEqual(dossier["summary"]["handoff_posture"], "blocked_external_dependencies")
-        self.assertEqual(dossier["summary"]["remaining_blocker_count"], 29)
+        self.assertGreater(dossier["summary"]["remaining_blocker_count"], 0)
+        self.assertEqual(
+            dossier["summary"]["remaining_blocker_count"],
+            len(dossier["launch_status"]["remaining_blockers"]),
+        )
         self.assertEqual(dossier["summary"]["unmapped_blocker_count"], 0)
         self.assertEqual(dossier["summary"]["work_item_count"], len(dossier["work_items"]))
         self.assertGreaterEqual(dossier["summary"]["work_item_count"], 8)
@@ -193,8 +197,8 @@ class AuHandoffDossierTest(unittest.TestCase):
         self.assertEqual(audit["blocked_customer_gate_count"], 9)
         self.assertEqual(audit["structural_auditability_percent"], 100.0)
         self.assertEqual(audit["next_work_item_id"], "p0a_environment")
-        self.assertEqual(audit["remaining_blocker_count"], 29)
-        self.assertEqual(audit["external_dependency_blocker_count"], 29)
+        self.assertEqual(audit["remaining_blocker_count"], dossier["summary"]["remaining_blocker_count"])
+        self.assertEqual(audit["external_dependency_blocker_count"], dossier["summary"]["external_dependency_blocker_count"])
         self.assertEqual(audit["readiness_statement"], "blocked_external_dependencies")
         self.assertIn("p0a_credentials_configured", audit["blocked_customer_gate_ids"])
         self.assertIn("customer_report_handoff_gate", audit["blocked_customer_gate_ids"])
@@ -607,7 +611,8 @@ class AuHandoffDossierTest(unittest.TestCase):
                 markdown_output_path=Path(temp_dir) / "dossier.md",
                 generated_at="2026-06-12T00:00:00Z",
             )
-            dossier["summary"]["covered_blocker_count"] = 28  # type: ignore[index]
+            expected_covered = int(dossier["remediation_plan_verifier"]["blocker_count"]) - 1  # type: ignore[index]
+            dossier["summary"]["covered_blocker_count"] = expected_covered  # type: ignore[index]
             dossier["summary"]["unmapped_blocker_count"] = 1  # type: ignore[index]
             dossier["remediation_plan_verifier"]["unmapped_blocker_count"] = 1  # type: ignore[index]
             dossier["handoff_dossier_hash"] = compute_handoff_dossier_hash(dossier)

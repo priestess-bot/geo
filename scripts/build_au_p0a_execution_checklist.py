@@ -205,14 +205,14 @@ def _setup_commands() -> list[dict[str, str]]:
             "purpose": "Verify the committed P0a env template before creating a local secret file.",
         },
         {
-            "id": "copy_env_template",
-            "shell": "cp .env.au-p0a.example .env.au-p0a",
-            "purpose": "Create the local P0a env file without committing provider/database secrets.",
+            "id": "bootstrap_env_file",
+            "shell": "make au-p0a-env-bootstrap",
+            "purpose": "Create or verify the local P0a env file with gitignore and 0600 hygiene evidence.",
         },
         {
-            "id": "chmod_env_file",
-            "shell": "chmod 600 .env.au-p0a",
-            "purpose": "Constrain the local P0a env file before writing provider/database credentials.",
+            "id": "verify_env_file_bootstrap",
+            "shell": "make verify-au-p0a-env-bootstrap",
+            "purpose": "Verify the P0a env-file bootstrap audit hash and hygiene checks.",
         },
         {"id": "build_runbook", "shell": "make au-p0a-runbook", "purpose": "Freeze the P0a command plan."},
         {"id": "build_env_report", "shell": "make au-p0a-env", "purpose": "Generate the redacted P0a env report."},
@@ -292,7 +292,8 @@ def _work_items() -> list[dict[str, Any]]:
             "stage": "P0a",
             "commands": [
                 "make verify-au-p0a-env-template",
-                "cp .env.au-p0a.example .env.au-p0a",
+                "make au-p0a-env-bootstrap",
+                "make verify-au-p0a-env-bootstrap",
                 "make au-p0a-env",
                 "make au-p0a-environment-checklist",
                 "make au-p0a-runbook-dry-run",
@@ -543,11 +544,12 @@ def _credential_handoff(
         "target_env_file": str(env_file_path) if env_file_path else "",
         "setup_commands": [
             "make verify-au-p0a-env-template",
-            "cp .env.au-p0a.example .env.au-p0a",
-            "chmod 600 .env.au-p0a",
+            "make au-p0a-env-bootstrap",
+            "make verify-au-p0a-env-bootstrap",
         ],
         "credential_items": credential_items,
         "verification_commands": [
+            "make verify-au-p0a-env-bootstrap",
             "make au-p0a-env",
             "make verify-au-p0a-env",
             "make au-p0a-environment-checklist",
@@ -559,6 +561,7 @@ def _credential_handoff(
             "make verify-au-p0a-status",
         ],
         "evidence_outputs": [
+            "docs/runtime_preflight/au-p0a-env-bootstrap-latest.json",
             "docs/runtime_preflight/au-p0a-env-latest.json",
             "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
             "docs/runtime_preflight/au-p0a-runbook-execution-latest.json",

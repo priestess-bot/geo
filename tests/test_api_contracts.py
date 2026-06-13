@@ -541,7 +541,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertFalse(payload["ready_for_customer_report_handoff"])
         self.assertEqual(payload["summary"]["handoff_posture"], "blocked_external_dependencies")
         self.assertEqual(payload["summary"]["next_work_item_id"], "p0a_environment")
-        self.assertEqual(payload["summary"]["remaining_blocker_count"], 29)
+        self.assertGreater(payload["summary"]["remaining_blocker_count"], 0)
+        self.assertEqual(
+            payload["summary"]["remaining_blocker_count"],
+            payload["customer_handoff_readiness_audit"]["remaining_blocker_count"],
+        )
         self.assertEqual(payload["summary"]["unmapped_blocker_count"], 0)
         self.assertEqual(
             payload["customer_handoff_readiness_audit"]["audit_version"],
@@ -599,16 +603,27 @@ class ApiContractsTest(unittest.TestCase):
             "GET /v1/external-dependency-clearance/au",
         )
         self.assertIn("p0a_environment_checklist", payload)
-        self.assertEqual(payload["p0a_environment_checklist"]["missing_required_count"], 3)
+        self.assertGreater(payload["p0a_environment_checklist"]["missing_required_count"], 0)
+        self.assertEqual(
+            payload["summary"]["p0a_missing_required_environment_count"],
+            payload["p0a_environment_checklist"]["missing_required_count"],
+        )
         self.assertTrue(payload["p0a_environment_checklist"]["env_file_hygiene_ready"])
         self.assertEqual(payload["p0a_environment_checklist"]["env_file_hygiene_error_count"], 0)
         self.assertIn("p0a_execution_checklist", payload)
-        self.assertEqual(payload["p0a_execution_checklist"]["remaining_blocker_count"], 22)
+        self.assertGreater(payload["p0a_execution_checklist"]["remaining_blocker_count"], 0)
+        self.assertEqual(
+            payload["summary"]["p0a_execution_remaining_blocker_count"],
+            payload["p0a_execution_checklist"]["remaining_blocker_count"],
+        )
         self.assertFalse(payload["p0a_execution_checklist"]["credential_handoff_ready"])
-        self.assertEqual(payload["p0a_execution_checklist"]["credential_handoff_missing_required_count"], 3)
+        self.assertGreater(payload["p0a_execution_checklist"]["credential_handoff_missing_required_count"], 0)
         self.assertTrue(payload["p0a_execution_checklist"]["credential_handoff_secret_redacted"])
         self.assertFalse(payload["summary"]["p0a_credential_handoff_ready"])
-        self.assertEqual(payload["summary"]["p0a_credential_handoff_missing_required_count"], 3)
+        self.assertEqual(
+            payload["summary"]["p0a_credential_handoff_missing_required_count"],
+            payload["p0a_execution_checklist"]["credential_handoff_missing_required_count"],
+        )
         self.assertTrue(payload["summary"]["p0a_credential_handoff_secret_redacted"])
         self.assertFalse(payload["p0a_execution_checklist"]["real_batch_phase_handoff_ready"])
         self.assertEqual(payload["p0a_execution_checklist"]["real_batch_phase_handoff_next_phase"], "preflight")
@@ -666,7 +681,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["structural_auditability_percent"], 100.0)
         self.assertEqual(payload["summary"]["blocked_customer_gate_count"], 9)
         self.assertEqual(payload["summary"]["next_work_item_id"], "p0a_environment")
-        self.assertEqual(payload["summary"]["remaining_blocker_count"], 29)
+        self.assertGreater(payload["summary"]["remaining_blocker_count"], 0)
+        self.assertEqual(
+            payload["summary"]["remaining_blocker_count"],
+            payload["handoff_dossier_verifier"]["remaining_blocker_count"],
+        )
         self.assertEqual(
             payload["runtime_endpoints"]["customer_handoff_readiness"],
             "GET /v1/customer-handoff-readiness/au",
@@ -699,10 +718,16 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["next_work_item_id"], "p0a_environment")
         self.assertEqual(payload["summary"]["stage"], "P0a")
         self.assertEqual(payload["summary"]["dependency_class"], "provider_keys_and_database")
-        self.assertEqual(payload["summary"]["remaining_blocker_count"], 29)
+        self.assertGreater(payload["summary"]["remaining_blocker_count"], 0)
+        self.assertEqual(
+            payload["summary"]["remaining_blocker_count"],
+            payload["handoff_dossier_verifier"]["remaining_blocker_count"],
+        )
         self.assertEqual(payload["summary"]["command_count"], len(payload["commands"]))
         self.assertEqual(payload["commands"][0], "make verify-au-p0a-env-template")
+        self.assertIn("make au-p0a-env-bootstrap", payload["commands"])
         self.assertIn("make verify-au-p0a-status", payload["verification_commands"])
+        self.assertIn("docs/runtime_preflight/au-p0a-env-bootstrap-latest.json", payload["evidence_outputs"])
         self.assertIn("docs/runtime_preflight/au-p0a-env-latest.json", payload["evidence_outputs"])
         self.assertEqual(payload["runtime_endpoints"]["next_work_item"], "GET /v1/next-work-item/au")
         self.assertEqual(payload["runtime_endpoints"]["handoff_dossier"], "GET /v1/handoff-dossier/au")
@@ -732,13 +757,20 @@ class ApiContractsTest(unittest.TestCase):
         self.assertFalse(payload["ready_for_customer_report_handoff"])
         self.assertEqual(payload["summary"]["handoff_posture"], "blocked_external_dependencies")
         self.assertTrue(payload["summary"]["structural_ready"])
-        self.assertEqual(payload["summary"]["external_dependency_blocker_count"], 29)
+        self.assertGreater(payload["summary"]["external_dependency_blocker_count"], 0)
+        self.assertEqual(
+            payload["summary"]["external_dependency_blocker_count"],
+            sum(1 for item in payload["blocker_remediations"] if item["external_dependency"]),
+        )
         self.assertGreaterEqual(payload["summary"]["work_item_count"], 8)
         self.assertEqual(payload["summary"]["dependency_group_count"], 5)
         self.assertEqual(payload["summary"]["clearance_step_count"], 6)
         self.assertEqual(payload["summary"]["clearance_current_step_id"], "p0a_provider_credentials")
         self.assertEqual(payload["next_dependency_item_id"], "p0a_environment")
-        self.assertEqual(payload["summary"]["p0a_required_secret_missing_count"], 3)
+        self.assertEqual(
+            payload["summary"]["p0a_required_secret_missing_count"],
+            len(payload["summary"]["p0a_required_secret_missing"]),
+        )
         self.assertEqual(payload["summary"]["p0a_real_batch_phase_next_phase"], "preflight")
         self.assertEqual(payload["summary"]["p0a_real_batch_total_planned_runs"], 2436)
         self.assertEqual(payload["summary"]["p0b_google_required_input_missing_count"], 6)

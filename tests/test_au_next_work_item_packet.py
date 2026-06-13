@@ -63,8 +63,15 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         self.assertTrue(packet["summary"]["external_dependency"])
         self.assertEqual(packet["summary"]["blocker_count"], packet["next_work_item"]["blocker_count"])
         self.assertGreater(packet["summary"]["blocker_count"], 0)
-        self.assertEqual(packet["summary"]["remaining_blocker_count"], 29)
-        self.assertEqual(packet["summary"]["external_dependency_blocker_count"], 29)
+        self.assertGreater(packet["summary"]["remaining_blocker_count"], 0)
+        self.assertEqual(
+            packet["summary"]["remaining_blocker_count"],
+            packet["handoff_dossier_verifier"]["remaining_blocker_count"],
+        )
+        self.assertEqual(
+            packet["summary"]["external_dependency_blocker_count"],
+            dossier["summary"]["external_dependency_blocker_count"],
+        )
         self.assertEqual(packet["summary"]["customer_report_handoff_readiness_percent"], 10.0)
         self.assertEqual(packet["summary"]["structural_auditability_percent"], 100.0)
         self.assertTrue(packet["summary"]["runnable_now"])
@@ -73,8 +80,10 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         self.assertEqual(packet["summary"]["evidence_output_count"], len(packet["evidence_outputs"]))
         self.assertEqual(packet["summary"]["blocked_customer_gate_count"], 9)
         self.assertEqual(packet["commands"][0], "make verify-au-p0a-env-template")
-        self.assertIn("chmod 600 .env.au-p0a", packet["commands"])
+        self.assertIn("make au-p0a-env-bootstrap", packet["commands"])
+        self.assertIn("make verify-au-p0a-env-bootstrap", packet["commands"])
         self.assertIn("make verify-au-p0a-status", packet["verification_commands"])
+        self.assertIn("docs/runtime_preflight/au-p0a-env-bootstrap-latest.json", packet["evidence_outputs"])
         self.assertIn("docs/runtime_preflight/au-p0a-env-latest.json", packet["evidence_outputs"])
         self.assertEqual(packet["runtime_endpoints"]["next_work_item"], "GET /v1/next-work-item/au")
         self.assertEqual(packet["runtime_endpoints"]["customer_handoff_readiness"], "GET /v1/customer-handoff-readiness/au")

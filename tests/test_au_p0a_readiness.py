@@ -152,6 +152,7 @@ class AuP0aReadinessTest(unittest.TestCase):
                 phase="preflight",
                 runbook_path=runbook_path,
                 env=self._env(),
+                env_file_path=Path(temp_dir) / "missing.env",
                 generated_at="2026-06-11T00:00:00Z",
             )
 

@@ -27,11 +27,11 @@ make verify-au-p0a-runbook
 
 ```bash
 make verify-au-p0a-env-template
-cp .env.au-p0a.example .env.au-p0a
-chmod 600 .env.au-p0a
+make au-p0a-env-bootstrap
+make verify-au-p0a-env-bootstrap
 ```
 
-再把 `.env.au-p0a` 中的 provider key、数据库连接和对象存储配置替换为真实值，或直接在 shell 中导出变量：
+`make au-p0a-env-bootstrap` 会在本地 `.env.au-p0a` 缺失时从模板创建文件、设置 `0600` 权限，并把 template hash、env-file path/mode、gitignored/not tracked 状态和 `env_file_bootstrap_hash` 写入 `docs/runtime_preflight/au-p0a-env-bootstrap-latest.json`；不会落任何 raw secret。再把 `.env.au-p0a` 中的 provider key、数据库连接和对象存储配置替换为真实值，或直接在 shell 中导出变量：
 
 ```bash
 export PERPLEXITY_API_KEY=...
@@ -250,7 +250,7 @@ status report 必须确认：
 execution checklist 必须确认：
 
 - `p0a_execution_checklist_hash` 可由 `make verify-au-p0a-execution-checklist` 复算
-- setup commands 固定 env template gate、env 模板复制、`chmod 600 .env.au-p0a`、runbook、env report、environment checklist 和 dry-run 顺序
+- setup commands 固定 env template gate、`make au-p0a-env-bootstrap`、`make verify-au-p0a-env-bootstrap`、runbook、env report、environment checklist 和 dry-run 顺序
 - `credential_handoff` 逐项列出 `PERPLEXITY_API_KEY`、`OPENAI_API_KEY`、`DATABASE_URL`，并记录 owner hint、允许注入方式（process env、`GENO_AU_P0A_ENV_FILE`、`.env.au-p0a`）、env-file key、缺失状态、填充后的验证命令和 redaction policy
 - `credential_handoff.missing_required` 必须与 status report 的 required env blockers 一致，`ready` 只在三项必填凭证均存在时为 true
 - execution commands 固定 preflight、preflight manifest、small batch、small manifest、full batch 和 full manifest 的运行/验证顺序

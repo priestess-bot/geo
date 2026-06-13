@@ -235,8 +235,8 @@ def verify_au_p0a_environment_checklist(
     verification_ids = _command_ids(_as_list(checklist.get("verification_commands")))
     for command_id in {
         "verify_env_template",
-        "copy_env_template",
-        "chmod_env_file",
+        "bootstrap_env_file",
+        "verify_env_file_bootstrap",
         "build_runbook",
         "build_env_report",
         "verify_env_report",

@@ -82,7 +82,6 @@ def _command_ids(commands: list[object]) -> set[str]:
 def _validate_credential_handoff(
     handoff: dict[str, Any],
     *,
-    remaining_blockers: list[str],
     errors: list[str],
 ) -> None:
     if handoff.get("version") != "au_p0a_credential_handoff_v1":
@@ -107,11 +106,9 @@ def _validate_credential_handoff(
             errors.append(f"credential_handoff_required_item_missing:{required_name}")
     missing_required = sorted(str(item) for item in _as_list(handoff.get("missing_required")))
     expected_missing = sorted(
-        {
-            blocker.rsplit(":", 1)[-1]
-            for blocker in remaining_blockers
-            if ":required_env_missing:" in blocker
-        }
+        str(item.get("name", ""))
+        for item in credential_items
+        if item.get("required") is True and item.get("present") is not True
     )
     if missing_required != expected_missing:
         errors.append("credential_handoff_missing_required_mismatch")
@@ -122,13 +119,14 @@ def _validate_credential_handoff(
     setup_commands = [str(item) for item in _as_list(handoff.get("setup_commands"))]
     for command in {
         "make verify-au-p0a-env-template",
-        "cp .env.au-p0a.example .env.au-p0a",
-        "chmod 600 .env.au-p0a",
+        "make au-p0a-env-bootstrap",
+        "make verify-au-p0a-env-bootstrap",
     }:
         if command not in setup_commands:
             errors.append(f"credential_handoff_setup_command_missing:{command}")
     verification_commands = [str(item) for item in _as_list(handoff.get("verification_commands"))]
     for command in {
+        "make verify-au-p0a-env-bootstrap",
         "make au-p0a-env",
         "make verify-au-p0a-env",
         "make au-p0a-environment-checklist",
@@ -418,8 +416,8 @@ def verify_au_p0a_execution_checklist(
     verification_ids = _command_ids(_as_list(checklist.get("verification_commands")))
     for command_id in {
         "verify_env_template",
-        "copy_env_template",
-        "chmod_env_file",
+        "bootstrap_env_file",
+        "verify_env_file_bootstrap",
         "build_runbook",
         "build_env_report",
         "verify_env_report",
@@ -428,7 +426,7 @@ def verify_au_p0a_execution_checklist(
     }:
         if command_id not in setup_ids:
             errors.append(f"setup_command_missing:{command_id}")
-    _validate_credential_handoff(credential_handoff, remaining_blockers=remaining_blockers, errors=errors)
+    _validate_credential_handoff(credential_handoff, errors=errors)
     _validate_real_batch_phase_handoff(
         real_batch_phase_handoff,
         summary=summary,

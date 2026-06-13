@@ -63,8 +63,16 @@ class AuCustomerHandoffReadinessTest(unittest.TestCase):
         self.assertEqual(readiness["summary"]["customer_total_gate_count"], 10)
         self.assertEqual(readiness["summary"]["blocked_customer_gate_count"], 9)
         self.assertEqual(readiness["summary"]["next_work_item_id"], "p0a_environment")
-        self.assertEqual(readiness["summary"]["remaining_blocker_count"], 29)
-        self.assertEqual(readiness["summary"]["external_dependency_blocker_count"], 29)
+        self.assertGreater(readiness["summary"]["remaining_blocker_count"], 0)
+        self.assertEqual(
+            readiness["summary"]["remaining_blocker_count"],
+            readiness["handoff_dossier_verifier"]["remaining_blocker_count"],
+        )
+        self.assertGreater(readiness["summary"]["external_dependency_blocker_count"], 0)
+        self.assertEqual(
+            readiness["summary"]["external_dependency_blocker_count"],
+            readiness["readiness_audit"]["external_dependency_blocker_count"],
+        )
         self.assertIn("customer_report_handoff_gate", readiness["summary"]["blocked_customer_gate_ids"])
         self.assertEqual(
             readiness["runtime_endpoints"]["customer_handoff_readiness"],

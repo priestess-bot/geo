@@ -233,7 +233,8 @@ class AuP0aExecutionChecklistTest(unittest.TestCase):
         self.assertEqual(checklist["next_action"], "configure_required_environment")
         self.assertIn("preflight_json", checklist["summary"]["missing_artifacts"])
         self.assertIn("verify_env_template", {command["id"] for command in checklist["setup_commands"]})
-        self.assertIn("chmod_env_file", {command["id"] for command in checklist["setup_commands"]})
+        self.assertIn("bootstrap_env_file", {command["id"] for command in checklist["setup_commands"]})
+        self.assertIn("verify_env_file_bootstrap", {command["id"] for command in checklist["setup_commands"]})
         self.assertIn("hard_status_gate", {command["id"] for command in checklist["verification_commands"]})
         self.assertFalse(checklist["credential_handoff"]["ready"])
         self.assertEqual(checklist["credential_handoff"]["missing_required_count"], 3)
@@ -241,7 +242,8 @@ class AuP0aExecutionChecklistTest(unittest.TestCase):
             sorted(checklist["credential_handoff"]["missing_required"]),
             ["DATABASE_URL", "OPENAI_API_KEY", "PERPLEXITY_API_KEY"],
         )
-        self.assertIn("chmod 600 .env.au-p0a", checklist["credential_handoff"]["setup_commands"])
+        self.assertIn("make au-p0a-env-bootstrap", checklist["credential_handoff"]["setup_commands"])
+        self.assertIn("make verify-au-p0a-env-bootstrap", checklist["credential_handoff"]["setup_commands"])
         self.assertFalse(checklist["credential_handoff"]["redaction_policy"]["raw_secret_values_allowed"])
         self.assertEqual(checklist["credential_handoff"]["redaction_policy"]["forbidden_exact_secret_field_count"], 2)
         self.assertTrue(checklist["credential_handoff"]["redaction_policy"]["forbidden_exact_secret_fields_redacted"])
@@ -418,7 +420,7 @@ class AuP0aExecutionChecklistTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("credential_handoff_missing_required_mismatch", verification["errors"])
-        self.assertIn("credential_handoff_setup_command_missing:chmod 600 .env.au-p0a", verification["errors"])
+        self.assertIn("credential_handoff_setup_command_missing:make au-p0a-env-bootstrap", verification["errors"])
 
     def test_verifier_requires_real_batch_phase_handoff_to_match_artifacts(self) -> None:
         with TemporaryDirectory() as temp_dir:
