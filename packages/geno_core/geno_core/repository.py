@@ -16,6 +16,7 @@ from geno_core.audit import build_audit_event
 from geno_core.email_delivery import (
     render_project_member_invitation_email,
     render_runtime_notification_email,
+    runtime_email_body_hash,
     send_runtime_email_message,
 )
 from geno_core.models import (
@@ -273,6 +274,53 @@ def _runtime_notification_email_recipients(endpoint_url: str) -> list[str]:
     ]
 
 
+def _runtime_notification_email_metadata(subscription: dict[str, Any]) -> dict[str, Any]:
+    metadata = subscription.get("metadata")
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _metadata_header_value(metadata: dict[str, Any], key: str) -> str:
+    value = metadata.get(key)
+    if value is None:
+        return ""
+    return " ".join(str(value).replace("\r", "\n").split()).strip()
+
+
+def _metadata_http_url(metadata: dict[str, Any], key: str) -> str:
+    raw_url = _metadata_header_value(metadata, key)
+    if not raw_url:
+        return ""
+    parsed = urlparse(raw_url)
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        return raw_url
+    return ""
+
+
+def _metadata_mailto_url(metadata: dict[str, Any], key: str) -> str:
+    raw_url = _metadata_header_value(metadata, key)
+    if not raw_url:
+        return ""
+    parsed = urlparse(raw_url)
+    if parsed.scheme == "mailto" and parsed.path:
+        return raw_url
+    if "@" in raw_url and not parsed.scheme and not any(separator in raw_url for separator in " <>"):
+        return f"mailto:{raw_url}"
+    return ""
+
+
+def _runtime_notification_email_control_metadata(metadata: dict[str, Any]) -> dict[str, str]:
+    controls = {
+        "email_unsubscribe_url": _metadata_http_url(metadata, "email_unsubscribe_url"),
+        "email_unsubscribe_mailto": _metadata_mailto_url(metadata, "email_unsubscribe_mailto"),
+        "email_preferences_url": _metadata_http_url(metadata, "email_preferences_url"),
+    }
+    return {key: value for key, value in controls.items() if value}
+
+
+def _runtime_notification_email_control_hashes(controls: dict[str, str]) -> dict[str, str]:
+    return {f"{key}_hash": runtime_email_body_hash(value) for key, value in controls.items() if value}
+
+
 def _runtime_notification_email_payload(
     *,
     notification: dict[str, Any],
@@ -285,6 +333,8 @@ def _runtime_notification_email_payload(
     message = str(notification.get("message") or "").strip()
     target_type = str(notification.get("target_type") or "target").strip()
     target_id = str(notification.get("target_id") or "").strip()
+    subscription_metadata = _runtime_notification_email_metadata(subscription)
+    control_metadata = _runtime_notification_email_control_metadata(subscription_metadata)
     rendered_email = render_runtime_notification_email(
         notification_id=str(notification.get("id")),
         project_id=str(notification.get("project_id")),
@@ -296,18 +346,40 @@ def _runtime_notification_email_payload(
         target_id=target_id,
         title=title,
         message=message,
+        unsubscribe_url=control_metadata.get("email_unsubscribe_url") or control_metadata.get("email_unsubscribe_mailto"),
+        preferences_url=control_metadata.get("email_preferences_url"),
     )
+    headers = {
+        "X-GENO-Notification-Id": str(notification.get("id")),
+        "X-GENO-Project-Id": str(notification.get("project_id")),
+        "X-GENO-Notification-Type": notification_type,
+        "X-GENO-Severity": severity,
+        "X-GENO-Email-Template-Version": rendered_email.template_version,
+    }
+    reply_to = _metadata_header_value(subscription_metadata, "email_reply_to")
+    if reply_to:
+        headers["Reply-To"] = reply_to
+    unsubscribe_header_urls = [
+        value
+        for value in (
+            control_metadata.get("email_unsubscribe_url"),
+            control_metadata.get("email_unsubscribe_mailto"),
+        )
+        if value
+    ]
+    if unsubscribe_header_urls:
+        headers["List-Unsubscribe"] = ", ".join(f"<{value}>" for value in unsubscribe_header_urls)
+        if control_metadata.get("email_unsubscribe_url"):
+            headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+    if control_metadata.get("email_preferences_url"):
+        headers["X-GENO-Notification-Preferences-Url"] = control_metadata["email_preferences_url"]
+    control_hashes = _runtime_notification_email_control_hashes(control_metadata)
+    reply_to_hash = runtime_email_body_hash(reply_to) if reply_to else ""
     return {
         "to": _runtime_notification_email_recipients(str(subscription.get("endpoint_url") or "")),
         "subject": rendered_email.subject,
         "text": rendered_email.text,
-        "headers": {
-            "X-GENO-Notification-Id": str(notification.get("id")),
-            "X-GENO-Project-Id": str(notification.get("project_id")),
-            "X-GENO-Notification-Type": notification_type,
-            "X-GENO-Severity": severity,
-            "X-GENO-Email-Template-Version": rendered_email.template_version,
-        },
+        "headers": headers,
         "metadata": {
             "notification_id": str(notification.get("id")),
             "notification_type": notification_type,
@@ -318,6 +390,8 @@ def _runtime_notification_email_payload(
             "email_template_hash": rendered_email.template_hash,
             "email_subject_hash": rendered_email.subject_hash,
             "email_body_hash": rendered_email.body_hash,
+            "email_reply_to_hash": reply_to_hash,
+            "email_control_hashes": control_hashes,
         },
     }
 
@@ -8457,6 +8531,26 @@ class PostgresEvidenceRepository:
                 ),
             )
             after = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)
+            subscription_output_refs = {
+                "runtime_notification_subscription_ids": [str(after["id"])],
+                "status": [status],
+            }
+            if channel == "email":
+                email_metadata = _runtime_notification_email_metadata(after)
+                control_hashes = _runtime_notification_email_control_hashes(
+                    _runtime_notification_email_control_metadata(email_metadata)
+                )
+                reply_to = _metadata_header_value(email_metadata, "email_reply_to")
+                subscription_output_refs.update(
+                    {
+                        "email_control_hashes": [
+                            f"{key}:{value}"
+                            for key, value in sorted(control_hashes.items())
+                            if value
+                        ],
+                        "email_reply_to_hashes": [runtime_email_body_hash(reply_to)] if reply_to else [],
+                    }
+                )
             audit_event = build_audit_event(
                 event_type="runtime_notification_subscription_saved",
                 project_id=project_id,
@@ -8471,10 +8565,7 @@ class PostgresEvidenceRepository:
                     "channel": [channel],
                     "event_types": list(event_types),
                 },
-                output_refs={
-                    "runtime_notification_subscription_ids": [str(after["id"])],
-                    "status": [status],
-                },
+                output_refs=subscription_output_refs,
                 method_version="runtime_notification_subscription_v1",
                 reason=reason or f"save runtime notification {channel} subscription",
             )
@@ -9550,6 +9641,11 @@ class PostgresEvidenceRepository:
                 if channel == "email":
                     email_payload = payload.get("email") if isinstance(payload.get("email"), dict) else {}
                     email_metadata = email_payload.get("metadata") if isinstance(email_payload.get("metadata"), dict) else {}
+                    email_control_hashes = (
+                        email_metadata.get("email_control_hashes")
+                        if isinstance(email_metadata.get("email_control_hashes"), dict)
+                        else {}
+                    )
                     delivery_output_refs.update(
                         {
                             "email_template_versions": [
@@ -9558,6 +9654,16 @@ class PostgresEvidenceRepository:
                             "email_template_hashes": [str(email_metadata.get("email_template_hash") or "")],
                             "email_subject_hashes": [str(email_metadata.get("email_subject_hash") or "")],
                             "email_body_hashes": [str(email_metadata.get("email_body_hash") or "")],
+                            "email_reply_to_hashes": [
+                                str(email_metadata.get("email_reply_to_hash") or "")
+                            ]
+                            if email_metadata.get("email_reply_to_hash")
+                            else [],
+                            "email_control_hashes": [
+                                f"{key}:{value}"
+                                for key, value in sorted(email_control_hashes.items())
+                                if value
+                            ],
                         }
                     )
                 delivery_audit_events.append(

@@ -214,12 +214,27 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
                         "headers": {
                             "X-GENO-Severity": "critical",
                             "X-GENO-Email-Template-Version": RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION,
+                            "Reply-To": "reports@example.com",
+                            "List-Unsubscribe": (
+                                "<https://app.example.com/notifications/unsubscribe>, "
+                                "<mailto:unsubscribe@example.com>"
+                            ),
+                            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                            "X-GENO-Notification-Preferences-Url": (
+                                "https://app.example.com/notifications/preferences"
+                            ),
                         },
                         "metadata": {
                             "email_template_version": RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION,
                             "email_template_hash": "template-hash",
                             "email_subject_hash": "subject-hash",
                             "email_body_hash": "body-hash",
+                            "email_reply_to_hash": "reply-to-hash",
+                            "email_control_hashes": {
+                                "email_unsubscribe_url_hash": "unsubscribe-url-hash",
+                                "email_unsubscribe_mailto_hash": "unsubscribe-mailto-hash",
+                                "email_preferences_url_hash": "preferences-url-hash",
+                            },
                         },
                     },
                     "delivery_version": "runtime_notification_delivery_email_v1",
@@ -259,6 +274,16 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         self.assertEqual(sent[0][1]["Subject"], "[GENO CRITICAL] Brand absent in Sydney")
         self.assertEqual(sent[0][1]["X-GENO-Severity"], "critical")
         self.assertEqual(sent[0][1]["X-GENO-Email-Template-Version"], RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION)
+        self.assertEqual(sent[0][1]["Reply-To"], "reports@example.com")
+        self.assertEqual(
+            sent[0][1]["List-Unsubscribe"],
+            "<https://app.example.com/notifications/unsubscribe>, <mailto:unsubscribe@example.com>",
+        )
+        self.assertEqual(sent[0][1]["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click")
+        self.assertEqual(
+            sent[0][1]["X-GENO-Notification-Preferences-Url"],
+            "https://app.example.com/notifications/preferences",
+        )
         self.assertEqual(repository.status_updates[-1].status, "delivered")
 
     def test_process_next_notification_delivery_requeues_email_when_smtp_is_missing(self) -> None:

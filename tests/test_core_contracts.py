@@ -425,6 +425,8 @@ class CoreContractsTest(unittest.TestCase):
             target_id="brand_absent:project-1",
             title="Brand absent in Sydney",
             message="Brand was absent from critical AI search prompts.",
+            unsubscribe_url="https://app.example.com/notifications/unsubscribe",
+            preferences_url="https://app.example.com/notifications/preferences",
         )
 
         self.assertEqual(rendered.subject, "[GENO CRITICAL] Brand absent in Sydney")
@@ -432,6 +434,9 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("Brand was absent from critical AI search prompts.", rendered.text)
         self.assertIn("Type: runtime_alert", rendered.text)
         self.assertIn("Target ID: brand_absent:project-1", rendered.text)
+        self.assertIn("Notification controls:", rendered.text)
+        self.assertIn("Unsubscribe: https://app.example.com/notifications/unsubscribe", rendered.text)
+        self.assertIn("Preferences: https://app.example.com/notifications/preferences", rendered.text)
         self.assertEqual(rendered.subject_hash, runtime_email_body_hash(rendered.subject))
         self.assertEqual(rendered.body_hash, runtime_email_body_hash(rendered.text))
         self.assertRegex(rendered.template_hash, r"^[0-9a-f]{64}$")
@@ -7568,7 +7573,12 @@ class CoreContractsTest(unittest.TestCase):
             "event_types": ["runtime_alert"],
             "severity_threshold": "warning",
             "status": "active",
-            "metadata": {"email_reply_to": "reports@example.com"},
+            "metadata": {
+                "email_reply_to": "reports@example.com",
+                "email_unsubscribe_url": "https://app.example.com/notifications/unsubscribe",
+                "email_unsubscribe_mailto": "mailto:unsubscribe@example.com",
+                "email_preferences_url": "https://app.example.com/notifications/preferences",
+            },
             "created_by": "runtime-console",
             "created_at": now,
             "updated_by": "runtime-console",
@@ -7618,9 +7628,18 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("email_template_hash", str(delivery_insert_params[8]))
         self.assertIn("email_subject_hash", str(delivery_insert_params[8]))
         self.assertIn("email_body_hash", str(delivery_insert_params[8]))
+        self.assertIn("List-Unsubscribe", str(delivery_insert_params[8]))
+        self.assertIn("List-Unsubscribe=One-Click", str(delivery_insert_params[8]))
+        self.assertIn("Reply-To", str(delivery_insert_params[8]))
+        self.assertIn("X-GENO-Notification-Preferences-Url", str(delivery_insert_params[8]))
+        self.assertIn("Notification controls:", str(delivery_insert_params[8]))
+        self.assertIn("email_control_hashes", str(delivery_insert_params[8]))
+        self.assertIn("email_reply_to_hash", str(delivery_insert_params[8]))
         self.assertIn("email_template_hashes", str(audit_events[0].output_refs))
         self.assertIn("email_subject_hashes", str(audit_events[0].output_refs))
         self.assertIn("email_body_hashes", str(audit_events[0].output_refs))
+        self.assertIn("email_reply_to_hashes", str(audit_events[0].output_refs))
+        self.assertIn("email_control_hashes", str(audit_events[0].output_refs))
 
     def test_postgres_repository_lists_runtime_notification_deliveries_with_context(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)

@@ -9,7 +9,7 @@ from typing import Any
 
 
 DEFAULT_RUNTIME_EMAIL_SMTP_ENV_PREFIX = "GENO_NOTIFICATION_SMTP"
-RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION = "runtime_notification_email_template_v1"
+RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION = "runtime_notification_email_template_v2"
 RUNTIME_NOTIFICATION_EMAIL_TEMPLATE = """{title}
 
 {message}
@@ -20,7 +20,7 @@ Threshold: {threshold}
 Target: {target_type}
 {target_line}Notification ID: {notification_id}
 Project ID: {project_id}
-Subscription ID: {subscription_id}"""
+Subscription ID: {subscription_id}{control_footer}"""
 PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION = "project_member_invitation_email_template_v1"
 PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE = """{custom_message}
 
@@ -105,6 +105,8 @@ def render_runtime_notification_email(
     target_id: str | None = None,
     title: str | None = None,
     message: str | None = None,
+    unsubscribe_url: str | None = None,
+    preferences_url: str | None = None,
 ) -> RuntimeEmailTemplateRenderResult:
     rendered_title = (title or "").strip() or "GENO runtime notification"
     rendered_message = (message or "").strip() or "A GENO runtime notification was generated."
@@ -113,8 +115,16 @@ def render_runtime_notification_email(
     rendered_threshold = (threshold or "info").strip().lower() or "info"
     rendered_target_type = (target_type or "target").strip() or "target"
     rendered_target_id = (target_id or "").strip()
+    rendered_unsubscribe_url = (unsubscribe_url or "").strip()
+    rendered_preferences_url = (preferences_url or "").strip()
     rendered_subject = f"[GENO {rendered_severity.upper()}] {rendered_title}"
     target_line = f"Target ID: {rendered_target_id}\n" if rendered_target_id else ""
+    control_lines: list[str] = []
+    if rendered_unsubscribe_url:
+        control_lines.append(f"Unsubscribe: {rendered_unsubscribe_url}")
+    if rendered_preferences_url:
+        control_lines.append(f"Preferences: {rendered_preferences_url}")
+    control_footer = "\n\nNotification controls:\n" + "\n".join(control_lines) if control_lines else ""
     text = RUNTIME_NOTIFICATION_EMAIL_TEMPLATE.format(
         title=rendered_title,
         message=rendered_message,
@@ -126,6 +136,7 @@ def render_runtime_notification_email(
         notification_id=notification_id,
         project_id=project_id,
         subscription_id=subscription_id,
+        control_footer=control_footer,
     )
     return RuntimeEmailTemplateRenderResult(
         subject=rendered_subject,
@@ -186,8 +197,9 @@ def send_runtime_email_message(
     message["Subject"] = subject.strip() or "GENO runtime email"
     for header_name, header_value in (headers or {}).items():
         header = str(header_name).strip()
-        if header and header.lower() not in {"from", "to", "subject"}:
-            message[header] = str(header_value)
+        cleaned_value = " ".join(str(header_value).replace("\r", "\n").split())
+        if header and cleaned_value and header.lower() not in {"from", "to", "subject"}:
+            message[header] = cleaned_value
     message.set_content(text)
     if email_sender is not None:
         response_status, response_body = email_sender(config, message, list(recipient_addresses))

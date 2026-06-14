@@ -5009,7 +5009,13 @@ async function saveRuntimeNotificationSubscription(formData: FormData) {
           ? String(formData.get("previous_signing_secret_key_id") || "").trim() || undefined
           : undefined,
       slack_channel: channel === "slack" ? String(formData.get("slack_channel") || "").trim() || undefined : undefined,
-      email_reply_to: channel === "email" ? String(formData.get("email_reply_to") || "").trim() || undefined : undefined
+      email_reply_to: channel === "email" ? String(formData.get("email_reply_to") || "").trim() || undefined : undefined,
+      email_unsubscribe_url:
+        channel === "email" ? String(formData.get("email_unsubscribe_url") || "").trim() || undefined : undefined,
+      email_unsubscribe_mailto:
+        channel === "email" ? String(formData.get("email_unsubscribe_mailto") || "").trim() || undefined : undefined,
+      email_preferences_url:
+        channel === "email" ? String(formData.get("email_preferences_url") || "").trim() || undefined : undefined
     },
     updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
     reason: String(formData.get("reason") || "").trim() || undefined
@@ -11599,6 +11605,18 @@ export default async function Home({
             <label>
               <span>Email reply-to</span>
               <input name="email_reply_to" placeholder="reports@example.com" />
+            </label>
+            <label>
+              <span>Email unsubscribe URL</span>
+              <input name="email_unsubscribe_url" placeholder="https://app.example.com/notifications/unsubscribe" />
+            </label>
+            <label>
+              <span>Email unsubscribe mailto</span>
+              <input name="email_unsubscribe_mailto" placeholder="mailto:unsubscribe@example.com" />
+            </label>
+            <label>
+              <span>Email preferences URL</span>
+              <input name="email_preferences_url" placeholder="https://app.example.com/notifications/preferences" />
             </label>
             <label>
               <span>Severity</span>

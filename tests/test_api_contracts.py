@@ -7094,7 +7094,13 @@ class ApiContractsTest(unittest.TestCase):
                     "event_types": ["report_export_job"],
                     "severity_threshold": "critical",
                     "status": "active",
-                    "metadata": {"source": "api-test", "email_reply_to": "reports@example.com"},
+                    "metadata": {
+                        "source": "api-test",
+                        "email_reply_to": "reports@example.com",
+                        "email_unsubscribe_url": "https://app.example.com/notifications/unsubscribe",
+                        "email_unsubscribe_mailto": "mailto:unsubscribe@example.com",
+                        "email_preferences_url": "https://app.example.com/notifications/preferences",
+                    },
                     "updated_by": "runtime-console",
                     "reason": "save email subscription",
                 },
@@ -7105,6 +7111,18 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["subscription"]["severity_threshold"], "critical")
         self.assertEqual(fake_repository.subscription.endpoint_url, "mailto:ops@example.com")
         self.assertEqual(fake_repository.subscription.metadata["email_reply_to"], "reports@example.com")
+        self.assertEqual(
+            fake_repository.subscription.metadata["email_unsubscribe_url"],
+            "https://app.example.com/notifications/unsubscribe",
+        )
+        self.assertEqual(
+            fake_repository.subscription.metadata["email_unsubscribe_mailto"],
+            "mailto:unsubscribe@example.com",
+        )
+        self.assertEqual(
+            fake_repository.subscription.metadata["email_preferences_url"],
+            "https://app.example.com/notifications/preferences",
+        )
         self.assertEqual(fake_repository.subscription.reason, "save email subscription")
 
     def test_runtime_notification_deliveries_endpoint_returns_page(self) -> None:
