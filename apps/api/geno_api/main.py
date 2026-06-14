@@ -137,6 +137,10 @@ from scripts.build_au_customer_handoff_readiness import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH,
     build_au_customer_handoff_readiness,
 )
+from scripts.build_au_customer_handoff_clearance import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH,
+    build_au_customer_handoff_clearance,
+)
 from scripts.build_au_next_work_item_packet import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_NEXT_WORK_ITEM_OUTPUT_PATH,
     build_au_next_work_item_packet,
@@ -2550,6 +2554,75 @@ def au_delivery_progress() -> dict[str, object]:
             output_path=external_dependency_clearance_path,
         ),
         output_path=Path(os.getenv("GENO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", DEFAULT_AU_DELIVERY_PROGRESS_OUTPUT_PATH)),
+    )
+
+
+@app.get("/v1/customer-handoff-clearance/au")
+def au_customer_handoff_clearance() -> dict[str, object]:
+    handoff_dossier_path = Path(
+        os.getenv("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH)
+    )
+    customer_handoff_readiness_path = Path(
+        os.getenv(
+            "GENO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH",
+            DEFAULT_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH,
+        )
+    )
+    delivery_progress_path = Path(
+        os.getenv("GENO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", DEFAULT_AU_DELIVERY_PROGRESS_OUTPUT_PATH)
+    )
+    external_dependency_handoff_path = Path(
+        os.getenv(
+            "GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
+        )
+    )
+    external_dependency_clearance_path = Path(
+        os.getenv(
+            "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    handoff_dossier = au_handoff_dossier()
+    customer_handoff_readiness = build_au_customer_handoff_readiness(
+        handoff_dossier_path=handoff_dossier_path,
+        handoff_dossier=handoff_dossier,
+        output_path=customer_handoff_readiness_path,
+    )
+    external_dependency_handoff = _build_au_external_dependency_handoff_from_env()
+    external_dependency_clearance = run_au_external_dependency_clearance(
+        handoff_path=external_dependency_handoff_path,
+        handoff=external_dependency_handoff,
+        output_path=external_dependency_clearance_path,
+    )
+    delivery_progress = build_au_delivery_progress(
+        handoff_dossier_path=handoff_dossier_path,
+        customer_handoff_readiness_path=customer_handoff_readiness_path,
+        external_dependency_handoff_path=external_dependency_handoff_path,
+        external_dependency_clearance_path=external_dependency_clearance_path,
+        handoff_dossier=handoff_dossier,
+        customer_handoff_readiness=customer_handoff_readiness,
+        external_dependency_handoff=external_dependency_handoff,
+        external_dependency_clearance=external_dependency_clearance,
+        output_path=delivery_progress_path,
+    )
+    return build_au_customer_handoff_clearance(
+        handoff_dossier_path=handoff_dossier_path,
+        customer_handoff_readiness_path=customer_handoff_readiness_path,
+        delivery_progress_path=delivery_progress_path,
+        external_dependency_handoff_path=external_dependency_handoff_path,
+        external_dependency_clearance_path=external_dependency_clearance_path,
+        handoff_dossier=handoff_dossier,
+        customer_handoff_readiness=customer_handoff_readiness,
+        delivery_progress=delivery_progress,
+        external_dependency_handoff=external_dependency_handoff,
+        external_dependency_clearance=external_dependency_clearance,
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
     )
 
 
@@ -6402,6 +6475,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/au-retest-execution-status",
             "/v1/handoff-dossier/au",
             "/v1/customer-handoff-readiness/au",
+            "/v1/customer-handoff-clearance/au",
             "/v1/next-work-item/au",
             "/v1/delivery-progress/au",
             "/v1/external-dependency-handoff/au",

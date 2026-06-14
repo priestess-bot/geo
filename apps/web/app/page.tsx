@@ -739,6 +739,7 @@ type RuntimeData = {
   retestExecutionStatus: AuRetestExecutionStatus | null;
   handoffDossier: AuHandoffDossier | null;
   customerHandoffReadiness: AuCustomerHandoffReadiness | null;
+  customerHandoffClearance: AuCustomerHandoffClearance | null;
   nextWorkItemPacket: AuNextWorkItemPacket | null;
   deliveryProgress: AuDeliveryProgress | null;
   projects: PageResponse<RuntimeProject>;
@@ -1264,6 +1265,88 @@ type AuDeliveryProgress = {
     handoff_dossier?: string;
     customer_handoff_readiness?: string;
     next_work_item?: string;
+    external_dependency_handoff?: string;
+    external_dependency_clearance?: string;
+  };
+  hard_gate_commands?: string[];
+};
+
+type AuCustomerHandoffClearance = {
+  customer_handoff_clearance_version: string;
+  generated_at: string;
+  status: string;
+  customer_handoff_clearance_packet_ready: boolean;
+  customer_handoff_ready: boolean;
+  customer_handoff_clearance_ready: boolean;
+  ready_for_report_export_handoff: boolean;
+  blocked_by_prerequisite_step: boolean;
+  customer_handoff_clearance_hash: string;
+  summary?: {
+    required_count?: number;
+    fulfilled_required_count?: number;
+    missing_required_count?: number;
+    missing_required?: string[];
+    blocking_reason_count?: number;
+    blocking_reasons?: string[];
+    customer_report_handoff_readiness_percent?: number;
+    engineering_progress_percent?: number;
+    structural_auditability_percent?: number;
+    customer_gate_count?: number;
+    ready_customer_gate_count?: number;
+    blocked_customer_gate_count?: number;
+    blocked_customer_gate_ids?: string[];
+    blocked_progress_gate_ids?: string[];
+    prerequisite_step_ids?: string[];
+    prerequisite_steps_ready?: boolean;
+    current_global_clearance_step_id?: string;
+    target_clearance_step_id?: string;
+    target_clearance_step_can_start?: boolean;
+    target_clearance_step_ready?: boolean;
+    customer_handoff_clearance_ready?: boolean;
+    ready_for_report_export_handoff?: boolean;
+    next_action?: string;
+    next_command?: string;
+    operator_step_count?: number;
+    post_update_validation_command_count?: number;
+    handoff_dossier_hash?: string;
+    customer_handoff_readiness_hash?: string;
+    delivery_progress_hash?: string;
+    external_dependency_handoff_hash?: string;
+    clearance_execution_hash?: string;
+  };
+  clearance_step?: {
+    id?: string;
+    step_ready?: boolean;
+    step_can_start?: boolean;
+    step_status?: string;
+    blocked_by?: string[];
+    strict_gate_command?: string;
+  };
+  prerequisite_steps?: Array<{
+    id?: string;
+    ready?: boolean;
+    status?: string;
+    blocked_by?: string[];
+    runtime_endpoint?: string;
+  }>;
+  customer_handoff_clearance_items?: Array<{
+    key?: string;
+    gate_id?: string;
+    title?: string;
+    stage?: string;
+    fulfilled?: boolean;
+    ready?: boolean;
+    status?: string;
+    evidence_ref?: string;
+    blocking_reasons?: string[];
+  }>;
+  operator_steps?: Array<{ order?: number; id?: string; command?: string; purpose?: string; blocked?: boolean }>;
+  post_update_validation_sequence?: string[];
+  runtime_endpoints?: {
+    customer_handoff_clearance?: string;
+    handoff_dossier?: string;
+    customer_handoff_readiness?: string;
+    delivery_progress?: string;
     external_dependency_handoff?: string;
     external_dependency_clearance?: string;
   };
@@ -3318,6 +3401,7 @@ const endpoints = {
   retestExecutionStatus: "/v1/au-retest-execution-status",
   handoffDossier: "/v1/handoff-dossier/au",
   customerHandoffReadiness: "/v1/customer-handoff-readiness/au",
+  customerHandoffClearance: "/v1/customer-handoff-clearance/au",
   nextWorkItem: "/v1/next-work-item/au",
   deliveryProgress: "/v1/delivery-progress/au",
   projects: "/v1/projects/runtime",
@@ -4748,6 +4832,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     retestExecutionStatus: endpoints.retestExecutionStatus,
     handoffDossier: endpoints.handoffDossier,
     customerHandoffReadiness: endpoints.customerHandoffReadiness,
+    customerHandoffClearance: endpoints.customerHandoffClearance,
     nextWorkItem: endpoints.nextWorkItem,
     deliveryProgress: endpoints.deliveryProgress,
     projects: runtimePath(endpoints.projects, projectListParams),
@@ -5079,6 +5164,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     retestExecutionStatus,
     handoffDossier,
     customerHandoffReadiness,
+    customerHandoffClearance,
     nextWorkItemPacket,
     deliveryProgress,
     prompts,
@@ -5178,6 +5264,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuRetestExecutionStatus | null>(baseUrl, paths.retestExecutionStatus, null),
     fetchRuntimeEndpoint<AuHandoffDossier | null>(baseUrl, paths.handoffDossier, null),
     fetchRuntimeEndpoint<AuCustomerHandoffReadiness | null>(baseUrl, paths.customerHandoffReadiness, null),
+    fetchRuntimeEndpoint<AuCustomerHandoffClearance | null>(baseUrl, paths.customerHandoffClearance, null),
     fetchRuntimeEndpoint<AuNextWorkItemPacket | null>(baseUrl, paths.nextWorkItem, null),
     fetchRuntimeEndpoint<AuDeliveryProgress | null>(baseUrl, paths.deliveryProgress, null),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
@@ -5355,6 +5442,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     retestExecutionStatus,
     handoffDossier,
     customerHandoffReadiness,
+    customerHandoffClearance,
     nextWorkItemPacket,
     deliveryProgress,
     projects,
@@ -5427,6 +5515,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       retestExecutionStatus: retestExecutionStatus.payload,
       handoffDossier: handoffDossier.payload,
       customerHandoffReadiness: customerHandoffReadiness.payload,
+      customerHandoffClearance: customerHandoffClearance.payload,
       nextWorkItemPacket: nextWorkItemPacket.payload,
       deliveryProgress: deliveryProgress.payload,
       projects: projects.payload,
@@ -5912,6 +6001,14 @@ export default async function Home({
   const customerHandoffReadinessSummary = customerHandoffReadiness?.summary;
   const customerHandoffReadinessBlockedGateIds =
     customerHandoffReadinessSummary?.blocked_customer_gate_ids || [];
+  const customerHandoffClearance = data.customerHandoffClearance;
+  const customerHandoffClearanceSummary = customerHandoffClearance?.summary;
+  const customerHandoffClearanceItems = customerHandoffClearance?.customer_handoff_clearance_items || [];
+  const topCustomerHandoffClearanceItems = customerHandoffClearanceItems.slice(0, 8);
+  const customerHandoffClearanceSteps = customerHandoffClearance?.operator_steps || [];
+  const topCustomerHandoffClearanceSteps = customerHandoffClearanceSteps.slice(0, 5);
+  const customerHandoffClearanceValidation =
+    customerHandoffClearance?.post_update_validation_sequence || [];
   const nextWorkItemPacket = data.nextWorkItemPacket;
   const nextWorkItemSummary = nextWorkItemPacket?.summary;
   const nextWorkItemCommands = nextWorkItemPacket?.commands || [];
@@ -7838,6 +7935,94 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.deliveryProgress}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>Customer handoff clearance</strong>
+            <span>
+              {customerHandoffClearance?.customer_handoff_clearance_version ||
+                "au_customer_handoff_clearance_v1"} · customer_handoff_clearance_hash{" "}
+              {shortHash(customerHandoffClearance?.customer_handoff_clearance_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>
+              Packet ready {customerHandoffClearance?.customer_handoff_clearance_packet_ready ? "yes" : "no"}
+            </span>
+            <span>
+              Customer handoff {customerHandoffClearance?.customer_handoff_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              Clearance {customerHandoffClearance?.customer_handoff_clearance_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              Report export handoff {customerHandoffClearance?.ready_for_report_export_handoff ? "ready" : "blocked"}
+            </span>
+            <span>
+              Prerequisites {customerHandoffClearanceSummary?.prerequisite_steps_ready ? "ready" : "blocked"}
+            </span>
+            <span>Status {customerHandoffClearance?.status || "unknown"}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>
+              Customer gates {customerHandoffClearanceSummary?.fulfilled_required_count || 0}/
+              {customerHandoffClearanceSummary?.required_count || 0} · blocked{" "}
+              {customerHandoffClearanceSummary?.missing_required_count || 0}
+            </span>
+            <span>Engineering progress {customerHandoffClearanceSummary?.engineering_progress_percent ?? 0}%</span>
+            <span>
+              Customer readiness{" "}
+              {customerHandoffClearanceSummary?.customer_report_handoff_readiness_percent ?? 0}%
+            </span>
+            <span>Clearance step {customerHandoffClearanceSummary?.target_clearance_step_id || "none"}</span>
+            <span>Current global step {customerHandoffClearanceSummary?.current_global_clearance_step_id || "none"}</span>
+            <span>Next action {customerHandoffClearanceSummary?.next_action || "none"}</span>
+            <span>Next command {customerHandoffClearanceSummary?.next_command || "none"}</span>
+            <span>
+              Missing gates {customerHandoffClearanceSummary?.missing_required?.slice(0, 5).join(", ") || "none"}
+            </span>
+            <span>Handoff hash {shortHash(customerHandoffClearanceSummary?.handoff_dossier_hash)}</span>
+            <span>Readiness hash {shortHash(customerHandoffClearanceSummary?.customer_handoff_readiness_hash)}</span>
+            <span>Progress hash {shortHash(customerHandoffClearanceSummary?.delivery_progress_hash)}</span>
+            <span>External hash {shortHash(customerHandoffClearanceSummary?.external_dependency_handoff_hash)}</span>
+            <span>
+              {customerHandoffClearance?.runtime_endpoints?.customer_handoff_clearance ||
+                "GET /v1/customer-handoff-clearance/au"}
+            </span>
+            <span>Hard gate: make verify-au-customer-handoff-clearance</span>
+            <span>
+              Hard gate:{" "}
+              {customerHandoffClearance?.hard_gate_commands?.find((command) =>
+                command.endsWith("--require-cleared")
+              ) ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_clearance.py docs/runtime_preflight/au-customer-handoff-clearance-latest.json --require-cleared"}
+            </span>
+          </div>
+          {topCustomerHandoffClearanceItems.length ? (
+            <div className="dependencyGroupGrid">
+              {topCustomerHandoffClearanceItems.map((item) => (
+                <div className="dependencyGroup" key={item.key || item.gate_id}>
+                  <strong>{item.title || item.gate_id}</strong>
+                  <span>
+                    {item.fulfilled ? "ready" : "blocked"} · {item.stage || "handoff"}
+                  </span>
+                  <small>{item.evidence_ref || "no evidence ref"}</small>
+                  <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "gate clear"}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {topCustomerHandoffClearanceSteps.length ? (
+            <div className="handoffBoundary">
+              {topCustomerHandoffClearanceSteps.map((step) => (
+                <span key={step.id || step.command}>
+                  {step.id}: {step.command}
+                </span>
+              ))}
+              <span>Validation commands {customerHandoffClearanceValidation.length}</span>
+            </div>
+          ) : null}
+          <code>{paths.customerHandoffClearance}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">

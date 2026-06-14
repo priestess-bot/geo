@@ -1,0 +1,825 @@
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.build_au_customer_handoff_readiness import (  # noqa: E402
+    DEFAULT_OUTPUT_PATH as DEFAULT_CUSTOMER_HANDOFF_READINESS_PATH,
+    build_au_customer_handoff_readiness,
+)
+from scripts.build_au_delivery_progress import (  # noqa: E402
+    DEFAULT_OUTPUT_PATH as DEFAULT_DELIVERY_PROGRESS_PATH,
+    build_au_delivery_progress,
+)
+from scripts.build_au_external_dependency_handoff import (  # noqa: E402
+    DEFAULT_OUTPUT_PATH as DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH,
+    build_au_external_dependency_handoff,
+)
+from scripts.build_au_handoff_dossier import (  # noqa: E402
+    DEFAULT_OUTPUT_PATH as DEFAULT_HANDOFF_DOSSIER_PATH,
+    build_au_handoff_dossier,
+)
+from scripts.run_au_external_dependency_clearance import (  # noqa: E402
+    DEFAULT_OUTPUT_PATH as DEFAULT_EXTERNAL_DEPENDENCY_CLEARANCE_PATH,
+    run_au_external_dependency_clearance,
+)
+from scripts.verify_au_customer_handoff_readiness import verify_au_customer_handoff_readiness  # noqa: E402
+from scripts.verify_au_delivery_progress import verify_au_delivery_progress  # noqa: E402
+from scripts.verify_au_external_dependency_clearance import verify_au_external_dependency_clearance  # noqa: E402
+from scripts.verify_au_external_dependency_handoff import verify_au_external_dependency_handoff  # noqa: E402
+from scripts.verify_au_handoff_dossier import verify_au_handoff_dossier  # noqa: E402
+
+
+CLEARANCE_VERSION = "au_customer_handoff_clearance_v1"
+DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-customer-handoff-clearance-latest.json"
+STEP_ID = "customer_report_handoff_gate"
+PREREQUISITE_STEP_IDS = ("p0a_real_batches", "p0b_google_phase_execution")
+
+EXPECTED_CUSTOMER_GATE_ORDER = (
+    "p0a_credentials_configured",
+    "p0a_real_batches_ready",
+    "p0a_design_partner_data_ready",
+    "p0b_google_environment_ready",
+    "p0b_google_manual_backfill_ready",
+    "p0b_google_phase_execution_ready",
+    "p0b_google_main_scoring_ready",
+    "p0c_report_contract_ready",
+    "external_dependencies_clear",
+    STEP_ID,
+)
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _stable_bytes(payload: dict[str, Any]) -> bytes:
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+
+
+def compute_customer_handoff_clearance_hash(payload: dict[str, Any]) -> str:
+    payload_for_hash = dict(payload)
+    payload_for_hash.pop("customer_handoff_clearance_hash", None)
+    return hashlib.sha256(_stable_bytes(payload_for_hash)).hexdigest()
+
+
+def _as_dict(value: object) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value: object) -> list[object]:
+    return value if isinstance(value, list) else []
+
+
+def _strings(value: object) -> list[str]:
+    return [str(item) for item in _as_list(value)]
+
+
+def _unique_strings(values: list[str]) -> list[str]:
+    observed: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value and value not in observed:
+            observed.add(value)
+            result.append(value)
+    return result
+
+
+def _load_json(path: Path) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None, {"path": str(path), "exists": False, "source": "missing_file", "errors": ["file_missing"]}
+    except json.JSONDecodeError as exc:
+        return None, {
+            "path": str(path),
+            "exists": True,
+            "source": "invalid_file",
+            "errors": [f"json_invalid:{exc.msg}"],
+        }
+    if not isinstance(payload, dict):
+        return None, {"path": str(path), "exists": True, "source": "invalid_file", "errors": ["not_json_object"]}
+    return payload, {"path": str(path), "exists": True, "source": "existing_file", "errors": []}
+
+
+def _load_or_build_handoff_dossier(path: Path, *, generated_at: str | None) -> tuple[dict[str, Any], dict[str, Any]]:
+    payload, source = _load_json(path)
+    if payload is not None:
+        return payload, source
+    dossier = build_au_handoff_dossier(output_path=path, generated_at=generated_at)
+    return dossier, {**source, "source": "generated_in_memory"}
+
+
+def _load_or_build_customer_readiness(
+    path: Path,
+    *,
+    handoff_dossier_path: Path,
+    handoff_dossier: dict[str, Any],
+    generated_at: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    payload, source = _load_json(path)
+    if payload is not None:
+        return payload, source
+    readiness = build_au_customer_handoff_readiness(
+        handoff_dossier_path=handoff_dossier_path,
+        handoff_dossier=handoff_dossier,
+        output_path=path,
+        generated_at=generated_at,
+    )
+    return readiness, {**source, "source": "generated_in_memory"}
+
+
+def _load_or_build_external_handoff(path: Path, *, generated_at: str | None) -> tuple[dict[str, Any], dict[str, Any]]:
+    payload, source = _load_json(path)
+    if payload is not None:
+        return payload, source
+    handoff = build_au_external_dependency_handoff(output_path=path, generated_at=generated_at)
+    return handoff, {**source, "source": "generated_in_memory"}
+
+
+def _load_or_build_external_clearance(
+    path: Path,
+    *,
+    external_dependency_handoff_path: Path,
+    external_dependency_handoff: dict[str, Any],
+    generated_at: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    payload, source = _load_json(path)
+    if payload is not None:
+        return payload, source
+    clearance = run_au_external_dependency_clearance(
+        handoff_path=external_dependency_handoff_path,
+        handoff=external_dependency_handoff,
+        output_path=path,
+        generated_at=generated_at,
+    )
+    return clearance, {**source, "source": "generated_in_memory"}
+
+
+def _load_or_build_delivery_progress(
+    path: Path,
+    *,
+    handoff_dossier_path: Path,
+    customer_handoff_readiness_path: Path,
+    external_dependency_handoff_path: Path,
+    external_dependency_clearance_path: Path,
+    handoff_dossier: dict[str, Any],
+    customer_handoff_readiness: dict[str, Any],
+    external_dependency_handoff: dict[str, Any],
+    external_dependency_clearance: dict[str, Any],
+    generated_at: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    payload, source = _load_json(path)
+    if payload is not None:
+        return payload, source
+    progress = build_au_delivery_progress(
+        handoff_dossier_path=handoff_dossier_path,
+        customer_handoff_readiness_path=customer_handoff_readiness_path,
+        external_dependency_handoff_path=external_dependency_handoff_path,
+        external_dependency_clearance_path=external_dependency_clearance_path,
+        handoff_dossier=handoff_dossier,
+        customer_handoff_readiness=customer_handoff_readiness,
+        external_dependency_handoff=external_dependency_handoff,
+        external_dependency_clearance=external_dependency_clearance,
+        output_path=path,
+        generated_at=generated_at,
+    )
+    return progress, {**source, "source": "generated_in_memory"}
+
+
+def _step_by_id(external_clearance: dict[str, Any], step_id: str) -> dict[str, Any]:
+    for step in _as_list(external_clearance.get("steps")):
+        step_dict = _as_dict(step)
+        if step_dict.get("id") == step_id:
+            return step_dict
+    return {}
+
+
+def _customer_gate_items(customer_handoff_readiness: dict[str, Any]) -> list[dict[str, Any]]:
+    audit = _as_dict(customer_handoff_readiness.get("readiness_audit"))
+    items: list[dict[str, Any]] = []
+    for value in _as_list(audit.get("customer_gates")):
+        gate = _as_dict(value)
+        gate_id = str(gate.get("id") or "")
+        ready = gate.get("ready") is True
+        items.append(
+            {
+                "key": f"customer_gate:{gate_id}",
+                "gate_id": gate_id,
+                "title": str(gate.get("label") or gate_id),
+                "stage": str(gate.get("stage") or ""),
+                "required": True,
+                "fulfilled": ready,
+                "ready": ready,
+                "status": str(gate.get("status") or ("ready" if ready else "blocked")),
+                "evidence_ref": str(gate.get("evidence_ref") or ""),
+                "next_action": str(gate.get("next_action") or ""),
+                "owner_hint": _owner_hint_for_gate(gate_id),
+                "blocking_reasons": _strings(gate.get("blocked_by")),
+            }
+        )
+    return items
+
+
+def _owner_hint_for_gate(gate_id: str) -> str:
+    if gate_id.startswith("p0a_"):
+        return "p0a_operator"
+    if gate_id.startswith("p0b_"):
+        return "google_spike_operator"
+    if gate_id.startswith("p0c_"):
+        return "report_operator"
+    if gate_id == "external_dependencies_clear":
+        return "delivery_lead"
+    if gate_id == STEP_ID:
+        return "customer_delivery_owner"
+    return "delivery_lead"
+
+
+def _owner_counts(items: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        owner = str(item.get("owner_hint") or "unknown")
+        counts[owner] = counts.get(owner, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _missing_by_owner(items: list[dict[str, Any]]) -> dict[str, list[str]]:
+    owners: dict[str, list[str]] = {}
+    for item in items:
+        if item.get("required") is True and item.get("fulfilled") is not True:
+            owner = str(item.get("owner_hint") or "unknown")
+            owners.setdefault(owner, []).append(str(item.get("key") or ""))
+    return {owner: sorted(keys) for owner, keys in sorted(owners.items())}
+
+
+def _blocking_reasons(items: list[dict[str, Any]]) -> list[str]:
+    return sorted(
+        dict.fromkeys(
+            f"{item.get('gate_id')}:{reason}"
+            for item in items
+            for reason in _strings(item.get("blocking_reasons"))
+        )
+    )
+
+
+def _operator_steps(
+    *,
+    delivery_progress: dict[str, Any],
+    external_dependency_clearance: dict[str, Any],
+    blocked_by_prerequisite: bool,
+) -> list[dict[str, Any]]:
+    progress_summary = _as_dict(delivery_progress.get("summary"))
+    steps: list[dict[str, Any]] = [
+        {
+            "order": 1,
+            "id": "clear_p0a_provider_credentials",
+            "command": "make au-p0a-credential-clearance && make verify-au-p0a-credential-clearance",
+            "purpose": "clear_p0a_provider_credentials_before_customer_handoff",
+            "external_call_risk": "none",
+            "required_before_customer_handoff": True,
+            "blocked": blocked_by_prerequisite,
+        },
+        {
+            "order": 2,
+            "id": "clear_p0a_real_batches",
+            "command": "make au-p0a-real-batch-clearance && make verify-au-p0a-real-batch-clearance",
+            "purpose": "clear_design_partner_batch_evidence_before_customer_handoff",
+            "external_call_risk": "may_execute_collection_after_credentials_ready",
+            "required_before_customer_handoff": True,
+            "blocked": blocked_by_prerequisite,
+        },
+        {
+            "order": 3,
+            "id": "clear_p0b_google_environment",
+            "command": "make au-p0b-google-environment-clearance && make verify-au-p0b-google-environment-clearance",
+            "purpose": "clear_google_runtime_environment_before_customer_handoff",
+            "external_call_risk": "none",
+            "required_before_customer_handoff": True,
+            "blocked": blocked_by_prerequisite,
+        },
+        {
+            "order": 4,
+            "id": "clear_p0b_google_manual_backfill",
+            "command": "make au-p0b-google-manual-backfill-clearance && make verify-au-p0b-google-manual-backfill-clearance",
+            "purpose": "clear_manual_google_backfill_evidence_before_customer_handoff",
+            "external_call_risk": "manual_evidence_required",
+            "required_before_customer_handoff": True,
+            "blocked": blocked_by_prerequisite,
+        },
+        {
+            "order": 5,
+            "id": "clear_p0b_google_phase_execution",
+            "command": "make au-p0b-google-phase-execution-clearance && make verify-au-p0b-google-phase-execution-clearance",
+            "purpose": "clear_google_phase_execution_before_customer_handoff",
+            "external_call_risk": "depends_on_google_phase_commands",
+            "required_before_customer_handoff": True,
+            "blocked": blocked_by_prerequisite,
+        },
+        {
+            "order": 6,
+            "id": "refresh_external_dependency_handoff",
+            "command": "make au-external-dependency-handoff && make verify-au-external-dependency-handoff",
+            "purpose": "refresh_external_dependency_boundary_after_clearance_steps",
+            "external_call_risk": "none",
+        },
+        {
+            "order": 7,
+            "id": "refresh_external_dependency_clearance",
+            "command": "make au-external-dependency-clearance && make verify-au-external-dependency-clearance",
+            "purpose": "prove_final_customer_handoff_gate_is_current_or_still_blocked",
+            "external_call_risk": "none",
+        },
+        {
+            "order": 8,
+            "id": "refresh_handoff_dossier",
+            "command": "make au-handoff-dossier && make verify-au-handoff-dossier",
+            "purpose": "refresh_customer_facing_dossier_after_dependency_clearance",
+            "external_call_risk": "none",
+        },
+        {
+            "order": 9,
+            "id": "refresh_customer_handoff_readiness",
+            "command": "make au-customer-handoff-readiness && make verify-au-customer-handoff-readiness",
+            "purpose": "refresh_customer_report_handoff_readiness",
+            "external_call_risk": "none",
+        },
+        {
+            "order": 10,
+            "id": "refresh_delivery_progress",
+            "command": "make au-delivery-progress && make verify-au-delivery-progress",
+            "purpose": "refresh_machine_readable_progress_percentages",
+            "external_call_risk": "none",
+        },
+        {
+            "order": 11,
+            "id": "run_customer_ready_strict_gates",
+            "command": (
+                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "scripts/verify_au_customer_handoff_clearance.py "
+                "${GENO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-clearance-latest.json} "
+                "--require-cleared"
+            ),
+            "purpose": "require_final_customer_report_handoff_clearance",
+            "external_call_risk": "none",
+            "next_work_item_id": str(progress_summary.get("next_work_item_id") or ""),
+        },
+    ]
+    if _strings(external_dependency_clearance.get("current_recommended_sequence")):
+        steps[0]["current_global_clearance_sequence"] = _strings(
+            external_dependency_clearance.get("current_recommended_sequence")
+        )
+    return steps
+
+
+def _post_update_validation_sequence(
+    *,
+    customer_handoff_readiness: dict[str, Any],
+    delivery_progress: dict[str, Any],
+    external_dependency_handoff: dict[str, Any],
+    external_dependency_clearance: dict[str, Any],
+    target_step: dict[str, Any],
+) -> list[str]:
+    commands = [
+        "make au-customer-handoff-clearance",
+        "make verify-au-customer-handoff-clearance",
+        "make au-handoff-dossier",
+        "make verify-au-handoff-dossier",
+        "make au-customer-handoff-readiness",
+        "make verify-au-customer-handoff-readiness",
+        "make au-delivery-progress",
+        "make verify-au-delivery-progress",
+        "make au-external-dependency-handoff",
+        "make verify-au-external-dependency-handoff",
+        "make au-external-dependency-clearance",
+        "make verify-au-external-dependency-clearance",
+        "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_handoff_dossier.py "
+        "${GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH:-docs/runtime_preflight/au-handoff-dossier-latest.json} "
+        "--require-customer-ready",
+        "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_readiness.py "
+        "${GENO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-readiness-latest.json} "
+        "--require-customer-ready",
+        "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_delivery_progress.py "
+        "${GENO_AU_DELIVERY_PROGRESS_OUTPUT_PATH:-docs/runtime_preflight/au-delivery-progress-latest.json} "
+        "--require-customer-ready",
+        "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_external_dependency_handoff.py "
+        "${GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH:-docs/runtime_preflight/au-external-dependency-handoff-latest.json} "
+        "--require-ready",
+        "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_external_dependency_clearance.py "
+        "${GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-external-dependency-clearance-latest.json} "
+        "--require-handoff-ready",
+        "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_clearance.py "
+        "${GENO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-clearance-latest.json} "
+        "--require-cleared",
+    ]
+    commands.extend(_strings(customer_handoff_readiness.get("hard_gate_commands")))
+    commands.extend(_strings(delivery_progress.get("hard_gate_commands")))
+    commands.extend(_strings(external_dependency_handoff.get("hard_gate_commands")))
+    commands.extend(_strings(external_dependency_clearance.get("hard_gate_commands")))
+    commands.extend(_strings(target_step.get("recommended_sequence")))
+    return _unique_strings(commands)
+
+
+def _clearance_next_command(delivery_progress: dict[str, Any], external_clearance: dict[str, Any]) -> str:
+    progress_summary = _as_dict(delivery_progress.get("summary"))
+    return str(progress_summary.get("next_command") or external_clearance.get("next_command") or "")
+
+
+def build_au_customer_handoff_clearance(
+    *,
+    handoff_dossier_path: Path = Path(DEFAULT_HANDOFF_DOSSIER_PATH),
+    customer_handoff_readiness_path: Path = Path(DEFAULT_CUSTOMER_HANDOFF_READINESS_PATH),
+    delivery_progress_path: Path = Path(DEFAULT_DELIVERY_PROGRESS_PATH),
+    external_dependency_handoff_path: Path = Path(DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH),
+    external_dependency_clearance_path: Path = Path(DEFAULT_EXTERNAL_DEPENDENCY_CLEARANCE_PATH),
+    handoff_dossier: dict[str, Any] | None = None,
+    customer_handoff_readiness: dict[str, Any] | None = None,
+    delivery_progress: dict[str, Any] | None = None,
+    external_dependency_handoff: dict[str, Any] | None = None,
+    external_dependency_clearance: dict[str, Any] | None = None,
+    output_path: Path | None = None,
+    generated_at: str | None = None,
+) -> dict[str, Any]:
+    if handoff_dossier is None:
+        handoff_dossier, handoff_source = _load_or_build_handoff_dossier(
+            handoff_dossier_path,
+            generated_at=generated_at,
+        )
+    else:
+        handoff_source = {"path": str(handoff_dossier_path), "exists": True, "source": "provided_payload", "errors": []}
+
+    if customer_handoff_readiness is None:
+        customer_handoff_readiness, readiness_source = _load_or_build_customer_readiness(
+            customer_handoff_readiness_path,
+            handoff_dossier_path=handoff_dossier_path,
+            handoff_dossier=handoff_dossier,
+            generated_at=generated_at,
+        )
+    else:
+        readiness_source = {
+            "path": str(customer_handoff_readiness_path),
+            "exists": True,
+            "source": "provided_payload",
+            "errors": [],
+        }
+
+    if external_dependency_handoff is None:
+        external_dependency_handoff, external_handoff_source = _load_or_build_external_handoff(
+            external_dependency_handoff_path,
+            generated_at=generated_at,
+        )
+    else:
+        external_handoff_source = {
+            "path": str(external_dependency_handoff_path),
+            "exists": True,
+            "source": "provided_payload",
+            "errors": [],
+        }
+
+    if external_dependency_clearance is None:
+        external_dependency_clearance, external_clearance_source = _load_or_build_external_clearance(
+            external_dependency_clearance_path,
+            external_dependency_handoff_path=external_dependency_handoff_path,
+            external_dependency_handoff=external_dependency_handoff,
+            generated_at=generated_at,
+        )
+    else:
+        external_clearance_source = {
+            "path": str(external_dependency_clearance_path),
+            "exists": True,
+            "source": "provided_payload",
+            "errors": [],
+        }
+
+    if delivery_progress is None:
+        delivery_progress, delivery_source = _load_or_build_delivery_progress(
+            delivery_progress_path,
+            handoff_dossier_path=handoff_dossier_path,
+            customer_handoff_readiness_path=customer_handoff_readiness_path,
+            external_dependency_handoff_path=external_dependency_handoff_path,
+            external_dependency_clearance_path=external_dependency_clearance_path,
+            handoff_dossier=handoff_dossier,
+            customer_handoff_readiness=customer_handoff_readiness,
+            external_dependency_handoff=external_dependency_handoff,
+            external_dependency_clearance=external_dependency_clearance,
+            generated_at=generated_at,
+        )
+    else:
+        delivery_source = {"path": str(delivery_progress_path), "exists": True, "source": "provided_payload", "errors": []}
+
+    handoff_verifier = verify_au_handoff_dossier(handoff_dossier, path=handoff_dossier_path)
+    readiness_verifier = verify_au_customer_handoff_readiness(
+        customer_handoff_readiness,
+        path=customer_handoff_readiness_path,
+    )
+    progress_verifier = verify_au_delivery_progress(delivery_progress, path=delivery_progress_path)
+    external_handoff_verifier = verify_au_external_dependency_handoff(
+        external_dependency_handoff,
+        path=external_dependency_handoff_path,
+    )
+    external_clearance_verifier = verify_au_external_dependency_clearance(
+        external_dependency_clearance,
+        path=external_dependency_clearance_path,
+    )
+
+    handoff_ok = handoff_verifier.get("status") == "pass" and handoff_verifier.get("hash_valid") is True
+    readiness_ok = readiness_verifier.get("status") == "pass" and readiness_verifier.get("hash_valid") is True
+    progress_ok = progress_verifier.get("status") == "pass" and progress_verifier.get("hash_valid") is True
+    external_handoff_ok = (
+        external_handoff_verifier.get("status") == "pass" and external_handoff_verifier.get("hash_valid") is True
+    )
+    external_clearance_ok = (
+        external_clearance_verifier.get("status") == "pass" and external_clearance_verifier.get("hash_valid") is True
+    )
+    packet_ready = handoff_ok and readiness_ok and progress_ok and external_handoff_ok and external_clearance_ok
+
+    target_step = _step_by_id(external_dependency_clearance, STEP_ID)
+    prerequisite_steps = [_step_by_id(external_dependency_clearance, step_id) for step_id in PREREQUISITE_STEP_IDS]
+    prerequisite_steps_ready = all(step.get("ready") is True for step in prerequisite_steps)
+    blocked_by_prerequisite = not prerequisite_steps_ready
+    target_step_ready = target_step.get("ready") is True
+    target_step_can_start = target_step.get("can_start") is True
+    customer_ready = customer_handoff_readiness.get("ready_for_customer_report_handoff") is True
+    progress_customer_ready = delivery_progress.get("ready_for_customer_report_handoff") is True
+    external_handoff_ready = external_dependency_handoff.get("external_dependency_handoff_ready") is True
+    customer_handoff_clearance_ready = (
+        customer_ready
+        and progress_customer_ready
+        and external_handoff_ready
+        and target_step_ready
+        and prerequisite_steps_ready
+    )
+    ready_for_report_export_handoff = packet_ready and customer_handoff_clearance_ready
+
+    items = _customer_gate_items(customer_handoff_readiness)
+    required_items = [item for item in items if item.get("required") is True]
+    fulfilled_required = [item for item in required_items if item.get("fulfilled") is True]
+    missing_required = sorted(str(item.get("key") or "") for item in required_items if item.get("fulfilled") is not True)
+    blocking_reasons = _blocking_reasons(items)
+    operator_steps = _operator_steps(
+        delivery_progress=delivery_progress,
+        external_dependency_clearance=external_dependency_clearance,
+        blocked_by_prerequisite=blocked_by_prerequisite,
+    )
+    validation_sequence = _post_update_validation_sequence(
+        customer_handoff_readiness=customer_handoff_readiness,
+        delivery_progress=delivery_progress,
+        external_dependency_handoff=external_dependency_handoff,
+        external_dependency_clearance=external_dependency_clearance,
+        target_step=target_step,
+    )
+    progress_summary = _as_dict(delivery_progress.get("summary"))
+    readiness_summary = _as_dict(customer_handoff_readiness.get("summary"))
+    payload: dict[str, Any] = {
+        "customer_handoff_clearance_version": CLEARANCE_VERSION,
+        "generated_at": generated_at or _utc_now_iso(),
+        "status": "pass" if packet_ready else "fail",
+        "customer_handoff_clearance_packet_ready": packet_ready,
+        "customer_handoff_ready": customer_ready,
+        "customer_handoff_clearance_ready": customer_handoff_clearance_ready,
+        "ready_for_report_export_handoff": ready_for_report_export_handoff,
+        "blocked_by_prerequisite_step": blocked_by_prerequisite,
+        "output_path": str(output_path) if output_path else "",
+        "clearance_step": {
+            "id": STEP_ID,
+            "current_global_step_id": str(external_dependency_clearance.get("current_step_id") or ""),
+            "step_recorded": bool(target_step),
+            "step_ready": target_step_ready,
+            "step_can_start": target_step_can_start,
+            "step_status": str(target_step.get("status") or ""),
+            "blocked_by": _strings(target_step.get("blocked_by")),
+            "would_execute": target_step.get("would_execute") is True,
+            "strict_gate_command": str(target_step.get("strict_gate_command") or ""),
+        },
+        "prerequisite_steps": [
+            {
+                "id": step_id,
+                "ready": step.get("ready") is True,
+                "status": str(step.get("status") or ""),
+                "would_execute": step.get("would_execute") is True,
+                "strict_gate_command": str(step.get("strict_gate_command") or ""),
+                "blocked_by": _strings(step.get("blocked_by")),
+                "runtime_endpoint": str(_as_dict(step.get("linked_request_context")).get("runtime_endpoint") or ""),
+            }
+            for step_id, step in zip(PREREQUISITE_STEP_IDS, prerequisite_steps, strict=True)
+        ],
+        "source_artifacts": {
+            "handoff_dossier": {
+                "path": str(handoff_dossier_path),
+                "source": handoff_source,
+                "hash_field": "handoff_dossier_hash",
+                "hash": str(handoff_dossier.get("handoff_dossier_hash") or ""),
+                "verifier_status": handoff_verifier.get("status", ""),
+                "hash_valid": handoff_verifier.get("hash_valid") is True,
+            },
+            "customer_handoff_readiness": {
+                "path": str(customer_handoff_readiness_path),
+                "source": readiness_source,
+                "hash_field": "customer_handoff_readiness_hash",
+                "hash": str(customer_handoff_readiness.get("customer_handoff_readiness_hash") or ""),
+                "verifier_status": readiness_verifier.get("status", ""),
+                "hash_valid": readiness_verifier.get("hash_valid") is True,
+            },
+            "delivery_progress": {
+                "path": str(delivery_progress_path),
+                "source": delivery_source,
+                "hash_field": "delivery_progress_hash",
+                "hash": str(delivery_progress.get("delivery_progress_hash") or ""),
+                "verifier_status": progress_verifier.get("status", ""),
+                "hash_valid": progress_verifier.get("hash_valid") is True,
+            },
+            "external_dependency_handoff": {
+                "path": str(external_dependency_handoff_path),
+                "source": external_handoff_source,
+                "hash_field": "external_dependency_handoff_hash",
+                "hash": str(external_dependency_handoff.get("external_dependency_handoff_hash") or ""),
+                "verifier_status": external_handoff_verifier.get("status", ""),
+                "hash_valid": external_handoff_verifier.get("hash_valid") is True,
+            },
+            "external_dependency_clearance": {
+                "path": str(external_dependency_clearance_path),
+                "source": external_clearance_source,
+                "hash_field": "clearance_execution_hash",
+                "hash": str(external_dependency_clearance.get("clearance_execution_hash") or ""),
+                "verifier_status": external_clearance_verifier.get("status", ""),
+                "hash_valid": external_clearance_verifier.get("hash_valid") is True,
+            },
+        },
+        "verifiers": {
+            "handoff_dossier": handoff_verifier,
+            "customer_handoff_readiness": readiness_verifier,
+            "delivery_progress": progress_verifier,
+            "external_dependency_handoff": external_handoff_verifier,
+            "external_dependency_clearance": external_clearance_verifier,
+        },
+        "summary": {
+            "required_count": len(required_items),
+            "fulfilled_required_count": len(fulfilled_required),
+            "missing_required_count": len(missing_required),
+            "missing_required": missing_required,
+            "owner_counts": _owner_counts(items),
+            "missing_required_by_owner": _missing_by_owner(items),
+            "blocking_reason_count": len(blocking_reasons),
+            "blocking_reasons": blocking_reasons,
+            "customer_handoff_ready": customer_ready,
+            "customer_report_handoff_readiness_percent": readiness_summary.get(
+                "customer_report_handoff_readiness_percent",
+                0.0,
+            ),
+            "engineering_progress_percent": progress_summary.get("engineering_progress_percent", 0.0),
+            "structural_auditability_percent": readiness_summary.get("structural_auditability_percent", 0.0),
+            "customer_gate_count": len(items),
+            "ready_customer_gate_count": len(fulfilled_required),
+            "blocked_customer_gate_count": len(required_items) - len(fulfilled_required),
+            "blocked_customer_gate_ids": readiness_summary.get("blocked_customer_gate_ids", []),
+            "delivery_progress_ready": delivery_progress.get("delivery_progress_ready") is True,
+            "delivery_progress_customer_ready": progress_customer_ready,
+            "external_dependency_handoff_ready": external_handoff_ready,
+            "ready_progress_gate_count": progress_summary.get("ready_progress_gate_count", 0),
+            "blocked_progress_gate_ids": progress_summary.get("blocked_progress_gate_ids", []),
+            "blocked_by_prerequisite_step": blocked_by_prerequisite,
+            "prerequisite_step_ids": list(PREREQUISITE_STEP_IDS),
+            "prerequisite_steps_ready": prerequisite_steps_ready,
+            "current_global_clearance_step_id": str(external_dependency_clearance.get("current_step_id") or ""),
+            "target_clearance_step_id": STEP_ID,
+            "target_clearance_step_can_start": target_step_can_start,
+            "target_clearance_step_ready": target_step_ready,
+            "customer_handoff_clearance_ready": customer_handoff_clearance_ready,
+            "ready_for_report_export_handoff": ready_for_report_export_handoff,
+            "next_action": (
+                "clear_customer_handoff_prerequisites_first"
+                if blocked_by_prerequisite
+                else (
+                    "run_final_customer_handoff_strict_gates"
+                    if customer_ready
+                    else "clear_customer_report_handoff_gate"
+                )
+            ),
+            "next_command": _clearance_next_command(delivery_progress, external_dependency_clearance),
+            "operator_step_count": len(operator_steps),
+            "post_update_validation_command_count": len(validation_sequence),
+            "handoff_dossier_hash": handoff_dossier.get("handoff_dossier_hash", ""),
+            "customer_handoff_readiness_hash": customer_handoff_readiness.get("customer_handoff_readiness_hash", ""),
+            "delivery_progress_hash": delivery_progress.get("delivery_progress_hash", ""),
+            "external_dependency_handoff_hash": external_dependency_handoff.get("external_dependency_handoff_hash", ""),
+            "clearance_execution_hash": external_dependency_clearance.get("clearance_execution_hash", ""),
+            "raw_secret_values_allowed": False,
+            "raw_answer_values_allowed": False,
+            "raw_citation_values_allowed": False,
+            "raw_asset_urls_allowed": False,
+            "raw_provider_response_allowed": False,
+            "customer_gate_entries_reference_hashes_status_and_evidence_refs_only": True,
+        },
+        "customer_handoff_clearance_items": items,
+        "operator_steps": operator_steps,
+        "post_update_validation_sequence": validation_sequence,
+        "runtime_endpoints": {
+            "customer_handoff_clearance": "GET /v1/customer-handoff-clearance/au",
+            "handoff_dossier": "GET /v1/handoff-dossier/au",
+            "customer_handoff_readiness": "GET /v1/customer-handoff-readiness/au",
+            "delivery_progress": "GET /v1/delivery-progress/au",
+            "external_dependency_handoff": "GET /v1/external-dependency-handoff/au",
+            "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
+        },
+        "hard_gate_commands": _unique_strings(
+            [
+                "make au-customer-handoff-clearance",
+                "make verify-au-customer-handoff-clearance",
+                *validation_sequence,
+            ]
+        ),
+        "redaction_policy": {
+            "raw_secret_values_allowed": False,
+            "raw_answer_values_allowed": False,
+            "raw_citation_values_allowed": False,
+            "raw_asset_urls_allowed": False,
+            "raw_provider_response_allowed": False,
+            "customer_gate_entries_reference_hashes_status_and_evidence_refs_only": True,
+            "forbidden_exact_customer_payload_field_count": 14,
+            "recorded_fields": [
+                "key",
+                "gate_id",
+                "stage",
+                "required",
+                "fulfilled",
+                "ready",
+                "status",
+                "evidence_ref",
+                "next_action",
+                "owner_hint",
+                "blocking_reasons",
+            ],
+        },
+    }
+    payload["customer_handoff_clearance_hash"] = compute_customer_handoff_clearance_hash(payload)
+    return payload
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Build an AU customer handoff clearance JSON")
+    parser.add_argument(
+        "--handoff-dossier-path",
+        default=os.environ.get("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_HANDOFF_DOSSIER_PATH),
+        help="Path to the AU handoff dossier JSON.",
+    )
+    parser.add_argument(
+        "--customer-handoff-readiness-path",
+        default=os.environ.get("GENO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH", DEFAULT_CUSTOMER_HANDOFF_READINESS_PATH),
+        help="Path to the AU customer handoff readiness JSON.",
+    )
+    parser.add_argument(
+        "--delivery-progress-path",
+        default=os.environ.get("GENO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", DEFAULT_DELIVERY_PROGRESS_PATH),
+        help="Path to the AU delivery progress JSON.",
+    )
+    parser.add_argument(
+        "--external-dependency-handoff-path",
+        default=os.environ.get("GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH", DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH),
+        help="Path to the AU external dependency handoff JSON.",
+    )
+    parser.add_argument(
+        "--external-dependency-clearance-path",
+        default=os.environ.get(
+            "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_EXTERNAL_DEPENDENCY_CLEARANCE_PATH,
+        ),
+        help="Path to the AU external dependency clearance JSON.",
+    )
+    parser.add_argument(
+        "--output-path",
+        default=os.environ.get("GENO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        help="Path to write the AU customer handoff clearance JSON.",
+    )
+    parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    output_path = Path(args.output_path)
+    payload = build_au_customer_handoff_clearance(
+        handoff_dossier_path=Path(args.handoff_dossier_path),
+        customer_handoff_readiness_path=Path(args.customer_handoff_readiness_path),
+        delivery_progress_path=Path(args.delivery_progress_path),
+        external_dependency_handoff_path=Path(args.external_dependency_handoff_path),
+        external_dependency_clearance_path=Path(args.external_dependency_clearance_path),
+        output_path=output_path,
+        generated_at=args.generated_at,
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
+    print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+    raise SystemExit(0 if payload["status"] == "pass" else 2)
+
+
+if __name__ == "__main__":
+    main()
