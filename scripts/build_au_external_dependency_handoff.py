@@ -667,6 +667,23 @@ def _p0b_google_phase_execution_group(
 ) -> dict[str, Any]:
     phase_handoff = _as_dict(p0b_google_execution_checklist.get("google_spike_phase_handoff"))
     ready = phase_handoff.get("ready") is True
+    verification_commands = _unique_strings(
+        _commands(phase_handoff.get("verification_commands"))
+        + [
+            "make au-p0b-google-phase-execution-fulfillment",
+            "make verify-au-p0b-google-phase-execution-fulfillment",
+            (
+                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "scripts/verify_au_p0b_google_phase_execution_fulfillment.py "
+                "${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json} "
+                "--require-fulfilled"
+            ),
+        ]
+    )
+    evidence_outputs = _unique_strings(
+        _strings(phase_handoff.get("evidence_outputs"))
+        + ["docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json"]
+    )
     return {
         "id": "p0b_google_phase_execution",
         "stage": "P0b",
@@ -691,6 +708,8 @@ def _p0b_google_phase_execution_group(
         "full_spike_planned_runs": int(phase_handoff.get("full_spike_planned_runs") or 0),
         "manual_expected_record_count": int(phase_handoff.get("manual_expected_record_count") or 0),
         "phases": _as_list(phase_handoff.get("phases")),
+        "verification_commands": verification_commands,
+        "evidence_outputs": evidence_outputs,
         "redaction_policy": _as_dict(phase_handoff.get("redaction_policy")),
     }
 

@@ -348,6 +348,15 @@ def _validate_groups(handoff: dict[str, Any], errors: list[str]) -> None:
         errors.append("p0b_google_phase_execution_full_spike_planned_runs_invalid")
     if p0b_phase.get("manual_expected_record_count") != p0b_manual.get("expected_record_count"):
         errors.append("p0b_google_phase_manual_expected_record_count_mismatch")
+    p0b_phase_verification_commands = _strings(p0b_phase.get("verification_commands"))
+    if "make verify-au-p0b-google-phase-execution-fulfillment" not in p0b_phase_verification_commands:
+        errors.append("p0b_google_phase_execution_fulfillment_verifier_missing")
+    if not any("--require-fulfilled" in command for command in p0b_phase_verification_commands):
+        errors.append("p0b_google_phase_execution_fulfillment_strict_gate_missing")
+    if "docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json" not in _strings(
+        p0b_phase.get("evidence_outputs")
+    ):
+        errors.append("p0b_google_phase_execution_fulfillment_evidence_missing")
 
 
 def _validate_clearance_sequence(

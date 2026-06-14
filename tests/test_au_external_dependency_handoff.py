@@ -161,6 +161,17 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
             "docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json",
             handoff["dependency_groups"][3]["evidence_outputs"],
         )
+        self.assertIn(
+            "make verify-au-p0b-google-phase-execution-fulfillment",
+            handoff["dependency_groups"][4]["verification_commands"],
+        )
+        self.assertTrue(
+            any("--require-fulfilled" in command for command in handoff["dependency_groups"][4]["verification_commands"])
+        )
+        self.assertIn(
+            "docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json",
+            handoff["dependency_groups"][4]["evidence_outputs"],
+        )
         self.assertFalse(handoff["redaction_policy"]["raw_secret_values_allowed"])
         self.assertFalse(handoff["redaction_policy"]["raw_database_url_allowed"])
         self.assertFalse(handoff["redaction_policy"]["raw_selector_values_allowed"])

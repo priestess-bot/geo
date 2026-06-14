@@ -725,6 +725,7 @@ type RuntimeData = {
   p0bGoogleManualBackfillRequest: AuP0bGoogleManualBackfillRequest | null;
   p0bGoogleManualBackfillFulfillment: AuP0bGoogleManualBackfillFulfillment | null;
   p0bGooglePhaseExecutionRequest: AuP0bGooglePhaseExecutionRequest | null;
+  p0bGooglePhaseExecutionFulfillment: AuP0bGooglePhaseExecutionFulfillment | null;
   externalDependencyHandoff: AuExternalDependencyHandoff | null;
   externalDependencyClearance: AuExternalDependencyClearance | null;
   broaderPlatformRegistry: AuBroaderPlatformRegistry | null;
@@ -1962,6 +1963,86 @@ type AuP0bGooglePhaseExecutionRequest = {
   };
 };
 
+type AuP0bGooglePhaseExecutionFulfillment = {
+  p0b_google_phase_execution_fulfillment_version: string;
+  generated_at: string;
+  status: string;
+  phase_execution_fulfillment_ready: boolean;
+  phase_execution_fulfilled: boolean;
+  google_spike_phase_handoff_ready: boolean;
+  google_main_scoring_allowed: boolean;
+  p0b_google_phase_execution_fulfillment_hash: string;
+  summary?: {
+    phase_execution_fulfilled?: boolean;
+    phase_execution_request_ready?: boolean;
+    execution_checklist_ready?: boolean;
+    google_spike_phase_handoff_ready?: boolean;
+    google_main_scoring_allowed?: boolean;
+    phase_count?: number;
+    phase_order?: string[];
+    ready_phase_count?: number;
+    blocked_phase_count?: number;
+    next_phase?: string;
+    next_action?: string;
+    next_command?: string;
+    full_spike_planned_runs?: number;
+    manual_expected_record_count?: number;
+    required_count?: number;
+    fulfilled_required_count?: number;
+    missing_required_count?: number;
+    missing_required?: string[];
+    presence_mismatch_count?: number;
+    presence_mismatches?: string[];
+    blocking_reason_count?: number;
+    blocking_reasons?: string[];
+    strict_gate_command?: string;
+    request_strict_gate_command?: string;
+    scoring_strict_gate_command?: string;
+    raw_secret_values_allowed?: boolean;
+    raw_answer_values_allowed?: boolean;
+    raw_citation_values_allowed?: boolean;
+    raw_asset_urls_allowed?: boolean;
+    phase_entries_reference_command_ids_and_artifact_paths_only?: boolean;
+  };
+  phase_fulfillment_items?: Array<{
+    key?: string;
+    phase_id?: string;
+    title?: string;
+    required?: boolean;
+    fulfilled?: boolean;
+    request_ready?: boolean;
+    checklist_ready?: boolean;
+    request_can_start?: boolean;
+    checklist_can_start?: boolean;
+    planned_runs?: number;
+    command_ids?: string[];
+    commands?: string[];
+    artifact_keys?: string[];
+    evidence_outputs?: string[];
+    owner_hint?: string;
+    blocking_reasons?: string[];
+  }>;
+  phase_commands?: string[];
+  verification_commands?: string[];
+  evidence_outputs?: string[];
+  hard_gate_commands?: string[];
+  runtime_endpoints?: {
+    p0b_google_phase_execution_fulfillment?: string;
+    p0b_google_phase_execution_request?: string;
+    p0b_google_execution_checklist?: string;
+    external_dependency_handoff?: string;
+    external_dependency_clearance?: string;
+  };
+  source_p0b_google_phase_execution_request?: {
+    p0b_google_phase_execution_request_packet_hash?: string;
+    phase_execution_request_packet_ready?: boolean;
+  };
+  source_p0b_google_execution_checklist?: {
+    google_execution_checklist_hash?: string;
+    google_execution_checklist_ready?: boolean;
+  };
+};
+
 type AuExternalDependencyHandoff = {
   external_dependency_handoff_version: string;
   generated_at: string;
@@ -2607,6 +2688,7 @@ const endpoints = {
   p0bGoogleManualBackfillRequest: "/v1/p0b-google-manual-backfill-request/au",
   p0bGoogleManualBackfillFulfillment: "/v1/p0b-google-manual-backfill-fulfillment/au",
   p0bGooglePhaseExecutionRequest: "/v1/p0b-google-phase-execution-request/au",
+  p0bGooglePhaseExecutionFulfillment: "/v1/p0b-google-phase-execution-fulfillment/au",
   externalDependencyHandoff: "/v1/external-dependency-handoff/au",
   externalDependencyClearance: "/v1/external-dependency-clearance/au",
   broaderPlatformRegistry: "/v1/au-broader-platform-registry",
@@ -4029,6 +4111,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleManualBackfillRequest: endpoints.p0bGoogleManualBackfillRequest,
     p0bGoogleManualBackfillFulfillment: endpoints.p0bGoogleManualBackfillFulfillment,
     p0bGooglePhaseExecutionRequest: endpoints.p0bGooglePhaseExecutionRequest,
+    p0bGooglePhaseExecutionFulfillment: endpoints.p0bGooglePhaseExecutionFulfillment,
     externalDependencyHandoff: endpoints.externalDependencyHandoff,
     externalDependencyClearance: endpoints.externalDependencyClearance,
     broaderPlatformRegistry: endpoints.broaderPlatformRegistry,
@@ -4352,6 +4435,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleManualBackfillRequest,
     p0bGoogleManualBackfillFulfillment,
     p0bGooglePhaseExecutionRequest,
+    p0bGooglePhaseExecutionFulfillment,
     externalDependencyHandoff,
     externalDependencyClearance,
     broaderPlatformRegistry,
@@ -4425,6 +4509,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0bGooglePhaseExecutionRequest | null>(
       baseUrl,
       paths.p0bGooglePhaseExecutionRequest,
+      null
+    ),
+    fetchRuntimeEndpoint<AuP0bGooglePhaseExecutionFulfillment | null>(
+      baseUrl,
+      paths.p0bGooglePhaseExecutionFulfillment,
       null
     ),
     fetchRuntimeEndpoint<AuExternalDependencyHandoff | null>(baseUrl, paths.externalDependencyHandoff, null),
@@ -4598,6 +4687,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleManualBackfillRequest,
     p0bGoogleManualBackfillFulfillment,
     p0bGooglePhaseExecutionRequest,
+    p0bGooglePhaseExecutionFulfillment,
     externalDependencyHandoff,
     externalDependencyClearance,
     broaderPlatformRegistry,
@@ -4662,6 +4752,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0bGoogleManualBackfillRequest: p0bGoogleManualBackfillRequest.payload,
       p0bGoogleManualBackfillFulfillment: p0bGoogleManualBackfillFulfillment.payload,
       p0bGooglePhaseExecutionRequest: p0bGooglePhaseExecutionRequest.payload,
+      p0bGooglePhaseExecutionFulfillment: p0bGooglePhaseExecutionFulfillment.payload,
       externalDependencyHandoff: externalDependencyHandoff.payload,
       externalDependencyClearance: externalDependencyClearance.payload,
       broaderPlatformRegistry: broaderPlatformRegistry.payload,
@@ -5063,6 +5154,14 @@ export default async function Home({
   const p0bGooglePhaseExecutionBlockingReasons =
     p0bGooglePhaseExecutionRequestSummary?.blocking_reasons || [];
   const p0bGooglePhaseExecutionEvidenceOutputs = p0bGooglePhaseExecutionRequest?.evidence_outputs || [];
+  const p0bGooglePhaseExecutionFulfillment = data.p0bGooglePhaseExecutionFulfillment;
+  const p0bGooglePhaseExecutionFulfillmentSummary = p0bGooglePhaseExecutionFulfillment?.summary;
+  const p0bGooglePhaseExecutionFulfillmentItems =
+    p0bGooglePhaseExecutionFulfillment?.phase_fulfillment_items || [];
+  const p0bGooglePhaseExecutionFulfillmentMissing =
+    p0bGooglePhaseExecutionFulfillmentSummary?.missing_required || [];
+  const p0bGooglePhaseExecutionFulfillmentBlockers =
+    p0bGooglePhaseExecutionFulfillmentSummary?.blocking_reasons || [];
   const externalDependencyHandoff = data.externalDependencyHandoff;
   const externalDependencySummary = externalDependencyHandoff?.summary;
   const externalDependencyGroups = externalDependencyHandoff?.dependency_groups || [];
@@ -6352,6 +6451,108 @@ export default async function Home({
             </div>
           </div>
           <code>{paths.p0bGooglePhaseExecutionRequest}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>P0b Google phase execution fulfillment</strong>
+            <span>
+              {p0bGooglePhaseExecutionFulfillment?.p0b_google_phase_execution_fulfillment_version ||
+                "au_p0b_google_phase_execution_fulfillment_v1"}{" "}
+              · p0b_google_phase_execution_fulfillment_hash{" "}
+              {shortHash(p0bGooglePhaseExecutionFulfillment?.p0b_google_phase_execution_fulfillment_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>
+              Fulfillment ready{" "}
+              {p0bGooglePhaseExecutionFulfillment?.phase_execution_fulfillment_ready ? "yes" : "no"}
+            </span>
+            <span>
+              Phase fulfilled {p0bGooglePhaseExecutionFulfillment?.phase_execution_fulfilled ? "yes" : "no"}
+            </span>
+            <span>
+              Google scoring{" "}
+              {p0bGooglePhaseExecutionFulfillment?.google_main_scoring_allowed ? "allowed" : "blocked"}
+            </span>
+            <span>Ready {p0bGooglePhaseExecutionFulfillmentSummary?.ready_phase_count || 0}</span>
+            <span>Blocked {p0bGooglePhaseExecutionFulfillmentSummary?.blocked_phase_count || 0}</span>
+            <span>Missing {p0bGooglePhaseExecutionFulfillmentSummary?.missing_required_count || 0}</span>
+            <span>Full spike runs {p0bGooglePhaseExecutionFulfillmentSummary?.full_spike_planned_runs || 0}</span>
+            <span>Manual records {p0bGooglePhaseExecutionFulfillmentSummary?.manual_expected_record_count || 0}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>Next phase {p0bGooglePhaseExecutionFulfillmentSummary?.next_phase || "none"}</span>
+            <span>Next action {p0bGooglePhaseExecutionFulfillmentSummary?.next_action || "none"}</span>
+            <span>Next command {p0bGooglePhaseExecutionFulfillmentSummary?.next_command || "none"}</span>
+            <span>
+              Missing {p0bGooglePhaseExecutionFulfillmentMissing.slice(0, 4).join(", ") || "none"}
+            </span>
+            <span>
+              Request hash{" "}
+              {shortHash(
+                p0bGooglePhaseExecutionFulfillment?.source_p0b_google_phase_execution_request
+                  ?.p0b_google_phase_execution_request_packet_hash
+              )}
+            </span>
+            <span>
+              Checklist hash{" "}
+              {shortHash(
+                p0bGooglePhaseExecutionFulfillment?.source_p0b_google_execution_checklist
+                  ?.google_execution_checklist_hash
+              )}
+            </span>
+            <span>
+              {p0bGooglePhaseExecutionFulfillment?.runtime_endpoints?.p0b_google_phase_execution_fulfillment ||
+                "GET /v1/p0b-google-phase-execution-fulfillment/au"}
+            </span>
+            <span>Hard gate: make verify-au-p0b-google-phase-execution-fulfillment</span>
+            <span>
+              Strict fulfillment gate:{" "}
+              {p0bGooglePhaseExecutionFulfillment?.hard_gate_commands?.find((command) =>
+                command.endsWith("--require-fulfilled")
+              ) ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_phase_execution_fulfillment.py docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json --require-fulfilled"}
+            </span>
+          </div>
+          <div className="dependencyGroupGrid">
+            {p0bGooglePhaseExecutionFulfillmentItems.map((item) => (
+              <div className="dependencyGroup" key={`p0b-google-phase-fulfillment-${item.key || item.phase_id}`}>
+                <strong>{item.title || item.phase_id || item.key}</strong>
+                <span>
+                  {item.phase_id || item.key} · {item.fulfilled ? "fulfilled" : "blocked"}
+                </span>
+                <small>
+                  request {item.request_ready ? "ready" : "blocked"} · checklist{" "}
+                  {item.checklist_ready ? "ready" : "blocked"} · runs {item.planned_runs || 0}
+                </small>
+                <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "gate clear"}</small>
+              </div>
+            ))}
+            <div className="dependencyGroup">
+              <strong>Fulfillment blockers</strong>
+              <span>{p0bGooglePhaseExecutionFulfillmentSummary?.blocking_reason_count || 0} reasons</span>
+              <small>{p0bGooglePhaseExecutionFulfillmentBlockers.slice(0, 2).join(" · ") || "none"}</small>
+              <small>{p0bGooglePhaseExecutionFulfillmentBlockers.slice(2, 5).join(" · ") || "all listed"}</small>
+            </div>
+            <div className="dependencyGroup">
+              <strong>Redaction policy</strong>
+              <span>
+                secret {p0bGooglePhaseExecutionFulfillmentSummary?.raw_secret_values_allowed ? "allowed" : "blocked"} ·
+                answer {p0bGooglePhaseExecutionFulfillmentSummary?.raw_answer_values_allowed ? "allowed" : "blocked"}
+              </span>
+              <small>
+                citations {p0bGooglePhaseExecutionFulfillmentSummary?.raw_citation_values_allowed ? "allowed" : "blocked"} ·
+                assets {p0bGooglePhaseExecutionFulfillmentSummary?.raw_asset_urls_allowed ? "allowed" : "blocked"}
+              </small>
+              <small>
+                refs only{" "}
+                {p0bGooglePhaseExecutionFulfillmentSummary?.phase_entries_reference_command_ids_and_artifact_paths_only
+                  ? "yes"
+                  : "no"}
+              </small>
+            </div>
+          </div>
+          <code>{paths.p0bGooglePhaseExecutionFulfillment}</code>
         </div>
         <div className="broaderPlatformRegistry">
           <div className="launchRemediationHeader">

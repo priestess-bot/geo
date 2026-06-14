@@ -35,6 +35,9 @@ from scripts.build_au_p0b_google_manual_backfill_fulfillment import (
 from scripts.build_au_p0b_google_phase_execution_request_packet import (
     compute_p0b_google_phase_execution_request_packet_hash,
 )
+from scripts.build_au_p0b_google_phase_execution_fulfillment import (
+    compute_p0b_google_phase_execution_fulfillment_hash,
+)
 from scripts.build_au_p0a_real_batch_request_packet import compute_p0a_real_batch_request_packet_hash
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
 from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTest
@@ -933,6 +936,67 @@ class ApiContractsTest(unittest.TestCase):
         self.assertNotIn("Manual Google AI Mode answer", serialized)
         self.assertNotIn("https://examplebrand.example", serialized)
 
+    def test_au_p0b_google_phase_execution_fulfillment_endpoint_returns_current_status(self) -> None:
+        helper = AuP0bGoogleExecutionChecklistTest()
+        helper.setUp()
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, execution_path, env_path, status_path, package_path, _runbook = helper._write_status_and_package(
+                temp_dir,
+                google_ready=False,
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH": str(
+                        Path(temp_dir) / "phase-execution-request.json"
+                    ),
+                    "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH": str(
+                        Path(temp_dir) / "phase-execution-fulfillment.json"
+                    ),
+                },
+                clear=False,
+            ):
+                response = self.client.get("/v1/p0b-google-phase-execution-fulfillment/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(
+            payload["p0b_google_phase_execution_fulfillment_version"],
+            "au_p0b_google_phase_execution_fulfillment_v1",
+        )
+        self.assertEqual(payload["status"], "pass")
+        self.assertTrue(payload["phase_execution_fulfillment_ready"])
+        self.assertFalse(payload["phase_execution_fulfilled"])
+        self.assertFalse(payload["google_spike_phase_handoff_ready"])
+        self.assertFalse(payload["google_main_scoring_allowed"])
+        self.assertEqual(payload["summary"]["phase_count"], 6)
+        self.assertEqual(payload["summary"]["next_phase"], "environment")
+        self.assertEqual(payload["summary"]["missing_required_count"], 6)
+        self.assertTrue(payload["summary"]["source_checklist_hash_aligned"])
+        self.assertIn("phase:environment", payload["summary"]["missing_required"])
+        self.assertEqual([item["phase_id"] for item in payload["phase_fulfillment_items"]], payload["summary"]["phase_order"])
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0b_google_phase_execution_fulfillment"],
+            "GET /v1/p0b-google-phase-execution-fulfillment/au",
+        )
+        self.assertIn("make verify-au-p0b-google-phase-execution-fulfillment", payload["hard_gate_commands"])
+        self.assertTrue(any(command.endswith("--require-fulfilled") for command in payload["hard_gate_commands"]))
+        self.assertEqual(
+            payload["p0b_google_phase_execution_fulfillment_hash"],
+            compute_p0b_google_phase_execution_fulfillment_hash(payload),
+        )
+        serialized = json.dumps(payload)
+        self.assertNotIn("raw_value", serialized)
+        self.assertNotIn("Manual Google AI Mode answer", serialized)
+        self.assertNotIn("https://examplebrand.example", serialized)
+
     def test_au_p0a_real_batch_request_endpoint_returns_current_phase_handoff_packet(self) -> None:
         helper = AuP0aExecutionChecklistTest()
         with TemporaryDirectory() as temp_dir:
@@ -1400,6 +1464,20 @@ class ApiContractsTest(unittest.TestCase):
             dependency_groups_by_id["p0b_google_manual_backfill"]["blocking_reasons"],
         )
         self.assertGreaterEqual(len(dependency_groups_by_id["p0b_google_phase_execution"]["commands"]), 1)
+        self.assertIn(
+            "make verify-au-p0b-google-phase-execution-fulfillment",
+            dependency_groups_by_id["p0b_google_phase_execution"]["verification_commands"],
+        )
+        self.assertTrue(
+            any(
+                "--require-fulfilled" in command
+                for command in dependency_groups_by_id["p0b_google_phase_execution"]["verification_commands"]
+            )
+        )
+        self.assertIn(
+            "docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json",
+            dependency_groups_by_id["p0b_google_phase_execution"]["evidence_outputs"],
+        )
         self.assertEqual(payload["clearance_sequence"]["version"], "au_external_dependency_clearance_sequence_v1")
         self.assertEqual(payload["clearance_sequence"]["current_step_id"], "p0a_provider_credentials")
         self.assertIn("make verify-au-p0a-env-template", payload["clearance_sequence"]["next_command"])
@@ -6940,6 +7018,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/p0b-google-manual-backfill-request/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-manual-backfill-fulfillment/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-phase-execution-request/au", payload["persistence"])
+        self.assertIn("/v1/p0b-google-phase-execution-fulfillment/au", payload["persistence"])
         self.assertIn("/v1/au-broader-platform-registry", payload["persistence"])
         self.assertIn("/v1/au-retest-scheduler-plan", payload["persistence"])
         self.assertIn("/v1/au-retest-execution-status", payload["persistence"])
