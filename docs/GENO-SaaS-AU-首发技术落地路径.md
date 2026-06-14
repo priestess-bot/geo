@@ -1075,6 +1075,8 @@ Webhook 外发签名已作为上述投递链路的最小安全增强落地：订
 
 本地运行入口也已对齐同一参数口径：`make report-export-worker` 会传入 `GENO_REPORT_EXPORT_WORKER_MAX_JOBS/MAX_ATTEMPTS/RETRY_BACKOFF_SECONDS/LEASE_SECONDS`，`make notification-delivery-worker` 会传入 `GENO_NOTIFICATION_DELIVERY_MAX_DELIVERIES/MAX_ATTEMPTS/RETRY_BACKOFF_SECONDS/LEASE_SECONDS/TIMEOUT_SECONDS`。这保证本地手工执行、cron 和 Compose/K8s CronJob 在 retry/dead-letter 行为上使用同一默认值。
 
+runtime alert 与 entity-alias assignment 计划任务的本地运行入口也已补齐同一参数口径：`make runtime-alert-notification-worker` 会显式传入 `GENO_RUNTIME_ALERT_MAX_PROJECTS`，`make runtime-alert-escalation-worker` 会显式传入 `GENO_RUNTIME_ALERT_MAX_PROJECTS` 与 `GENO_RUNTIME_ALERT_ESCALATION_THRESHOLDS`；`make entity-alias-assignment-notification-worker`、`make entity-alias-assignment-escalation-worker`、`make entity-alias-assignment-reassignment-worker`、`make entity-alias-assignment-dispatch-apply-worker` 均显式传入 `GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS`。其中 reassignment 本地入口与 Compose 保持一致，默认只处理 `escalated` 队列；dispatch apply 本地入口与 Compose 保持同一 reviewer、capacity、limit 和 max-projects 参数口径。该补齐只消除手工执行、cron、Compose/K8s CronJob 之间的配置漂移，不改变 append-only 审计链或业务状态机。
+
 报告必须展示：
 
 - 采集时间窗口。

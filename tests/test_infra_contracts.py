@@ -696,32 +696,32 @@ class InfraContractsTest(unittest.TestCase):
         )
         self.assertIn("runtime-alert-notification-worker:", makefile)
         self.assertIn(
-            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_runtime_alert_notifications.py --market-code $${GENO_RUNTIME_ALERT_MARKET_CODE:-AU}",
+            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_runtime_alert_notifications.py --market-code $${GENO_RUNTIME_ALERT_MARKET_CODE:-AU} --max-projects $${GENO_RUNTIME_ALERT_MAX_PROJECTS:-50}",
             makefile,
         )
         self.assertIn("runtime-alert-escalation-worker:", makefile)
         self.assertIn(
-            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_runtime_alert_escalations.py --market-code $${GENO_RUNTIME_ALERT_MARKET_CODE:-AU}",
+            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_runtime_alert_escalations.py --market-code $${GENO_RUNTIME_ALERT_MARKET_CODE:-AU} --max-projects $${GENO_RUNTIME_ALERT_MAX_PROJECTS:-50} --severity-threshold-hours $${GENO_RUNTIME_ALERT_ESCALATION_THRESHOLDS:-critical=4,high=24}",
             makefile,
         )
         self.assertIn("entity-alias-assignment-notification-worker:", makefile)
         self.assertIn(
-            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_notifications.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}",
+            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_notifications.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --max-projects $${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}",
             makefile,
         )
         self.assertIn("entity-alias-assignment-escalation-worker:", makefile)
         self.assertIn(
-            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_escalations.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}",
+            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_escalations.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --max-projects $${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}",
             makefile,
         )
         self.assertIn("entity-alias-assignment-reassignment-worker:", makefile)
         self.assertIn(
-            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_reassignments.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --assigned-to $${GENO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO:-runtime-console}",
+            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_reassignments.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --assigned-to $${GENO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO:-runtime-console} --from-assignment-status escalated --max-projects $${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}",
             makefile,
         )
         self.assertIn("entity-alias-assignment-dispatch-apply-worker:", makefile)
         self.assertIn(
-            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_dispatch_apply.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --reviewer-id $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS:-runtime-console} --max-per-reviewer $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER:-10} --limit-per-project $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT:-50}",
+            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_dispatch_apply.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --reviewer-id $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS:-runtime-console} --max-per-reviewer $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER:-10} --limit-per-project $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT:-50} --max-projects $${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}",
             makefile,
         )
         self.assertIn("notification-delivery-worker:", makefile)
