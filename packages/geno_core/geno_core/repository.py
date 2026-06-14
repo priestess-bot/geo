@@ -22,6 +22,7 @@ from geno_core.models import (
     CollectionFailureRecord,
     CollectionRunSummary,
     EntityAliasCandidateAssignmentActionInput,
+    EntityAliasCandidateAssignmentReassignmentInput,
     ContentDraft,
     EntityAliasCandidateAssignmentInput,
     EntityAliasCandidateReviewInput,
@@ -58,6 +59,7 @@ from geno_core.models import (
     RuntimeEntityAlias,
     RuntimeEntityAliasAssignmentEscalationResult,
     RuntimeEntityAliasAssignmentNotificationResult,
+    RuntimeEntityAliasAssignmentReassignmentResult,
     RuntimeEntityAliasCandidate,
     RuntimeEntityAliasCandidateAssignmentQueueStats,
     RuntimeEntityAliasCandidateBatchReviewResult,
@@ -3966,6 +3968,156 @@ class PostgresEvidenceRepository:
             (_uuid(project_id), candidate_id),
         )
         return _row_dict(cursor.fetchone(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
+
+    def reassign_entity_alias_candidate_reviews(
+        self,
+        reassignment: EntityAliasCandidateAssignmentReassignmentInput,
+    ) -> RuntimeEntityAliasAssignmentReassignmentResult:
+        project_id = reassignment.project_id.strip()
+        assigned_to = reassignment.assigned_to.strip()
+        reassigned_by = reassignment.reassigned_by.strip() or "runtime-console"
+        from_assigned_to = reassignment.from_assigned_to.strip() if reassignment.from_assigned_to else None
+        from_assignment_status = (
+            reassignment.from_assignment_status.strip().lower() if reassignment.from_assignment_status else None
+        )
+        from_priority = reassignment.from_priority.strip().lower() if reassignment.from_priority else None
+        assignment_status = reassignment.assignment_status.strip().lower() or "assigned"
+        priority = reassignment.priority.strip().lower() or "high"
+        assignment_note = reassignment.assignment_note.strip() if reassignment.assignment_note else None
+        reason = (
+            reassignment.reason.strip()
+            if reassignment.reason
+            else assignment_note or f"reassign entity alias candidate reviews to {assigned_to}"
+        )
+        limit = max(1, min(int(reassignment.limit or 50), 200))
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not assigned_to:
+            raise ValueError("assigned_to is required")
+        if assignment_status not in {"assigned", "in_progress", "blocked", "escalated"}:
+            raise ValueError("assignment_status must be assigned, in_progress, blocked, or escalated")
+        if priority not in {"low", "normal", "high", "urgent"}:
+            raise ValueError("priority must be low, normal, high, or urgent")
+        if from_assignment_status and from_assignment_status not in {"assigned", "in_progress", "blocked", "escalated"}:
+            raise ValueError("from_assignment_status must be assigned, in_progress, blocked, or escalated")
+        if from_priority and from_priority not in {"low", "normal", "high", "urgent"}:
+            raise ValueError("from_priority must be low, normal, high, or urgent")
+        if not any((from_assigned_to, from_assignment_status, from_priority, reassignment.due_before)):
+            raise ValueError("at least one reassignment filter is required")
+        filters = ["project_id = %s"]
+        params: list[Any] = [_uuid(project_id)]
+        if from_assigned_to:
+            filters.append("assigned_to = %s")
+            params.append(from_assigned_to)
+        if from_assignment_status:
+            filters.append("assignment_status = %s")
+            params.append(from_assignment_status)
+        if from_priority:
+            filters.append("priority = %s")
+            params.append(from_priority)
+        if reassignment.due_before:
+            filters.append("due_at IS NOT NULL")
+            filters.append("due_at < %s")
+            params.append(reassignment.due_before)
+        where_clause = f"WHERE {' AND '.join(filters)}"
+        reassigned_reviews: list[dict[str, Any]] = []
+        audit_events: list[AuditEvent] = []
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM projects WHERE id = %s LIMIT 1", (_uuid(project_id),))
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)}
+                FROM entity_alias_candidate_reviews
+                {where_clause}
+                ORDER BY
+                    CASE assignment_status
+                        WHEN 'escalated' THEN 0
+                        WHEN 'blocked' THEN 1
+                        WHEN 'in_progress' THEN 2
+                        ELSE 3
+                    END,
+                    due_at ASC NULLS LAST,
+                    priority DESC,
+                    updated_at DESC,
+                    candidate_id
+                LIMIT %s
+                FOR UPDATE
+                """,
+                (*params, limit),
+            )
+            reviews = _rows_dict(cursor.fetchall(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
+            for before in reviews:
+                candidate_id = str(before.get("candidate_id") or "")
+                review_id = str(before.get("id") or "")
+                cursor.execute(
+                    """
+                    UPDATE entity_alias_candidate_reviews
+                    SET assigned_to = %s,
+                        assigned_by = %s,
+                        assignment_status = %s,
+                        assignment_note = %s,
+                        assigned_at = now(),
+                        due_at = %s,
+                        priority = %s,
+                        updated_at = now()
+                    WHERE project_id = %s AND candidate_id = %s
+                    """,
+                    (
+                        assigned_to,
+                        reassigned_by,
+                        assignment_status,
+                        assignment_note,
+                        reassignment.due_at,
+                        priority,
+                        _uuid(project_id),
+                        candidate_id,
+                    ),
+                )
+                record = self._get_entity_alias_candidate_review_for_update(
+                    cursor=cursor,
+                    project_id=project_id,
+                    candidate_id=candidate_id,
+                    lock=False,
+                )
+                audit_event = build_audit_event(
+                    event_type="entity_alias_candidate_assignment_reassigned",
+                    project_id=project_id,
+                    actor_type="user",
+                    actor_id=reassigned_by,
+                    target_type="entity_alias_candidate_review",
+                    target_id=review_id,
+                    before=before,
+                    after=record,
+                    input_refs={
+                        "candidate_id": candidate_id,
+                        "previous_assigned_to": before.get("assigned_to"),
+                        "previous_assignment_status": before.get("assignment_status"),
+                        "previous_priority": before.get("priority"),
+                    },
+                    output_refs={
+                        "entity_alias_candidate_review_ids": [review_id],
+                        "candidate_ids": [candidate_id],
+                        "assigned_to": assigned_to,
+                        "assignment_status": assignment_status,
+                        "priority": priority,
+                    },
+                    method_version="entity_alias_candidate_assignment_reassignment_v1",
+                    reason=reason,
+                )
+                reassigned_reviews.append(record)
+                audit_events.append(audit_event)
+            if audit_events:
+                self.save_audit_events(tuple(audit_events), cursor=cursor)
+        self.connection.commit()
+        return RuntimeEntityAliasAssignmentReassignmentResult(
+            project_id=project_id,
+            reassignment_count=len(reassigned_reviews),
+            skipped_count=0,
+            reassigned_reviews=tuple(reassigned_reviews),
+            audit_events=tuple(asdict(event) for event in audit_events),
+        )
 
     def assign_entity_alias_candidate_review(
         self,

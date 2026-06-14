@@ -3451,6 +3451,7 @@ const endpoints = {
   alertNotifications: "/v1/runtime-alerts/notifications",
   entityAliasAssignmentNotifications: "/v1/entity-aliases/runtime/candidates/assignment-notifications",
   entityAliasAssignmentEscalations: "/v1/entity-aliases/runtime/candidates/assignment-escalations",
+  entityAliasAssignmentReassignments: "/v1/entity-aliases/runtime/candidates/assignment-reassignments",
   content: "/v1/content-engines/runtime",
   traceability: "/v1/traceability/runtime"
 } as const;
@@ -3927,6 +3928,44 @@ async function escalateEntityAliasAssignmentReviews(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`${endpoints.entityAliasAssignmentEscalations} returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function reassignEntityAliasAssignmentReviews(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const assignedTo = String(formData.get("assigned_to") || "").trim();
+  if (!projectId || !assignedTo) {
+    throw new Error("project_id and assigned_to are required to reassign alias assignment reviews");
+  }
+  const payload = {
+    project_id: projectId,
+    assigned_to: assignedTo,
+    reassigned_by: String(formData.get("reassigned_by") || "runtime-console").trim(),
+    from_assigned_to: String(formData.get("from_assigned_to") || "").trim() || undefined,
+    from_assignment_status: String(formData.get("from_assignment_status") || "").trim() || undefined,
+    from_priority: String(formData.get("from_priority") || "").trim() || undefined,
+    due_before: String(formData.get("due_before") || "").trim() || undefined,
+    assignment_status: String(formData.get("assignment_status") || "assigned").trim(),
+    priority: String(formData.get("priority") || "high").trim(),
+    due_at: String(formData.get("due_at") || "").trim() || undefined,
+    assignment_note: String(formData.get("assignment_note") || "").trim() || undefined,
+    reason: String(formData.get("reason") || "").trim() || undefined,
+    limit: Number(String(formData.get("limit") || "50").trim() || "50")
+  };
+  const response = await fetch(`${baseUrl}${endpoints.entityAliasAssignmentReassignments}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`${endpoints.entityAliasAssignmentReassignments} returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -4919,6 +4958,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasAssignmentQueue: endpoints.entityAliasAssignmentQueue,
     entityAliasAssignmentStats: endpoints.entityAliasAssignmentStats,
     entityAliasAssignmentAction: endpoints.entityAliasAssignmentAction,
+    entityAliasAssignmentReassignments: endpoints.entityAliasAssignmentReassignments,
     entityAliasConfirmBatch: endpoints.entityAliasConfirmBatch,
     fidelityChecks: runtimePath(endpoints.fidelityChecks, {
       limit: 5
@@ -5086,6 +5126,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       })
     : paths.entityAliasAssignmentStats;
   paths.entityAliasAssignmentEscalations = endpoints.entityAliasAssignmentEscalations;
+  paths.entityAliasAssignmentReassignments = endpoints.entityAliasAssignmentReassignments;
   paths.savedViews = runtimePath(endpoints.savedViews, {
     ...selectedProjectParams,
     view_type: "runtime_evidence",
@@ -9474,7 +9515,7 @@ export default async function Home({
                         ? ` · next due ${dateText(data.entityAliasAssignmentStats.next_due_at)}`
                         : " · no next due"}{" "}
                       · actions: {paths.entityAliasAssignmentAction} · audit entity_alias_candidate_assignment_actioned /
-                      entity_alias_candidate_assignment_escalated
+                      entity_alias_candidate_assignment_escalated / entity_alias_candidate_assignment_reassigned
                     </small>
                     <form action={enqueueEntityAliasAssignmentNotifications} className="inlineAliasForm">
                       <input type="hidden" name="project_id" value={selectedProjectId || ""} />
@@ -9509,6 +9550,37 @@ export default async function Home({
                         Escalate overdue assignments
                       </button>
                       <small>{paths.entityAliasAssignmentEscalations}</small>
+                    </form>
+                    <form action={reassignEntityAliasAssignmentReviews} className="inlineAliasForm">
+                      <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+                      <input type="hidden" name="reassigned_by" value="runtime-console" />
+                      <input type="hidden" name="from_assignment_status" value="escalated" />
+                      <input type="hidden" name="assignment_status" value="assigned" />
+                      <input type="hidden" name="priority" value="high" />
+                      <input type="hidden" name="limit" value="50" />
+                      <input
+                        type="hidden"
+                        name="assignment_note"
+                        value="Reassign escalated alias reviews from Runtime Console"
+                      />
+                      <input
+                        type="hidden"
+                        name="reason"
+                        value="Bulk reassign escalated entity alias assignment reviews from console"
+                      />
+                      <input
+                        aria-label="Reassign alias reviews to"
+                        name="assigned_to"
+                        placeholder="reviewer@example.com"
+                      />
+                      <button
+                        className="actionButton compactAction"
+                        type="submit"
+                        disabled={!selectedProjectId || !data.entityAliasAssignmentStats.status_counts.escalated}
+                      >
+                        Reassign escalated reviews
+                      </button>
+                      <small>{paths.entityAliasAssignmentReassignments}</small>
                     </form>
                     <ul className="plainList">
                       {visibleAliasAssignmentQueue.map((record) => {

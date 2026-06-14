@@ -71,6 +71,7 @@ from geno_core.market import build_au_market_profile
 from geno_core.models import (
     EntityAliasCandidateAssignmentActionInput,
     EntityAliasCandidateAssignmentInput,
+    EntityAliasCandidateAssignmentReassignmentInput,
     EntityAliasCandidateReviewInput,
     EntityAliasInput,
     RuntimeAlertEventInput,
@@ -1578,6 +1579,22 @@ class EntityAliasCandidateAssignmentActionRequest(BaseModel):
     updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     note: str | None = Field(default=None, max_length=1000)
     force: bool = False
+
+
+class EntityAliasCandidateAssignmentReassignmentRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    assigned_to: str = Field(min_length=1, max_length=120)
+    reassigned_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    from_assigned_to: str | None = Field(default=None, min_length=1, max_length=120)
+    from_assignment_status: str | None = Field(default=None, min_length=1, max_length=40)
+    from_priority: str | None = Field(default=None, min_length=1, max_length=40)
+    due_before: str | None = Field(default=None, min_length=1, max_length=80)
+    assignment_status: str = Field(default="assigned", min_length=1, max_length=40)
+    priority: str = Field(default="high", min_length=1, max_length=40)
+    due_at: str | None = Field(default=None, max_length=80)
+    assignment_note: str | None = Field(default=None, max_length=1000)
+    reason: str | None = Field(default=None, max_length=500)
+    limit: int = Field(default=50, ge=1, le=200)
 
 
 class EntityAliasAssignmentNotificationRequest(BaseModel):
@@ -3730,6 +3747,51 @@ def action_runtime_entity_alias_candidate_assignment(
             else:
                 status_code = 400
             raise HTTPException(status_code=status_code, detail=detail) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/entity-aliases/runtime/candidates/assignment-reassignments")
+def reassign_runtime_entity_alias_candidate_assignments(
+    payload: EntityAliasCandidateAssignmentReassignmentRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id.strip(),
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            record = repository.reassign_entity_alias_candidate_reviews(
+                EntityAliasCandidateAssignmentReassignmentInput(
+                    project_id=payload.project_id.strip(),
+                    assigned_to=payload.assigned_to.strip(),
+                    reassigned_by=actor_id or payload.reassigned_by.strip(),
+                    from_assigned_to=payload.from_assigned_to.strip() if payload.from_assigned_to else None,
+                    from_assignment_status=payload.from_assignment_status.strip()
+                    if payload.from_assignment_status
+                    else None,
+                    from_priority=payload.from_priority.strip() if payload.from_priority else None,
+                    due_before=_parse_optional_datetime(payload.due_before),
+                    assignment_status=payload.assignment_status.strip(),
+                    priority=payload.priority.strip(),
+                    due_at=_parse_optional_datetime(payload.due_at),
+                    assignment_note=payload.assignment_note.strip() if payload.assignment_note else None,
+                    reason=payload.reason.strip() if payload.reason else None,
+                    limit=payload.limit,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
         return asdict(record)
     finally:
         close_repository_connection(repository)
@@ -6156,9 +6218,12 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasCandidateReviewPage",
             "RuntimeEntityAliasCandidateAssignmentQueueStats",
             "RuntimeEntityAliasAssignmentNotificationResult",
+            "RuntimeEntityAliasAssignmentEscalationResult",
+            "RuntimeEntityAliasAssignmentReassignmentResult",
             "RuntimeEntityAliasCandidateBatchReviewResult",
             "EntityAliasCandidateAssignmentActionInput",
             "EntityAliasCandidateAssignmentInput",
+            "EntityAliasCandidateAssignmentReassignmentInput",
             "RuntimeEntityAliasPage",
             "IndustryProfile",
             "PromptQuestion",
@@ -6351,14 +6416,18 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasCandidateReview",
             "RuntimeEntityAliasCandidateReviewPage",
             "RuntimeEntityAliasCandidateAssignmentQueueStats",
+            "RuntimeEntityAliasAssignmentEscalationResult",
+            "RuntimeEntityAliasAssignmentReassignmentResult",
             "RuntimeEntityAliasCandidateBatchReviewResult",
             "EntityAliasCandidateReviewInput",
             "EntityAliasCandidateAssignmentActionInput",
             "EntityAliasCandidateAssignmentInput",
+            "EntityAliasCandidateAssignmentReassignmentInput",
             "EntityAliasCandidateReviewRequest",
             "EntityAliasCandidateBatchReviewRequest",
             "EntityAliasCandidateAssignmentActionRequest",
             "EntityAliasCandidateAssignmentRequest",
+            "EntityAliasCandidateAssignmentReassignmentRequest",
             "EntityAliasAssignmentNotificationRequest",
             "RuntimeEntityAliasPage",
             "RuntimeEvidenceRun",
@@ -6443,6 +6512,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/entity-aliases/runtime/candidates/assignment-stats",
             "/v1/entity-aliases/runtime/candidates/assignment-notifications",
             "/v1/entity-aliases/runtime/candidates/assignment-escalations",
+            "/v1/entity-aliases/runtime/candidates/assignment-reassignments",
             "/v1/entity-aliases/runtime/candidates/review",
             "/v1/entity-aliases/runtime/candidates/review-batch",
             "/v1/entity-aliases/runtime/candidates/assign",

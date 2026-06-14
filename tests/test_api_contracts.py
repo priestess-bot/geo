@@ -60,6 +60,7 @@ from geno_core.models import (
     RuntimeEntityAlias,
     RuntimeEntityAliasAssignmentEscalationResult,
     RuntimeEntityAliasAssignmentNotificationResult,
+    RuntimeEntityAliasAssignmentReassignmentResult,
     RuntimeEntityAliasCandidateAssignmentQueueStats,
     RuntimeEntityAliasCandidate,
     RuntimeEntityAliasCandidateBatchReviewResult,
@@ -4927,6 +4928,69 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["due_before"].isoformat(), "2026-06-20T00:00:00+00:00")
         self.assertEqual(fake_repository.kwargs["escalated_by"], "lead-1")
 
+    def test_runtime_entity_alias_assignment_reassignments_endpoint_passes_payload(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+
+        class FakeRepository:
+            connection = type("Connection", (), {"close": lambda self: None})()
+
+            def reassign_entity_alias_candidate_reviews(self, reassignment):
+                self.reassignment = reassignment
+                return RuntimeEntityAliasAssignmentReassignmentResult(
+                    project_id=reassignment.project_id,
+                    reassignment_count=1,
+                    skipped_count=0,
+                    reassigned_reviews=(
+                        {
+                            "id": "review-1",
+                            "candidate_id": "candidate-1",
+                            "assigned_to": reassignment.assigned_to,
+                            "assignment_status": reassignment.assignment_status,
+                        },
+                    ),
+                    audit_events=(
+                        {
+                            "event_type": "entity_alias_candidate_assignment_reassigned",
+                            "method_version": "entity_alias_candidate_assignment_reassignment_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+            response = self.client.post(
+                "/v1/entity-aliases/runtime/candidates/assignment-reassignments",
+                json={
+                    "project_id": project_id,
+                    "assigned_to": "reviewer-b@example.com",
+                    "reassigned_by": "lead-1",
+                    "from_assignment_status": "escalated",
+                    "from_priority": "urgent",
+                    "due_before": "2026-06-20T00:00:00Z",
+                    "assignment_status": "assigned",
+                    "priority": "high",
+                    "due_at": "2026-06-21T00:00:00Z",
+                    "assignment_note": "Reassign escalated reviews",
+                    "reason": "rebalance alias assignment queue",
+                    "limit": 25,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        reassignment = fake_repository.reassignment
+        self.assertEqual(payload["reassignment_count"], 1)
+        self.assertEqual(payload["reassigned_reviews"][0]["assigned_to"], "reviewer-b@example.com")
+        self.assertEqual(payload["audit_events"][0]["event_type"], "entity_alias_candidate_assignment_reassigned")
+        self.assertEqual(reassignment.project_id, project_id)
+        self.assertEqual(reassignment.assigned_to, "reviewer-b@example.com")
+        self.assertEqual(reassignment.reassigned_by, "lead-1")
+        self.assertEqual(reassignment.from_assignment_status, "escalated")
+        self.assertEqual(reassignment.from_priority, "urgent")
+        self.assertEqual(reassignment.due_before.isoformat(), "2026-06-20T00:00:00+00:00")
+        self.assertEqual(reassignment.due_at.isoformat(), "2026-06-21T00:00:00+00:00")
+        self.assertEqual(reassignment.limit, 25)
+
     def test_runtime_entity_alias_candidate_review_endpoint_records_decision(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         entity_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
@@ -7334,9 +7398,12 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEntityAliasCandidateReviewPage", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasCandidateAssignmentQueueStats", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasAssignmentNotificationResult", payload["m1_bootstrap"])
+        self.assertIn("RuntimeEntityAliasAssignmentEscalationResult", payload["m1_bootstrap"])
+        self.assertIn("RuntimeEntityAliasAssignmentReassignmentResult", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasCandidateBatchReviewResult", payload["m1_bootstrap"])
         self.assertIn("EntityAliasCandidateAssignmentActionInput", payload["m1_bootstrap"])
         self.assertIn("EntityAliasCandidateAssignmentInput", payload["m1_bootstrap"])
+        self.assertIn("EntityAliasCandidateAssignmentReassignmentInput", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasPage", payload["m1_bootstrap"])
         self.assertIn("TraceabilityBundle", payload["auditability"])
         self.assertIn("RuntimeFidelityCheck", payload["auditability"])
@@ -7397,13 +7464,17 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEntityAliasCandidateReview", payload["persistence"])
         self.assertIn("RuntimeEntityAliasCandidateReviewPage", payload["persistence"])
         self.assertIn("RuntimeEntityAliasCandidateBatchReviewResult", payload["persistence"])
+        self.assertIn("RuntimeEntityAliasAssignmentEscalationResult", payload["persistence"])
+        self.assertIn("RuntimeEntityAliasAssignmentReassignmentResult", payload["persistence"])
         self.assertIn("EntityAliasCandidateReviewInput", payload["persistence"])
         self.assertIn("EntityAliasCandidateAssignmentActionInput", payload["persistence"])
         self.assertIn("EntityAliasCandidateAssignmentInput", payload["persistence"])
+        self.assertIn("EntityAliasCandidateAssignmentReassignmentInput", payload["persistence"])
         self.assertIn("EntityAliasCandidateReviewRequest", payload["persistence"])
         self.assertIn("EntityAliasCandidateBatchReviewRequest", payload["persistence"])
         self.assertIn("EntityAliasCandidateAssignmentActionRequest", payload["persistence"])
         self.assertIn("EntityAliasCandidateAssignmentRequest", payload["persistence"])
+        self.assertIn("EntityAliasCandidateAssignmentReassignmentRequest", payload["persistence"])
         self.assertIn("EntityAliasAssignmentNotificationRequest", payload["persistence"])
         self.assertIn("RuntimeEntityAliasPage", payload["persistence"])
         self.assertIn("RuntimeSavedView", payload["persistence"])
@@ -7528,6 +7599,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/entity-aliases/runtime/candidates/reviews", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/assignment-notifications", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/assignment-escalations", payload["persistence"])
+        self.assertIn("/v1/entity-aliases/runtime/candidates/assignment-reassignments", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/review", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/review-batch", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/assign", payload["persistence"])

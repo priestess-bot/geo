@@ -293,6 +293,32 @@ services:
       postgres:
         condition: service_healthy
 
+  entity-alias-assignment-reassignment-worker:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    profiles:
+      - scheduler
+    environment:
+      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE: ${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
+      GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS: ${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
+      GENO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO: ${GENO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO:-runtime-console}
+    command:
+      - python
+      - workers/notification_worker/run_entity_alias_assignment_reassignments.py
+      - --market-code
+      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
+      - --assigned-to
+      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO:-runtime-console}
+      - --from-assignment-status
+      - escalated
+      - --max-projects
+      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   runtime-e2e:
     build:
       context: ..

@@ -80,8 +80,9 @@ from geno_core.market import build_au_market_profile
 from geno_core.models import (
     AnswerAnalysis,
     CollectionFailureRecord,
-    EntityAliasCandidateAssignmentInput,
     EntityAliasCandidateAssignmentActionInput,
+    EntityAliasCandidateAssignmentInput,
+    EntityAliasCandidateAssignmentReassignmentInput,
     EntityAliasCandidateReviewInput,
     EntityAliasInput,
     ManualBackfillInput,
@@ -89,6 +90,7 @@ from geno_core.models import (
     RuntimeEvidencePage,
     RuntimeEvidenceExport,
     RuntimeEntityAlias,
+    RuntimeEntityAliasAssignmentReassignmentResult,
     RuntimeEntityAliasAssignmentNotificationResult,
     RuntimeEntityAliasCandidateAssignmentQueueStats,
     RuntimeEntityAliasCandidateBatchReviewResult,
@@ -11272,6 +11274,81 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FOR UPDATE", executed_sql)
         self.assertIn("SET assignment_status = 'escalated'", executed_sql)
         self.assertIn("entity_alias_candidate_assignment_escalated", str(connection.calls))
+
+    def test_postgres_repository_reassigns_entity_alias_assignment_reviews(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        review_id = "60f1e5a4-d1d0-511e-b0c8-15dfc081ee9b"
+        candidate_id = "candidate-1"
+        brand_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+        now = datetime(2026, 6, 13, tzinfo=UTC)
+        due_at = datetime(2026, 6, 15, tzinfo=UTC)
+        before = {
+            "id": review_id,
+            "project_id": project_id,
+            "candidate_id": candidate_id,
+            "entity_id": brand_id,
+            "entity_kind": "brand",
+            "alias": "ExampleBrand AU",
+            "alias_type": "alias",
+            "source": "evidence_answer_text",
+            "confidence": 0.8,
+            "decision": "needs_review",
+            "reviewed_by": "analyst-1",
+            "reason": "review required",
+            "notes": "Needs reviewer assignment",
+            "assigned_to": "reviewer-a@example.com",
+            "assigned_by": "lead@example.com",
+            "assignment_status": "escalated",
+            "assignment_note": "Escalated overdue assignment",
+            "assigned_at": now,
+            "due_at": now - timedelta(days=1),
+            "priority": "urgent",
+            "evidence_answer_run_ids": ["answer-run-1"],
+            "evidence_urls": ["https://examplebrand.com.au/reviews"],
+            "payload": {"source_panel": "runtime_entity_alias_candidates"},
+            "created_at": now,
+            "updated_at": now,
+        }
+        after = {
+            **before,
+            "assigned_to": "reviewer-b@example.com",
+            "assigned_by": "lead@example.com",
+            "assignment_status": "assigned",
+            "assignment_note": "Reassign escalated review",
+            "due_at": due_at,
+            "priority": "high",
+        }
+        connection = RecordingConnection(result_sets=[{"id": project_id}, [before], after])
+
+        result = PostgresEvidenceRepository(connection).reassign_entity_alias_candidate_reviews(
+            EntityAliasCandidateAssignmentReassignmentInput(
+                project_id=project_id,
+                assigned_to="reviewer-b@example.com",
+                reassigned_by="lead@example.com",
+                from_assignment_status="escalated",
+                assignment_status="assigned",
+                priority="high",
+                due_at=due_at,
+                assignment_note="Reassign escalated review",
+                reason="rebalance escalated assignment queue",
+                limit=25,
+            )
+        )
+
+        self.assertIsInstance(result, RuntimeEntityAliasAssignmentReassignmentResult)
+        self.assertEqual(result.reassignment_count, 1)
+        self.assertEqual(result.reassigned_reviews[0]["assigned_to"], "reviewer-b@example.com")
+        self.assertEqual(result.reassigned_reviews[0]["assignment_status"], "assigned")
+        self.assertEqual(result.audit_events[0]["event_type"], "entity_alias_candidate_assignment_reassigned")
+        self.assertEqual(result.audit_events[0]["method_version"], "entity_alias_candidate_assignment_reassignment_v1")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM entity_alias_candidate_reviews", executed_sql)
+        self.assertIn("assignment_status = %s", executed_sql)
+        self.assertIn("LIMIT %s", executed_sql)
+        self.assertIn("FOR UPDATE", executed_sql)
+        self.assertIn("SET assigned_to = %s", executed_sql)
+        self.assertIn("entity_alias_candidate_assignment_reassigned", str(connection.calls))
 
     def test_postgres_repository_assigns_runtime_entity_alias_candidate_review(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
