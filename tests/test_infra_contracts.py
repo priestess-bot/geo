@@ -96,6 +96,7 @@ class InfraContractsTest(unittest.TestCase):
         alias_assignment_worker = services["entity-alias-assignment-notification-worker"]
         alias_assignment_escalation_worker = services["entity-alias-assignment-escalation-worker"]
         alias_assignment_reassignment_worker = services["entity-alias-assignment-reassignment-worker"]
+        alias_assignment_dispatch_apply_worker = services["entity-alias-assignment-dispatch-apply-worker"]
 
         self.assertEqual(scheduler["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(scheduler["command"], ["python", "scripts/run_browser_fidelity_scheduler.py"])
@@ -179,6 +180,29 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("--from-assignment-status", alias_assignment_reassignment_worker["command"])
         self.assertIn("escalated", alias_assignment_reassignment_worker["command"])
         self.assertIn("postgres", alias_assignment_reassignment_worker["depends_on"])
+
+        self.assertEqual(alias_assignment_dispatch_apply_worker["build"]["dockerfile"], "apps/api/Dockerfile")
+        self.assertEqual(alias_assignment_dispatch_apply_worker["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
+        self.assertEqual(
+            alias_assignment_dispatch_apply_worker["environment"]["GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE"],
+            "AU",
+        )
+        self.assertEqual(
+            alias_assignment_dispatch_apply_worker["environment"]["GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS"],
+            "runtime-console",
+        )
+        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", alias_assignment_dispatch_apply_worker["environment"])
+        self.assertIn(
+            "workers/notification_worker/run_entity_alias_assignment_dispatch_apply.py",
+            alias_assignment_dispatch_apply_worker["command"],
+        )
+        self.assertIn("--reviewer-id", alias_assignment_dispatch_apply_worker["command"])
+        self.assertIn("runtime-console", alias_assignment_dispatch_apply_worker["command"])
+        self.assertIn("--max-per-reviewer", alias_assignment_dispatch_apply_worker["command"])
+        self.assertIn("10", alias_assignment_dispatch_apply_worker["command"])
+        self.assertIn("--limit-per-project", alias_assignment_dispatch_apply_worker["command"])
+        self.assertIn("50", alias_assignment_dispatch_apply_worker["command"])
+        self.assertIn("postgres", alias_assignment_dispatch_apply_worker["depends_on"])
 
     def test_observability_profile_wires_prometheus_and_grafana(self) -> None:
         config = self._compose_config("observability")
@@ -645,6 +669,11 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("entity-alias-assignment-reassignment-worker:", makefile)
         self.assertIn(
             "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_reassignments.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --assigned-to $${GENO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO:-runtime-console}",
+            makefile,
+        )
+        self.assertIn("entity-alias-assignment-dispatch-apply-worker:", makefile)
+        self.assertIn(
+            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_dispatch_apply.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --reviewer-id $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS:-runtime-console} --max-per-reviewer $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER:-10} --limit-per-project $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT:-50}",
             makefile,
         )
         self.assertIn("docker-config-scheduler:", makefile)

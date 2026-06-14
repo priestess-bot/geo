@@ -319,6 +319,36 @@ services:
       postgres:
         condition: service_healthy
 
+  entity-alias-assignment-dispatch-apply-worker:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    profiles:
+      - scheduler
+    environment:
+      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE: ${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
+      GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS: ${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
+      GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS: ${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS:-runtime-console}
+      GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER: ${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER:-10}
+      GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT: ${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT:-50}
+    command:
+      - python
+      - workers/notification_worker/run_entity_alias_assignment_dispatch_apply.py
+      - --market-code
+      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
+      - --reviewer-id
+      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS:-runtime-console}
+      - --max-per-reviewer
+      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER:-10}
+      - --limit-per-project
+      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT:-50}
+      - --max-projects
+      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   runtime-e2e:
     build:
       context: ..

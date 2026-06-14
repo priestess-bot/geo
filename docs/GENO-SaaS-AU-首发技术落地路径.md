@@ -1551,6 +1551,8 @@ EntityAlias
 
 补充状态：assignment dispatch 显式 apply 已补齐。`POST /v1/entity-aliases/runtime/candidates/assignment-dispatch-apply` 会按提交参数重新生成当前 `entity_alias_assignment_dispatch_plan_v1`，再对仍符合 `include_statuses` 的 proposed assignments 逐条锁定 review 并写入 `assigned_to/assigned_by/assignment_status/priority/due_at/assignment_note`。每条成功派单写 `entity_alias_candidate_assignment_dispatch_applied` 审计，整体写 `entity_alias_assignment_dispatch_plan_applied` 摘要，响应包含 requested/applied/failed、errors、records 和原始 dispatch plan，便于复盘“计划为什么这样分”和“最终哪些行实际落库”。Runtime Console 已在 `Alias Assignment Dispatch Plan` 面板提供 `Apply dispatch plan` 按钮。该能力仍要求人工显式触发，不做无人值守调度、不做值班排班、不接复杂 reviewer inbox；若候选已 completed 或状态/owner 已脱离本次 include 范围，会作为冲突跳过或报错，而不是覆盖当前状态。
 
+补充状态：assignment dispatch apply 单次 worker 已补齐。`make entity-alias-assignment-dispatch-apply-worker` 会运行 `workers/notification_worker/run_entity_alias_assignment_dispatch_apply.py`，可通过 `--project-id` 指定项目，或按 `--market-code AU` 发现项目；默认使用 `GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS=runtime-console`、`GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER=10`、`GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT=50`。Compose `scheduler` profile 已新增同名服务，可把该 worker 接到 cron/K8s CronJob。worker 输出 processed/status/project_count/requested_count/applied_count/failed_count/project_failure_count/results JSON，并复用显式 apply 的逐条与汇总审计；它解决的是“可调度执行入口”，仍不实现值班排班策略、复杂 reviewer inbox、审批矩阵或长驻调度引擎。
+
 ### 8.15 CollectionCost（单位经济，新增）
 
 跟踪每次采集与分析的成本，支撑定价与 unit economics。
