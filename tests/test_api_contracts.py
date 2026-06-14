@@ -22,6 +22,9 @@ from geno_api.main import app, close_runtime_resources, reset_runtime_auth_cache
 from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
 from scripts.build_au_launch_status import compute_launch_status_hash
 from scripts.build_au_external_dependency_handoff import compute_external_dependency_handoff_hash
+from scripts.build_au_p0b_google_environment_request_packet import (
+    compute_p0b_google_environment_request_packet_hash,
+)
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
 from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTest
 from tests.test_au_p0a_execution_checklist import AuP0aExecutionChecklistTest
@@ -504,6 +507,66 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("env_file_hygiene", payload)
         self.assertIn("google_aio_prompt_selector", payload["summary"]["missing_selector_groups"])
         self.assertIn("hard_package_gate", [command["id"] for command in payload["verification_commands"]])
+        self.assertNotIn("raw_value", json.dumps(payload))
+
+    def test_au_p0b_google_environment_request_endpoint_returns_current_handoff_packet(self) -> None:
+        helper = AuP0bGoogleExecutionChecklistTest()
+        helper.setUp()
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, execution_path, env_path, status_path, package_path, _runbook = helper._write_status_and_package(
+                temp_dir,
+                google_ready=False,
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH": str(
+                        Path(temp_dir) / "environment-request.json"
+                    ),
+                },
+                clear=False,
+            ):
+                response = self.client.get("/v1/p0b-google-environment-request/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(
+            payload["p0b_google_environment_request_packet_version"],
+            "au_p0b_google_environment_request_packet_v1",
+        )
+        self.assertEqual(payload["status"], "pass")
+        self.assertTrue(payload["google_environment_request_packet_ready"])
+        self.assertFalse(payload["environment_handoff_ready"])
+        self.assertFalse(payload["google_main_scoring_allowed"])
+        self.assertEqual(payload["summary"]["target_env_file"], str(Path(temp_dir) / "missing-google.env"))
+        self.assertEqual(payload["summary"]["missing_required_count"], len(payload["summary"]["missing_required"]))
+        self.assertIn("smoke_env:GOOGLE_PLAYWRIGHT_ENABLED", payload["summary"]["missing_required"])
+        self.assertIn("full_run_env:DATABASE_URL", payload["summary"]["missing_required"])
+        self.assertIn("selector_group:google_aio_prompt_selector", payload["summary"]["missing_required"])
+        self.assertEqual(payload["summary"]["next_command"], "make verify-au-p0b-google-env-template")
+        self.assertEqual(payload["summary"]["post_update_verification_command"], "make au-p0b-google-playwright-env")
+        self.assertFalse(payload["summary"]["raw_secret_values_allowed"])
+        self.assertTrue(payload["summary"]["forbidden_exact_secret_fields_redacted"])
+        self.assertIn("make au-p0b-google-env-bootstrap", payload["setup_commands"])
+        self.assertIn("make verify-au-p0b-google-playwright-env", payload["verification_commands"])
+        self.assertIn("docs/runtime_preflight/au-p0b-google-playwright-env-latest.json", payload["evidence_outputs"])
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0b_google_environment_request"],
+            "GET /v1/p0b-google-environment-request/au",
+        )
+        self.assertIn("make verify-au-p0b-google-environment-request", payload["hard_gate_commands"])
+        self.assertTrue(payload["source_p0b_google_execution_checklist"]["google_execution_checklist_hash"])
+        self.assertEqual(
+            payload["p0b_google_environment_request_packet_hash"],
+            compute_p0b_google_environment_request_packet_hash(payload),
+        )
         self.assertNotIn("raw_value", json.dumps(payload))
 
     def test_au_broader_platform_registry_endpoint_returns_disabled_candidates(self) -> None:
@@ -6347,6 +6410,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/p0a-execution-checklist/au", payload["persistence"])
         self.assertIn("/v1/p0a-credential-request/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-execution-checklist/au", payload["persistence"])
+        self.assertIn("/v1/p0b-google-environment-request/au", payload["persistence"])
         self.assertIn("/v1/au-broader-platform-registry", payload["persistence"])
         self.assertIn("/v1/au-retest-scheduler-plan", payload["persistence"])
         self.assertIn("/v1/au-retest-execution-status", payload["persistence"])

@@ -718,6 +718,7 @@ type RuntimeData = {
   p0aExecutionChecklist: AuP0aExecutionChecklist | null;
   p0aCredentialRequest: AuP0aCredentialRequest | null;
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
+  p0bGoogleEnvironmentRequest: AuP0bGoogleEnvironmentRequest | null;
   externalDependencyHandoff: AuExternalDependencyHandoff | null;
   externalDependencyClearance: AuExternalDependencyClearance | null;
   broaderPlatformRegistry: AuBroaderPlatformRegistry | null;
@@ -1316,6 +1317,101 @@ type AuP0aCredentialRequest = {
     p0a_execution_checklist_hash?: string;
     p0a_execution_checklist_ready?: boolean;
     ready_for_design_partner?: boolean;
+    path?: string;
+  };
+};
+
+type AuP0bGoogleEnvironmentRequest = {
+  p0b_google_environment_request_packet_version: string;
+  generated_at: string;
+  status: string;
+  google_environment_request_packet_ready: boolean;
+  environment_handoff_ready: boolean;
+  google_main_scoring_allowed: boolean;
+  p0b_google_environment_request_packet_hash: string;
+  summary?: {
+    source_environment_handoff_version?: string;
+    target_env_file?: string;
+    environment_handoff_ready?: boolean;
+    missing_required_count?: number;
+    missing_required?: string[];
+    environment_item_count?: number;
+    selector_item_count?: number;
+    file_item_count?: number;
+    dependency_item_count?: number;
+    owner_counts?: Record<string, number>;
+    missing_required_by_owner?: Record<string, string[]>;
+    setup_command_count?: number;
+    verification_command_count?: number;
+    evidence_output_count?: number;
+    env_file_hygiene_ready?: boolean;
+    raw_secret_values_allowed?: boolean;
+    forbidden_exact_secret_fields_redacted?: boolean;
+    next_command?: string;
+    post_update_verification_command?: string;
+    google_next_action?: string;
+  };
+  environment_items?: Array<{
+    name: string;
+    gate?: string;
+    required?: boolean;
+    present?: boolean;
+    truthy?: boolean | null;
+    source?: string;
+    owner_hint?: string;
+    accepted_injection_methods?: string[];
+    env_file_key?: string;
+    value_length?: number;
+    sha256_prefix?: string;
+    secret_redacted?: boolean;
+    post_update_checks?: string[];
+  }>;
+  selector_items?: Array<{
+    group: string;
+    candidate_names?: string[];
+    present?: boolean;
+    selected_name?: string;
+    source?: string;
+    owner_hint?: string;
+    accepted_injection_methods?: string[];
+    value_length?: number;
+    sha256_prefix?: string;
+    secret_redacted?: boolean;
+    post_update_checks?: string[];
+  }>;
+  file_items?: Array<{
+    name: string;
+    expected_type?: string;
+    present?: boolean;
+    exists?: boolean;
+    is_file?: boolean;
+    is_dir?: boolean;
+    source?: string;
+    owner_hint?: string;
+    secret_redacted?: boolean;
+  }>;
+  dependency_items?: Array<{
+    name: string;
+    present?: boolean;
+    source?: string;
+    owner_hint?: string;
+    secret_redacted?: boolean;
+  }>;
+  setup_commands?: string[];
+  verification_commands?: string[];
+  evidence_outputs?: string[];
+  runtime_endpoints?: {
+    p0b_google_environment_request?: string;
+    p0b_google_execution_checklist?: string;
+    external_dependency_handoff?: string;
+    external_dependency_clearance?: string;
+    next_work_item?: string;
+  };
+  hard_gate_commands?: string[];
+  source_p0b_google_execution_checklist?: {
+    google_execution_checklist_hash?: string;
+    google_execution_checklist_ready?: boolean;
+    google_main_scoring_allowed?: boolean;
     path?: string;
   };
 };
@@ -1932,6 +2028,7 @@ const endpoints = {
   p0aExecutionChecklist: "/v1/p0a-execution-checklist/au",
   p0aCredentialRequest: "/v1/p0a-credential-request/au",
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
+  p0bGoogleEnvironmentRequest: "/v1/p0b-google-environment-request/au",
   externalDependencyHandoff: "/v1/external-dependency-handoff/au",
   externalDependencyClearance: "/v1/external-dependency-clearance/au",
   broaderPlatformRegistry: "/v1/au-broader-platform-registry",
@@ -3347,6 +3444,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aExecutionChecklist: endpoints.p0aExecutionChecklist,
     p0aCredentialRequest: endpoints.p0aCredentialRequest,
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
+    p0bGoogleEnvironmentRequest: endpoints.p0bGoogleEnvironmentRequest,
     externalDependencyHandoff: endpoints.externalDependencyHandoff,
     externalDependencyClearance: endpoints.externalDependencyClearance,
     broaderPlatformRegistry: endpoints.broaderPlatformRegistry,
@@ -3663,6 +3761,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aExecutionChecklist,
     p0aCredentialRequest,
     p0bGoogleExecutionChecklist,
+    p0bGoogleEnvironmentRequest,
     externalDependencyHandoff,
     externalDependencyClearance,
     broaderPlatformRegistry,
@@ -3715,6 +3814,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0aExecutionChecklist | null>(baseUrl, paths.p0aExecutionChecklist, null),
     fetchRuntimeEndpoint<AuP0aCredentialRequest | null>(baseUrl, paths.p0aCredentialRequest, null),
     fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
+    fetchRuntimeEndpoint<AuP0bGoogleEnvironmentRequest | null>(baseUrl, paths.p0bGoogleEnvironmentRequest, null),
     fetchRuntimeEndpoint<AuExternalDependencyHandoff | null>(baseUrl, paths.externalDependencyHandoff, null),
     fetchRuntimeEndpoint<AuExternalDependencyClearance | null>(baseUrl, paths.externalDependencyClearance, null),
     fetchRuntimeEndpoint<AuBroaderPlatformRegistry | null>(baseUrl, paths.broaderPlatformRegistry, null),
@@ -3879,6 +3979,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aExecutionChecklist,
     p0aCredentialRequest,
     p0bGoogleExecutionChecklist,
+    p0bGoogleEnvironmentRequest,
     externalDependencyHandoff,
     externalDependencyClearance,
     broaderPlatformRegistry,
@@ -3936,6 +4037,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0aExecutionChecklist: p0aExecutionChecklist.payload,
       p0aCredentialRequest: p0aCredentialRequest.payload,
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
+      p0bGoogleEnvironmentRequest: p0bGoogleEnvironmentRequest.payload,
       externalDependencyHandoff: externalDependencyHandoff.payload,
       externalDependencyClearance: externalDependencyClearance.payload,
       broaderPlatformRegistry: broaderPlatformRegistry.payload,
@@ -4291,6 +4393,13 @@ export default async function Home({
   const p0bEnvFileHygieneReady = p0bGoogleExecutionSummary?.env_file_hygiene_ready;
   const p0bEnvFileHygieneErrorCount = p0bGoogleExecutionSummary?.env_file_hygiene_error_count || 0;
   const p0bEnvFileHygieneWarningCount = p0bGoogleExecutionSummary?.env_file_hygiene_warning_count || 0;
+  const p0bGoogleEnvironmentRequest = data.p0bGoogleEnvironmentRequest;
+  const p0bGoogleEnvironmentRequestSummary = p0bGoogleEnvironmentRequest?.summary;
+  const p0bGoogleEnvironmentRequestMissing = p0bGoogleEnvironmentRequestSummary?.missing_required || [];
+  const p0bGoogleEnvironmentItems = p0bGoogleEnvironmentRequest?.environment_items || [];
+  const p0bGoogleSelectorItems = p0bGoogleEnvironmentRequest?.selector_items || [];
+  const p0bGoogleFileItems = p0bGoogleEnvironmentRequest?.file_items || [];
+  const p0bGoogleDependencyItems = p0bGoogleEnvironmentRequest?.dependency_items || [];
   const externalDependencyHandoff = data.externalDependencyHandoff;
   const externalDependencySummary = externalDependencyHandoff?.summary;
   const externalDependencyGroups = externalDependencyHandoff?.dependency_groups || [];
@@ -5062,6 +5171,118 @@ export default async function Home({
             </ul>
           ) : null}
           <code>{paths.p0bGoogleExecutionChecklist}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>P0b Google environment request packet</strong>
+            <span>
+              {p0bGoogleEnvironmentRequest?.p0b_google_environment_request_packet_version ||
+                "au_p0b_google_environment_request_packet_v1"} · p0b_google_environment_request_packet_hash{" "}
+              {shortHash(p0bGoogleEnvironmentRequest?.p0b_google_environment_request_packet_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>
+              Packet ready {p0bGoogleEnvironmentRequest?.google_environment_request_packet_ready ? "yes" : "no"}
+            </span>
+            <span>
+              Environment handoff {p0bGoogleEnvironmentRequest?.environment_handoff_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              Google scoring {p0bGoogleEnvironmentRequest?.google_main_scoring_allowed ? "allowed" : "blocked"}
+            </span>
+            <span>Missing required {p0bGoogleEnvironmentRequestSummary?.missing_required_count || 0}</span>
+            <span>Env items {p0bGoogleEnvironmentRequestSummary?.environment_item_count || 0}</span>
+            <span>Selector groups {p0bGoogleEnvironmentRequestSummary?.selector_item_count || 0}</span>
+            <span>File gates {p0bGoogleEnvironmentRequestSummary?.file_item_count || 0}</span>
+            <span>Raw secret allowed {p0bGoogleEnvironmentRequestSummary?.raw_secret_values_allowed ? "yes" : "no"}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>Target env file {p0bGoogleEnvironmentRequestSummary?.target_env_file || "none"}</span>
+            <span>
+              Missing {p0bGoogleEnvironmentRequestMissing.slice(0, 5).join(", ") || "none"}
+            </span>
+            <span>
+              Browser owner missing{" "}
+              {(p0bGoogleEnvironmentRequestSummary?.missing_required_by_owner?.browser_automation_operator || [])
+                .slice(0, 4)
+                .join(", ") || "none"}
+            </span>
+            <span>
+              Manual owner missing{" "}
+              {(p0bGoogleEnvironmentRequestSummary?.missing_required_by_owner?.google_manual_backfill_operator || [])
+                .slice(0, 3)
+                .join(", ") || "none"}
+            </span>
+            <span>Next command {p0bGoogleEnvironmentRequestSummary?.next_command || "none"}</span>
+            <span>
+              Post-update verifier {p0bGoogleEnvironmentRequestSummary?.post_update_verification_command || "none"}
+            </span>
+            <span>Google next action {p0bGoogleEnvironmentRequestSummary?.google_next_action || "none"}</span>
+            <span>
+              Source checklist hash{" "}
+              {shortHash(
+                p0bGoogleEnvironmentRequest?.source_p0b_google_execution_checklist?.google_execution_checklist_hash
+              )}
+            </span>
+            <span>
+              {p0bGoogleEnvironmentRequest?.runtime_endpoints?.p0b_google_environment_request ||
+                "GET /v1/p0b-google-environment-request/au"}
+            </span>
+            <span>Hard gate: make verify-au-p0b-google-environment-request</span>
+            <span>
+              Ready smoke hard gate:{" "}
+              {p0bGoogleEnvironmentRequest?.hard_gate_commands?.find((command) =>
+                command.endsWith("--require-ready-smoke")
+              ) ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py docs/runtime_preflight/au-p0b-google-playwright-env-latest.json --require-ready-smoke"}
+            </span>
+          </div>
+          <div className="dependencyGroupGrid">
+            {p0bGoogleEnvironmentItems.slice(0, 4).map((item) => (
+              <div className="dependencyGroup" key={`env-${item.name}`}>
+                <strong>{item.name}</strong>
+                <span>
+                  {item.owner_hint || "owner"} · {item.present && item.truthy !== false ? "present" : "missing"}
+                </span>
+                <small>
+                  {item.gate || "gate"} · source {item.source || "missing"}
+                </small>
+                <small>{item.env_file_key || item.name} · redacted {item.secret_redacted ? "yes" : "no"}</small>
+              </div>
+            ))}
+            {p0bGoogleSelectorItems.slice(0, 2).map((item) => (
+              <div className="dependencyGroup" key={`selector-${item.group}`}>
+                <strong>{item.group}</strong>
+                <span>
+                  {item.owner_hint || "owner"} · {item.present ? "present" : "missing"}
+                </span>
+                <small>{(item.candidate_names || []).slice(0, 2).join(" · ") || "selector"}</small>
+                <small>redacted {item.secret_redacted ? "yes" : "no"}</small>
+              </div>
+            ))}
+            {p0bGoogleFileItems.slice(0, 3).map((item) => (
+              <div className="dependencyGroup" key={`file-${item.name}`}>
+                <strong>{item.name}</strong>
+                <span>
+                  {item.owner_hint || "owner"} · {item.present && (item.is_file || item.is_dir) ? "present" : "missing"}
+                </span>
+                <small>{item.expected_type || "path"} · source {item.source || "missing"}</small>
+                <small>redacted {item.secret_redacted ? "yes" : "no"}</small>
+              </div>
+            ))}
+            {p0bGoogleDependencyItems.slice(0, 2).map((item) => (
+              <div className="dependencyGroup" key={`dependency-${item.name}`}>
+                <strong>{item.name}</strong>
+                <span>
+                  {item.owner_hint || "owner"} · {item.present ? "present" : "missing"}
+                </span>
+                <small>source {item.source || "unknown"}</small>
+                <small>redacted {item.secret_redacted ? "yes" : "no"}</small>
+              </div>
+            ))}
+          </div>
+          <code>{paths.p0bGoogleEnvironmentRequest}</code>
         </div>
         <div className="broaderPlatformRegistry">
           <div className="launchRemediationHeader">
