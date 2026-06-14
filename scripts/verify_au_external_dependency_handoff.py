@@ -264,6 +264,15 @@ def _validate_groups(handoff: dict[str, Any], errors: list[str]) -> None:
         errors.append("p0a_provider_credentials_raw_secret_policy_invalid")
     if p0a_redaction.get("credential_items_redacted") is not True:
         errors.append("p0a_provider_credentials_item_redaction_invalid")
+    p0a_verification_commands = _strings(p0a_credentials.get("verification_commands"))
+    if "make verify-au-p0a-credential-fulfillment" not in p0a_verification_commands:
+        errors.append("p0a_provider_credentials_fulfillment_verifier_missing")
+    if not any("--require-fulfilled" in command for command in p0a_verification_commands):
+        errors.append("p0a_provider_credentials_fulfillment_strict_gate_missing")
+    if "docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json" not in _strings(
+        p0a_credentials.get("evidence_outputs")
+    ):
+        errors.append("p0a_provider_credentials_fulfillment_evidence_missing")
 
     p0a_batches = groups.get("p0a_real_batches", {})
     if tuple(_strings(p0a_batches.get("phase_order"))) != ("preflight", "small_batch", "full_batch"):

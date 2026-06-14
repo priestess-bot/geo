@@ -1074,6 +1074,31 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(payload["source_p0a_execution_checklist"]["p0a_execution_checklist_hash"])
         self.assertTrue(payload["p0a_credential_request_packet_hash"])
 
+    def test_au_p0a_credential_fulfillment_endpoint_returns_current_status(self) -> None:
+        response = self.client.get("/v1/p0a-credential-fulfillment/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["p0a_credential_fulfillment_version"], "au_p0a_credential_fulfillment_v1")
+        self.assertEqual(payload["status"], "pass")
+        self.assertTrue(payload["credential_fulfillment_ready"])
+        self.assertFalse(payload["credentials_fulfilled"])
+        self.assertFalse(payload["ready_for_design_partner"])
+        self.assertEqual(payload["summary"]["missing_required_count"], len(payload["summary"]["missing_required"]))
+        self.assertIn("PERPLEXITY_API_KEY", payload["summary"]["missing_required"])
+        self.assertIn("OPENAI_API_KEY", payload["summary"]["missing_required"])
+        self.assertEqual(payload["summary"]["next_action"], "populate_required_environment")
+        self.assertIn("make verify-au-p0a-credential-fulfillment", payload["verification_commands"])
+        self.assertIn("make verify-au-p0a-credential-fulfillment", payload["hard_gate_commands"])
+        self.assertTrue(any("--require-fulfilled" in command for command in payload["hard_gate_commands"]))
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0a_credential_fulfillment"],
+            "GET /v1/p0a-credential-fulfillment/au",
+        )
+        self.assertTrue(payload["source_p0a_credential_request"]["p0a_credential_request_packet_hash"])
+        self.assertTrue(payload["source_p0a_env_report"]["environment_report_hash"])
+        self.assertTrue(payload["p0a_credential_fulfillment_hash"])
+
     def test_au_external_dependency_handoff_endpoint_returns_current_dependency_boundary(self) -> None:
         helper = AuHandoffDossierTest()
         helper.setUp()
@@ -6675,6 +6700,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/p0a-environment-checklist/au", payload["persistence"])
         self.assertIn("/v1/p0a-execution-checklist/au", payload["persistence"])
         self.assertIn("/v1/p0a-credential-request/au", payload["persistence"])
+        self.assertIn("/v1/p0a-credential-fulfillment/au", payload["persistence"])
         self.assertIn("/v1/p0a-real-batch-request/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-execution-checklist/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-environment-request/au", payload["persistence"])

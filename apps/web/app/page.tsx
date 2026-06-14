@@ -717,6 +717,7 @@ type RuntimeData = {
   p0aEnvironmentChecklist: AuP0aEnvironmentChecklist | null;
   p0aExecutionChecklist: AuP0aExecutionChecklist | null;
   p0aCredentialRequest: AuP0aCredentialRequest | null;
+  p0aCredentialFulfillment: AuP0aCredentialFulfillment | null;
   p0aRealBatchRequest: AuP0aRealBatchRequest | null;
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
   p0bGoogleEnvironmentRequest: AuP0bGoogleEnvironmentRequest | null;
@@ -1364,6 +1365,66 @@ type AuP0aCredentialRequest = {
     p0a_execution_checklist_ready?: boolean;
     ready_for_design_partner?: boolean;
     path?: string;
+  };
+};
+
+type AuP0aCredentialFulfillment = {
+  p0a_credential_fulfillment_version: string;
+  generated_at: string;
+  status: string;
+  credential_fulfillment_ready: boolean;
+  credentials_fulfilled: boolean;
+  ready_for_design_partner: boolean;
+  p0a_credential_fulfillment_hash: string;
+  summary?: {
+    credentials_fulfilled?: boolean;
+    credential_handoff_ready?: boolean;
+    environment_ready?: boolean;
+    required_count?: number;
+    fulfilled_required_count?: number;
+    missing_required_count?: number;
+    missing_required?: string[];
+    presence_mismatch_count?: number;
+    presence_mismatches?: string[];
+    owner_counts?: Record<string, number>;
+    missing_required_by_owner?: Record<string, string[]>;
+    next_action?: string;
+    next_command?: string;
+    strict_gate_command?: string;
+    raw_secret_values_allowed?: boolean;
+  };
+  credential_fulfillment_items?: Array<{
+    name: string;
+    required?: boolean;
+    fulfilled?: boolean;
+    requested_present?: boolean;
+    environment_present?: boolean;
+    presence_mismatch?: boolean;
+    request_source?: string;
+    environment_source?: string;
+    owner_hint?: string;
+    env_file_key?: string;
+    value_length?: number;
+    sha256_prefix?: string;
+    secret_redacted?: boolean;
+    blocking_reasons?: string[];
+  }>;
+  verification_commands?: string[];
+  hard_gate_commands?: string[];
+  runtime_endpoints?: {
+    p0a_credential_fulfillment?: string;
+    p0a_credential_request?: string;
+    p0a_environment_checklist?: string;
+    external_dependency_clearance?: string;
+  };
+  source_p0a_credential_request?: {
+    p0a_credential_request_packet_hash?: string;
+    credential_handoff_ready?: boolean;
+  };
+  source_p0a_env_report?: {
+    environment_report_hash?: string;
+    ready_for_real_batch?: boolean;
+    missing_required?: string[];
   };
 };
 
@@ -2342,6 +2403,7 @@ const endpoints = {
   p0aEnvironmentChecklist: "/v1/p0a-environment-checklist/au",
   p0aExecutionChecklist: "/v1/p0a-execution-checklist/au",
   p0aCredentialRequest: "/v1/p0a-credential-request/au",
+  p0aCredentialFulfillment: "/v1/p0a-credential-fulfillment/au",
   p0aRealBatchRequest: "/v1/p0a-real-batch-request/au",
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
   p0bGoogleEnvironmentRequest: "/v1/p0b-google-environment-request/au",
@@ -3761,6 +3823,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aEnvironmentChecklist: endpoints.p0aEnvironmentChecklist,
     p0aExecutionChecklist: endpoints.p0aExecutionChecklist,
     p0aCredentialRequest: endpoints.p0aCredentialRequest,
+    p0aCredentialFulfillment: endpoints.p0aCredentialFulfillment,
     p0aRealBatchRequest: endpoints.p0aRealBatchRequest,
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest: endpoints.p0bGoogleEnvironmentRequest,
@@ -4081,6 +4144,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aEnvironmentChecklist,
     p0aExecutionChecklist,
     p0aCredentialRequest,
+    p0aCredentialFulfillment,
     p0aRealBatchRequest,
     p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest,
@@ -4137,6 +4201,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0aEnvironmentChecklist | null>(baseUrl, paths.p0aEnvironmentChecklist, null),
     fetchRuntimeEndpoint<AuP0aExecutionChecklist | null>(baseUrl, paths.p0aExecutionChecklist, null),
     fetchRuntimeEndpoint<AuP0aCredentialRequest | null>(baseUrl, paths.p0aCredentialRequest, null),
+    fetchRuntimeEndpoint<AuP0aCredentialFulfillment | null>(baseUrl, paths.p0aCredentialFulfillment, null),
     fetchRuntimeEndpoint<AuP0aRealBatchRequest | null>(baseUrl, paths.p0aRealBatchRequest, null),
     fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
     fetchRuntimeEndpoint<AuP0bGoogleEnvironmentRequest | null>(baseUrl, paths.p0bGoogleEnvironmentRequest, null),
@@ -4313,6 +4378,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aEnvironmentChecklist,
     p0aExecutionChecklist,
     p0aCredentialRequest,
+    p0aCredentialFulfillment,
     p0aRealBatchRequest,
     p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest,
@@ -4374,6 +4440,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0aEnvironmentChecklist: p0aEnvironmentChecklist.payload,
       p0aExecutionChecklist: p0aExecutionChecklist.payload,
       p0aCredentialRequest: p0aCredentialRequest.payload,
+      p0aCredentialFulfillment: p0aCredentialFulfillment.payload,
       p0aRealBatchRequest: p0aRealBatchRequest.payload,
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
       p0bGoogleEnvironmentRequest: p0bGoogleEnvironmentRequest.payload,
@@ -4723,6 +4790,11 @@ export default async function Home({
   const requestedP0aCredentials = p0aCredentialRequest?.requested_credentials || [];
   const p0aCredentialRequestMissing = p0aCredentialRequestSummary?.missing_required || [];
   const p0aCredentialRequestEvidenceOutputs = p0aCredentialRequest?.evidence_outputs || [];
+  const p0aCredentialFulfillment = data.p0aCredentialFulfillment;
+  const p0aCredentialFulfillmentSummary = p0aCredentialFulfillment?.summary;
+  const p0aCredentialFulfillmentItems = p0aCredentialFulfillment?.credential_fulfillment_items || [];
+  const p0aCredentialFulfillmentMissing = p0aCredentialFulfillmentSummary?.missing_required || [];
+  const p0aCredentialFulfillmentMismatches = p0aCredentialFulfillmentSummary?.presence_mismatches || [];
   const p0aRealBatchRequest = data.p0aRealBatchRequest;
   const p0aRealBatchRequestSummary = p0aRealBatchRequest?.summary;
   const p0aRealBatchPhases = p0aRealBatchRequest?.phase_requests || [];
@@ -6133,6 +6205,70 @@ export default async function Home({
             </ul>
           ) : null}
           <code>{paths.p0aCredentialRequest}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>P0a credential fulfillment</strong>
+            <span>
+              {p0aCredentialFulfillment?.p0a_credential_fulfillment_version ||
+                "au_p0a_credential_fulfillment_v1"}{" "}
+              · p0a_credential_fulfillment_hash{" "}
+              {shortHash(p0aCredentialFulfillment?.p0a_credential_fulfillment_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>Fulfillment ready {p0aCredentialFulfillment?.credential_fulfillment_ready ? "yes" : "no"}</span>
+            <span>Credentials fulfilled {p0aCredentialFulfillment?.credentials_fulfilled ? "yes" : "no"}</span>
+            <span>Environment ready {p0aCredentialFulfillmentSummary?.environment_ready ? "yes" : "no"}</span>
+            <span>
+              Fulfilled required {p0aCredentialFulfillmentSummary?.fulfilled_required_count || 0}/
+              {p0aCredentialFulfillmentSummary?.required_count || 0}
+            </span>
+            <span>Missing required {p0aCredentialFulfillmentSummary?.missing_required_count || 0}</span>
+            <span>Presence mismatches {p0aCredentialFulfillmentSummary?.presence_mismatch_count || 0}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>Missing {p0aCredentialFulfillmentMissing.join(", ") || "none"}</span>
+            <span>Mismatches {p0aCredentialFulfillmentMismatches.join(", ") || "none"}</span>
+            <span>Next action {p0aCredentialFulfillmentSummary?.next_action || "none"}</span>
+            <span>Next command {p0aCredentialFulfillmentSummary?.next_command || "none"}</span>
+            <span>
+              Request hash{" "}
+              {shortHash(p0aCredentialFulfillment?.source_p0a_credential_request?.p0a_credential_request_packet_hash)}
+            </span>
+            <span>Env hash {shortHash(p0aCredentialFulfillment?.source_p0a_env_report?.environment_report_hash)}</span>
+            <span>
+              {p0aCredentialFulfillment?.runtime_endpoints?.p0a_credential_fulfillment ||
+                "GET /v1/p0a-credential-fulfillment/au"}
+            </span>
+            <span>Hard gate: make verify-au-p0a-credential-fulfillment</span>
+            <span>
+              Strict gate:{" "}
+              {p0aCredentialFulfillmentSummary?.strict_gate_command ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_fulfillment.py docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json --require-fulfilled"}
+            </span>
+          </div>
+          {p0aCredentialFulfillmentItems.length ? (
+            <div className="dependencyGroupGrid">
+              {p0aCredentialFulfillmentItems.map((item) => (
+                <div className="dependencyGroup" key={item.name}>
+                  <strong>{item.name}</strong>
+                  <span>
+                    {item.owner_hint || "owner"} · {item.fulfilled ? "fulfilled" : "missing"}
+                  </span>
+                  <small>
+                    request {item.requested_present ? "present" : "missing"} · env{" "}
+                    {item.environment_present ? "present" : "missing"}
+                  </small>
+                  <small>
+                    source {item.environment_source || "missing"} · hash {shortHash(item.sha256_prefix)}
+                  </small>
+                  <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "gate clear"}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <code>{paths.p0aCredentialFulfillment}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">

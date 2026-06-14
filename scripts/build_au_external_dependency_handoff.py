@@ -481,6 +481,23 @@ def _p0a_provider_credentials_group(
     env_summary = _as_dict(p0a_environment_checklist.get("summary"))
     redaction = _as_dict(credential_handoff.get("redaction_policy"))
     ready = credential_handoff.get("ready") is True
+    verification_commands = _unique_strings(
+        _commands(credential_handoff.get("verification_commands"))
+        + [
+            "make au-p0a-credential-fulfillment",
+            "make verify-au-p0a-credential-fulfillment",
+            (
+                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "scripts/verify_au_p0a_credential_fulfillment.py "
+                "${GENO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json} "
+                "--require-fulfilled"
+            ),
+        ]
+    )
+    evidence_outputs = _unique_strings(
+        _strings(credential_handoff.get("evidence_outputs"))
+        + ["docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json"]
+    )
     return {
         "id": "p0a_provider_credentials",
         "stage": "P0a",
@@ -494,8 +511,8 @@ def _p0a_provider_credentials_group(
         "missing_required_count": int(credential_handoff.get("missing_required_count") or 0),
         "missing_required": _strings(credential_handoff.get("missing_required")),
         "setup_commands": _commands(credential_handoff.get("setup_commands")),
-        "verification_commands": _commands(credential_handoff.get("verification_commands")),
-        "evidence_outputs": _strings(credential_handoff.get("evidence_outputs")),
+        "verification_commands": verification_commands,
+        "evidence_outputs": evidence_outputs,
         "credential_items": _as_list(credential_handoff.get("credential_items")),
         "env_file_hygiene_ready": env_summary.get("env_file_hygiene_ready") is True,
         "env_file_hygiene_error_count": int(env_summary.get("env_file_hygiene_error_count") or 0),
