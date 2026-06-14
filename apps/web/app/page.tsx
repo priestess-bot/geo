@@ -728,6 +728,7 @@ type RuntimeData = {
   p0bGoogleEnvironmentClearance: AuP0bGoogleEnvironmentClearance | null;
   p0bGoogleManualBackfillRequest: AuP0bGoogleManualBackfillRequest | null;
   p0bGoogleManualBackfillFulfillment: AuP0bGoogleManualBackfillFulfillment | null;
+  p0bGoogleManualBackfillClearance: AuP0bGoogleManualBackfillClearance | null;
   p0bGooglePhaseExecutionRequest: AuP0bGooglePhaseExecutionRequest | null;
   p0bGooglePhaseExecutionFulfillment: AuP0bGooglePhaseExecutionFulfillment | null;
   externalDependencyHandoff: AuExternalDependencyHandoff | null;
@@ -2299,6 +2300,101 @@ type AuP0bGoogleManualBackfillFulfillment = {
   hard_gate_commands?: string[];
 };
 
+type AuP0bGoogleManualBackfillClearance = {
+  p0b_google_manual_backfill_clearance_version: string;
+  generated_at: string;
+  status: string;
+  manual_backfill_clearance_packet_ready: boolean;
+  manual_backfill_fulfilled: boolean;
+  manual_backfill_clearance_ready: boolean;
+  ready_for_next_clearance_step: boolean;
+  blocked_by_prerequisite_step: boolean;
+  p0b_google_manual_backfill_clearance_hash: string;
+  summary?: {
+    required_count?: number;
+    fulfilled_required_count?: number;
+    missing_required_count?: number;
+    missing_required?: string[];
+    presence_mismatch_count?: number;
+    presence_mismatches?: string[];
+    missing_required_by_owner?: Record<string, string[]>;
+    manual_backfill_fulfilled?: boolean;
+    manual_backfill_fulfillment_ready?: boolean;
+    manual_backfill_request_ready?: boolean;
+    manual_backfill_handoff_ready?: boolean;
+    manual_backfill_verification_ready?: boolean;
+    manual_backfill_verification_status?: string;
+    expected_record_count?: number;
+    record_count?: number;
+    expected_prompt_city_count?: number;
+    covered_prompt_city_count?: number;
+    expected_sample_size?: number;
+    verification_expected_sample_size?: number;
+    verification_error_count?: number;
+    verification_errors?: string[];
+    file_sha256_present?: boolean;
+    verification_hash_present?: boolean;
+    content_redacted?: boolean;
+    google_main_scoring_allowed?: boolean;
+    blocked_by_prerequisite_step?: boolean;
+    prerequisite_step_id?: string;
+    prerequisite_step_ready?: boolean;
+    current_global_clearance_step_id?: string;
+    target_clearance_step_id?: string;
+    target_clearance_step_can_start?: boolean;
+    target_clearance_step_ready?: boolean;
+    next_action?: string;
+    next_command?: string;
+    strict_gate_command?: string;
+    request_strict_gate_command?: string;
+    operator_step_count?: number;
+    post_update_validation_command_count?: number;
+    raw_answer_values_allowed?: boolean;
+    raw_citation_values_allowed?: boolean;
+    raw_asset_urls_allowed?: boolean;
+    manual_jsonl_raw_path_allowed?: boolean;
+  };
+  manual_backfill_clearance_items?: Array<{
+    key?: string;
+    category?: string;
+    required?: boolean;
+    fulfilled?: boolean;
+    expected_value?: string | number | boolean;
+    actual_value?: string | number | boolean;
+    presence_mismatch?: boolean;
+    owner_hint?: string;
+    source_request_field?: string;
+    source_verification_field?: string;
+    blocking_reasons?: string[];
+  }>;
+  operator_steps?: Array<{
+    order?: number;
+    id?: string;
+    command?: string;
+    purpose?: string;
+    external_call_risk?: string;
+    next_action?: string;
+    blocked?: boolean;
+  }>;
+  post_update_validation_sequence?: string[];
+  runtime_endpoints?: {
+    p0b_google_manual_backfill_clearance?: string;
+    p0b_google_manual_backfill_request?: string;
+    p0b_google_manual_backfill_fulfillment?: string;
+    p0b_google_execution_checklist?: string;
+    p0b_google_environment_clearance?: string;
+    external_dependency_clearance?: string;
+    delivery_progress?: string;
+  };
+  hard_gate_commands?: string[];
+  source_artifacts?: {
+    manual_backfill_request?: { hash?: string };
+    manual_backfill_verification?: { hash?: string; manual_backfill_status?: string };
+    manual_backfill_fulfillment?: { hash?: string };
+    external_dependency_clearance?: { hash?: string };
+  };
+};
+
 type AuP0bGooglePhaseExecutionRequest = {
   p0b_google_phase_execution_request_packet_version: string;
   generated_at: string;
@@ -3105,6 +3201,7 @@ const endpoints = {
   p0bGoogleEnvironmentClearance: "/v1/p0b-google-environment-clearance/au",
   p0bGoogleManualBackfillRequest: "/v1/p0b-google-manual-backfill-request/au",
   p0bGoogleManualBackfillFulfillment: "/v1/p0b-google-manual-backfill-fulfillment/au",
+  p0bGoogleManualBackfillClearance: "/v1/p0b-google-manual-backfill-clearance/au",
   p0bGooglePhaseExecutionRequest: "/v1/p0b-google-phase-execution-request/au",
   p0bGooglePhaseExecutionFulfillment: "/v1/p0b-google-phase-execution-fulfillment/au",
   externalDependencyHandoff: "/v1/external-dependency-handoff/au",
@@ -4533,6 +4630,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleEnvironmentClearance: endpoints.p0bGoogleEnvironmentClearance,
     p0bGoogleManualBackfillRequest: endpoints.p0bGoogleManualBackfillRequest,
     p0bGoogleManualBackfillFulfillment: endpoints.p0bGoogleManualBackfillFulfillment,
+    p0bGoogleManualBackfillClearance: endpoints.p0bGoogleManualBackfillClearance,
     p0bGooglePhaseExecutionRequest: endpoints.p0bGooglePhaseExecutionRequest,
     p0bGooglePhaseExecutionFulfillment: endpoints.p0bGooglePhaseExecutionFulfillment,
     externalDependencyHandoff: endpoints.externalDependencyHandoff,
@@ -4862,6 +4960,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleEnvironmentClearance,
     p0bGoogleManualBackfillRequest,
     p0bGoogleManualBackfillFulfillment,
+    p0bGoogleManualBackfillClearance,
     p0bGooglePhaseExecutionRequest,
     p0bGooglePhaseExecutionFulfillment,
     externalDependencyHandoff,
@@ -4941,6 +5040,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0bGoogleManualBackfillFulfillment | null>(
       baseUrl,
       paths.p0bGoogleManualBackfillFulfillment,
+      null
+    ),
+    fetchRuntimeEndpoint<AuP0bGoogleManualBackfillClearance | null>(
+      baseUrl,
+      paths.p0bGoogleManualBackfillClearance,
       null
     ),
     fetchRuntimeEndpoint<AuP0bGooglePhaseExecutionRequest | null>(
@@ -5127,6 +5231,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleEnvironmentClearance,
     p0bGoogleManualBackfillRequest,
     p0bGoogleManualBackfillFulfillment,
+    p0bGoogleManualBackfillClearance,
     p0bGooglePhaseExecutionRequest,
     p0bGooglePhaseExecutionFulfillment,
     externalDependencyHandoff,
@@ -5197,6 +5302,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0bGoogleEnvironmentClearance: p0bGoogleEnvironmentClearance.payload,
       p0bGoogleManualBackfillRequest: p0bGoogleManualBackfillRequest.payload,
       p0bGoogleManualBackfillFulfillment: p0bGoogleManualBackfillFulfillment.payload,
+      p0bGoogleManualBackfillClearance: p0bGoogleManualBackfillClearance.payload,
       p0bGooglePhaseExecutionRequest: p0bGooglePhaseExecutionRequest.payload,
       p0bGooglePhaseExecutionFulfillment: p0bGooglePhaseExecutionFulfillment.payload,
       externalDependencyHandoff: externalDependencyHandoff.payload,
@@ -5623,6 +5729,17 @@ export default async function Home({
     p0bGoogleManualBackfillFulfillmentSummary?.verification_errors || [];
   const p0bGoogleManualBackfillFulfillmentItems =
     p0bGoogleManualBackfillFulfillment?.manual_backfill_fulfillment_items || [];
+  const p0bGoogleManualBackfillClearance = data.p0bGoogleManualBackfillClearance;
+  const p0bGoogleManualBackfillClearanceSummary = p0bGoogleManualBackfillClearance?.summary;
+  const p0bGoogleManualBackfillClearanceMissing =
+    p0bGoogleManualBackfillClearanceSummary?.missing_required || [];
+  const p0bGoogleManualBackfillClearanceErrors =
+    p0bGoogleManualBackfillClearanceSummary?.verification_errors || [];
+  const p0bGoogleManualBackfillClearanceItems =
+    p0bGoogleManualBackfillClearance?.manual_backfill_clearance_items || [];
+  const p0bGoogleManualBackfillClearanceSteps = p0bGoogleManualBackfillClearance?.operator_steps || [];
+  const p0bGoogleManualBackfillClearanceValidation =
+    p0bGoogleManualBackfillClearance?.post_update_validation_sequence || [];
   const p0bGooglePhaseExecutionRequest = data.p0bGooglePhaseExecutionRequest;
   const p0bGooglePhaseExecutionRequestSummary = p0bGooglePhaseExecutionRequest?.summary;
   const p0bGooglePhaseExecutionPhases = p0bGooglePhaseExecutionRequest?.phase_requests || [];
@@ -6945,6 +7062,127 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.p0bGoogleManualBackfillFulfillment}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>P0b Google manual backfill clearance</strong>
+            <span>
+              {p0bGoogleManualBackfillClearance?.p0b_google_manual_backfill_clearance_version ||
+                "au_p0b_google_manual_backfill_clearance_v1"}{" "}
+              · p0b_google_manual_backfill_clearance_hash{" "}
+              {shortHash(p0bGoogleManualBackfillClearance?.p0b_google_manual_backfill_clearance_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>
+              Clearance packet{" "}
+              {p0bGoogleManualBackfillClearance?.manual_backfill_clearance_packet_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              Manual backfill{" "}
+              {p0bGoogleManualBackfillClearance?.manual_backfill_fulfilled ? "fulfilled" : "blocked"}
+            </span>
+            <span>
+              Clearance ready {p0bGoogleManualBackfillClearance?.manual_backfill_clearance_ready ? "yes" : "no"}
+            </span>
+            <span>
+              Next clearance {p0bGoogleManualBackfillClearance?.ready_for_next_clearance_step ? "ready" : "blocked"}
+            </span>
+            <span>
+              Prerequisite blocked {p0bGoogleManualBackfillClearance?.blocked_by_prerequisite_step ? "yes" : "no"}
+            </span>
+            <span>
+              Records {p0bGoogleManualBackfillClearanceSummary?.record_count || 0}/
+              {p0bGoogleManualBackfillClearanceSummary?.expected_record_count || 0}
+            </span>
+            <span>
+              Prompt-city {p0bGoogleManualBackfillClearanceSummary?.covered_prompt_city_count || 0}/
+              {p0bGoogleManualBackfillClearanceSummary?.expected_prompt_city_count || 0}
+            </span>
+            <span>Errors {p0bGoogleManualBackfillClearanceSummary?.verification_error_count || 0}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>
+              Current global step {p0bGoogleManualBackfillClearanceSummary?.current_global_clearance_step_id || "none"}
+            </span>
+            <span>Target step {p0bGoogleManualBackfillClearanceSummary?.target_clearance_step_id || "none"}</span>
+            <span>Prerequisite {p0bGoogleManualBackfillClearanceSummary?.prerequisite_step_id || "none"}</span>
+            <span>Next action {p0bGoogleManualBackfillClearanceSummary?.next_action || "none"}</span>
+            <span>Next command {p0bGoogleManualBackfillClearanceSummary?.next_command || "none"}</span>
+            <span>Missing {p0bGoogleManualBackfillClearanceMissing.slice(0, 6).join(", ") || "none"}</span>
+            <span>Verification errors {p0bGoogleManualBackfillClearanceErrors.slice(0, 4).join(", ") || "none"}</span>
+            <span>
+              Raw answer allowed {p0bGoogleManualBackfillClearanceSummary?.raw_answer_values_allowed ? "yes" : "no"}
+            </span>
+            <span>
+              Citation allowed {p0bGoogleManualBackfillClearanceSummary?.raw_citation_values_allowed ? "yes" : "no"}
+            </span>
+            <span>
+              Asset URL allowed {p0bGoogleManualBackfillClearanceSummary?.raw_asset_urls_allowed ? "yes" : "no"}
+            </span>
+            <span>
+              Request hash{" "}
+              {shortHash(p0bGoogleManualBackfillClearance?.source_artifacts?.manual_backfill_request?.hash)}
+            </span>
+            <span>
+              Verification hash{" "}
+              {shortHash(p0bGoogleManualBackfillClearance?.source_artifacts?.manual_backfill_verification?.hash)}
+            </span>
+            <span>
+              Fulfillment hash{" "}
+              {shortHash(p0bGoogleManualBackfillClearance?.source_artifacts?.manual_backfill_fulfillment?.hash)}
+            </span>
+            <span>
+              {p0bGoogleManualBackfillClearance?.runtime_endpoints?.p0b_google_manual_backfill_clearance ||
+                "GET /v1/p0b-google-manual-backfill-clearance/au"}
+            </span>
+            <span>Hard gate: make verify-au-p0b-google-manual-backfill-clearance</span>
+            <span>
+              Strict gate:{" "}
+              {p0bGoogleManualBackfillClearance?.hard_gate_commands?.find((command) =>
+                command.endsWith("--require-cleared")
+              ) ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_manual_backfill_clearance.py docs/runtime_preflight/au-p0b-google-manual-backfill-clearance-latest.json --require-cleared"}
+            </span>
+          </div>
+          {p0bGoogleManualBackfillClearanceItems.length ? (
+            <div className="dependencyGroupGrid">
+              {p0bGoogleManualBackfillClearanceItems.slice(0, 8).map((item) => (
+                <div className="dependencyGroup" key={item.key || item.category}>
+                  <strong>{item.key || item.category}</strong>
+                  <span>
+                    {item.owner_hint || "owner"} · {item.fulfilled ? "fulfilled" : "missing"}
+                  </span>
+                  <small>
+                    expected {String(item.expected_value ?? "none")} · actual {String(item.actual_value ?? "none")}
+                  </small>
+                  <small>
+                    request {item.source_request_field || "none"} · verifier{" "}
+                    {item.source_verification_field || "none"}
+                  </small>
+                  <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "gate clear"}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {p0bGoogleManualBackfillClearanceSteps.length ? (
+            <div className="handoffBoundary">
+              {p0bGoogleManualBackfillClearanceSteps.slice(0, 6).map((step) => (
+                <span key={step.id || step.order}>
+                  {step.order}. {step.id}: {step.command || "none"}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {p0bGoogleManualBackfillClearanceValidation.length ? (
+            <div className="handoffBoundary">
+              <span>
+                Validation sequence{" "}
+                {p0bGoogleManualBackfillClearanceValidation.slice(0, 5).join(" -> ") || "none"}
+              </span>
+            </div>
+          ) : null}
+          <code>{paths.p0bGoogleManualBackfillClearance}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">

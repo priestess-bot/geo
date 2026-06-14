@@ -229,6 +229,10 @@ from scripts.build_au_p0b_google_manual_backfill_fulfillment import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH,
     build_au_p0b_google_manual_backfill_fulfillment,
 )
+from scripts.build_au_p0b_google_manual_backfill_clearance import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH,
+    build_au_p0b_google_manual_backfill_clearance,
+)
 from scripts.build_au_p0b_google_phase_execution_request_packet import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH,
     build_au_p0b_google_phase_execution_request_packet,
@@ -2167,6 +2171,60 @@ def au_p0b_google_manual_backfill_fulfillment() -> dict[str, object]:
             os.getenv(
                 "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH",
                 DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-manual-backfill-clearance/au")
+def au_p0b_google_manual_backfill_clearance() -> dict[str, object]:
+    manual_backfill_request_path = Path(
+        os.getenv(
+            "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH,
+        )
+    )
+    manual_backfill_verification_path = Path(
+        os.getenv(
+            "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH",
+            "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
+        )
+    )
+    manual_jsonl_path = Path(
+        os.getenv("MANUAL_BACKFILL_PATH", "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl")
+    )
+    manual_backfill_fulfillment_path = Path(
+        os.getenv(
+            "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH,
+        )
+    )
+    manual_backfill_request = au_p0b_google_manual_backfill_request()
+    manual_backfill_fulfillment = build_au_p0b_google_manual_backfill_fulfillment(
+        manual_backfill_request_path=manual_backfill_request_path,
+        manual_backfill_verification_path=manual_backfill_verification_path,
+        manual_jsonl_path=manual_jsonl_path,
+        manual_backfill_request=manual_backfill_request,
+        output_path=manual_backfill_fulfillment_path,
+    )
+    return build_au_p0b_google_manual_backfill_clearance(
+        manual_backfill_request_path=manual_backfill_request_path,
+        manual_backfill_verification_path=manual_backfill_verification_path,
+        manual_backfill_fulfillment_path=manual_backfill_fulfillment_path,
+        external_dependency_clearance_path=Path(
+            os.getenv(
+                "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        manual_jsonl_path=manual_jsonl_path,
+        manual_backfill_request=manual_backfill_request,
+        manual_backfill_fulfillment=manual_backfill_fulfillment,
+        external_dependency_clearance=au_external_dependency_clearance(),
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH,
             )
         ),
     )
@@ -6269,6 +6327,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/p0b-google-environment-clearance/au",
             "/v1/p0b-google-manual-backfill-request/au",
             "/v1/p0b-google-manual-backfill-fulfillment/au",
+            "/v1/p0b-google-manual-backfill-clearance/au",
             "/v1/p0b-google-phase-execution-request/au",
             "/v1/p0b-google-phase-execution-fulfillment/au",
             "/v1/au-broader-platform-registry",

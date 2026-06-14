@@ -33,6 +33,9 @@ from scripts.build_au_p0b_google_manual_backfill_request_packet import (
 from scripts.build_au_p0b_google_manual_backfill_fulfillment import (
     compute_p0b_google_manual_backfill_fulfillment_hash,
 )
+from scripts.build_au_p0b_google_manual_backfill_clearance import (
+    compute_p0b_google_manual_backfill_clearance_hash,
+)
 from scripts.build_au_p0b_google_phase_execution_request_packet import (
     compute_p0b_google_phase_execution_request_packet_hash,
 )
@@ -953,6 +956,107 @@ class ApiContractsTest(unittest.TestCase):
         self.assertNotIn("Manual Google AI Mode answer", serialized)
         self.assertNotIn("https://examplebrand.example", serialized)
         self.assertNotIn("s3://manual-backfill", serialized)
+
+    def test_au_p0b_google_manual_backfill_clearance_endpoint_returns_current_clearance_packet(self) -> None:
+        helper = AuP0bGoogleExecutionChecklistTest()
+        helper.setUp()
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, execution_path, env_path, status_path, package_path, _runbook = helper._write_status_and_package(
+                temp_dir,
+                google_ready=False,
+            )
+            clearance_helper = AuExternalDependencyClearanceTest()
+            clearance_helper.setUp()
+            handoff_path = clearance_helper._write_handoff(temp_dir)
+            external_clearance_path = Path(temp_dir) / "external-clearance.json"
+            external_clearance = run_au_external_dependency_clearance(
+                handoff_path=handoff_path,
+                output_path=external_clearance_path,
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH": str(
+                        Path(temp_dir) / "manual-backfill-request.json"
+                    ),
+                    "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH": str(
+                        Path(temp_dir) / "missing-manual-verification.json"
+                    ),
+                    "MANUAL_BACKFILL_PATH": str(Path(temp_dir) / "missing-manual.jsonl"),
+                    "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH": str(
+                        Path(temp_dir) / "manual-backfill-fulfillment.json"
+                    ),
+                    "GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH": str(handoff_path),
+                    "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH": str(external_clearance_path),
+                    "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH": str(
+                        Path(temp_dir) / "manual-backfill-clearance.json"
+                    ),
+                },
+                clear=False,
+            ), patch("geno_api.main.au_external_dependency_clearance", return_value=external_clearance):
+                response = self.client.get("/v1/p0b-google-manual-backfill-clearance/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(
+            payload["p0b_google_manual_backfill_clearance_version"],
+            "au_p0b_google_manual_backfill_clearance_v1",
+        )
+        self.assertEqual(payload["status"], "pass")
+        self.assertTrue(payload["manual_backfill_clearance_packet_ready"])
+        self.assertFalse(payload["manual_backfill_fulfilled"])
+        self.assertFalse(payload["manual_backfill_clearance_ready"])
+        self.assertFalse(payload["ready_for_next_clearance_step"])
+        self.assertTrue(payload["blocked_by_prerequisite_step"])
+        self.assertEqual(payload["summary"]["target_clearance_step_id"], "p0b_google_manual_backfill")
+        self.assertEqual(payload["summary"]["prerequisite_step_id"], "p0b_google_environment")
+        self.assertEqual(payload["summary"]["expected_record_count"], 120)
+        self.assertEqual(payload["summary"]["record_count"], 0)
+        self.assertEqual(payload["summary"]["covered_prompt_city_count"], 0)
+        self.assertIn("verification:status", payload["summary"]["missing_required"])
+        self.assertIn("count:record_count", payload["summary"]["missing_required"])
+        self.assertIn("manual_backfill_file_missing", payload["summary"]["verification_errors"])
+        self.assertEqual(payload["summary"]["next_action"], "clear_p0b_google_environment_first")
+        self.assertEqual(payload["summary"]["next_command"], "make au-p0b-google-environment-clearance")
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0b_google_manual_backfill_clearance"],
+            "GET /v1/p0b-google-manual-backfill-clearance/au",
+        )
+        self.assertIn("make verify-au-p0b-google-manual-backfill-clearance", payload["hard_gate_commands"])
+        self.assertTrue(any("--require-cleared" in command for command in payload["hard_gate_commands"]))
+        self.assertTrue(any("--require-manual-backfill-ready" in command for command in payload["hard_gate_commands"]))
+        self.assertTrue(any("--require-fulfilled" in command for command in payload["hard_gate_commands"]))
+        self.assertEqual(
+            payload["source_artifacts"]["manual_backfill_request"]["hash_field"],
+            "p0b_google_manual_backfill_request_packet_hash",
+        )
+        self.assertEqual(payload["source_artifacts"]["manual_backfill_verification"]["hash_field"], "verification_hash")
+        self.assertEqual(
+            payload["source_artifacts"]["manual_backfill_fulfillment"]["hash_field"],
+            "p0b_google_manual_backfill_fulfillment_hash",
+        )
+        self.assertTrue(payload["source_artifacts"]["manual_backfill_request"]["hash_valid"])
+        self.assertTrue(payload["source_artifacts"]["manual_backfill_verification"]["hash_valid"])
+        self.assertTrue(payload["source_artifacts"]["manual_backfill_fulfillment"]["hash_valid"])
+        self.assertIn("clear_p0b_google_environment", {step["id"] for step in payload["operator_steps"]})
+        self.assertIn("make verify-au-p0b-google-manual-backfill", payload["post_update_validation_sequence"])
+        self.assertEqual(
+            payload["p0b_google_manual_backfill_clearance_hash"],
+            compute_p0b_google_manual_backfill_clearance_hash(payload),
+        )
+        serialized = json.dumps(payload)
+        self.assertNotIn("Manual Google AI Mode answer", serialized)
+        self.assertNotIn("https://examplebrand.example", serialized)
+        self.assertNotIn("s3://manual-backfill", serialized)
+        self.assertEqual(_find_forbidden_exact_fields(payload), [])
 
     def test_au_p0b_google_phase_execution_request_endpoint_returns_current_phase_handoff_packet(self) -> None:
         helper = AuP0bGoogleExecutionChecklistTest()
@@ -7312,6 +7416,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/p0b-google-environment-clearance/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-manual-backfill-request/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-manual-backfill-fulfillment/au", payload["persistence"])
+        self.assertIn("/v1/p0b-google-manual-backfill-clearance/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-phase-execution-request/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-phase-execution-fulfillment/au", payload["persistence"])
         self.assertIn("/v1/au-broader-platform-registry", payload["persistence"])

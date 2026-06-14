@@ -153,6 +153,10 @@ class WebConsoleContractsTest(unittest.TestCase):
             'p0bGoogleManualBackfillFulfillment: "/v1/p0b-google-manual-backfill-fulfillment/au"',
             page_source,
         )
+        self.assertIn(
+            'p0bGoogleManualBackfillClearance: "/v1/p0b-google-manual-backfill-clearance/au"',
+            page_source,
+        )
         self.assertIn('p0bGooglePhaseExecutionRequest: "/v1/p0b-google-phase-execution-request/au"', page_source)
         self.assertIn(
             'p0bGooglePhaseExecutionFulfillment: "/v1/p0b-google-phase-execution-fulfillment/au"',
@@ -179,6 +183,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("type AuP0bGoogleEnvironmentRequest", page_source)
         self.assertIn("type AuP0bGoogleEnvironmentFulfillment", page_source)
         self.assertIn("type AuP0bGoogleManualBackfillRequest", page_source)
+        self.assertIn("type AuP0bGoogleManualBackfillClearance", page_source)
         self.assertIn("type AuExternalDependencyHandoff", page_source)
         self.assertIn("type AuExternalDependencyClearance", page_source)
         self.assertIn("type AuBroaderPlatformRegistry", page_source)
@@ -421,6 +426,15 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("manual_backfill_fulfilled", page_source)
         self.assertIn("p0bGoogleManualBackfillFulfillmentItems", page_source)
         self.assertIn("paths.p0bGoogleManualBackfillFulfillment", page_source)
+        self.assertIn("P0b Google manual backfill clearance", page_source)
+        self.assertIn("p0b_google_manual_backfill_clearance_hash", page_source)
+        self.assertIn("GET /v1/p0b-google-manual-backfill-clearance/au", page_source)
+        self.assertIn("make verify-au-p0b-google-manual-backfill-clearance", page_source)
+        self.assertIn("manual_backfill_clearance_ready", page_source)
+        self.assertIn("p0bGoogleManualBackfillClearanceItems", page_source)
+        self.assertIn("p0bGoogleManualBackfillClearanceSteps", page_source)
+        self.assertIn("p0bGoogleManualBackfillClearanceValidation", page_source)
+        self.assertIn("paths.p0bGoogleManualBackfillClearance", page_source)
         self.assertIn("P0b Google phase execution request packet", page_source)
         self.assertIn("p0b_google_phase_execution_request_packet_hash", page_source)
         self.assertIn("au_p0b_google_phase_execution_request_packet_v1", page_source)
