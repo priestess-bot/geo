@@ -41,6 +41,7 @@ from scripts.build_au_p0b_google_phase_execution_fulfillment import (
 from scripts.build_au_p0a_real_batch_request_packet import compute_p0a_real_batch_request_packet_hash
 from scripts.build_au_p0a_real_batch_fulfillment import compute_p0a_real_batch_fulfillment_hash
 from scripts.build_au_p0a_credential_clearance import compute_p0a_credential_clearance_hash
+from scripts.build_au_p0a_real_batch_clearance import compute_p0a_real_batch_clearance_hash
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
 from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTest
 from tests.test_au_p0a_execution_checklist import AuP0aExecutionChecklistTest
@@ -1136,6 +1137,53 @@ class ApiContractsTest(unittest.TestCase):
         serialized = json.dumps(payload)
         self.assertNotIn("raw_value", serialized)
         self.assertNotIn("perplexity-key", serialized)
+
+    def test_au_p0a_real_batch_clearance_endpoint_returns_current_clearance_packet(self) -> None:
+        helper = AuHandoffDossierTest()
+        helper.setUp()
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
+            status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
+            plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
+            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geno_api.main.build_au_launch_remediation_plan",
+                return_value=plan_payload,
+            ):
+                response = self.client.get("/v1/p0a-real-batch-clearance/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["p0a_real_batch_clearance_version"], "au_p0a_real_batch_clearance_v1")
+        self.assertEqual(payload["status"], "pass")
+        self.assertTrue(payload["real_batch_clearance_packet_ready"])
+        self.assertFalse(payload["real_batches_fulfilled"])
+        self.assertFalse(payload["real_batch_clearance_ready"])
+        self.assertFalse(payload["ready_for_next_clearance_step"])
+        self.assertTrue(payload["blocked_by_prerequisite_step"])
+        self.assertEqual(payload["summary"]["phase_order"], ["preflight", "small_batch", "full_batch"])
+        self.assertEqual(payload["summary"]["total_planned_runs"], 2436)
+        self.assertEqual(payload["summary"]["next_phase"], "preflight")
+        self.assertEqual(payload["summary"]["next_action"], "clear_p0a_provider_credentials_first")
+        self.assertEqual(payload["summary"]["next_command"], "make au-p0a-credential-clearance")
+        self.assertEqual(payload["summary"]["target_clearance_step_id"], "p0a_real_batches")
+        self.assertEqual(payload["summary"]["prerequisite_step_id"], "p0a_provider_credentials")
+        self.assertEqual(payload["summary"]["missing_required_count"], 3)
+        self.assertIn("phase:preflight", payload["summary"]["missing_required"])
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0a_real_batch_clearance"],
+            "GET /v1/p0a-real-batch-clearance/au",
+        )
+        self.assertIn("make verify-au-p0a-real-batch-clearance", payload["hard_gate_commands"])
+        self.assertTrue(any("--require-cleared" in command for command in payload["hard_gate_commands"]))
+        self.assertTrue(any("--require-fulfilled" in command for command in payload["hard_gate_commands"]))
+        self.assertTrue(any("--require-design-partner-ready" in command for command in payload["hard_gate_commands"]))
+        self.assertEqual(payload["source_artifacts"]["real_batch_request"]["hash_field"], "p0a_real_batch_request_packet_hash")
+        self.assertEqual(payload["source_artifacts"]["real_batch_fulfillment"]["hash_field"], "p0a_real_batch_fulfillment_hash")
+        self.assertTrue(payload["source_artifacts"]["real_batch_request"]["hash_valid"])
+        self.assertTrue(payload["source_artifacts"]["real_batch_fulfillment"]["hash_valid"])
+        self.assertIn("clear_p0a_provider_credentials", {step["id"] for step in payload["operator_steps"]})
+        self.assertIn("make au-p0a-real-batch-fulfillment", payload["post_update_validation_sequence"])
+        self.assertEqual(payload["p0a_real_batch_clearance_hash"], compute_p0a_real_batch_clearance_hash(payload))
 
     def test_au_broader_platform_registry_endpoint_returns_disabled_candidates(self) -> None:
         response = self.client.get("/v1/au-broader-platform-registry")
@@ -7167,6 +7215,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/p0a-credential-clearance/au", payload["persistence"])
         self.assertIn("/v1/p0a-real-batch-request/au", payload["persistence"])
         self.assertIn("/v1/p0a-real-batch-fulfillment/au", payload["persistence"])
+        self.assertIn("/v1/p0a-real-batch-clearance/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-execution-checklist/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-environment-request/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-environment-fulfillment/au", payload["persistence"])

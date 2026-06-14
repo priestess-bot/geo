@@ -721,6 +721,7 @@ type RuntimeData = {
   p0aCredentialClearance: AuP0aCredentialClearance | null;
   p0aRealBatchRequest: AuP0aRealBatchRequest | null;
   p0aRealBatchFulfillment: AuP0aRealBatchFulfillment | null;
+  p0aRealBatchClearance: AuP0aRealBatchClearance | null;
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
   p0bGoogleEnvironmentRequest: AuP0bGoogleEnvironmentRequest | null;
   p0bGoogleEnvironmentFulfillment: AuP0bGoogleEnvironmentFulfillment | null;
@@ -1745,6 +1746,111 @@ type AuP0aRealBatchFulfillment = {
     p0a_execution_checklist_ready?: boolean;
     real_batch_phase_handoff_ready?: boolean;
     ready_for_design_partner?: boolean;
+  };
+};
+
+type AuP0aRealBatchClearance = {
+  p0a_real_batch_clearance_version: string;
+  generated_at: string;
+  status: string;
+  real_batch_clearance_packet_ready: boolean;
+  real_batches_fulfilled: boolean;
+  real_batch_clearance_ready: boolean;
+  ready_for_next_clearance_step: boolean;
+  blocked_by_prerequisite_step: boolean;
+  p0a_real_batch_clearance_hash: string;
+  clearance_step?: {
+    id?: string;
+    current_global_step_id?: string;
+    current_global_step_is_prerequisite?: boolean;
+    step_recorded?: boolean;
+    step_ready?: boolean;
+    step_can_start?: boolean;
+    step_status?: string;
+    blocked_by?: string[];
+    would_execute?: boolean;
+    strict_gate_command?: string;
+  };
+  prerequisite_step?: {
+    id?: string;
+    ready?: boolean;
+    status?: string;
+    would_execute?: boolean;
+    strict_gate_command?: string;
+    blocked_by?: string[];
+    runtime_endpoint?: string;
+  };
+  summary?: {
+    phase_order?: string[];
+    phase_count?: number;
+    ready_phase_count?: number;
+    blocked_phase_count?: number;
+    total_planned_runs?: number;
+    next_phase?: string;
+    real_batches_fulfilled?: boolean;
+    real_batch_fulfillment_ready?: boolean;
+    ready_for_design_partner?: boolean;
+    blocked_by_prerequisite_step?: boolean;
+    prerequisite_step_id?: string;
+    prerequisite_step_ready?: boolean;
+    current_global_clearance_step_id?: string;
+    target_clearance_step_id?: string;
+    target_clearance_step_can_start?: boolean;
+    target_clearance_step_ready?: boolean;
+    missing_required_count?: number;
+    missing_required?: string[];
+    missing_required_by_owner?: Record<string, string[]>;
+    blocking_reason_count?: number;
+    blocking_reasons?: string[];
+    next_action?: string;
+    next_command?: string;
+    strict_gate_command?: string;
+    design_partner_strict_gate_command?: string;
+    operator_step_count?: number;
+    post_update_validation_command_count?: number;
+    raw_secret_values_allowed?: boolean;
+    provider_response_values_allowed?: boolean;
+  };
+  phase_clearance_items?: Array<{
+    key: string;
+    phase_id: string;
+    title?: string;
+    owner_hint?: string;
+    fulfilled?: boolean;
+    request_ready?: boolean;
+    checklist_ready?: boolean;
+    can_start?: boolean;
+    planned_runs?: number;
+    command_ids?: string[];
+    artifact_keys?: string[];
+    evidence_outputs?: string[];
+    blocking_reasons?: string[];
+  }>;
+  operator_steps?: Array<{
+    order?: number;
+    id?: string;
+    command?: string;
+    purpose?: string;
+    external_call_risk?: string;
+    next_phase?: string;
+    blocked?: boolean;
+  }>;
+  post_update_validation_sequence?: string[];
+  runtime_endpoints?: {
+    p0a_real_batch_clearance?: string;
+    p0a_real_batch_request?: string;
+    p0a_real_batch_fulfillment?: string;
+    p0a_execution_checklist?: string;
+    p0a_credential_clearance?: string;
+    external_dependency_clearance?: string;
+    delivery_progress?: string;
+  };
+  hard_gate_commands?: string[];
+  source_artifacts?: {
+    real_batch_request?: { hash?: string };
+    p0a_execution_checklist?: { hash?: string };
+    real_batch_fulfillment?: { hash?: string };
+    external_dependency_clearance?: { hash?: string };
   };
 };
 
@@ -2903,6 +3009,7 @@ const endpoints = {
   p0aCredentialClearance: "/v1/p0a-credential-clearance/au",
   p0aRealBatchRequest: "/v1/p0a-real-batch-request/au",
   p0aRealBatchFulfillment: "/v1/p0a-real-batch-fulfillment/au",
+  p0aRealBatchClearance: "/v1/p0a-real-batch-clearance/au",
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
   p0bGoogleEnvironmentRequest: "/v1/p0b-google-environment-request/au",
   p0bGoogleEnvironmentFulfillment: "/v1/p0b-google-environment-fulfillment/au",
@@ -4329,6 +4436,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aCredentialClearance: endpoints.p0aCredentialClearance,
     p0aRealBatchRequest: endpoints.p0aRealBatchRequest,
     p0aRealBatchFulfillment: endpoints.p0aRealBatchFulfillment,
+    p0aRealBatchClearance: endpoints.p0aRealBatchClearance,
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest: endpoints.p0bGoogleEnvironmentRequest,
     p0bGoogleEnvironmentFulfillment: endpoints.p0bGoogleEnvironmentFulfillment,
@@ -4656,6 +4764,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aCredentialClearance,
     p0aRealBatchRequest,
     p0aRealBatchFulfillment,
+    p0aRealBatchClearance,
     p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest,
     p0bGoogleEnvironmentFulfillment,
@@ -4719,6 +4828,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0aCredentialClearance | null>(baseUrl, paths.p0aCredentialClearance, null),
     fetchRuntimeEndpoint<AuP0aRealBatchRequest | null>(baseUrl, paths.p0aRealBatchRequest, null),
     fetchRuntimeEndpoint<AuP0aRealBatchFulfillment | null>(baseUrl, paths.p0aRealBatchFulfillment, null),
+    fetchRuntimeEndpoint<AuP0aRealBatchClearance | null>(baseUrl, paths.p0aRealBatchClearance, null),
     fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
     fetchRuntimeEndpoint<AuP0bGoogleEnvironmentRequest | null>(baseUrl, paths.p0bGoogleEnvironmentRequest, null),
     fetchRuntimeEndpoint<AuP0bGoogleEnvironmentFulfillment | null>(
@@ -4982,6 +5092,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0aCredentialClearance: p0aCredentialClearance.payload,
       p0aRealBatchRequest: p0aRealBatchRequest.payload,
       p0aRealBatchFulfillment: p0aRealBatchFulfillment.payload,
+      p0aRealBatchClearance: p0aRealBatchClearance.payload,
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
       p0bGoogleEnvironmentRequest: p0bGoogleEnvironmentRequest.payload,
       p0bGoogleEnvironmentFulfillment: p0bGoogleEnvironmentFulfillment.payload,
@@ -5355,6 +5466,12 @@ export default async function Home({
   const p0aRealBatchFulfillmentItems = p0aRealBatchFulfillment?.real_batch_fulfillment_items || [];
   const p0aRealBatchFulfillmentMissing = p0aRealBatchFulfillmentSummary?.missing_required || [];
   const p0aRealBatchFulfillmentBlockers = p0aRealBatchFulfillmentSummary?.blocking_reasons || [];
+  const p0aRealBatchClearance = data.p0aRealBatchClearance;
+  const p0aRealBatchClearanceSummary = p0aRealBatchClearance?.summary;
+  const p0aRealBatchClearanceItems = p0aRealBatchClearance?.phase_clearance_items || [];
+  const p0aRealBatchClearanceMissing = p0aRealBatchClearanceSummary?.missing_required || [];
+  const p0aRealBatchClearanceSteps = p0aRealBatchClearance?.operator_steps || [];
+  const p0aRealBatchClearanceValidation = p0aRealBatchClearance?.post_update_validation_sequence || [];
   const p0bGoogleExecutionChecklist = data.p0bGoogleExecutionChecklist;
   const p0bGoogleExecutionSummary = p0bGoogleExecutionChecklist?.summary;
   const missingP0bSmokeEnv = p0bGoogleExecutionSummary?.missing_required_environment || [];
@@ -7443,6 +7560,92 @@ export default async function Home({
             ))}
           </div>
           <code>{paths.p0aRealBatchFulfillment}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>P0a real batch clearance</strong>
+            <span>
+              {p0aRealBatchClearance?.p0a_real_batch_clearance_version ||
+                "au_p0a_real_batch_clearance_v1"}{" "}
+              · p0a_real_batch_clearance_hash {shortHash(p0aRealBatchClearance?.p0a_real_batch_clearance_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>
+              Clearance packet {p0aRealBatchClearance?.real_batch_clearance_packet_ready ? "ready" : "blocked"}
+            </span>
+            <span>Real batches {p0aRealBatchClearance?.real_batches_fulfilled ? "fulfilled" : "blocked"}</span>
+            <span>Clearance ready {p0aRealBatchClearance?.real_batch_clearance_ready ? "yes" : "no"}</span>
+            <span>Next clearance {p0aRealBatchClearance?.ready_for_next_clearance_step ? "ready" : "blocked"}</span>
+            <span>Prerequisite blocked {p0aRealBatchClearance?.blocked_by_prerequisite_step ? "yes" : "no"}</span>
+            <span>Total planned runs {p0aRealBatchClearanceSummary?.total_planned_runs || 0}</span>
+            <span>
+              Phases {p0aRealBatchClearanceSummary?.ready_phase_count || 0}/
+              {p0aRealBatchClearanceSummary?.phase_count || 0}
+            </span>
+            <span>Missing required {p0aRealBatchClearanceSummary?.missing_required_count || 0}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>Current global step {p0aRealBatchClearanceSummary?.current_global_clearance_step_id || "none"}</span>
+            <span>Target step {p0aRealBatchClearanceSummary?.target_clearance_step_id || "none"}</span>
+            <span>Prerequisite {p0aRealBatchClearanceSummary?.prerequisite_step_id || "none"}</span>
+            <span>Next phase {p0aRealBatchClearanceSummary?.next_phase || "none"}</span>
+            <span>Next action {p0aRealBatchClearanceSummary?.next_action || "none"}</span>
+            <span>Next command {p0aRealBatchClearanceSummary?.next_command || "none"}</span>
+            <span>Missing {p0aRealBatchClearanceMissing.slice(0, 4).join(", ") || "none"}</span>
+            <span>Raw secret allowed {p0aRealBatchClearanceSummary?.raw_secret_values_allowed ? "yes" : "no"}</span>
+            <span>
+              Request hash {shortHash(p0aRealBatchClearance?.source_artifacts?.real_batch_request?.hash)}
+            </span>
+            <span>
+              Fulfillment hash {shortHash(p0aRealBatchClearance?.source_artifacts?.real_batch_fulfillment?.hash)}
+            </span>
+            <span>
+              {p0aRealBatchClearance?.runtime_endpoints?.p0a_real_batch_clearance ||
+                "GET /v1/p0a-real-batch-clearance/au"}
+            </span>
+            <span>Hard gate: make verify-au-p0a-real-batch-clearance</span>
+            <span>
+              Strict gate:{" "}
+              {p0aRealBatchClearance?.hard_gate_commands?.find((command) => command.endsWith("--require-cleared")) ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_real_batch_clearance.py docs/runtime_preflight/au-p0a-real-batch-clearance-latest.json --require-cleared"}
+            </span>
+          </div>
+          <div className="dependencyGroupGrid">
+            {p0aRealBatchClearanceItems.map((item) => (
+              <div className="dependencyGroup" key={item.key}>
+                <strong>{item.title || item.phase_id}</strong>
+                <span>
+                  {item.fulfilled ? "fulfilled" : "blocked"} · can start {item.can_start ? "yes" : "no"} · runs{" "}
+                  {item.planned_runs || 0}
+                </span>
+                <small>
+                  request {item.request_ready ? "ready" : "blocked"} · checklist{" "}
+                  {item.checklist_ready ? "ready" : "blocked"}
+                </small>
+                <small>{(item.command_ids || []).slice(0, 3).join(" · ") || "no commands"}</small>
+                <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "gate clear"}</small>
+              </div>
+            ))}
+          </div>
+          {p0aRealBatchClearanceSteps.length ? (
+            <ul className="plainList compactList">
+              {p0aRealBatchClearanceSteps.slice(0, 6).map((step) => (
+                <li key={step.id || step.order}>
+                  {step.order}. {step.id}: {step.command}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {p0aRealBatchClearanceValidation.length ? (
+            <div className="handoffBoundary">
+              <span>
+                post_update_validation_sequence{" "}
+                {p0aRealBatchClearanceValidation.slice(0, 5).join(" -> ") || "none"}
+              </span>
+            </div>
+          ) : null}
+          <code>{paths.p0aRealBatchClearance}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">

@@ -165,6 +165,10 @@ from scripts.build_au_p0a_real_batch_fulfillment import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH,
     build_au_p0a_real_batch_fulfillment,
 )
+from scripts.build_au_p0a_real_batch_clearance import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH,
+    build_au_p0a_real_batch_clearance,
+)
 from scripts.build_au_external_dependency_handoff import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
     build_au_external_dependency_handoff,
@@ -1935,6 +1939,50 @@ def au_p0a_real_batch_fulfillment() -> dict[str, object]:
             os.getenv(
                 "GENO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH",
                 DEFAULT_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0a-real-batch-clearance/au")
+def au_p0a_real_batch_clearance() -> dict[str, object]:
+    real_batch_request_path = Path(
+        os.getenv(
+            "GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH,
+        )
+    )
+    p0a_execution_checklist_path = Path(
+        os.getenv(
+            "GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    real_batch_fulfillment_path = Path(
+        os.getenv(
+            "GENO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH",
+            DEFAULT_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH,
+        )
+    )
+    external_dependency_clearance_path = Path(
+        os.getenv(
+            "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    return build_au_p0a_real_batch_clearance(
+        real_batch_request_path=real_batch_request_path,
+        p0a_execution_checklist_path=p0a_execution_checklist_path,
+        real_batch_fulfillment_path=real_batch_fulfillment_path,
+        external_dependency_clearance_path=external_dependency_clearance_path,
+        real_batch_request=au_p0a_real_batch_request(),
+        p0a_execution_checklist=au_p0a_execution_checklist(),
+        real_batch_fulfillment=au_p0a_real_batch_fulfillment(),
+        external_dependency_clearance=au_external_dependency_clearance(),
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH,
             )
         ),
     )
@@ -6150,6 +6198,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/p0a-credential-clearance/au",
             "/v1/p0a-real-batch-request/au",
             "/v1/p0a-real-batch-fulfillment/au",
+            "/v1/p0a-real-batch-clearance/au",
             "/v1/p0b-google-execution-checklist/au",
             "/v1/p0b-google-environment-request/au",
             "/v1/p0b-google-environment-fulfillment/au",
