@@ -8166,7 +8166,7 @@ class CoreContractsTest(unittest.TestCase):
             "created_at": now,
         }
         connection = RecordingConnection(
-            result_sets=[delivery_row, feedback_row, notification_row, subscription_row, [audit_row]]
+            result_sets=[delivery_row, [], feedback_row, notification_row, subscription_row, [audit_row]]
         )
 
         record = PostgresEvidenceRepository(connection).record_runtime_notification_email_feedback(
@@ -8198,6 +8198,139 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn(provider_event_id_hash, str(inserted_feedback_params))
         self.assertNotIn("Ops@Example.com", str(inserted_feedback_params))
         self.assertNotIn("smtp-bounce-1", str(inserted_feedback_params))
+
+    def test_postgres_repository_ignores_duplicate_runtime_notification_email_feedback_provider_event(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        delivery_id = "118e5c66-7bb4-558e-ab97-e74ef9928b46"
+        feedback_id = "a0129f72-7ac9-48d5-89cf-32d9b897b02d"
+        recipient_hash = runtime_email_body_hash("ops@example.com")
+        provider_event_id_hash = runtime_email_body_hash("smtp-bounce-1")
+        delivery_row = {
+            "id": delivery_id,
+            "project_id": project_id,
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "channel": "email",
+            "endpoint_url": "mailto:ops@example.com",
+            "status": "delivered",
+            "attempt_count": 1,
+            "max_attempts": 3,
+            "lease_expires_at": None,
+            "next_attempt_at": None,
+            "response_status": 250,
+            "response_body_hash": "smtp-response-hash",
+            "error_message": None,
+            "payload": {"delivery_version": "runtime_notification_delivery_email_v1"},
+            "created_at": now,
+            "updated_by": "notification-worker",
+            "updated_at": now,
+        }
+        existing_feedback_row = {
+            "id": feedback_id,
+            "project_id": project_id,
+            "delivery_id": delivery_id,
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "feedback_type": "bounce",
+            "recipient_hash": recipient_hash,
+            "provider": "smtp",
+            "provider_event_id_hash": provider_event_id_hash,
+            "occurred_at": now,
+            "metadata": {"source": "email-feedback-webhook"},
+            "recorded_by": "email-feedback-webhook",
+            "created_at": now,
+        }
+        notification_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "report_export_job",
+            "severity": "warning",
+            "title": "Report export failed",
+            "message": "pdf/standard report export job failed.",
+            "target_type": "report_export_job",
+            "target_id": "8f4f2a24-d6cf-5050-96a4-942d2c337fd0",
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {"status": "failed"},
+            "created_by": "runtime-worker",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        subscription_row = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "email",
+            "endpoint_url": "mailto:ops@example.com",
+            "event_types": ["report_export_job"],
+            "severity_threshold": "info",
+            "status": "active",
+            "metadata": {},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        duplicate_audit_row = {
+            "id": "2ce4310a-1c5f-4272-8a61-6d8b1aa9ea99",
+            "event_type": "runtime_notification_email_feedback_duplicate_ignored",
+            "project_id": project_id,
+            "actor_type": "system",
+            "actor_id": "email-feedback-webhook",
+            "target_type": "runtime_notification_delivery",
+            "target_id": delivery_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {
+                "feedback_type": ["bounce"],
+                "provider_event_id_hashes": [provider_event_id_hash],
+            },
+            "output_refs": {
+                "runtime_notification_email_feedback_event_ids": [feedback_id],
+                "duplicate_ignored": [True],
+            },
+            "method_version": "runtime_notification_email_feedback_idempotency_v1",
+            "reason": "ignore duplicate bounce",
+            "created_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                delivery_row,
+                existing_feedback_row,
+                notification_row,
+                subscription_row,
+                [duplicate_audit_row],
+            ]
+        )
+
+        record = PostgresEvidenceRepository(connection).record_runtime_notification_email_feedback(
+            RuntimeNotificationEmailFeedbackInput(
+                delivery_id=delivery_id,
+                feedback_type="bounce",
+                recipient="Ops@Example.com",
+                provider="smtp",
+                provider_event_id="smtp-bounce-1",
+                occurred_at=now,
+                metadata={"source": "retry"},
+                recorded_by="email-feedback-webhook",
+                reason="ignore duplicate bounce",
+            )
+        )
+
+        self.assertEqual(record.feedback_event["id"], feedback_id)
+        self.assertEqual(record.audit_events[0]["event_type"], "runtime_notification_email_feedback_duplicate_ignored")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("provider_event_id_hash = %s", executed_sql)
+        self.assertNotIn("INSERT INTO runtime_notification_email_feedback_events", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+        inserted_audit_params = [params for sql, params in connection.calls if "INSERT INTO audit_events" in sql][0]
+        self.assertIn("system", str(inserted_audit_params))
+        self.assertIn("email-feedback-webhook", str(inserted_audit_params))
 
     def test_postgres_repository_lists_runtime_notification_email_feedback_with_context(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)

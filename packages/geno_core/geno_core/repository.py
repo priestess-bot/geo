@@ -9037,6 +9037,11 @@ class PostgresEvidenceRepository:
         delivery_id = feedback.delivery_id.strip()
         feedback_type = feedback.feedback_type.strip().lower()
         recorded_by = feedback.recorded_by.strip() or "runtime-console"
+        actor_type = "user"
+        if recorded_by == "notification-worker":
+            actor_type = "worker"
+        elif recorded_by == "email-feedback-webhook":
+            actor_type = "system"
         reason = feedback.reason.strip() if feedback.reason else None
         provider = " ".join(str(feedback.provider or "").replace("\r", "\n").split()).strip() or None
         recipient = _normalize_runtime_email_address(feedback.recipient) if feedback.recipient else ""
@@ -9074,6 +9079,54 @@ class PostgresEvidenceRepository:
                 raise ValueError("runtime notification delivery not found")
             if str(delivery.get("channel") or "").strip().lower() != "email":
                 raise ValueError("email feedback can only be recorded for email runtime notification deliveries")
+            if provider_event_id_hash:
+                cursor.execute(
+                    f"""
+                    SELECT {", ".join(RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_COLUMNS)}
+                    FROM runtime_notification_email_feedback_events
+                    WHERE delivery_id = %s
+                      AND feedback_type = %s
+                      AND provider_event_id_hash = %s
+                    ORDER BY occurred_at DESC, created_at DESC, id DESC
+                    LIMIT 1
+                    """,
+                    (_uuid(delivery_id), feedback_type, provider_event_id_hash),
+                )
+                existing_feedback_event = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_COLUMNS)
+                if existing_feedback_event:
+                    audit_event = build_audit_event(
+                        event_type="runtime_notification_email_feedback_duplicate_ignored",
+                        project_id=str(delivery["project_id"]),
+                        actor_type=actor_type,
+                        actor_id=recorded_by,
+                        target_type="runtime_notification_delivery",
+                        target_id=delivery_id,
+                        before=delivery,
+                        after=existing_feedback_event,
+                        input_refs={
+                            "runtime_notification_delivery_ids": [delivery_id],
+                            "feedback_type": [feedback_type],
+                            "provider_event_id_hashes": [provider_event_id_hash],
+                            "recipient_hashes": [recipient_hash] if recipient_hash else [],
+                        },
+                        output_refs={
+                            "runtime_notification_email_feedback_event_ids": [str(existing_feedback_event["id"])],
+                            "runtime_notification_delivery_ids": [delivery_id],
+                            "runtime_notification_ids": [str(delivery["notification_id"])],
+                            "runtime_notification_subscription_ids": [str(delivery["subscription_id"])],
+                            "duplicate_ignored": [True],
+                        },
+                        method_version="runtime_notification_email_feedback_idempotency_v1",
+                        reason=reason or f"ignore duplicate runtime notification email {feedback_type} feedback",
+                    )
+                    self.save_audit_events((audit_event,), cursor=cursor)
+                    record = self._runtime_notification_email_feedback_from_row(
+                        cursor=cursor,
+                        feedback_event=existing_feedback_event,
+                        delivery=delivery,
+                    )
+                    self.connection.commit()
+                    return record
             cursor.execute(
                 f"""
                 INSERT INTO runtime_notification_email_feedback_events (
@@ -9110,7 +9163,7 @@ class PostgresEvidenceRepository:
             audit_event = build_audit_event(
                 event_type="runtime_notification_email_feedback_recorded",
                 project_id=str(delivery["project_id"]),
-                actor_type="worker" if recorded_by == "notification-worker" else "user",
+                actor_type=actor_type,
                 actor_id=recorded_by,
                 target_type="runtime_notification_delivery",
                 target_id=delivery_id,
