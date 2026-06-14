@@ -93,6 +93,7 @@ from geno_core.models import (
     RuntimeEntityAlias,
     RuntimeEntityAliasAssignmentReassignmentResult,
     RuntimeEntityAliasAssignmentWorkbench,
+    RuntimeEntityAliasAssignmentWorkloadSummary,
     RuntimeEntityAliasAssignmentBatchActionResult,
     RuntimeEntityAliasAssignmentNotificationResult,
     RuntimeEntityAliasCandidateAssignmentQueueStats,
@@ -11179,6 +11180,78 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("ORDER BY", executed_sql)
         self.assertIn("LIMIT %s", executed_sql)
         self.assertIn("FROM audit_events", executed_sql)
+
+    def test_postgres_repository_builds_runtime_entity_alias_assignment_workload_summary(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        now = datetime.now(UTC)
+        connection = RecordingConnection(
+            result_sets=[
+                [
+                    {
+                        "assignment_status": "assigned",
+                        "priority": "urgent",
+                        "due_at": now - timedelta(days=1),
+                        "assigned_to": "reviewer-a@example.com",
+                    },
+                    {
+                        "assignment_status": "in_progress",
+                        "priority": "high",
+                        "due_at": now + timedelta(days=2),
+                        "assigned_to": "reviewer-a@example.com",
+                    },
+                    {
+                        "assignment_status": "blocked",
+                        "priority": "normal",
+                        "due_at": now + timedelta(days=10),
+                        "assigned_to": "reviewer-b@example.com",
+                    },
+                    {
+                        "assignment_status": "escalated",
+                        "priority": "urgent",
+                        "due_at": now - timedelta(days=2),
+                        "assigned_to": "reviewer-b@example.com",
+                    },
+                    {
+                        "assignment_status": "assigned",
+                        "priority": "normal",
+                        "due_at": None,
+                        "assigned_to": None,
+                    },
+                ]
+            ]
+        )
+
+        workload = PostgresEvidenceRepository(connection).get_entity_alias_assignment_workload_summary(
+            project_id=project_id,
+            due_soon_before=now + timedelta(days=7),
+        )
+
+        self.assertIsInstance(workload, RuntimeEntityAliasAssignmentWorkloadSummary)
+        self.assertEqual(workload.method_version, "entity_alias_assignment_workload_v1")
+        self.assertEqual(workload.total_active_count, 5)
+        self.assertEqual(workload.unassigned_count, 1)
+        self.assertEqual(workload.reviewer_count, 2)
+        self.assertEqual(workload.overdue_count, 2)
+        self.assertEqual(workload.due_soon_count, 1)
+        self.assertEqual(workload.escalated_count, 1)
+        self.assertEqual(workload.blocked_count, 1)
+        self.assertEqual(workload.active_statuses, ("assigned", "in_progress", "blocked", "escalated"))
+        self.assertEqual(workload.reviewer_loads[0]["reviewer_id"], "unassigned")
+        reviewer_a = next(load for load in workload.reviewer_loads if load["reviewer_id"] == "reviewer-a@example.com")
+        reviewer_b = next(load for load in workload.reviewer_loads if load["reviewer_id"] == "reviewer-b@example.com")
+        self.assertEqual(reviewer_a["active_count"], 2)
+        self.assertEqual(reviewer_a["overdue_count"], 1)
+        self.assertEqual(reviewer_a["due_soon_count"], 1)
+        self.assertEqual(reviewer_a["urgent_count"], 1)
+        self.assertEqual(reviewer_a["high_count"], 1)
+        self.assertEqual(reviewer_a["status_counts"]["assigned"], 1)
+        self.assertEqual(reviewer_a["priority_counts"]["urgent"], 1)
+        self.assertEqual(reviewer_b["blocked_count"], 1)
+        self.assertEqual(reviewer_b["escalated_count"], 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("SELECT assignment_status, priority, due_at, assigned_to", executed_sql)
+        self.assertIn("FROM entity_alias_candidate_reviews", executed_sql)
+        self.assertIn("assignment_status = ANY(%s)", executed_sql)
 
     def test_postgres_repository_enqueues_entity_alias_assignment_overdue_notifications(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

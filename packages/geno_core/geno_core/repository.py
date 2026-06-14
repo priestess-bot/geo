@@ -63,6 +63,7 @@ from geno_core.models import (
     RuntimeEntityAliasAssignmentReassignmentResult,
     RuntimeEntityAliasAssignmentBatchActionResult,
     RuntimeEntityAliasAssignmentWorkbench,
+    RuntimeEntityAliasAssignmentWorkloadSummary,
     RuntimeEntityAliasCandidate,
     RuntimeEntityAliasCandidateAssignmentQueueStats,
     RuntimeEntityAliasCandidateBatchReviewResult,
@@ -3885,6 +3886,116 @@ class PostgresEvidenceRepository:
             oldest_due_at=min(due_dates) if due_dates else None,
             next_due_at=min(future_due_dates) if future_due_dates else None,
             records=records,
+        )
+
+    def get_entity_alias_assignment_workload_summary(
+        self,
+        *,
+        project_id: str,
+        due_soon_before: datetime | None = None,
+    ) -> RuntimeEntityAliasAssignmentWorkloadSummary:
+        generated_at = datetime.now(UTC)
+        due_soon_cutoff = due_soon_before or generated_at + timedelta(days=7)
+        active_statuses = ("assigned", "in_progress", "blocked", "escalated")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT assignment_status, priority, due_at, assigned_to
+                FROM entity_alias_candidate_reviews
+                WHERE project_id = %s AND assignment_status = ANY(%s)
+                """,
+                (_uuid(project_id), list(active_statuses)),
+            )
+            rows = _rows_dict(cursor.fetchall(), ("assignment_status", "priority", "due_at", "assigned_to"))
+        reviewer_loads: dict[str, dict[str, Any]] = {}
+        unassigned_count = 0
+        overdue_count = 0
+        due_soon_count = 0
+        escalated_count = 0
+        blocked_count = 0
+        for row in rows:
+            reviewer_id = str(row.get("assigned_to") or "").strip() or "unassigned"
+            status = str(row.get("assignment_status") or "unassigned").strip().lower() or "unassigned"
+            priority = str(row.get("priority") or "normal").strip().lower() or "normal"
+            load = reviewer_loads.setdefault(
+                reviewer_id,
+                {
+                    "reviewer_id": reviewer_id,
+                    "active_count": 0,
+                    "overdue_count": 0,
+                    "due_soon_count": 0,
+                    "escalated_count": 0,
+                    "blocked_count": 0,
+                    "urgent_count": 0,
+                    "high_count": 0,
+                    "oldest_due_at": None,
+                    "next_due_at": None,
+                    "status_counts": {},
+                    "priority_counts": {},
+                    "_due_dates": [],
+                    "_future_due_dates": [],
+                },
+            )
+            load["active_count"] += 1
+            load["status_counts"][status] = load["status_counts"].get(status, 0) + 1
+            load["priority_counts"][priority] = load["priority_counts"].get(priority, 0) + 1
+            if reviewer_id == "unassigned":
+                unassigned_count += 1
+            if status == "escalated":
+                load["escalated_count"] += 1
+                escalated_count += 1
+            if status == "blocked":
+                load["blocked_count"] += 1
+                blocked_count += 1
+            if priority == "urgent":
+                load["urgent_count"] += 1
+            if priority == "high":
+                load["high_count"] += 1
+            due_at = _coerce_datetime(row.get("due_at"))
+            if due_at is None:
+                continue
+            load["_due_dates"].append(due_at)
+            if due_at < generated_at:
+                load["overdue_count"] += 1
+                overdue_count += 1
+            else:
+                load["_future_due_dates"].append(due_at)
+                if due_at <= due_soon_cutoff:
+                    load["due_soon_count"] += 1
+                    due_soon_count += 1
+        normalized_loads: list[dict[str, Any]] = []
+        for load in reviewer_loads.values():
+            due_dates = load.pop("_due_dates")
+            future_due_dates = load.pop("_future_due_dates")
+            load["oldest_due_at"] = min(due_dates) if due_dates else None
+            load["next_due_at"] = min(future_due_dates) if future_due_dates else None
+            load["status_counts"] = dict(sorted(load["status_counts"].items()))
+            load["priority_counts"] = dict(sorted(load["priority_counts"].items()))
+            normalized_loads.append(load)
+        normalized_loads.sort(
+            key=lambda load: (
+                0 if load["reviewer_id"] == "unassigned" else 1,
+                -int(load["escalated_count"]),
+                -int(load["overdue_count"]),
+                -int(load["urgent_count"]),
+                -int(load["active_count"]),
+                str(load["reviewer_id"]),
+            )
+        )
+        reviewer_count = sum(1 for load in normalized_loads if load["reviewer_id"] != "unassigned")
+        return RuntimeEntityAliasAssignmentWorkloadSummary(
+            project_id=project_id,
+            generated_at=generated_at,
+            method_version="entity_alias_assignment_workload_v1",
+            active_statuses=active_statuses,
+            total_active_count=len(rows),
+            unassigned_count=unassigned_count,
+            reviewer_count=reviewer_count,
+            overdue_count=overdue_count,
+            due_soon_count=due_soon_count,
+            escalated_count=escalated_count,
+            blocked_count=blocked_count,
+            reviewer_loads=tuple(normalized_loads),
         )
 
     def enqueue_entity_alias_assignment_overdue_notifications(

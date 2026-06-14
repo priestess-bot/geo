@@ -768,6 +768,7 @@ type RuntimeData = {
   entityAliasAssignmentQueue: PageResponse<RuntimeEntityAliasCandidateReview>;
   entityAliasAssignmentStats: RuntimeEntityAliasCandidateAssignmentQueueStats;
   entityAliasAssignmentWorkbench: RuntimeEntityAliasAssignmentWorkbench;
+  entityAliasAssignmentWorkload: RuntimeEntityAliasAssignmentWorkloadSummary;
   savedViews: PageResponse<RuntimeSavedView>;
   scores: PageResponse<ScoreSnapshot>;
   graphs: PageResponse<CitationGraph>;
@@ -3343,6 +3344,36 @@ type RuntimeEntityAliasAssignmentWorkbench = {
   records: RuntimeEntityAliasCandidateReview[];
 };
 
+type RuntimeEntityAliasAssignmentWorkloadReviewer = {
+  reviewer_id: string;
+  active_count: number;
+  overdue_count: number;
+  due_soon_count: number;
+  escalated_count: number;
+  blocked_count: number;
+  urgent_count: number;
+  high_count: number;
+  oldest_due_at?: string | null;
+  next_due_at?: string | null;
+  status_counts: Record<string, number>;
+  priority_counts: Record<string, number>;
+};
+
+type RuntimeEntityAliasAssignmentWorkloadSummary = {
+  project_id: string;
+  generated_at: string;
+  method_version: string;
+  active_statuses: string[];
+  total_active_count: number;
+  unassigned_count: number;
+  reviewer_count: number;
+  overdue_count: number;
+  due_soon_count: number;
+  escalated_count: number;
+  blocked_count: number;
+  reviewer_loads: RuntimeEntityAliasAssignmentWorkloadReviewer[];
+};
+
 type RuntimeFilters = {
   project_id?: string;
   platform?: string;
@@ -3448,6 +3479,7 @@ const endpoints = {
   entityAliasAssignmentQueue: "/v1/entity-aliases/runtime/candidates/reviews",
   entityAliasAssignmentStats: "/v1/entity-aliases/runtime/candidates/assignment-stats",
   entityAliasAssignmentWorkbench: "/v1/entity-aliases/runtime/candidates/assignment-workbench",
+  entityAliasAssignmentWorkload: "/v1/entity-aliases/runtime/candidates/assignment-workload",
   entityAliasAssignmentAction: "/v1/entity-aliases/runtime/candidates/assignment-action",
   entityAliasAssignmentBatchAction: "/v1/entity-aliases/runtime/candidates/assignment-actions",
   entityAliasConfirmBatch: "/v1/entity-aliases/runtime/confirm-batch",
@@ -3523,6 +3555,21 @@ const emptyAliasAssignmentWorkbench = (): RuntimeEntityAliasAssignmentWorkbench 
   oldest_due_at: null,
   next_due_at: null,
   records: []
+});
+
+const emptyAliasAssignmentWorkload = (): RuntimeEntityAliasAssignmentWorkloadSummary => ({
+  project_id: "",
+  generated_at: "",
+  method_version: "entity_alias_assignment_workload_v1",
+  active_statuses: ["assigned", "in_progress", "blocked", "escalated"],
+  total_active_count: 0,
+  unassigned_count: 0,
+  reviewer_count: 0,
+  overdue_count: 0,
+  due_soon_count: 0,
+  escalated_count: 0,
+  blocked_count: 0,
+  reviewer_loads: []
 });
 
 const scoreComponentNames = [
@@ -5034,6 +5081,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasAssignmentQueue: endpoints.entityAliasAssignmentQueue,
     entityAliasAssignmentStats: endpoints.entityAliasAssignmentStats,
     entityAliasAssignmentWorkbench: endpoints.entityAliasAssignmentWorkbench,
+    entityAliasAssignmentWorkload: endpoints.entityAliasAssignmentWorkload,
     entityAliasAssignmentAction: endpoints.entityAliasAssignmentAction,
     entityAliasAssignmentBatchAction: endpoints.entityAliasAssignmentBatchAction,
     entityAliasAssignmentReassignments: endpoints.entityAliasAssignmentReassignments,
@@ -5210,6 +5258,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
         limit: 8
       })
     : paths.entityAliasAssignmentWorkbench;
+  paths.entityAliasAssignmentWorkload = selectedProjectId
+    ? runtimePath(endpoints.entityAliasAssignmentWorkload, {
+        project_id: selectedProjectId
+      })
+    : paths.entityAliasAssignmentWorkload;
   paths.entityAliasAssignmentEscalations = endpoints.entityAliasAssignmentEscalations;
   paths.entityAliasAssignmentReassignments = endpoints.entityAliasAssignmentReassignments;
   paths.savedViews = runtimePath(endpoints.savedViews, {
@@ -5343,6 +5396,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasAssignmentQueue,
     entityAliasAssignmentStats,
     entityAliasAssignmentWorkbench,
+    entityAliasAssignmentWorkload,
     savedViews,
     brandKit,
     brandAssets,
@@ -5510,6 +5564,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
           emptyAliasAssignmentWorkbench()
         )
       : Promise.resolve({ payload: emptyAliasAssignmentWorkbench(), error: null }),
+    selectedProjectId
+      ? fetchRuntimeEndpoint<RuntimeEntityAliasAssignmentWorkloadSummary>(
+          baseUrl,
+          paths.entityAliasAssignmentWorkload,
+          emptyAliasAssignmentWorkload()
+        )
+      : Promise.resolve({ payload: emptyAliasAssignmentWorkload(), error: null }),
     fetchRuntimeEndpoint<PageResponse<RuntimeSavedView>>(baseUrl, paths.savedViews, emptyPage<RuntimeSavedView>()),
     selectedProjectId
       ? fetchRuntimeEndpoint<RuntimeProjectBrandKit | null>(baseUrl, paths.brandKit, null, { optionalNotFound: true })
@@ -5630,6 +5691,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasAssignmentQueue,
     entityAliasAssignmentStats,
     entityAliasAssignmentWorkbench,
+    entityAliasAssignmentWorkload,
     savedViews,
     brandKit,
     brandAssets,
@@ -5712,6 +5774,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       entityAliasAssignmentQueue: entityAliasAssignmentQueue.payload,
       entityAliasAssignmentStats: entityAliasAssignmentStats.payload,
       entityAliasAssignmentWorkbench: entityAliasAssignmentWorkbench.payload,
+      entityAliasAssignmentWorkload: entityAliasAssignmentWorkload.payload,
       savedViews: savedViews.payload,
       scores: scores.payload,
       graphs: graphs.payload,
@@ -9664,6 +9727,65 @@ export default async function Home({
 	                    </ul>
 	                  ) : (
 	                    <small>No active reviewer workbench records found for runtime-console.</small>
+	                  )}
+	                </div>
+	                <div className="aliasBatchQueue">
+	                  <div className="formHeader">
+	                    <h3>Alias Reviewer Workload</h3>
+	                    <small>
+	                      {data.entityAliasAssignmentWorkload.total_active_count} active reviews ·{" "}
+	                      {data.entityAliasAssignmentWorkload.reviewer_count} reviewers ·{" "}
+	                      {paths.entityAliasAssignmentWorkload}
+	                    </small>
+	                  </div>
+	                  <div className="facts aliasAssignmentStats" aria-label="Alias Reviewer Workload Stats">
+	                    <div>
+	                      <span>Unassigned</span>
+	                      <strong>{data.entityAliasAssignmentWorkload.unassigned_count}</strong>
+	                    </div>
+	                    <div>
+	                      <span>Overdue</span>
+	                      <strong>{data.entityAliasAssignmentWorkload.overdue_count}</strong>
+	                    </div>
+	                    <div>
+	                      <span>Due soon</span>
+	                      <strong>{data.entityAliasAssignmentWorkload.due_soon_count}</strong>
+	                    </div>
+	                    <div>
+	                      <span>Escalated</span>
+	                      <strong>{data.entityAliasAssignmentWorkload.escalated_count}</strong>
+	                    </div>
+	                    <div>
+	                      <span>Blocked</span>
+	                      <strong>{data.entityAliasAssignmentWorkload.blocked_count}</strong>
+	                    </div>
+	                  </div>
+	                  <small>
+	                    workload: {data.entityAliasAssignmentWorkload.method_version} · active statuses{" "}
+	                    {data.entityAliasAssignmentWorkload.active_statuses.join(", ")} · reviewer_loads sorted by
+	                    unassigned, escalated, overdue, urgent, active count
+	                  </small>
+	                  {data.entityAliasAssignmentWorkload.reviewer_loads.length ? (
+	                    <ul className="plainList compactList">
+	                      {data.entityAliasAssignmentWorkload.reviewer_loads.slice(0, 5).map((load) => (
+	                        <li key={`workload-${load.reviewer_id}`}>
+	                          <strong>
+	                            {load.reviewer_id} · {load.active_count} active · {load.urgent_count} urgent
+	                          </strong>
+	                          <span>
+	                            overdue {load.overdue_count} · due soon {load.due_soon_count} · escalated{" "}
+	                            {load.escalated_count} · blocked {load.blocked_count}
+	                          </span>
+	                          <small>
+	                            next due {load.next_due_at ? dateText(load.next_due_at) : "not set"} · status_counts{" "}
+	                            {JSON.stringify(load.status_counts)} · priority_counts{" "}
+	                            {JSON.stringify(load.priority_counts)}
+	                          </small>
+	                        </li>
+	                      ))}
+	                    </ul>
+	                  ) : (
+	                    <small>No active reviewer workload records found.</small>
 	                  )}
 	                </div>
 	                {visibleAliasAssignmentQueue.length ? (

@@ -62,6 +62,7 @@ from geno_core.models import (
     RuntimeEntityAliasAssignmentNotificationResult,
     RuntimeEntityAliasAssignmentReassignmentResult,
     RuntimeEntityAliasAssignmentWorkbench,
+    RuntimeEntityAliasAssignmentWorkloadSummary,
     RuntimeEntityAliasAssignmentBatchActionResult,
     RuntimeEntityAliasCandidateAssignmentQueueStats,
     RuntimeEntityAliasCandidate,
@@ -4671,6 +4672,14 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_entity_alias_assignment_workload_endpoint_requires_persistence_config(self) -> None:
+        response = self.client.get(
+            "/v1/entity-aliases/runtime/candidates/assignment-workload"
+            "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DATABASE_URL", response.json()["detail"])
+
     def test_runtime_entity_alias_candidates_endpoint_returns_evidence_metadata(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         entity_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
@@ -4901,6 +4910,78 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["project_id"], project_id)
         self.assertEqual(fake_repository.kwargs["reviewer_id"], "runtime-console")
         self.assertEqual(fake_repository.kwargs["limit"], 8)
+        self.assertEqual(fake_repository.kwargs["due_soon_before"].isoformat(), "2026-06-20T00:00:00+00:00")
+
+    def test_runtime_entity_alias_assignment_workload_endpoint_returns_reviewer_loads(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+
+        class FakeRepository:
+            connection = type("Connection", (), {"close": lambda self: None})()
+
+            def get_entity_alias_assignment_workload_summary(self, **kwargs):
+                self.kwargs = kwargs
+                return RuntimeEntityAliasAssignmentWorkloadSummary(
+                    project_id=kwargs["project_id"],
+                    generated_at=datetime(2026, 6, 15, 0, 0, tzinfo=UTC),
+                    method_version="entity_alias_assignment_workload_v1",
+                    active_statuses=("assigned", "in_progress", "blocked", "escalated"),
+                    total_active_count=3,
+                    unassigned_count=1,
+                    reviewer_count=2,
+                    overdue_count=1,
+                    due_soon_count=1,
+                    escalated_count=1,
+                    blocked_count=1,
+                    reviewer_loads=(
+                        {
+                            "reviewer_id": "unassigned",
+                            "active_count": 1,
+                            "overdue_count": 0,
+                            "due_soon_count": 0,
+                            "escalated_count": 0,
+                            "blocked_count": 0,
+                            "urgent_count": 0,
+                            "high_count": 0,
+                            "oldest_due_at": None,
+                            "next_due_at": None,
+                            "status_counts": {"assigned": 1},
+                            "priority_counts": {"normal": 1},
+                        },
+                        {
+                            "reviewer_id": "reviewer-a@example.com",
+                            "active_count": 2,
+                            "overdue_count": 1,
+                            "due_soon_count": 1,
+                            "escalated_count": 1,
+                            "blocked_count": 1,
+                            "urgent_count": 1,
+                            "high_count": 1,
+                            "oldest_due_at": datetime(2026, 6, 14, 0, 0, tzinfo=UTC),
+                            "next_due_at": datetime(2026, 6, 16, 0, 0, tzinfo=UTC),
+                            "status_counts": {"blocked": 1, "escalated": 1},
+                            "priority_counts": {"high": 1, "urgent": 1},
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+            response = self.client.get(
+                f"/v1/entity-aliases/runtime/candidates/assignment-workload?project_id={project_id}"
+                "&due_soon_before=2026-06-20T00:00:00Z"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["method_version"], "entity_alias_assignment_workload_v1")
+        self.assertEqual(payload["active_statuses"], ["assigned", "in_progress", "blocked", "escalated"])
+        self.assertEqual(payload["total_active_count"], 3)
+        self.assertEqual(payload["unassigned_count"], 1)
+        self.assertEqual(payload["reviewer_count"], 2)
+        self.assertEqual(payload["reviewer_loads"][0]["reviewer_id"], "unassigned")
+        self.assertEqual(payload["reviewer_loads"][1]["urgent_count"], 1)
+        self.assertEqual(payload["reviewer_loads"][1]["next_due_at"], "2026-06-16T00:00:00Z")
+        self.assertEqual(fake_repository.kwargs["project_id"], project_id)
         self.assertEqual(fake_repository.kwargs["due_soon_before"].isoformat(), "2026-06-20T00:00:00+00:00")
 
     def test_runtime_entity_alias_assignment_notifications_endpoint_passes_payload(self) -> None:
@@ -7552,6 +7633,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEntityAliasCandidateReviewPage", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasCandidateAssignmentQueueStats", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasAssignmentWorkbench", payload["m1_bootstrap"])
+        self.assertIn("RuntimeEntityAliasAssignmentWorkloadSummary", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasAssignmentNotificationResult", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasAssignmentEscalationResult", payload["m1_bootstrap"])
         self.assertIn("RuntimeEntityAliasAssignmentReassignmentResult", payload["m1_bootstrap"])
@@ -7622,6 +7704,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeEntityAliasCandidateReviewPage", payload["persistence"])
         self.assertIn("RuntimeEntityAliasCandidateBatchReviewResult", payload["persistence"])
         self.assertIn("RuntimeEntityAliasAssignmentWorkbench", payload["persistence"])
+        self.assertIn("RuntimeEntityAliasAssignmentWorkloadSummary", payload["persistence"])
         self.assertIn("RuntimeEntityAliasAssignmentEscalationResult", payload["persistence"])
         self.assertIn("RuntimeEntityAliasAssignmentReassignmentResult", payload["persistence"])
         self.assertIn("RuntimeEntityAliasAssignmentBatchActionResult", payload["persistence"])
@@ -7759,6 +7842,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/entity-aliases/runtime/candidates", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/reviews", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/assignment-workbench", payload["persistence"])
+        self.assertIn("/v1/entity-aliases/runtime/candidates/assignment-workload", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/assignment-notifications", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/assignment-escalations", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/assignment-reassignments", payload["persistence"])

@@ -1099,6 +1099,22 @@ class RuntimeEntityAliasAssignmentWorkbench:
 
 
 @dataclass(frozen=True)
+class RuntimeEntityAliasAssignmentWorkloadSummary:
+    project_id: str
+    generated_at: datetime
+    method_version: str
+    active_statuses: tuple[str, ...]
+    total_active_count: int
+    unassigned_count: int
+    reviewer_count: int
+    overdue_count: int
+    due_soon_count: int
+    escalated_count: int
+    blocked_count: int
+    reviewer_loads: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class RuntimeEntityAliasAssignmentBatchActionResult:
     project_id: str
     action: str
