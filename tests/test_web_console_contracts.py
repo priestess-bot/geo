@@ -658,6 +658,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("/v1/runtime-notification-subscriptions", page_source)
         self.assertIn("/v1/runtime-notification-deliveries", page_source)
         self.assertIn("/v1/runtime-notification-email-feedback-events", page_source)
+        self.assertIn("/v1/runtime-notification-email-feedback-webhooks/geno", page_source)
         self.assertIn(
             "/v1/runtime-notification-email-feedback-events/${feedbackEventId}/suppress-recipient",
             page_source,

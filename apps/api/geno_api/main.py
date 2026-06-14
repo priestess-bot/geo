@@ -120,6 +120,12 @@ from geno_core.runtime import (
 )
 from geno_core.scoring import get_score_formula, list_score_formulas, normalize_score_weights
 from geno_core.traceability import build_traceability_bundle
+from geno_core.webhook_signing import (
+    RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER,
+    RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER,
+    RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER,
+    verify_runtime_notification_webhook_signature,
+)
 from scripts.build_au_launch_status import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH,
     DEFAULT_P0A_STATUS_PATH,
@@ -299,6 +305,12 @@ REPORT_ARTIFACT_SIGNING_SECRET_ENV = "GENO_REPORT_ARTIFACT_SIGNING_SECRET"
 REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS_ENV = "GENO_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS"
 DEFAULT_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS = 900.0
 MAX_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS = 86400.0
+RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ENV = "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET"
+RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ID_ENV = "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ID"
+RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS_ENV = (
+    "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS"
+)
+DEFAULT_RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS = 300.0
 PROJECT_MANAGE_ROLES = ("owner", "admin")
 PROJECT_ANALYZE_ROLES = ("owner", "admin", "analyst")
 _RUNTIME_JWT_ACTOR_ID: ContextVar[str | None] = ContextVar("geno_runtime_jwt_actor_id", default=None)
@@ -447,6 +459,62 @@ def _report_artifact_signed_url_ttl_seconds() -> int:
             detail=f"{REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS_ENV} must be <= {int(MAX_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS)}",
         )
     return int(ttl)
+
+
+def _runtime_notification_email_feedback_webhook_secret() -> str:
+    secret = os.getenv(RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ENV, "")
+    if not secret:
+        raise HTTPException(
+            status_code=503,
+            detail=f"{RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ENV} is required",
+        )
+    return secret
+
+
+def _runtime_notification_email_feedback_webhook_secret_id() -> str:
+    return os.getenv(RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ID_ENV, "email-feedback-webhook").strip() or "email-feedback-webhook"
+
+
+def _runtime_notification_email_feedback_webhook_tolerance_seconds() -> int:
+    return int(
+        _positive_float_env(
+            RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS_ENV,
+            DEFAULT_RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS,
+        )
+    )
+
+
+def _verify_runtime_notification_email_feedback_webhook(
+    *,
+    request: Request,
+    body: bytes,
+) -> dict[str, object]:
+    secret = _runtime_notification_email_feedback_webhook_secret()
+    secret_id = _runtime_notification_email_feedback_webhook_secret_id()
+    verification = verify_runtime_notification_webhook_signature(
+        headers=dict(request.headers),
+        body=body,
+        secret=secret,
+        secret_id=secret_id,
+        tolerance_seconds=_runtime_notification_email_feedback_webhook_tolerance_seconds(),
+    )
+    if not verification.valid:
+        raise HTTPException(
+            status_code=401,
+            detail=f"runtime notification email feedback webhook signature invalid: {verification.reason}",
+        )
+    return {
+        "source": "runtime_notification_email_feedback_webhook",
+        "signature_reason": verification.reason,
+        "signature_payload_hash": verification.payload_hash,
+        "signature_key_id": verification.signature_key_id,
+        "matched_secret_id": verification.matched_secret_id,
+        "checked_secret_count": verification.checked_secret_count,
+        "signature_age_seconds": verification.age_seconds,
+        "delivery_id_header": request.headers.get(RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER),
+        "notification_id_header": request.headers.get(RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER),
+        "payload_hash_header": request.headers.get(RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER),
+    }
 
 
 def _report_artifact_signature_payload(
@@ -1807,6 +1875,19 @@ class RuntimeNotificationEmailFeedbackRequest(BaseModel):
     occurred_at: datetime | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
     recorded_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationEmailFeedbackWebhookRequest(BaseModel):
+    delivery_id: str = Field(min_length=1)
+    feedback_type: str = Field(min_length=1, max_length=40)
+    recipient: str | None = Field(default=None, max_length=320)
+    recipient_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    provider: str | None = Field(default="geno", max_length=120)
+    provider_event_id: str | None = Field(default=None, max_length=500)
+    provider_event_id_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    occurred_at: datetime | None = None
+    metadata: dict[str, object] = Field(default_factory=dict)
     reason: str | None = Field(default=None, max_length=500)
 
 
@@ -5771,6 +5852,56 @@ def record_runtime_notification_email_feedback(
         close_repository_connection(repository)
 
 
+@app.post("/v1/runtime-notification-email-feedback-webhooks/geno")
+async def record_runtime_notification_email_feedback_webhook(request: Request) -> dict[str, object]:
+    body = await request.body()
+    signature_metadata = _verify_runtime_notification_email_feedback_webhook(request=request, body=body)
+    try:
+        raw_payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="runtime notification email feedback webhook payload must be JSON") from exc
+    if not isinstance(raw_payload, dict):
+        raise HTTPException(status_code=400, detail="runtime notification email feedback webhook payload must be an object")
+    try:
+        payload = RuntimeNotificationEmailFeedbackWebhookRequest(**raw_payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if request.headers.get(RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER) != payload.delivery_id:
+        raise HTTPException(status_code=400, detail="runtime notification email feedback webhook delivery id mismatch")
+    metadata = {
+        **payload.metadata,
+        **signature_metadata,
+        "webhook_payload_version": "runtime_notification_email_feedback_webhook_v1",
+        "provider": payload.provider or "geno",
+    }
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        record = repository.record_runtime_notification_email_feedback(
+            RuntimeNotificationEmailFeedbackInput(
+                delivery_id=payload.delivery_id,
+                feedback_type=payload.feedback_type,
+                recipient=payload.recipient,
+                recipient_hash=payload.recipient_hash,
+                provider=payload.provider or "geno",
+                provider_event_id=payload.provider_event_id,
+                provider_event_id_hash=payload.provider_event_id_hash,
+                occurred_at=payload.occurred_at,
+                metadata=metadata,
+                recorded_by="email-feedback-webhook",
+                reason=payload.reason or "record runtime notification email feedback webhook",
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "runtime notification delivery not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient")
 def apply_runtime_notification_email_feedback_suppression(
     feedback_event_id: str,
@@ -6838,6 +6969,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeNotificationEmailFeedbackInput",
             "RuntimeNotificationEmailFeedbackPage",
             "RuntimeNotificationEmailFeedbackRequest",
+            "RuntimeNotificationEmailFeedbackWebhookRequest",
             "RuntimeNotificationEmailFeedbackSuppressionInput",
             "RuntimeNotificationEmailFeedbackSuppressionRequest",
             "RuntimeNotificationPage",
@@ -6935,6 +7067,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/runtime-notification-subscriptions",
             "/v1/runtime-notification-deliveries",
             "/v1/runtime-notification-email-feedback-events",
+            "/v1/runtime-notification-email-feedback-webhooks/geno",
             "/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient",
             "/v1/runtime-notification-deliveries/{delivery_id}/email-feedback",
             "/v1/runtime-notifications/{notification_id}/status",

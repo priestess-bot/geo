@@ -3566,6 +3566,7 @@ const endpoints = {
   notificationSubscriptions: "/v1/runtime-notification-subscriptions",
   notificationDeliveries: "/v1/runtime-notification-deliveries",
   notificationEmailFeedback: "/v1/runtime-notification-email-feedback-events",
+  notificationEmailFeedbackWebhook: "/v1/runtime-notification-email-feedback-webhooks/geno",
   actions: "/v1/action-plans/runtime",
   alerts: "/v1/runtime-alerts",
   alertNotifications: "/v1/runtime-alerts/notifications",
@@ -5334,6 +5335,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     notificationSubscriptions: runtimePath(endpoints.notificationSubscriptions, { limit: 5 }),
     notificationDeliveries: runtimePath(endpoints.notificationDeliveries, { limit: 5 }),
     notificationEmailFeedback: runtimePath(endpoints.notificationEmailFeedback, { limit: 5 }),
+    notificationEmailFeedbackWebhook: endpoints.notificationEmailFeedbackWebhook,
     actions: runtimePath(endpoints.actions, { limit: 1 }),
     alerts: runtimePath(endpoints.alerts, { limit: 10 }),
     alertNotifications: endpoints.alertNotifications,
@@ -11758,6 +11760,7 @@ export default async function Home({
             <Fact label="Subscription API" value={paths.notificationSubscriptions} />
             <Fact label="Delivery API" value={paths.notificationDeliveries} />
             <Fact label="Feedback API" value={paths.notificationEmailFeedback} />
+            <Fact label="Feedback webhook" value={paths.notificationEmailFeedbackWebhook} />
           </dl>
           {data.notificationSubscriptions.records.length ? (
             <ul className="plainList">
