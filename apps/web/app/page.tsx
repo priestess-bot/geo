@@ -1227,6 +1227,12 @@ type AuNextWorkItemPacket = {
     command_count?: number;
     verification_command_count?: number;
     evidence_output_count?: number;
+    work_item_command_count?: number;
+    work_item_verification_command_count?: number;
+    work_item_evidence_output_count?: number;
+    group_command_count?: number;
+    group_verification_command_count?: number;
+    group_evidence_output_count?: number;
     blocked_customer_gate_count?: number;
     blocked_customer_gate_ids?: string[];
     linked_dependency_group_id?: string;
@@ -1276,6 +1282,12 @@ type AuNextWorkItemPacket = {
       ready?: boolean;
       target_env_file?: string;
       next_command?: string;
+      commands?: string[];
+      verification_commands?: string[];
+      evidence_outputs?: string[];
+      command_count?: number;
+      verification_command_count?: number;
+      evidence_output_count?: number;
       blocking_reason_count?: number;
       blocking_reasons?: string[];
     };
@@ -1291,6 +1303,18 @@ type AuNextWorkItemPacket = {
       strict_gate_command?: string;
       runtime_endpoint?: string;
     };
+    work_item_commands?: string[];
+    work_item_verification_commands?: string[];
+    work_item_evidence_outputs?: string[];
+    group_commands?: string[];
+    group_verification_commands?: string[];
+    group_evidence_outputs?: string[];
+    combined_commands?: string[];
+    combined_verification_commands?: string[];
+    combined_evidence_outputs?: string[];
+    group_command_count?: number;
+    group_verification_command_count?: number;
+    group_evidence_output_count?: number;
     recommended_sequence?: string[];
     recommended_sequence_count?: number;
     strict_gate_command?: string;
@@ -6375,6 +6399,16 @@ export default async function Home({
               {nextWorkItemSummary?.verification_command_count || 0} · evidence outputs{" "}
               {nextWorkItemSummary?.evidence_output_count || 0}
             </span>
+            <span>
+              Work item counts {nextWorkItemSummary?.work_item_command_count || 0}/
+              {nextWorkItemSummary?.work_item_verification_command_count || 0}/
+              {nextWorkItemSummary?.work_item_evidence_output_count || 0}
+            </span>
+            <span>
+              Dependency group counts {nextWorkItemSummary?.group_command_count || 0}/
+              {nextWorkItemSummary?.group_verification_command_count || 0}/
+              {nextWorkItemSummary?.group_evidence_output_count || 0}
+            </span>
             <span>Linked group {nextWorkItemSummary?.linked_dependency_group_id || "none"}</span>
             <span>
               Linked request {nextWorkItemSummary?.linked_request_packet_id || "none"} ·{" "}
@@ -6396,6 +6430,15 @@ export default async function Home({
               {nextWorkItemLinkedDependencyGroup?.blocking_reason_count || 0}
             </span>
             <span>Dependency group next {nextWorkItemLinkedDependencyGroup?.next_command || "none"}</span>
+            <span>
+              Group verifiers {nextWorkItemLinkedDependencyGroup?.verification_command_count || 0} · evidence{" "}
+              {nextWorkItemLinkedDependencyGroup?.evidence_output_count || 0}
+            </span>
+            <span>
+              Fulfillment gate{" "}
+              {nextWorkItemVerificationCommands.find((command) => command.includes("--require-fulfilled")) ||
+                "pending"}
+            </span>
             <span>
               Dependency group source{" "}
               {shortHash(nextWorkItemLinkedDependencyGroup?.source_external_dependency_handoff_hash)}
@@ -6424,7 +6467,7 @@ export default async function Home({
           ) : null}
           {nextWorkItemRecommendedSequence.length ? (
             <ul className="plainList compactList">
-              {nextWorkItemRecommendedSequence.slice(0, 6).map((command) => (
+              {nextWorkItemRecommendedSequence.slice(0, 10).map((command) => (
                 <li key={command}>{command}</li>
               ))}
             </ul>

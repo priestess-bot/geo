@@ -1013,6 +1013,17 @@ class ApiContractsTest(unittest.TestCase):
             payload["handoff_dossier_verifier"]["remaining_blocker_count"],
         )
         self.assertEqual(payload["summary"]["command_count"], len(payload["commands"]))
+        self.assertEqual(payload["summary"]["verification_command_count"], len(payload["verification_commands"]))
+        self.assertEqual(payload["summary"]["evidence_output_count"], len(payload["evidence_outputs"]))
+        self.assertEqual(payload["summary"]["group_command_count"], len(payload["execution_context"]["group_commands"]))
+        self.assertEqual(
+            payload["summary"]["group_verification_command_count"],
+            len(payload["execution_context"]["group_verification_commands"]),
+        )
+        self.assertEqual(
+            payload["summary"]["group_evidence_output_count"],
+            len(payload["execution_context"]["group_evidence_outputs"]),
+        )
         self.assertEqual(payload["summary"]["linked_dependency_group_id"], "p0a_provider_credentials")
         self.assertEqual(payload["summary"]["linked_dependency_group_status"], "requires_external_input")
         self.assertEqual(payload["summary"]["linked_dependency_group_next_command"], "make verify-au-p0a-env-template")
@@ -1034,17 +1045,27 @@ class ApiContractsTest(unittest.TestCase):
         )
         self.assertIn("make au-p0a-credential-request", payload["execution_context"]["recommended_sequence"])
         self.assertIn("make verify-au-p0a-credential-request", payload["execution_context"]["recommended_sequence"])
+        self.assertIn("make au-p0a-credential-fulfillment", payload["execution_context"]["recommended_sequence"])
+        self.assertIn("make verify-au-p0a-credential-fulfillment", payload["execution_context"]["recommended_sequence"])
+        self.assertTrue(
+            any(command.endswith("--require-fulfilled") for command in payload["execution_context"]["recommended_sequence"])
+        )
+        self.assertEqual(payload["summary"]["recommended_sequence_count"], 20)
         self.assertEqual(payload["commands"][0], "make verify-au-p0a-env-template")
         self.assertIn("make au-p0a-env-bootstrap", payload["commands"])
         self.assertIn("make verify-au-p0a-status", payload["verification_commands"])
+        self.assertIn("make verify-au-p0a-credential-fulfillment", payload["verification_commands"])
         self.assertIn("docs/runtime_preflight/au-p0a-env-bootstrap-latest.json", payload["evidence_outputs"])
         self.assertIn("docs/runtime_preflight/au-p0a-env-latest.json", payload["evidence_outputs"])
+        self.assertIn("docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json", payload["evidence_outputs"])
         self.assertEqual(payload["runtime_endpoints"]["next_work_item"], "GET /v1/next-work-item/au")
         self.assertEqual(payload["runtime_endpoints"]["handoff_dossier"], "GET /v1/handoff-dossier/au")
         self.assertIn("make verify-au-next-work-item", payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-request", payload["hard_gate_commands"])
+        self.assertIn("make verify-au-p0a-credential-fulfillment", payload["hard_gate_commands"])
         self.assertTrue(any(command.endswith("--require-customer-ready") for command in payload["hard_gate_commands"]))
         self.assertTrue(any(command.endswith("--require-credentials-ready") for command in payload["hard_gate_commands"]))
+        self.assertTrue(any(command.endswith("--require-fulfilled") for command in payload["hard_gate_commands"]))
         self.assertTrue(payload["source_handoff_dossier"]["handoff_dossier_hash"])
         self.assertTrue(payload["next_work_item_packet_hash"])
 

@@ -1602,6 +1602,8 @@ handoff dossier 还必须生成 `customer_handoff_readiness_audit`，避免把�
 
 P0a provider credentials 的 clearance recommended sequence 必须同时覆盖 credential request 与 credential fulfillment：先生成/验证 `p0a_credential_request`，再跑 env template/bootstrap/env/checklist/status，随后生成/验证 `au-p0a-credential-fulfillment`，并用 `--require-fulfilled` 证明 request 与 env report 已一致满足。当前本地 recommended sequence 为 20 步，`current_step_id=p0a_provider_credentials`、`would_execute_step_count=1`，只能证明第一步清障路径可审计，不证明 provider key 已填充。
 
+Next work item packet 必须与 external dependency clearance 使用同一条 P0a 清障口径。`make au-next-work-item` 不能只拼接 handoff dossier 的 work item commands；它还必须读取 linked dependency group 的 group commands、group verification commands 和 group evidence outputs，生成 work-item/group/combined execution context，并把 `make au-p0a-credential-fulfillment`、`make verify-au-p0a-credential-fulfillment` 与 `verify_au_p0a_credential_fulfillment.py --require-fulfilled` 纳入 `recommended_sequence`、`verification_commands`、`hard_gate_commands` 和 Runtime Console Next work item packet 卡片。当前 `p0a_environment` next-work-item recommended sequence 应与 clearance dry-run 对齐为 20 步；若 next-work-item 仍显示 15 步 request-only 序列，即视为交接上下文漂移，必须由 `verify_au_next_work_item_packet.py` 合同检测出来。
+
 ### 8.16 AuditEvent（审计事件，新增）
 
 记录系统、用户、worker 对关键对象的修改和运行事件，支撑客户质询、内部排障和报告复盘。

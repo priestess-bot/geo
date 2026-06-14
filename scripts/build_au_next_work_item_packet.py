@@ -243,7 +243,12 @@ def _dependency_group_context(
                 "ready": group_payload.get("ready") is True,
                 "target_env_file": str(group_payload.get("target_env_file") or ""),
                 "next_command": str(group_payload.get("next_command") or ""),
+                "commands": _string_list(group_payload.get("commands")),
+                "verification_commands": _string_list(group_payload.get("verification_commands")),
+                "evidence_outputs": _string_list(group_payload.get("evidence_outputs")),
                 "command_count": len(_string_list(group_payload.get("commands"))),
+                "verification_command_count": len(_string_list(group_payload.get("verification_commands"))),
+                "evidence_output_count": len(_string_list(group_payload.get("evidence_outputs"))),
                 "blocking_reason_count": len(_string_list(group_payload.get("blocking_reasons"))),
                 "blocking_reasons": _string_list(group_payload.get("blocking_reasons")),
             }
@@ -259,7 +264,12 @@ def _dependency_group_context(
         "ready": False,
         "target_env_file": "",
         "next_command": "",
+        "commands": [],
+        "verification_commands": [],
+        "evidence_outputs": [],
         "command_count": 0,
+        "verification_command_count": 0,
+        "evidence_output_count": 0,
         "blocking_reason_count": 0,
         "blocking_reasons": [],
     }
@@ -308,6 +318,7 @@ def _execution_context(
     next_work_item_id: str,
     commands: list[str],
     verification_commands: list[str],
+    evidence_outputs: list[str],
 ) -> dict[str, Any]:
     mapped_context = REQUEST_PACKET_CONTEXTS.get(next_work_item_id, {})
     request_packet = _request_packet_context(next_work_item_id)
@@ -316,12 +327,27 @@ def _execution_context(
         source_external_dependency_handoff,
         str(mapped_context.get("linked_dependency_group_id") or ""),
     )
+    group_commands = _string_list(dependency_group.get("commands"))
+    group_verification_commands = _string_list(dependency_group.get("verification_commands"))
+    group_evidence_outputs = _string_list(dependency_group.get("evidence_outputs"))
+    combined_commands: list[str] = []
+    combined_verification_commands: list[str] = []
+    combined_evidence_outputs: list[str] = []
+    for command in (*commands, *group_commands):
+        if command:
+            _append_unique(combined_commands, command)
+    for command in (*verification_commands, *group_verification_commands):
+        if command:
+            _append_unique(combined_verification_commands, command)
+    for evidence_output in (*evidence_outputs, *group_evidence_outputs):
+        if evidence_output:
+            _append_unique(combined_evidence_outputs, evidence_output)
     recommended_sequence: list[str] = []
     for command in (
         request_packet.get("build_command", ""),
         request_packet.get("verify_command", ""),
-        *commands,
-        *verification_commands,
+        *combined_commands,
+        *combined_verification_commands,
         request_packet.get("strict_gate_command", ""),
     ):
         if isinstance(command, str) and command and command not in recommended_sequence:
@@ -332,6 +358,18 @@ def _execution_context(
         "linked_dependency_group_id": str(mapped_context.get("linked_dependency_group_id") or ""),
         "linked_dependency_group": dependency_group,
         "linked_request_packet": request_packet,
+        "work_item_commands": commands,
+        "work_item_verification_commands": verification_commands,
+        "work_item_evidence_outputs": evidence_outputs,
+        "group_commands": group_commands,
+        "group_verification_commands": group_verification_commands,
+        "group_evidence_outputs": group_evidence_outputs,
+        "combined_commands": combined_commands,
+        "combined_verification_commands": combined_verification_commands,
+        "combined_evidence_outputs": combined_evidence_outputs,
+        "group_command_count": len(group_commands),
+        "group_verification_command_count": len(group_verification_commands),
+        "group_evidence_output_count": len(group_evidence_outputs),
         "recommended_sequence": recommended_sequence,
         "recommended_sequence_count": len(recommended_sequence),
         "strict_gate_command": str(request_packet.get("strict_gate_command") or ""),
@@ -450,7 +488,11 @@ def build_au_next_work_item_packet(
         next_work_item_id=next_work_item_id,
         commands=commands,
         verification_commands=verification_commands,
+        evidence_outputs=evidence_outputs,
     )
+    combined_commands = _string_list(execution_context.get("combined_commands"))
+    combined_verification_commands = _string_list(execution_context.get("combined_verification_commands"))
+    combined_evidence_outputs = _string_list(execution_context.get("combined_evidence_outputs"))
     blocked_customer_gate_ids = _string_list(
         _as_dict(handoff_dossier.get("customer_handoff_readiness_audit")).get("blocked_customer_gate_ids")
     )
@@ -473,7 +515,7 @@ def build_au_next_work_item_packet(
         "${GENO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-readiness-latest.json} "
         "--require-customer-ready",
     )
-    for command in verification_commands:
+    for command in combined_verification_commands:
         _append_unique(hard_gate_commands, command)
     linked_request_packet = _as_dict(execution_context.get("linked_request_packet"))
     for command in (
@@ -527,10 +569,16 @@ def build_au_next_work_item_packet(
             "structural_auditability_percent": _as_dict(
                 handoff_dossier.get("customer_handoff_readiness_audit")
             ).get("structural_auditability_percent", 0.0),
-            "runnable_now": bool(commands),
-            "command_count": len(commands),
-            "verification_command_count": len(verification_commands),
-            "evidence_output_count": len(evidence_outputs),
+            "runnable_now": bool(combined_commands),
+            "command_count": len(combined_commands),
+            "verification_command_count": len(combined_verification_commands),
+            "evidence_output_count": len(combined_evidence_outputs),
+            "work_item_command_count": len(commands),
+            "work_item_verification_command_count": len(verification_commands),
+            "work_item_evidence_output_count": len(evidence_outputs),
+            "group_command_count": int(execution_context.get("group_command_count") or 0),
+            "group_verification_command_count": int(execution_context.get("group_verification_command_count") or 0),
+            "group_evidence_output_count": int(execution_context.get("group_evidence_output_count") or 0),
             "blocked_customer_gate_count": len(blocked_customer_gate_ids),
             "blocked_customer_gate_ids": blocked_customer_gate_ids,
             "linked_dependency_group_id": str(execution_context.get("linked_dependency_group_id") or ""),
@@ -551,9 +599,9 @@ def build_au_next_work_item_packet(
         },
         "next_work_item": next_work_item,
         "execution_context": execution_context,
-        "commands": commands,
-        "verification_commands": verification_commands,
-        "evidence_outputs": evidence_outputs,
+        "commands": combined_commands,
+        "verification_commands": combined_verification_commands,
+        "evidence_outputs": combined_evidence_outputs,
         "runtime_endpoints": {
             "next_work_item": "GET /v1/next-work-item/au",
             "handoff_dossier": "GET /v1/handoff-dossier/au",

@@ -78,6 +78,25 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         self.assertEqual(packet["summary"]["command_count"], len(packet["commands"]))
         self.assertEqual(packet["summary"]["verification_command_count"], len(packet["verification_commands"]))
         self.assertEqual(packet["summary"]["evidence_output_count"], len(packet["evidence_outputs"]))
+        self.assertEqual(packet["summary"]["work_item_command_count"], len(packet["execution_context"]["work_item_commands"]))
+        self.assertEqual(
+            packet["summary"]["work_item_verification_command_count"],
+            len(packet["execution_context"]["work_item_verification_commands"]),
+        )
+        self.assertEqual(
+            packet["summary"]["work_item_evidence_output_count"],
+            len(packet["execution_context"]["work_item_evidence_outputs"]),
+        )
+        self.assertEqual(packet["summary"]["group_command_count"], len(packet["execution_context"]["group_commands"]))
+        self.assertEqual(
+            packet["summary"]["group_verification_command_count"],
+            len(packet["execution_context"]["group_verification_commands"]),
+        )
+        self.assertEqual(
+            packet["summary"]["group_evidence_output_count"],
+            len(packet["execution_context"]["group_evidence_outputs"]),
+        )
+        self.assertGreater(packet["summary"]["group_verification_command_count"], 0)
         self.assertEqual(packet["summary"]["blocked_customer_gate_count"], 9)
         self.assertEqual(packet["summary"]["linked_dependency_group_id"], "p0a_provider_credentials")
         self.assertNotEqual(packet["summary"]["linked_dependency_group_status"], "missing")
@@ -94,6 +113,12 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
             packet["execution_context"]["linked_dependency_group"]["next_command"],
             "make verify-au-p0a-env-template",
         )
+        self.assertIn("make au-p0a-credential-fulfillment", packet["execution_context"]["group_verification_commands"])
+        self.assertIn("make verify-au-p0a-credential-fulfillment", packet["execution_context"]["group_verification_commands"])
+        self.assertIn(
+            "docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json",
+            packet["execution_context"]["group_evidence_outputs"],
+        )
         self.assertGreater(packet["execution_context"]["linked_dependency_group"]["blocking_reason_count"], 0)
         self.assertEqual(
             packet["execution_context"]["linked_dependency_group"]["source_path"],
@@ -106,23 +131,33 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         )
         self.assertIn("make au-p0a-credential-request", packet["execution_context"]["recommended_sequence"])
         self.assertIn("make verify-au-p0a-credential-request", packet["execution_context"]["recommended_sequence"])
+        self.assertIn("make au-p0a-credential-fulfillment", packet["execution_context"]["recommended_sequence"])
+        self.assertIn("make verify-au-p0a-credential-fulfillment", packet["execution_context"]["recommended_sequence"])
+        self.assertTrue(
+            any(command.endswith("--require-fulfilled") for command in packet["execution_context"]["recommended_sequence"])
+        )
         self.assertTrue(
             any(command.endswith("--require-credentials-ready") for command in packet["execution_context"]["recommended_sequence"])
         )
+        self.assertEqual(packet["summary"]["recommended_sequence_count"], 20)
         self.assertEqual(packet["commands"][0], "make verify-au-p0a-env-template")
         self.assertIn("make au-p0a-env-bootstrap", packet["commands"])
         self.assertIn("make verify-au-p0a-env-bootstrap", packet["commands"])
         self.assertIn("make verify-au-p0a-status", packet["verification_commands"])
+        self.assertIn("make verify-au-p0a-credential-fulfillment", packet["verification_commands"])
         self.assertIn("docs/runtime_preflight/au-p0a-env-bootstrap-latest.json", packet["evidence_outputs"])
         self.assertIn("docs/runtime_preflight/au-p0a-env-latest.json", packet["evidence_outputs"])
+        self.assertIn("docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json", packet["evidence_outputs"])
         self.assertEqual(packet["runtime_endpoints"]["next_work_item"], "GET /v1/next-work-item/au")
         self.assertEqual(packet["runtime_endpoints"]["customer_handoff_readiness"], "GET /v1/customer-handoff-readiness/au")
         self.assertIn("make au-next-work-item", packet["hard_gate_commands"])
         self.assertIn("make verify-au-next-work-item", packet["hard_gate_commands"])
         self.assertIn("make au-p0a-credential-request", packet["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-request", packet["hard_gate_commands"])
+        self.assertIn("make verify-au-p0a-credential-fulfillment", packet["hard_gate_commands"])
         self.assertTrue(any(command.endswith("--require-customer-ready") for command in packet["hard_gate_commands"]))
         self.assertTrue(any(command.endswith("--require-credentials-ready") for command in packet["hard_gate_commands"]))
+        self.assertTrue(any(command.endswith("--require-fulfilled") for command in packet["hard_gate_commands"]))
         self.assertEqual(packet["next_work_item_packet_hash"], compute_next_work_item_packet_hash(packet))
         self.assertEqual(verification["status"], "pass")
         self.assertEqual(hard_gate["status"], "fail")
@@ -174,6 +209,7 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
             packet["execution_context"]["recommended_sequence"] = []
             packet["summary"]["recommended_sequence_count"] = 0
             packet["execution_context"]["recommended_sequence_count"] = 0
+            packet["execution_context"]["combined_verification_commands"] = []
             packet["next_work_item_packet_hash"] = compute_next_work_item_packet_hash(packet)
             verification = verify_au_next_work_item_packet(packet)
 
@@ -181,6 +217,7 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         self.assertIn("linked_request_packet_request_packet_id_mismatch", verification["errors"])
         self.assertIn("execution_context_dependency_group_status_missing", verification["errors"])
         self.assertIn("recommended_sequence_missing:make au-p0a-credential-request", verification["errors"])
+        self.assertIn("execution_context_combined_verification_commands_mismatch", verification["errors"])
 
     def test_cli_writes_next_work_item_packet_json(self) -> None:
         with TemporaryDirectory() as temp_dir:

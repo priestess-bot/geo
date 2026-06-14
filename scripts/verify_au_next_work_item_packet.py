@@ -55,6 +55,14 @@ def _string_list(value: object) -> list[str]:
     return [str(item) for item in _as_list(value)]
 
 
+def _unique_strings(values: list[str]) -> list[str]:
+    items: list[str] = []
+    for value in values:
+        if value and value not in items:
+            items.append(value)
+    return items
+
+
 def verify_au_next_work_item_packet(
     payload: Any,
     *,
@@ -95,6 +103,20 @@ def verify_au_next_work_item_packet(
     commands = _string_list(payload.get("commands"))
     verification_commands = _string_list(payload.get("verification_commands"))
     evidence_outputs = _string_list(payload.get("evidence_outputs"))
+    work_item_commands = _string_list(execution_context.get("work_item_commands"))
+    work_item_verification_commands = _string_list(execution_context.get("work_item_verification_commands"))
+    work_item_evidence_outputs = _string_list(execution_context.get("work_item_evidence_outputs"))
+    group_commands = _string_list(execution_context.get("group_commands"))
+    group_verification_commands = _string_list(execution_context.get("group_verification_commands"))
+    group_evidence_outputs = _string_list(execution_context.get("group_evidence_outputs"))
+    combined_commands = _string_list(execution_context.get("combined_commands"))
+    combined_verification_commands = _string_list(execution_context.get("combined_verification_commands"))
+    combined_evidence_outputs = _string_list(execution_context.get("combined_evidence_outputs"))
+    expected_combined_commands = _unique_strings(work_item_commands + group_commands)
+    expected_combined_verification_commands = _unique_strings(
+        work_item_verification_commands + group_verification_commands
+    )
+    expected_combined_evidence_outputs = _unique_strings(work_item_evidence_outputs + group_evidence_outputs)
     recommended_sequence = _string_list(execution_context.get("recommended_sequence"))
     blocked_customer_gate_ids = _string_list(summary.get("blocked_customer_gate_ids"))
     next_work_item_id = str(summary.get("next_work_item_id") or "")
@@ -139,6 +161,18 @@ def verify_au_next_work_item_packet(
         errors.append("summary_verification_command_count_mismatch")
     if summary.get("evidence_output_count") != len(evidence_outputs):
         errors.append("summary_evidence_output_count_mismatch")
+    if summary.get("work_item_command_count") != len(work_item_commands):
+        errors.append("summary_work_item_command_count_mismatch")
+    if summary.get("work_item_verification_command_count") != len(work_item_verification_commands):
+        errors.append("summary_work_item_verification_command_count_mismatch")
+    if summary.get("work_item_evidence_output_count") != len(work_item_evidence_outputs):
+        errors.append("summary_work_item_evidence_output_count_mismatch")
+    if summary.get("group_command_count") != len(group_commands):
+        errors.append("summary_group_command_count_mismatch")
+    if summary.get("group_verification_command_count") != len(group_verification_commands):
+        errors.append("summary_group_verification_command_count_mismatch")
+    if summary.get("group_evidence_output_count") != len(group_evidence_outputs):
+        errors.append("summary_group_evidence_output_count_mismatch")
     if summary.get("blocked_customer_gate_count") != len(blocked_customer_gate_ids):
         errors.append("summary_blocked_customer_gate_count_mismatch")
     if summary.get("runnable_now") is not bool(commands):
@@ -165,6 +199,18 @@ def verify_au_next_work_item_packet(
             errors.append("execution_context_dependency_group_status_missing")
         if int(linked_dependency_group.get("command_count") or 0) <= 0:
             errors.append("execution_context_dependency_group_commands_empty")
+        if int(linked_dependency_group.get("command_count") or 0) != len(
+            _string_list(linked_dependency_group.get("commands"))
+        ):
+            errors.append("execution_context_dependency_group_command_count_mismatch")
+        if int(linked_dependency_group.get("verification_command_count") or 0) != len(
+            _string_list(linked_dependency_group.get("verification_commands"))
+        ):
+            errors.append("execution_context_dependency_group_verification_command_count_mismatch")
+        if int(linked_dependency_group.get("evidence_output_count") or 0) != len(
+            _string_list(linked_dependency_group.get("evidence_outputs"))
+        ):
+            errors.append("execution_context_dependency_group_evidence_output_count_mismatch")
         if int(linked_dependency_group.get("blocking_reason_count") or 0) != len(
             _string_list(linked_dependency_group.get("blocking_reasons"))
         ):
@@ -211,6 +257,27 @@ def verify_au_next_work_item_packet(
     elif next_work_item_id != "none":
         if linked_request_packet.get("request_packet_available") is True:
             errors.append("unexpected_linked_request_packet_available")
+    if commands != expected_combined_commands:
+        errors.append("top_level_commands_do_not_match_combined_execution_context")
+    if verification_commands != expected_combined_verification_commands:
+        errors.append("top_level_verification_commands_do_not_match_combined_execution_context")
+    if evidence_outputs != expected_combined_evidence_outputs:
+        errors.append("top_level_evidence_outputs_do_not_match_combined_execution_context")
+    if combined_commands != expected_combined_commands:
+        errors.append("execution_context_combined_commands_mismatch")
+    if combined_verification_commands != expected_combined_verification_commands:
+        errors.append("execution_context_combined_verification_commands_mismatch")
+    if combined_evidence_outputs != expected_combined_evidence_outputs:
+        errors.append("execution_context_combined_evidence_outputs_mismatch")
+    if execution_context.get("group_command_count") != len(group_commands):
+        errors.append("execution_context_group_command_count_mismatch")
+    if execution_context.get("group_verification_command_count") != len(group_verification_commands):
+        errors.append("execution_context_group_verification_command_count_mismatch")
+    if execution_context.get("group_evidence_output_count") != len(group_evidence_outputs):
+        errors.append("execution_context_group_evidence_output_count_mismatch")
+    for command in expected_combined_commands + expected_combined_verification_commands:
+        if command not in recommended_sequence:
+            errors.append(f"recommended_sequence_missing_combined_command:{command}")
     if execution_context.get("recommended_sequence_count") != len(recommended_sequence):
         errors.append("execution_context_recommended_sequence_count_mismatch")
     if summary.get("recommended_sequence_count") != len(recommended_sequence):
