@@ -808,6 +808,25 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".inviteResult", css_source)
         self.assertIn(".textButton", css_source)
 
+    def test_email_preferences_page_reads_and_updates_manage_token(self) -> None:
+        page_source = Path("apps/web/app/notifications/preferences/page.tsx").read_text(encoding="utf-8")
+        css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
+
+        self.assertIn("EmailNotificationPreferencesPage", page_source)
+        self.assertIn("fetchEmailPreferenceStatus", page_source)
+        self.assertIn("updateEmailPreference", page_source)
+        self.assertIn("/v1/runtime-notification-email-preferences/status", page_source)
+        self.assertIn("/v1/runtime-notification-email-preferences/resubscribe", page_source)
+        self.assertIn("/v1/runtime-notification-email-preferences/unsubscribe", page_source)
+        self.assertIn('name="token"', page_source)
+        self.assertIn('name="action"', page_source)
+        self.assertIn("runtime_notification_email_preference_status_v1", page_source)
+        self.assertIn("Resubscribe", page_source)
+        self.assertIn("Unsubscribe", page_source)
+        self.assertIn(".preferenceShell", css_source)
+        self.assertIn(".preferenceActionForm", css_source)
+        self.assertIn(".preferenceAuditList", css_source)
+
     def test_runtime_console_surfaces_runtime_alerts(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")

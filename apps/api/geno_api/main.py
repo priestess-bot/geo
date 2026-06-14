@@ -507,19 +507,35 @@ def _verify_runtime_notification_email_preference_token(
     token: str,
     action: str,
 ) -> object:
-    verification = verify_runtime_notification_email_preference_token(
-        secret=_runtime_notification_email_preference_token_secret(),
-        token=token,
-        action=action,
-    )
-    if not verification.valid or verification.claims is None:
-        status_code = 410 if verification.reason == "token_expired" else 401
-        raise HTTPException(
-            status_code=status_code,
-            detail=f"runtime notification email preference token invalid: {verification.reason}",
-        )
-    return verification
+    return _verify_runtime_notification_email_preference_token_for_actions(token=token, actions=(action,))
 
+
+def _verify_runtime_notification_email_preference_token_for_actions(
+    *,
+    token: str,
+    actions: tuple[str, ...],
+) -> object:
+    secret = _runtime_notification_email_preference_token_secret()
+    verifications = [
+        verify_runtime_notification_email_preference_token(
+            secret=secret,
+            token=token,
+            action=action,
+        )
+        for action in actions
+    ]
+    for verification in verifications:
+        if verification.valid and verification.claims is not None:
+            return verification
+    first_error = next(
+        (verification for verification in verifications if verification.reason != "action_mismatch"),
+        verifications[0],
+    )
+    status_code = 410 if any(verification.reason == "token_expired" for verification in verifications) else 401
+    raise HTTPException(
+        status_code=status_code,
+        detail=f"runtime notification email preference token invalid: {first_error.reason}",
+    )
 
 def _verify_runtime_notification_email_feedback_webhook(
     *,
@@ -6054,9 +6070,12 @@ async def apply_runtime_notification_email_preference_unsubscribe(
     )
     if not preference_token:
         raise HTTPException(status_code=422, detail="token is required")
-    verification = _verify_runtime_notification_email_preference_token(
+    verification = _verify_runtime_notification_email_preference_token_for_actions(
         token=preference_token,
-        action=RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_UNSUBSCRIBE_ACTION,
+        actions=(
+            RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_UNSUBSCRIBE_ACTION,
+            RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
+        ),
     )
     claims = verification.claims
     try:

@@ -7570,6 +7570,62 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.unsubscribe.subscription_id, "subscription-1")
         self.assertEqual(fake_repository.unsubscribe.reason, "apply runtime notification email preference unsubscribe token")
 
+    def test_runtime_notification_email_preference_unsubscribe_accepts_manage_token_for_preferences_page(self) -> None:
+        class FakeRepository:
+            def apply_runtime_notification_email_preference_unsubscribe(self, unsubscribe: object) -> RuntimeNotificationSubscription:
+                self.unsubscribe = unsubscribe
+                return RuntimeNotificationSubscription(
+                    subscription={
+                        "id": unsubscribe.subscription_id,
+                        "project_id": unsubscribe.project_id,
+                        "channel": "email",
+                        "endpoint_url": "mailto:ops@example.com",
+                        "event_types": ["runtime_alert"],
+                        "severity_threshold": "warning",
+                        "status": "active",
+                        "metadata": {
+                            "email_suppressed_recipient_hashes": [unsubscribe.recipient_hash],
+                            "email_unsubscribe_token_hashes": [unsubscribe.token_hash],
+                        },
+                        "created_by": "runtime-console",
+                        "updated_by": unsubscribe.updated_by,
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "runtime_notification_email_preference_unsubscribed",
+                            "method_version": "runtime_notification_email_preference_unsubscribe_v1",
+                        },
+                    ),
+                )
+
+        token = sign_runtime_notification_email_preference_token(
+            secret="preference-secret",
+            action="manage",
+            project_id="project-1",
+            delivery_id="delivery-1",
+            notification_id="notification-1",
+            subscription_id="subscription-1",
+            recipient_hash="e" * 64,
+            ttl_seconds=3600,
+            now=datetime.now(UTC),
+        )
+        fake_repository = FakeRepository()
+        with patch.dict(
+            os.environ,
+            {"GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET": "preference-secret"},
+            clear=False,
+        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/runtime-notification-email-preferences/unsubscribe",
+                json={"token": token, "reason": "turn email off"},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(fake_repository.unsubscribe.reason, "turn email off")
+        self.assertEqual(fake_repository.unsubscribe.recipient_hash, "e" * 64)
+        self.assertNotIn(token, str(fake_repository.unsubscribe))
+
     def test_runtime_notification_email_preference_status_endpoint_verifies_manage_token(self) -> None:
         class FakeRepository:
             def get_runtime_notification_email_preference_status(self, **kwargs: object) -> RuntimeNotificationEmailPreferenceStatus:
