@@ -96,6 +96,7 @@ from geno_core.models import (
     RuntimeProjectUpdateInput,
     RuntimePromptImportInput,
     RuntimeNotificationEmailFeedbackInput,
+    RuntimeNotificationEmailPreferenceResubscribeInput,
     RuntimeNotificationEmailPreferenceUnsubscribeInput,
     RuntimeNotificationEmailFeedbackSuppressionInput,
     RuntimeNotificationSubscriptionInput,
@@ -122,6 +123,7 @@ from geno_core.runtime import (
 from geno_core.scoring import get_score_formula, list_score_formulas, normalize_score_weights
 from geno_core.traceability import build_traceability_bundle
 from geno_core.email_preferences import (
+    RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
     RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_UNSUBSCRIBE_ACTION,
     verify_runtime_notification_email_preference_token,
 )
@@ -498,6 +500,25 @@ def _runtime_notification_email_preference_token_secret() -> str:
             detail=f"{RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV} is required",
         )
     return secret
+
+
+def _verify_runtime_notification_email_preference_token(
+    *,
+    token: str,
+    action: str,
+) -> object:
+    verification = verify_runtime_notification_email_preference_token(
+        secret=_runtime_notification_email_preference_token_secret(),
+        token=token,
+        action=action,
+    )
+    if not verification.valid or verification.claims is None:
+        status_code = 410 if verification.reason == "token_expired" else 401
+        raise HTTPException(
+            status_code=status_code,
+            detail=f"runtime notification email preference token invalid: {verification.reason}",
+        )
+    return verification
 
 
 def _verify_runtime_notification_email_feedback_webhook(
@@ -1913,6 +1934,11 @@ class RuntimeNotificationEmailFeedbackSuppressionRequest(BaseModel):
 
 
 class RuntimeNotificationEmailPreferenceUnsubscribeRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=4000)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationEmailPreferenceResubscribeRequest(BaseModel):
     token: str = Field(min_length=1, max_length=4000)
     reason: str | None = Field(default=None, max_length=500)
 
@@ -6028,17 +6054,10 @@ async def apply_runtime_notification_email_preference_unsubscribe(
     )
     if not preference_token:
         raise HTTPException(status_code=422, detail="token is required")
-    verification = verify_runtime_notification_email_preference_token(
-        secret=_runtime_notification_email_preference_token_secret(),
+    verification = _verify_runtime_notification_email_preference_token(
         token=preference_token,
         action=RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_UNSUBSCRIBE_ACTION,
     )
-    if not verification.valid or verification.claims is None:
-        status_code = 410 if verification.reason == "token_expired" else 401
-        raise HTTPException(
-            status_code=status_code,
-            detail=f"runtime notification email preference token invalid: {verification.reason}",
-        )
     claims = verification.claims
     try:
         repository = build_repository_from_env()
@@ -6055,6 +6074,100 @@ async def apply_runtime_notification_email_preference_unsubscribe(
                 token_hash=verification.token_hash,
                 updated_by="email-preference-token",
                 reason=unsubscribe_reason,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        not_found_errors = {
+            "runtime notification delivery not found",
+            "runtime notification subscription not found",
+        }
+        status_code = 404 if str(exc) in not_found_errors else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-notification-email-preferences/status")
+def get_runtime_notification_email_preference_status(
+    token: str = Query(min_length=1, max_length=4000),
+) -> dict[str, object]:
+    verification = _verify_runtime_notification_email_preference_token(
+        token=token,
+        action=RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
+    )
+    claims = verification.claims
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        record = repository.get_runtime_notification_email_preference_status(
+            project_id=claims.project_id,
+            delivery_id=claims.delivery_id,
+            notification_id=claims.notification_id,
+            subscription_id=claims.subscription_id,
+            recipient_hash=claims.recipient_hash,
+            token_hash=verification.token_hash,
+        )
+        return asdict(record)
+    except ValueError as exc:
+        not_found_errors = {
+            "runtime notification delivery not found",
+            "runtime notification subscription not found",
+        }
+        status_code = 404 if str(exc) in not_found_errors else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-notification-email-preferences/resubscribe")
+async def apply_runtime_notification_email_preference_resubscribe(
+    request: Request,
+    token: str | None = Query(default=None, min_length=1, max_length=4000),
+    reason: str | None = Query(default=None, max_length=500),
+) -> dict[str, object]:
+    body_payload: RuntimeNotificationEmailPreferenceResubscribeRequest | None = None
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            raw_body = await request.json()
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="invalid JSON body") from exc
+        if raw_body:
+            try:
+                body_payload = RuntimeNotificationEmailPreferenceResubscribeRequest(**raw_body)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+    preference_token = (body_payload.token if body_payload else token or "").strip()
+    resubscribe_reason = (
+        body_payload.reason
+        if body_payload and body_payload.reason
+        else reason or "apply runtime notification email preference resubscribe token"
+    )
+    if not preference_token:
+        raise HTTPException(status_code=422, detail="token is required")
+    verification = _verify_runtime_notification_email_preference_token(
+        token=preference_token,
+        action=RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
+    )
+    claims = verification.claims
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        record = repository.apply_runtime_notification_email_preference_resubscribe(
+            RuntimeNotificationEmailPreferenceResubscribeInput(
+                project_id=claims.project_id,
+                delivery_id=claims.delivery_id,
+                notification_id=claims.notification_id,
+                subscription_id=claims.subscription_id,
+                recipient_hash=claims.recipient_hash,
+                token_hash=verification.token_hash,
+                updated_by="email-preference-token",
+                reason=resubscribe_reason,
             )
         )
         return asdict(record)
@@ -7060,6 +7173,9 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeNotificationEmailFeedbackWebhookRequest",
             "RuntimeNotificationEmailFeedbackSuppressionInput",
             "RuntimeNotificationEmailFeedbackSuppressionRequest",
+            "RuntimeNotificationEmailPreferenceStatus",
+            "RuntimeNotificationEmailPreferenceResubscribeInput",
+            "RuntimeNotificationEmailPreferenceResubscribeRequest",
             "RuntimeNotificationEmailPreferenceUnsubscribeInput",
             "RuntimeNotificationEmailPreferenceUnsubscribeRequest",
             "RuntimeNotificationPage",
@@ -7159,6 +7275,8 @@ def contracts() -> dict[str, list[str]]:
             "/v1/runtime-notification-email-feedback-events",
             "/v1/runtime-notification-email-feedback-webhooks/geno",
             "/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient",
+            "/v1/runtime-notification-email-preferences/status",
+            "/v1/runtime-notification-email-preferences/resubscribe",
             "/v1/runtime-notification-email-preferences/unsubscribe",
             "/v1/runtime-notification-deliveries/{delivery_id}/email-feedback",
             "/v1/runtime-notifications/{notification_id}/status",

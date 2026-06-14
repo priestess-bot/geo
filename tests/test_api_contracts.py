@@ -101,6 +101,7 @@ from geno_core.models import (
     RuntimeNotificationDeliveryPage,
     RuntimeNotificationEmailFeedback,
     RuntimeNotificationEmailFeedbackPage,
+    RuntimeNotificationEmailPreferenceStatus,
     RuntimeNotification,
     RuntimeNotificationPage,
     RuntimeNotificationSubscription,
@@ -7569,6 +7570,124 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.unsubscribe.subscription_id, "subscription-1")
         self.assertEqual(fake_repository.unsubscribe.reason, "apply runtime notification email preference unsubscribe token")
 
+    def test_runtime_notification_email_preference_status_endpoint_verifies_manage_token(self) -> None:
+        class FakeRepository:
+            def get_runtime_notification_email_preference_status(self, **kwargs: object) -> RuntimeNotificationEmailPreferenceStatus:
+                self.status_kwargs = kwargs
+                return RuntimeNotificationEmailPreferenceStatus(
+                    preference={
+                        "project_id": kwargs["project_id"],
+                        "delivery_id": kwargs["delivery_id"],
+                        "notification_id": kwargs["notification_id"],
+                        "subscription_id": kwargs["subscription_id"],
+                        "recipient_hash": kwargs["recipient_hash"],
+                        "email_preference_token_hash": kwargs["token_hash"],
+                        "status": "subscribed",
+                        "suppressed": False,
+                    },
+                    delivery={
+                        "id": kwargs["delivery_id"],
+                        "project_id": kwargs["project_id"],
+                        "notification_id": kwargs["notification_id"],
+                        "subscription_id": kwargs["subscription_id"],
+                        "channel": "email",
+                        "status": "delivered",
+                    },
+                    notification={"id": kwargs["notification_id"], "project_id": kwargs["project_id"]},
+                    subscription={
+                        "id": kwargs["subscription_id"],
+                        "project_id": kwargs["project_id"],
+                        "channel": "email",
+                        "metadata": {"email_suppressed_recipient_hash_count": 0},
+                    },
+                    audit_events=(),
+                )
+
+        token = sign_runtime_notification_email_preference_token(
+            secret="preference-secret",
+            action="manage",
+            project_id="project-1",
+            delivery_id="delivery-1",
+            notification_id="notification-1",
+            subscription_id="subscription-1",
+            recipient_hash="c" * 64,
+            ttl_seconds=3600,
+            now=datetime.now(UTC),
+        )
+        fake_repository = FakeRepository()
+        with patch.dict(
+            os.environ,
+            {"GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET": "preference-secret"},
+            clear=False,
+        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(f"/v1/runtime-notification-email-preferences/status?token={token}")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["preference"]["status"], "subscribed")
+        self.assertEqual(fake_repository.status_kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.status_kwargs["recipient_hash"], "c" * 64)
+        self.assertNotIn(token, str(fake_repository.status_kwargs))
+
+    def test_runtime_notification_email_preference_resubscribe_endpoint_verifies_manage_token(self) -> None:
+        class FakeRepository:
+            def apply_runtime_notification_email_preference_resubscribe(self, resubscribe: object) -> RuntimeNotificationSubscription:
+                self.resubscribe = resubscribe
+                return RuntimeNotificationSubscription(
+                    subscription={
+                        "id": resubscribe.subscription_id,
+                        "project_id": resubscribe.project_id,
+                        "channel": "email",
+                        "endpoint_url": "mailto:ops@example.com",
+                        "event_types": ["runtime_alert"],
+                        "severity_threshold": "warning",
+                        "status": "active",
+                        "metadata": {
+                            "email_suppressed_recipient_hashes": [],
+                            "email_resubscribe_token_hashes": [resubscribe.token_hash],
+                        },
+                        "created_by": "runtime-console",
+                        "updated_by": resubscribe.updated_by,
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "runtime_notification_email_preference_resubscribed",
+                            "method_version": "runtime_notification_email_preference_resubscribe_v1",
+                        },
+                    ),
+                )
+
+        token = sign_runtime_notification_email_preference_token(
+            secret="preference-secret",
+            action="manage",
+            project_id="project-1",
+            delivery_id="delivery-1",
+            notification_id="notification-1",
+            subscription_id="subscription-1",
+            recipient_hash="d" * 64,
+            ttl_seconds=3600,
+            now=datetime.now(UTC),
+        )
+        fake_repository = FakeRepository()
+        with patch.dict(
+            os.environ,
+            {"GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET": "preference-secret"},
+            clear=False,
+        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/runtime-notification-email-preferences/resubscribe",
+                json={"token": token, "reason": "turn email back on"},
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["audit_events"][0]["event_type"], "runtime_notification_email_preference_resubscribed")
+        self.assertEqual(fake_repository.resubscribe.reason, "turn email back on")
+        self.assertEqual(fake_repository.resubscribe.recipient_hash, "d" * 64)
+        self.assertNotIn(token, str(fake_repository.resubscribe))
+
     def test_runtime_report_export_job_enqueue_and_status_endpoints_pass_payload(self) -> None:
         class FakeRepository:
             def __init__(self) -> None:
@@ -8430,6 +8549,9 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeNotificationEmailFeedbackWebhookRequest", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedbackSuppressionInput", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedbackSuppressionRequest", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailPreferenceStatus", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailPreferenceResubscribeInput", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailPreferenceResubscribeRequest", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailPreferenceUnsubscribeInput", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailPreferenceUnsubscribeRequest", payload["persistence"])
         self.assertIn("RuntimeReportManagementInput", payload["persistence"])
@@ -8516,6 +8638,8 @@ class ApiContractsTest(unittest.TestCase):
             "/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient",
             payload["persistence"],
         )
+        self.assertIn("/v1/runtime-notification-email-preferences/status", payload["persistence"])
+        self.assertIn("/v1/runtime-notification-email-preferences/resubscribe", payload["persistence"])
         self.assertIn("/v1/runtime-notification-email-preferences/unsubscribe", payload["persistence"])
         self.assertIn("/v1/runtime-notification-deliveries/{delivery_id}/email-feedback", payload["persistence"])
         self.assertIn("/v1/runtime-notifications/{notification_id}/status", payload["persistence"])

@@ -49,6 +49,8 @@ from geno_core.email_delivery import (
     render_runtime_notification_email,
 )
 from geno_core.email_preferences import (
+    RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
+    RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_RESUBSCRIBE_ACTION,
     RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_VERSION,
     RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_UNSUBSCRIBE_ACTION,
     RuntimeNotificationEmailPreferenceTokenClaims,
@@ -148,6 +150,8 @@ __all__ = [
     "RuntimeNotificationEmailPreferenceTokenVerification",
     "render_project_member_invitation_email",
     "render_runtime_notification_email",
+    "RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION",
+    "RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_RESUBSCRIBE_ACTION",
     "RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_VERSION",
     "RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_UNSUBSCRIBE_ACTION",
     "build_object_store_from_env",

@@ -20,6 +20,8 @@ from geno_core.email_delivery import (
     send_runtime_email_message,
 )
 from geno_core.email_preferences import (
+    RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
+    RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_RESUBSCRIBE_ACTION,
     RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_UNSUBSCRIBE_ACTION,
     RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_VERSION,
     runtime_notification_email_preference_token_hash,
@@ -104,6 +106,8 @@ from geno_core.models import (
     RuntimeNotificationEmailFeedback,
     RuntimeNotificationEmailFeedbackInput,
     RuntimeNotificationEmailFeedbackPage,
+    RuntimeNotificationEmailPreferenceResubscribeInput,
+    RuntimeNotificationEmailPreferenceStatus,
     RuntimeNotificationEmailPreferenceUnsubscribeInput,
     RuntimeNotificationEmailFeedbackSuppressionInput,
     RuntimeNotificationPage,
@@ -431,22 +435,30 @@ def _runtime_notification_email_payload(
                 suppressed_matched_hashes.append(recipient_hash)
             continue
         filtered_recipients.append(recipient)
+    manage_preferences_url = ""
+    manage_token_hash = ""
     tokenized_unsubscribe_url = ""
     preference_token_hash = ""
     preference_token_reason = ""
     normalized_preference_base_url = preference_base_url.strip()
-    if preference_token_secret and normalized_preference_base_url and len(filtered_recipients) == 1:
+    can_issue_recipient_token = bool(preference_token_secret and len(filtered_recipients) == 1)
+    if can_issue_recipient_token:
         recipient_hash = runtime_email_body_hash(_normalize_runtime_email_address(filtered_recipients[0]))
+        delivery_id = str(
+            _stable_id(
+                "runtime-notification-delivery",
+                str(notification.get("id")),
+                str(subscription.get("id")),
+            )
+        )
+    else:
+        recipient_hash = ""
+        delivery_id = ""
+    if can_issue_recipient_token and normalized_preference_base_url:
         preference_token = sign_runtime_notification_email_preference_token(
             secret=preference_token_secret,
             project_id=str(notification.get("project_id")),
-            delivery_id=str(
-                _stable_id(
-                    "runtime-notification-delivery",
-                    str(notification.get("id")),
-                    str(subscription.get("id")),
-                )
-            ),
+            delivery_id=delivery_id,
             notification_id=str(notification.get("id")),
             subscription_id=str(subscription.get("id")),
             recipient_hash=recipient_hash,
@@ -460,6 +472,24 @@ def _runtime_notification_email_payload(
         )
     elif preference_token_secret and normalized_preference_base_url:
         preference_token_reason = "requires_single_filtered_recipient"
+    raw_preferences_url = control_metadata.get("email_preferences_url") or ""
+    if can_issue_recipient_token and raw_preferences_url:
+        manage_token = sign_runtime_notification_email_preference_token(
+            secret=preference_token_secret,
+            action=RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
+            project_id=str(notification.get("project_id")),
+            delivery_id=delivery_id,
+            notification_id=str(notification.get("id")),
+            subscription_id=str(subscription.get("id")),
+            recipient_hash=recipient_hash,
+            ttl_seconds=preference_token_ttl_seconds,
+        )
+        manage_token_hash = runtime_notification_email_preference_token_hash(manage_token)
+        separator = "&" if "?" in raw_preferences_url else "?"
+        manage_preferences_url = (
+            f"{raw_preferences_url}{separator}"
+            f"{urlencode({'token': manage_token, 'action': RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION})}"
+        )
     rendered_email = render_runtime_notification_email(
         notification_id=str(notification.get("id")),
         project_id=str(notification.get("project_id")),
@@ -476,7 +506,7 @@ def _runtime_notification_email_payload(
             or control_metadata.get("email_unsubscribe_url")
             or control_metadata.get("email_unsubscribe_mailto")
         ),
-        preferences_url=control_metadata.get("email_preferences_url"),
+        preferences_url=manage_preferences_url or control_metadata.get("email_preferences_url"),
     )
     headers = {
         "X-GENO-Notification-Id": str(notification.get("id")),
@@ -500,8 +530,8 @@ def _runtime_notification_email_payload(
         headers["List-Unsubscribe"] = ", ".join(f"<{value}>" for value in unsubscribe_header_urls)
         if tokenized_unsubscribe_url or control_metadata.get("email_unsubscribe_url"):
             headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
-    if control_metadata.get("email_preferences_url"):
-        headers["X-GENO-Notification-Preferences-Url"] = control_metadata["email_preferences_url"]
+    if manage_preferences_url or control_metadata.get("email_preferences_url"):
+        headers["X-GENO-Notification-Preferences-Url"] = manage_preferences_url or control_metadata["email_preferences_url"]
     control_hashes = _runtime_notification_email_control_hashes(control_metadata)
     reply_to_hash = runtime_email_body_hash(reply_to) if reply_to else ""
     return {
@@ -524,12 +554,19 @@ def _runtime_notification_email_payload(
             "email_tokenized_unsubscribe_url_hash": runtime_email_body_hash(tokenized_unsubscribe_url)
             if tokenized_unsubscribe_url
             else "",
+            "email_tokenized_preferences_url_hash": runtime_email_body_hash(manage_preferences_url)
+            if manage_preferences_url
+            else "",
             "email_preference_token_version": RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_VERSION
-            if preference_token_hash
+            if preference_token_hash or manage_token_hash
             else "",
             "email_preference_token_hash": preference_token_hash,
             "email_preference_token_action": RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_UNSUBSCRIBE_ACTION
             if preference_token_hash
+            else "",
+            "email_preference_manage_token_hash": manage_token_hash,
+            "email_preference_manage_token_action": RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION
+            if manage_token_hash
             else "",
             "email_preference_token_reason": preference_token_reason,
             "email_recipient_count": len(original_recipients),
@@ -9366,6 +9403,55 @@ class PostgresEvidenceRepository:
         self.connection.commit()
         return record
 
+    def _load_runtime_notification_email_preference_subscription(
+        self,
+        *,
+        cursor: DbCursor,
+        project_id: str,
+        delivery_id: str,
+        notification_id: str,
+        subscription_id: str,
+        for_update: bool,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)}
+            FROM runtime_notification_deliveries
+            WHERE id = %s
+            LIMIT 1
+            """,
+            (_uuid(delivery_id),),
+        )
+        delivery = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
+        if not delivery:
+            raise ValueError("runtime notification delivery not found")
+        if str(delivery.get("project_id")) != project_id:
+            raise ValueError("runtime notification delivery project mismatch")
+        if str(delivery.get("notification_id")) != notification_id:
+            raise ValueError("runtime notification delivery notification mismatch")
+        if str(delivery.get("subscription_id")) != subscription_id:
+            raise ValueError("runtime notification delivery subscription mismatch")
+        if str(delivery.get("channel") or "").strip().lower() != "email":
+            raise ValueError("email preference can only apply to email deliveries")
+        cursor.execute(
+            f"""
+            SELECT {", ".join(RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)}
+            FROM runtime_notification_subscriptions
+            WHERE id = %s
+            LIMIT 1
+            {"FOR UPDATE" if for_update else ""}
+            """,
+            (_uuid(subscription_id),),
+        )
+        subscription = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)
+        if not subscription:
+            raise ValueError("runtime notification subscription not found")
+        if str(subscription.get("project_id")) != project_id:
+            raise ValueError("runtime notification subscription project mismatch")
+        if str(subscription.get("channel") or "").strip().lower() != "email":
+            raise ValueError("email preference can only apply to email subscriptions")
+        return delivery, subscription
+
     def apply_runtime_notification_email_preference_unsubscribe(
         self,
         unsubscribe: RuntimeNotificationEmailPreferenceUnsubscribeInput,
@@ -9391,43 +9477,14 @@ class PostgresEvidenceRepository:
         if not token_hash:
             raise ValueError("token_hash is required")
         with self.connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT {", ".join(RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)}
-                FROM runtime_notification_deliveries
-                WHERE id = %s
-                LIMIT 1
-                """,
-                (_uuid(delivery_id),),
+            _, before = self._load_runtime_notification_email_preference_subscription(
+                cursor=cursor,
+                project_id=project_id,
+                delivery_id=delivery_id,
+                notification_id=notification_id,
+                subscription_id=subscription_id,
+                for_update=True,
             )
-            delivery = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
-            if not delivery:
-                raise ValueError("runtime notification delivery not found")
-            if str(delivery.get("project_id")) != project_id:
-                raise ValueError("runtime notification delivery project mismatch")
-            if str(delivery.get("notification_id")) != notification_id:
-                raise ValueError("runtime notification delivery notification mismatch")
-            if str(delivery.get("subscription_id")) != subscription_id:
-                raise ValueError("runtime notification delivery subscription mismatch")
-            if str(delivery.get("channel") or "").strip().lower() != "email":
-                raise ValueError("email preference unsubscribe can only apply to email deliveries")
-            cursor.execute(
-                f"""
-                SELECT {", ".join(RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)}
-                FROM runtime_notification_subscriptions
-                WHERE id = %s
-                LIMIT 1
-                FOR UPDATE
-                """,
-                (_uuid(subscription_id),),
-            )
-            before = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)
-            if not before:
-                raise ValueError("runtime notification subscription not found")
-            if str(before.get("project_id")) != project_id:
-                raise ValueError("runtime notification subscription project mismatch")
-            if str(before.get("channel") or "").strip().lower() != "email":
-                raise ValueError("email preference unsubscribe can only apply to email subscriptions")
             metadata = _json_compatible(before.get("metadata") or {})
             if not isinstance(metadata, dict):
                 metadata = {}
@@ -9476,6 +9533,232 @@ class PostgresEvidenceRepository:
                 },
                 method_version="runtime_notification_email_preference_unsubscribe_v1",
                 reason=reason or "apply runtime notification email preference unsubscribe token",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            record = self._runtime_notification_subscription_from_row(cursor=cursor, row=after)
+        self.connection.commit()
+        return record
+
+    def get_runtime_notification_email_preference_status(
+        self,
+        *,
+        project_id: str,
+        delivery_id: str,
+        notification_id: str,
+        subscription_id: str,
+        recipient_hash: str,
+        token_hash: str,
+    ) -> RuntimeNotificationEmailPreferenceStatus:
+        project_id = project_id.strip()
+        delivery_id = delivery_id.strip()
+        notification_id = notification_id.strip()
+        subscription_id = subscription_id.strip()
+        recipient_hash = _sha256_hex_or_none(recipient_hash, field_name="recipient_hash")
+        token_hash = _sha256_hex_or_none(token_hash, field_name="token_hash")
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not delivery_id:
+            raise ValueError("delivery_id is required")
+        if not notification_id:
+            raise ValueError("notification_id is required")
+        if not subscription_id:
+            raise ValueError("subscription_id is required")
+        if not recipient_hash:
+            raise ValueError("recipient_hash is required")
+        if not token_hash:
+            raise ValueError("token_hash is required")
+        with self.connection.cursor() as cursor:
+            delivery, subscription = self._load_runtime_notification_email_preference_subscription(
+                cursor=cursor,
+                project_id=project_id,
+                delivery_id=delivery_id,
+                notification_id=notification_id,
+                subscription_id=subscription_id,
+                for_update=False,
+            )
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_NOTIFICATION_COLUMNS)}
+                FROM runtime_notifications
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(notification_id),),
+            )
+            notification_row = cursor.fetchone()
+            notification = _row_dict(notification_row, RUNTIME_NOTIFICATION_COLUMNS) if notification_row else None
+            metadata = _json_compatible(subscription.get("metadata") or {})
+            if not isinstance(metadata, dict):
+                metadata = {}
+            suppression_hashes = _metadata_sha256_values(metadata, "email_suppressed_recipient_hashes")
+            unsubscribe_token_hashes = _metadata_sha256_values(metadata, "email_unsubscribe_token_hashes")
+            resubscribe_token_hashes = _metadata_sha256_values(metadata, "email_resubscribe_token_hashes")
+            suppressed = recipient_hash in suppression_hashes
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE project_id = %s AND target_type = %s AND target_id = %s
+                ORDER BY created_at DESC
+                LIMIT 5
+                """,
+                (_uuid(project_id), "runtime_notification_subscription", subscription_id),
+            )
+            audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeNotificationEmailPreferenceStatus(
+            preference={
+                "project_id": project_id,
+                "delivery_id": delivery_id,
+                "notification_id": notification_id,
+                "subscription_id": subscription_id,
+                "recipient_hash": recipient_hash,
+                "channel": "email",
+                "status": "unsubscribed" if suppressed else "subscribed",
+                "suppressed": suppressed,
+                "subscription_status": str(subscription.get("status") or ""),
+                "event_types": subscription.get("event_types") or [],
+                "severity_threshold": subscription.get("severity_threshold"),
+                "email_suppressed_recipient_hash_count": len(suppression_hashes),
+                "email_unsubscribe_token_hash_seen": token_hash in unsubscribe_token_hashes,
+                "email_resubscribe_token_hash_seen": token_hash in resubscribe_token_hashes,
+                "email_unsubscribe_source": metadata.get("email_unsubscribe_source"),
+                "email_resubscribe_source": metadata.get("email_resubscribe_source"),
+                "email_preference_token_hash": token_hash,
+                "method_version": "runtime_notification_email_preference_status_v1",
+            },
+            delivery={
+                "id": str(delivery.get("id")),
+                "project_id": str(delivery.get("project_id")),
+                "notification_id": str(delivery.get("notification_id")),
+                "subscription_id": str(delivery.get("subscription_id")),
+                "channel": str(delivery.get("channel") or ""),
+                "status": str(delivery.get("status") or ""),
+                "attempt_count": int(delivery.get("attempt_count") or 0),
+                "response_status": delivery.get("response_status"),
+                "response_body_hash": delivery.get("response_body_hash"),
+                "created_at": delivery.get("created_at"),
+                "updated_by": delivery.get("updated_by"),
+                "updated_at": delivery.get("updated_at"),
+            },
+            notification={
+                "id": str(notification.get("id")),
+                "project_id": str(notification.get("project_id")),
+                "notification_type": str(notification.get("notification_type") or ""),
+                "severity": str(notification.get("severity") or ""),
+                "title": notification.get("title"),
+                "message": notification.get("message"),
+                "target_type": notification.get("target_type"),
+                "target_id": notification.get("target_id"),
+                "status": notification.get("status"),
+                "created_at": notification.get("created_at"),
+            }
+            if notification
+            else None,
+            subscription={
+                "id": str(subscription.get("id")),
+                "project_id": str(subscription.get("project_id")),
+                "channel": str(subscription.get("channel") or ""),
+                "event_types": subscription.get("event_types") or [],
+                "severity_threshold": subscription.get("severity_threshold"),
+                "status": subscription.get("status"),
+                "metadata": {
+                    "email_suppressed_recipient_hash_count": len(suppression_hashes),
+                    "email_unsubscribe_token_hash_count": len(unsubscribe_token_hashes),
+                    "email_resubscribe_token_hash_count": len(resubscribe_token_hashes),
+                    "email_unsubscribe_source": metadata.get("email_unsubscribe_source"),
+                    "email_resubscribe_source": metadata.get("email_resubscribe_source"),
+                },
+                "created_by": subscription.get("created_by"),
+                "created_at": subscription.get("created_at"),
+                "updated_by": subscription.get("updated_by"),
+                "updated_at": subscription.get("updated_at"),
+            },
+            audit_events=audit_events,
+        )
+
+    def apply_runtime_notification_email_preference_resubscribe(
+        self,
+        resubscribe: RuntimeNotificationEmailPreferenceResubscribeInput,
+    ) -> RuntimeNotificationSubscription:
+        project_id = resubscribe.project_id.strip()
+        delivery_id = resubscribe.delivery_id.strip()
+        notification_id = resubscribe.notification_id.strip()
+        subscription_id = resubscribe.subscription_id.strip()
+        recipient_hash = _sha256_hex_or_none(resubscribe.recipient_hash, field_name="recipient_hash")
+        token_hash = _sha256_hex_or_none(resubscribe.token_hash, field_name="token_hash")
+        updated_by = resubscribe.updated_by.strip() or "email-preference-token"
+        reason = resubscribe.reason.strip() if resubscribe.reason else None
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not delivery_id:
+            raise ValueError("delivery_id is required")
+        if not notification_id:
+            raise ValueError("notification_id is required")
+        if not subscription_id:
+            raise ValueError("subscription_id is required")
+        if not recipient_hash:
+            raise ValueError("recipient_hash is required")
+        if not token_hash:
+            raise ValueError("token_hash is required")
+        with self.connection.cursor() as cursor:
+            _, before = self._load_runtime_notification_email_preference_subscription(
+                cursor=cursor,
+                project_id=project_id,
+                delivery_id=delivery_id,
+                notification_id=notification_id,
+                subscription_id=subscription_id,
+                for_update=True,
+            )
+            metadata = _json_compatible(before.get("metadata") or {})
+            if not isinstance(metadata, dict):
+                metadata = {}
+            suppression_hashes_before = list(_metadata_sha256_values(metadata, "email_suppressed_recipient_hashes"))
+            suppression_hashes = [value for value in suppression_hashes_before if value != recipient_hash]
+            token_hashes = list(
+                dict.fromkeys([*_metadata_sha256_values(metadata, "email_resubscribe_token_hashes"), token_hash])
+            )
+            metadata["email_suppressed_recipient_hashes"] = suppression_hashes
+            metadata["email_resubscribe_token_hashes"] = token_hashes
+            metadata["email_resubscribe_source"] = "runtime_notification_email_preference_token"
+            cursor.execute(
+                f"""
+                UPDATE runtime_notification_subscriptions
+                SET metadata = %s,
+                    updated_by = %s,
+                    updated_at = now()
+                WHERE id = %s
+                RETURNING {", ".join(RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)}
+                """,
+                (_json_payload(metadata), updated_by, _uuid(subscription_id)),
+            )
+            after = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="runtime_notification_email_preference_resubscribed",
+                project_id=project_id,
+                actor_type="system" if updated_by == "email-preference-token" else "user",
+                actor_id=updated_by,
+                target_type="runtime_notification_subscription",
+                target_id=subscription_id,
+                before=before,
+                after=after,
+                input_refs={
+                    "runtime_notification_delivery_ids": [delivery_id],
+                    "runtime_notification_ids": [notification_id],
+                    "runtime_notification_subscription_ids": [subscription_id],
+                    "recipient_hashes": [recipient_hash],
+                    "email_preference_token_hashes": [token_hash],
+                    "action": [RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_RESUBSCRIBE_ACTION],
+                },
+                output_refs={
+                    "runtime_notification_subscription_ids": [subscription_id],
+                    "email_suppression_hashes": suppression_hashes,
+                    "email_removed_suppression_hashes": [recipient_hash]
+                    if recipient_hash in suppression_hashes_before
+                    else [],
+                    "email_resubscribe_token_hashes": token_hashes,
+                },
+                method_version="runtime_notification_email_preference_resubscribe_v1",
+                reason=reason or "apply runtime notification email preference resubscribe token",
             )
             self.save_audit_events((audit_event,), cursor=cursor)
             record = self._runtime_notification_subscription_from_row(cursor=cursor, row=after)
@@ -10379,10 +10662,20 @@ class PostgresEvidenceRepository:
                             ]
                             if email_metadata.get("email_tokenized_unsubscribe_url_hash")
                             else [],
+                            "email_tokenized_preferences_url_hashes": [
+                                str(email_metadata.get("email_tokenized_preferences_url_hash") or "")
+                            ]
+                            if email_metadata.get("email_tokenized_preferences_url_hash")
+                            else [],
                             "email_preference_token_hashes": [
                                 str(email_metadata.get("email_preference_token_hash") or "")
                             ]
                             if email_metadata.get("email_preference_token_hash")
+                            else [],
+                            "email_preference_manage_token_hashes": [
+                                str(email_metadata.get("email_preference_manage_token_hash") or "")
+                            ]
+                            if email_metadata.get("email_preference_manage_token_hash")
                             else [],
                             "email_suppressed_recipient_hashes": email_suppressed_recipient_hashes,
                             "email_filtered_recipient_count": [

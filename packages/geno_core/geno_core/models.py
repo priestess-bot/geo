@@ -1741,6 +1741,27 @@ class RuntimeNotificationEmailPreferenceUnsubscribeInput:
 
 
 @dataclass(frozen=True)
+class RuntimeNotificationEmailPreferenceResubscribeInput:
+    project_id: str
+    delivery_id: str
+    notification_id: str
+    subscription_id: str
+    recipient_hash: str
+    token_hash: str
+    updated_by: str = "email-preference-token"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeNotificationEmailPreferenceStatus:
+    preference: dict[str, Any]
+    delivery: dict[str, Any]
+    notification: dict[str, Any] | None
+    subscription: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class RuntimeReportArtifact:
     report_export: dict[str, Any]
     artifact_type: str
