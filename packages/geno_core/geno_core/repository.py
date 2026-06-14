@@ -97,6 +97,7 @@ from geno_core.models import (
     RuntimeNotificationDeliveryStatusInput,
     RuntimeNotificationEmailFeedback,
     RuntimeNotificationEmailFeedbackInput,
+    RuntimeNotificationEmailFeedbackPage,
     RuntimeNotificationPage,
     RuntimeNotificationSubscription,
     RuntimeNotificationSubscriptionInput,
@@ -8766,6 +8767,70 @@ class PostgresEvidenceRepository:
             records=records,
         )
 
+    def list_runtime_notification_email_feedback_events(
+        self,
+        *,
+        project_id: str | None = None,
+        delivery_id: str | None = None,
+        notification_id: str | None = None,
+        subscription_id: str | None = None,
+        feedback_type: str | None = None,
+        provider: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeNotificationEmailFeedbackPage:
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters: list[str] = []
+        params: list[object] = []
+        if project_id:
+            filters.append("project_id = %s")
+            params.append(_uuid(project_id.strip()))
+        if delivery_id:
+            filters.append("delivery_id = %s")
+            params.append(_uuid(delivery_id.strip()))
+        if notification_id:
+            filters.append("notification_id = %s")
+            params.append(_uuid(notification_id.strip()))
+        if subscription_id:
+            filters.append("subscription_id = %s")
+            params.append(_uuid(subscription_id.strip()))
+        if feedback_type:
+            filters.append("feedback_type = %s")
+            params.append(feedback_type.strip().lower())
+        if provider:
+            filters.append("provider = %s")
+            params.append(" ".join(provider.replace("\r", "\n").split()).strip())
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT count(*) FROM runtime_notification_email_feedback_events {where_clause}",
+                tuple(params),
+            )
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_COLUMNS)}
+                FROM runtime_notification_email_feedback_events
+                {where_clause}
+                ORDER BY occurred_at DESC, created_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            rows = _rows_dict(cursor.fetchall(), RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_COLUMNS)
+            records = tuple(
+                self._runtime_notification_email_feedback_from_row(cursor=cursor, feedback_event=row)
+                for row in rows
+            )
+        return RuntimeNotificationEmailFeedbackPage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=records,
+        )
+
     def claim_next_runtime_notification_delivery(
         self,
         *,
@@ -10037,8 +10102,20 @@ class PostgresEvidenceRepository:
         *,
         cursor: DbCursor,
         feedback_event: dict[str, Any],
-        delivery: dict[str, Any],
+        delivery: dict[str, Any] | None = None,
     ) -> RuntimeNotificationEmailFeedback:
+        if delivery is None:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)}
+                FROM runtime_notification_deliveries
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(str(feedback_event["delivery_id"])),),
+            )
+            delivery_row = cursor.fetchone()
+            delivery = _row_dict(delivery_row, RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
         cursor.execute(
             f"""
             SELECT {", ".join(RUNTIME_NOTIFICATION_COLUMNS)}

@@ -1699,6 +1699,14 @@ class RuntimeNotificationEmailFeedback:
 
 
 @dataclass(frozen=True)
+class RuntimeNotificationEmailFeedbackPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeNotificationEmailFeedback, ...]
+
+
+@dataclass(frozen=True)
 class RuntimeNotificationEmailFeedbackInput:
     delivery_id: str
     feedback_type: str

@@ -5687,6 +5687,40 @@ def runtime_notification_deliveries(
         close_repository_connection(repository)
 
 
+@app.get("/v1/runtime-notification-email-feedback-events")
+def runtime_notification_email_feedback_events(
+    project_id: str | None = None,
+    delivery_id: str | None = None,
+    notification_id: str | None = None,
+    subscription_id: str | None = None,
+    feedback_type: str | None = None,
+    provider: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_notification_email_feedback_events(
+            project_id=project_id,
+            delivery_id=delivery_id,
+            notification_id=notification_id,
+            subscription_id=subscription_id,
+            feedback_type=feedback_type,
+            provider=provider,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/runtime-notification-deliveries/{delivery_id}/email-feedback")
 def record_runtime_notification_email_feedback(
     delivery_id: str,
@@ -6754,6 +6788,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeNotificationDeliveryStatusInput",
             "RuntimeNotificationEmailFeedback",
             "RuntimeNotificationEmailFeedbackInput",
+            "RuntimeNotificationEmailFeedbackPage",
             "RuntimeNotificationEmailFeedbackRequest",
             "RuntimeNotificationPage",
             "RuntimeNotificationSubscription",
@@ -6849,6 +6884,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/runtime-notifications",
             "/v1/runtime-notification-subscriptions",
             "/v1/runtime-notification-deliveries",
+            "/v1/runtime-notification-email-feedback-events",
             "/v1/runtime-notification-deliveries/{delivery_id}/email-feedback",
             "/v1/runtime-notifications/{notification_id}/status",
             "/v1/reports/runtime/{report_export_id}/management-events",

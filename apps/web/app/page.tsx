@@ -779,6 +779,7 @@ type RuntimeData = {
   notifications: RuntimeNotificationPage;
   notificationSubscriptions: PageResponse<RuntimeNotificationSubscription>;
   notificationDeliveries: PageResponse<RuntimeNotificationDelivery>;
+  notificationEmailFeedback: PageResponse<RuntimeNotificationEmailFeedback>;
   actions: PageResponse<ActionPlan>;
   alerts: PageResponse<RuntimeAlert>;
   content: PageResponse<ContentEngine>;
@@ -3062,6 +3063,28 @@ type RuntimeNotificationDelivery = {
   audit_events: Array<{ event_type?: string; actor_id?: string; method_version?: string | null }>;
 };
 
+type RuntimeNotificationEmailFeedback = {
+  feedback_event: {
+    id: string;
+    project_id: string;
+    delivery_id: string;
+    notification_id: string;
+    subscription_id: string;
+    feedback_type: string;
+    recipient_hash?: string | null;
+    provider?: string | null;
+    provider_event_id_hash?: string | null;
+    occurred_at?: string;
+    metadata?: Record<string, unknown>;
+    recorded_by: string;
+    created_at?: string;
+  };
+  delivery: RuntimeNotificationDelivery["delivery"];
+  notification?: RuntimeNotification["notification"] | null;
+  subscription?: RuntimeNotificationSubscription["subscription"] | null;
+  audit_events: Array<{ event_type?: string; actor_id?: string; method_version?: string | null }>;
+};
+
 type RuntimeScoreWeightConfig = {
   score_weight_config: {
     id?: string | null;
@@ -3542,6 +3565,7 @@ const endpoints = {
   notifications: "/v1/runtime-notifications",
   notificationSubscriptions: "/v1/runtime-notification-subscriptions",
   notificationDeliveries: "/v1/runtime-notification-deliveries",
+  notificationEmailFeedback: "/v1/runtime-notification-email-feedback-events",
   actions: "/v1/action-plans/runtime",
   alerts: "/v1/runtime-alerts",
   alertNotifications: "/v1/runtime-alerts/notifications",
@@ -5278,6 +5302,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     notifications: runtimePath(endpoints.notifications, { limit: 8 }),
     notificationSubscriptions: runtimePath(endpoints.notificationSubscriptions, { limit: 5 }),
     notificationDeliveries: runtimePath(endpoints.notificationDeliveries, { limit: 5 }),
+    notificationEmailFeedback: runtimePath(endpoints.notificationEmailFeedback, { limit: 5 }),
     actions: runtimePath(endpoints.actions, { limit: 1 }),
     alerts: runtimePath(endpoints.alerts, { limit: 10 }),
     alertNotifications: endpoints.alertNotifications,
@@ -5502,6 +5527,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     ...selectedProjectParams,
     limit: 5
   });
+  paths.notificationEmailFeedback = runtimePath(endpoints.notificationEmailFeedback, {
+    ...selectedProjectParams,
+    limit: 5
+  });
   paths.actions = runtimePath(endpoints.actions, {
     ...selectedProjectParams,
     limit: 1
@@ -5586,6 +5615,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     notifications,
     notificationSubscriptions,
     notificationDeliveries,
+    notificationEmailFeedback,
     actions,
     alerts,
     content,
@@ -5818,6 +5848,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       paths.notificationDeliveries,
       emptyPage<RuntimeNotificationDelivery>()
     ),
+    fetchRuntimeEndpoint<PageResponse<RuntimeNotificationEmailFeedback>>(
+      baseUrl,
+      paths.notificationEmailFeedback,
+      emptyPage<RuntimeNotificationEmailFeedback>()
+    ),
     fetchRuntimeEndpoint<PageResponse<ActionPlan>>(baseUrl, paths.actions, emptyPage<ActionPlan>()),
     fetchRuntimeEndpoint<PageResponse<RuntimeAlert>>(baseUrl, paths.alerts, emptyPage<RuntimeAlert>()),
     fetchRuntimeEndpoint<PageResponse<ContentEngine>>(baseUrl, paths.content, emptyPage<ContentEngine>()),
@@ -5889,6 +5924,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     notifications,
     notificationSubscriptions,
     notificationDeliveries,
+    notificationEmailFeedback,
     actions,
     alerts,
     content,
@@ -5965,6 +6001,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       notifications: notifications.payload,
       notificationSubscriptions: notificationSubscriptions.payload,
       notificationDeliveries: notificationDeliveries.payload,
+      notificationEmailFeedback: notificationEmailFeedback.payload,
       actions: actions.payload,
       alerts: alerts.payload,
       content: content.payload,
@@ -11686,8 +11723,10 @@ export default async function Home({
           <dl className="facts contributionFacts">
             <Fact label="Subscriptions" value={data.notificationSubscriptions.total_count} />
             <Fact label="Deliveries" value={data.notificationDeliveries.total_count} />
+            <Fact label="Email feedback" value={data.notificationEmailFeedback.total_count} />
             <Fact label="Subscription API" value={paths.notificationSubscriptions} />
             <Fact label="Delivery API" value={paths.notificationDeliveries} />
+            <Fact label="Feedback API" value={paths.notificationEmailFeedback} />
           </dl>
           {data.notificationSubscriptions.records.length ? (
             <ul className="plainList">
@@ -11819,6 +11858,28 @@ export default async function Home({
                       </small>
                     </form>
                   ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {data.notificationEmailFeedback.records.length ? (
+            <ul className="plainList">
+              {data.notificationEmailFeedback.records.map((record) => (
+                <li key={record.feedback_event.id}>
+                  <strong>
+                    Email feedback · {record.feedback_event.feedback_type} ·{" "}
+                    {record.feedback_event.provider || "provider unknown"}
+                  </strong>
+                  <span>
+                    Delivery {shortId(record.feedback_event.delivery_id)} ·{" "}
+                    {record.notification?.title || "notification context pending"}
+                  </span>
+                  <small>
+                    recipient hash {shortId(record.feedback_event.recipient_hash || undefined)} · provider event{" "}
+                    {shortId(record.feedback_event.provider_event_id_hash || undefined)} ·{" "}
+                    {record.audit_events[0]?.event_type || "runtime_notification_email_feedback_recorded pending"} ·{" "}
+                    {dateText(record.feedback_event.occurred_at || record.feedback_event.created_at)}
+                  </small>
                 </li>
               ))}
             </ul>

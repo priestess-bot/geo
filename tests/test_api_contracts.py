@@ -92,6 +92,7 @@ from geno_core.models import (
     RuntimeNotificationDelivery,
     RuntimeNotificationDeliveryPage,
     RuntimeNotificationEmailFeedback,
+    RuntimeNotificationEmailFeedbackPage,
     RuntimeNotification,
     RuntimeNotificationPage,
     RuntimeNotificationSubscription,
@@ -7235,6 +7236,53 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.feedback.metadata["source"], "manual")
         self.assertEqual(fake_repository.feedback.reason, "manual complaint review")
 
+    def test_runtime_notification_email_feedback_events_endpoint_returns_page(self) -> None:
+        class FakeRepository:
+            def list_runtime_notification_email_feedback_events(self, **kwargs: object) -> RuntimeNotificationEmailFeedbackPage:
+                self.kwargs = kwargs
+                return RuntimeNotificationEmailFeedbackPage(
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(
+                        RuntimeNotificationEmailFeedback(
+                            feedback_event={
+                                "id": "feedback-1",
+                                "project_id": kwargs["project_id"],
+                                "delivery_id": kwargs["delivery_id"],
+                                "notification_id": "notification-1",
+                                "subscription_id": "subscription-1",
+                                "feedback_type": kwargs["feedback_type"],
+                                "recipient_hash": "recipient-hash",
+                                "provider": kwargs["provider"],
+                                "provider_event_id_hash": "provider-event-hash",
+                                "recorded_by": "runtime-console",
+                            },
+                            delivery={"id": kwargs["delivery_id"], "channel": "email", "status": "delivered"},
+                            notification={"id": "notification-1", "title": "Report export failed"},
+                            subscription={"id": "subscription-1", "channel": "email"},
+                            audit_events=({"event_type": "runtime_notification_email_feedback_recorded"},),
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/runtime-notification-email-feedback-events"
+                "?project_id=project-1&delivery_id=delivery-1&feedback_type=bounce&provider=smtp&limit=5"
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_count"], 1)
+        self.assertEqual(payload["records"][0]["feedback_event"]["feedback_type"], "bounce")
+        self.assertEqual(payload["records"][0]["notification"]["title"], "Report export failed")
+        self.assertEqual(payload["records"][0]["audit_events"][0]["event_type"], "runtime_notification_email_feedback_recorded")
+        self.assertEqual(fake_repository.kwargs["provider"], "smtp")
+        self.assertEqual(fake_repository.kwargs["delivery_id"], "delivery-1")
+
     def test_runtime_report_export_job_enqueue_and_status_endpoints_pass_payload(self) -> None:
         class FakeRepository:
             def __init__(self) -> None:
@@ -8091,6 +8139,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeNotificationDeliveryStatusInput", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedback", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedbackInput", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailFeedbackPage", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedbackRequest", payload["persistence"])
         self.assertIn("RuntimeReportManagementInput", payload["persistence"])
         self.assertIn("RuntimeReportManagementEventRequest", payload["persistence"])
