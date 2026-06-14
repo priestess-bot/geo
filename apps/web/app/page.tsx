@@ -719,6 +719,7 @@ type RuntimeData = {
   p0aCredentialRequest: AuP0aCredentialRequest | null;
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
   p0bGoogleEnvironmentRequest: AuP0bGoogleEnvironmentRequest | null;
+  p0bGoogleManualBackfillRequest: AuP0bGoogleManualBackfillRequest | null;
   externalDependencyHandoff: AuExternalDependencyHandoff | null;
   externalDependencyClearance: AuExternalDependencyClearance | null;
   broaderPlatformRegistry: AuBroaderPlatformRegistry | null;
@@ -1416,6 +1417,97 @@ type AuP0bGoogleEnvironmentRequest = {
   };
 };
 
+type AuP0bGoogleManualBackfillRequest = {
+  p0b_google_manual_backfill_request_packet_version: string;
+  generated_at: string;
+  status: string;
+  manual_backfill_request_packet_ready: boolean;
+  manual_backfill_handoff_ready: boolean;
+  google_main_scoring_allowed: boolean;
+  p0b_google_manual_backfill_request_packet_hash: string;
+  summary?: {
+    source_manual_backfill_handoff_version?: string;
+    manual_backfill_handoff_status?: string;
+    hash_valid?: boolean;
+    manual_backfill_ready?: boolean;
+    manual_backfill_handoff_ready?: boolean;
+    manual_jsonl_env_var?: string;
+    target_jsonl_path?: string;
+    target_jsonl_path_source?: string;
+    manual_jsonl_path_redacted?: boolean;
+    template_path?: string;
+    template_manifest_path?: string;
+    verification_path?: string;
+    expected_record_count?: number;
+    record_count?: number;
+    expected_prompt_city_count?: number;
+    covered_prompt_city_count?: number;
+    expected_sample_size?: number;
+    prompt_count?: number;
+    geo_city_count?: number;
+    geo_cities?: string[];
+    missing_reason_count?: number;
+    missing_reasons?: string[];
+    required_field_count?: number;
+    operator_requirement_count?: number;
+    setup_command_count?: number;
+    verification_command_count?: number;
+    evidence_output_count?: number;
+    raw_answer_values_allowed?: boolean;
+    raw_citation_values_allowed?: boolean;
+    raw_asset_urls_allowed?: boolean;
+    content_redacted?: boolean;
+    next_command?: string;
+    post_update_verification_command?: string;
+    google_next_action?: string;
+  };
+  manual_backfill_request?: {
+    source_manual_backfill_handoff_version?: string;
+    status?: string;
+    hash_valid?: boolean;
+    manual_backfill_ready?: boolean;
+    ready?: boolean;
+    manual_jsonl_env_var?: string;
+    target_jsonl_path?: string;
+    target_jsonl_path_source?: string;
+    manual_jsonl_path_redacted?: boolean;
+    template_path?: string;
+    template_manifest_path?: string;
+    verification_path?: string;
+    expected_record_count?: number;
+    record_count?: number;
+    expected_prompt_city_count?: number;
+    covered_prompt_city_count?: number;
+    expected_sample_size?: number;
+    prompt_count?: number;
+    geo_cities?: string[];
+    file_sha256?: string;
+    verification_hash?: string;
+    missing_reason_count?: number;
+    missing_reasons?: string[];
+  };
+  required_fields?: string[];
+  operator_requirements?: string[];
+  setup_commands?: string[];
+  verification_commands?: string[];
+  evidence_outputs?: string[];
+  runtime_endpoints?: {
+    p0b_google_manual_backfill_request?: string;
+    p0b_google_execution_checklist?: string;
+    p0b_google_environment_request?: string;
+    external_dependency_handoff?: string;
+    external_dependency_clearance?: string;
+    next_work_item?: string;
+  };
+  hard_gate_commands?: string[];
+  source_p0b_google_execution_checklist?: {
+    google_execution_checklist_hash?: string;
+    google_execution_checklist_ready?: boolean;
+    google_main_scoring_allowed?: boolean;
+    path?: string;
+  };
+};
+
 type AuExternalDependencyHandoff = {
   external_dependency_handoff_version: string;
   generated_at: string;
@@ -2029,6 +2121,7 @@ const endpoints = {
   p0aCredentialRequest: "/v1/p0a-credential-request/au",
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
   p0bGoogleEnvironmentRequest: "/v1/p0b-google-environment-request/au",
+  p0bGoogleManualBackfillRequest: "/v1/p0b-google-manual-backfill-request/au",
   externalDependencyHandoff: "/v1/external-dependency-handoff/au",
   externalDependencyClearance: "/v1/external-dependency-clearance/au",
   broaderPlatformRegistry: "/v1/au-broader-platform-registry",
@@ -3445,6 +3538,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aCredentialRequest: endpoints.p0aCredentialRequest,
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest: endpoints.p0bGoogleEnvironmentRequest,
+    p0bGoogleManualBackfillRequest: endpoints.p0bGoogleManualBackfillRequest,
     externalDependencyHandoff: endpoints.externalDependencyHandoff,
     externalDependencyClearance: endpoints.externalDependencyClearance,
     broaderPlatformRegistry: endpoints.broaderPlatformRegistry,
@@ -3762,6 +3856,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aCredentialRequest,
     p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest,
+    p0bGoogleManualBackfillRequest,
     externalDependencyHandoff,
     externalDependencyClearance,
     broaderPlatformRegistry,
@@ -3815,6 +3910,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0aCredentialRequest | null>(baseUrl, paths.p0aCredentialRequest, null),
     fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
     fetchRuntimeEndpoint<AuP0bGoogleEnvironmentRequest | null>(baseUrl, paths.p0bGoogleEnvironmentRequest, null),
+    fetchRuntimeEndpoint<AuP0bGoogleManualBackfillRequest | null>(
+      baseUrl,
+      paths.p0bGoogleManualBackfillRequest,
+      null
+    ),
     fetchRuntimeEndpoint<AuExternalDependencyHandoff | null>(baseUrl, paths.externalDependencyHandoff, null),
     fetchRuntimeEndpoint<AuExternalDependencyClearance | null>(baseUrl, paths.externalDependencyClearance, null),
     fetchRuntimeEndpoint<AuBroaderPlatformRegistry | null>(baseUrl, paths.broaderPlatformRegistry, null),
@@ -3980,6 +4080,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aCredentialRequest,
     p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest,
+    p0bGoogleManualBackfillRequest,
     externalDependencyHandoff,
     externalDependencyClearance,
     broaderPlatformRegistry,
@@ -4038,6 +4139,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0aCredentialRequest: p0aCredentialRequest.payload,
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
       p0bGoogleEnvironmentRequest: p0bGoogleEnvironmentRequest.payload,
+      p0bGoogleManualBackfillRequest: p0bGoogleManualBackfillRequest.payload,
       externalDependencyHandoff: externalDependencyHandoff.payload,
       externalDependencyClearance: externalDependencyClearance.payload,
       broaderPlatformRegistry: broaderPlatformRegistry.payload,
@@ -4400,6 +4502,12 @@ export default async function Home({
   const p0bGoogleSelectorItems = p0bGoogleEnvironmentRequest?.selector_items || [];
   const p0bGoogleFileItems = p0bGoogleEnvironmentRequest?.file_items || [];
   const p0bGoogleDependencyItems = p0bGoogleEnvironmentRequest?.dependency_items || [];
+  const p0bGoogleManualBackfillRequest = data.p0bGoogleManualBackfillRequest;
+  const p0bGoogleManualBackfillRequestSummary = p0bGoogleManualBackfillRequest?.summary;
+  const p0bGoogleManualBackfillRequestMissing = p0bGoogleManualBackfillRequestSummary?.missing_reasons || [];
+  const p0bGoogleManualBackfillRequiredFields = p0bGoogleManualBackfillRequest?.required_fields || [];
+  const p0bGoogleManualBackfillOperatorRequirements = p0bGoogleManualBackfillRequest?.operator_requirements || [];
+  const p0bGoogleManualBackfillEvidenceOutputs = p0bGoogleManualBackfillRequest?.evidence_outputs || [];
   const externalDependencyHandoff = data.externalDependencyHandoff;
   const externalDependencySummary = externalDependencyHandoff?.summary;
   const externalDependencyGroups = externalDependencyHandoff?.dependency_groups || [];
@@ -5283,6 +5391,105 @@ export default async function Home({
             ))}
           </div>
           <code>{paths.p0bGoogleEnvironmentRequest}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>P0b Google manual backfill request packet</strong>
+            <span>
+              {p0bGoogleManualBackfillRequest?.p0b_google_manual_backfill_request_packet_version ||
+                "au_p0b_google_manual_backfill_request_packet_v1"}{" "}
+              · p0b_google_manual_backfill_request_packet_hash{" "}
+              {shortHash(p0bGoogleManualBackfillRequest?.p0b_google_manual_backfill_request_packet_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>
+              Packet ready {p0bGoogleManualBackfillRequest?.manual_backfill_request_packet_ready ? "yes" : "no"}
+            </span>
+            <span>
+              Manual handoff {p0bGoogleManualBackfillRequest?.manual_backfill_handoff_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              Google scoring {p0bGoogleManualBackfillRequest?.google_main_scoring_allowed ? "allowed" : "blocked"}
+            </span>
+            <span>
+              Records {p0bGoogleManualBackfillRequestSummary?.record_count || 0}/
+              {p0bGoogleManualBackfillRequestSummary?.expected_record_count || 0}
+            </span>
+            <span>
+              Prompt-city coverage {p0bGoogleManualBackfillRequestSummary?.covered_prompt_city_count || 0}/
+              {p0bGoogleManualBackfillRequestSummary?.expected_prompt_city_count || 0}
+            </span>
+            <span>Sample size {p0bGoogleManualBackfillRequestSummary?.expected_sample_size || 0}</span>
+            <span>Missing reasons {p0bGoogleManualBackfillRequestSummary?.missing_reason_count || 0}</span>
+            <span>Content redacted {p0bGoogleManualBackfillRequestSummary?.content_redacted ? "yes" : "no"}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>Manual JSONL env {p0bGoogleManualBackfillRequestSummary?.manual_jsonl_env_var || "none"}</span>
+            <span>Target JSONL {p0bGoogleManualBackfillRequestSummary?.target_jsonl_path || "none"}</span>
+            <span>Template {p0bGoogleManualBackfillRequestSummary?.template_path || "none"}</span>
+            <span>Template manifest {p0bGoogleManualBackfillRequestSummary?.template_manifest_path || "none"}</span>
+            <span>Verification {p0bGoogleManualBackfillRequestSummary?.verification_path || "none"}</span>
+            <span>
+              Missing {p0bGoogleManualBackfillRequestMissing.slice(0, 4).join(", ") || "none"}
+            </span>
+            <span>Next command {p0bGoogleManualBackfillRequestSummary?.next_command || "none"}</span>
+            <span>
+              Post-update verifier {p0bGoogleManualBackfillRequestSummary?.post_update_verification_command || "none"}
+            </span>
+            <span>Google next action {p0bGoogleManualBackfillRequestSummary?.google_next_action || "none"}</span>
+            <span>
+              Source checklist hash{" "}
+              {shortHash(
+                p0bGoogleManualBackfillRequest?.source_p0b_google_execution_checklist?.google_execution_checklist_hash
+              )}
+            </span>
+            <span>
+              {p0bGoogleManualBackfillRequest?.runtime_endpoints?.p0b_google_manual_backfill_request ||
+                "GET /v1/p0b-google-manual-backfill-request/au"}
+            </span>
+            <span>Hard gate: make verify-au-p0b-google-manual-backfill-request</span>
+            <span>
+              Ready manual hard gate:{" "}
+              {p0bGoogleManualBackfillRequest?.hard_gate_commands?.find((command) =>
+                command.endsWith("--require-manual-backfill-ready")
+              ) ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_manual_backfill_request_packet.py docs/runtime_preflight/au-p0b-google-manual-backfill-request-latest.json --require-manual-backfill-ready"}
+            </span>
+          </div>
+          <div className="dependencyGroupGrid">
+            <div className="dependencyGroup">
+              <strong>Required fields</strong>
+              <span>{p0bGoogleManualBackfillRequestSummary?.required_field_count || 0} fields</span>
+              <small>{p0bGoogleManualBackfillRequiredFields.slice(0, 4).join(" · ") || "none"}</small>
+              <small>{p0bGoogleManualBackfillRequiredFields.slice(4).join(" · ") || "all listed"}</small>
+            </div>
+            <div className="dependencyGroup">
+              <strong>Operator requirements</strong>
+              <span>{p0bGoogleManualBackfillRequestSummary?.operator_requirement_count || 0} checks</span>
+              <small>{p0bGoogleManualBackfillOperatorRequirements.slice(0, 2).join(" · ") || "none"}</small>
+              <small>{p0bGoogleManualBackfillOperatorRequirements.slice(2).join(" · ") || "all listed"}</small>
+            </div>
+            <div className="dependencyGroup">
+              <strong>Evidence outputs</strong>
+              <span>{p0bGoogleManualBackfillRequestSummary?.evidence_output_count || 0} files</span>
+              <small>{p0bGoogleManualBackfillEvidenceOutputs.slice(0, 2).join(" · ") || "none"}</small>
+              <small>{p0bGoogleManualBackfillEvidenceOutputs.slice(2).join(" · ") || "all listed"}</small>
+            </div>
+            <div className="dependencyGroup">
+              <strong>Redaction policy</strong>
+              <span>
+                answer {p0bGoogleManualBackfillRequestSummary?.raw_answer_values_allowed ? "allowed" : "blocked"} ·
+                citations {p0bGoogleManualBackfillRequestSummary?.raw_citation_values_allowed ? "allowed" : "blocked"}
+              </span>
+              <small>
+                assets {p0bGoogleManualBackfillRequestSummary?.raw_asset_urls_allowed ? "allowed" : "blocked"} · path
+                redacted {p0bGoogleManualBackfillRequestSummary?.manual_jsonl_path_redacted ? "yes" : "no"}
+              </small>
+              <small>status {p0bGoogleManualBackfillRequestSummary?.manual_backfill_handoff_status || "unknown"}</small>
+            </div>
+          </div>
+          <code>{paths.p0bGoogleManualBackfillRequest}</code>
         </div>
         <div className="broaderPlatformRegistry">
           <div className="launchRemediationHeader">

@@ -25,6 +25,9 @@ from scripts.build_au_external_dependency_handoff import compute_external_depend
 from scripts.build_au_p0b_google_environment_request_packet import (
     compute_p0b_google_environment_request_packet_hash,
 )
+from scripts.build_au_p0b_google_manual_backfill_request_packet import (
+    compute_p0b_google_manual_backfill_request_packet_hash,
+)
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
 from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTest
 from tests.test_au_p0a_execution_checklist import AuP0aExecutionChecklistTest
@@ -568,6 +571,77 @@ class ApiContractsTest(unittest.TestCase):
             compute_p0b_google_environment_request_packet_hash(payload),
         )
         self.assertNotIn("raw_value", json.dumps(payload))
+
+    def test_au_p0b_google_manual_backfill_request_endpoint_returns_current_handoff_packet(self) -> None:
+        helper = AuP0bGoogleExecutionChecklistTest()
+        helper.setUp()
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, execution_path, env_path, status_path, package_path, _runbook = helper._write_status_and_package(
+                temp_dir,
+                google_ready=False,
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH": str(
+                        Path(temp_dir) / "manual-backfill-request.json"
+                    ),
+                },
+                clear=False,
+            ):
+                response = self.client.get("/v1/p0b-google-manual-backfill-request/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(
+            payload["p0b_google_manual_backfill_request_packet_version"],
+            "au_p0b_google_manual_backfill_request_packet_v1",
+        )
+        self.assertEqual(payload["status"], "pass")
+        self.assertTrue(payload["manual_backfill_request_packet_ready"])
+        self.assertFalse(payload["manual_backfill_handoff_ready"])
+        self.assertFalse(payload["google_main_scoring_allowed"])
+        self.assertEqual(payload["summary"]["expected_record_count"], 120)
+        self.assertEqual(payload["summary"]["record_count"], 0)
+        self.assertEqual(payload["summary"]["expected_prompt_city_count"], 60)
+        self.assertEqual(payload["summary"]["covered_prompt_city_count"], 0)
+        self.assertIn("manual_backfill:file_missing", payload["summary"]["missing_reasons"])
+        self.assertEqual(payload["summary"]["next_command"], "make au-p0b-google-manual-template")
+        self.assertEqual(
+            payload["summary"]["post_update_verification_command"],
+            "make verify-au-p0b-google-manual-backfill",
+        )
+        self.assertTrue(payload["summary"]["content_redacted"])
+        self.assertFalse(payload["summary"]["raw_answer_values_allowed"])
+        self.assertFalse(payload["summary"]["raw_citation_values_allowed"])
+        self.assertFalse(payload["summary"]["raw_asset_urls_allowed"])
+        self.assertIn("answer_text", payload["required_fields"])
+        self.assertIn("citation_urls", payload["required_fields"])
+        self.assertIn("fill_answer_text_for_each_record", payload["operator_requirements"])
+        self.assertIn("make au-p0b-google-manual-template", payload["setup_commands"])
+        self.assertIn("make verify-au-p0b-google-manual-backfill", payload["verification_commands"])
+        self.assertIn(payload["summary"]["verification_path"], payload["evidence_outputs"])
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0b_google_manual_backfill_request"],
+            "GET /v1/p0b-google-manual-backfill-request/au",
+        )
+        self.assertIn("make verify-au-p0b-google-manual-backfill-request", payload["hard_gate_commands"])
+        self.assertTrue(payload["source_p0b_google_execution_checklist"]["google_execution_checklist_hash"])
+        self.assertEqual(
+            payload["p0b_google_manual_backfill_request_packet_hash"],
+            compute_p0b_google_manual_backfill_request_packet_hash(payload),
+        )
+        serialized = json.dumps(payload)
+        self.assertNotIn("Manual Google AI Mode answer", serialized)
+        self.assertNotIn("https://examplebrand.example", serialized)
+        self.assertNotIn("s3://manual-backfill", serialized)
 
     def test_au_broader_platform_registry_endpoint_returns_disabled_candidates(self) -> None:
         response = self.client.get("/v1/au-broader-platform-registry")
@@ -6411,6 +6485,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/p0a-credential-request/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-execution-checklist/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-environment-request/au", payload["persistence"])
+        self.assertIn("/v1/p0b-google-manual-backfill-request/au", payload["persistence"])
         self.assertIn("/v1/au-broader-platform-registry", payload["persistence"])
         self.assertIn("/v1/au-retest-scheduler-plan", payload["persistence"])
         self.assertIn("/v1/au-retest-execution-status", payload["persistence"])
