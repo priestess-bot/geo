@@ -60,6 +60,7 @@ from geno_core.models import (
     RuntimeEntityAliasAssignmentEscalationResult,
     RuntimeEntityAliasAssignmentNotificationResult,
     RuntimeEntityAliasAssignmentReassignmentResult,
+    RuntimeEntityAliasAssignmentWorkbench,
     RuntimeEntityAliasCandidate,
     RuntimeEntityAliasCandidateAssignmentQueueStats,
     RuntimeEntityAliasCandidateBatchReviewResult,
@@ -3764,6 +3765,124 @@ class PostgresEvidenceRepository:
             priority_counts=dict(sorted(priority_counts.items())),
             oldest_due_at=min(active_due_dates) if active_due_dates else None,
             next_due_at=min(future_due_dates) if future_due_dates else None,
+        )
+
+    def get_entity_alias_assignment_workbench(
+        self,
+        *,
+        project_id: str,
+        reviewer_id: str | None = None,
+        due_soon_before: datetime | None = None,
+        limit: int = 25,
+    ) -> RuntimeEntityAliasAssignmentWorkbench:
+        generated_at = datetime.now(UTC)
+        due_soon_cutoff = due_soon_before or generated_at + timedelta(days=7)
+        active_statuses = ("assigned", "in_progress", "blocked", "escalated")
+        normalized_reviewer_id = reviewer_id.strip() if reviewer_id else None
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        bounded_limit = min(limit, 200)
+        filters = ["project_id = %s", "assignment_status = ANY(%s)"]
+        params: list[Any] = [_uuid(project_id), list(active_statuses)]
+        if normalized_reviewer_id:
+            filters.append("assigned_to = %s")
+            params.append(normalized_reviewer_id)
+        where_clause = f"WHERE {' AND '.join(filters)}"
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT assignment_status, priority, due_at
+                FROM entity_alias_candidate_reviews
+                {where_clause}
+                """,
+                tuple(params),
+            )
+            summary_rows = _rows_dict(cursor.fetchall(), ("assignment_status", "priority", "due_at"))
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)}
+                FROM entity_alias_candidate_reviews
+                {where_clause}
+                ORDER BY
+                  CASE assignment_status
+                    WHEN 'escalated' THEN 0
+                    WHEN 'blocked' THEN 1
+                    WHEN 'in_progress' THEN 2
+                    WHEN 'assigned' THEN 3
+                    ELSE 4
+                  END,
+                  CASE WHEN due_at IS NOT NULL AND due_at < now() THEN 0 ELSE 1 END,
+                  CASE priority
+                    WHEN 'urgent' THEN 0
+                    WHEN 'high' THEN 1
+                    WHEN 'normal' THEN 2
+                    WHEN 'low' THEN 3
+                    ELSE 4
+                  END,
+                  due_at NULLS LAST,
+                  updated_at DESC,
+                  candidate_id
+                LIMIT %s
+                """,
+                (*params, bounded_limit),
+            )
+            rows = _rows_dict(cursor.fetchall(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
+            records = tuple(
+                RuntimeEntityAliasCandidateReview(
+                    review=row,
+                    audit_events=self._load_entity_alias_candidate_review_audit_events(
+                        cursor=cursor,
+                        project_id=str(row["project_id"]),
+                        review_id=str(row["id"]),
+                    ),
+                )
+                for row in rows
+            )
+        status_counts: dict[str, int] = {}
+        priority_counts: dict[str, int] = {}
+        due_dates: list[datetime] = []
+        future_due_dates: list[datetime] = []
+        overdue_count = 0
+        due_soon_count = 0
+        escalated_count = 0
+        blocked_count = 0
+        for row in summary_rows:
+            status = str(row.get("assignment_status") or "unassigned").strip().lower() or "unassigned"
+            priority = str(row.get("priority") or "normal").strip().lower() or "normal"
+            status_counts[status] = status_counts.get(status, 0) + 1
+            priority_counts[priority] = priority_counts.get(priority, 0) + 1
+            if status == "escalated":
+                escalated_count += 1
+            if status == "blocked":
+                blocked_count += 1
+            due_at = _coerce_datetime(row.get("due_at"))
+            if due_at is None:
+                continue
+            due_dates.append(due_at)
+            if due_at < generated_at:
+                overdue_count += 1
+            elif due_at <= due_soon_cutoff:
+                due_soon_count += 1
+                future_due_dates.append(due_at)
+            else:
+                future_due_dates.append(due_at)
+        return RuntimeEntityAliasAssignmentWorkbench(
+            project_id=project_id,
+            reviewer_id=normalized_reviewer_id,
+            generated_at=generated_at,
+            method_version="entity_alias_assignment_workbench_v1",
+            active_statuses=active_statuses,
+            total_count=len(summary_rows),
+            active_count=len(summary_rows),
+            overdue_count=overdue_count,
+            due_soon_count=due_soon_count,
+            escalated_count=escalated_count,
+            blocked_count=blocked_count,
+            status_counts=dict(sorted(status_counts.items())),
+            priority_counts=dict(sorted(priority_counts.items())),
+            oldest_due_at=min(due_dates) if due_dates else None,
+            next_due_at=min(future_due_dates) if future_due_dates else None,
+            records=records,
         )
 
     def enqueue_entity_alias_assignment_overdue_notifications(

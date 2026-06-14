@@ -3495,6 +3495,32 @@ def runtime_entity_alias_candidate_assignment_stats(
         close_repository_connection(repository)
 
 
+@app.get("/v1/entity-aliases/runtime/candidates/assignment-workbench")
+def runtime_entity_alias_assignment_workbench(
+    project_id: str = Query(min_length=1),
+    reviewer_id: str | None = Query(default=None, min_length=1, max_length=120),
+    due_soon_before: str | None = Query(default=None, min_length=1, max_length=80),
+    limit: int = Query(default=25, ge=1, le=200),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        workbench = repository.get_entity_alias_assignment_workbench(
+            project_id=project_id.strip(),
+            reviewer_id=reviewer_id.strip() if reviewer_id else None,
+            due_soon_before=_parse_optional_datetime(due_soon_before),
+            limit=limit,
+        )
+        return asdict(workbench)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/entity-aliases/runtime/candidates/assignment-notifications")
 def enqueue_runtime_entity_alias_assignment_notifications(
     payload: EntityAliasAssignmentNotificationRequest,
@@ -6217,6 +6243,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasCandidateReview",
             "RuntimeEntityAliasCandidateReviewPage",
             "RuntimeEntityAliasCandidateAssignmentQueueStats",
+            "RuntimeEntityAliasAssignmentWorkbench",
             "RuntimeEntityAliasAssignmentNotificationResult",
             "RuntimeEntityAliasAssignmentEscalationResult",
             "RuntimeEntityAliasAssignmentReassignmentResult",
@@ -6416,6 +6443,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasCandidateReview",
             "RuntimeEntityAliasCandidateReviewPage",
             "RuntimeEntityAliasCandidateAssignmentQueueStats",
+            "RuntimeEntityAliasAssignmentWorkbench",
             "RuntimeEntityAliasAssignmentEscalationResult",
             "RuntimeEntityAliasAssignmentReassignmentResult",
             "RuntimeEntityAliasCandidateBatchReviewResult",
@@ -6510,6 +6538,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/entity-aliases/runtime/candidates",
             "/v1/entity-aliases/runtime/candidates/reviews",
             "/v1/entity-aliases/runtime/candidates/assignment-stats",
+            "/v1/entity-aliases/runtime/candidates/assignment-workbench",
             "/v1/entity-aliases/runtime/candidates/assignment-notifications",
             "/v1/entity-aliases/runtime/candidates/assignment-escalations",
             "/v1/entity-aliases/runtime/candidates/assignment-reassignments",

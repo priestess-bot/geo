@@ -1068,6 +1068,26 @@ class RuntimeEntityAliasCandidateAssignmentQueueStats:
 
 
 @dataclass(frozen=True)
+class RuntimeEntityAliasAssignmentWorkbench:
+    project_id: str
+    reviewer_id: str | None
+    generated_at: datetime
+    method_version: str
+    active_statuses: tuple[str, ...]
+    total_count: int
+    active_count: int
+    overdue_count: int
+    due_soon_count: int
+    escalated_count: int
+    blocked_count: int
+    status_counts: dict[str, int]
+    priority_counts: dict[str, int]
+    oldest_due_at: datetime | None
+    next_due_at: datetime | None
+    records: tuple[RuntimeEntityAliasCandidateReview, ...]
+
+
+@dataclass(frozen=True)
 class RuntimeEntityAliasCandidateBatchReviewResult:
     batch_version: str
     requested_count: int

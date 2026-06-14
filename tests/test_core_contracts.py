@@ -91,6 +91,7 @@ from geno_core.models import (
     RuntimeEvidenceExport,
     RuntimeEntityAlias,
     RuntimeEntityAliasAssignmentReassignmentResult,
+    RuntimeEntityAliasAssignmentWorkbench,
     RuntimeEntityAliasAssignmentNotificationResult,
     RuntimeEntityAliasCandidateAssignmentQueueStats,
     RuntimeEntityAliasCandidateBatchReviewResult,
@@ -11087,6 +11088,95 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("SELECT assignment_status, priority, due_at, assigned_to", executed_sql)
         self.assertIn("FROM entity_alias_candidate_reviews", executed_sql)
         self.assertIn("WHERE project_id = %s", executed_sql)
+
+    def test_postgres_repository_builds_runtime_entity_alias_assignment_workbench(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        review_id = "60f1e5a4-d1d0-511e-b0c8-15dfc081ee9b"
+        brand_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+        now = datetime.now(UTC)
+        review_row = {
+            "id": review_id,
+            "project_id": project_id,
+            "candidate_id": "candidate-1",
+            "entity_id": brand_id,
+            "entity_kind": "brand",
+            "alias": "ExampleBrand AU",
+            "alias_type": "alias",
+            "source": "evidence_answer_text",
+            "confidence": 0.8,
+            "decision": "needs_review",
+            "reviewed_by": "analyst-1",
+            "reason": "review required",
+            "notes": "Needs reviewer assignment",
+            "assigned_to": "runtime-console",
+            "assigned_by": "lead@example.com",
+            "assignment_status": "escalated",
+            "assignment_note": "Escalated overdue assignment",
+            "assigned_at": now,
+            "due_at": now - timedelta(days=1),
+            "priority": "urgent",
+            "evidence_answer_run_ids": ["answer-run-1"],
+            "evidence_urls": ["https://examplebrand.com.au/reviews"],
+            "payload": {"source_panel": "runtime_entity_alias_candidates"},
+            "created_at": now,
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "089f8f43-d492-5600-85de-8c01956ab37e",
+            "project_id": project_id,
+            "event_type": "entity_alias_candidate_assignment_reassigned",
+            "actor_type": "user",
+            "actor_id": "lead@example.com",
+            "target_type": "entity_alias_candidate_review",
+            "target_id": review_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {"from_assignment_status": "escalated"},
+            "output_refs": {"entity_alias_candidate_review_ids": [review_id]},
+            "method_version": "entity_alias_candidate_assignment_reassignment_v1",
+            "reason": "rebalance escalated assignment queue",
+            "created_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                [
+                    {"assignment_status": "escalated", "priority": "urgent", "due_at": now - timedelta(days=1)},
+                    {"assignment_status": "assigned", "priority": "high", "due_at": now + timedelta(days=2)},
+                    {"assignment_status": "blocked", "priority": "normal", "due_at": now + timedelta(days=10)},
+                ],
+                [review_row],
+                [audit_row],
+            ]
+        )
+
+        workbench = PostgresEvidenceRepository(connection).get_entity_alias_assignment_workbench(
+            project_id=project_id,
+            reviewer_id="runtime-console",
+            due_soon_before=now + timedelta(days=7),
+            limit=8,
+        )
+
+        self.assertIsInstance(workbench, RuntimeEntityAliasAssignmentWorkbench)
+        self.assertEqual(workbench.method_version, "entity_alias_assignment_workbench_v1")
+        self.assertEqual(workbench.reviewer_id, "runtime-console")
+        self.assertEqual(workbench.total_count, 3)
+        self.assertEqual(workbench.active_count, 3)
+        self.assertEqual(workbench.overdue_count, 1)
+        self.assertEqual(workbench.due_soon_count, 1)
+        self.assertEqual(workbench.escalated_count, 1)
+        self.assertEqual(workbench.blocked_count, 1)
+        self.assertEqual(workbench.status_counts["escalated"], 1)
+        self.assertEqual(workbench.priority_counts["urgent"], 1)
+        self.assertEqual(workbench.records[0].review["assignment_status"], "escalated")
+        self.assertEqual(workbench.records[0].audit_events[0]["event_type"], "entity_alias_candidate_assignment_reassigned")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("SELECT assignment_status, priority, due_at", executed_sql)
+        self.assertIn("FROM entity_alias_candidate_reviews", executed_sql)
+        self.assertIn("assignment_status = ANY(%s)", executed_sql)
+        self.assertIn("assigned_to = %s", executed_sql)
+        self.assertIn("ORDER BY", executed_sql)
+        self.assertIn("LIMIT %s", executed_sql)
+        self.assertIn("FROM audit_events", executed_sql)
 
     def test_postgres_repository_enqueues_entity_alias_assignment_overdue_notifications(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
