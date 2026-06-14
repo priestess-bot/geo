@@ -716,6 +716,7 @@ type RuntimeData = {
   launchRemediationPlan: AuLaunchRemediationPlan | null;
   p0aEnvironmentChecklist: AuP0aEnvironmentChecklist | null;
   p0aExecutionChecklist: AuP0aExecutionChecklist | null;
+  p0aCredentialRequest: AuP0aCredentialRequest | null;
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
   externalDependencyHandoff: AuExternalDependencyHandoff | null;
   externalDependencyClearance: AuExternalDependencyClearance | null;
@@ -1259,6 +1260,64 @@ type AuNextWorkItemPacket = {
     external_dependency_clearance?: string;
   };
   hard_gate_commands?: string[];
+};
+
+type AuP0aCredentialRequest = {
+  p0a_credential_request_packet_version: string;
+  generated_at: string;
+  status: string;
+  credential_request_packet_ready: boolean;
+  credential_handoff_ready: boolean;
+  ready_for_design_partner: boolean;
+  p0a_credential_request_packet_hash: string;
+  summary?: {
+    target_env_file?: string;
+    credential_handoff_ready?: boolean;
+    missing_required_count?: number;
+    missing_required?: string[];
+    credential_item_count?: number;
+    required_item_count?: number;
+    present_required_count?: number;
+    owner_counts?: Record<string, number>;
+    missing_required_by_owner?: Record<string, string[]>;
+    setup_command_count?: number;
+    verification_command_count?: number;
+    evidence_output_count?: number;
+    raw_secret_values_allowed?: boolean;
+    forbidden_exact_secret_fields_redacted?: boolean;
+    next_command?: string;
+    post_update_verification_command?: string;
+  };
+  requested_credentials?: Array<{
+    name: string;
+    required?: boolean;
+    present?: boolean;
+    source?: string;
+    owner_hint?: string;
+    accepted_injection_methods?: string[];
+    env_file_key?: string;
+    value_length?: number;
+    sha256_prefix?: string;
+    secret_redacted?: boolean;
+    post_update_checks?: string[];
+  }>;
+  setup_commands?: string[];
+  verification_commands?: string[];
+  evidence_outputs?: string[];
+  runtime_endpoints?: {
+    p0a_credential_request?: string;
+    p0a_execution_checklist?: string;
+    p0a_environment_checklist?: string;
+    next_work_item?: string;
+    external_dependency_handoff?: string;
+  };
+  hard_gate_commands?: string[];
+  source_p0a_execution_checklist?: {
+    p0a_execution_checklist_hash?: string;
+    p0a_execution_checklist_ready?: boolean;
+    ready_for_design_partner?: boolean;
+    path?: string;
+  };
 };
 
 type AuExternalDependencyHandoff = {
@@ -1871,6 +1930,7 @@ const endpoints = {
   launchRemediationPlan: "/v1/launch-remediation-plan/au",
   p0aEnvironmentChecklist: "/v1/p0a-environment-checklist/au",
   p0aExecutionChecklist: "/v1/p0a-execution-checklist/au",
+  p0aCredentialRequest: "/v1/p0a-credential-request/au",
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
   externalDependencyHandoff: "/v1/external-dependency-handoff/au",
   externalDependencyClearance: "/v1/external-dependency-clearance/au",
@@ -3285,6 +3345,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     launchRemediationPlan: endpoints.launchRemediationPlan,
     p0aEnvironmentChecklist: endpoints.p0aEnvironmentChecklist,
     p0aExecutionChecklist: endpoints.p0aExecutionChecklist,
+    p0aCredentialRequest: endpoints.p0aCredentialRequest,
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
     externalDependencyHandoff: endpoints.externalDependencyHandoff,
     externalDependencyClearance: endpoints.externalDependencyClearance,
@@ -3600,6 +3661,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     launchRemediationPlan,
     p0aEnvironmentChecklist,
     p0aExecutionChecklist,
+    p0aCredentialRequest,
     p0bGoogleExecutionChecklist,
     externalDependencyHandoff,
     externalDependencyClearance,
@@ -3651,6 +3713,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuLaunchRemediationPlan | null>(baseUrl, paths.launchRemediationPlan, null),
     fetchRuntimeEndpoint<AuP0aEnvironmentChecklist | null>(baseUrl, paths.p0aEnvironmentChecklist, null),
     fetchRuntimeEndpoint<AuP0aExecutionChecklist | null>(baseUrl, paths.p0aExecutionChecklist, null),
+    fetchRuntimeEndpoint<AuP0aCredentialRequest | null>(baseUrl, paths.p0aCredentialRequest, null),
     fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
     fetchRuntimeEndpoint<AuExternalDependencyHandoff | null>(baseUrl, paths.externalDependencyHandoff, null),
     fetchRuntimeEndpoint<AuExternalDependencyClearance | null>(baseUrl, paths.externalDependencyClearance, null),
@@ -3814,6 +3877,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     launchRemediationPlan,
     p0aEnvironmentChecklist,
     p0aExecutionChecklist,
+    p0aCredentialRequest,
     p0bGoogleExecutionChecklist,
     externalDependencyHandoff,
     externalDependencyClearance,
@@ -3870,6 +3934,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       launchRemediationPlan: launchRemediationPlan.payload,
       p0aEnvironmentChecklist: p0aEnvironmentChecklist.payload,
       p0aExecutionChecklist: p0aExecutionChecklist.payload,
+      p0aCredentialRequest: p0aCredentialRequest.payload,
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
       externalDependencyHandoff: externalDependencyHandoff.payload,
       externalDependencyClearance: externalDependencyClearance.payload,
@@ -4210,6 +4275,11 @@ export default async function Home({
   const missingP0aArtifacts = p0aExecutionSummary?.missing_artifacts || [];
   const p0aExecutionBlockers = p0aExecutionSummary?.remaining_blockers || [];
   const missingP0aCredentials = p0aExecutionSummary?.credential_handoff_missing_required || [];
+  const p0aCredentialRequest = data.p0aCredentialRequest;
+  const p0aCredentialRequestSummary = p0aCredentialRequest?.summary;
+  const requestedP0aCredentials = p0aCredentialRequest?.requested_credentials || [];
+  const p0aCredentialRequestMissing = p0aCredentialRequestSummary?.missing_required || [];
+  const p0aCredentialRequestEvidenceOutputs = p0aCredentialRequest?.evidence_outputs || [];
   const p0bGoogleExecutionChecklist = data.p0bGoogleExecutionChecklist;
   const p0bGoogleExecutionSummary = p0bGoogleExecutionChecklist?.summary;
   const missingP0bSmokeEnv = p0bGoogleExecutionSummary?.missing_required_environment || [];
@@ -5200,6 +5270,84 @@ export default async function Home({
             </span>
           </div>
           <code>{paths.customerHandoffReadiness}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>P0a credential request packet</strong>
+            <span>
+              {p0aCredentialRequest?.p0a_credential_request_packet_version ||
+                "au_p0a_credential_request_packet_v1"} · p0a_credential_request_packet_hash{" "}
+              {shortHash(p0aCredentialRequest?.p0a_credential_request_packet_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>Packet ready {p0aCredentialRequest?.credential_request_packet_ready ? "yes" : "no"}</span>
+            <span>Credential handoff {p0aCredentialRequest?.credential_handoff_ready ? "ready" : "blocked"}</span>
+            <span>Design partner {p0aCredentialRequest?.ready_for_design_partner ? "ready" : "blocked"}</span>
+            <span>Missing required {p0aCredentialRequestSummary?.missing_required_count || 0}</span>
+            <span>Requested items {p0aCredentialRequestSummary?.credential_item_count || 0}</span>
+            <span>Raw secret allowed {p0aCredentialRequestSummary?.raw_secret_values_allowed ? "yes" : "no"}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>Target env file {p0aCredentialRequestSummary?.target_env_file || "none"}</span>
+            <span>
+              Missing {p0aCredentialRequestMissing.join(", ") || "none"}
+            </span>
+            <span>
+              Provider owner missing{" "}
+              {(p0aCredentialRequestSummary?.missing_required_by_owner?.provider_admin || []).join(", ") || "none"}
+            </span>
+            <span>
+              Runtime DB owner missing{" "}
+              {(p0aCredentialRequestSummary?.missing_required_by_owner?.runtime_database_admin || []).join(", ") ||
+                "none"}
+            </span>
+            <span>Next command {p0aCredentialRequestSummary?.next_command || "none"}</span>
+            <span>Post-update verifier {p0aCredentialRequestSummary?.post_update_verification_command || "none"}</span>
+            <span>
+              Source checklist hash{" "}
+              {shortHash(p0aCredentialRequest?.source_p0a_execution_checklist?.p0a_execution_checklist_hash)}
+            </span>
+            <span>
+              {p0aCredentialRequest?.runtime_endpoints?.p0a_credential_request ||
+                "GET /v1/p0a-credential-request/au"}
+            </span>
+            <span>Hard gate: make verify-au-p0a-credential-request</span>
+            <span>
+              Ready env hard gate:{" "}
+              {p0aCredentialRequest?.hard_gate_commands?.find((command) =>
+                command.endsWith("--require-ready-environment")
+              ) ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py docs/runtime_preflight/au-p0a-env-latest.json --require-ready-environment"}
+            </span>
+          </div>
+          {requestedP0aCredentials.length ? (
+            <div className="dependencyGroupGrid">
+              {requestedP0aCredentials.map((credential) => (
+                <div className="dependencyGroup" key={credential.name}>
+                  <strong>{credential.name}</strong>
+                  <span>
+                    {credential.owner_hint || "owner"} · {credential.present ? "present" : "missing"}
+                  </span>
+                  <small>
+                    {credential.env_file_key || credential.name} · source {credential.source || "missing"}
+                  </small>
+                  <small>
+                    methods {(credential.accepted_injection_methods || []).slice(0, 3).join(" · ") || "none"}
+                  </small>
+                  <small>redacted {credential.secret_redacted ? "yes" : "no"}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {p0aCredentialRequestEvidenceOutputs.length ? (
+            <ul className="plainList compactList">
+              {p0aCredentialRequestEvidenceOutputs.slice(0, 5).map((output) => (
+                <li key={output}>{output}</li>
+              ))}
+            </ul>
+          ) : null}
+          <code>{paths.p0aCredentialRequest}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">
