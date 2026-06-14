@@ -147,6 +147,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn('p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au"', page_source)
         self.assertIn('p0bGoogleEnvironmentRequest: "/v1/p0b-google-environment-request/au"', page_source)
         self.assertIn('p0bGoogleEnvironmentFulfillment: "/v1/p0b-google-environment-fulfillment/au"', page_source)
+        self.assertIn('p0bGoogleEnvironmentClearance: "/v1/p0b-google-environment-clearance/au"', page_source)
         self.assertIn('p0bGoogleManualBackfillRequest: "/v1/p0b-google-manual-backfill-request/au"', page_source)
         self.assertIn(
             'p0bGoogleManualBackfillFulfillment: "/v1/p0b-google-manual-backfill-fulfillment/au"',
@@ -396,6 +397,15 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("environment_fulfilled", page_source)
         self.assertIn("p0bGoogleEnvironmentFulfillmentItems", page_source)
         self.assertIn("paths.p0bGoogleEnvironmentFulfillment", page_source)
+        self.assertIn("P0b Google environment clearance", page_source)
+        self.assertIn("p0b_google_environment_clearance_hash", page_source)
+        self.assertIn("GET /v1/p0b-google-environment-clearance/au", page_source)
+        self.assertIn("make verify-au-p0b-google-environment-clearance", page_source)
+        self.assertIn("environment_clearance_ready", page_source)
+        self.assertIn("p0bGoogleEnvironmentClearanceItems", page_source)
+        self.assertIn("p0bGoogleEnvironmentClearanceSteps", page_source)
+        self.assertIn("p0bGoogleEnvironmentClearanceValidation", page_source)
+        self.assertIn("paths.p0bGoogleEnvironmentClearance", page_source)
         self.assertIn("P0b Google manual backfill request packet", page_source)
         self.assertIn("p0b_google_manual_backfill_request_packet_hash", page_source)
         self.assertIn("GET /v1/p0b-google-manual-backfill-request/au", page_source)

@@ -725,6 +725,7 @@ type RuntimeData = {
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
   p0bGoogleEnvironmentRequest: AuP0bGoogleEnvironmentRequest | null;
   p0bGoogleEnvironmentFulfillment: AuP0bGoogleEnvironmentFulfillment | null;
+  p0bGoogleEnvironmentClearance: AuP0bGoogleEnvironmentClearance | null;
   p0bGoogleManualBackfillRequest: AuP0bGoogleManualBackfillRequest | null;
   p0bGoogleManualBackfillFulfillment: AuP0bGoogleManualBackfillFulfillment | null;
   p0bGooglePhaseExecutionRequest: AuP0bGooglePhaseExecutionRequest | null;
@@ -2049,6 +2050,94 @@ type AuP0bGoogleEnvironmentFulfillment = {
   hard_gate_commands?: string[];
 };
 
+type AuP0bGoogleEnvironmentClearance = {
+  p0b_google_environment_clearance_version: string;
+  generated_at: string;
+  status: string;
+  environment_clearance_packet_ready: boolean;
+  environment_fulfilled: boolean;
+  environment_clearance_ready: boolean;
+  ready_for_next_clearance_step: boolean;
+  blocked_by_prerequisite_step: boolean;
+  p0b_google_environment_clearance_hash: string;
+  summary?: {
+    required_count?: number;
+    fulfilled_required_count?: number;
+    missing_required_count?: number;
+    missing_required?: string[];
+    presence_mismatch_count?: number;
+    presence_mismatches?: string[];
+    missing_required_by_owner?: Record<string, string[]>;
+    environment_fulfilled?: boolean;
+    environment_fulfillment_ready?: boolean;
+    ready_for_playwright_smoke?: boolean;
+    ready_for_full_google_run?: boolean;
+    google_main_scoring_allowed?: boolean;
+    environment_handoff_ready?: boolean;
+    database_url_reuse_available?: boolean;
+    blocked_by_prerequisite_step?: boolean;
+    prerequisite_step_id?: string;
+    prerequisite_step_ready?: boolean;
+    current_global_clearance_step_id?: string;
+    target_clearance_step_id?: string;
+    target_clearance_step_can_start?: boolean;
+    target_clearance_step_ready?: boolean;
+    next_action?: string;
+    next_command?: string;
+    strict_gate_command?: string;
+    ready_smoke_strict_gate_command?: string;
+    operator_step_count?: number;
+    post_update_validation_command_count?: number;
+    raw_secret_values_allowed?: boolean;
+    selector_values_allowed?: boolean;
+    database_urls_allowed?: boolean;
+  };
+  environment_clearance_items?: Array<{
+    key?: string;
+    item_type?: string;
+    name?: string;
+    required?: boolean;
+    fulfilled?: boolean;
+    requested_present?: boolean;
+    environment_present?: boolean;
+    presence_mismatch?: boolean;
+    request_source?: string;
+    environment_source?: string;
+    owner_hint?: string;
+    env_file_key?: string;
+    value_length?: number;
+    sha256_prefix?: string;
+    secret_redacted?: boolean;
+    blocking_reasons?: string[];
+  }>;
+  operator_steps?: Array<{
+    order?: number;
+    id?: string;
+    command?: string;
+    purpose?: string;
+    external_call_risk?: string;
+    next_action?: string;
+    blocked?: boolean;
+  }>;
+  post_update_validation_sequence?: string[];
+  runtime_endpoints?: {
+    p0b_google_environment_clearance?: string;
+    p0b_google_environment_request?: string;
+    p0b_google_environment_fulfillment?: string;
+    p0b_google_execution_checklist?: string;
+    p0a_real_batch_clearance?: string;
+    external_dependency_clearance?: string;
+    delivery_progress?: string;
+  };
+  hard_gate_commands?: string[];
+  source_artifacts?: {
+    environment_request?: { hash?: string };
+    playwright_env_report?: { hash?: string };
+    environment_fulfillment?: { hash?: string };
+    external_dependency_clearance?: { hash?: string };
+  };
+};
+
 type AuP0bGoogleManualBackfillRequest = {
   p0b_google_manual_backfill_request_packet_version: string;
   generated_at: string;
@@ -3013,6 +3102,7 @@ const endpoints = {
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
   p0bGoogleEnvironmentRequest: "/v1/p0b-google-environment-request/au",
   p0bGoogleEnvironmentFulfillment: "/v1/p0b-google-environment-fulfillment/au",
+  p0bGoogleEnvironmentClearance: "/v1/p0b-google-environment-clearance/au",
   p0bGoogleManualBackfillRequest: "/v1/p0b-google-manual-backfill-request/au",
   p0bGoogleManualBackfillFulfillment: "/v1/p0b-google-manual-backfill-fulfillment/au",
   p0bGooglePhaseExecutionRequest: "/v1/p0b-google-phase-execution-request/au",
@@ -4440,6 +4530,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest: endpoints.p0bGoogleEnvironmentRequest,
     p0bGoogleEnvironmentFulfillment: endpoints.p0bGoogleEnvironmentFulfillment,
+    p0bGoogleEnvironmentClearance: endpoints.p0bGoogleEnvironmentClearance,
     p0bGoogleManualBackfillRequest: endpoints.p0bGoogleManualBackfillRequest,
     p0bGoogleManualBackfillFulfillment: endpoints.p0bGoogleManualBackfillFulfillment,
     p0bGooglePhaseExecutionRequest: endpoints.p0bGooglePhaseExecutionRequest,
@@ -4768,6 +4859,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest,
     p0bGoogleEnvironmentFulfillment,
+    p0bGoogleEnvironmentClearance,
     p0bGoogleManualBackfillRequest,
     p0bGoogleManualBackfillFulfillment,
     p0bGooglePhaseExecutionRequest,
@@ -4834,6 +4926,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0bGoogleEnvironmentFulfillment | null>(
       baseUrl,
       paths.p0bGoogleEnvironmentFulfillment,
+      null
+    ),
+    fetchRuntimeEndpoint<AuP0bGoogleEnvironmentClearance | null>(
+      baseUrl,
+      paths.p0bGoogleEnvironmentClearance,
       null
     ),
     fetchRuntimeEndpoint<AuP0bGoogleManualBackfillRequest | null>(
@@ -5027,6 +5124,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest,
     p0bGoogleEnvironmentFulfillment,
+    p0bGoogleEnvironmentClearance,
     p0bGoogleManualBackfillRequest,
     p0bGoogleManualBackfillFulfillment,
     p0bGooglePhaseExecutionRequest,
@@ -5096,6 +5194,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
       p0bGoogleEnvironmentRequest: p0bGoogleEnvironmentRequest.payload,
       p0bGoogleEnvironmentFulfillment: p0bGoogleEnvironmentFulfillment.payload,
+      p0bGoogleEnvironmentClearance: p0bGoogleEnvironmentClearance.payload,
       p0bGoogleManualBackfillRequest: p0bGoogleManualBackfillRequest.payload,
       p0bGoogleManualBackfillFulfillment: p0bGoogleManualBackfillFulfillment.payload,
       p0bGooglePhaseExecutionRequest: p0bGooglePhaseExecutionRequest.payload,
@@ -5499,6 +5598,17 @@ export default async function Home({
     p0bGoogleEnvironmentFulfillmentSummary?.presence_mismatches || [];
   const p0bGoogleEnvironmentFulfillmentItems =
     p0bGoogleEnvironmentFulfillment?.environment_fulfillment_items || [];
+  const p0bGoogleEnvironmentClearance = data.p0bGoogleEnvironmentClearance;
+  const p0bGoogleEnvironmentClearanceSummary = p0bGoogleEnvironmentClearance?.summary;
+  const p0bGoogleEnvironmentClearanceMissing =
+    p0bGoogleEnvironmentClearanceSummary?.missing_required || [];
+  const p0bGoogleEnvironmentClearanceMismatches =
+    p0bGoogleEnvironmentClearanceSummary?.presence_mismatches || [];
+  const p0bGoogleEnvironmentClearanceItems =
+    p0bGoogleEnvironmentClearance?.environment_clearance_items || [];
+  const p0bGoogleEnvironmentClearanceSteps = p0bGoogleEnvironmentClearance?.operator_steps || [];
+  const p0bGoogleEnvironmentClearanceValidation =
+    p0bGoogleEnvironmentClearance?.post_update_validation_sequence || [];
   const p0bGoogleManualBackfillRequest = data.p0bGoogleManualBackfillRequest;
   const p0bGoogleManualBackfillRequestSummary = p0bGoogleManualBackfillRequest?.summary;
   const p0bGoogleManualBackfillRequestMissing = p0bGoogleManualBackfillRequestSummary?.missing_reasons || [];
@@ -6531,6 +6641,121 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.p0bGoogleEnvironmentFulfillment}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>P0b Google environment clearance</strong>
+            <span>
+              {p0bGoogleEnvironmentClearance?.p0b_google_environment_clearance_version ||
+                "au_p0b_google_environment_clearance_v1"}{" "}
+              · p0b_google_environment_clearance_hash{" "}
+              {shortHash(p0bGoogleEnvironmentClearance?.p0b_google_environment_clearance_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>
+              Clearance packet{" "}
+              {p0bGoogleEnvironmentClearance?.environment_clearance_packet_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              Environment {p0bGoogleEnvironmentClearance?.environment_fulfilled ? "fulfilled" : "blocked"}
+            </span>
+            <span>
+              Clearance ready {p0bGoogleEnvironmentClearance?.environment_clearance_ready ? "yes" : "no"}
+            </span>
+            <span>
+              Next clearance {p0bGoogleEnvironmentClearance?.ready_for_next_clearance_step ? "ready" : "blocked"}
+            </span>
+            <span>
+              Prerequisite blocked {p0bGoogleEnvironmentClearance?.blocked_by_prerequisite_step ? "yes" : "no"}
+            </span>
+            <span>
+              Fulfilled required {p0bGoogleEnvironmentClearanceSummary?.fulfilled_required_count || 0}/
+              {p0bGoogleEnvironmentClearanceSummary?.required_count || 0}
+            </span>
+            <span>Missing required {p0bGoogleEnvironmentClearanceSummary?.missing_required_count || 0}</span>
+            <span>Presence mismatches {p0bGoogleEnvironmentClearanceSummary?.presence_mismatch_count || 0}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>
+              Current global step {p0bGoogleEnvironmentClearanceSummary?.current_global_clearance_step_id || "none"}
+            </span>
+            <span>Target step {p0bGoogleEnvironmentClearanceSummary?.target_clearance_step_id || "none"}</span>
+            <span>Prerequisite {p0bGoogleEnvironmentClearanceSummary?.prerequisite_step_id || "none"}</span>
+            <span>Next action {p0bGoogleEnvironmentClearanceSummary?.next_action || "none"}</span>
+            <span>Next command {p0bGoogleEnvironmentClearanceSummary?.next_command || "none"}</span>
+            <span>Missing {p0bGoogleEnvironmentClearanceMissing.slice(0, 6).join(", ") || "none"}</span>
+            <span>Mismatches {p0bGoogleEnvironmentClearanceMismatches.join(", ") || "none"}</span>
+            <span>
+              Raw secret allowed {p0bGoogleEnvironmentClearanceSummary?.raw_secret_values_allowed ? "yes" : "no"}
+            </span>
+            <span>
+              Selector allowed {p0bGoogleEnvironmentClearanceSummary?.selector_values_allowed ? "yes" : "no"}
+            </span>
+            <span>
+              DB URL allowed {p0bGoogleEnvironmentClearanceSummary?.database_urls_allowed ? "yes" : "no"}
+            </span>
+            <span>
+              Request hash {shortHash(p0bGoogleEnvironmentClearance?.source_artifacts?.environment_request?.hash)}
+            </span>
+            <span>
+              Env hash {shortHash(p0bGoogleEnvironmentClearance?.source_artifacts?.playwright_env_report?.hash)}
+            </span>
+            <span>
+              Fulfillment hash{" "}
+              {shortHash(p0bGoogleEnvironmentClearance?.source_artifacts?.environment_fulfillment?.hash)}
+            </span>
+            <span>
+              {p0bGoogleEnvironmentClearance?.runtime_endpoints?.p0b_google_environment_clearance ||
+                "GET /v1/p0b-google-environment-clearance/au"}
+            </span>
+            <span>Hard gate: make verify-au-p0b-google-environment-clearance</span>
+            <span>
+              Strict gate:{" "}
+              {p0bGoogleEnvironmentClearance?.hard_gate_commands?.find((command) =>
+                command.endsWith("--require-cleared")
+              ) ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_environment_clearance.py docs/runtime_preflight/au-p0b-google-environment-clearance-latest.json --require-cleared"}
+            </span>
+          </div>
+          {p0bGoogleEnvironmentClearanceItems.length ? (
+            <div className="dependencyGroupGrid">
+              {p0bGoogleEnvironmentClearanceItems.slice(0, 8).map((item) => (
+                <div className="dependencyGroup" key={item.key || item.name}>
+                  <strong>{item.key || item.name}</strong>
+                  <span>
+                    {item.owner_hint || "owner"} · {item.fulfilled ? "fulfilled" : "missing"}
+                  </span>
+                  <small>
+                    request {item.requested_present ? "present" : "missing"} · env{" "}
+                    {item.environment_present ? "present" : "missing"}
+                  </small>
+                  <small>
+                    source {item.environment_source || "missing"} · hash {shortHash(item.sha256_prefix)}
+                  </small>
+                  <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "gate clear"}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {p0bGoogleEnvironmentClearanceSteps.length ? (
+            <div className="handoffBoundary">
+              {p0bGoogleEnvironmentClearanceSteps.slice(0, 6).map((step) => (
+                <span key={step.id || step.order}>
+                  {step.order}. {step.id}: {step.command || "none"}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {p0bGoogleEnvironmentClearanceValidation.length ? (
+            <div className="handoffBoundary">
+              <span>
+                Validation sequence{" "}
+                {p0bGoogleEnvironmentClearanceValidation.slice(0, 5).join(" -> ") || "none"}
+              </span>
+            </div>
+          ) : null}
+          <code>{paths.p0bGoogleEnvironmentClearance}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">

@@ -26,6 +26,7 @@ from scripts.build_au_external_dependency_handoff import compute_external_depend
 from scripts.build_au_p0b_google_environment_request_packet import (
     compute_p0b_google_environment_request_packet_hash,
 )
+from scripts.build_au_p0b_google_environment_clearance import compute_p0b_google_environment_clearance_hash
 from scripts.build_au_p0b_google_manual_backfill_request_packet import (
     compute_p0b_google_manual_backfill_request_packet_hash,
 )
@@ -38,11 +39,13 @@ from scripts.build_au_p0b_google_phase_execution_request_packet import (
 from scripts.build_au_p0b_google_phase_execution_fulfillment import (
     compute_p0b_google_phase_execution_fulfillment_hash,
 )
+from scripts.run_au_external_dependency_clearance import run_au_external_dependency_clearance
 from scripts.build_au_p0a_real_batch_request_packet import compute_p0a_real_batch_request_packet_hash
 from scripts.build_au_p0a_real_batch_fulfillment import compute_p0a_real_batch_fulfillment_hash
 from scripts.build_au_p0a_credential_clearance import compute_p0a_credential_clearance_hash
 from scripts.build_au_p0a_real_batch_clearance import compute_p0a_real_batch_clearance_hash
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
+from tests.test_au_external_dependency_clearance import AuExternalDependencyClearanceTest
 from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTest
 from tests.test_au_p0a_execution_checklist import AuP0aExecutionChecklistTest
 from tests.test_au_p0b_google_execution_checklist import AuP0bGoogleExecutionChecklistTest
@@ -726,6 +729,93 @@ class ApiContractsTest(unittest.TestCase):
         )
         self.assertIn("make verify-au-p0b-google-environment-fulfillment", payload["hard_gate_commands"])
         self.assertTrue(any(command.endswith("--require-fulfilled") for command in payload["hard_gate_commands"]))
+        self.assertNotIn("postgres://", json.dumps(payload))
+        self.assertEqual(_find_forbidden_exact_fields(payload), [])
+
+    def test_au_p0b_google_environment_clearance_endpoint_returns_current_clearance_packet(self) -> None:
+        helper = AuP0bGoogleExecutionChecklistTest()
+        helper.setUp()
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, execution_path, env_path, status_path, package_path, _runbook = helper._write_status_and_package(
+                temp_dir,
+                google_ready=False,
+            )
+            p0a_env_path = _write_p0a_env_report_with_database(temp_dir)
+            clearance_helper = AuExternalDependencyClearanceTest()
+            clearance_helper.setUp()
+            handoff_path = clearance_helper._write_handoff(temp_dir)
+            external_clearance_path = Path(temp_dir) / "external-clearance.json"
+            external_clearance = run_au_external_dependency_clearance(
+                handoff_path=handoff_path,
+                output_path=external_clearance_path,
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            clearance_path = Path(temp_dir) / "environment-clearance.json"
+            with patch.dict(
+                os.environ,
+                {
+                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GENO_AU_P0A_ENV_OUTPUT_PATH": str(p0a_env_path),
+                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH": str(
+                        Path(temp_dir) / "environment-request.json"
+                    ),
+                    "GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH": str(
+                        Path(temp_dir) / "environment-fulfillment.json"
+                    ),
+                    "GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH": str(handoff_path),
+                    "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH": str(external_clearance_path),
+                    "GENO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH": str(clearance_path),
+                },
+                clear=False,
+            ), patch("geno_api.main.au_external_dependency_clearance", return_value=external_clearance):
+                response = self.client.get("/v1/p0b-google-environment-clearance/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(
+            payload["p0b_google_environment_clearance_version"],
+            "au_p0b_google_environment_clearance_v1",
+        )
+        self.assertEqual(payload["status"], "pass")
+        self.assertTrue(payload["environment_clearance_packet_ready"])
+        self.assertFalse(payload["environment_fulfilled"])
+        self.assertFalse(payload["environment_clearance_ready"])
+        self.assertFalse(payload["ready_for_next_clearance_step"])
+        self.assertTrue(payload["blocked_by_prerequisite_step"])
+        self.assertEqual(payload["summary"]["target_clearance_step_id"], "p0b_google_environment")
+        self.assertEqual(payload["summary"]["prerequisite_step_id"], "p0a_real_batches")
+        self.assertEqual(payload["summary"]["missing_required_count"], 6)
+        self.assertIn("environment:DATABASE_URL", payload["summary"]["missing_required"])
+        self.assertIn("selector:google_aio_prompt_selector", payload["summary"]["missing_required"])
+        self.assertTrue(payload["summary"]["database_url_reuse_available"])
+        self.assertEqual(payload["summary"]["next_action"], "clear_p0a_real_batches_first")
+        self.assertEqual(payload["summary"]["next_command"], "make au-p0a-real-batch-clearance")
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0b_google_environment_clearance"],
+            "GET /v1/p0b-google-environment-clearance/au",
+        )
+        self.assertIn("make verify-au-p0b-google-environment-clearance", payload["hard_gate_commands"])
+        self.assertTrue(any("--require-cleared" in command for command in payload["hard_gate_commands"]))
+        self.assertTrue(any("--require-fulfilled" in command for command in payload["hard_gate_commands"]))
+        self.assertTrue(any("--require-ready-smoke" in command for command in payload["hard_gate_commands"]))
+        self.assertEqual(payload["source_artifacts"]["environment_request"]["hash_field"], "p0b_google_environment_request_packet_hash")
+        self.assertEqual(payload["source_artifacts"]["playwright_env_report"]["hash_field"], "environment_report_hash")
+        self.assertEqual(payload["source_artifacts"]["environment_fulfillment"]["hash_field"], "p0b_google_environment_fulfillment_hash")
+        self.assertTrue(payload["source_artifacts"]["environment_request"]["hash_valid"])
+        self.assertTrue(payload["source_artifacts"]["playwright_env_report"]["hash_valid"])
+        self.assertTrue(payload["source_artifacts"]["environment_fulfillment"]["hash_valid"])
+        self.assertIn("clear_p0a_real_batches", {step["id"] for step in payload["operator_steps"]})
+        self.assertIn("make au-p0b-google-environment-fulfillment", payload["post_update_validation_sequence"])
+        self.assertEqual(
+            payload["p0b_google_environment_clearance_hash"],
+            compute_p0b_google_environment_clearance_hash(payload),
+        )
         self.assertNotIn("postgres://", json.dumps(payload))
         self.assertEqual(_find_forbidden_exact_fields(payload), [])
 
@@ -7219,6 +7309,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/p0b-google-execution-checklist/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-environment-request/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-environment-fulfillment/au", payload["persistence"])
+        self.assertIn("/v1/p0b-google-environment-clearance/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-manual-backfill-request/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-manual-backfill-fulfillment/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-phase-execution-request/au", payload["persistence"])

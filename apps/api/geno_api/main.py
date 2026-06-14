@@ -217,6 +217,10 @@ from scripts.build_au_p0b_google_environment_fulfillment import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH,
     build_au_p0b_google_environment_fulfillment,
 )
+from scripts.build_au_p0b_google_environment_clearance import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH,
+    build_au_p0b_google_environment_clearance,
+)
 from scripts.build_au_p0b_google_manual_backfill_request_packet import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH,
     build_au_p0b_google_manual_backfill_request_packet,
@@ -236,6 +240,7 @@ from scripts.build_au_p0b_google_phase_execution_fulfillment import (
 from scripts.build_au_p0b_google_playwright_env_report import (
     DEFAULT_ENV_FILE as DEFAULT_AU_P0B_GOOGLE_ENV_FILE,
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH,
+    build_google_playwright_env_report,
 )
 
 app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
@@ -2054,6 +2059,65 @@ def au_p0b_google_environment_fulfillment() -> dict[str, object]:
             os.getenv(
                 "GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH",
                 DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-environment-clearance/au")
+def au_p0b_google_environment_clearance() -> dict[str, object]:
+    environment_request_path = Path(
+        os.getenv(
+            "GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH,
+        )
+    )
+    playwright_env_report_path = Path(
+        os.getenv(
+            "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH,
+        )
+    )
+    environment_fulfillment_path = Path(
+        os.getenv(
+            "GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH,
+        )
+    )
+    external_dependency_clearance_path = Path(
+        os.getenv(
+            "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    playwright_env_file_path = Path(os.getenv("GENO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_AU_P0B_GOOGLE_ENV_FILE))
+    environment_request = au_p0b_google_environment_request()
+    playwright_env_report = build_google_playwright_env_report(
+        output_path=playwright_env_report_path,
+        env_file_path=playwright_env_file_path,
+    )
+    environment_fulfillment = build_au_p0b_google_environment_fulfillment(
+        environment_request_path=environment_request_path,
+        playwright_env_report_path=playwright_env_report_path,
+        playwright_env_file_path=playwright_env_file_path,
+        environment_request=environment_request,
+        playwright_env_report=playwright_env_report,
+        output_path=environment_fulfillment_path,
+    )
+    return build_au_p0b_google_environment_clearance(
+        environment_request_path=environment_request_path,
+        playwright_env_report_path=playwright_env_report_path,
+        environment_fulfillment_path=environment_fulfillment_path,
+        external_dependency_clearance_path=external_dependency_clearance_path,
+        playwright_env_file_path=playwright_env_file_path,
+        environment_request=environment_request,
+        playwright_env_report=playwright_env_report,
+        environment_fulfillment=environment_fulfillment,
+        external_dependency_clearance=au_external_dependency_clearance(),
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH,
             )
         ),
     )
@@ -6202,6 +6266,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/p0b-google-execution-checklist/au",
             "/v1/p0b-google-environment-request/au",
             "/v1/p0b-google-environment-fulfillment/au",
+            "/v1/p0b-google-environment-clearance/au",
             "/v1/p0b-google-manual-backfill-request/au",
             "/v1/p0b-google-manual-backfill-fulfillment/au",
             "/v1/p0b-google-phase-execution-request/au",
