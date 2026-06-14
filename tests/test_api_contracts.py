@@ -667,6 +667,59 @@ class ApiContractsTest(unittest.TestCase):
         self.assertNotIn("postgres://", json.dumps(payload))
         self.assertEqual(_find_forbidden_exact_fields(payload), [])
 
+    def test_au_p0b_google_environment_fulfillment_endpoint_returns_current_status(self) -> None:
+        helper = AuP0bGoogleExecutionChecklistTest()
+        helper.setUp()
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, execution_path, env_path, status_path, package_path, _runbook = helper._write_status_and_package(
+                temp_dir,
+                google_ready=False,
+            )
+            p0a_env_path = _write_p0a_env_report_with_database(temp_dir)
+            fulfillment_path = Path(temp_dir) / "environment-fulfillment.json"
+            with patch.dict(
+                os.environ,
+                {
+                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GENO_AU_P0A_ENV_OUTPUT_PATH": str(p0a_env_path),
+                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH": str(
+                        Path(temp_dir) / "environment-request.json"
+                    ),
+                    "GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH": str(fulfillment_path),
+                },
+                clear=False,
+            ):
+                response = self.client.get("/v1/p0b-google-environment-fulfillment/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(
+            payload["p0b_google_environment_fulfillment_version"],
+            "au_p0b_google_environment_fulfillment_v1",
+        )
+        self.assertEqual(payload["status"], "pass")
+        self.assertTrue(payload["environment_fulfillment_ready"])
+        self.assertFalse(payload["environment_fulfilled"])
+        self.assertFalse(payload["ready_for_playwright_smoke"])
+        self.assertEqual(payload["summary"]["missing_required_count"], 6)
+        self.assertIn("environment:DATABASE_URL", payload["summary"]["missing_required"])
+        self.assertIn("selector:google_aio_prompt_selector", payload["summary"]["missing_required"])
+        self.assertTrue(payload["summary"]["database_url_reuse_available"])
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0b_google_environment_fulfillment"],
+            "GET /v1/p0b-google-environment-fulfillment/au",
+        )
+        self.assertIn("make verify-au-p0b-google-environment-fulfillment", payload["hard_gate_commands"])
+        self.assertTrue(any(command.endswith("--require-fulfilled") for command in payload["hard_gate_commands"]))
+        self.assertNotIn("postgres://", json.dumps(payload))
+        self.assertEqual(_find_forbidden_exact_fields(payload), [])
+
     def test_au_p0b_google_manual_backfill_request_endpoint_returns_current_handoff_packet(self) -> None:
         helper = AuP0bGoogleExecutionChecklistTest()
         helper.setUp()

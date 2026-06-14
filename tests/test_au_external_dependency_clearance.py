@@ -118,6 +118,19 @@ class AuExternalDependencyClearanceTest(unittest.TestCase):
         self.assertTrue(execution["stopped_after_step"])
         self.assertEqual(execution["recorded_step_count"], 3)
         self.assertEqual(execution["steps"][-1]["id"], "p0b_google_environment")
+        self.assertEqual(
+            execution["steps"][-1]["linked_request_context"]["request_artifact_id"],
+            "p0b_google_environment_fulfillment",
+        )
+        self.assertEqual(
+            execution["steps"][-1]["linked_request_context"]["runtime_endpoint"],
+            "GET /v1/p0b-google-environment-fulfillment/au",
+        )
+        self.assertIn(
+            "make verify-au-p0b-google-environment-fulfillment",
+            execution["steps"][-1]["recommended_sequence"],
+        )
+        self.assertTrue(execution["steps"][-1]["strict_gate_command"].endswith("--require-fulfilled"))
 
     def test_verifier_detects_clearance_execution_tampering(self) -> None:
         with TemporaryDirectory() as temp_dir:

@@ -244,6 +244,12 @@ au-p0b-google-environment-request:
 verify-au-p0b-google-environment-request:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_environment_request_packet.py $${GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-request-latest.json}
 
+au-p0b-google-environment-fulfillment:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_p0b_google_environment_fulfillment.py --environment-request-path $${GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-request-latest.json} --playwright-env-report-path $${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} --env-file $${GENO_AU_P0B_GOOGLE_ENV_FILE:-.env.au-p0b-google} --output-path $${GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json}
+
+verify-au-p0b-google-environment-fulfillment:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_environment_fulfillment.py $${GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json}
+
 au-p0b-google-manual-backfill-request:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_p0b_google_manual_backfill_request_packet.py --p0b-google-execution-checklist-path $${GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json} --output-path $${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-request-latest.json}
 

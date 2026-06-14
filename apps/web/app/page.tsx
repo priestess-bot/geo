@@ -721,6 +721,7 @@ type RuntimeData = {
   p0aRealBatchRequest: AuP0aRealBatchRequest | null;
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
   p0bGoogleEnvironmentRequest: AuP0bGoogleEnvironmentRequest | null;
+  p0bGoogleEnvironmentFulfillment: AuP0bGoogleEnvironmentFulfillment | null;
   p0bGoogleManualBackfillRequest: AuP0bGoogleManualBackfillRequest | null;
   p0bGooglePhaseExecutionRequest: AuP0bGooglePhaseExecutionRequest | null;
   externalDependencyHandoff: AuExternalDependencyHandoff | null;
@@ -1655,6 +1656,72 @@ type AuP0bGoogleEnvironmentRequest = {
   };
 };
 
+type AuP0bGoogleEnvironmentFulfillment = {
+  p0b_google_environment_fulfillment_version: string;
+  generated_at: string;
+  status: string;
+  environment_fulfillment_ready: boolean;
+  environment_fulfilled: boolean;
+  ready_for_playwright_smoke: boolean;
+  ready_for_full_google_run: boolean;
+  google_main_scoring_allowed: boolean;
+  p0b_google_environment_fulfillment_hash: string;
+  summary?: {
+    environment_fulfilled?: boolean;
+    environment_handoff_ready?: boolean;
+    playwright_env_ready_for_smoke?: boolean;
+    playwright_env_ready_for_full_google_run?: boolean;
+    required_count?: number;
+    fulfilled_required_count?: number;
+    missing_required_count?: number;
+    missing_required?: string[];
+    presence_mismatch_count?: number;
+    presence_mismatches?: string[];
+    missing_required_by_owner?: Record<string, string[]>;
+    cross_stage_reuse_hint_count?: number;
+    database_url_reuse_available?: boolean;
+    next_action?: string;
+    next_command?: string;
+    strict_gate_command?: string;
+    ready_smoke_strict_gate_command?: string;
+  };
+  environment_fulfillment_items?: Array<{
+    key?: string;
+    item_type?: string;
+    name?: string;
+    required?: boolean;
+    fulfilled?: boolean;
+    requested_present?: boolean;
+    environment_present?: boolean;
+    presence_mismatch?: boolean;
+    request_source?: string;
+    environment_source?: string;
+    owner_hint?: string;
+    env_file_key?: string;
+    value_length?: number;
+    sha256_prefix?: string;
+    secret_redacted?: boolean;
+    blocking_reasons?: string[];
+  }>;
+  source_p0b_google_environment_request?: {
+    p0b_google_environment_request_packet_hash?: string;
+    google_environment_request_packet_ready?: boolean;
+    environment_handoff_ready?: boolean;
+  };
+  source_p0b_google_playwright_env_report?: {
+    environment_report_hash?: string;
+    ready_for_playwright_smoke?: boolean;
+    ready_for_full_google_run?: boolean;
+  };
+  runtime_endpoints?: {
+    p0b_google_environment_fulfillment?: string;
+    p0b_google_environment_request?: string;
+    p0b_google_execution_checklist?: string;
+    external_dependency_clearance?: string;
+  };
+  hard_gate_commands?: string[];
+};
+
 type AuP0bGoogleManualBackfillRequest = {
   p0b_google_manual_backfill_request_packet_version: string;
   generated_at: string;
@@ -2465,6 +2532,7 @@ const endpoints = {
   p0aRealBatchRequest: "/v1/p0a-real-batch-request/au",
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
   p0bGoogleEnvironmentRequest: "/v1/p0b-google-environment-request/au",
+  p0bGoogleEnvironmentFulfillment: "/v1/p0b-google-environment-fulfillment/au",
   p0bGoogleManualBackfillRequest: "/v1/p0b-google-manual-backfill-request/au",
   p0bGooglePhaseExecutionRequest: "/v1/p0b-google-phase-execution-request/au",
   externalDependencyHandoff: "/v1/external-dependency-handoff/au",
@@ -3885,6 +3953,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aRealBatchRequest: endpoints.p0aRealBatchRequest,
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest: endpoints.p0bGoogleEnvironmentRequest,
+    p0bGoogleEnvironmentFulfillment: endpoints.p0bGoogleEnvironmentFulfillment,
     p0bGoogleManualBackfillRequest: endpoints.p0bGoogleManualBackfillRequest,
     p0bGooglePhaseExecutionRequest: endpoints.p0bGooglePhaseExecutionRequest,
     externalDependencyHandoff: endpoints.externalDependencyHandoff,
@@ -4206,6 +4275,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aRealBatchRequest,
     p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest,
+    p0bGoogleEnvironmentFulfillment,
     p0bGoogleManualBackfillRequest,
     p0bGooglePhaseExecutionRequest,
     externalDependencyHandoff,
@@ -4263,6 +4333,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0aRealBatchRequest | null>(baseUrl, paths.p0aRealBatchRequest, null),
     fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
     fetchRuntimeEndpoint<AuP0bGoogleEnvironmentRequest | null>(baseUrl, paths.p0bGoogleEnvironmentRequest, null),
+    fetchRuntimeEndpoint<AuP0bGoogleEnvironmentFulfillment | null>(
+      baseUrl,
+      paths.p0bGoogleEnvironmentFulfillment,
+      null
+    ),
     fetchRuntimeEndpoint<AuP0bGoogleManualBackfillRequest | null>(
       baseUrl,
       paths.p0bGoogleManualBackfillRequest,
@@ -4440,6 +4515,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aRealBatchRequest,
     p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest,
+    p0bGoogleEnvironmentFulfillment,
     p0bGoogleManualBackfillRequest,
     p0bGooglePhaseExecutionRequest,
     externalDependencyHandoff,
@@ -4502,6 +4578,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0aRealBatchRequest: p0aRealBatchRequest.payload,
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
       p0bGoogleEnvironmentRequest: p0bGoogleEnvironmentRequest.payload,
+      p0bGoogleEnvironmentFulfillment: p0bGoogleEnvironmentFulfillment.payload,
       p0bGoogleManualBackfillRequest: p0bGoogleManualBackfillRequest.payload,
       p0bGooglePhaseExecutionRequest: p0bGooglePhaseExecutionRequest.payload,
       externalDependencyHandoff: externalDependencyHandoff.payload,
@@ -4877,6 +4954,14 @@ export default async function Home({
   const p0bGoogleFileItems = p0bGoogleEnvironmentRequest?.file_items || [];
   const p0bGoogleDependencyItems = p0bGoogleEnvironmentRequest?.dependency_items || [];
   const p0bGoogleCrossStageReuseHints = p0bGoogleEnvironmentRequest?.cross_stage_reuse_hints || [];
+  const p0bGoogleEnvironmentFulfillment = data.p0bGoogleEnvironmentFulfillment;
+  const p0bGoogleEnvironmentFulfillmentSummary = p0bGoogleEnvironmentFulfillment?.summary;
+  const p0bGoogleEnvironmentFulfillmentMissing =
+    p0bGoogleEnvironmentFulfillmentSummary?.missing_required || [];
+  const p0bGoogleEnvironmentFulfillmentMismatches =
+    p0bGoogleEnvironmentFulfillmentSummary?.presence_mismatches || [];
+  const p0bGoogleEnvironmentFulfillmentItems =
+    p0bGoogleEnvironmentFulfillment?.environment_fulfillment_items || [];
   const p0bGoogleManualBackfillRequest = data.p0bGoogleManualBackfillRequest;
   const p0bGoogleManualBackfillRequestSummary = p0bGoogleManualBackfillRequest?.summary;
   const p0bGoogleManualBackfillRequestMissing = p0bGoogleManualBackfillRequestSummary?.missing_reasons || [];
@@ -5811,6 +5896,83 @@ export default async function Home({
             ))}
           </div>
           <code>{paths.p0bGoogleEnvironmentRequest}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>P0b Google environment fulfillment</strong>
+            <span>
+              {p0bGoogleEnvironmentFulfillment?.p0b_google_environment_fulfillment_version ||
+                "au_p0b_google_environment_fulfillment_v1"}{" "}
+              · p0b_google_environment_fulfillment_hash{" "}
+              {shortHash(p0bGoogleEnvironmentFulfillment?.p0b_google_environment_fulfillment_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>
+              Fulfillment ready {p0bGoogleEnvironmentFulfillment?.environment_fulfillment_ready ? "yes" : "no"}
+            </span>
+            <span>Environment fulfilled {p0bGoogleEnvironmentFulfillment?.environment_fulfilled ? "yes" : "no"}</span>
+            <span>Smoke ready {p0bGoogleEnvironmentFulfillment?.ready_for_playwright_smoke ? "yes" : "no"}</span>
+            <span>Full run ready {p0bGoogleEnvironmentFulfillment?.ready_for_full_google_run ? "yes" : "no"}</span>
+            <span>
+              Fulfilled required {p0bGoogleEnvironmentFulfillmentSummary?.fulfilled_required_count || 0}/
+              {p0bGoogleEnvironmentFulfillmentSummary?.required_count || 0}
+            </span>
+            <span>Missing required {p0bGoogleEnvironmentFulfillmentSummary?.missing_required_count || 0}</span>
+            <span>Presence mismatches {p0bGoogleEnvironmentFulfillmentSummary?.presence_mismatch_count || 0}</span>
+            <span>
+              DB reuse{" "}
+              {p0bGoogleEnvironmentFulfillmentSummary?.database_url_reuse_available ? "available" : "not available"}
+            </span>
+          </div>
+          <div className="handoffBoundary">
+            <span>Missing {p0bGoogleEnvironmentFulfillmentMissing.slice(0, 6).join(", ") || "none"}</span>
+            <span>Mismatches {p0bGoogleEnvironmentFulfillmentMismatches.join(", ") || "none"}</span>
+            <span>Next action {p0bGoogleEnvironmentFulfillmentSummary?.next_action || "none"}</span>
+            <span>Next command {p0bGoogleEnvironmentFulfillmentSummary?.next_command || "none"}</span>
+            <span>
+              Request hash{" "}
+              {shortHash(
+                p0bGoogleEnvironmentFulfillment?.source_p0b_google_environment_request
+                  ?.p0b_google_environment_request_packet_hash
+              )}
+            </span>
+            <span>
+              Env report hash{" "}
+              {shortHash(p0bGoogleEnvironmentFulfillment?.source_p0b_google_playwright_env_report?.environment_report_hash)}
+            </span>
+            <span>
+              {p0bGoogleEnvironmentFulfillment?.runtime_endpoints?.p0b_google_environment_fulfillment ||
+                "GET /v1/p0b-google-environment-fulfillment/au"}
+            </span>
+            <span>Hard gate: make verify-au-p0b-google-environment-fulfillment</span>
+            <span>
+              Strict gate:{" "}
+              {p0bGoogleEnvironmentFulfillmentSummary?.strict_gate_command ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_environment_fulfillment.py docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json --require-fulfilled"}
+            </span>
+          </div>
+          {p0bGoogleEnvironmentFulfillmentItems.length ? (
+            <div className="dependencyGroupGrid">
+              {p0bGoogleEnvironmentFulfillmentItems.slice(0, 8).map((item) => (
+                <div className="dependencyGroup" key={item.key || item.name}>
+                  <strong>{item.key || item.name}</strong>
+                  <span>
+                    {item.owner_hint || "owner"} · {item.fulfilled ? "fulfilled" : "missing"}
+                  </span>
+                  <small>
+                    request {item.requested_present ? "present" : "missing"} · env{" "}
+                    {item.environment_present ? "present" : "missing"}
+                  </small>
+                  <small>
+                    source {item.environment_source || "missing"} · hash {shortHash(item.sha256_prefix)}
+                  </small>
+                  <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "gate clear"}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <code>{paths.p0bGoogleEnvironmentFulfillment}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">

@@ -197,6 +197,10 @@ from scripts.build_au_p0b_google_environment_request_packet import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH,
     build_au_p0b_google_environment_request_packet,
 )
+from scripts.build_au_p0b_google_environment_fulfillment import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH,
+    build_au_p0b_google_environment_fulfillment,
+)
 from scripts.build_au_p0b_google_manual_backfill_request_packet import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH,
     build_au_p0b_google_manual_backfill_request_packet,
@@ -1888,6 +1892,34 @@ def au_p0b_google_environment_request() -> dict[str, object]:
             os.getenv(
                 "GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH",
                 DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-environment-fulfillment/au")
+def au_p0b_google_environment_fulfillment() -> dict[str, object]:
+    environment_request_path = Path(
+        os.getenv(
+            "GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH,
+        )
+    )
+    playwright_env_report_path = Path(
+        os.getenv(
+            "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH,
+        )
+    )
+    return build_au_p0b_google_environment_fulfillment(
+        environment_request_path=environment_request_path,
+        playwright_env_report_path=playwright_env_report_path,
+        playwright_env_file_path=Path(os.getenv("GENO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_AU_P0B_GOOGLE_ENV_FILE)),
+        environment_request=au_p0b_google_environment_request(),
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH,
             )
         ),
     )
@@ -5916,6 +5948,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/p0a-real-batch-request/au",
             "/v1/p0b-google-execution-checklist/au",
             "/v1/p0b-google-environment-request/au",
+            "/v1/p0b-google-environment-fulfillment/au",
             "/v1/p0b-google-manual-backfill-request/au",
             "/v1/p0b-google-phase-execution-request/au",
             "/v1/au-broader-platform-registry",

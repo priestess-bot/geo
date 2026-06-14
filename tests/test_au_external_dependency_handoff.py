@@ -136,6 +136,17 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
         self.assertEqual(handoff["dependency_groups"][2]["next_command"], "make verify-au-p0b-google-env-template")
         self.assertIn("make au-p0b-google-env-bootstrap", handoff["dependency_groups"][2]["commands"])
         self.assertIn(
+            "make verify-au-p0b-google-environment-fulfillment",
+            handoff["dependency_groups"][2]["verification_commands"],
+        )
+        self.assertTrue(
+            any("--require-fulfilled" in command for command in handoff["dependency_groups"][2]["verification_commands"])
+        )
+        self.assertIn(
+            "docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json",
+            handoff["dependency_groups"][2]["evidence_outputs"],
+        )
+        self.assertIn(
             "missing_required:smoke_env:GOOGLE_PLAYWRIGHT_ENABLED",
             handoff["dependency_groups"][2]["blocking_reasons"],
         )

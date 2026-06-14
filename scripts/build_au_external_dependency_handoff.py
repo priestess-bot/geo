@@ -555,6 +555,23 @@ def _p0b_google_environment_group(p0b_google_execution_checklist: dict[str, Any]
     environment_handoff = _as_dict(p0b_google_execution_checklist.get("environment_handoff"))
     redaction = _as_dict(environment_handoff.get("redaction_policy"))
     ready = environment_handoff.get("ready") is True
+    verification_commands = _unique_strings(
+        _commands(environment_handoff.get("verification_commands"))
+        + [
+            "make au-p0b-google-environment-fulfillment",
+            "make verify-au-p0b-google-environment-fulfillment",
+            (
+                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "scripts/verify_au_p0b_google_environment_fulfillment.py "
+                "${GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json} "
+                "--require-fulfilled"
+            ),
+        ]
+    )
+    evidence_outputs = _unique_strings(
+        _strings(environment_handoff.get("evidence_outputs"))
+        + ["docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json"]
+    )
     return {
         "id": "p0b_google_environment",
         "stage": "P0b",
@@ -568,8 +585,8 @@ def _p0b_google_environment_group(p0b_google_execution_checklist: dict[str, Any]
         "missing_required_count": int(environment_handoff.get("missing_required_count") or 0),
         "missing_required": _strings(environment_handoff.get("missing_required")),
         "setup_commands": _commands(environment_handoff.get("setup_commands")),
-        "verification_commands": _commands(environment_handoff.get("verification_commands")),
-        "evidence_outputs": _strings(environment_handoff.get("evidence_outputs")),
+        "verification_commands": verification_commands,
+        "evidence_outputs": evidence_outputs,
         "environment_items": _as_list(environment_handoff.get("environment_items")),
         "selector_items": _as_list(environment_handoff.get("selector_items")),
         "file_items": _as_list(environment_handoff.get("file_items")),

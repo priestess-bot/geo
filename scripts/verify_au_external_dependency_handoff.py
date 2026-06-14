@@ -296,6 +296,15 @@ def _validate_groups(handoff: dict[str, Any], errors: list[str]) -> None:
     p0b_env_redaction = _as_dict(p0b_environment.get("redaction_policy"))
     if p0b_env_redaction.get("raw_secret_values_allowed") is not False:
         errors.append("p0b_google_environment_raw_secret_policy_invalid")
+    p0b_env_verification_commands = _strings(p0b_environment.get("verification_commands"))
+    if "make verify-au-p0b-google-environment-fulfillment" not in p0b_env_verification_commands:
+        errors.append("p0b_google_environment_fulfillment_verifier_missing")
+    if not any("--require-fulfilled" in command for command in p0b_env_verification_commands):
+        errors.append("p0b_google_environment_fulfillment_strict_gate_missing")
+    if "docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json" not in _strings(
+        p0b_environment.get("evidence_outputs")
+    ):
+        errors.append("p0b_google_environment_fulfillment_evidence_missing")
 
     p0b_manual = groups.get("p0b_google_manual_backfill", {})
     missing_reasons = _strings(p0b_manual.get("missing_reasons"))
