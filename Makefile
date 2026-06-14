@@ -152,7 +152,7 @@ verify-au-customer-handoff-readiness:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_readiness.py $${GENO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-readiness-latest.json}
 
 au-next-work-item:
-	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_next_work_item_packet.py --handoff-dossier-path $${GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH:-docs/runtime_preflight/au-handoff-dossier-latest.json} --output-path $${GENO_AU_NEXT_WORK_ITEM_OUTPUT_PATH:-docs/runtime_preflight/au-next-work-item-latest.json}
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_next_work_item_packet.py --handoff-dossier-path $${GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH:-docs/runtime_preflight/au-handoff-dossier-latest.json} --external-dependency-handoff-path $${GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH:-docs/runtime_preflight/au-external-dependency-handoff-latest.json} --output-path $${GENO_AU_NEXT_WORK_ITEM_OUTPUT_PATH:-docs/runtime_preflight/au-next-work-item-latest.json}
 
 verify-au-next-work-item:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_next_work_item_packet.py $${GENO_AU_NEXT_WORK_ITEM_OUTPUT_PATH:-docs/runtime_preflight/au-next-work-item-latest.json}

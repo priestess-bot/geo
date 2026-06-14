@@ -1228,6 +1228,15 @@ type AuNextWorkItemPacket = {
     evidence_output_count?: number;
     blocked_customer_gate_count?: number;
     blocked_customer_gate_ids?: string[];
+    linked_dependency_group_id?: string;
+    linked_dependency_group_status?: string;
+    linked_dependency_group_next_command?: string;
+    linked_dependency_group_blocking_reason_count?: number;
+    linked_request_packet_id?: string;
+    linked_request_packet_hash?: string;
+    linked_request_packet_exists?: boolean;
+    recommended_sequence_count?: number;
+    request_packet_hash_available?: boolean;
   };
   source_handoff_dossier?: {
     handoff_dossier_hash?: string;
@@ -1252,6 +1261,40 @@ type AuNextWorkItemPacket = {
     external_dependency?: boolean;
     dependency_class?: string;
     blocker_count?: number;
+  };
+  execution_context?: {
+    execution_context_version?: string;
+    linked_dependency_group_id?: string;
+    linked_dependency_group?: {
+      id?: string;
+      source?: string;
+      source_path?: string;
+      source_external_dependency_handoff_hash?: string;
+      status?: string;
+      dependency_class?: string;
+      ready?: boolean;
+      target_env_file?: string;
+      next_command?: string;
+      blocking_reason_count?: number;
+      blocking_reasons?: string[];
+    };
+    linked_request_packet?: {
+      request_packet_id?: string;
+      request_packet_title?: string;
+      output_path?: string;
+      exists?: boolean;
+      hash_field?: string;
+      packet_hash?: string;
+      build_command?: string;
+      verify_command?: string;
+      strict_gate_command?: string;
+      runtime_endpoint?: string;
+    };
+    recommended_sequence?: string[];
+    recommended_sequence_count?: number;
+    strict_gate_command?: string;
+    requires_request_packet_before_execution?: boolean;
+    request_packet_hash_available?: boolean;
   };
   commands?: string[];
   verification_commands?: string[];
@@ -4724,6 +4767,10 @@ export default async function Home({
   const nextWorkItemCommands = nextWorkItemPacket?.commands || [];
   const nextWorkItemVerificationCommands = nextWorkItemPacket?.verification_commands || [];
   const nextWorkItemEvidenceOutputs = nextWorkItemPacket?.evidence_outputs || [];
+  const nextWorkItemExecutionContext = nextWorkItemPacket?.execution_context;
+  const nextWorkItemLinkedRequest = nextWorkItemExecutionContext?.linked_request_packet;
+  const nextWorkItemLinkedDependencyGroup = nextWorkItemExecutionContext?.linked_dependency_group;
+  const nextWorkItemRecommendedSequence = nextWorkItemExecutionContext?.recommended_sequence || [];
   const scoreWeightConfig = data.scoreWeights?.score_weight_config || null;
   const savedScoreWeightConfig = scoreWeightConfig?.id ? scoreWeightConfig : null;
   const scoreWeightAuditEvent = data.scoreWeights?.audit_events[0]?.event_type || "default weights";
@@ -6164,9 +6211,31 @@ export default async function Home({
               {nextWorkItemSummary?.verification_command_count || 0} · evidence outputs{" "}
               {nextWorkItemSummary?.evidence_output_count || 0}
             </span>
+            <span>Linked group {nextWorkItemSummary?.linked_dependency_group_id || "none"}</span>
+            <span>
+              Linked request {nextWorkItemSummary?.linked_request_packet_id || "none"} ·{" "}
+              {shortHash(nextWorkItemSummary?.linked_request_packet_hash)}
+            </span>
+            <span>Request packet exists {nextWorkItemSummary?.linked_request_packet_exists ? "yes" : "no"}</span>
+            <span>Sequence steps {nextWorkItemSummary?.recommended_sequence_count || 0}</span>
             <span>Next command {nextWorkItemCommands[0] || "none"}</span>
             <span>Next verifier {nextWorkItemVerificationCommands[0] || "none"}</span>
             <span>First evidence output {nextWorkItemEvidenceOutputs[0] || "none"}</span>
+            <span>Request build {nextWorkItemLinkedRequest?.build_command || "none"}</span>
+            <span>Request verifier {nextWorkItemLinkedRequest?.verify_command || "none"}</span>
+            <span>Request strict gate {nextWorkItemLinkedRequest?.strict_gate_command || "none"}</span>
+            <span>
+              Request endpoint {nextWorkItemLinkedRequest?.runtime_endpoint || "none"}
+            </span>
+            <span>
+              Dependency group status {nextWorkItemLinkedDependencyGroup?.status || "none"} · blockers{" "}
+              {nextWorkItemLinkedDependencyGroup?.blocking_reason_count || 0}
+            </span>
+            <span>Dependency group next {nextWorkItemLinkedDependencyGroup?.next_command || "none"}</span>
+            <span>
+              Dependency group source{" "}
+              {shortHash(nextWorkItemLinkedDependencyGroup?.source_external_dependency_handoff_hash)}
+            </span>
             <span>
               Source dossier hash {shortHash(nextWorkItemPacket?.source_handoff_dossier?.handoff_dossier_hash)}
             </span>
@@ -6186,6 +6255,13 @@ export default async function Home({
             <ul className="plainList compactList">
               {nextWorkItemEvidenceOutputs.slice(0, 5).map((output) => (
                 <li key={output}>{output}</li>
+              ))}
+            </ul>
+          ) : null}
+          {nextWorkItemRecommendedSequence.length ? (
+            <ul className="plainList compactList">
+              {nextWorkItemRecommendedSequence.slice(0, 6).map((command) => (
+                <li key={command}>{command}</li>
               ))}
             </ul>
           ) : null}

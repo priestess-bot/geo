@@ -2041,9 +2041,17 @@ def au_next_work_item() -> dict[str, object]:
     handoff_dossier_path = Path(
         os.getenv("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH)
     )
+    external_dependency_handoff_path = Path(
+        os.getenv(
+            "GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
+        )
+    )
     return build_au_next_work_item_packet(
         handoff_dossier_path=handoff_dossier_path,
+        external_dependency_handoff_path=external_dependency_handoff_path,
         handoff_dossier=au_handoff_dossier(),
+        external_dependency_handoff=_build_au_external_dependency_handoff_from_env(),
         output_path=Path(os.getenv("GENO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_AU_NEXT_WORK_ITEM_OUTPUT_PATH)),
     )
 

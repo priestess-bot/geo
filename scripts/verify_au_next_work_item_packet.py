@@ -13,7 +13,9 @@ if str(ROOT) not in sys.path:
 
 from scripts.build_au_next_work_item_packet import (  # noqa: E402
     DEFAULT_OUTPUT_PATH,
+    EXECUTION_CONTEXT_VERSION,
     PACKET_VERSION,
+    REQUEST_PACKET_CONTEXTS,
     compute_next_work_item_packet_hash,
 )
 
@@ -26,9 +28,11 @@ REQUIRED_FIELDS = (
     "ready_for_customer_report_handoff",
     "output_path",
     "source_handoff_dossier",
+    "source_external_dependency_handoff",
     "handoff_dossier_verifier",
     "summary",
     "next_work_item",
+    "execution_context",
     "commands",
     "verification_commands",
     "evidence_outputs",
@@ -80,13 +84,18 @@ def verify_au_next_work_item_packet(
         errors.append("next_work_item_packet_hash_mismatch")
 
     source = _as_dict(payload.get("source_handoff_dossier"))
+    external_source = _as_dict(payload.get("source_external_dependency_handoff"))
     verifier = _as_dict(payload.get("handoff_dossier_verifier"))
     summary = _as_dict(payload.get("summary"))
     next_work_item = _as_dict(payload.get("next_work_item"))
+    execution_context = _as_dict(payload.get("execution_context"))
+    linked_request_packet = _as_dict(execution_context.get("linked_request_packet"))
+    linked_dependency_group = _as_dict(execution_context.get("linked_dependency_group"))
     endpoints = _as_dict(payload.get("runtime_endpoints"))
     commands = _string_list(payload.get("commands"))
     verification_commands = _string_list(payload.get("verification_commands"))
     evidence_outputs = _string_list(payload.get("evidence_outputs"))
+    recommended_sequence = _string_list(execution_context.get("recommended_sequence"))
     blocked_customer_gate_ids = _string_list(summary.get("blocked_customer_gate_ids"))
     next_work_item_id = str(summary.get("next_work_item_id") or "")
 
@@ -104,6 +113,10 @@ def verify_au_next_work_item_packet(
         "handoff_dossier_hash"
     ):
         errors.append("source_handoff_dossier_hash_mismatch")
+    if not external_source.get("path"):
+        errors.append("source_external_dependency_handoff_path_missing")
+    if not external_source.get("external_dependency_handoff_hash"):
+        errors.append("source_external_dependency_handoff_hash_missing")
     if next_work_item_id != str(verifier.get("next_work_item_id") or ""):
         errors.append("summary_next_work_item_id_verifier_mismatch")
     if next_work_item_id != "none" and next_work_item.get("id") != next_work_item_id:
@@ -130,6 +143,78 @@ def verify_au_next_work_item_packet(
         errors.append("summary_blocked_customer_gate_count_mismatch")
     if summary.get("runnable_now") is not bool(commands):
         errors.append("summary_runnable_now_mismatch")
+    if execution_context.get("execution_context_version") != EXECUTION_CONTEXT_VERSION:
+        errors.append("execution_context_version_invalid")
+    if execution_context.get("next_work_item_id") != next_work_item_id:
+        errors.append("execution_context_next_work_item_id_mismatch")
+    expected_context = REQUEST_PACKET_CONTEXTS.get(next_work_item_id)
+    if expected_context:
+        if execution_context.get("linked_dependency_group_id") != expected_context["linked_dependency_group_id"]:
+            errors.append("execution_context_dependency_group_id_mismatch")
+        if linked_dependency_group.get("id") != expected_context["linked_dependency_group_id"]:
+            errors.append("execution_context_dependency_group_mismatch")
+        if linked_dependency_group.get("source") != "external_dependency_handoff":
+            errors.append("execution_context_dependency_group_source_mismatch")
+        if linked_dependency_group.get("source_path") != external_source.get("path"):
+            errors.append("execution_context_dependency_group_source_path_mismatch")
+        if linked_dependency_group.get("source_external_dependency_handoff_hash") != external_source.get(
+            "external_dependency_handoff_hash"
+        ):
+            errors.append("execution_context_dependency_group_source_hash_mismatch")
+        if not linked_dependency_group.get("status"):
+            errors.append("execution_context_dependency_group_status_missing")
+        if int(linked_dependency_group.get("command_count") or 0) <= 0:
+            errors.append("execution_context_dependency_group_commands_empty")
+        if int(linked_dependency_group.get("blocking_reason_count") or 0) != len(
+            _string_list(linked_dependency_group.get("blocking_reasons"))
+        ):
+            errors.append("execution_context_dependency_group_blocking_reason_count_mismatch")
+        if linked_request_packet.get("request_packet_available") is not True:
+            errors.append("linked_request_packet_not_available")
+        for field in (
+            "request_packet_id",
+            "request_packet_title",
+            "output_path",
+            "hash_field",
+            "build_command",
+            "verify_command",
+            "strict_gate_command",
+            "runtime_endpoint",
+        ):
+            if linked_request_packet.get(field) != expected_context[field]:
+                errors.append(f"linked_request_packet_{field}_mismatch")
+        if summary.get("linked_dependency_group_id") != expected_context["linked_dependency_group_id"]:
+            errors.append("summary_linked_dependency_group_id_mismatch")
+        if summary.get("linked_dependency_group_status") != linked_dependency_group.get("status"):
+            errors.append("summary_linked_dependency_group_status_mismatch")
+        if summary.get("linked_dependency_group_next_command") != linked_dependency_group.get("next_command"):
+            errors.append("summary_linked_dependency_group_next_command_mismatch")
+        if summary.get("linked_dependency_group_blocking_reason_count") != int(
+            linked_dependency_group.get("blocking_reason_count") or 0
+        ):
+            errors.append("summary_linked_dependency_group_blocking_reason_count_mismatch")
+        if summary.get("linked_request_packet_id") != expected_context["request_packet_id"]:
+            errors.append("summary_linked_request_packet_id_mismatch")
+        if summary.get("linked_request_packet_hash") != linked_request_packet.get("packet_hash"):
+            errors.append("summary_linked_request_packet_hash_mismatch")
+        if summary.get("linked_request_packet_exists") is not (linked_request_packet.get("exists") is True):
+            errors.append("summary_linked_request_packet_exists_mismatch")
+        if summary.get("request_packet_hash_available") is not bool(linked_request_packet.get("packet_hash")):
+            errors.append("summary_request_packet_hash_available_mismatch")
+        for command in (
+            expected_context["build_command"],
+            expected_context["verify_command"],
+            expected_context["strict_gate_command"],
+        ):
+            if command not in recommended_sequence:
+                errors.append(f"recommended_sequence_missing:{command}")
+    elif next_work_item_id != "none":
+        if linked_request_packet.get("request_packet_available") is True:
+            errors.append("unexpected_linked_request_packet_available")
+    if execution_context.get("recommended_sequence_count") != len(recommended_sequence):
+        errors.append("execution_context_recommended_sequence_count_mismatch")
+    if summary.get("recommended_sequence_count") != len(recommended_sequence):
+        errors.append("summary_recommended_sequence_count_mismatch")
     if next_work_item_id != "none":
         if not commands:
             errors.append("commands_empty_for_active_work_item")
@@ -158,6 +243,13 @@ def verify_au_next_work_item_packet(
     for command in verification_commands:
         if command not in hard_gate_commands:
             errors.append(f"hard_gate_missing_verification_command:{command}")
+    for command in (
+        str(linked_request_packet.get("build_command") or ""),
+        str(linked_request_packet.get("verify_command") or ""),
+        str(linked_request_packet.get("strict_gate_command") or ""),
+    ):
+        if command and command not in hard_gate_commands:
+            errors.append(f"hard_gate_missing_linked_request_command:{command}")
     if require_customer_ready and payload.get("ready_for_customer_report_handoff") is not True:
         errors.append("customer_handoff_not_ready")
 
@@ -176,6 +268,10 @@ def verify_au_next_work_item_packet(
         "command_count": len(commands),
         "verification_command_count": len(verification_commands),
         "evidence_output_count": len(evidence_outputs),
+        "linked_request_packet_id": str(linked_request_packet.get("request_packet_id") or ""),
+        "linked_dependency_group_id": str(execution_context.get("linked_dependency_group_id") or ""),
+        "linked_dependency_group_status": str(linked_dependency_group.get("status") or ""),
+        "recommended_sequence_count": len(recommended_sequence),
     }
 
 

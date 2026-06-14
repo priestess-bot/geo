@@ -18,11 +18,146 @@ from scripts.build_au_handoff_dossier import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_HANDOFF_DOSSIER_PATH,
     build_au_handoff_dossier,
 )
+from scripts.build_au_external_dependency_handoff import (  # noqa: E402
+    DEFAULT_OUTPUT_PATH as DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH,
+)
 from scripts.verify_au_handoff_dossier import verify_au_handoff_dossier  # noqa: E402
 
 
 PACKET_VERSION = "au_next_work_item_packet_v1"
+EXECUTION_CONTEXT_VERSION = "au_next_work_item_execution_context_v1"
 DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-next-work-item-latest.json"
+
+REQUEST_PACKET_CONTEXTS: dict[str, dict[str, str]] = {
+    "p0a_environment": {
+        "linked_dependency_group_id": "p0a_provider_credentials",
+        "request_packet_id": "p0a_credential_request",
+        "request_packet_title": "P0a credential request packet",
+        "output_path": "docs/runtime_preflight/au-p0a-credential-request-latest.json",
+        "hash_field": "p0a_credential_request_packet_hash",
+        "build_command": "make au-p0a-credential-request",
+        "verify_command": "make verify-au-p0a-credential-request",
+        "strict_gate_command": (
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_p0a_credential_request_packet.py "
+            "${GENO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-request-latest.json} "
+            "--require-credentials-ready"
+        ),
+        "runtime_endpoint": "GET /v1/p0a-credential-request/au",
+    },
+    "p0a_small_batch": {
+        "linked_dependency_group_id": "p0a_real_batches",
+        "request_packet_id": "p0a_real_batch_request",
+        "request_packet_title": "P0a real batch request packet",
+        "output_path": "docs/runtime_preflight/au-p0a-real-batch-request-latest.json",
+        "hash_field": "p0a_real_batch_request_packet_hash",
+        "build_command": "make au-p0a-real-batch-request",
+        "verify_command": "make verify-au-p0a-real-batch-request",
+        "strict_gate_command": (
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_p0a_real_batch_request_packet.py "
+            "${GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-request-latest.json} "
+            "--require-real-batches-ready"
+        ),
+        "runtime_endpoint": "GET /v1/p0a-real-batch-request/au",
+    },
+    "p0a_full_batch": {
+        "linked_dependency_group_id": "p0a_real_batches",
+        "request_packet_id": "p0a_real_batch_request",
+        "request_packet_title": "P0a real batch request packet",
+        "output_path": "docs/runtime_preflight/au-p0a-real-batch-request-latest.json",
+        "hash_field": "p0a_real_batch_request_packet_hash",
+        "build_command": "make au-p0a-real-batch-request",
+        "verify_command": "make verify-au-p0a-real-batch-request",
+        "strict_gate_command": (
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_p0a_real_batch_request_packet.py "
+            "${GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-request-latest.json} "
+            "--require-real-batches-ready"
+        ),
+        "runtime_endpoint": "GET /v1/p0a-real-batch-request/au",
+    },
+    "p0b_google_playwright_env": {
+        "linked_dependency_group_id": "p0b_google_environment",
+        "request_packet_id": "p0b_google_environment_request",
+        "request_packet_title": "P0b Google environment request packet",
+        "output_path": "docs/runtime_preflight/au-p0b-google-environment-request-latest.json",
+        "hash_field": "p0b_google_environment_request_packet_hash",
+        "build_command": "make au-p0b-google-environment-request",
+        "verify_command": "make verify-au-p0b-google-environment-request",
+        "strict_gate_command": (
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_p0b_google_environment_request_packet.py "
+            "${GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-request-latest.json} "
+            "--require-environment-ready"
+        ),
+        "runtime_endpoint": "GET /v1/p0b-google-environment-request/au",
+    },
+    "p0b_google_manual_backfill": {
+        "linked_dependency_group_id": "p0b_google_manual_backfill",
+        "request_packet_id": "p0b_google_manual_backfill_request",
+        "request_packet_title": "P0b Google manual backfill request packet",
+        "output_path": "docs/runtime_preflight/au-p0b-google-manual-backfill-request-latest.json",
+        "hash_field": "p0b_google_manual_backfill_request_packet_hash",
+        "build_command": "make au-p0b-google-manual-backfill-request",
+        "verify_command": "make verify-au-p0b-google-manual-backfill-request",
+        "strict_gate_command": (
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_p0b_google_manual_backfill_request_packet.py "
+            "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-request-latest.json} "
+            "--require-manual-backfill-ready"
+        ),
+        "runtime_endpoint": "GET /v1/p0b-google-manual-backfill-request/au",
+    },
+    "p0b_google_playwright_smoke": {
+        "linked_dependency_group_id": "p0b_google_phase_execution",
+        "request_packet_id": "p0b_google_phase_execution_request",
+        "request_packet_title": "P0b Google phase execution request packet",
+        "output_path": "docs/runtime_preflight/au-p0b-google-phase-execution-request-latest.json",
+        "hash_field": "p0b_google_phase_execution_request_packet_hash",
+        "build_command": "make au-p0b-google-phase-execution-request",
+        "verify_command": "make verify-au-p0b-google-phase-execution-request",
+        "strict_gate_command": (
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_p0b_google_phase_execution_request_packet.py "
+            "${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-request-latest.json} "
+            "--require-google-phases-ready"
+        ),
+        "runtime_endpoint": "GET /v1/p0b-google-phase-execution-request/au",
+    },
+    "p0b_google_spike_health": {
+        "linked_dependency_group_id": "p0b_google_phase_execution",
+        "request_packet_id": "p0b_google_phase_execution_request",
+        "request_packet_title": "P0b Google phase execution request packet",
+        "output_path": "docs/runtime_preflight/au-p0b-google-phase-execution-request-latest.json",
+        "hash_field": "p0b_google_phase_execution_request_packet_hash",
+        "build_command": "make au-p0b-google-phase-execution-request",
+        "verify_command": "make verify-au-p0b-google-phase-execution-request",
+        "strict_gate_command": (
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_p0b_google_phase_execution_request_packet.py "
+            "${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-request-latest.json} "
+            "--require-google-phases-ready"
+        ),
+        "runtime_endpoint": "GET /v1/p0b-google-phase-execution-request/au",
+    },
+    "p0b_google_full_spike": {
+        "linked_dependency_group_id": "p0b_google_phase_execution",
+        "request_packet_id": "p0b_google_phase_execution_request",
+        "request_packet_title": "P0b Google phase execution request packet",
+        "output_path": "docs/runtime_preflight/au-p0b-google-phase-execution-request-latest.json",
+        "hash_field": "p0b_google_phase_execution_request_packet_hash",
+        "build_command": "make au-p0b-google-phase-execution-request",
+        "verify_command": "make verify-au-p0b-google-phase-execution-request",
+        "strict_gate_command": (
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_p0b_google_execution_checklist.py "
+            "${GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json} "
+            "--require-google-main-scoring-ready"
+        ),
+        "runtime_endpoint": "GET /v1/p0b-google-phase-execution-request/au",
+    },
+}
 
 
 def _utc_now_iso() -> str:
@@ -80,6 +215,131 @@ def _source_file_entry(name: str, path: Path) -> dict[str, Any]:
     return entry
 
 
+def _load_json_file(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _dependency_group_context(
+    external_dependency_handoff: dict[str, Any],
+    source_external_dependency_handoff: dict[str, Any],
+    group_id: str,
+) -> dict[str, Any]:
+    for group in _as_list(external_dependency_handoff.get("dependency_groups")):
+        group_payload = _as_dict(group)
+        if group_payload.get("id") == group_id:
+            return {
+                "id": group_id,
+                "source": "external_dependency_handoff",
+                "source_path": str(source_external_dependency_handoff.get("path") or ""),
+                "source_external_dependency_handoff_hash": str(
+                    source_external_dependency_handoff.get("external_dependency_handoff_hash") or ""
+                ),
+                "status": str(group_payload.get("status") or ""),
+                "dependency_class": str(group_payload.get("dependency_class") or ""),
+                "ready": group_payload.get("ready") is True,
+                "target_env_file": str(group_payload.get("target_env_file") or ""),
+                "next_command": str(group_payload.get("next_command") or ""),
+                "command_count": len(_string_list(group_payload.get("commands"))),
+                "blocking_reason_count": len(_string_list(group_payload.get("blocking_reasons"))),
+                "blocking_reasons": _string_list(group_payload.get("blocking_reasons")),
+            }
+    return {
+        "id": group_id,
+        "source": "missing",
+        "source_path": str(source_external_dependency_handoff.get("path") or ""),
+        "source_external_dependency_handoff_hash": str(
+            source_external_dependency_handoff.get("external_dependency_handoff_hash") or ""
+        ),
+        "status": "missing",
+        "dependency_class": "",
+        "ready": False,
+        "target_env_file": "",
+        "next_command": "",
+        "command_count": 0,
+        "blocking_reason_count": 0,
+        "blocking_reasons": [],
+    }
+
+
+def _request_packet_context(next_work_item_id: str) -> dict[str, Any]:
+    context = REQUEST_PACKET_CONTEXTS.get(next_work_item_id)
+    if not context:
+        return {
+            "request_packet_available": False,
+            "request_packet_id": "",
+            "request_packet_title": "",
+            "output_path": "",
+            "exists": False,
+            "hash_field": "",
+            "packet_hash": "",
+            "file_sha256": "",
+            "build_command": "",
+            "verify_command": "",
+            "strict_gate_command": "",
+            "runtime_endpoint": "",
+        }
+    output_path = Path(context["output_path"])
+    payload = _load_json_file(output_path)
+    packet_hash = str(payload.get(context["hash_field"]) or "")
+    return {
+        "request_packet_available": True,
+        "request_packet_id": context["request_packet_id"],
+        "request_packet_title": context["request_packet_title"],
+        "output_path": str(output_path),
+        "exists": output_path.is_file(),
+        "hash_field": context["hash_field"],
+        "packet_hash": packet_hash,
+        "file_sha256": _file_sha256(output_path) if output_path.is_file() else "",
+        "build_command": context["build_command"],
+        "verify_command": context["verify_command"],
+        "strict_gate_command": context["strict_gate_command"],
+        "runtime_endpoint": context["runtime_endpoint"],
+    }
+
+
+def _execution_context(
+    *,
+    external_dependency_handoff: dict[str, Any],
+    source_external_dependency_handoff: dict[str, Any],
+    next_work_item_id: str,
+    commands: list[str],
+    verification_commands: list[str],
+) -> dict[str, Any]:
+    mapped_context = REQUEST_PACKET_CONTEXTS.get(next_work_item_id, {})
+    request_packet = _request_packet_context(next_work_item_id)
+    dependency_group = _dependency_group_context(
+        external_dependency_handoff,
+        source_external_dependency_handoff,
+        str(mapped_context.get("linked_dependency_group_id") or ""),
+    )
+    recommended_sequence: list[str] = []
+    for command in (
+        request_packet.get("build_command", ""),
+        request_packet.get("verify_command", ""),
+        *commands,
+        *verification_commands,
+        request_packet.get("strict_gate_command", ""),
+    ):
+        if isinstance(command, str) and command and command not in recommended_sequence:
+            recommended_sequence.append(command)
+    return {
+        "execution_context_version": EXECUTION_CONTEXT_VERSION,
+        "next_work_item_id": next_work_item_id,
+        "linked_dependency_group_id": str(mapped_context.get("linked_dependency_group_id") or ""),
+        "linked_dependency_group": dependency_group,
+        "linked_request_packet": request_packet,
+        "recommended_sequence": recommended_sequence,
+        "recommended_sequence_count": len(recommended_sequence),
+        "strict_gate_command": str(request_packet.get("strict_gate_command") or ""),
+        "requires_request_packet_before_execution": bool(request_packet.get("request_packet_available")),
+        "request_packet_hash_available": bool(request_packet.get("packet_hash")),
+    }
+
+
 def _load_or_build_handoff_dossier(
     path: Path,
     *,
@@ -116,10 +376,55 @@ def _load_or_build_handoff_dossier(
     return dossier, {"path": str(path), "exists": True, "source": "generated_in_memory", "errors": ["not_json_object"]}
 
 
+def _load_external_dependency_handoff(
+    path: Path,
+    external_dependency_handoff: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if external_dependency_handoff is not None:
+        return external_dependency_handoff, {
+            "path": str(path),
+            "exists": True,
+            "source": "provided_payload",
+            "external_dependency_handoff_version": str(
+                external_dependency_handoff.get("external_dependency_handoff_version") or ""
+            ),
+            "external_dependency_handoff_hash": str(
+                external_dependency_handoff.get("external_dependency_handoff_hash") or ""
+            ),
+            "external_dependency_handoff_ready": external_dependency_handoff.get(
+                "external_dependency_handoff_ready"
+            )
+            is True,
+            "errors": [],
+        }
+    payload = _load_json_file(path)
+    if payload:
+        return payload, {
+            "path": str(path),
+            "exists": True,
+            "source": "existing_file",
+            "external_dependency_handoff_version": str(payload.get("external_dependency_handoff_version") or ""),
+            "external_dependency_handoff_hash": str(payload.get("external_dependency_handoff_hash") or ""),
+            "external_dependency_handoff_ready": payload.get("external_dependency_handoff_ready") is True,
+            "errors": [],
+        }
+    return {}, {
+        "path": str(path),
+        "exists": path.exists(),
+        "source": "missing_or_invalid_file",
+        "external_dependency_handoff_version": "",
+        "external_dependency_handoff_hash": "",
+        "external_dependency_handoff_ready": False,
+        "errors": ["external_dependency_handoff_missing_or_invalid"],
+    }
+
+
 def build_au_next_work_item_packet(
     *,
     handoff_dossier_path: Path = Path(DEFAULT_HANDOFF_DOSSIER_PATH),
+    external_dependency_handoff_path: Path = Path(DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH),
     handoff_dossier: dict[str, Any] | None = None,
+    external_dependency_handoff: dict[str, Any] | None = None,
     output_path: Path | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
@@ -127,6 +432,10 @@ def build_au_next_work_item_packet(
         handoff_dossier, source = _load_or_build_handoff_dossier(handoff_dossier_path, generated_at=generated_at)
     else:
         source = {"path": str(handoff_dossier_path), "exists": True, "source": "provided_payload"}
+    external_dependency_handoff, external_source = _load_external_dependency_handoff(
+        external_dependency_handoff_path,
+        external_dependency_handoff,
+    )
 
     verifier = verify_au_handoff_dossier(handoff_dossier, path=handoff_dossier_path)
     summary = _as_dict(handoff_dossier.get("summary"))
@@ -135,6 +444,13 @@ def build_au_next_work_item_packet(
     commands = _string_list(next_work_item.get("commands"))
     verification_commands = _string_list(next_work_item.get("verification_commands"))
     evidence_outputs = _string_list(next_work_item.get("evidence_outputs"))
+    execution_context = _execution_context(
+        external_dependency_handoff=external_dependency_handoff,
+        source_external_dependency_handoff=external_source,
+        next_work_item_id=next_work_item_id,
+        commands=commands,
+        verification_commands=verification_commands,
+    )
     blocked_customer_gate_ids = _string_list(
         _as_dict(handoff_dossier.get("customer_handoff_readiness_audit")).get("blocked_customer_gate_ids")
     )
@@ -159,6 +475,14 @@ def build_au_next_work_item_packet(
     )
     for command in verification_commands:
         _append_unique(hard_gate_commands, command)
+    linked_request_packet = _as_dict(execution_context.get("linked_request_packet"))
+    for command in (
+        str(linked_request_packet.get("build_command") or ""),
+        str(linked_request_packet.get("verify_command") or ""),
+        str(linked_request_packet.get("strict_gate_command") or ""),
+    ):
+        if command:
+            _append_unique(hard_gate_commands, command)
 
     payload: dict[str, Any] = {
         "next_work_item_packet_version": PACKET_VERSION,
@@ -175,6 +499,7 @@ def build_au_next_work_item_packet(
             "ready_for_customer_report_handoff": handoff_dossier.get("ready_for_customer_report_handoff") is True,
             "source": source,
         },
+        "source_external_dependency_handoff": external_source,
         "handoff_dossier_verifier": {
             "status": verifier.get("status", ""),
             "hash_valid": verifier.get("hash_valid") is True,
@@ -208,8 +533,24 @@ def build_au_next_work_item_packet(
             "evidence_output_count": len(evidence_outputs),
             "blocked_customer_gate_count": len(blocked_customer_gate_ids),
             "blocked_customer_gate_ids": blocked_customer_gate_ids,
+            "linked_dependency_group_id": str(execution_context.get("linked_dependency_group_id") or ""),
+            "linked_dependency_group_status": str(
+                _as_dict(execution_context.get("linked_dependency_group")).get("status") or ""
+            ),
+            "linked_dependency_group_next_command": str(
+                _as_dict(execution_context.get("linked_dependency_group")).get("next_command") or ""
+            ),
+            "linked_dependency_group_blocking_reason_count": int(
+                _as_dict(execution_context.get("linked_dependency_group")).get("blocking_reason_count") or 0
+            ),
+            "linked_request_packet_id": str(linked_request_packet.get("request_packet_id") or ""),
+            "linked_request_packet_hash": str(linked_request_packet.get("packet_hash") or ""),
+            "linked_request_packet_exists": linked_request_packet.get("exists") is True,
+            "recommended_sequence_count": int(execution_context.get("recommended_sequence_count") or 0),
+            "request_packet_hash_available": execution_context.get("request_packet_hash_available") is True,
         },
         "next_work_item": next_work_item,
+        "execution_context": execution_context,
         "commands": commands,
         "verification_commands": verification_commands,
         "evidence_outputs": evidence_outputs,
@@ -223,7 +564,10 @@ def build_au_next_work_item_packet(
             "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
         },
         "hard_gate_commands": hard_gate_commands,
-        "evidence_sources": [_source_file_entry("handoff_dossier", handoff_dossier_path)],
+        "evidence_sources": [
+            _source_file_entry("handoff_dossier", handoff_dossier_path),
+            _source_file_entry("external_dependency_handoff", external_dependency_handoff_path),
+        ],
     }
     payload["next_work_item_packet_hash"] = compute_next_work_item_packet_hash(payload)
     return payload
@@ -235,6 +579,14 @@ def parse_args() -> argparse.Namespace:
         "--handoff-dossier-path",
         default=os.environ.get("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_HANDOFF_DOSSIER_PATH),
         help="Path to the AU handoff dossier JSON.",
+    )
+    parser.add_argument(
+        "--external-dependency-handoff-path",
+        default=os.environ.get(
+            "GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",
+            DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH,
+        ),
+        help="Path to the AU external dependency handoff JSON.",
     )
     parser.add_argument(
         "--output-path",
@@ -250,6 +602,7 @@ def main() -> None:
     output_path = Path(args.output_path)
     payload = build_au_next_work_item_packet(
         handoff_dossier_path=Path(args.handoff_dossier_path),
+        external_dependency_handoff_path=Path(args.external_dependency_handoff_path),
         output_path=output_path,
         generated_at=args.generated_at,
     )

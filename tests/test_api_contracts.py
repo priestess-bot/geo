@@ -1013,6 +1013,27 @@ class ApiContractsTest(unittest.TestCase):
             payload["handoff_dossier_verifier"]["remaining_blocker_count"],
         )
         self.assertEqual(payload["summary"]["command_count"], len(payload["commands"]))
+        self.assertEqual(payload["summary"]["linked_dependency_group_id"], "p0a_provider_credentials")
+        self.assertEqual(payload["summary"]["linked_dependency_group_status"], "requires_external_input")
+        self.assertEqual(payload["summary"]["linked_dependency_group_next_command"], "make verify-au-p0a-env-template")
+        self.assertGreater(payload["summary"]["linked_dependency_group_blocking_reason_count"], 0)
+        self.assertEqual(payload["summary"]["linked_request_packet_id"], "p0a_credential_request")
+        self.assertEqual(payload["execution_context"]["execution_context_version"], "au_next_work_item_execution_context_v1")
+        self.assertEqual(payload["execution_context"]["linked_dependency_group"]["id"], "p0a_provider_credentials")
+        self.assertEqual(payload["execution_context"]["linked_dependency_group"]["source"], "external_dependency_handoff")
+        self.assertEqual(payload["execution_context"]["linked_dependency_group"]["status"], "requires_external_input")
+        self.assertEqual(
+            payload["execution_context"]["linked_dependency_group"]["next_command"],
+            "make verify-au-p0a-env-template",
+        )
+        self.assertGreater(payload["execution_context"]["linked_dependency_group"]["blocking_reason_count"], 0)
+        self.assertEqual(payload["execution_context"]["linked_request_packet"]["request_packet_id"], "p0a_credential_request")
+        self.assertEqual(
+            payload["execution_context"]["linked_request_packet"]["runtime_endpoint"],
+            "GET /v1/p0a-credential-request/au",
+        )
+        self.assertIn("make au-p0a-credential-request", payload["execution_context"]["recommended_sequence"])
+        self.assertIn("make verify-au-p0a-credential-request", payload["execution_context"]["recommended_sequence"])
         self.assertEqual(payload["commands"][0], "make verify-au-p0a-env-template")
         self.assertIn("make au-p0a-env-bootstrap", payload["commands"])
         self.assertIn("make verify-au-p0a-status", payload["verification_commands"])
@@ -1021,7 +1042,9 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["runtime_endpoints"]["next_work_item"], "GET /v1/next-work-item/au")
         self.assertEqual(payload["runtime_endpoints"]["handoff_dossier"], "GET /v1/handoff-dossier/au")
         self.assertIn("make verify-au-next-work-item", payload["hard_gate_commands"])
+        self.assertIn("make verify-au-p0a-credential-request", payload["hard_gate_commands"])
         self.assertTrue(any(command.endswith("--require-customer-ready") for command in payload["hard_gate_commands"]))
+        self.assertTrue(any(command.endswith("--require-credentials-ready") for command in payload["hard_gate_commands"]))
         self.assertTrue(payload["source_handoff_dossier"]["handoff_dossier_hash"])
         self.assertTrue(payload["next_work_item_packet_hash"])
 
