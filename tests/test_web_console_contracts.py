@@ -162,6 +162,10 @@ class WebConsoleContractsTest(unittest.TestCase):
             'p0bGooglePhaseExecutionFulfillment: "/v1/p0b-google-phase-execution-fulfillment/au"',
             page_source,
         )
+        self.assertIn(
+            'p0bGooglePhaseExecutionClearance: "/v1/p0b-google-phase-execution-clearance/au"',
+            page_source,
+        )
         self.assertIn('externalDependencyHandoff: "/v1/external-dependency-handoff/au"', page_source)
         self.assertIn('externalDependencyClearance: "/v1/external-dependency-clearance/au"', page_source)
         self.assertIn('broaderPlatformRegistry: "/v1/au-broader-platform-registry"', page_source)
@@ -453,6 +457,17 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("phase_execution_fulfilled", page_source)
         self.assertIn("p0bGooglePhaseExecutionFulfillmentItems", page_source)
         self.assertIn("paths.p0bGooglePhaseExecutionFulfillment", page_source)
+        self.assertIn("P0b Google phase execution clearance", page_source)
+        self.assertIn("p0b_google_phase_execution_clearance_hash", page_source)
+        self.assertIn("au_p0b_google_phase_execution_clearance_v1", page_source)
+        self.assertIn("GET /v1/p0b-google-phase-execution-clearance/au", page_source)
+        self.assertIn("make verify-au-p0b-google-phase-execution-clearance", page_source)
+        self.assertIn("scripts/verify_au_p0b_google_phase_execution_clearance.py", page_source)
+        self.assertIn("phase_execution_clearance_ready", page_source)
+        self.assertIn("p0bGooglePhaseExecutionClearanceItems", page_source)
+        self.assertIn("p0bGooglePhaseExecutionClearanceSteps", page_source)
+        self.assertIn("p0bGooglePhaseExecutionClearanceValidation", page_source)
+        self.assertIn("paths.p0bGooglePhaseExecutionClearance", page_source)
         self.assertIn("Broader platform registry", page_source)
         self.assertIn("broader_platform_registry_hash", page_source)
         self.assertIn("gemini_search", page_source)

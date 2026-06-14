@@ -241,6 +241,10 @@ from scripts.build_au_p0b_google_phase_execution_fulfillment import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH,
     build_au_p0b_google_phase_execution_fulfillment,
 )
+from scripts.build_au_p0b_google_phase_execution_clearance import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH,
+    build_au_p0b_google_phase_execution_clearance,
+)
 from scripts.build_au_p0b_google_playwright_env_report import (
     DEFAULT_ENV_FILE as DEFAULT_AU_P0B_GOOGLE_ENV_FILE,
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH,
@@ -2264,15 +2268,77 @@ def au_p0b_google_phase_execution_fulfillment() -> dict[str, object]:
             DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH,
         )
     )
+    p0b_google_execution_checklist = au_p0b_google_execution_checklist()
+    phase_execution_request = build_au_p0b_google_phase_execution_request_packet(
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+        p0b_google_execution_checklist=p0b_google_execution_checklist,
+        output_path=phase_execution_request_path,
+    )
     return build_au_p0b_google_phase_execution_fulfillment(
         phase_execution_request_path=phase_execution_request_path,
         p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
-        phase_execution_request=au_p0b_google_phase_execution_request(),
-        p0b_google_execution_checklist=au_p0b_google_execution_checklist(),
+        phase_execution_request=phase_execution_request,
+        p0b_google_execution_checklist=p0b_google_execution_checklist,
         output_path=Path(
             os.getenv(
                 "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH",
                 DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-phase-execution-clearance/au")
+def au_p0b_google_phase_execution_clearance() -> dict[str, object]:
+    p0b_google_execution_checklist_path = Path(
+        os.getenv(
+            "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    phase_execution_request_path = Path(
+        os.getenv(
+            "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH,
+        )
+    )
+    phase_execution_fulfillment_path = Path(
+        os.getenv(
+            "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH,
+        )
+    )
+    p0b_google_execution_checklist = au_p0b_google_execution_checklist()
+    phase_execution_request = build_au_p0b_google_phase_execution_request_packet(
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+        p0b_google_execution_checklist=p0b_google_execution_checklist,
+        output_path=phase_execution_request_path,
+    )
+    phase_execution_fulfillment = build_au_p0b_google_phase_execution_fulfillment(
+        phase_execution_request_path=phase_execution_request_path,
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+        phase_execution_request=phase_execution_request,
+        p0b_google_execution_checklist=p0b_google_execution_checklist,
+        output_path=phase_execution_fulfillment_path,
+    )
+    return build_au_p0b_google_phase_execution_clearance(
+        phase_execution_request_path=phase_execution_request_path,
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+        phase_execution_fulfillment_path=phase_execution_fulfillment_path,
+        external_dependency_clearance_path=Path(
+            os.getenv(
+                "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        phase_execution_request=phase_execution_request,
+        p0b_google_execution_checklist=p0b_google_execution_checklist,
+        phase_execution_fulfillment=phase_execution_fulfillment,
+        external_dependency_clearance=au_external_dependency_clearance(),
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH,
             )
         ),
     )
@@ -6330,6 +6396,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/p0b-google-manual-backfill-clearance/au",
             "/v1/p0b-google-phase-execution-request/au",
             "/v1/p0b-google-phase-execution-fulfillment/au",
+            "/v1/p0b-google-phase-execution-clearance/au",
             "/v1/au-broader-platform-registry",
             "/v1/au-retest-scheduler-plan",
             "/v1/au-retest-execution-status",

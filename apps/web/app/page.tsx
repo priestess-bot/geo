@@ -731,6 +731,7 @@ type RuntimeData = {
   p0bGoogleManualBackfillClearance: AuP0bGoogleManualBackfillClearance | null;
   p0bGooglePhaseExecutionRequest: AuP0bGooglePhaseExecutionRequest | null;
   p0bGooglePhaseExecutionFulfillment: AuP0bGooglePhaseExecutionFulfillment | null;
+  p0bGooglePhaseExecutionClearance: AuP0bGooglePhaseExecutionClearance | null;
   externalDependencyHandoff: AuExternalDependencyHandoff | null;
   externalDependencyClearance: AuExternalDependencyClearance | null;
   broaderPlatformRegistry: AuBroaderPlatformRegistry | null;
@@ -2553,6 +2554,111 @@ type AuP0bGooglePhaseExecutionFulfillment = {
   };
 };
 
+type AuP0bGooglePhaseExecutionClearance = {
+  p0b_google_phase_execution_clearance_version: string;
+  generated_at: string;
+  status: string;
+  phase_execution_clearance_packet_ready: boolean;
+  phase_execution_fulfilled: boolean;
+  phase_execution_clearance_ready: boolean;
+  ready_for_next_clearance_step: boolean;
+  blocked_by_prerequisite_step: boolean;
+  p0b_google_phase_execution_clearance_hash: string;
+  summary?: {
+    required_count?: number;
+    fulfilled_required_count?: number;
+    missing_required_count?: number;
+    missing_required?: string[];
+    presence_mismatch_count?: number;
+    presence_mismatches?: string[];
+    missing_required_by_owner?: Record<string, string[]>;
+    blocking_reason_count?: number;
+    blocking_reasons?: string[];
+    phase_execution_fulfilled?: boolean;
+    phase_execution_fulfillment_ready?: boolean;
+    phase_execution_request_ready?: boolean;
+    execution_checklist_ready?: boolean;
+    source_checklist_hash_aligned?: boolean;
+    google_spike_phase_handoff_ready?: boolean;
+    google_main_scoring_allowed?: boolean;
+    phase_count?: number;
+    phase_order?: string[];
+    ready_phase_count?: number;
+    blocked_phase_count?: number;
+    next_phase?: string;
+    full_spike_planned_runs?: number;
+    manual_expected_record_count?: number;
+    blocked_by_prerequisite_step?: boolean;
+    prerequisite_step_id?: string;
+    prerequisite_step_ready?: boolean;
+    current_global_clearance_step_id?: string;
+    target_clearance_step_id?: string;
+    target_clearance_step_can_start?: boolean;
+    target_clearance_step_ready?: boolean;
+    phase_execution_clearance_ready?: boolean;
+    ready_for_next_clearance_step?: boolean;
+    next_action?: string;
+    next_command?: string;
+    strict_gate_command?: string;
+    request_strict_gate_command?: string;
+    scoring_strict_gate_command?: string;
+    operator_step_count?: number;
+    post_update_validation_command_count?: number;
+    raw_secret_values_allowed?: boolean;
+    raw_answer_values_allowed?: boolean;
+    raw_citation_values_allowed?: boolean;
+    raw_asset_urls_allowed?: boolean;
+    raw_provider_response_allowed?: boolean;
+    phase_entries_reference_command_ids_and_artifact_paths_only?: boolean;
+  };
+  phase_execution_clearance_items?: Array<{
+    key?: string;
+    phase_id?: string;
+    title?: string;
+    required?: boolean;
+    fulfilled?: boolean;
+    request_ready?: boolean;
+    checklist_ready?: boolean;
+    request_can_start?: boolean;
+    checklist_can_start?: boolean;
+    planned_runs?: number;
+    command_ids?: string[];
+    commands?: string[];
+    artifact_keys?: string[];
+    evidence_outputs?: string[];
+    owner_hint?: string;
+    blocking_reasons?: string[];
+  }>;
+  operator_steps?: Array<{
+    order?: number;
+    id?: string;
+    command?: string;
+    purpose?: string;
+    external_call_risk?: string;
+    next_action?: string;
+    next_phase?: string;
+    blocked?: boolean;
+  }>;
+  post_update_validation_sequence?: string[];
+  runtime_endpoints?: {
+    p0b_google_phase_execution_clearance?: string;
+    p0b_google_phase_execution_fulfillment?: string;
+    p0b_google_phase_execution_request?: string;
+    p0b_google_execution_checklist?: string;
+    p0b_google_manual_backfill_clearance?: string;
+    external_dependency_clearance?: string;
+    customer_handoff_readiness?: string;
+    delivery_progress?: string;
+  };
+  hard_gate_commands?: string[];
+  source_artifacts?: {
+    phase_execution_request?: { hash?: string };
+    p0b_google_execution_checklist?: { hash?: string };
+    phase_execution_fulfillment?: { hash?: string };
+    external_dependency_clearance?: { hash?: string };
+  };
+};
+
 type AuExternalDependencyHandoff = {
   external_dependency_handoff_version: string;
   generated_at: string;
@@ -3204,6 +3310,7 @@ const endpoints = {
   p0bGoogleManualBackfillClearance: "/v1/p0b-google-manual-backfill-clearance/au",
   p0bGooglePhaseExecutionRequest: "/v1/p0b-google-phase-execution-request/au",
   p0bGooglePhaseExecutionFulfillment: "/v1/p0b-google-phase-execution-fulfillment/au",
+  p0bGooglePhaseExecutionClearance: "/v1/p0b-google-phase-execution-clearance/au",
   externalDependencyHandoff: "/v1/external-dependency-handoff/au",
   externalDependencyClearance: "/v1/external-dependency-clearance/au",
   broaderPlatformRegistry: "/v1/au-broader-platform-registry",
@@ -4633,6 +4740,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleManualBackfillClearance: endpoints.p0bGoogleManualBackfillClearance,
     p0bGooglePhaseExecutionRequest: endpoints.p0bGooglePhaseExecutionRequest,
     p0bGooglePhaseExecutionFulfillment: endpoints.p0bGooglePhaseExecutionFulfillment,
+    p0bGooglePhaseExecutionClearance: endpoints.p0bGooglePhaseExecutionClearance,
     externalDependencyHandoff: endpoints.externalDependencyHandoff,
     externalDependencyClearance: endpoints.externalDependencyClearance,
     broaderPlatformRegistry: endpoints.broaderPlatformRegistry,
@@ -4963,6 +5071,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleManualBackfillClearance,
     p0bGooglePhaseExecutionRequest,
     p0bGooglePhaseExecutionFulfillment,
+    p0bGooglePhaseExecutionClearance,
     externalDependencyHandoff,
     externalDependencyClearance,
     broaderPlatformRegistry,
@@ -5055,6 +5164,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0bGooglePhaseExecutionFulfillment | null>(
       baseUrl,
       paths.p0bGooglePhaseExecutionFulfillment,
+      null
+    ),
+    fetchRuntimeEndpoint<AuP0bGooglePhaseExecutionClearance | null>(
+      baseUrl,
+      paths.p0bGooglePhaseExecutionClearance,
       null
     ),
     fetchRuntimeEndpoint<AuExternalDependencyHandoff | null>(baseUrl, paths.externalDependencyHandoff, null),
@@ -5305,6 +5419,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0bGoogleManualBackfillClearance: p0bGoogleManualBackfillClearance.payload,
       p0bGooglePhaseExecutionRequest: p0bGooglePhaseExecutionRequest.payload,
       p0bGooglePhaseExecutionFulfillment: p0bGooglePhaseExecutionFulfillment.payload,
+      p0bGooglePhaseExecutionClearance: p0bGooglePhaseExecutionClearance.payload,
       externalDependencyHandoff: externalDependencyHandoff.payload,
       externalDependencyClearance: externalDependencyClearance.payload,
       broaderPlatformRegistry: broaderPlatformRegistry.payload,
@@ -5754,6 +5869,17 @@ export default async function Home({
     p0bGooglePhaseExecutionFulfillmentSummary?.missing_required || [];
   const p0bGooglePhaseExecutionFulfillmentBlockers =
     p0bGooglePhaseExecutionFulfillmentSummary?.blocking_reasons || [];
+  const p0bGooglePhaseExecutionClearance = data.p0bGooglePhaseExecutionClearance;
+  const p0bGooglePhaseExecutionClearanceSummary = p0bGooglePhaseExecutionClearance?.summary;
+  const p0bGooglePhaseExecutionClearanceItems =
+    p0bGooglePhaseExecutionClearance?.phase_execution_clearance_items || [];
+  const p0bGooglePhaseExecutionClearanceMissing =
+    p0bGooglePhaseExecutionClearanceSummary?.missing_required || [];
+  const p0bGooglePhaseExecutionClearanceBlockers =
+    p0bGooglePhaseExecutionClearanceSummary?.blocking_reasons || [];
+  const p0bGooglePhaseExecutionClearanceSteps = p0bGooglePhaseExecutionClearance?.operator_steps || [];
+  const p0bGooglePhaseExecutionClearanceValidation =
+    p0bGooglePhaseExecutionClearance?.post_update_validation_sequence || [];
   const externalDependencyHandoff = data.externalDependencyHandoff;
   const externalDependencySummary = externalDependencyHandoff?.summary;
   const externalDependencyGroups = externalDependencyHandoff?.dependency_groups || [];
@@ -7386,6 +7512,117 @@ export default async function Home({
             </div>
           </div>
           <code>{paths.p0bGooglePhaseExecutionFulfillment}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>P0b Google phase execution clearance</strong>
+            <span>
+              {p0bGooglePhaseExecutionClearance?.p0b_google_phase_execution_clearance_version ||
+                "au_p0b_google_phase_execution_clearance_v1"}{" "}
+              · p0b_google_phase_execution_clearance_hash{" "}
+              {shortHash(p0bGooglePhaseExecutionClearance?.p0b_google_phase_execution_clearance_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>
+              Clearance packet{" "}
+              {p0bGooglePhaseExecutionClearance?.phase_execution_clearance_packet_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              Phase execution{" "}
+              {p0bGooglePhaseExecutionClearance?.phase_execution_fulfilled ? "fulfilled" : "blocked"}
+            </span>
+            <span>
+              Clearance ready {p0bGooglePhaseExecutionClearance?.phase_execution_clearance_ready ? "yes" : "no"}
+            </span>
+            <span>
+              Next clearance {p0bGooglePhaseExecutionClearance?.ready_for_next_clearance_step ? "ready" : "blocked"}
+            </span>
+            <span>
+              Prerequisite blocked {p0bGooglePhaseExecutionClearance?.blocked_by_prerequisite_step ? "yes" : "no"}
+            </span>
+            <span>Ready {p0bGooglePhaseExecutionClearanceSummary?.ready_phase_count || 0}</span>
+            <span>Blocked {p0bGooglePhaseExecutionClearanceSummary?.blocked_phase_count || 0}</span>
+            <span>Missing {p0bGooglePhaseExecutionClearanceSummary?.missing_required_count || 0}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>
+              Current global step {p0bGooglePhaseExecutionClearanceSummary?.current_global_clearance_step_id || "none"}
+            </span>
+            <span>Target step {p0bGooglePhaseExecutionClearanceSummary?.target_clearance_step_id || "none"}</span>
+            <span>Prerequisite {p0bGooglePhaseExecutionClearanceSummary?.prerequisite_step_id || "none"}</span>
+            <span>Next phase {p0bGooglePhaseExecutionClearanceSummary?.next_phase || "none"}</span>
+            <span>Next action {p0bGooglePhaseExecutionClearanceSummary?.next_action || "none"}</span>
+            <span>Next command {p0bGooglePhaseExecutionClearanceSummary?.next_command || "none"}</span>
+            <span>
+              Missing {p0bGooglePhaseExecutionClearanceMissing.slice(0, 6).join(", ") || "none"}
+            </span>
+            <span>
+              Blocking {p0bGooglePhaseExecutionClearanceBlockers.slice(0, 4).join(", ") || "none"}
+            </span>
+            <span>
+              Raw provider response{" "}
+              {p0bGooglePhaseExecutionClearanceSummary?.raw_provider_response_allowed ? "allowed" : "blocked"}
+            </span>
+            <span>
+              Raw answer {p0bGooglePhaseExecutionClearanceSummary?.raw_answer_values_allowed ? "allowed" : "blocked"}
+            </span>
+            <span>
+              Request hash{" "}
+              {shortHash(p0bGooglePhaseExecutionClearance?.source_artifacts?.phase_execution_request?.hash)}
+            </span>
+            <span>
+              Fulfillment hash{" "}
+              {shortHash(p0bGooglePhaseExecutionClearance?.source_artifacts?.phase_execution_fulfillment?.hash)}
+            </span>
+            <span>
+              {p0bGooglePhaseExecutionClearance?.runtime_endpoints?.p0b_google_phase_execution_clearance ||
+                "GET /v1/p0b-google-phase-execution-clearance/au"}
+            </span>
+            <span>Hard gate: make verify-au-p0b-google-phase-execution-clearance</span>
+            <span>
+              Strict clearance gate:{" "}
+              {p0bGooglePhaseExecutionClearance?.hard_gate_commands?.find((command) =>
+                command.endsWith("--require-cleared")
+              ) ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_phase_execution_clearance.py docs/runtime_preflight/au-p0b-google-phase-execution-clearance-latest.json --require-cleared"}
+            </span>
+          </div>
+          {p0bGooglePhaseExecutionClearanceItems.length ? (
+            <div className="dependencyGroupGrid">
+              {p0bGooglePhaseExecutionClearanceItems.map((item) => (
+                <div className="dependencyGroup" key={`p0b-google-phase-clearance-${item.key || item.phase_id}`}>
+                  <strong>{item.title || item.phase_id || item.key}</strong>
+                  <span>
+                    {item.phase_id || item.key} · {item.fulfilled ? "fulfilled" : "blocked"}
+                  </span>
+                  <small>
+                    request {item.request_ready ? "ready" : "blocked"} · checklist{" "}
+                    {item.checklist_ready ? "ready" : "blocked"} · runs {item.planned_runs || 0}
+                  </small>
+                  <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "gate clear"}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {p0bGooglePhaseExecutionClearanceSteps.length ? (
+            <div className="handoffBoundary">
+              {p0bGooglePhaseExecutionClearanceSteps.slice(0, 6).map((step) => (
+                <span key={step.id || step.order}>
+                  {step.order}. {step.id}: {step.command || "none"}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {p0bGooglePhaseExecutionClearanceValidation.length ? (
+            <div className="handoffBoundary">
+              <span>
+                Validation sequence{" "}
+                {p0bGooglePhaseExecutionClearanceValidation.slice(0, 5).join(" -> ") || "none"}
+              </span>
+            </div>
+          ) : null}
+          <code>{paths.p0bGooglePhaseExecutionClearance}</code>
         </div>
         <div className="broaderPlatformRegistry">
           <div className="launchRemediationHeader">
