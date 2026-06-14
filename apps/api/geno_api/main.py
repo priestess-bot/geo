@@ -197,6 +197,10 @@ from scripts.build_au_p0b_google_manual_backfill_request_packet import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH,
     build_au_p0b_google_manual_backfill_request_packet,
 )
+from scripts.build_au_p0b_google_phase_execution_request_packet import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH,
+    build_au_p0b_google_phase_execution_request_packet,
+)
 from scripts.build_au_p0b_google_playwright_env_report import (
     DEFAULT_ENV_FILE as DEFAULT_AU_P0B_GOOGLE_ENV_FILE,
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH,
@@ -1877,6 +1881,26 @@ def au_p0b_google_manual_backfill_request() -> dict[str, object]:
             os.getenv(
                 "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH",
                 DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-phase-execution-request/au")
+def au_p0b_google_phase_execution_request() -> dict[str, object]:
+    p0b_google_execution_checklist_path = Path(
+        os.getenv(
+            "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    return build_au_p0b_google_phase_execution_request_packet(
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+        p0b_google_execution_checklist=au_p0b_google_execution_checklist(),
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH,
             )
         ),
     )
@@ -5857,6 +5881,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/p0b-google-execution-checklist/au",
             "/v1/p0b-google-environment-request/au",
             "/v1/p0b-google-manual-backfill-request/au",
+            "/v1/p0b-google-phase-execution-request/au",
             "/v1/au-broader-platform-registry",
             "/v1/au-retest-scheduler-plan",
             "/v1/au-retest-execution-status",
