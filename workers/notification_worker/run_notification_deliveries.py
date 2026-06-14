@@ -28,6 +28,8 @@ from geno_core.webhook_signing import (
 
 WORKER_ID = "notification-worker"
 DEFAULT_SIGNING_SECRET_ENV = "GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET"
+DEFAULT_SIGNING_SECRET_KEY_ID = "primary"
+DEFAULT_SECONDARY_SIGNING_SECRET_ENV = "GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS"
 DEFAULT_SMTP_ENV_PREFIX = DEFAULT_RUNTIME_EMAIL_SMTP_ENV_PREFIX
 
 
@@ -128,29 +130,35 @@ def _webhook_signing_secret(
     *,
     subscription_metadata: dict[str, Any],
     default_signing_secret_env: str | None,
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, str | None]:
     configured_env = str(
         subscription_metadata.get("signing_secret_env")
         or subscription_metadata.get("webhook_signing_secret_env")
+        or ""
+    ).strip()
+    configured_key_id = str(
+        subscription_metadata.get("signing_secret_key_id")
+        or subscription_metadata.get("webhook_signing_secret_key_id")
         or ""
     ).strip()
     if configured_env:
         secret = os.environ.get(configured_env)
         if not secret:
             raise RuntimeError(f"webhook signing secret env {configured_env} is not configured")
-        return secret, configured_env
+        return secret, configured_env, configured_key_id or configured_env
     fallback_env = (default_signing_secret_env or "").strip()
     if fallback_env:
         secret = os.environ.get(fallback_env)
         if secret:
-            return secret, fallback_env
-    return None, None
+            return secret, fallback_env, configured_key_id or DEFAULT_SIGNING_SECRET_KEY_ID
+    return None, None, None
 
 
 def _apply_webhook_signature_headers(
     *,
     headers: dict[str, str],
     secret: str,
+    key_id: str | None,
     delivery_id: str,
     notification_id: str,
     payload_hash: str,
@@ -162,6 +170,7 @@ def _apply_webhook_signature_headers(
             delivery_id=delivery_id,
             notification_id=notification_id,
             payload_hash=payload_hash,
+            key_id=key_id,
         ),
     }
 
@@ -215,10 +224,12 @@ def process_next_notification_delivery(
             }
         )
     signed = False
+    signing_secret_env: str | None = None
+    signing_secret_key_id: str | None = None
 
     try:
         if channel != "slack":
-            signing_secret, _ = _webhook_signing_secret(
+            signing_secret, signing_secret_env, signing_secret_key_id = _webhook_signing_secret(
                 subscription_metadata=_subscription_metadata(delivery_record),
                 default_signing_secret_env=default_signing_secret_env,
             )
@@ -226,6 +237,7 @@ def process_next_notification_delivery(
                 headers = _apply_webhook_signature_headers(
                     headers=headers,
                     secret=signing_secret,
+                    key_id=signing_secret_key_id,
                     delivery_id=delivery_id,
                     notification_id=str(delivery["notification_id"]),
                     payload_hash=body_hash,
@@ -266,6 +278,8 @@ def process_next_notification_delivery(
                 "response_status": int(response_status),
                 "payload_hash": body_hash,
                 "signed": signed,
+                "signing_secret_env": signing_secret_env if signed else None,
+                "signing_secret_key_id": signing_secret_key_id if signed else None,
                 "channel": channel,
             }
         failed_status = _failed_status(attempt_count=attempt_count, max_attempts=delivery_max_attempts)
@@ -297,6 +311,8 @@ def process_next_notification_delivery(
             "next_attempt_at": next_attempt_at.isoformat() if next_attempt_at else None,
             "payload_hash": body_hash,
             "signed": signed,
+            "signing_secret_env": signing_secret_env if signed else None,
+            "signing_secret_key_id": signing_secret_key_id if signed else None,
             "channel": channel,
         }
     except Exception as exc:
@@ -327,6 +343,8 @@ def process_next_notification_delivery(
             "error_message": str(exc),
             "payload_hash": body_hash,
             "signed": signed,
+            "signing_secret_env": signing_secret_env if signed else None,
+            "signing_secret_key_id": signing_secret_key_id if signed else None,
             "channel": channel,
         }
 
@@ -343,6 +361,11 @@ def parse_args() -> argparse.Namespace:
         "--default-signing-secret-env",
         default=DEFAULT_SIGNING_SECRET_ENV,
         help="Optional default env var containing the outbound webhook HMAC secret.",
+    )
+    parser.add_argument(
+        "--secondary-signing-secret-env",
+        default=DEFAULT_SECONDARY_SIGNING_SECRET_ENV,
+        help="Optional previous env var name documented for receiver-side dual-secret rotation.",
     )
     parser.add_argument(
         "--smtp-env-prefix",
@@ -376,7 +399,21 @@ def main() -> None:
     finally:
         if repository is not None:
             close_repository_connection(repository)
-    print(json.dumps({"worker": WORKER_ID, "processed_count": len(results), "results": results}, default=str))
+    print(
+        json.dumps(
+            {
+                "worker": WORKER_ID,
+                "processed_count": len(results),
+                "signature_rotation": {
+                    "active_secret_env": args.default_signing_secret_env,
+                    "previous_secret_env": args.secondary_signing_secret_env,
+                    "secret_material_logged": False,
+                },
+                "results": results,
+            },
+            default=str,
+        )
+    )
 
 
 if __name__ == "__main__":

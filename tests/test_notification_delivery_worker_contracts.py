@@ -4,9 +4,11 @@ import json
 import os
 import unittest
 from datetime import UTC, datetime
+from pathlib import Path
 
 from geno_core.models import RuntimeNotificationDelivery, RuntimeNotificationDeliveryStatusInput
 from geno_core.webhook_signing import verify_runtime_notification_webhook_signature
+from workers.notification_worker import run_notification_deliveries
 from workers.notification_worker.run_notification_deliveries import process_next_notification_delivery
 
 
@@ -365,6 +367,66 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
             secret="default-secret",
         )
         self.assertTrue(verification.valid, verification.reason)
+
+    def test_process_next_notification_delivery_sends_signature_key_id_for_rotation(self) -> None:
+        repository = FakeNotificationDeliveryRepository(
+            _delivery_record(
+                subscription_metadata={
+                    "signing_secret_env": "GENO_TEST_WEBHOOK_SECRET_V2",
+                    "signing_secret_key_id": "v2",
+                    "previous_signing_secret_env": "GENO_TEST_WEBHOOK_SECRET_V1",
+                    "previous_signing_secret_key_id": "v1",
+                }
+            )
+        )
+        os.environ["GENO_TEST_WEBHOOK_SECRET_V1"] = "previous-secret"
+        os.environ["GENO_TEST_WEBHOOK_SECRET_V2"] = "current-secret"
+        requests: list[tuple[str, str, dict[str, str], bytes, float]] = []
+
+        def requester(
+            method: str,
+            url: str,
+            headers: dict[str, str],
+            body: bytes,
+            timeout_seconds: float,
+        ) -> tuple[int, bytes]:
+            requests.append((method, url, dict(headers), body, timeout_seconds))
+            return 200, b"ok"
+
+        try:
+            result = process_next_notification_delivery(
+                repository=repository,
+                default_signing_secret_env=None,
+                requester=requester,
+            )
+        finally:
+            os.environ.pop("GENO_TEST_WEBHOOK_SECRET_V1", None)
+            os.environ.pop("GENO_TEST_WEBHOOK_SECRET_V2", None)
+
+        self.assertEqual(result["status"], "delivered")
+        self.assertTrue(result["signed"])
+        self.assertEqual(result["signing_secret_env"], "GENO_TEST_WEBHOOK_SECRET_V2")
+        self.assertEqual(result["signing_secret_key_id"], "v2")
+        self.assertEqual(requests[0][2]["x-geno-signature-key-id"], "v2")
+        verification = verify_runtime_notification_webhook_signature(
+            headers=requests[0][2],
+            body=requests[0][3],
+            secret="current-secret",
+            secret_id="v2",
+            additional_secrets={"v1": "previous-secret"},
+        )
+        self.assertTrue(verification.valid, verification.reason)
+        self.assertEqual(verification.matched_secret_id, "v2")
+
+    def test_notification_delivery_worker_exposes_rotation_summary_without_secret_material(self) -> None:
+        source = Path(run_notification_deliveries.__file__).read_text(encoding="utf-8")
+
+        self.assertIn("DEFAULT_SECONDARY_SIGNING_SECRET_ENV", source)
+        self.assertIn("--secondary-signing-secret-env", source)
+        self.assertIn("signature_rotation", source)
+        self.assertIn("active_secret_env", source)
+        self.assertIn("previous_secret_env", source)
+        self.assertIn('"secret_material_logged": False', source)
 
     def test_process_next_notification_delivery_requeues_non_2xx_before_max_attempts(self) -> None:
         repository = FakeNotificationDeliveryRepository(_delivery_record(attempt_count=1, max_attempts=3))

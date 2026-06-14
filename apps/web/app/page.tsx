@@ -4998,6 +4998,16 @@ async function saveRuntimeNotificationSubscription(formData: FormData) {
       source: "runtime_console_notification_subscription",
       signing_secret_env:
         channel === "webhook" ? String(formData.get("signing_secret_env") || "").trim() || undefined : undefined,
+      signing_secret_key_id:
+        channel === "webhook" ? String(formData.get("signing_secret_key_id") || "").trim() || undefined : undefined,
+      previous_signing_secret_env:
+        channel === "webhook"
+          ? String(formData.get("previous_signing_secret_env") || "").trim() || undefined
+          : undefined,
+      previous_signing_secret_key_id:
+        channel === "webhook"
+          ? String(formData.get("previous_signing_secret_key_id") || "").trim() || undefined
+          : undefined,
       slack_channel: channel === "slack" ? String(formData.get("slack_channel") || "").trim() || undefined : undefined,
       email_reply_to: channel === "email" ? String(formData.get("email_reply_to") || "").trim() || undefined : undefined
     },
@@ -11571,6 +11581,18 @@ export default async function Home({
               <input name="signing_secret_env" placeholder="GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET" />
             </label>
             <label>
+              <span>Signing key id</span>
+              <input name="signing_secret_key_id" placeholder="v2" />
+            </label>
+            <label>
+              <span>Previous signing env</span>
+              <input name="previous_signing_secret_env" placeholder="GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS" />
+            </label>
+            <label>
+              <span>Previous key id</span>
+              <input name="previous_signing_secret_key_id" placeholder="v1" />
+            </label>
+            <label>
               <span>Slack channel</span>
               <input name="slack_channel" placeholder="#geno-alerts" />
             </label>
@@ -11616,7 +11638,11 @@ export default async function Home({
                   <small>
                     {record.subscription.event_types.join(", ")} ·{" "}
                     {typeof record.subscription.metadata?.signing_secret_env === "string"
-                      ? `signed by ${record.subscription.metadata.signing_secret_env} · `
+                      ? `signed by ${record.subscription.metadata.signing_secret_env}${
+                          typeof record.subscription.metadata?.signing_secret_key_id === "string"
+                            ? ` (${record.subscription.metadata.signing_secret_key_id})`
+                            : ""
+                        } · `
                       : ""}
                     {record.audit_events[0]?.event_type || "runtime_notification_subscription_saved pending"} ·{" "}
                     {dateText(record.subscription.updated_at)}

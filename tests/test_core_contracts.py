@@ -387,6 +387,37 @@ class CoreContractsTest(unittest.TestCase):
         self.assertFalse(verification.valid)
         self.assertEqual(verification.reason, "timestamp_outside_tolerance")
 
+    def test_runtime_notification_webhook_signature_verifies_previous_secret_rotation_window(self) -> None:
+        body = b'{"delivery_version":"runtime_notification_delivery_v1"}'
+        payload_hash = runtime_notification_webhook_payload_hash(body)
+        headers = {
+            RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER: "delivery-1",
+            RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER: "notification-1",
+            RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER: payload_hash,
+            **sign_runtime_notification_webhook(
+                secret="previous-secret",
+                delivery_id="delivery-1",
+                notification_id="notification-1",
+                payload_hash=payload_hash,
+                key_id="previous",
+                now=datetime(2026, 6, 12, 12, 0, tzinfo=UTC),
+            ),
+        }
+
+        verification = verify_runtime_notification_webhook_signature(
+            headers=headers,
+            body=body,
+            secret="current-secret",
+            secret_id="current",
+            additional_secrets={"previous": "previous-secret"},
+            now=datetime(2026, 6, 12, 12, 1, tzinfo=UTC),
+        )
+
+        self.assertTrue(verification.valid, verification.reason)
+        self.assertEqual(verification.matched_secret_id, "previous")
+        self.assertEqual(verification.signature_key_id, "previous")
+        self.assertEqual(verification.checked_secret_count, 1)
+
     def test_prompt_import_file_to_csv_parses_xlsx_first_sheet(self) -> None:
         csv_content, source_format = prompt_import_file_to_csv(
             file_bytes=self._xlsx_prompt_import_bytes(),

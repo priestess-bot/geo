@@ -157,6 +157,10 @@ class InfraContractsTest(unittest.TestCase):
             notification_delivery_worker["environment"]["GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET"],
             "",
         )
+        self.assertEqual(
+            notification_delivery_worker["environment"]["GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS"],
+            "",
+        )
         self.assertEqual(notification_delivery_worker["environment"]["GENO_NOTIFICATION_SMTP_HOST"], "")
         self.assertEqual(notification_delivery_worker["environment"]["GENO_NOTIFICATION_SMTP_PORT"], "587")
         self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", notification_delivery_worker["environment"])
@@ -171,6 +175,8 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("--lease-seconds", notification_delivery_worker["command"])
         self.assertIn("300", notification_delivery_worker["command"])
         self.assertIn("--timeout-seconds", notification_delivery_worker["command"])
+        self.assertIn("--secondary-signing-secret-env", notification_delivery_worker["command"])
+        self.assertIn("GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS", notification_delivery_worker["command"])
         self.assertIn("5.0", notification_delivery_worker["command"])
         self.assertIn("postgres", notification_delivery_worker["depends_on"])
         self.assertNotIn("minio", notification_delivery_worker["depends_on"])
@@ -726,7 +732,7 @@ class InfraContractsTest(unittest.TestCase):
         )
         self.assertIn("notification-delivery-worker:", makefile)
         self.assertIn(
-            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_notification_deliveries.py --max-deliveries $${GENO_NOTIFICATION_DELIVERY_MAX_DELIVERIES:-1} --max-attempts $${GENO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS:-3} --retry-backoff-seconds $${GENO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS:-120} --lease-seconds $${GENO_NOTIFICATION_DELIVERY_LEASE_SECONDS:-300} --timeout-seconds $${GENO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS:-5.0}",
+            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_notification_deliveries.py --max-deliveries $${GENO_NOTIFICATION_DELIVERY_MAX_DELIVERIES:-1} --max-attempts $${GENO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS:-3} --retry-backoff-seconds $${GENO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS:-120} --lease-seconds $${GENO_NOTIFICATION_DELIVERY_LEASE_SECONDS:-300} --timeout-seconds $${GENO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS:-5.0} --secondary-signing-secret-env $${GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS_ENV:-GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS}",
             makefile,
         )
         self.assertIn("docker-config-scheduler:", makefile)

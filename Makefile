@@ -410,7 +410,7 @@ entity-alias-assignment-dispatch-apply-worker:
 	PYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_dispatch_apply.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --reviewer-id $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS:-runtime-console} --max-per-reviewer $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER:-10} --limit-per-project $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT:-50} --max-projects $${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
 
 notification-delivery-worker:
-	PYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_notification_deliveries.py --max-deliveries $${GENO_NOTIFICATION_DELIVERY_MAX_DELIVERIES:-1} --max-attempts $${GENO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS:-3} --retry-backoff-seconds $${GENO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS:-120} --lease-seconds $${GENO_NOTIFICATION_DELIVERY_LEASE_SECONDS:-300} --timeout-seconds $${GENO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS:-5.0}
+	PYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_notification_deliveries.py --max-deliveries $${GENO_NOTIFICATION_DELIVERY_MAX_DELIVERIES:-1} --max-attempts $${GENO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS:-3} --retry-backoff-seconds $${GENO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS:-120} --lease-seconds $${GENO_NOTIFICATION_DELIVERY_LEASE_SECONDS:-300} --timeout-seconds $${GENO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS:-5.0} --secondary-signing-secret-env $${GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS_ENV:-GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS}
 
 worker-fixture:
 	PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode fixture
