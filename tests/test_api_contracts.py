@@ -7100,6 +7100,7 @@ class ApiContractsTest(unittest.TestCase):
                         "email_unsubscribe_url": "https://app.example.com/notifications/unsubscribe",
                         "email_unsubscribe_mailto": "mailto:unsubscribe@example.com",
                         "email_preferences_url": "https://app.example.com/notifications/preferences",
+                        "email_suppressed_recipients": ["muted@example.com"],
                     },
                     "updated_by": "runtime-console",
                     "reason": "save email subscription",
@@ -7123,6 +7124,7 @@ class ApiContractsTest(unittest.TestCase):
             fake_repository.subscription.metadata["email_preferences_url"],
             "https://app.example.com/notifications/preferences",
         )
+        self.assertEqual(fake_repository.subscription.metadata["email_suppressed_recipients"], ["muted@example.com"])
         self.assertEqual(fake_repository.subscription.reason, "save email subscription")
 
     def test_runtime_notification_deliveries_endpoint_returns_page(self) -> None:

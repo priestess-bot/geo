@@ -5015,7 +5015,11 @@ async function saveRuntimeNotificationSubscription(formData: FormData) {
       email_unsubscribe_mailto:
         channel === "email" ? String(formData.get("email_unsubscribe_mailto") || "").trim() || undefined : undefined,
       email_preferences_url:
-        channel === "email" ? String(formData.get("email_preferences_url") || "").trim() || undefined : undefined
+        channel === "email" ? String(formData.get("email_preferences_url") || "").trim() || undefined : undefined,
+      email_suppressed_recipients:
+        channel === "email"
+          ? String(formData.get("email_suppressed_recipients") || "").trim() || undefined
+          : undefined
     },
     updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
     reason: String(formData.get("reason") || "").trim() || undefined
@@ -11617,6 +11621,10 @@ export default async function Home({
             <label>
               <span>Email preferences URL</span>
               <input name="email_preferences_url" placeholder="https://app.example.com/notifications/preferences" />
+            </label>
+            <label>
+              <span>Email suppressed recipients</span>
+              <input name="email_suppressed_recipients" placeholder="muted@example.com, paused@example.com" />
             </label>
             <label>
               <span>Severity</span>

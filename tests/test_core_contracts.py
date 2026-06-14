@@ -7569,7 +7569,7 @@ class CoreContractsTest(unittest.TestCase):
             "id": subscription_id,
             "project_id": project_id,
             "channel": "email",
-            "endpoint_url": "mailto:ops@example.com",
+            "endpoint_url": "mailto:ops@example.com,muted@example.com",
             "event_types": ["runtime_alert"],
             "severity_threshold": "warning",
             "status": "active",
@@ -7578,6 +7578,7 @@ class CoreContractsTest(unittest.TestCase):
                 "email_unsubscribe_url": "https://app.example.com/notifications/unsubscribe",
                 "email_unsubscribe_mailto": "mailto:unsubscribe@example.com",
                 "email_preferences_url": "https://app.example.com/notifications/preferences",
+                "email_suppressed_recipients": ["muted@example.com"],
             },
             "created_by": "runtime-console",
             "created_at": now,
@@ -7590,7 +7591,7 @@ class CoreContractsTest(unittest.TestCase):
             "notification_id": notification_id,
             "subscription_id": subscription_id,
             "channel": "email",
-            "endpoint_url": "mailto:ops@example.com",
+            "endpoint_url": "mailto:ops@example.com,muted@example.com",
             "status": "queued",
             "attempt_count": 0,
             "max_attempts": 3,
@@ -7620,9 +7621,10 @@ class CoreContractsTest(unittest.TestCase):
             params for sql, params in connection.calls if "INSERT INTO runtime_notification_deliveries" in sql
         )
         self.assertEqual(delivery_insert_params[4], "email")
-        self.assertEqual(delivery_insert_params[5], "mailto:ops@example.com")
+        self.assertEqual(delivery_insert_params[5], "mailto:ops@example.com,muted@example.com")
         self.assertIn("runtime_notification_delivery_email_v1", str(delivery_insert_params[8]))
         self.assertIn("ops@example.com", str(delivery_insert_params[8]))
+        self.assertNotIn('"muted@example.com"', str(delivery_insert_params[8]))
         self.assertIn("[GENO CRITICAL] Brand absent in Sydney", str(delivery_insert_params[8]))
         self.assertIn(RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION, str(delivery_insert_params[8]))
         self.assertIn("email_template_hash", str(delivery_insert_params[8]))
@@ -7635,11 +7637,70 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("Notification controls:", str(delivery_insert_params[8]))
         self.assertIn("email_control_hashes", str(delivery_insert_params[8]))
         self.assertIn("email_reply_to_hash", str(delivery_insert_params[8]))
+        self.assertIn("email_suppressed_recipient_hashes", str(delivery_insert_params[8]))
+        self.assertIn("email_filtered_recipient_count", str(delivery_insert_params[8]))
         self.assertIn("email_template_hashes", str(audit_events[0].output_refs))
         self.assertIn("email_subject_hashes", str(audit_events[0].output_refs))
         self.assertIn("email_body_hashes", str(audit_events[0].output_refs))
         self.assertIn("email_reply_to_hashes", str(audit_events[0].output_refs))
         self.assertIn("email_control_hashes", str(audit_events[0].output_refs))
+        self.assertIn("email_suppressed_recipient_hashes", str(audit_events[0].output_refs))
+
+    def test_postgres_repository_suppresses_email_notification_delivery_when_all_recipients_filtered(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        notification_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "runtime_alert",
+            "severity": "critical",
+            "title": "Brand absent in Sydney",
+            "message": "Brand was absent from critical AI search prompts.",
+            "target_type": "runtime_alert",
+            "target_id": "brand_absent:project-1",
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {"alert_type": "brand_absent"},
+            "created_by": "runtime-worker",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        subscription_row = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "email",
+            "endpoint_url": "mailto:ops@example.com,muted@example.com",
+            "event_types": ["runtime_alert"],
+            "severity_threshold": "warning",
+            "status": "active",
+            "metadata": {"email_suppressed_recipients": "ops@example.com, muted@example.com"},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        connection = RecordingConnection(result_sets=[[subscription_row]])
+        repository = PostgresEvidenceRepository(connection)
+
+        with connection.cursor() as cursor:
+            deliveries, audit_events = repository._enqueue_runtime_notification_deliveries(
+                cursor=cursor,
+                notification=notification_row,
+                updated_by="runtime-worker",
+            )
+
+        self.assertEqual(deliveries, ())
+        self.assertEqual(len(audit_events), 1)
+        self.assertEqual(audit_events[0].event_type, "runtime_notification_delivery_suppressed")
+        self.assertEqual(audit_events[0].target_type, "runtime_notification_subscription")
+        self.assertIn("email_suppressed_recipient_hashes", str(audit_events[0].output_refs))
+        self.assertIn("email_configured_suppression_hashes", str(audit_events[0].output_refs))
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertNotIn("INSERT INTO runtime_notification_deliveries", executed_sql)
 
     def test_postgres_repository_lists_runtime_notification_deliveries_with_context(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)
