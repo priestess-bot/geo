@@ -95,6 +95,8 @@ from geno_core.models import (
     RuntimeNotificationDelivery,
     RuntimeNotificationDeliveryPage,
     RuntimeNotificationDeliveryStatusInput,
+    RuntimeNotificationEmailFeedback,
+    RuntimeNotificationEmailFeedbackInput,
     RuntimeNotificationPage,
     RuntimeNotificationSubscription,
     RuntimeNotificationSubscriptionInput,
@@ -350,6 +352,15 @@ def _runtime_notification_email_suppression_hashes(recipients: tuple[str, ...] |
         for normalized in (_normalize_runtime_email_address(recipient) for recipient in recipients)
         if normalized
     ]
+
+
+def _sha256_hex_or_none(value: str | None, *, field_name: str) -> str | None:
+    normalized = (value or "").strip().lower()
+    if not normalized:
+        return None
+    if len(normalized) != 64 or any(char not in "0123456789abcdef" for char in normalized):
+        raise ValueError(f"{field_name} must be a lowercase sha256 hex digest")
+    return normalized
 
 
 def _runtime_notification_email_payload(
@@ -1756,8 +1767,25 @@ RUNTIME_NOTIFICATION_DELIVERY_COLUMNS = (
     "updated_at",
 )
 RUNTIME_NOTIFICATION_DELIVERY_RETURNING = ", ".join(RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
+RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_COLUMNS = (
+    "id",
+    "project_id",
+    "delivery_id",
+    "notification_id",
+    "subscription_id",
+    "feedback_type",
+    "recipient_hash",
+    "provider",
+    "provider_event_id_hash",
+    "occurred_at",
+    "metadata",
+    "recorded_by",
+    "created_at",
+)
+RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_RETURNING = ", ".join(RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_COLUMNS)
 RUNTIME_NOTIFICATION_SEVERITY_ORDER = {"info": 0, "warning": 1, "critical": 2}
 RUNTIME_NOTIFICATION_SUBSCRIPTION_CHANNELS = {"webhook", "slack", "email"}
+RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_TYPES = {"bounce", "complaint", "unsubscribe", "suppressed"}
 RUNTIME_ALERT_EVENT_STATUSES = {"acknowledged", "resolved", "snoozed", "reopened", "escalated"}
 RUNTIME_ALERT_EVENT_COLUMNS = (
     "id",
@@ -2590,6 +2618,22 @@ class PostgresEvidenceRepository:
                 LIMIT 1
                 """,
                 (_uuid(notification_id),),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return str(row["project_id"] if isinstance(row, dict) else row[0])
+
+    def get_runtime_notification_delivery_project_id(self, *, delivery_id: str) -> str | None:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT project_id
+                FROM runtime_notification_deliveries
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(delivery_id),),
             )
             row = cursor.fetchone()
         if not row:
@@ -8881,6 +8925,109 @@ class PostgresEvidenceRepository:
         self.connection.commit()
         return record
 
+    def record_runtime_notification_email_feedback(
+        self,
+        feedback: RuntimeNotificationEmailFeedbackInput,
+    ) -> RuntimeNotificationEmailFeedback:
+        delivery_id = feedback.delivery_id.strip()
+        feedback_type = feedback.feedback_type.strip().lower()
+        recorded_by = feedback.recorded_by.strip() or "runtime-console"
+        reason = feedback.reason.strip() if feedback.reason else None
+        provider = " ".join(str(feedback.provider or "").replace("\r", "\n").split()).strip() or None
+        recipient = _normalize_runtime_email_address(feedback.recipient) if feedback.recipient else ""
+        recipient_hash = runtime_email_body_hash(recipient) if recipient else _sha256_hex_or_none(
+            feedback.recipient_hash,
+            field_name="recipient_hash",
+        )
+        provider_event_id = " ".join(str(feedback.provider_event_id or "").replace("\r", "\n").split()).strip()
+        provider_event_id_hash = runtime_email_body_hash(provider_event_id) if provider_event_id else _sha256_hex_or_none(
+            feedback.provider_event_id_hash,
+            field_name="provider_event_id_hash",
+        )
+        occurred_at = feedback.occurred_at or datetime.now(UTC)
+        metadata = _json_compatible(feedback.metadata or {})
+        if not delivery_id:
+            raise ValueError("delivery_id is required")
+        if feedback_type not in RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_TYPES:
+            raise ValueError("email feedback type must be bounce, complaint, unsubscribe, or suppressed")
+        if not recipient_hash and not provider_event_id_hash:
+            raise ValueError("email feedback requires recipient, recipient_hash, provider_event_id, or provider_event_id_hash")
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be an object")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)}
+                FROM runtime_notification_deliveries
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(delivery_id),),
+            )
+            delivery = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
+            if not delivery:
+                raise ValueError("runtime notification delivery not found")
+            if str(delivery.get("channel") or "").strip().lower() != "email":
+                raise ValueError("email feedback can only be recorded for email runtime notification deliveries")
+            cursor.execute(
+                f"""
+                INSERT INTO runtime_notification_email_feedback_events (
+                  project_id, delivery_id, notification_id, subscription_id, feedback_type,
+                  recipient_hash, provider, provider_event_id_hash, occurred_at, metadata, recorded_by
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING {RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_RETURNING}
+                """,
+                (
+                    _uuid(str(delivery["project_id"])),
+                    _uuid(str(delivery["id"])),
+                    _uuid(str(delivery["notification_id"])),
+                    _uuid(str(delivery["subscription_id"])),
+                    feedback_type,
+                    recipient_hash,
+                    provider,
+                    provider_event_id_hash,
+                    occurred_at,
+                    _json_payload(metadata),
+                    recorded_by,
+                ),
+            )
+            feedback_event = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_COLUMNS)
+            output_refs = {
+                "runtime_notification_email_feedback_event_ids": [str(feedback_event["id"])],
+                "runtime_notification_delivery_ids": [delivery_id],
+                "runtime_notification_ids": [str(delivery["notification_id"])],
+                "runtime_notification_subscription_ids": [str(delivery["subscription_id"])],
+                "feedback_type": [feedback_type],
+                "recipient_hashes": [recipient_hash] if recipient_hash else [],
+                "provider_event_id_hashes": [provider_event_id_hash] if provider_event_id_hash else [],
+            }
+            audit_event = build_audit_event(
+                event_type="runtime_notification_email_feedback_recorded",
+                project_id=str(delivery["project_id"]),
+                actor_type="worker" if recorded_by == "notification-worker" else "user",
+                actor_id=recorded_by,
+                target_type="runtime_notification_delivery",
+                target_id=delivery_id,
+                before=delivery,
+                after=feedback_event,
+                input_refs={
+                    "runtime_notification_delivery_ids": [delivery_id],
+                    "feedback_type": [feedback_type],
+                },
+                output_refs=output_refs,
+                method_version="runtime_notification_email_feedback_v1",
+                reason=reason or f"record runtime notification email {feedback_type} feedback",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            record = self._runtime_notification_email_feedback_from_row(
+                cursor=cursor,
+                feedback_event=feedback_event,
+                delivery=delivery,
+            )
+        self.connection.commit()
+        return record
+
     def claim_next_runtime_report_export_job(
         self,
         *,
@@ -9880,6 +10027,58 @@ class PostgresEvidenceRepository:
         audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
         return RuntimeNotificationDelivery(
             delivery=row,
+            notification=notification,
+            subscription=subscription,
+            audit_events=audit_events,
+        )
+
+    def _runtime_notification_email_feedback_from_row(
+        self,
+        *,
+        cursor: DbCursor,
+        feedback_event: dict[str, Any],
+        delivery: dict[str, Any],
+    ) -> RuntimeNotificationEmailFeedback:
+        cursor.execute(
+            f"""
+            SELECT {", ".join(RUNTIME_NOTIFICATION_COLUMNS)}
+            FROM runtime_notifications
+            WHERE id = %s
+            LIMIT 1
+            """,
+            (_uuid(str(feedback_event["notification_id"])),),
+        )
+        notification_row = cursor.fetchone()
+        notification = _row_dict(notification_row, RUNTIME_NOTIFICATION_COLUMNS) if notification_row else None
+        cursor.execute(
+            f"""
+            SELECT {", ".join(RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)}
+            FROM runtime_notification_subscriptions
+            WHERE id = %s
+            LIMIT 1
+            """,
+            (_uuid(str(feedback_event["subscription_id"])),),
+        )
+        subscription_row = cursor.fetchone()
+        subscription = (
+            _row_dict(subscription_row, RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)
+            if subscription_row
+            else None
+        )
+        cursor.execute(
+            f"""
+            SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+            FROM audit_events
+            WHERE project_id = %s AND target_type = %s AND target_id = %s
+            ORDER BY created_at DESC
+            LIMIT 5
+            """,
+            (_uuid(str(feedback_event["project_id"])), "runtime_notification_delivery", str(feedback_event["delivery_id"])),
+        )
+        audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        return RuntimeNotificationEmailFeedback(
+            feedback_event=feedback_event,
+            delivery=delivery,
             notification=notification,
             subscription=subscription,
             audit_events=audit_events,

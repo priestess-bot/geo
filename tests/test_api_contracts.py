@@ -91,6 +91,7 @@ from geno_core.models import (
     RuntimeKnowledgeSearchResult,
     RuntimeNotificationDelivery,
     RuntimeNotificationDeliveryPage,
+    RuntimeNotificationEmailFeedback,
     RuntimeNotification,
     RuntimeNotificationPage,
     RuntimeNotificationSubscription,
@@ -7172,6 +7173,68 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["records"][0]["audit_events"][0]["event_type"], "runtime_notification_delivery_queued")
         self.assertEqual(fake_repository.kwargs["status"], "queued")
 
+    def test_runtime_notification_email_feedback_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def get_runtime_notification_delivery_project_id(self, *, delivery_id: str) -> str:
+                self.delivery_project_lookup = delivery_id
+                return "project-1"
+
+            def record_runtime_notification_email_feedback(self, feedback: object) -> RuntimeNotificationEmailFeedback:
+                self.feedback = feedback
+                return RuntimeNotificationEmailFeedback(
+                    feedback_event={
+                        "id": "feedback-1",
+                        "project_id": "project-1",
+                        "delivery_id": feedback.delivery_id,
+                        "notification_id": "notification-1",
+                        "subscription_id": "subscription-1",
+                        "feedback_type": feedback.feedback_type,
+                        "recipient_hash": "recipient-hash",
+                        "provider": feedback.provider,
+                        "provider_event_id_hash": "provider-event-hash",
+                        "metadata": feedback.metadata,
+                        "recorded_by": feedback.recorded_by,
+                    },
+                    delivery={
+                        "id": feedback.delivery_id,
+                        "project_id": "project-1",
+                        "notification_id": "notification-1",
+                        "subscription_id": "subscription-1",
+                        "channel": "email",
+                        "endpoint_url": "mailto:ops@example.com",
+                        "status": "delivered",
+                    },
+                    notification={"id": "notification-1", "title": "Report export failed"},
+                    subscription={"id": "subscription-1", "channel": "email"},
+                    audit_events=({"event_type": "runtime_notification_email_feedback_recorded"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/runtime-notification-deliveries/delivery-1/email-feedback",
+                json={
+                    "feedback_type": "complaint",
+                    "recipient": "ops@example.com",
+                    "provider": "smtp",
+                    "provider_event_id": "smtp-feedback-1",
+                    "metadata": {"source": "manual"},
+                    "recorded_by": "runtime-console",
+                    "reason": "manual complaint review",
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["feedback_event"]["feedback_type"], "complaint")
+        self.assertEqual(payload["audit_events"][0]["event_type"], "runtime_notification_email_feedback_recorded")
+        self.assertEqual(fake_repository.delivery_project_lookup, "delivery-1")
+        self.assertEqual(fake_repository.feedback.delivery_id, "delivery-1")
+        self.assertEqual(fake_repository.feedback.provider_event_id, "smtp-feedback-1")
+        self.assertEqual(fake_repository.feedback.metadata["source"], "manual")
+        self.assertEqual(fake_repository.feedback.reason, "manual complaint review")
+
     def test_runtime_report_export_job_enqueue_and_status_endpoints_pass_payload(self) -> None:
         class FakeRepository:
             def __init__(self) -> None:
@@ -8026,6 +8089,9 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeNotificationDelivery", payload["persistence"])
         self.assertIn("RuntimeNotificationDeliveryPage", payload["persistence"])
         self.assertIn("RuntimeNotificationDeliveryStatusInput", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailFeedback", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailFeedbackInput", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailFeedbackRequest", payload["persistence"])
         self.assertIn("RuntimeReportManagementInput", payload["persistence"])
         self.assertIn("RuntimeReportManagementEventRequest", payload["persistence"])
         self.assertIn("RuntimeActionPlan", payload["persistence"])

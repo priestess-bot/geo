@@ -3052,6 +3052,7 @@ type RuntimeNotificationDelivery = {
     response_status?: number | null;
     response_body_hash?: string | null;
     error_message?: string | null;
+    payload?: Record<string, unknown>;
     created_at?: string;
     updated_by: string;
     updated_at?: string;
@@ -4209,6 +4210,42 @@ async function updateRuntimeNotificationStatus(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`/v1/runtime-notifications/${notificationId}/status returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function recordRuntimeNotificationEmailFeedback(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const deliveryId = String(formData.get("delivery_id") || "").trim();
+  if (!deliveryId) {
+    throw new Error("delivery_id is required to record notification email feedback");
+  }
+  const payload = {
+    feedback_type: String(formData.get("feedback_type") || "bounce").trim(),
+    recipient: String(formData.get("recipient") || "").trim() || undefined,
+    recipient_hash: String(formData.get("recipient_hash") || "").trim() || undefined,
+    provider: String(formData.get("provider") || "").trim() || undefined,
+    provider_event_id: String(formData.get("provider_event_id") || "").trim() || undefined,
+    provider_event_id_hash: String(formData.get("provider_event_id_hash") || "").trim() || undefined,
+    recorded_by: String(formData.get("recorded_by") || "runtime-console").trim(),
+    metadata: {
+      source: "runtime_console_email_feedback",
+      note: String(formData.get("note") || "").trim() || undefined
+    },
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/runtime-notification-deliveries/${deliveryId}/email-feedback`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/runtime-notification-deliveries/${deliveryId}/email-feedback returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -11731,6 +11768,57 @@ export default async function Home({
                     {record.delivery.error_message || record.delivery.response_body_hash || "response pending"} ·{" "}
                     {record.audit_events[0]?.event_type || "runtime_notification_delivery_status_updated pending"}
                   </small>
+                  {record.delivery.channel === "email" ? (
+                    <form action={recordRuntimeNotificationEmailFeedback} className="reportManagementForm">
+                      <input type="hidden" name="delivery_id" value={record.delivery.id} />
+                      <input type="hidden" name="recorded_by" value="runtime-console" />
+                      <input
+                        type="hidden"
+                        name="reason"
+                        value="Record runtime notification email feedback from console"
+                      />
+                      <label>
+                        <span>Email feedback</span>
+                        <select name="feedback_type" defaultValue="bounce">
+                          <option value="bounce">bounce</option>
+                          <option value="complaint">complaint</option>
+                          <option value="unsubscribe">unsubscribe</option>
+                          <option value="suppressed">suppressed</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Recipient</span>
+                        <input name="recipient" placeholder="recipient@example.com" />
+                      </label>
+                      <label>
+                        <span>Recipient hash</span>
+                        <input name="recipient_hash" placeholder="sha256 recipient hash" />
+                      </label>
+                      <label>
+                        <span>Provider</span>
+                        <input name="provider" placeholder="smtp, ses, sendgrid" />
+                      </label>
+                      <label>
+                        <span>Provider event id</span>
+                        <input name="provider_event_id" placeholder="feedback event id" />
+                      </label>
+                      <label>
+                        <span>Provider event hash</span>
+                        <input name="provider_event_id_hash" placeholder="sha256 provider event id hash" />
+                      </label>
+                      <label>
+                        <span>Note</span>
+                        <input name="note" placeholder="manual bounce review" />
+                      </label>
+                      <button className="actionButton compactAction" type="submit">
+                        Record feedback
+                      </button>
+                      <small>
+                        /v1/runtime-notification-deliveries/{record.delivery.id}/email-feedback ·{" "}
+                        runtime_notification_email_feedback_recorded
+                      </small>
+                    </form>
+                  ) : null}
                 </li>
               ))}
             </ul>

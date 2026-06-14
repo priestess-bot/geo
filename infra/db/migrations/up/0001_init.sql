@@ -599,6 +599,22 @@ CREATE TABLE runtime_notification_deliveries (
   UNIQUE(notification_id, subscription_id)
 );
 
+CREATE TABLE runtime_notification_email_feedback_events (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  delivery_id uuid NOT NULL REFERENCES runtime_notification_deliveries(id) ON DELETE CASCADE,
+  notification_id uuid NOT NULL REFERENCES runtime_notifications(id) ON DELETE CASCADE,
+  subscription_id uuid NOT NULL REFERENCES runtime_notification_subscriptions(id) ON DELETE CASCADE,
+  feedback_type text NOT NULL,
+  recipient_hash text,
+  provider text,
+  provider_event_id_hash text,
+  occurred_at timestamptz NOT NULL DEFAULT now(),
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  recorded_by text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE score_contributions (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   score_snapshot_id uuid NOT NULL REFERENCES visibility_score_snapshots(id) ON DELETE CASCADE,
@@ -729,6 +745,8 @@ CREATE INDEX idx_runtime_notification_subscriptions_project ON runtime_notificat
 CREATE INDEX idx_runtime_notification_deliveries_project ON runtime_notification_deliveries(project_id, status, updated_at);
 CREATE INDEX idx_runtime_notification_deliveries_claim ON runtime_notification_deliveries(status, next_attempt_at, lease_expires_at, created_at);
 CREATE INDEX idx_runtime_notification_deliveries_notification ON runtime_notification_deliveries(notification_id, status, created_at);
+CREATE INDEX idx_runtime_notification_email_feedback_project ON runtime_notification_email_feedback_events(project_id, feedback_type, occurred_at);
+CREATE INDEX idx_runtime_notification_email_feedback_delivery ON runtime_notification_email_feedback_events(delivery_id, occurred_at);
 CREATE INDEX idx_entity_alias_candidate_reviews_project ON entity_alias_candidate_reviews(project_id, decision, updated_at);
 CREATE INDEX idx_entity_alias_candidate_reviews_entity ON entity_alias_candidate_reviews(entity_kind, entity_id, alias_type, alias);
 CREATE INDEX idx_entity_alias_candidate_reviews_assignment ON entity_alias_candidate_reviews(project_id, assignment_status, assigned_to, due_at, priority);

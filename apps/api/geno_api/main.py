@@ -95,6 +95,7 @@ from geno_core.models import (
     RuntimeProjectActionInput,
     RuntimeProjectUpdateInput,
     RuntimePromptImportInput,
+    RuntimeNotificationEmailFeedbackInput,
     RuntimeNotificationSubscriptionInput,
     RuntimeNotificationStatusInput,
     RuntimeReportExportJobInput,
@@ -1792,6 +1793,19 @@ class RuntimeNotificationSubscriptionRequest(BaseModel):
     status: str = Field(default="active", min_length=1, max_length=40)
     metadata: dict[str, object] = Field(default_factory=dict)
     updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationEmailFeedbackRequest(BaseModel):
+    feedback_type: str = Field(min_length=1, max_length=40)
+    recipient: str | None = Field(default=None, max_length=320)
+    recipient_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    provider: str | None = Field(default=None, max_length=120)
+    provider_event_id: str | None = Field(default=None, max_length=500)
+    provider_event_id_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    occurred_at: datetime | None = None
+    metadata: dict[str, object] = Field(default_factory=dict)
+    recorded_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     reason: str | None = Field(default=None, max_length=500)
 
 
@@ -5673,6 +5687,50 @@ def runtime_notification_deliveries(
         close_repository_connection(repository)
 
 
+@app.post("/v1/runtime-notification-deliveries/{delivery_id}/email-feedback")
+def record_runtime_notification_email_feedback(
+    delivery_id: str,
+    payload: RuntimeNotificationEmailFeedbackRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_id = repository.get_runtime_notification_delivery_project_id(delivery_id=delivery_id)
+        if project_id is None:
+            raise HTTPException(status_code=404, detail="runtime notification delivery not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        record = repository.record_runtime_notification_email_feedback(
+            RuntimeNotificationEmailFeedbackInput(
+                delivery_id=delivery_id,
+                feedback_type=payload.feedback_type,
+                recipient=payload.recipient,
+                recipient_hash=payload.recipient_hash,
+                provider=payload.provider,
+                provider_event_id=payload.provider_event_id,
+                provider_event_id_hash=payload.provider_event_id_hash,
+                occurred_at=payload.occurred_at,
+                metadata=payload.metadata,
+                recorded_by=actor_id or payload.recorded_by,
+                reason=payload.reason,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "runtime notification delivery not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/runtime-notifications/{notification_id}/status")
 def update_runtime_notification_status(
     notification_id: str,
@@ -6694,6 +6752,9 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeNotificationDelivery",
             "RuntimeNotificationDeliveryPage",
             "RuntimeNotificationDeliveryStatusInput",
+            "RuntimeNotificationEmailFeedback",
+            "RuntimeNotificationEmailFeedbackInput",
+            "RuntimeNotificationEmailFeedbackRequest",
             "RuntimeNotificationPage",
             "RuntimeNotificationSubscription",
             "RuntimeNotificationSubscriptionInput",
@@ -6788,6 +6849,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/runtime-notifications",
             "/v1/runtime-notification-subscriptions",
             "/v1/runtime-notification-deliveries",
+            "/v1/runtime-notification-deliveries/{delivery_id}/email-feedback",
             "/v1/runtime-notifications/{notification_id}/status",
             "/v1/reports/runtime/{report_export_id}/management-events",
             "/v1/reports/runtime/{report_export_id}/artifact",

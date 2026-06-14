@@ -1690,6 +1690,30 @@ class RuntimeNotificationDeliveryStatusInput:
 
 
 @dataclass(frozen=True)
+class RuntimeNotificationEmailFeedback:
+    feedback_event: dict[str, Any]
+    delivery: dict[str, Any]
+    notification: dict[str, Any] | None
+    subscription: dict[str, Any] | None
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeNotificationEmailFeedbackInput:
+    delivery_id: str
+    feedback_type: str
+    recipient: str | None = None
+    recipient_hash: str | None = None
+    provider: str | None = None
+    provider_event_id: str | None = None
+    provider_event_id_hash: str | None = None
+    occurred_at: datetime | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    recorded_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeReportArtifact:
     report_export: dict[str, Any]
     artifact_type: str
