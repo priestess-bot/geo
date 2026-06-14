@@ -26,6 +26,7 @@ from geno_core.models import (
     EntityAliasCandidateAssignmentReassignmentInput,
     ContentDraft,
     EntityAliasCandidateAssignmentInput,
+    EntityAliasAssignmentDispatchApplyInput,
     EntityAliasAssignmentDispatchPlanInput,
     EntityAliasCandidateReviewInput,
     EntityAliasInput,
@@ -63,6 +64,7 @@ from geno_core.models import (
     RuntimeEntityAliasAssignmentNotificationResult,
     RuntimeEntityAliasAssignmentReassignmentResult,
     RuntimeEntityAliasAssignmentBatchActionResult,
+    RuntimeEntityAliasAssignmentDispatchApplyResult,
     RuntimeEntityAliasAssignmentDispatchPlan,
     RuntimeEntityAliasAssignmentWorkbench,
     RuntimeEntityAliasAssignmentWorkloadSummary,
@@ -4184,6 +4186,204 @@ class PostgresEvidenceRepository:
                 "dry_run_does_not_write_assignment_state": True,
             },
         )
+
+    def apply_entity_alias_assignment_dispatch_plan(
+        self,
+        apply_input: EntityAliasAssignmentDispatchApplyInput,
+    ) -> RuntimeEntityAliasAssignmentDispatchApplyResult:
+        project_id = apply_input.project_id.strip()
+        applied_by = apply_input.applied_by.strip() or "runtime-console"
+        assignment_status = apply_input.assignment_status.strip().lower() or "assigned"
+        priority = apply_input.priority.strip().lower() if apply_input.priority else None
+        assignment_note = apply_input.assignment_note.strip() if apply_input.assignment_note else None
+        reason = apply_input.reason.strip() if apply_input.reason else assignment_note
+        if not project_id:
+            raise ValueError("project_id is required")
+        if assignment_status not in {"assigned", "in_progress", "blocked", "escalated"}:
+            raise ValueError("assignment_status must be assigned, in_progress, blocked, or escalated")
+        if priority and priority not in {"low", "normal", "high", "urgent"}:
+            raise ValueError("priority must be low, normal, high, or urgent")
+        plan = self.build_entity_alias_assignment_dispatch_plan(
+            EntityAliasAssignmentDispatchPlanInput(
+                project_id=project_id,
+                reviewer_ids=apply_input.reviewer_ids,
+                include_statuses=apply_input.include_statuses,
+                max_per_reviewer=apply_input.max_per_reviewer,
+                due_soon_before=apply_input.due_soon_before,
+                limit=apply_input.limit,
+            )
+        )
+        proposals = tuple(plan.proposed_assignments)
+        records: list[RuntimeEntityAliasCandidateReview] = []
+        errors: list[dict[str, Any]] = []
+        applied_audit_events: list[AuditEvent] = []
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM projects WHERE id = %s LIMIT 1", (_uuid(project_id),))
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            for index, proposal in enumerate(proposals):
+                candidate_id = str(proposal.get("candidate_id") or "").strip()
+                assigned_to = str(proposal.get("recommended_assigned_to") or "").strip()
+                try:
+                    if not candidate_id:
+                        raise ValueError("candidate_id is required")
+                    if not assigned_to:
+                        raise ValueError("recommended_assigned_to is required")
+                    before = self._get_entity_alias_candidate_review_for_update(
+                        cursor=cursor,
+                        project_id=project_id,
+                        candidate_id=candidate_id,
+                        lock=True,
+                    )
+                    if not before:
+                        raise ValueError("entity alias candidate review not found")
+                    self._validate_dispatch_apply_candidate_status(
+                        before=before,
+                        include_statuses=plan.include_statuses,
+                    )
+                    effective_priority = priority or str(before.get("priority") or "normal").strip().lower() or "normal"
+                    if effective_priority not in {"low", "normal", "high", "urgent"}:
+                        effective_priority = "normal"
+                    effective_due_at = apply_input.due_at if apply_input.due_at is not None else before.get("due_at")
+                    effective_note = assignment_note or f"Dispatch plan applied by {applied_by}"
+                    cursor.execute(
+                        """
+                        UPDATE entity_alias_candidate_reviews
+                        SET assigned_to = %s,
+                            assigned_by = %s,
+                            assignment_status = %s,
+                            assignment_note = %s,
+                            assigned_at = now(),
+                            due_at = %s,
+                            priority = %s,
+                            updated_at = now()
+                        WHERE project_id = %s AND candidate_id = %s
+                        """,
+                        (
+                            assigned_to,
+                            applied_by,
+                            assignment_status,
+                            effective_note,
+                            effective_due_at,
+                            effective_priority,
+                            _uuid(project_id),
+                            candidate_id,
+                        ),
+                    )
+                    record = self._get_entity_alias_candidate_review_for_update(
+                        cursor=cursor,
+                        project_id=project_id,
+                        candidate_id=candidate_id,
+                        lock=False,
+                    )
+                    audit_event = build_audit_event(
+                        event_type="entity_alias_candidate_assignment_dispatch_applied",
+                        project_id=project_id,
+                        actor_type="user",
+                        actor_id=applied_by,
+                        target_type="entity_alias_candidate_review",
+                        target_id=str(record["id"]),
+                        before=before,
+                        after=record,
+                        input_refs={
+                            "candidate_id": candidate_id,
+                            "dispatch_plan_method_version": plan.method_version,
+                            "dispatch_strategy": plan.strategy,
+                            "include_statuses": list(plan.include_statuses),
+                            "max_per_reviewer": plan.max_per_reviewer,
+                            "source_plan_order": proposal.get("order"),
+                            "recommended_assigned_to": assigned_to,
+                        },
+                        output_refs={
+                            "entity_alias_candidate_review_ids": [str(record["id"])],
+                            "candidate_ids": [candidate_id],
+                            "assigned_to": assigned_to,
+                            "assignment_status": assignment_status,
+                            "priority": effective_priority,
+                            "due_at": record.get("due_at"),
+                        },
+                        method_version="entity_alias_assignment_dispatch_apply_v1",
+                        reason=reason or f"apply entity alias assignment dispatch plan by {applied_by}",
+                    )
+                    self.save_audit_events((audit_event,), cursor=cursor)
+                    applied_audit_events.append(audit_event)
+                    audit_rows = self._load_entity_alias_candidate_review_audit_events(
+                        cursor=cursor,
+                        project_id=str(record["project_id"]),
+                        review_id=str(record["id"]),
+                    )
+                    records.append(RuntimeEntityAliasCandidateReview(review=record, audit_events=audit_rows))
+                except ValueError as exc:
+                    errors.append({"index": index, "candidate_id": candidate_id, "error": str(exc)})
+                    if not apply_input.continue_on_error:
+                        raise
+            audit_summary = build_audit_event(
+                event_type="entity_alias_assignment_dispatch_plan_applied",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=applied_by,
+                target_type="entity_alias_assignment_dispatch_plan",
+                target_id=_stable_id(
+                    "entity-alias-assignment-dispatch-apply",
+                    project_id,
+                    applied_by,
+                    *[str(proposal.get("candidate_id") or "") for proposal in proposals],
+                ),
+                before={"dispatch_plan": asdict(plan)},
+                after={
+                    "requested_count": len(proposals),
+                    "applied_count": len(records),
+                    "failed_count": len(errors),
+                    "candidate_ids": [str(record.review["candidate_id"]) for record in records],
+                    "failed_candidate_ids": [error["candidate_id"] for error in errors],
+                },
+                input_refs={
+                    "dispatch_plan_method_version": plan.method_version,
+                    "dispatch_strategy": plan.strategy,
+                    "reviewer_ids": list(plan.reviewer_ids),
+                    "include_statuses": list(plan.include_statuses),
+                    "max_per_reviewer": plan.max_per_reviewer,
+                    "limit": apply_input.limit,
+                },
+                output_refs={
+                    "entity_alias_candidate_review_ids": [str(record.review["id"]) for record in records],
+                    "candidate_ids": [str(record.review["candidate_id"]) for record in records],
+                    "failed_candidate_ids": [error["candidate_id"] for error in errors],
+                    "assignment_status": assignment_status,
+                },
+                method_version="entity_alias_assignment_dispatch_apply_v1",
+                reason=reason or f"apply entity alias assignment dispatch plan by {applied_by}",
+            )
+            self.save_audit_events((audit_summary,), cursor=cursor)
+        self.connection.commit()
+        return RuntimeEntityAliasAssignmentDispatchApplyResult(
+            project_id=project_id,
+            method_version="entity_alias_assignment_dispatch_apply_v1",
+            requested_count=len(proposals),
+            applied_count=len(records),
+            failed_count=len(errors),
+            records=tuple(records),
+            errors=tuple(errors),
+            dispatch_plan=plan,
+            audit_summary=asdict(audit_summary),
+        )
+
+    def _validate_dispatch_apply_candidate_status(
+        self,
+        *,
+        before: dict[str, Any],
+        include_statuses: tuple[str, ...],
+    ) -> None:
+        current_status = str(before.get("assignment_status") or "unassigned").strip().lower() or "unassigned"
+        current_assigned_to = str(before.get("assigned_to") or "").strip()
+        if current_status == "completed":
+            raise ValueError("completed entity alias candidate review cannot be dispatch applied")
+        status_matches = current_status in include_statuses
+        unassigned_matches = "unassigned" in include_statuses and (not current_assigned_to or current_status == "unassigned")
+        if not status_matches and not unassigned_matches:
+            raise ValueError(
+                f"entity alias candidate review status changed from dispatch plan eligibility: {current_status}"
+            )
 
     def enqueue_entity_alias_assignment_overdue_notifications(
         self,

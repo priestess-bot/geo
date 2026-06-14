@@ -3520,6 +3520,7 @@ const endpoints = {
   entityAliasAssignmentWorkbench: "/v1/entity-aliases/runtime/candidates/assignment-workbench",
   entityAliasAssignmentWorkload: "/v1/entity-aliases/runtime/candidates/assignment-workload",
   entityAliasAssignmentDispatchPlan: "/v1/entity-aliases/runtime/candidates/assignment-dispatch-plan",
+  entityAliasAssignmentDispatchApply: "/v1/entity-aliases/runtime/candidates/assignment-dispatch-apply",
   entityAliasAssignmentAction: "/v1/entity-aliases/runtime/candidates/assignment-action",
   entityAliasAssignmentBatchAction: "/v1/entity-aliases/runtime/candidates/assignment-actions",
   entityAliasConfirmBatch: "/v1/entity-aliases/runtime/confirm-batch",
@@ -4923,6 +4924,49 @@ async function actionEntityAliasCandidateAssignmentsBatch(formData: FormData) {
   revalidatePath("/");
 }
 
+async function applyEntityAliasAssignmentDispatchPlan(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  if (!projectId) {
+    throw new Error("project_id is required for alias assignment dispatch apply");
+  }
+  const includeStatuses = String(formData.get("include_statuses") || "unassigned,escalated")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const reviewerIds = String(formData.get("reviewer_ids") || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const response = await fetch(`${baseUrl}${endpoints.entityAliasAssignmentDispatchApply}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      project_id: projectId,
+      reviewer_ids: reviewerIds,
+      include_statuses: includeStatuses,
+      max_per_reviewer: Number(formData.get("max_per_reviewer") || 10),
+      limit: Number(formData.get("limit") || 20),
+      applied_by: String(formData.get("applied_by") || "runtime-console").trim(),
+      assignment_status: String(formData.get("assignment_status") || "assigned").trim(),
+      priority: String(formData.get("priority") || "").trim() || undefined,
+      due_at: String(formData.get("due_at") || "").trim() || undefined,
+      assignment_note: String(formData.get("assignment_note") || "").trim() || undefined,
+      reason: String(formData.get("reason") || "").trim() || undefined,
+      continue_on_error: String(formData.get("continue_on_error") || "true").trim() !== "false"
+    }),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`${endpoints.entityAliasAssignmentDispatchApply} returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
 async function saveRuntimeNotificationSubscription(formData: FormData) {
   "use server";
   const baseUrl =
@@ -5142,6 +5186,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasAssignmentWorkbench: endpoints.entityAliasAssignmentWorkbench,
     entityAliasAssignmentWorkload: endpoints.entityAliasAssignmentWorkload,
     entityAliasAssignmentDispatchPlan: endpoints.entityAliasAssignmentDispatchPlan,
+    entityAliasAssignmentDispatchApply: endpoints.entityAliasAssignmentDispatchApply,
     entityAliasAssignmentAction: endpoints.entityAliasAssignmentAction,
     entityAliasAssignmentBatchAction: endpoints.entityAliasAssignmentBatchAction,
     entityAliasAssignmentReassignments: endpoints.entityAliasAssignmentReassignments,
@@ -5331,6 +5376,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
         limit: 20
       })
     : paths.entityAliasAssignmentDispatchPlan;
+  paths.entityAliasAssignmentDispatchApply = endpoints.entityAliasAssignmentDispatchApply;
   paths.entityAliasAssignmentEscalations = endpoints.entityAliasAssignmentEscalations;
   paths.entityAliasAssignmentReassignments = endpoints.entityAliasAssignmentReassignments;
   paths.savedViews = runtimePath(endpoints.savedViews, {
@@ -9901,8 +9947,50 @@ export default async function Home({
 	                    dispatch plan: {data.entityAliasAssignmentDispatchPlan.method_version} · dry_run{" "}
 	                    {data.entityAliasAssignmentDispatchPlan.dry_run ? "yes" : "no"} · strategy{" "}
 	                    {data.entityAliasAssignmentDispatchPlan.strategy} · include{" "}
-	                    {data.entityAliasAssignmentDispatchPlan.include_statuses.join(", ")}
+	                    {data.entityAliasAssignmentDispatchPlan.include_statuses.join(", ")} · apply{" "}
+	                    {paths.entityAliasAssignmentDispatchApply} · audit
+	                    entity_alias_assignment_dispatch_plan_applied /
+	                    entity_alias_candidate_assignment_dispatch_applied
 	                  </small>
+	                  <form action={applyEntityAliasAssignmentDispatchPlan} className="inlineForm">
+	                    <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+	                    <input
+	                      type="hidden"
+	                      name="include_statuses"
+	                      value={data.entityAliasAssignmentDispatchPlan.include_statuses.join(",")}
+	                    />
+	                    <input
+	                      type="hidden"
+	                      name="reviewer_ids"
+	                      value={data.entityAliasAssignmentDispatchPlan.reviewer_ids.join(",")}
+	                    />
+	                    <input
+	                      type="hidden"
+	                      name="max_per_reviewer"
+	                      value={String(data.entityAliasAssignmentDispatchPlan.max_per_reviewer)}
+	                    />
+	                    <input type="hidden" name="limit" value="20" />
+	                    <input type="hidden" name="applied_by" value="runtime-console" />
+	                    <input type="hidden" name="assignment_status" value="assigned" />
+	                    <input
+	                      type="hidden"
+	                      name="assignment_note"
+	                      value="Apply Runtime Console alias assignment dispatch plan"
+	                    />
+	                    <input
+	                      type="hidden"
+	                      name="reason"
+	                      value="Explicit Runtime Console apply for alias assignment dispatch plan"
+	                    />
+	                    <input type="hidden" name="continue_on_error" value="true" />
+	                    <button
+	                      type="submit"
+	                      disabled={!selectedProjectId || data.entityAliasAssignmentDispatchPlan.planned_assignment_count < 1}
+	                    >
+	                      Apply dispatch plan
+	                    </button>
+	                    <small>{endpoints.entityAliasAssignmentDispatchApply}</small>
+	                  </form>
 	                  {data.entityAliasAssignmentDispatchPlan.reviewer_loads.length ? (
 	                    <ul className="plainList compactList">
 	                      {data.entityAliasAssignmentDispatchPlan.reviewer_loads.slice(0, 4).map((load) => (

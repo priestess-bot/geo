@@ -1059,6 +1059,23 @@ class EntityAliasAssignmentDispatchPlanInput:
 
 
 @dataclass(frozen=True)
+class EntityAliasAssignmentDispatchApplyInput:
+    project_id: str
+    reviewer_ids: tuple[str, ...] = ()
+    include_statuses: tuple[str, ...] = ("unassigned", "escalated")
+    max_per_reviewer: int = 10
+    due_soon_before: datetime | None = None
+    limit: int = 50
+    applied_by: str = "runtime-console"
+    assignment_status: str = "assigned"
+    priority: str | None = None
+    due_at: datetime | None = None
+    assignment_note: str | None = None
+    reason: str | None = None
+    continue_on_error: bool = True
+
+
+@dataclass(frozen=True)
 class RuntimeEntityAliasCandidateReview:
     review: dict[str, Any]
     audit_events: tuple[dict[str, Any], ...]
@@ -1143,6 +1160,19 @@ class RuntimeEntityAliasAssignmentDispatchPlan:
     proposed_assignments: tuple[dict[str, Any], ...]
     skipped_candidates: tuple[dict[str, Any], ...]
     source_summary: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class RuntimeEntityAliasAssignmentDispatchApplyResult:
+    project_id: str
+    method_version: str
+    requested_count: int
+    applied_count: int
+    failed_count: int
+    records: tuple[RuntimeEntityAliasCandidateReview, ...]
+    errors: tuple[dict[str, Any], ...]
+    dispatch_plan: RuntimeEntityAliasAssignmentDispatchPlan
+    audit_summary: dict[str, Any]
 
 
 @dataclass(frozen=True)

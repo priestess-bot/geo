@@ -84,6 +84,7 @@ from geno_core.models import (
     EntityAliasCandidateAssignmentBatchActionInput,
     EntityAliasCandidateAssignmentInput,
     EntityAliasCandidateAssignmentReassignmentInput,
+    EntityAliasAssignmentDispatchApplyInput,
     EntityAliasAssignmentDispatchPlanInput,
     EntityAliasCandidateReviewInput,
     EntityAliasInput,
@@ -95,6 +96,7 @@ from geno_core.models import (
     RuntimeEntityAliasAssignmentReassignmentResult,
     RuntimeEntityAliasAssignmentWorkbench,
     RuntimeEntityAliasAssignmentWorkloadSummary,
+    RuntimeEntityAliasAssignmentDispatchApplyResult,
     RuntimeEntityAliasAssignmentDispatchPlan,
     RuntimeEntityAliasAssignmentBatchActionResult,
     RuntimeEntityAliasAssignmentNotificationResult,
@@ -11354,6 +11356,103 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("SELECT id, project_id, candidate_id", executed_sql)
         self.assertIn("assignment_status = ANY(%s)", executed_sql)
         self.assertIn("LIMIT %s", executed_sql)
+
+    def test_postgres_repository_applies_runtime_entity_alias_assignment_dispatch_plan(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        brand_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+        now = datetime(2026, 6, 15, tzinfo=UTC)
+        before_review = {
+            "id": "5e28753a-8f9e-5d80-977e-f755c0319e31",
+            "project_id": project_id,
+            "candidate_id": "candidate-unassigned",
+            "entity_id": brand_id,
+            "entity_kind": "brand",
+            "alias": "ExampleBrand AU",
+            "alias_type": "alias",
+            "source": "evidence_answer_text",
+            "confidence": 0.84,
+            "decision": "needs_review",
+            "reviewed_by": "analyst-1",
+            "reason": "review required",
+            "notes": "Needs reviewer assignment",
+            "assigned_to": None,
+            "assigned_by": None,
+            "assignment_status": "unassigned",
+            "assignment_note": None,
+            "assigned_at": None,
+            "due_at": now + timedelta(days=2),
+            "priority": "high",
+            "evidence_answer_run_ids": ["answer-run-1"],
+            "evidence_urls": ["https://examplebrand.com.au/reviews"],
+            "payload": {"source_panel": "runtime_entity_alias_candidates"},
+            "created_at": now,
+            "updated_at": now,
+        }
+        after_review = {
+            **before_review,
+            "assigned_to": "reviewer-a@example.com",
+            "assigned_by": "lead@example.com",
+            "assignment_status": "assigned",
+            "assignment_note": "Apply dispatch plan",
+            "assigned_at": now,
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "c2dddf16-bd76-5d2d-a39b-ef4b4bdebe95",
+            "event_type": "entity_alias_candidate_assignment_dispatch_applied",
+            "actor_id": "lead@example.com",
+            "target_type": "entity_alias_candidate_review",
+            "target_id": before_review["id"],
+            "occurred_at": now,
+            "method_version": "entity_alias_assignment_dispatch_apply_v1",
+            "reason": "Apply dispatch plan",
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                [
+                    {
+                        "assignment_status": "assigned",
+                        "priority": "normal",
+                        "due_at": now + timedelta(days=3),
+                        "assigned_to": "reviewer-a@example.com",
+                    }
+                ],
+                [before_review],
+                {"id": project_id},
+                before_review,
+                after_review,
+                [audit_row],
+            ]
+        )
+
+        result = PostgresEvidenceRepository(connection).apply_entity_alias_assignment_dispatch_plan(
+            EntityAliasAssignmentDispatchApplyInput(
+                project_id=project_id,
+                reviewer_ids=("reviewer-a@example.com",),
+                include_statuses=("unassigned",),
+                max_per_reviewer=2,
+                due_soon_before=now + timedelta(days=7),
+                limit=10,
+                applied_by="lead@example.com",
+                assignment_status="assigned",
+                assignment_note="Apply dispatch plan",
+                reason="Apply dispatch plan",
+            )
+        )
+
+        self.assertIsInstance(result, RuntimeEntityAliasAssignmentDispatchApplyResult)
+        self.assertEqual(result.method_version, "entity_alias_assignment_dispatch_apply_v1")
+        self.assertEqual(result.requested_count, 1)
+        self.assertEqual(result.applied_count, 1)
+        self.assertEqual(result.failed_count, 0)
+        self.assertEqual(result.dispatch_plan.method_version, "entity_alias_assignment_dispatch_plan_v1")
+        self.assertEqual(result.records[0].review["assigned_to"], "reviewer-a@example.com")
+        self.assertEqual(result.audit_summary["event_type"], "entity_alias_assignment_dispatch_plan_applied")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("UPDATE entity_alias_candidate_reviews SET assigned_to = %s", executed_sql)
+        self.assertIn("FOR UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+        self.assertEqual(connection.commit_count, 1)
 
     def test_postgres_repository_enqueues_entity_alias_assignment_overdue_notifications(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

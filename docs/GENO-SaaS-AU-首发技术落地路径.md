@@ -1549,6 +1549,8 @@ EntityAlias
 
 补充状态：assignment dispatch dry-run 计划已补齐。`GET /v1/entity-aliases/runtime/candidates/assignment-dispatch-plan` 会读取同项目 workload，再按 `include_statuses`（默认 `unassigned,escalated`）、可选 `reviewer_ids`、`max_per_reviewer` 和 `limit` 生成 `entity_alias_assignment_dispatch_plan_v1`。计划使用 `least_loaded_round_robin` 策略，把待处理候选按 escalated/blocked/unassigned、overdue、priority、due date、updated_at 排序，并在 reviewer capacity 内输出 `proposed_assignments`，同时把缺少 eligible reviewer 或 capacity exhausted 的候选写入 `skipped_candidates`；顶层固定 `dry_run=true`、`source_summary`、workload 方法版本和“不会写 assignment 状态”的 invariant。Runtime Console 已新增 `Alias Assignment Dispatch Plan` 面板，展示候选数、计划数、跳过数、reviewer capacity、reviewer_loads 和推荐派单列表。该计划是后续自动调度 apply、值班排班或容量均衡的可审计输入，不会替代现有 `assign/reassign/claim/release/escalate` 写入动作，也不会生成动作审计；真正自动改派必须另接显式 apply endpoint 并逐条写审计。
 
+补充状态：assignment dispatch 显式 apply 已补齐。`POST /v1/entity-aliases/runtime/candidates/assignment-dispatch-apply` 会按提交参数重新生成当前 `entity_alias_assignment_dispatch_plan_v1`，再对仍符合 `include_statuses` 的 proposed assignments 逐条锁定 review 并写入 `assigned_to/assigned_by/assignment_status/priority/due_at/assignment_note`。每条成功派单写 `entity_alias_candidate_assignment_dispatch_applied` 审计，整体写 `entity_alias_assignment_dispatch_plan_applied` 摘要，响应包含 requested/applied/failed、errors、records 和原始 dispatch plan，便于复盘“计划为什么这样分”和“最终哪些行实际落库”。Runtime Console 已在 `Alias Assignment Dispatch Plan` 面板提供 `Apply dispatch plan` 按钮。该能力仍要求人工显式触发，不做无人值守调度、不做值班排班、不接复杂 reviewer inbox；若候选已 completed 或状态/owner 已脱离本次 include 范围，会作为冲突跳过或报错，而不是覆盖当前状态。
+
 ### 8.15 CollectionCost（单位经济，新增）
 
 跟踪每次采集与分析的成本，支撑定价与 unit economics。
