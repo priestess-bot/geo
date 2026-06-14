@@ -13,7 +13,7 @@ from urllib.parse import urlencode, unquote, urlparse
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from geno_core.audit import build_audit_event
-from geno_core.email_delivery import send_runtime_email_message
+from geno_core.email_delivery import render_project_member_invitation_email, send_runtime_email_message
 from geno_core.models import (
     ActionRecommendation,
     AnswerAnalysis,
@@ -3069,32 +3069,23 @@ class PostgresEvidenceRepository:
             role = str(invitation["role"]).strip().lower()
             accept_url = f"{accept_base_url.rstrip('/')}?{urlencode({'invitation_id': invitation_id, 'invite_token': invite_token})}"
             accept_url_hash = hashlib.sha256(accept_url.encode("utf-8")).hexdigest()
-            subject = (
-                email_input.subject.strip()
-                if email_input.subject and email_input.subject.strip()
-                else "GENO project invitation"
+            rendered_email = render_project_member_invitation_email(
+                role=role,
+                invitation_id=invitation_id,
+                expires_at=expires_at.isoformat() if expires_at else "not set",
+                accept_url=accept_url,
+                subject=email_input.subject,
+                message=email_input.message,
             )
-            custom_message = email_input.message.strip() if email_input.message and email_input.message.strip() else ""
-            body_lines = [
-                custom_message or "You have been invited to join a GENO project.",
-                "",
-                f"Role: {role}",
-                f"Invitation ID: {invitation_id}",
-                f"Expires at: {expires_at.isoformat() if expires_at else 'not set'}",
-                "",
-                "Open this invitation link to accept:",
-                accept_url,
-                "",
-                "This one-time link should not be forwarded.",
-            ]
             delivery_result = send_runtime_email_message(
                 recipients=(email,),
-                subject=subject,
-                text="\n".join(body_lines),
+                subject=rendered_email.subject,
+                text=rendered_email.text,
                 headers={
                     "X-GENO-Project-Id": project_id,
                     "X-GENO-Invitation-Id": invitation_id,
                     "X-GENO-Invitation-Token-Hash": invite_token_hash,
+                    "X-GENO-Email-Template-Version": rendered_email.template_version,
                 },
                 smtp_env_prefix=smtp_env_prefix,
                 email_sender=self.email_sender,
@@ -3111,6 +3102,10 @@ class PostgresEvidenceRepository:
                 "response_status": delivery_result.response_status,
                 "response_body_hash": delivery_result.response_body_hash,
                 "accept_url_hash": accept_url_hash,
+                "email_template_version": rendered_email.template_version,
+                "email_template_hash": rendered_email.template_hash,
+                "email_subject_hash": rendered_email.subject_hash,
+                "email_body_hash": rendered_email.body_hash,
                 "smtp_host": delivery_result.smtp_host,
                 "smtp_port": delivery_result.smtp_port,
                 "from_address": delivery_result.from_address,
@@ -3131,6 +3126,10 @@ class PostgresEvidenceRepository:
                     "roles": [role],
                     "invite_token_hashes": [invite_token_hash],
                     "accept_url_hashes": [accept_url_hash],
+                    "email_template_versions": [rendered_email.template_version],
+                    "email_template_hashes": [rendered_email.template_hash],
+                    "email_subject_hashes": [rendered_email.subject_hash],
+                    "email_body_hashes": [rendered_email.body_hash],
                     "smtp_env_prefix": [smtp_env_prefix],
                 },
                 output_refs={
@@ -3138,6 +3137,10 @@ class PostgresEvidenceRepository:
                     "delivery_status": ["sent"],
                     "response_status": [str(delivery_result.response_status)],
                     "response_body_hashes": [delivery_result.response_body_hash],
+                    "email_template_versions": [rendered_email.template_version],
+                    "email_template_hashes": [rendered_email.template_hash],
+                    "email_subject_hashes": [rendered_email.subject_hash],
+                    "email_body_hashes": [rendered_email.body_hash],
                 },
                 method_version="project_member_invitation_email_v1",
                 reason=email_input.reason.strip()

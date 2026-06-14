@@ -3743,6 +3743,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.email_input.invite_token, "geno-invite-token")
         self.assertEqual(fake_repository.email_input.accept_base_url, "https://app.example.com/invite/accept")
         self.assertEqual(fake_repository.email_input.smtp_env_prefix, "GENO_TEST_SMTP")
+        self.assertEqual(fake_repository.email_input.subject, "Join GENO")
+        self.assertEqual(fake_repository.email_input.message, "Please join.")
 
     def test_runtime_project_member_invitation_email_endpoint_uses_actor_and_requires_admin_or_owner_role(
         self,

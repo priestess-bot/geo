@@ -41,6 +41,11 @@ from geno_core.google_spike import (
     evaluate_google_spike_readiness_gate,
 )
 from geno_core.fidelity_schedule import build_browser_fidelity_sampling_plan
+from geno_core.email_delivery import (
+    PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION,
+    RuntimeEmailTemplateRenderResult,
+    render_project_member_invitation_email,
+)
 from geno_core.graph import build_citation_graph
 from geno_core.industry import build_au_dtc_ecommerce_profile
 from geno_core.knowledge import (
@@ -125,6 +130,9 @@ __all__ = [
     "compare_retest_windows",
     "build_google_spike_plan",
     "build_browser_fidelity_sampling_plan",
+    "PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION",
+    "RuntimeEmailTemplateRenderResult",
+    "render_project_member_invitation_email",
     "build_object_store_from_env",
     "archive_api_snapshot_assets",
     "archive_browser_capture_assets",

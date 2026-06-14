@@ -34,6 +34,11 @@ from geno_core.collection import (
     run_fixture_collection_slice,
 )
 from geno_core.contracts import CollectorBackend, GraphStore, ParserEngine, ReportExporter, ScoringFormula, VectorStore
+from geno_core.email_delivery import (
+    PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION,
+    render_project_member_invitation_email,
+    runtime_email_body_hash,
+)
 from geno_core.collectors import (
     FixtureChatGPTSearchBrowserCollector,
     FixtureGoogleAIModeCollector,
@@ -386,6 +391,25 @@ class CoreContractsTest(unittest.TestCase):
 
         self.assertFalse(verification.valid)
         self.assertEqual(verification.reason, "timestamp_outside_tolerance")
+
+    def test_project_member_invitation_email_template_renders_hashable_body(self) -> None:
+        rendered = render_project_member_invitation_email(
+            role="viewer",
+            invitation_id="invitation-1",
+            expires_at="2026-06-17T00:00:00+00:00",
+            accept_url="https://app.example.com/invite/accept?invitation_id=invitation-1&invite_token=token",
+            subject="Join GENO",
+            message="Please join the workspace.",
+        )
+
+        self.assertEqual(rendered.subject, "Join GENO")
+        self.assertEqual(rendered.template_version, PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION)
+        self.assertIn("Please join the workspace.", rendered.text)
+        self.assertIn("Role: viewer", rendered.text)
+        self.assertIn("Invitation ID: invitation-1", rendered.text)
+        self.assertEqual(rendered.subject_hash, runtime_email_body_hash("Join GENO"))
+        self.assertEqual(rendered.body_hash, runtime_email_body_hash(rendered.text))
+        self.assertRegex(rendered.template_hash, r"^[0-9a-f]{64}$")
 
     def test_runtime_notification_webhook_signature_verifies_previous_secret_rotation_window(self) -> None:
         body = b'{"delivery_version":"runtime_notification_delivery_v1"}'
@@ -4756,6 +4780,8 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(record.audit_events[0]["event_type"], "project_member_invitation_email_sent")
         self.assertEqual(sent[0][2], ["viewer@example.com"])
         self.assertIn(invite_token, sent[0][1].get_content())
+        self.assertEqual(sent[0][1]["Subject"], "Join GENO")
+        self.assertEqual(sent[0][1]["X-GENO-Email-Template-Version"], PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION)
         self.assertNotIn(invite_token, str(record.audit_events))
         self.assertIn(invite_token_hash, str(record.audit_events))
         self.assertEqual(connection.commit_count, 1)
@@ -4765,6 +4791,20 @@ class CoreContractsTest(unittest.TestCase):
         audit_params = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
         self.assertNotIn(invite_token, str(audit_params))
         self.assertNotIn("https://app.example.com/invite/accept?", str(audit_params))
+        rendered_email = render_project_member_invitation_email(
+            role="viewer",
+            invitation_id=invitation_id,
+            expires_at=pending_invitation["expires_at"].isoformat(),
+            accept_url=f"https://app.example.com/invite/accept?invitation_id={invitation_id}&invite_token={invite_token}",
+            subject="Join GENO",
+            message="Please join the workspace.",
+        )
+        self.assertIn(PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION, str(audit_params))
+        self.assertIn("email_template_hashes", str(audit_params))
+        self.assertIn("email_subject_hashes", str(audit_params))
+        self.assertIn("email_body_hashes", str(audit_params))
+        self.assertIn(rendered_email.subject_hash, str(audit_params))
+        self.assertIn(rendered_email.body_hash, str(audit_params))
 
     def test_postgres_repository_rejects_invitation_email_for_non_pending_status(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

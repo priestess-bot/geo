@@ -9,6 +9,17 @@ from typing import Any
 
 
 DEFAULT_RUNTIME_EMAIL_SMTP_ENV_PREFIX = "GENO_NOTIFICATION_SMTP"
+PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION = "project_member_invitation_email_template_v1"
+PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE = """{custom_message}
+
+Role: {role}
+Invitation ID: {invitation_id}
+Expires at: {expires_at}
+
+Open this invitation link to accept:
+{accept_url}
+
+This one-time link should not be forwarded."""
 
 
 @dataclass(frozen=True)
@@ -22,6 +33,16 @@ class RuntimeEmailDeliveryResult:
     from_address: str
 
 
+@dataclass(frozen=True)
+class RuntimeEmailTemplateRenderResult:
+    subject: str
+    text: str
+    template_version: str
+    template_hash: str
+    subject_hash: str
+    body_hash: str
+
+
 def runtime_email_body_hash(body: bytes | str | None) -> str:
     if body is None:
         raw = b""
@@ -30,6 +51,34 @@ def runtime_email_body_hash(body: bytes | str | None) -> str:
     else:
         raw = body.encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
+
+
+def render_project_member_invitation_email(
+    *,
+    role: str,
+    invitation_id: str,
+    expires_at: str,
+    accept_url: str,
+    subject: str | None = None,
+    message: str | None = None,
+) -> RuntimeEmailTemplateRenderResult:
+    rendered_subject = (subject or "").strip() or "GENO project invitation"
+    custom_message = (message or "").strip() or "You have been invited to join a GENO project."
+    text = PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE.format(
+        custom_message=custom_message,
+        role=role,
+        invitation_id=invitation_id,
+        expires_at=expires_at,
+        accept_url=accept_url,
+    )
+    return RuntimeEmailTemplateRenderResult(
+        subject=rendered_subject,
+        text=text,
+        template_version=PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION,
+        template_hash=runtime_email_body_hash(PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE),
+        subject_hash=runtime_email_body_hash(rendered_subject),
+        body_hash=runtime_email_body_hash(text),
+    )
 
 
 def runtime_smtp_config_from_env(env_prefix: str | None = DEFAULT_RUNTIME_EMAIL_SMTP_ENV_PREFIX) -> dict[str, Any]:
