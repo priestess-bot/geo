@@ -41,6 +41,11 @@ from geno_core.email_delivery import (
     render_runtime_notification_email,
     runtime_email_body_hash,
 )
+from geno_core.email_preferences import (
+    runtime_notification_email_preference_token_hash,
+    sign_runtime_notification_email_preference_token,
+    verify_runtime_notification_email_preference_token,
+)
 from geno_core.collectors import (
     FixtureChatGPTSearchBrowserCollector,
     FixtureGoogleAIModeCollector,
@@ -127,6 +132,7 @@ from geno_core.models import (
     RuntimeNotificationEmailFeedback,
     RuntimeNotificationEmailFeedbackInput,
     RuntimeNotificationEmailFeedbackPage,
+    RuntimeNotificationEmailPreferenceUnsubscribeInput,
     RuntimeNotificationEmailFeedbackSuppressionInput,
     RuntimeNotificationPage,
     RuntimeNotificationStatusInput,
@@ -444,6 +450,45 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(rendered.subject_hash, runtime_email_body_hash(rendered.subject))
         self.assertEqual(rendered.body_hash, runtime_email_body_hash(rendered.text))
         self.assertRegex(rendered.template_hash, r"^[0-9a-f]{64}$")
+
+    def test_runtime_notification_email_preference_token_verifies_claims_and_rejects_tampering(self) -> None:
+        token = sign_runtime_notification_email_preference_token(
+            secret="preference-secret",
+            project_id="project-1",
+            delivery_id="delivery-1",
+            notification_id="notification-1",
+            subscription_id="subscription-1",
+            recipient_hash="a" * 64,
+            ttl_seconds=3600,
+            now=datetime(2026, 6, 12, 12, 0, tzinfo=UTC),
+        )
+
+        verification = verify_runtime_notification_email_preference_token(
+            secret="preference-secret",
+            token=token,
+            now=datetime(2026, 6, 12, 12, 10, tzinfo=UTC),
+        )
+        tampered_token = f"{token[:-1]}{'0' if token[-1] != '0' else '1'}"
+        tampered = verify_runtime_notification_email_preference_token(
+            secret="preference-secret",
+            token=tampered_token,
+            now=datetime(2026, 6, 12, 12, 10, tzinfo=UTC),
+        )
+        invalid_format = verify_runtime_notification_email_preference_token(
+            secret="preference-secret",
+            token="不是-ascii.signature",
+            now=datetime(2026, 6, 12, 12, 10, tzinfo=UTC),
+        )
+
+        self.assertTrue(verification.valid, verification.reason)
+        self.assertEqual(verification.claims.project_id, "project-1")
+        self.assertEqual(verification.claims.delivery_id, "delivery-1")
+        self.assertEqual(verification.claims.recipient_hash, "a" * 64)
+        self.assertEqual(verification.token_hash, runtime_notification_email_preference_token_hash(token))
+        self.assertFalse(tampered.valid)
+        self.assertEqual(tampered.reason, "signature_mismatch")
+        self.assertFalse(invalid_format.valid)
+        self.assertEqual(invalid_format.reason, "invalid_token_format")
 
     def test_runtime_notification_webhook_signature_verifies_previous_secret_rotation_window(self) -> None:
         body = b'{"delivery_version":"runtime_notification_delivery_v1"}'
@@ -3319,7 +3364,12 @@ class CoreContractsTest(unittest.TestCase):
             + (analysis_result.audit_event, report.audit_event, action_audit, content_audit),
         )
         connection = RecordingConnection()
-        repository = PostgresEvidenceRepository(connection)
+        repository = PostgresEvidenceRepository(
+            connection,
+            email_preference_base_url="https://app.example.com/notifications/unsubscribe",
+            email_preference_token_secret="preference-secret",
+            email_preference_token_ttl_seconds=3600,
+        )
         repository.save_raw_evidence_records(records)
         repository.save_answer_analyses(analysis_result.analyses)
         repository.save_score_snapshot(
@@ -7610,7 +7660,12 @@ class CoreContractsTest(unittest.TestCase):
             "updated_at": now,
         }
         connection = RecordingConnection(result_sets=[[subscription_row], delivery_row])
-        repository = PostgresEvidenceRepository(connection)
+        repository = PostgresEvidenceRepository(
+            connection,
+            email_preference_base_url="https://app.example.com/notifications/unsubscribe",
+            email_preference_token_secret="preference-secret",
+            email_preference_token_ttl_seconds=3600,
+        )
 
         with connection.cursor() as cursor:
             deliveries, audit_events = repository._enqueue_runtime_notification_deliveries(
@@ -7636,6 +7691,10 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("email_body_hash", str(delivery_insert_params[8]))
         self.assertIn("List-Unsubscribe", str(delivery_insert_params[8]))
         self.assertIn("List-Unsubscribe=One-Click", str(delivery_insert_params[8]))
+        self.assertIn("token=", str(delivery_insert_params[8]))
+        self.assertIn("email_preference_token_hash", str(delivery_insert_params[8]))
+        self.assertIn("email_tokenized_unsubscribe_url_hash", str(delivery_insert_params[8]))
+        self.assertNotIn("preference-secret", str(delivery_insert_params[8]))
         self.assertIn("Reply-To", str(delivery_insert_params[8]))
         self.assertIn("X-GENO-Notification-Preferences-Url", str(delivery_insert_params[8]))
         self.assertIn("Notification controls:", str(delivery_insert_params[8]))
@@ -7648,6 +7707,8 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("email_body_hashes", str(audit_events[0].output_refs))
         self.assertIn("email_reply_to_hashes", str(audit_events[0].output_refs))
         self.assertIn("email_control_hashes", str(audit_events[0].output_refs))
+        self.assertIn("email_preference_token_hashes", str(audit_events[0].output_refs))
+        self.assertIn("email_tokenized_unsubscribe_url_hashes", str(audit_events[0].output_refs))
         self.assertIn("email_suppressed_recipient_hashes", str(audit_events[0].output_refs))
 
     def test_postgres_repository_suppresses_email_notification_delivery_when_all_recipients_filtered(self) -> None:
@@ -8537,6 +8598,104 @@ class CoreContractsTest(unittest.TestCase):
         ][0]
         self.assertIn(recipient_hash, str(update_params))
         self.assertIn(feedback_id, str(update_params))
+        self.assertNotIn("ops@example.com", str(update_params))
+
+    def test_postgres_repository_applies_runtime_notification_email_preference_unsubscribe(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        delivery_id = "118e5c66-7bb4-558e-ab97-e74ef9928b46"
+        existing_hash = runtime_email_body_hash("existing@example.com")
+        recipient_hash = runtime_email_body_hash("ops@example.com")
+        token_hash = runtime_email_body_hash("preference-token")
+        delivery_row = {
+            "id": delivery_id,
+            "project_id": project_id,
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "channel": "email",
+            "endpoint_url": "mailto:ops@example.com",
+            "status": "delivered",
+            "attempt_count": 1,
+            "max_attempts": 3,
+            "lease_expires_at": None,
+            "next_attempt_at": None,
+            "response_status": 250,
+            "response_body_hash": "smtp-response-hash",
+            "error_message": None,
+            "payload": {"delivery_version": "runtime_notification_delivery_email_v1"},
+            "created_at": now,
+            "updated_by": "notification-worker",
+            "updated_at": now,
+        }
+        subscription_before = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "email",
+            "endpoint_url": "mailto:ops@example.com",
+            "event_types": ["runtime_alert"],
+            "severity_threshold": "warning",
+            "status": "active",
+            "metadata": {"email_suppressed_recipient_hashes": [existing_hash]},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        subscription_after = {
+            **subscription_before,
+            "metadata": {
+                "email_suppressed_recipient_hashes": [existing_hash, recipient_hash],
+                "email_unsubscribe_token_hashes": [token_hash],
+                "email_unsubscribe_source": "runtime_notification_email_preference_token",
+            },
+            "updated_by": "email-preference-token",
+        }
+        audit_row = {
+            "id": "2ce4310a-1c5f-4272-8a61-6d8b1aa9ea99",
+            "event_type": "runtime_notification_email_preference_unsubscribed",
+            "project_id": project_id,
+            "actor_type": "system",
+            "actor_id": "email-preference-token",
+            "target_type": "runtime_notification_subscription",
+            "target_id": subscription_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {"email_preference_token_hashes": [token_hash]},
+            "output_refs": {"email_suppression_hashes": [existing_hash, recipient_hash]},
+            "method_version": "runtime_notification_email_preference_unsubscribe_v1",
+            "reason": "unsubscribe",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[delivery_row, subscription_before, subscription_after, [audit_row]])
+
+        record = PostgresEvidenceRepository(connection).apply_runtime_notification_email_preference_unsubscribe(
+            RuntimeNotificationEmailPreferenceUnsubscribeInput(
+                project_id=project_id,
+                delivery_id=delivery_id,
+                notification_id=notification_id,
+                subscription_id=subscription_id,
+                recipient_hash=recipient_hash,
+                token_hash=token_hash,
+                updated_by="email-preference-token",
+                reason="unsubscribe",
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeNotificationSubscription)
+        self.assertEqual(record.subscription["metadata"]["email_suppressed_recipient_hashes"], [existing_hash, recipient_hash])
+        self.assertEqual(record.subscription["metadata"]["email_unsubscribe_token_hashes"], [token_hash])
+        self.assertEqual(record.audit_events[0]["event_type"], "runtime_notification_email_preference_unsubscribed")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("SELECT id, project_id, notification_id, subscription_id, channel", executed_sql)
+        self.assertIn("UPDATE runtime_notification_subscriptions SET metadata = %s", executed_sql)
+        update_params = [
+            params for sql, params in connection.calls if "UPDATE runtime_notification_subscriptions SET metadata" in sql
+        ][0]
+        self.assertIn(recipient_hash, str(update_params))
+        self.assertIn(token_hash, str(update_params))
         self.assertNotIn("ops@example.com", str(update_params))
 
     def test_postgres_repository_renders_runtime_report_artifact(self) -> None:

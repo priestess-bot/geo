@@ -48,6 +48,15 @@ from geno_core.email_delivery import (
     render_project_member_invitation_email,
     render_runtime_notification_email,
 )
+from geno_core.email_preferences import (
+    RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_VERSION,
+    RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_UNSUBSCRIBE_ACTION,
+    RuntimeNotificationEmailPreferenceTokenClaims,
+    RuntimeNotificationEmailPreferenceTokenVerification,
+    runtime_notification_email_preference_token_hash,
+    sign_runtime_notification_email_preference_token,
+    verify_runtime_notification_email_preference_token,
+)
 from geno_core.graph import build_citation_graph
 from geno_core.industry import build_au_dtc_ecommerce_profile
 from geno_core.knowledge import (
@@ -135,8 +144,12 @@ __all__ = [
     "PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION",
     "RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION",
     "RuntimeEmailTemplateRenderResult",
+    "RuntimeNotificationEmailPreferenceTokenClaims",
+    "RuntimeNotificationEmailPreferenceTokenVerification",
     "render_project_member_invitation_email",
     "render_runtime_notification_email",
+    "RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_VERSION",
+    "RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_UNSUBSCRIBE_ACTION",
     "build_object_store_from_env",
     "archive_api_snapshot_assets",
     "archive_browser_capture_assets",
@@ -193,9 +206,12 @@ __all__ = [
     "score_answer_analysis",
     "search_knowledge_facts",
     "runtime_notification_webhook_payload_hash",
+    "runtime_notification_email_preference_token_hash",
     "RUNTIME_NOTIFICATION_WEBHOOK_SIGNATURE_KEY_ID_HEADER",
+    "sign_runtime_notification_email_preference_token",
     "sign_runtime_notification_webhook",
     "StaticAUGeoProvider",
     "ThirdPartySerpCollector",
     "verify_runtime_notification_webhook_signature",
+    "verify_runtime_notification_email_preference_token",
 ]

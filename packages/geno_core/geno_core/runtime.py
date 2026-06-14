@@ -35,6 +35,9 @@ RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV = "GENO_RUNTIME_OIDC_DISCOVERY_CACH
 RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS_ENV = "GENO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS"
 RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV = "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS"
 RUNTIME_JWT_ISSUER_ENV = "GENO_RUNTIME_JWT_ISSUER"
+RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL_ENV = "GENO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL"
+RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV = "GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET"
+RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS_ENV = "GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS"
 RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES = {"1", "true", "yes", "on"}
 RUNTIME_AUTH_MODES = {"header", "jwt", "jwks"}
 
@@ -324,9 +327,27 @@ def build_repository_from_env(
     connector: Callable[[str], DbConnection] | None = None,
 ) -> PostgresEvidenceRepository:
     runtime_env = os.environ if env is None else env
+    try:
+        preference_token_ttl_seconds = int(
+            runtime_env.get(RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS_ENV, "2592000").strip()
+            or "2592000"
+        )
+    except ValueError as exc:
+        raise RuntimePersistenceError(f"{RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS_ENV} must be an integer") from exc
+    repository_kwargs = {
+        "email_preference_base_url": runtime_env.get(RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL_ENV, "").strip(),
+        "email_preference_token_secret": runtime_env.get(
+            RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV,
+            "",
+        ),
+        "email_preference_token_ttl_seconds": max(1, preference_token_ttl_seconds),
+    }
     if _pool_enabled(runtime_env):
-        return PostgresEvidenceRepository(_runtime_postgres_pool_from_env(runtime_env, connector=connector).acquire())
-    return PostgresEvidenceRepository(connect_postgres_from_env(env, connector=connector))
+        return PostgresEvidenceRepository(
+            _runtime_postgres_pool_from_env(runtime_env, connector=connector).acquire(),
+            **repository_kwargs,
+        )
+    return PostgresEvidenceRepository(connect_postgres_from_env(env, connector=connector), **repository_kwargs)
 
 
 def build_object_store_from_env(

@@ -663,6 +663,7 @@ class WebConsoleContractsTest(unittest.TestCase):
             "/v1/runtime-notification-email-feedback-events/${feedbackEventId}/suppress-recipient",
             page_source,
         )
+        self.assertIn("/v1/runtime-notification-email-preferences/unsubscribe", page_source)
         self.assertIn("/v1/runtime-notification-deliveries/${deliveryId}/email-feedback", page_source)
         self.assertIn("/v1/runtime-notifications/${notificationId}/status", page_source)
         self.assertIn("runtime_notification_created", page_source)
@@ -671,6 +672,8 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("runtime_notification_delivery_status_updated", page_source)
         self.assertIn("runtime_notification_email_feedback_recorded", page_source)
         self.assertIn("runtime_notification_email_feedback_suppression_applied", page_source)
+        self.assertIn("Unsubscribe API", page_source)
+        self.assertIn("notificationEmailPreferenceUnsubscribe", page_source)
         self.assertIn("notificationSubscriptions", page_source)
         self.assertIn("notificationDeliveries", page_source)
         self.assertIn("notificationEmailFeedback", page_source)
