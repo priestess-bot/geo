@@ -40,6 +40,7 @@ from scripts.build_au_p0b_google_phase_execution_fulfillment import (
 )
 from scripts.build_au_p0a_real_batch_request_packet import compute_p0a_real_batch_request_packet_hash
 from scripts.build_au_p0a_real_batch_fulfillment import compute_p0a_real_batch_fulfillment_hash
+from scripts.build_au_p0a_credential_clearance import compute_p0a_credential_clearance_hash
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
 from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTest
 from tests.test_au_p0a_execution_checklist import AuP0aExecutionChecklistTest
@@ -1498,6 +1499,54 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(payload["source_p0a_credential_request"]["p0a_credential_request_packet_hash"])
         self.assertTrue(payload["source_p0a_env_report"]["environment_report_hash"])
         self.assertTrue(payload["p0a_credential_fulfillment_hash"])
+
+    def test_au_p0a_credential_clearance_endpoint_returns_current_clearance_packet(self) -> None:
+        helper = AuHandoffDossierTest()
+        helper.setUp()
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
+            status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
+            plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
+            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geno_api.main.build_au_launch_remediation_plan",
+                return_value=plan_payload,
+            ):
+                response = self.client.get("/v1/p0a-credential-clearance/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["p0a_credential_clearance_version"], "au_p0a_credential_clearance_v1")
+        self.assertEqual(payload["status"], "pass")
+        self.assertTrue(payload["credential_clearance_packet_ready"])
+        self.assertFalse(payload["credentials_fulfilled"])
+        self.assertFalse(payload["credential_clearance_ready"])
+        self.assertFalse(payload["ready_for_next_clearance_step"])
+        self.assertEqual(payload["summary"]["current_clearance_step_id"], "p0a_provider_credentials")
+        self.assertTrue(payload["summary"]["clearance_step_matches"])
+        self.assertEqual(payload["summary"]["next_action"], "populate_required_p0a_credentials")
+        self.assertEqual(payload["summary"]["missing_required_count"], len(payload["summary"]["missing_required"]))
+        self.assertIn("PERPLEXITY_API_KEY", payload["summary"]["missing_required"])
+        self.assertIn("OPENAI_API_KEY", payload["summary"]["missing_required"])
+        self.assertFalse(payload["summary"]["raw_secret_values_allowed"])
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0a_credential_clearance"],
+            "GET /v1/p0a-credential-clearance/au",
+        )
+        self.assertIn("make verify-au-p0a-credential-clearance", payload["hard_gate_commands"])
+        self.assertTrue(any("--require-cleared" in command for command in payload["hard_gate_commands"]))
+        self.assertTrue(any("--require-fulfilled" in command for command in payload["hard_gate_commands"]))
+        self.assertEqual(payload["source_artifacts"]["credential_request"]["hash_field"], "p0a_credential_request_packet_hash")
+        self.assertTrue(payload["source_artifacts"]["credential_request"]["hash_valid"])
+        self.assertEqual(
+            payload["source_artifacts"]["credential_fulfillment"]["hash_field"],
+            "p0a_credential_fulfillment_hash",
+        )
+        self.assertTrue(payload["source_artifacts"]["credential_fulfillment"]["hash_valid"])
+        self.assertEqual(payload["source_artifacts"]["external_dependency_clearance"]["hash_field"], "clearance_execution_hash")
+        self.assertIn("populate_missing_credentials", {step["id"] for step in payload["operator_steps"]})
+        self.assertIn("make au-p0a-env", payload["post_update_validation_sequence"])
+        self.assertIn("make verify-au-p0a-credential-fulfillment", payload["post_update_validation_sequence"])
+        self.assertEqual(payload["p0a_credential_clearance_hash"], compute_p0a_credential_clearance_hash(payload))
 
     def test_au_external_dependency_handoff_endpoint_returns_current_dependency_boundary(self) -> None:
         helper = AuHandoffDossierTest()
@@ -7115,6 +7164,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/p0a-execution-checklist/au", payload["persistence"])
         self.assertIn("/v1/p0a-credential-request/au", payload["persistence"])
         self.assertIn("/v1/p0a-credential-fulfillment/au", payload["persistence"])
+        self.assertIn("/v1/p0a-credential-clearance/au", payload["persistence"])
         self.assertIn("/v1/p0a-real-batch-request/au", payload["persistence"])
         self.assertIn("/v1/p0a-real-batch-fulfillment/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-execution-checklist/au", payload["persistence"])

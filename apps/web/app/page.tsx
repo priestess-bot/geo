@@ -718,6 +718,7 @@ type RuntimeData = {
   p0aExecutionChecklist: AuP0aExecutionChecklist | null;
   p0aCredentialRequest: AuP0aCredentialRequest | null;
   p0aCredentialFulfillment: AuP0aCredentialFulfillment | null;
+  p0aCredentialClearance: AuP0aCredentialClearance | null;
   p0aRealBatchRequest: AuP0aRealBatchRequest | null;
   p0aRealBatchFulfillment: AuP0aRealBatchFulfillment | null;
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
@@ -1513,6 +1514,80 @@ type AuP0aCredentialFulfillment = {
     environment_report_hash?: string;
     ready_for_real_batch?: boolean;
     missing_required?: string[];
+  };
+};
+
+type AuP0aCredentialClearance = {
+  p0a_credential_clearance_version: string;
+  generated_at: string;
+  status: string;
+  credential_clearance_packet_ready: boolean;
+  credentials_fulfilled: boolean;
+  credential_clearance_ready: boolean;
+  ready_for_next_clearance_step: boolean;
+  p0a_credential_clearance_hash: string;
+  clearance_step?: {
+    id?: string;
+    current_step_id?: string;
+    current_step_matches?: boolean;
+    would_execute_step_count?: number;
+    next_command?: string;
+    current_strict_gate_command?: string;
+  };
+  summary?: {
+    target_env_file?: string;
+    credentials_fulfilled?: boolean;
+    missing_required_count?: number;
+    missing_required?: string[];
+    provider_missing_required?: string[];
+    runtime_database_missing_required?: string[];
+    credential_handoff_ready?: boolean;
+    credential_fulfillment_ready?: boolean;
+    environment_ready?: boolean;
+    current_clearance_step_id?: string;
+    clearance_step_matches?: boolean;
+    next_action?: string;
+    next_command?: string;
+    strict_gate_command?: string;
+    operator_step_count?: number;
+    post_update_validation_command_count?: number;
+    raw_secret_values_allowed?: boolean;
+  };
+  missing_credential_items?: Array<{
+    name: string;
+    owner_hint?: string;
+    env_file_key?: string;
+    target_env_file?: string;
+    request_present?: boolean;
+    environment_present?: boolean;
+    accepted_injection_methods?: string[];
+    post_update_checks?: string[];
+    blocking_reasons?: string[];
+    raw_value_required_in_packet?: boolean;
+  }>;
+  operator_steps?: Array<{
+    order?: number;
+    id?: string;
+    command?: string;
+    purpose?: string;
+    external_call_risk?: string;
+    missing_required?: string[];
+    target_env_file?: string;
+    allowed_injection_methods?: string[];
+  }>;
+  post_update_validation_sequence?: string[];
+  runtime_endpoints?: {
+    p0a_credential_clearance?: string;
+    p0a_credential_request?: string;
+    p0a_credential_fulfillment?: string;
+    external_dependency_clearance?: string;
+    delivery_progress?: string;
+  };
+  hard_gate_commands?: string[];
+  source_artifacts?: {
+    credential_request?: { hash?: string };
+    credential_fulfillment?: { hash?: string };
+    external_dependency_clearance?: { hash?: string };
   };
 };
 
@@ -2825,6 +2900,7 @@ const endpoints = {
   p0aExecutionChecklist: "/v1/p0a-execution-checklist/au",
   p0aCredentialRequest: "/v1/p0a-credential-request/au",
   p0aCredentialFulfillment: "/v1/p0a-credential-fulfillment/au",
+  p0aCredentialClearance: "/v1/p0a-credential-clearance/au",
   p0aRealBatchRequest: "/v1/p0a-real-batch-request/au",
   p0aRealBatchFulfillment: "/v1/p0a-real-batch-fulfillment/au",
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
@@ -4250,6 +4326,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aExecutionChecklist: endpoints.p0aExecutionChecklist,
     p0aCredentialRequest: endpoints.p0aCredentialRequest,
     p0aCredentialFulfillment: endpoints.p0aCredentialFulfillment,
+    p0aCredentialClearance: endpoints.p0aCredentialClearance,
     p0aRealBatchRequest: endpoints.p0aRealBatchRequest,
     p0aRealBatchFulfillment: endpoints.p0aRealBatchFulfillment,
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
@@ -4576,6 +4653,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aExecutionChecklist,
     p0aCredentialRequest,
     p0aCredentialFulfillment,
+    p0aCredentialClearance,
     p0aRealBatchRequest,
     p0aRealBatchFulfillment,
     p0bGoogleExecutionChecklist,
@@ -4638,6 +4716,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0aExecutionChecklist | null>(baseUrl, paths.p0aExecutionChecklist, null),
     fetchRuntimeEndpoint<AuP0aCredentialRequest | null>(baseUrl, paths.p0aCredentialRequest, null),
     fetchRuntimeEndpoint<AuP0aCredentialFulfillment | null>(baseUrl, paths.p0aCredentialFulfillment, null),
+    fetchRuntimeEndpoint<AuP0aCredentialClearance | null>(baseUrl, paths.p0aCredentialClearance, null),
     fetchRuntimeEndpoint<AuP0aRealBatchRequest | null>(baseUrl, paths.p0aRealBatchRequest, null),
     fetchRuntimeEndpoint<AuP0aRealBatchFulfillment | null>(baseUrl, paths.p0aRealBatchFulfillment, null),
     fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
@@ -4832,6 +4911,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aExecutionChecklist,
     p0aCredentialRequest,
     p0aCredentialFulfillment,
+    p0aCredentialClearance,
     p0aRealBatchRequest,
     p0aRealBatchFulfillment,
     p0bGoogleExecutionChecklist,
@@ -4899,6 +4979,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0aExecutionChecklist: p0aExecutionChecklist.payload,
       p0aCredentialRequest: p0aCredentialRequest.payload,
       p0aCredentialFulfillment: p0aCredentialFulfillment.payload,
+      p0aCredentialClearance: p0aCredentialClearance.payload,
       p0aRealBatchRequest: p0aRealBatchRequest.payload,
       p0aRealBatchFulfillment: p0aRealBatchFulfillment.payload,
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
@@ -5258,6 +5339,12 @@ export default async function Home({
   const p0aCredentialFulfillmentItems = p0aCredentialFulfillment?.credential_fulfillment_items || [];
   const p0aCredentialFulfillmentMissing = p0aCredentialFulfillmentSummary?.missing_required || [];
   const p0aCredentialFulfillmentMismatches = p0aCredentialFulfillmentSummary?.presence_mismatches || [];
+  const p0aCredentialClearance = data.p0aCredentialClearance;
+  const p0aCredentialClearanceSummary = p0aCredentialClearance?.summary;
+  const p0aCredentialClearanceMissing = p0aCredentialClearanceSummary?.missing_required || [];
+  const p0aCredentialClearanceItems = p0aCredentialClearance?.missing_credential_items || [];
+  const p0aCredentialClearanceSteps = p0aCredentialClearance?.operator_steps || [];
+  const p0aCredentialClearanceValidation = p0aCredentialClearance?.post_update_validation_sequence || [];
   const p0aRealBatchRequest = data.p0aRealBatchRequest;
   const p0aRealBatchRequestSummary = p0aRealBatchRequest?.summary;
   const p0aRealBatchPhases = p0aRealBatchRequest?.phase_requests || [];
@@ -7133,6 +7220,93 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.p0aCredentialFulfillment}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>P0a credential clearance</strong>
+            <span>
+              {p0aCredentialClearance?.p0a_credential_clearance_version ||
+                "au_p0a_credential_clearance_v1"}{" "}
+              · p0a_credential_clearance_hash{" "}
+              {shortHash(p0aCredentialClearance?.p0a_credential_clearance_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>
+              Clearance packet {p0aCredentialClearance?.credential_clearance_packet_ready ? "ready" : "blocked"}
+            </span>
+            <span>Credentials cleared {p0aCredentialClearance?.credential_clearance_ready ? "yes" : "no"}</span>
+            <span>Credentials fulfilled {p0aCredentialClearance?.credentials_fulfilled ? "yes" : "no"}</span>
+            <span>Next clearance {p0aCredentialClearance?.ready_for_next_clearance_step ? "ready" : "blocked"}</span>
+            <span>Missing required {p0aCredentialClearanceSummary?.missing_required_count || 0}</span>
+            <span>Operator steps {p0aCredentialClearanceSummary?.operator_step_count || 0}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>Target env file {p0aCredentialClearanceSummary?.target_env_file || "none"}</span>
+            <span>Missing {p0aCredentialClearanceMissing.join(", ") || "none"}</span>
+            <span>
+              Provider missing {(p0aCredentialClearanceSummary?.provider_missing_required || []).join(", ") || "none"}
+            </span>
+            <span>
+              Runtime DB missing{" "}
+              {(p0aCredentialClearanceSummary?.runtime_database_missing_required || []).join(", ") || "none"}
+            </span>
+            <span>Current clearance step {p0aCredentialClearanceSummary?.current_clearance_step_id || "none"}</span>
+            <span>Next action {p0aCredentialClearanceSummary?.next_action || "none"}</span>
+            <span>Next command {p0aCredentialClearanceSummary?.next_command || "none"}</span>
+            <span>Raw secret allowed {p0aCredentialClearanceSummary?.raw_secret_values_allowed ? "yes" : "no"}</span>
+            <span>
+              Request hash {shortHash(p0aCredentialClearance?.source_artifacts?.credential_request?.hash)}
+            </span>
+            <span>
+              Fulfillment hash {shortHash(p0aCredentialClearance?.source_artifacts?.credential_fulfillment?.hash)}
+            </span>
+            <span>
+              {p0aCredentialClearance?.runtime_endpoints?.p0a_credential_clearance ||
+                "GET /v1/p0a-credential-clearance/au"}
+            </span>
+            <span>Hard gate: make verify-au-p0a-credential-clearance</span>
+            <span>
+              Strict gate:{" "}
+              {p0aCredentialClearance?.hard_gate_commands?.find((command) => command.endsWith("--require-cleared")) ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_clearance.py docs/runtime_preflight/au-p0a-credential-clearance-latest.json --require-cleared"}
+            </span>
+          </div>
+          {p0aCredentialClearanceItems.length ? (
+            <div className="dependencyGroupGrid">
+              {p0aCredentialClearanceItems.map((item) => (
+                <div className="dependencyGroup" key={item.name}>
+                  <strong>{item.name}</strong>
+                  <span>
+                    {item.owner_hint || "owner"} · env {item.environment_present ? "present" : "missing"}
+                  </span>
+                  <small>{item.env_file_key || item.name} · {item.target_env_file || "target env"}</small>
+                  <small>
+                    methods {(item.accepted_injection_methods || []).slice(0, 3).join(" · ") || "none"}
+                  </small>
+                  <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "no blocking reasons"}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {p0aCredentialClearanceSteps.length ? (
+            <ul className="plainList compactList">
+              {p0aCredentialClearanceSteps.slice(0, 6).map((step) => (
+                <li key={step.id || step.command}>
+                  {step.order || 0}. {step.command || step.id} · {step.external_call_risk || "risk unknown"}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {p0aCredentialClearanceValidation.length ? (
+            <div className="handoffBoundary">
+              <span>
+                Validation sequence{" "}
+                {p0aCredentialClearanceValidation.slice(0, 5).join(" -> ") || "none"}
+              </span>
+            </div>
+          ) : null}
+          <code>{paths.p0aCredentialClearance}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">

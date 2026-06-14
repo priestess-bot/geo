@@ -153,6 +153,10 @@ from scripts.build_au_p0a_credential_fulfillment import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH,
     build_au_p0a_credential_fulfillment,
 )
+from scripts.build_au_p0a_credential_clearance import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH,
+    build_au_p0a_credential_clearance,
+)
 from scripts.build_au_p0a_real_batch_request_packet import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH,
     build_au_p0a_real_batch_request_packet,
@@ -1845,6 +1849,44 @@ def au_p0a_credential_fulfillment() -> dict[str, object]:
             os.getenv(
                 "GENO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH",
                 DEFAULT_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0a-credential-clearance/au")
+def au_p0a_credential_clearance() -> dict[str, object]:
+    credential_request_path = Path(
+        os.getenv(
+            "GENO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH,
+        )
+    )
+    env_report_path = Path(os.getenv("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_AU_P0A_ENV_OUTPUT_PATH))
+    credential_fulfillment_path = Path(
+        os.getenv(
+            "GENO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH",
+            DEFAULT_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH,
+        )
+    )
+    external_dependency_clearance_path = Path(
+        os.getenv(
+            "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    return build_au_p0a_credential_clearance(
+        credential_request_path=credential_request_path,
+        env_report_path=env_report_path,
+        credential_fulfillment_path=credential_fulfillment_path,
+        external_dependency_clearance_path=external_dependency_clearance_path,
+        credential_request=au_p0a_credential_request(),
+        credential_fulfillment=au_p0a_credential_fulfillment(),
+        external_dependency_clearance=au_external_dependency_clearance(),
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH,
             )
         ),
     )
@@ -6105,6 +6147,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/p0a-execution-checklist/au",
             "/v1/p0a-credential-request/au",
             "/v1/p0a-credential-fulfillment/au",
+            "/v1/p0a-credential-clearance/au",
             "/v1/p0a-real-batch-request/au",
             "/v1/p0a-real-batch-fulfillment/au",
             "/v1/p0b-google-execution-checklist/au",
