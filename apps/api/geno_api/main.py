@@ -145,6 +145,10 @@ from scripts.build_au_p0a_credential_request_packet import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH,
     build_au_p0a_credential_request_packet,
 )
+from scripts.build_au_p0a_real_batch_request_packet import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH,
+    build_au_p0a_real_batch_request_packet,
+)
 from scripts.build_au_external_dependency_handoff import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
     build_au_external_dependency_handoff,
@@ -1791,6 +1795,26 @@ def au_p0a_credential_request() -> dict[str, object]:
             os.getenv(
                 "GENO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH",
                 DEFAULT_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0a-real-batch-request/au")
+def au_p0a_real_batch_request() -> dict[str, object]:
+    p0a_execution_checklist_path = Path(
+        os.getenv(
+            "GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    return build_au_p0a_real_batch_request_packet(
+        p0a_execution_checklist_path=p0a_execution_checklist_path,
+        p0a_execution_checklist=au_p0a_execution_checklist(),
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH",
+                DEFAULT_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH,
             )
         ),
     )
@@ -5829,6 +5853,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/p0a-environment-checklist/au",
             "/v1/p0a-execution-checklist/au",
             "/v1/p0a-credential-request/au",
+            "/v1/p0a-real-batch-request/au",
             "/v1/p0b-google-execution-checklist/au",
             "/v1/p0b-google-environment-request/au",
             "/v1/p0b-google-manual-backfill-request/au",

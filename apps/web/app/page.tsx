@@ -717,6 +717,7 @@ type RuntimeData = {
   p0aEnvironmentChecklist: AuP0aEnvironmentChecklist | null;
   p0aExecutionChecklist: AuP0aExecutionChecklist | null;
   p0aCredentialRequest: AuP0aCredentialRequest | null;
+  p0aRealBatchRequest: AuP0aRealBatchRequest | null;
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
   p0bGoogleEnvironmentRequest: AuP0bGoogleEnvironmentRequest | null;
   p0bGoogleManualBackfillRequest: AuP0bGoogleManualBackfillRequest | null;
@@ -1312,6 +1313,80 @@ type AuP0aCredentialRequest = {
     p0a_environment_checklist?: string;
     next_work_item?: string;
     external_dependency_handoff?: string;
+  };
+  hard_gate_commands?: string[];
+  source_p0a_execution_checklist?: {
+    p0a_execution_checklist_hash?: string;
+    p0a_execution_checklist_ready?: boolean;
+    ready_for_design_partner?: boolean;
+    path?: string;
+  };
+};
+
+type AuP0aRealBatchRequest = {
+  p0a_real_batch_request_packet_version: string;
+  generated_at: string;
+  status: string;
+  real_batch_request_packet_ready: boolean;
+  real_batch_phase_handoff_ready: boolean;
+  ready_for_design_partner: boolean;
+  p0a_real_batch_request_packet_hash: string;
+  summary?: {
+    source_real_batch_phase_handoff_version?: string;
+    real_batch_phase_handoff_ready?: boolean;
+    phase_count?: number;
+    ready_phase_count?: number;
+    blocked_phase_count?: number;
+    next_phase?: string;
+    total_planned_runs?: number;
+    phase_order?: string[];
+    phase_request_count?: number;
+    command_count?: number;
+    setup_command_count?: number;
+    verification_command_count?: number;
+    evidence_output_count?: number;
+    blocking_reason_count?: number;
+    blocking_reasons?: string[];
+    raw_secret_values_allowed?: boolean;
+    phase_entries_reference_command_ids_and_artifact_paths_only?: boolean;
+    next_command?: string;
+    post_update_verification_command?: string;
+    p0a_next_action?: string;
+  };
+  phase_requests?: Array<{
+    id: string;
+    title?: string;
+    planned_runs?: number;
+    ready?: boolean;
+    can_start?: boolean;
+    command_ids?: string[];
+    commands?: string[];
+    artifact_keys?: string[];
+    artifacts?: Array<{
+      key: string;
+      path?: string;
+      exists?: boolean;
+      status?: string;
+      ready_for_design_partner?: boolean;
+      hash_valid?: boolean | null;
+      ready?: boolean;
+      errors?: string[];
+    }>;
+    evidence_outputs?: string[];
+    prerequisite_gate_ids?: string[];
+    blocking_reasons?: string[];
+  }>;
+  setup_commands?: string[];
+  phase_commands?: string[];
+  verification_commands?: string[];
+  evidence_outputs?: string[];
+  runtime_endpoints?: {
+    p0a_real_batch_request?: string;
+    p0a_credential_request?: string;
+    p0a_execution_checklist?: string;
+    p0a_environment_checklist?: string;
+    external_dependency_handoff?: string;
+    next_work_item?: string;
   };
   hard_gate_commands?: string[];
   source_p0a_execution_checklist?: {
@@ -2119,6 +2194,7 @@ const endpoints = {
   p0aEnvironmentChecklist: "/v1/p0a-environment-checklist/au",
   p0aExecutionChecklist: "/v1/p0a-execution-checklist/au",
   p0aCredentialRequest: "/v1/p0a-credential-request/au",
+  p0aRealBatchRequest: "/v1/p0a-real-batch-request/au",
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
   p0bGoogleEnvironmentRequest: "/v1/p0b-google-environment-request/au",
   p0bGoogleManualBackfillRequest: "/v1/p0b-google-manual-backfill-request/au",
@@ -3536,6 +3612,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aEnvironmentChecklist: endpoints.p0aEnvironmentChecklist,
     p0aExecutionChecklist: endpoints.p0aExecutionChecklist,
     p0aCredentialRequest: endpoints.p0aCredentialRequest,
+    p0aRealBatchRequest: endpoints.p0aRealBatchRequest,
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest: endpoints.p0bGoogleEnvironmentRequest,
     p0bGoogleManualBackfillRequest: endpoints.p0bGoogleManualBackfillRequest,
@@ -3854,6 +3931,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aEnvironmentChecklist,
     p0aExecutionChecklist,
     p0aCredentialRequest,
+    p0aRealBatchRequest,
     p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest,
     p0bGoogleManualBackfillRequest,
@@ -3908,6 +3986,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0aEnvironmentChecklist | null>(baseUrl, paths.p0aEnvironmentChecklist, null),
     fetchRuntimeEndpoint<AuP0aExecutionChecklist | null>(baseUrl, paths.p0aExecutionChecklist, null),
     fetchRuntimeEndpoint<AuP0aCredentialRequest | null>(baseUrl, paths.p0aCredentialRequest, null),
+    fetchRuntimeEndpoint<AuP0aRealBatchRequest | null>(baseUrl, paths.p0aRealBatchRequest, null),
     fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
     fetchRuntimeEndpoint<AuP0bGoogleEnvironmentRequest | null>(baseUrl, paths.p0bGoogleEnvironmentRequest, null),
     fetchRuntimeEndpoint<AuP0bGoogleManualBackfillRequest | null>(
@@ -4078,6 +4157,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aEnvironmentChecklist,
     p0aExecutionChecklist,
     p0aCredentialRequest,
+    p0aRealBatchRequest,
     p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest,
     p0bGoogleManualBackfillRequest,
@@ -4137,6 +4217,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0aEnvironmentChecklist: p0aEnvironmentChecklist.payload,
       p0aExecutionChecklist: p0aExecutionChecklist.payload,
       p0aCredentialRequest: p0aCredentialRequest.payload,
+      p0aRealBatchRequest: p0aRealBatchRequest.payload,
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
       p0bGoogleEnvironmentRequest: p0bGoogleEnvironmentRequest.payload,
       p0bGoogleManualBackfillRequest: p0bGoogleManualBackfillRequest.payload,
@@ -4484,6 +4565,11 @@ export default async function Home({
   const requestedP0aCredentials = p0aCredentialRequest?.requested_credentials || [];
   const p0aCredentialRequestMissing = p0aCredentialRequestSummary?.missing_required || [];
   const p0aCredentialRequestEvidenceOutputs = p0aCredentialRequest?.evidence_outputs || [];
+  const p0aRealBatchRequest = data.p0aRealBatchRequest;
+  const p0aRealBatchRequestSummary = p0aRealBatchRequest?.summary;
+  const p0aRealBatchPhases = p0aRealBatchRequest?.phase_requests || [];
+  const p0aRealBatchBlockingReasons = p0aRealBatchRequestSummary?.blocking_reasons || [];
+  const p0aRealBatchEvidenceOutputs = p0aRealBatchRequest?.evidence_outputs || [];
   const p0bGoogleExecutionChecklist = data.p0bGoogleExecutionChecklist;
   const p0bGoogleExecutionSummary = p0bGoogleExecutionChecklist?.summary;
   const missingP0bSmokeEnv = p0bGoogleExecutionSummary?.missing_required_environment || [];
@@ -5776,6 +5862,76 @@ export default async function Home({
             </ul>
           ) : null}
           <code>{paths.p0aCredentialRequest}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>P0a real batch request packet</strong>
+            <span>
+              {p0aRealBatchRequest?.p0a_real_batch_request_packet_version ||
+                "au_p0a_real_batch_request_packet_v1"}{" "}
+              · p0a_real_batch_request_packet_hash {shortHash(p0aRealBatchRequest?.p0a_real_batch_request_packet_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>Packet ready {p0aRealBatchRequest?.real_batch_request_packet_ready ? "yes" : "no"}</span>
+            <span>Real batch handoff {p0aRealBatchRequest?.real_batch_phase_handoff_ready ? "ready" : "blocked"}</span>
+            <span>Design partner {p0aRealBatchRequest?.ready_for_design_partner ? "ready" : "blocked"}</span>
+            <span>Total planned runs {p0aRealBatchRequestSummary?.total_planned_runs || 0}</span>
+            <span>
+              Phases {p0aRealBatchRequestSummary?.ready_phase_count || 0}/
+              {p0aRealBatchRequestSummary?.phase_count || 0}
+            </span>
+            <span>Next phase {p0aRealBatchRequestSummary?.next_phase || "none"}</span>
+            <span>Blocking reasons {p0aRealBatchRequestSummary?.blocking_reason_count || 0}</span>
+            <span>Raw secret allowed {p0aRealBatchRequestSummary?.raw_secret_values_allowed ? "yes" : "no"}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>Next command {p0aRealBatchRequestSummary?.next_command || "none"}</span>
+            <span>
+              Post-update verifier {p0aRealBatchRequestSummary?.post_update_verification_command || "none"}
+            </span>
+            <span>P0a next action {p0aRealBatchRequestSummary?.p0a_next_action || "none"}</span>
+            <span>
+              Blocking {p0aRealBatchBlockingReasons.slice(0, 4).join(", ") || "none"}
+            </span>
+            <span>
+              Source checklist hash{" "}
+              {shortHash(p0aRealBatchRequest?.source_p0a_execution_checklist?.p0a_execution_checklist_hash)}
+            </span>
+            <span>
+              {p0aRealBatchRequest?.runtime_endpoints?.p0a_real_batch_request ||
+                "GET /v1/p0a-real-batch-request/au"}
+            </span>
+            <span>Hard gate: make verify-au-p0a-real-batch-request</span>
+            <span>
+              Ready batch hard gate:{" "}
+              {p0aRealBatchRequest?.hard_gate_commands?.find((command) =>
+                command.endsWith("--require-real-batches-ready")
+              ) ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_real_batch_request_packet.py docs/runtime_preflight/au-p0a-real-batch-request-latest.json --require-real-batches-ready"}
+            </span>
+          </div>
+          <div className="dependencyGroupGrid">
+            {p0aRealBatchPhases.map((phase) => (
+              <div className="dependencyGroup" key={phase.id}>
+                <strong>{phase.title || phase.id}</strong>
+                <span>
+                  {phase.ready ? "ready" : "blocked"} · can start {phase.can_start ? "yes" : "no"} · runs{" "}
+                  {phase.planned_runs || 0}
+                </span>
+                <small>{(phase.command_ids || []).slice(0, 3).join(" · ") || "no commands"}</small>
+                <small>{(phase.blocking_reasons || []).slice(0, 2).join(" · ") || "no blockers"}</small>
+              </div>
+            ))}
+          </div>
+          {p0aRealBatchEvidenceOutputs.length ? (
+            <ul className="plainList compactList">
+              {p0aRealBatchEvidenceOutputs.slice(0, 6).map((output) => (
+                <li key={output}>{output}</li>
+              ))}
+            </ul>
+          ) : null}
+          <code>{paths.p0aRealBatchRequest}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">
