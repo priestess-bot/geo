@@ -215,7 +215,7 @@ def process_next_notification_delivery(
     body = _canonical_json_bytes(outbound_payload)
     body_hash = runtime_notification_webhook_payload_hash(body)
     headers = {"content-type": "application/json"}
-    if channel != "slack":
+    if channel == "webhook":
         headers.update(
             {
                 RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER: delivery_id,
@@ -228,7 +228,7 @@ def process_next_notification_delivery(
     signing_secret_key_id: str | None = None
 
     try:
-        if channel != "slack":
+        if channel == "webhook":
             signing_secret, signing_secret_env, signing_secret_key_id = _webhook_signing_secret(
                 subscription_metadata=_subscription_metadata(delivery_record),
                 default_signing_secret_env=default_signing_secret_env,
@@ -265,7 +265,7 @@ def process_next_notification_delivery(
                     updated_by=updated_by,
                     response_status=int(response_status),
                     response_body_hash=response_body_hash,
-                    reason="runtime notification webhook delivered",
+                    reason="runtime notification delivery delivered",
                 )
             )
             return {
@@ -295,9 +295,9 @@ def process_next_notification_delivery(
                 updated_by=updated_by,
                 response_status=int(response_status),
                 response_body_hash=response_body_hash,
-                error_message=f"Webhook returned HTTP {response_status}",
+                error_message=f"Delivery returned HTTP {response_status}",
                 next_attempt_at=next_attempt_at,
-                reason="runtime notification webhook delivery failed",
+                reason="runtime notification delivery failed",
             )
         )
         return {
@@ -329,7 +329,7 @@ def process_next_notification_delivery(
                 updated_by=updated_by,
                 error_message=str(exc),
                 next_attempt_at=next_attempt_at,
-                reason="runtime notification webhook delivery raised exception",
+                reason="runtime notification delivery raised exception",
             )
         )
         return {

@@ -36,7 +36,9 @@ from geno_core.collection import (
 from geno_core.contracts import CollectorBackend, GraphStore, ParserEngine, ReportExporter, ScoringFormula, VectorStore
 from geno_core.email_delivery import (
     PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION,
+    RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION,
     render_project_member_invitation_email,
+    render_runtime_notification_email,
     runtime_email_body_hash,
 )
 from geno_core.collectors import (
@@ -408,6 +410,29 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("Role: viewer", rendered.text)
         self.assertIn("Invitation ID: invitation-1", rendered.text)
         self.assertEqual(rendered.subject_hash, runtime_email_body_hash("Join GENO"))
+        self.assertEqual(rendered.body_hash, runtime_email_body_hash(rendered.text))
+        self.assertRegex(rendered.template_hash, r"^[0-9a-f]{64}$")
+
+    def test_runtime_notification_email_template_renders_hashable_body(self) -> None:
+        rendered = render_runtime_notification_email(
+            notification_id="notification-1",
+            project_id="project-1",
+            subscription_id="subscription-1",
+            notification_type="runtime_alert",
+            severity="critical",
+            threshold="warning",
+            target_type="runtime_alert",
+            target_id="brand_absent:project-1",
+            title="Brand absent in Sydney",
+            message="Brand was absent from critical AI search prompts.",
+        )
+
+        self.assertEqual(rendered.subject, "[GENO CRITICAL] Brand absent in Sydney")
+        self.assertEqual(rendered.template_version, RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION)
+        self.assertIn("Brand was absent from critical AI search prompts.", rendered.text)
+        self.assertIn("Type: runtime_alert", rendered.text)
+        self.assertIn("Target ID: brand_absent:project-1", rendered.text)
+        self.assertEqual(rendered.subject_hash, runtime_email_body_hash(rendered.subject))
         self.assertEqual(rendered.body_hash, runtime_email_body_hash(rendered.text))
         self.assertRegex(rendered.template_hash, r"^[0-9a-f]{64}$")
 
@@ -7589,6 +7614,13 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("runtime_notification_delivery_email_v1", str(delivery_insert_params[8]))
         self.assertIn("ops@example.com", str(delivery_insert_params[8]))
         self.assertIn("[GENO CRITICAL] Brand absent in Sydney", str(delivery_insert_params[8]))
+        self.assertIn(RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION, str(delivery_insert_params[8]))
+        self.assertIn("email_template_hash", str(delivery_insert_params[8]))
+        self.assertIn("email_subject_hash", str(delivery_insert_params[8]))
+        self.assertIn("email_body_hash", str(delivery_insert_params[8]))
+        self.assertIn("email_template_hashes", str(audit_events[0].output_refs))
+        self.assertIn("email_subject_hashes", str(audit_events[0].output_refs))
+        self.assertIn("email_body_hashes", str(audit_events[0].output_refs))
 
     def test_postgres_repository_lists_runtime_notification_deliveries_with_context(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)
@@ -7661,7 +7693,7 @@ class CoreContractsTest(unittest.TestCase):
             "input_refs": {"runtime_notification_ids": [notification_id]},
             "output_refs": {"runtime_notification_delivery_ids": [delivery_id]},
             "method_version": "runtime_notification_delivery_v1",
-            "reason": "queue runtime notification webhook delivery",
+            "reason": "queue runtime notification delivery",
             "created_at": now,
         }
         connection = RecordingConnection(result_sets=[{"count": 1}, [delivery_row], notification_row, subscription_row, [audit_row]])

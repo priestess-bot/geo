@@ -9,6 +9,18 @@ from typing import Any
 
 
 DEFAULT_RUNTIME_EMAIL_SMTP_ENV_PREFIX = "GENO_NOTIFICATION_SMTP"
+RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION = "runtime_notification_email_template_v1"
+RUNTIME_NOTIFICATION_EMAIL_TEMPLATE = """{title}
+
+{message}
+
+Type: {notification_type}
+Severity: {severity}
+Threshold: {threshold}
+Target: {target_type}
+{target_line}Notification ID: {notification_id}
+Project ID: {project_id}
+Subscription ID: {subscription_id}"""
 PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION = "project_member_invitation_email_template_v1"
 PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE = """{custom_message}
 
@@ -76,6 +88,50 @@ def render_project_member_invitation_email(
         text=text,
         template_version=PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION,
         template_hash=runtime_email_body_hash(PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE),
+        subject_hash=runtime_email_body_hash(rendered_subject),
+        body_hash=runtime_email_body_hash(text),
+    )
+
+
+def render_runtime_notification_email(
+    *,
+    notification_id: str,
+    project_id: str,
+    subscription_id: str,
+    notification_type: str,
+    severity: str,
+    threshold: str,
+    target_type: str,
+    target_id: str | None = None,
+    title: str | None = None,
+    message: str | None = None,
+) -> RuntimeEmailTemplateRenderResult:
+    rendered_title = (title or "").strip() or "GENO runtime notification"
+    rendered_message = (message or "").strip() or "A GENO runtime notification was generated."
+    rendered_severity = (severity or "info").strip().lower() or "info"
+    rendered_notification_type = (notification_type or "runtime_notification").strip() or "runtime_notification"
+    rendered_threshold = (threshold or "info").strip().lower() or "info"
+    rendered_target_type = (target_type or "target").strip() or "target"
+    rendered_target_id = (target_id or "").strip()
+    rendered_subject = f"[GENO {rendered_severity.upper()}] {rendered_title}"
+    target_line = f"Target ID: {rendered_target_id}\n" if rendered_target_id else ""
+    text = RUNTIME_NOTIFICATION_EMAIL_TEMPLATE.format(
+        title=rendered_title,
+        message=rendered_message,
+        notification_type=rendered_notification_type,
+        severity=rendered_severity,
+        threshold=rendered_threshold,
+        target_type=rendered_target_type,
+        target_line=target_line,
+        notification_id=notification_id,
+        project_id=project_id,
+        subscription_id=subscription_id,
+    )
+    return RuntimeEmailTemplateRenderResult(
+        subject=rendered_subject,
+        text=text,
+        template_version=RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION,
+        template_hash=runtime_email_body_hash(RUNTIME_NOTIFICATION_EMAIL_TEMPLATE),
         subject_hash=runtime_email_body_hash(rendered_subject),
         body_hash=runtime_email_body_hash(text),
     )

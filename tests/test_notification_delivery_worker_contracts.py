@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from geno_core.models import RuntimeNotificationDelivery, RuntimeNotificationDeliveryStatusInput
+from geno_core.email_delivery import RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION
 from geno_core.webhook_signing import verify_runtime_notification_webhook_signature
 from workers.notification_worker import run_notification_deliveries
 from workers.notification_worker.run_notification_deliveries import process_next_notification_delivery
@@ -117,7 +118,7 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         self.assertEqual(repository.lease_seconds, 120)
         self.assertEqual(repository.status_updates[-1].status, "delivered")
         self.assertEqual(repository.status_updates[-1].response_status, 204)
-        self.assertEqual(repository.status_updates[-1].reason, "runtime notification webhook delivered")
+        self.assertEqual(repository.status_updates[-1].reason, "runtime notification delivery delivered")
         self.assertEqual(requests[0][0], "POST")
         self.assertEqual(requests[0][1], "https://hooks.example.com/geno")
         self.assertEqual(requests[0][2]["content-type"], "application/json")
@@ -192,7 +193,7 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         self.assertEqual(body_payload["text"], "[CRITICAL] Brand absent in Sydney")
         self.assertEqual(body_payload["blocks"][0]["type"], "section")
         self.assertNotIn("notification", body_payload)
-        self.assertEqual(repository.status_updates[-1].reason, "runtime notification webhook delivered")
+        self.assertEqual(repository.status_updates[-1].reason, "runtime notification delivery delivered")
 
     def test_process_next_notification_delivery_sends_email_payload_with_smtp_config(self) -> None:
         repository = FakeNotificationDeliveryRepository(
@@ -210,7 +211,16 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
                         "to": ["ops@example.com"],
                         "subject": "[GENO CRITICAL] Brand absent in Sydney",
                         "text": "Brand was absent from critical AI search prompts.",
-                        "headers": {"X-GENO-Severity": "critical"},
+                        "headers": {
+                            "X-GENO-Severity": "critical",
+                            "X-GENO-Email-Template-Version": RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION,
+                        },
+                        "metadata": {
+                            "email_template_version": RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION,
+                            "email_template_hash": "template-hash",
+                            "email_subject_hash": "subject-hash",
+                            "email_body_hash": "body-hash",
+                        },
                     },
                     "delivery_version": "runtime_notification_delivery_email_v1",
                 },
@@ -220,6 +230,7 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         os.environ["GENO_TEST_SMTP_PORT"] = "2525"
         os.environ["GENO_TEST_SMTP_TLS"] = "0"
         os.environ["GENO_TEST_SMTP_FROM"] = "geno@example.com"
+        os.environ["GENO_TEST_WEBHOOK_SECRET"] = "webhook-secret"
         sent: list[tuple[dict[str, object], object, list[str]]] = []
 
         def email_sender(config: dict[str, object], message: object, recipients: list[str]) -> tuple[int, bytes]:
@@ -229,22 +240,25 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         try:
             result = process_next_notification_delivery(
                 repository=repository,
-                default_signing_secret_env=None,
+                default_signing_secret_env="GENO_TEST_WEBHOOK_SECRET",
                 smtp_env_prefix="GENO_TEST_SMTP",
                 email_sender=email_sender,
             )
         finally:
             for name in ("HOST", "PORT", "TLS", "FROM"):
                 os.environ.pop(f"GENO_TEST_SMTP_{name}", None)
+            os.environ.pop("GENO_TEST_WEBHOOK_SECRET", None)
 
         self.assertEqual(result["status"], "delivered")
         self.assertEqual(result["channel"], "email")
         self.assertFalse(result["signed"])
+        self.assertIsNone(result["signing_secret_env"])
         self.assertEqual(sent[0][0]["host"], "smtp.example.com")
         self.assertEqual(sent[0][0]["port"], 2525)
         self.assertEqual(sent[0][2], ["ops@example.com"])
         self.assertEqual(sent[0][1]["Subject"], "[GENO CRITICAL] Brand absent in Sydney")
         self.assertEqual(sent[0][1]["X-GENO-Severity"], "critical")
+        self.assertEqual(sent[0][1]["X-GENO-Email-Template-Version"], RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION)
         self.assertEqual(repository.status_updates[-1].status, "delivered")
 
     def test_process_next_notification_delivery_requeues_email_when_smtp_is_missing(self) -> None:
@@ -450,7 +464,7 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         self.assertEqual(result["status"], "queued")
         self.assertEqual(repository.status_updates[-1].status, "queued")
         self.assertEqual(repository.status_updates[-1].response_status, 503)
-        self.assertEqual(repository.status_updates[-1].error_message, "Webhook returned HTTP 503")
+        self.assertEqual(repository.status_updates[-1].error_message, "Delivery returned HTTP 503")
         self.assertIsNotNone(repository.status_updates[-1].next_attempt_at)
 
     def test_process_next_notification_delivery_dead_letters_exception_at_max_attempts(self) -> None:

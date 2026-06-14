@@ -13,7 +13,11 @@ from urllib.parse import urlencode, unquote, urlparse
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from geno_core.audit import build_audit_event
-from geno_core.email_delivery import render_project_member_invitation_email, send_runtime_email_message
+from geno_core.email_delivery import (
+    render_project_member_invitation_email,
+    render_runtime_notification_email,
+    send_runtime_email_message,
+)
 from geno_core.models import (
     ActionRecommendation,
     AnswerAnalysis,
@@ -281,35 +285,28 @@ def _runtime_notification_email_payload(
     message = str(notification.get("message") or "").strip()
     target_type = str(notification.get("target_type") or "target").strip()
     target_id = str(notification.get("target_id") or "").strip()
-    subject = f"[GENO {severity.upper()}] {title}"
-    lines = [
-        title,
-        "",
-        message or "A GENO runtime notification was generated.",
-        "",
-        f"Type: {notification_type}",
-        f"Severity: {severity}",
-        f"Threshold: {threshold}",
-        f"Target: {target_type}",
-    ]
-    if target_id:
-        lines.append(f"Target ID: {target_id}")
-    lines.extend(
-        [
-            f"Notification ID: {notification.get('id')}",
-            f"Project ID: {notification.get('project_id')}",
-            f"Subscription ID: {subscription.get('id')}",
-        ]
+    rendered_email = render_runtime_notification_email(
+        notification_id=str(notification.get("id")),
+        project_id=str(notification.get("project_id")),
+        subscription_id=str(subscription.get("id")),
+        notification_type=notification_type,
+        severity=severity,
+        threshold=threshold,
+        target_type=target_type,
+        target_id=target_id,
+        title=title,
+        message=message,
     )
     return {
         "to": _runtime_notification_email_recipients(str(subscription.get("endpoint_url") or "")),
-        "subject": subject,
-        "text": "\n".join(lines),
+        "subject": rendered_email.subject,
+        "text": rendered_email.text,
         "headers": {
             "X-GENO-Notification-Id": str(notification.get("id")),
             "X-GENO-Project-Id": str(notification.get("project_id")),
             "X-GENO-Notification-Type": notification_type,
             "X-GENO-Severity": severity,
+            "X-GENO-Email-Template-Version": rendered_email.template_version,
         },
         "metadata": {
             "notification_id": str(notification.get("id")),
@@ -317,6 +314,10 @@ def _runtime_notification_email_payload(
             "project_id": str(notification.get("project_id")),
             "target_type": target_type,
             "target_id": target_id,
+            "email_template_version": rendered_email.template_version,
+            "email_template_hash": rendered_email.template_hash,
+            "email_subject_hash": rendered_email.subject_hash,
+            "email_body_hash": rendered_email.body_hash,
         },
     }
 
@@ -9542,6 +9543,23 @@ class PostgresEvidenceRepository:
             if inserted:
                 delivery = _row_dict(inserted, RUNTIME_NOTIFICATION_DELIVERY_COLUMNS)
                 queued_deliveries.append(delivery)
+                delivery_output_refs = {
+                    "runtime_notification_delivery_ids": [str(delivery["id"])],
+                    "status": ["queued"],
+                }
+                if channel == "email":
+                    email_payload = payload.get("email") if isinstance(payload.get("email"), dict) else {}
+                    email_metadata = email_payload.get("metadata") if isinstance(email_payload.get("metadata"), dict) else {}
+                    delivery_output_refs.update(
+                        {
+                            "email_template_versions": [
+                                str(email_metadata.get("email_template_version") or "")
+                            ],
+                            "email_template_hashes": [str(email_metadata.get("email_template_hash") or "")],
+                            "email_subject_hashes": [str(email_metadata.get("email_subject_hash") or "")],
+                            "email_body_hashes": [str(email_metadata.get("email_body_hash") or "")],
+                        }
+                    )
                 delivery_audit_events.append(
                     build_audit_event(
                         event_type="runtime_notification_delivery_queued",
@@ -9556,12 +9574,9 @@ class PostgresEvidenceRepository:
                             "runtime_notification_ids": [str(notification["id"])],
                             "runtime_notification_subscription_ids": [str(subscription["id"])],
                         },
-                        output_refs={
-                            "runtime_notification_delivery_ids": [str(delivery["id"])],
-                            "status": ["queued"],
-                        },
+                        output_refs=delivery_output_refs,
                         method_version="runtime_notification_delivery_v1",
-                        reason="queue runtime notification webhook delivery",
+                        reason="queue runtime notification delivery",
                     )
                 )
         return tuple(queued_deliveries), tuple(delivery_audit_events)
