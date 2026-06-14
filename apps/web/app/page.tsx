@@ -1244,6 +1244,7 @@ type AuNextWorkItemPacket = {
     linked_dependency_group_next_command?: string;
     linked_dependency_group_blocking_reason_count?: number;
     linked_request_packet_id?: string;
+    linked_request_artifact_type?: string;
     linked_request_packet_hash?: string;
     linked_request_packet_exists?: boolean;
     recommended_sequence_count?: number;
@@ -1298,6 +1299,7 @@ type AuNextWorkItemPacket = {
     linked_request_packet?: {
       request_packet_id?: string;
       request_packet_title?: string;
+      artifact_type?: string;
       output_path?: string;
       exists?: boolean;
       hash_field?: string;
@@ -7182,19 +7184,20 @@ export default async function Home({
             </span>
             <span>Linked group {nextWorkItemSummary?.linked_dependency_group_id || "none"}</span>
             <span>
-              Linked request {nextWorkItemSummary?.linked_request_packet_id || "none"} ·{" "}
+              Linked artifact {nextWorkItemSummary?.linked_request_packet_id || "none"} ·{" "}
+              {nextWorkItemSummary?.linked_request_artifact_type || nextWorkItemLinkedRequest?.artifact_type || "unknown"} ·{" "}
               {shortHash(nextWorkItemSummary?.linked_request_packet_hash)}
             </span>
-            <span>Request packet exists {nextWorkItemSummary?.linked_request_packet_exists ? "yes" : "no"}</span>
+            <span>Linked artifact exists {nextWorkItemSummary?.linked_request_packet_exists ? "yes" : "no"}</span>
             <span>Sequence steps {nextWorkItemSummary?.recommended_sequence_count || 0}</span>
             <span>Next command {nextWorkItemCommands[0] || "none"}</span>
             <span>Next verifier {nextWorkItemVerificationCommands[0] || "none"}</span>
             <span>First evidence output {nextWorkItemEvidenceOutputs[0] || "none"}</span>
-            <span>Request build {nextWorkItemLinkedRequest?.build_command || "none"}</span>
-            <span>Request verifier {nextWorkItemLinkedRequest?.verify_command || "none"}</span>
-            <span>Request strict gate {nextWorkItemLinkedRequest?.strict_gate_command || "none"}</span>
+            <span>Artifact build {nextWorkItemLinkedRequest?.build_command || "none"}</span>
+            <span>Artifact verifier {nextWorkItemLinkedRequest?.verify_command || "none"}</span>
+            <span>Artifact strict gate {nextWorkItemLinkedRequest?.strict_gate_command || "none"}</span>
             <span>
-              Request endpoint {nextWorkItemLinkedRequest?.runtime_endpoint || "none"}
+              Artifact endpoint {nextWorkItemLinkedRequest?.runtime_endpoint || "none"}
             </span>
             <span>
               Dependency group status {nextWorkItemLinkedDependencyGroup?.status || "none"} · blockers{" "}

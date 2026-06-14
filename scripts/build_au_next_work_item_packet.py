@@ -31,6 +31,7 @@ DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-next-work-item-latest.json"
 REQUEST_PACKET_CONTEXTS: dict[str, dict[str, str]] = {
     "p0a_environment": {
         "linked_dependency_group_id": "p0a_provider_credentials",
+        "artifact_type": "request_packet",
         "request_packet_id": "p0a_credential_request",
         "request_packet_title": "P0a credential request packet",
         "output_path": "docs/runtime_preflight/au-p0a-credential-request-latest.json",
@@ -47,115 +48,122 @@ REQUEST_PACKET_CONTEXTS: dict[str, dict[str, str]] = {
     },
     "p0a_small_batch": {
         "linked_dependency_group_id": "p0a_real_batches",
-        "request_packet_id": "p0a_real_batch_request",
-        "request_packet_title": "P0a real batch request packet",
-        "output_path": "docs/runtime_preflight/au-p0a-real-batch-request-latest.json",
-        "hash_field": "p0a_real_batch_request_packet_hash",
-        "build_command": "make au-p0a-real-batch-request",
-        "verify_command": "make verify-au-p0a-real-batch-request",
+        "artifact_type": "fulfillment_artifact",
+        "request_packet_id": "p0a_real_batch_fulfillment",
+        "request_packet_title": "P0a real batch fulfillment artifact",
+        "output_path": "docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json",
+        "hash_field": "p0a_real_batch_fulfillment_hash",
+        "build_command": "make au-p0a-real-batch-fulfillment",
+        "verify_command": "make verify-au-p0a-real-batch-fulfillment",
         "strict_gate_command": (
             "PYTHONPATH=packages/geno_core:apps/api python3 "
-            "scripts/verify_au_p0a_real_batch_request_packet.py "
-            "${GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-request-latest.json} "
-            "--require-real-batches-ready"
+            "scripts/verify_au_p0a_real_batch_fulfillment.py "
+            "${GENO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json} "
+            "--require-fulfilled"
         ),
-        "runtime_endpoint": "GET /v1/p0a-real-batch-request/au",
+        "runtime_endpoint": "GET /v1/p0a-real-batch-fulfillment/au",
     },
     "p0a_full_batch": {
         "linked_dependency_group_id": "p0a_real_batches",
-        "request_packet_id": "p0a_real_batch_request",
-        "request_packet_title": "P0a real batch request packet",
-        "output_path": "docs/runtime_preflight/au-p0a-real-batch-request-latest.json",
-        "hash_field": "p0a_real_batch_request_packet_hash",
-        "build_command": "make au-p0a-real-batch-request",
-        "verify_command": "make verify-au-p0a-real-batch-request",
+        "artifact_type": "fulfillment_artifact",
+        "request_packet_id": "p0a_real_batch_fulfillment",
+        "request_packet_title": "P0a real batch fulfillment artifact",
+        "output_path": "docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json",
+        "hash_field": "p0a_real_batch_fulfillment_hash",
+        "build_command": "make au-p0a-real-batch-fulfillment",
+        "verify_command": "make verify-au-p0a-real-batch-fulfillment",
         "strict_gate_command": (
             "PYTHONPATH=packages/geno_core:apps/api python3 "
-            "scripts/verify_au_p0a_real_batch_request_packet.py "
-            "${GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-request-latest.json} "
-            "--require-real-batches-ready"
+            "scripts/verify_au_p0a_real_batch_fulfillment.py "
+            "${GENO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json} "
+            "--require-fulfilled"
         ),
-        "runtime_endpoint": "GET /v1/p0a-real-batch-request/au",
+        "runtime_endpoint": "GET /v1/p0a-real-batch-fulfillment/au",
     },
     "p0b_google_playwright_env": {
         "linked_dependency_group_id": "p0b_google_environment",
-        "request_packet_id": "p0b_google_environment_request",
-        "request_packet_title": "P0b Google environment request packet",
-        "output_path": "docs/runtime_preflight/au-p0b-google-environment-request-latest.json",
-        "hash_field": "p0b_google_environment_request_packet_hash",
-        "build_command": "make au-p0b-google-environment-request",
-        "verify_command": "make verify-au-p0b-google-environment-request",
+        "artifact_type": "fulfillment_artifact",
+        "request_packet_id": "p0b_google_environment_fulfillment",
+        "request_packet_title": "P0b Google environment fulfillment artifact",
+        "output_path": "docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json",
+        "hash_field": "p0b_google_environment_fulfillment_hash",
+        "build_command": "make au-p0b-google-environment-fulfillment",
+        "verify_command": "make verify-au-p0b-google-environment-fulfillment",
         "strict_gate_command": (
             "PYTHONPATH=packages/geno_core:apps/api python3 "
-            "scripts/verify_au_p0b_google_environment_request_packet.py "
-            "${GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-request-latest.json} "
-            "--require-environment-ready"
+            "scripts/verify_au_p0b_google_environment_fulfillment.py "
+            "${GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json} "
+            "--require-fulfilled"
         ),
-        "runtime_endpoint": "GET /v1/p0b-google-environment-request/au",
+        "runtime_endpoint": "GET /v1/p0b-google-environment-fulfillment/au",
     },
     "p0b_google_manual_backfill": {
         "linked_dependency_group_id": "p0b_google_manual_backfill",
-        "request_packet_id": "p0b_google_manual_backfill_request",
-        "request_packet_title": "P0b Google manual backfill request packet",
-        "output_path": "docs/runtime_preflight/au-p0b-google-manual-backfill-request-latest.json",
-        "hash_field": "p0b_google_manual_backfill_request_packet_hash",
-        "build_command": "make au-p0b-google-manual-backfill-request",
-        "verify_command": "make verify-au-p0b-google-manual-backfill-request",
+        "artifact_type": "fulfillment_artifact",
+        "request_packet_id": "p0b_google_manual_backfill_fulfillment",
+        "request_packet_title": "P0b Google manual backfill fulfillment artifact",
+        "output_path": "docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json",
+        "hash_field": "p0b_google_manual_backfill_fulfillment_hash",
+        "build_command": "make au-p0b-google-manual-backfill-fulfillment",
+        "verify_command": "make verify-au-p0b-google-manual-backfill-fulfillment",
         "strict_gate_command": (
             "PYTHONPATH=packages/geno_core:apps/api python3 "
-            "scripts/verify_au_p0b_google_manual_backfill_request_packet.py "
-            "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-request-latest.json} "
-            "--require-manual-backfill-ready"
+            "scripts/verify_au_p0b_google_manual_backfill_fulfillment.py "
+            "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json} "
+            "--require-fulfilled"
         ),
-        "runtime_endpoint": "GET /v1/p0b-google-manual-backfill-request/au",
+        "runtime_endpoint": "GET /v1/p0b-google-manual-backfill-fulfillment/au",
     },
     "p0b_google_playwright_smoke": {
         "linked_dependency_group_id": "p0b_google_phase_execution",
-        "request_packet_id": "p0b_google_phase_execution_request",
-        "request_packet_title": "P0b Google phase execution request packet",
-        "output_path": "docs/runtime_preflight/au-p0b-google-phase-execution-request-latest.json",
-        "hash_field": "p0b_google_phase_execution_request_packet_hash",
-        "build_command": "make au-p0b-google-phase-execution-request",
-        "verify_command": "make verify-au-p0b-google-phase-execution-request",
+        "artifact_type": "fulfillment_artifact",
+        "request_packet_id": "p0b_google_phase_execution_fulfillment",
+        "request_packet_title": "P0b Google phase execution fulfillment artifact",
+        "output_path": "docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json",
+        "hash_field": "p0b_google_phase_execution_fulfillment_hash",
+        "build_command": "make au-p0b-google-phase-execution-fulfillment",
+        "verify_command": "make verify-au-p0b-google-phase-execution-fulfillment",
         "strict_gate_command": (
             "PYTHONPATH=packages/geno_core:apps/api python3 "
-            "scripts/verify_au_p0b_google_phase_execution_request_packet.py "
-            "${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-request-latest.json} "
-            "--require-google-phases-ready"
+            "scripts/verify_au_p0b_google_phase_execution_fulfillment.py "
+            "${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json} "
+            "--require-fulfilled"
         ),
-        "runtime_endpoint": "GET /v1/p0b-google-phase-execution-request/au",
+        "runtime_endpoint": "GET /v1/p0b-google-phase-execution-fulfillment/au",
     },
     "p0b_google_spike_health": {
         "linked_dependency_group_id": "p0b_google_phase_execution",
-        "request_packet_id": "p0b_google_phase_execution_request",
-        "request_packet_title": "P0b Google phase execution request packet",
-        "output_path": "docs/runtime_preflight/au-p0b-google-phase-execution-request-latest.json",
-        "hash_field": "p0b_google_phase_execution_request_packet_hash",
-        "build_command": "make au-p0b-google-phase-execution-request",
-        "verify_command": "make verify-au-p0b-google-phase-execution-request",
+        "artifact_type": "fulfillment_artifact",
+        "request_packet_id": "p0b_google_phase_execution_fulfillment",
+        "request_packet_title": "P0b Google phase execution fulfillment artifact",
+        "output_path": "docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json",
+        "hash_field": "p0b_google_phase_execution_fulfillment_hash",
+        "build_command": "make au-p0b-google-phase-execution-fulfillment",
+        "verify_command": "make verify-au-p0b-google-phase-execution-fulfillment",
         "strict_gate_command": (
             "PYTHONPATH=packages/geno_core:apps/api python3 "
-            "scripts/verify_au_p0b_google_phase_execution_request_packet.py "
-            "${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-request-latest.json} "
-            "--require-google-phases-ready"
+            "scripts/verify_au_p0b_google_phase_execution_fulfillment.py "
+            "${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json} "
+            "--require-fulfilled"
         ),
-        "runtime_endpoint": "GET /v1/p0b-google-phase-execution-request/au",
+        "runtime_endpoint": "GET /v1/p0b-google-phase-execution-fulfillment/au",
     },
     "p0b_google_full_spike": {
         "linked_dependency_group_id": "p0b_google_phase_execution",
-        "request_packet_id": "p0b_google_phase_execution_request",
-        "request_packet_title": "P0b Google phase execution request packet",
-        "output_path": "docs/runtime_preflight/au-p0b-google-phase-execution-request-latest.json",
-        "hash_field": "p0b_google_phase_execution_request_packet_hash",
-        "build_command": "make au-p0b-google-phase-execution-request",
-        "verify_command": "make verify-au-p0b-google-phase-execution-request",
+        "artifact_type": "fulfillment_artifact",
+        "request_packet_id": "p0b_google_phase_execution_fulfillment",
+        "request_packet_title": "P0b Google phase execution fulfillment artifact",
+        "output_path": "docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json",
+        "hash_field": "p0b_google_phase_execution_fulfillment_hash",
+        "build_command": "make au-p0b-google-phase-execution-fulfillment",
+        "verify_command": "make verify-au-p0b-google-phase-execution-fulfillment",
         "strict_gate_command": (
             "PYTHONPATH=packages/geno_core:apps/api python3 "
-            "scripts/verify_au_p0b_google_execution_checklist.py "
-            "${GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json} "
-            "--require-google-main-scoring-ready"
+            "scripts/verify_au_p0b_google_phase_execution_fulfillment.py "
+            "${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json} "
+            "--require-fulfilled"
         ),
-        "runtime_endpoint": "GET /v1/p0b-google-phase-execution-request/au",
+        "runtime_endpoint": "GET /v1/p0b-google-phase-execution-fulfillment/au",
     },
 }
 
@@ -282,6 +290,7 @@ def _request_packet_context(next_work_item_id: str) -> dict[str, Any]:
             "request_packet_available": False,
             "request_packet_id": "",
             "request_packet_title": "",
+            "artifact_type": "",
             "output_path": "",
             "exists": False,
             "hash_field": "",
@@ -299,6 +308,7 @@ def _request_packet_context(next_work_item_id: str) -> dict[str, Any]:
         "request_packet_available": True,
         "request_packet_id": context["request_packet_id"],
         "request_packet_title": context["request_packet_title"],
+        "artifact_type": context["artifact_type"],
         "output_path": str(output_path),
         "exists": output_path.is_file(),
         "hash_field": context["hash_field"],
@@ -592,6 +602,7 @@ def build_au_next_work_item_packet(
                 _as_dict(execution_context.get("linked_dependency_group")).get("blocking_reason_count") or 0
             ),
             "linked_request_packet_id": str(linked_request_packet.get("request_packet_id") or ""),
+            "linked_request_artifact_type": str(linked_request_packet.get("artifact_type") or ""),
             "linked_request_packet_hash": str(linked_request_packet.get("packet_hash") or ""),
             "linked_request_packet_exists": linked_request_packet.get("exists") is True,
             "recommended_sequence_count": int(execution_context.get("recommended_sequence_count") or 0),

@@ -220,6 +220,7 @@ def verify_au_next_work_item_packet(
         for field in (
             "request_packet_id",
             "request_packet_title",
+            "artifact_type",
             "output_path",
             "hash_field",
             "build_command",
@@ -241,6 +242,8 @@ def verify_au_next_work_item_packet(
             errors.append("summary_linked_dependency_group_blocking_reason_count_mismatch")
         if summary.get("linked_request_packet_id") != expected_context["request_packet_id"]:
             errors.append("summary_linked_request_packet_id_mismatch")
+        if summary.get("linked_request_artifact_type") != expected_context["artifact_type"]:
+            errors.append("summary_linked_request_artifact_type_mismatch")
         if summary.get("linked_request_packet_hash") != linked_request_packet.get("packet_hash"):
             errors.append("summary_linked_request_packet_hash_mismatch")
         if summary.get("linked_request_packet_exists") is not (linked_request_packet.get("exists") is True):

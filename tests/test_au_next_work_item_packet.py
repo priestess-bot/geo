@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 from scripts.build_au_handoff_dossier import build_au_handoff_dossier
 from scripts.build_au_next_work_item_packet import (
     PACKET_VERSION,
+    REQUEST_PACKET_CONTEXTS,
     build_au_next_work_item_packet,
     compute_next_work_item_packet_hash,
 )
@@ -103,7 +104,9 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         self.assertTrue(packet["summary"]["linked_dependency_group_next_command"])
         self.assertGreater(packet["summary"]["linked_dependency_group_blocking_reason_count"], 0)
         self.assertEqual(packet["summary"]["linked_request_packet_id"], "p0a_credential_request")
+        self.assertEqual(packet["summary"]["linked_request_artifact_type"], "request_packet")
         self.assertTrue(packet["summary"]["linked_request_packet_exists"] in {True, False})
+        self.assertEqual(packet["execution_context"]["linked_request_packet"]["artifact_type"], "request_packet")
         self.assertEqual(packet["summary"]["recommended_sequence_count"], len(packet["execution_context"]["recommended_sequence"]))
         self.assertEqual(packet["execution_context"]["execution_context_version"], "au_next_work_item_execution_context_v1")
         self.assertEqual(packet["execution_context"]["linked_dependency_group"]["id"], "p0a_provider_credentials")
@@ -162,6 +165,83 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         self.assertEqual(verification["status"], "pass")
         self.assertEqual(hard_gate["status"], "fail")
         self.assertIn("customer_handoff_not_ready", hard_gate["errors"])
+
+    def test_downstream_next_work_item_contexts_are_fulfillment_aware(self) -> None:
+        expected_contexts = {
+            "p0a_small_batch": (
+                "p0a_real_batch_fulfillment",
+                "docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json",
+                "GET /v1/p0a-real-batch-fulfillment/au",
+                "make verify-au-p0a-real-batch-fulfillment",
+                "scripts/verify_au_p0a_real_batch_fulfillment.py",
+            ),
+            "p0a_full_batch": (
+                "p0a_real_batch_fulfillment",
+                "docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json",
+                "GET /v1/p0a-real-batch-fulfillment/au",
+                "make verify-au-p0a-real-batch-fulfillment",
+                "scripts/verify_au_p0a_real_batch_fulfillment.py",
+            ),
+            "p0b_google_playwright_env": (
+                "p0b_google_environment_fulfillment",
+                "docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json",
+                "GET /v1/p0b-google-environment-fulfillment/au",
+                "make verify-au-p0b-google-environment-fulfillment",
+                "scripts/verify_au_p0b_google_environment_fulfillment.py",
+            ),
+            "p0b_google_manual_backfill": (
+                "p0b_google_manual_backfill_fulfillment",
+                "docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json",
+                "GET /v1/p0b-google-manual-backfill-fulfillment/au",
+                "make verify-au-p0b-google-manual-backfill-fulfillment",
+                "scripts/verify_au_p0b_google_manual_backfill_fulfillment.py",
+            ),
+            "p0b_google_playwright_smoke": (
+                "p0b_google_phase_execution_fulfillment",
+                "docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json",
+                "GET /v1/p0b-google-phase-execution-fulfillment/au",
+                "make verify-au-p0b-google-phase-execution-fulfillment",
+                "scripts/verify_au_p0b_google_phase_execution_fulfillment.py",
+            ),
+            "p0b_google_spike_health": (
+                "p0b_google_phase_execution_fulfillment",
+                "docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json",
+                "GET /v1/p0b-google-phase-execution-fulfillment/au",
+                "make verify-au-p0b-google-phase-execution-fulfillment",
+                "scripts/verify_au_p0b_google_phase_execution_fulfillment.py",
+            ),
+            "p0b_google_full_spike": (
+                "p0b_google_phase_execution_fulfillment",
+                "docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json",
+                "GET /v1/p0b-google-phase-execution-fulfillment/au",
+                "make verify-au-p0b-google-phase-execution-fulfillment",
+                "scripts/verify_au_p0b_google_phase_execution_fulfillment.py",
+            ),
+        }
+        forbidden_request_only_ids = {
+            "p0a_real_batch_request",
+            "p0b_google_environment_request",
+            "p0b_google_manual_backfill_request",
+            "p0b_google_phase_execution_request",
+        }
+
+        for work_item_id, (
+            request_packet_id,
+            output_path,
+            runtime_endpoint,
+            verify_command,
+            strict_script,
+        ) in expected_contexts.items():
+            with self.subTest(work_item_id=work_item_id):
+                context = REQUEST_PACKET_CONTEXTS[work_item_id]
+                self.assertEqual(context["artifact_type"], "fulfillment_artifact")
+                self.assertEqual(context["request_packet_id"], request_packet_id)
+                self.assertEqual(context["output_path"], output_path)
+                self.assertEqual(context["runtime_endpoint"], runtime_endpoint)
+                self.assertEqual(context["verify_command"], verify_command)
+                self.assertIn(strict_script, context["strict_gate_command"])
+                self.assertIn("--require-fulfilled", context["strict_gate_command"])
+                self.assertNotIn(context["request_packet_id"], forbidden_request_only_ids)
 
     def test_packet_records_none_work_item_after_customer_ready(self) -> None:
         with TemporaryDirectory() as temp_dir:
