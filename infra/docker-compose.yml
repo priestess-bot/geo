@@ -251,6 +251,78 @@ services:
       postgres:
         condition: service_healthy
 
+  report-export-worker:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    profiles:
+      - scheduler
+    environment:
+      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_ACCESS_KEY: minio
+      OBJECT_STORE_SECRET_KEY: minio123
+      OBJECT_STORE_REGION: us-east-1
+      GENO_REPORT_EXPORT_WORKER_MAX_JOBS: ${GENO_REPORT_EXPORT_WORKER_MAX_JOBS:-1}
+      GENO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS: ${GENO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS:-3}
+      GENO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS: ${GENO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS:-300}
+      GENO_REPORT_EXPORT_WORKER_LEASE_SECONDS: ${GENO_REPORT_EXPORT_WORKER_LEASE_SECONDS:-900}
+    command:
+      - python
+      - workers/report_export_worker/run_report_export_jobs.py
+      - --max-jobs
+      - ${GENO_REPORT_EXPORT_WORKER_MAX_JOBS:-1}
+      - --max-attempts
+      - ${GENO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS:-3}
+      - --retry-backoff-seconds
+      - ${GENO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS:-300}
+      - --lease-seconds
+      - ${GENO_REPORT_EXPORT_WORKER_LEASE_SECONDS:-900}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  notification-delivery-worker:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    profiles:
+      - scheduler
+    environment:
+      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      GENO_NOTIFICATION_DELIVERY_MAX_DELIVERIES: ${GENO_NOTIFICATION_DELIVERY_MAX_DELIVERIES:-1}
+      GENO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS: ${GENO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS:-3}
+      GENO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS: ${GENO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS:-120}
+      GENO_NOTIFICATION_DELIVERY_LEASE_SECONDS: ${GENO_NOTIFICATION_DELIVERY_LEASE_SECONDS:-300}
+      GENO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS: ${GENO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS:-5.0}
+      GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET: ${GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET:-}
+      GENO_NOTIFICATION_SMTP_HOST: ${GENO_NOTIFICATION_SMTP_HOST:-}
+      GENO_NOTIFICATION_SMTP_PORT: ${GENO_NOTIFICATION_SMTP_PORT:-587}
+      GENO_NOTIFICATION_SMTP_TLS: ${GENO_NOTIFICATION_SMTP_TLS:-1}
+      GENO_NOTIFICATION_SMTP_USERNAME: ${GENO_NOTIFICATION_SMTP_USERNAME:-}
+      GENO_NOTIFICATION_SMTP_PASSWORD: ${GENO_NOTIFICATION_SMTP_PASSWORD:-}
+      GENO_NOTIFICATION_SMTP_FROM: ${GENO_NOTIFICATION_SMTP_FROM:-}
+      GENO_NOTIFICATION_SMTP_TIMEOUT_SECONDS: ${GENO_NOTIFICATION_SMTP_TIMEOUT_SECONDS:-10}
+    command:
+      - python
+      - workers/notification_worker/run_notification_deliveries.py
+      - --max-deliveries
+      - ${GENO_NOTIFICATION_DELIVERY_MAX_DELIVERIES:-1}
+      - --max-attempts
+      - ${GENO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS:-3}
+      - --retry-backoff-seconds
+      - ${GENO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS:-120}
+      - --lease-seconds
+      - ${GENO_NOTIFICATION_DELIVERY_LEASE_SECONDS:-300}
+      - --timeout-seconds
+      - ${GENO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS:-5.0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   entity-alias-assignment-notification-worker:
     build:
       context: ..

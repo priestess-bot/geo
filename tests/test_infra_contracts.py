@@ -93,6 +93,8 @@ class InfraContractsTest(unittest.TestCase):
         scheduler = services["browser-fidelity-scheduler"]
         alert_worker = services["runtime-alert-notification-worker"]
         escalation_worker = services["runtime-alert-escalation-worker"]
+        report_export_worker = services["report-export-worker"]
+        notification_delivery_worker = services["notification-delivery-worker"]
         alias_assignment_worker = services["entity-alias-assignment-notification-worker"]
         alias_assignment_escalation_worker = services["entity-alias-assignment-escalation-worker"]
         alias_assignment_reassignment_worker = services["entity-alias-assignment-reassignment-worker"]
@@ -131,6 +133,47 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("--severity-threshold-hours", escalation_worker["command"])
         self.assertIn("critical=4,high=24", escalation_worker["command"])
         self.assertIn("postgres", escalation_worker["depends_on"])
+
+        self.assertEqual(report_export_worker["build"]["dockerfile"], "apps/api/Dockerfile")
+        self.assertEqual(report_export_worker["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
+        self.assertEqual(report_export_worker["environment"]["OBJECT_STORE_ENDPOINT"], "http://minio:9000")
+        self.assertEqual(report_export_worker["environment"]["OBJECT_STORE_BUCKET"], "geno-reports")
+        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", report_export_worker["environment"])
+        self.assertIn("workers/report_export_worker/run_report_export_jobs.py", report_export_worker["command"])
+        self.assertIn("--max-jobs", report_export_worker["command"])
+        self.assertIn("1", report_export_worker["command"])
+        self.assertIn("--max-attempts", report_export_worker["command"])
+        self.assertIn("3", report_export_worker["command"])
+        self.assertIn("--retry-backoff-seconds", report_export_worker["command"])
+        self.assertIn("300", report_export_worker["command"])
+        self.assertIn("--lease-seconds", report_export_worker["command"])
+        self.assertIn("900", report_export_worker["command"])
+        self.assertIn("postgres", report_export_worker["depends_on"])
+        self.assertIn("minio", report_export_worker["depends_on"])
+
+        self.assertEqual(notification_delivery_worker["build"]["dockerfile"], "apps/api/Dockerfile")
+        self.assertEqual(notification_delivery_worker["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
+        self.assertEqual(
+            notification_delivery_worker["environment"]["GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET"],
+            "",
+        )
+        self.assertEqual(notification_delivery_worker["environment"]["GENO_NOTIFICATION_SMTP_HOST"], "")
+        self.assertEqual(notification_delivery_worker["environment"]["GENO_NOTIFICATION_SMTP_PORT"], "587")
+        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", notification_delivery_worker["environment"])
+        self.assertNotIn("OBJECT_STORE_ENDPOINT", notification_delivery_worker["environment"])
+        self.assertIn("workers/notification_worker/run_notification_deliveries.py", notification_delivery_worker["command"])
+        self.assertIn("--max-deliveries", notification_delivery_worker["command"])
+        self.assertIn("1", notification_delivery_worker["command"])
+        self.assertIn("--max-attempts", notification_delivery_worker["command"])
+        self.assertIn("3", notification_delivery_worker["command"])
+        self.assertIn("--retry-backoff-seconds", notification_delivery_worker["command"])
+        self.assertIn("120", notification_delivery_worker["command"])
+        self.assertIn("--lease-seconds", notification_delivery_worker["command"])
+        self.assertIn("300", notification_delivery_worker["command"])
+        self.assertIn("--timeout-seconds", notification_delivery_worker["command"])
+        self.assertIn("5.0", notification_delivery_worker["command"])
+        self.assertIn("postgres", notification_delivery_worker["depends_on"])
+        self.assertNotIn("minio", notification_delivery_worker["depends_on"])
 
         self.assertEqual(alias_assignment_worker["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(alias_assignment_worker["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
