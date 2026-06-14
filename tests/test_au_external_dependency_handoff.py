@@ -72,6 +72,13 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
         )
         self.assertEqual(handoff["summary"]["p0a_real_batch_phase_next_phase"], "preflight")
         self.assertEqual(handoff["summary"]["p0a_real_batch_total_planned_runs"], 2436)
+        p0a_batches = next(group for group in handoff["dependency_groups"] if group["id"] == "p0a_real_batches")
+        self.assertIn("make verify-au-p0a-real-batch-fulfillment", p0a_batches["verification_commands"])
+        self.assertTrue(any(command.endswith("--require-fulfilled") for command in p0a_batches["verification_commands"]))
+        self.assertIn(
+            "docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json",
+            p0a_batches["evidence_outputs"],
+        )
         self.assertEqual(handoff["summary"]["p0b_google_required_input_missing_count"], 6)
         self.assertEqual(handoff["summary"]["p0b_google_manual_backfill_expected_record_count"], 120)
         self.assertEqual(handoff["summary"]["p0b_google_manual_backfill_record_count"], 0)

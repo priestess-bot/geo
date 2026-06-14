@@ -719,6 +719,7 @@ type RuntimeData = {
   p0aCredentialRequest: AuP0aCredentialRequest | null;
   p0aCredentialFulfillment: AuP0aCredentialFulfillment | null;
   p0aRealBatchRequest: AuP0aRealBatchRequest | null;
+  p0aRealBatchFulfillment: AuP0aRealBatchFulfillment | null;
   p0bGoogleExecutionChecklist: AuP0bGoogleExecutionChecklist | null;
   p0bGoogleEnvironmentRequest: AuP0bGoogleEnvironmentRequest | null;
   p0bGoogleEnvironmentFulfillment: AuP0bGoogleEnvironmentFulfillment | null;
@@ -1526,6 +1527,89 @@ type AuP0aRealBatchRequest = {
     p0a_execution_checklist_ready?: boolean;
     ready_for_design_partner?: boolean;
     path?: string;
+  };
+};
+
+type AuP0aRealBatchFulfillment = {
+  p0a_real_batch_fulfillment_version: string;
+  generated_at: string;
+  status: string;
+  real_batch_fulfillment_ready: boolean;
+  real_batches_fulfilled: boolean;
+  real_batch_phase_handoff_ready: boolean;
+  ready_for_design_partner: boolean;
+  p0a_real_batch_fulfillment_hash: string;
+  summary?: {
+    real_batches_fulfilled?: boolean;
+    real_batch_request_ready?: boolean;
+    execution_checklist_ready?: boolean;
+    source_checklist_hash_aligned?: boolean;
+    real_batch_phase_handoff_ready?: boolean;
+    ready_for_design_partner?: boolean;
+    phase_count?: number;
+    phase_order?: string[];
+    ready_phase_count?: number;
+    blocked_phase_count?: number;
+    next_phase?: string;
+    total_planned_runs?: number;
+    required_count?: number;
+    fulfilled_required_count?: number;
+    missing_required_count?: number;
+    missing_required?: string[];
+    presence_mismatch_count?: number;
+    presence_mismatches?: string[];
+    blocking_reason_count?: number;
+    blocking_reasons?: string[];
+    next_action?: string;
+    next_command?: string;
+    strict_gate_command?: string;
+    request_strict_gate_command?: string;
+    design_partner_strict_gate_command?: string;
+    raw_secret_values_allowed?: boolean;
+  };
+  real_batch_fulfillment_items?: Array<{
+    key: string;
+    phase_id: string;
+    title?: string;
+    required?: boolean;
+    fulfilled?: boolean;
+    request_ready?: boolean;
+    checklist_ready?: boolean;
+    request_can_start?: boolean;
+    checklist_can_start?: boolean;
+    presence_mismatch?: boolean;
+    planned_runs?: number;
+    command_ids?: string[];
+    commands?: string[];
+    artifact_keys?: string[];
+    prerequisite_gate_ids?: string[];
+    evidence_outputs?: string[];
+    owner_hint?: string;
+    blocking_reasons?: string[];
+  }>;
+  phase_commands?: string[];
+  verification_commands?: string[];
+  evidence_outputs?: string[];
+  hard_gate_commands?: string[];
+  runtime_endpoints?: {
+    p0a_real_batch_fulfillment?: string;
+    p0a_real_batch_request?: string;
+    p0a_execution_checklist?: string;
+    external_dependency_handoff?: string;
+    external_dependency_clearance?: string;
+  };
+  source_p0a_real_batch_request?: {
+    p0a_real_batch_request_packet_hash?: string;
+    source_p0a_execution_checklist_hash?: string;
+    real_batch_request_packet_ready?: boolean;
+    real_batch_phase_handoff_ready?: boolean;
+    ready_for_design_partner?: boolean;
+  };
+  source_p0a_execution_checklist?: {
+    p0a_execution_checklist_hash?: string;
+    p0a_execution_checklist_ready?: boolean;
+    real_batch_phase_handoff_ready?: boolean;
+    ready_for_design_partner?: boolean;
   };
 };
 
@@ -2682,6 +2766,7 @@ const endpoints = {
   p0aCredentialRequest: "/v1/p0a-credential-request/au",
   p0aCredentialFulfillment: "/v1/p0a-credential-fulfillment/au",
   p0aRealBatchRequest: "/v1/p0a-real-batch-request/au",
+  p0aRealBatchFulfillment: "/v1/p0a-real-batch-fulfillment/au",
   p0bGoogleExecutionChecklist: "/v1/p0b-google-execution-checklist/au",
   p0bGoogleEnvironmentRequest: "/v1/p0b-google-environment-request/au",
   p0bGoogleEnvironmentFulfillment: "/v1/p0b-google-environment-fulfillment/au",
@@ -4105,6 +4190,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aCredentialRequest: endpoints.p0aCredentialRequest,
     p0aCredentialFulfillment: endpoints.p0aCredentialFulfillment,
     p0aRealBatchRequest: endpoints.p0aRealBatchRequest,
+    p0aRealBatchFulfillment: endpoints.p0aRealBatchFulfillment,
     p0bGoogleExecutionChecklist: endpoints.p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest: endpoints.p0bGoogleEnvironmentRequest,
     p0bGoogleEnvironmentFulfillment: endpoints.p0bGoogleEnvironmentFulfillment,
@@ -4429,6 +4515,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aCredentialRequest,
     p0aCredentialFulfillment,
     p0aRealBatchRequest,
+    p0aRealBatchFulfillment,
     p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest,
     p0bGoogleEnvironmentFulfillment,
@@ -4489,6 +4576,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0aCredentialRequest | null>(baseUrl, paths.p0aCredentialRequest, null),
     fetchRuntimeEndpoint<AuP0aCredentialFulfillment | null>(baseUrl, paths.p0aCredentialFulfillment, null),
     fetchRuntimeEndpoint<AuP0aRealBatchRequest | null>(baseUrl, paths.p0aRealBatchRequest, null),
+    fetchRuntimeEndpoint<AuP0aRealBatchFulfillment | null>(baseUrl, paths.p0aRealBatchFulfillment, null),
     fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
     fetchRuntimeEndpoint<AuP0bGoogleEnvironmentRequest | null>(baseUrl, paths.p0bGoogleEnvironmentRequest, null),
     fetchRuntimeEndpoint<AuP0bGoogleEnvironmentFulfillment | null>(
@@ -4681,6 +4769,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aCredentialRequest,
     p0aCredentialFulfillment,
     p0aRealBatchRequest,
+    p0aRealBatchFulfillment,
     p0bGoogleExecutionChecklist,
     p0bGoogleEnvironmentRequest,
     p0bGoogleEnvironmentFulfillment,
@@ -4746,6 +4835,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0aCredentialRequest: p0aCredentialRequest.payload,
       p0aCredentialFulfillment: p0aCredentialFulfillment.payload,
       p0aRealBatchRequest: p0aRealBatchRequest.payload,
+      p0aRealBatchFulfillment: p0aRealBatchFulfillment.payload,
       p0bGoogleExecutionChecklist: p0bGoogleExecutionChecklist.payload,
       p0bGoogleEnvironmentRequest: p0bGoogleEnvironmentRequest.payload,
       p0bGoogleEnvironmentFulfillment: p0bGoogleEnvironmentFulfillment.payload,
@@ -5107,6 +5197,11 @@ export default async function Home({
   const p0aRealBatchPhases = p0aRealBatchRequest?.phase_requests || [];
   const p0aRealBatchBlockingReasons = p0aRealBatchRequestSummary?.blocking_reasons || [];
   const p0aRealBatchEvidenceOutputs = p0aRealBatchRequest?.evidence_outputs || [];
+  const p0aRealBatchFulfillment = data.p0aRealBatchFulfillment;
+  const p0aRealBatchFulfillmentSummary = p0aRealBatchFulfillment?.summary;
+  const p0aRealBatchFulfillmentItems = p0aRealBatchFulfillment?.real_batch_fulfillment_items || [];
+  const p0aRealBatchFulfillmentMissing = p0aRealBatchFulfillmentSummary?.missing_required || [];
+  const p0aRealBatchFulfillmentBlockers = p0aRealBatchFulfillmentSummary?.blocking_reasons || [];
   const p0bGoogleExecutionChecklist = data.p0bGoogleExecutionChecklist;
   const p0bGoogleExecutionSummary = p0bGoogleExecutionChecklist?.summary;
   const missingP0bSmokeEnv = p0bGoogleExecutionSummary?.missing_required_environment || [];
@@ -6973,6 +7068,72 @@ export default async function Home({
             </ul>
           ) : null}
           <code>{paths.p0aRealBatchRequest}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>P0a real batch fulfillment</strong>
+            <span>
+              {p0aRealBatchFulfillment?.p0a_real_batch_fulfillment_version ||
+                "au_p0a_real_batch_fulfillment_v1"}{" "}
+              · p0a_real_batch_fulfillment_hash{" "}
+              {shortHash(p0aRealBatchFulfillment?.p0a_real_batch_fulfillment_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>Fulfillment ready {p0aRealBatchFulfillment?.real_batch_fulfillment_ready ? "yes" : "no"}</span>
+            <span>Real batches {p0aRealBatchFulfillment?.real_batches_fulfilled ? "fulfilled" : "blocked"}</span>
+            <span>Design partner {p0aRealBatchFulfillment?.ready_for_design_partner ? "ready" : "blocked"}</span>
+            <span>
+              Phases {p0aRealBatchFulfillmentSummary?.ready_phase_count || 0}/
+              {p0aRealBatchFulfillmentSummary?.phase_count || 0}
+            </span>
+            <span>Next phase {p0aRealBatchFulfillmentSummary?.next_phase || "none"}</span>
+            <span>Missing required {p0aRealBatchFulfillmentSummary?.missing_required_count || 0}</span>
+            <span>Presence mismatches {p0aRealBatchFulfillmentSummary?.presence_mismatch_count || 0}</span>
+            <span>Total planned runs {p0aRealBatchFulfillmentSummary?.total_planned_runs || 0}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>Next action {p0aRealBatchFulfillmentSummary?.next_action || "none"}</span>
+            <span>Next command {p0aRealBatchFulfillmentSummary?.next_command || "none"}</span>
+            <span>Missing {p0aRealBatchFulfillmentMissing.slice(0, 4).join(", ") || "none"}</span>
+            <span>Blocking {p0aRealBatchFulfillmentBlockers.slice(0, 4).join(", ") || "none"}</span>
+            <span>
+              Request hash{" "}
+              {shortHash(p0aRealBatchFulfillment?.source_p0a_real_batch_request?.p0a_real_batch_request_packet_hash)}
+            </span>
+            <span>
+              Checklist hash{" "}
+              {shortHash(p0aRealBatchFulfillment?.source_p0a_execution_checklist?.p0a_execution_checklist_hash)}
+            </span>
+            <span>
+              {p0aRealBatchFulfillment?.runtime_endpoints?.p0a_real_batch_fulfillment ||
+                "GET /v1/p0a-real-batch-fulfillment/au"}
+            </span>
+            <span>Hard gate: make verify-au-p0a-real-batch-fulfillment</span>
+            <span>
+              Strict gate:{" "}
+              {p0aRealBatchFulfillmentSummary?.strict_gate_command ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_real_batch_fulfillment.py docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json --require-fulfilled"}
+            </span>
+          </div>
+          <div className="dependencyGroupGrid">
+            {p0aRealBatchFulfillmentItems.map((item) => (
+              <div className="dependencyGroup" key={item.key}>
+                <strong>{item.title || item.phase_id}</strong>
+                <span>
+                  {item.fulfilled ? "fulfilled" : "blocked"} · request {item.request_ready ? "ready" : "blocked"} ·
+                  checklist {item.checklist_ready ? "ready" : "blocked"}
+                </span>
+                <small>
+                  can start request {item.request_can_start ? "yes" : "no"} · checklist{" "}
+                  {item.checklist_can_start ? "yes" : "no"} · runs {item.planned_runs || 0}
+                </small>
+                <small>{(item.command_ids || []).slice(0, 3).join(" · ") || "no commands"}</small>
+                <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "gate clear"}</small>
+              </div>
+            ))}
+          </div>
+          <code>{paths.p0aRealBatchFulfillment}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">

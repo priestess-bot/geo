@@ -39,20 +39,20 @@ CLEARANCE_REQUEST_CONTEXTS: dict[str, dict[str, str]] = {
         "runtime_endpoint": "GET /v1/p0a-credential-request/au",
     },
     "p0a_real_batches": {
-        "artifact_type": "request_packet",
-        "request_artifact_id": "p0a_real_batch_request",
-        "request_artifact_title": "P0a real batch request packet",
-        "output_path": "docs/runtime_preflight/au-p0a-real-batch-request-latest.json",
-        "hash_field": "p0a_real_batch_request_packet_hash",
-        "build_command": "make au-p0a-real-batch-request",
-        "verify_command": "make verify-au-p0a-real-batch-request",
+        "artifact_type": "fulfillment_artifact",
+        "request_artifact_id": "p0a_real_batch_fulfillment",
+        "request_artifact_title": "P0a real batch fulfillment artifact",
+        "output_path": "docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json",
+        "hash_field": "p0a_real_batch_fulfillment_hash",
+        "build_command": "make au-p0a-real-batch-fulfillment",
+        "verify_command": "make verify-au-p0a-real-batch-fulfillment",
         "strict_gate_command": (
             "PYTHONPATH=packages/geno_core:apps/api python3 "
-            "scripts/verify_au_p0a_real_batch_request_packet.py "
-            "${GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-request-latest.json} "
-            "--require-real-batches-ready"
+            "scripts/verify_au_p0a_real_batch_fulfillment.py "
+            "${GENO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json} "
+            "--require-fulfilled"
         ),
-        "runtime_endpoint": "GET /v1/p0a-real-batch-request/au",
+        "runtime_endpoint": "GET /v1/p0a-real-batch-fulfillment/au",
     },
     "p0b_google_environment": {
         "artifact_type": "fulfillment_artifact",

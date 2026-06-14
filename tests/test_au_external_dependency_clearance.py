@@ -95,9 +95,15 @@ class AuExternalDependencyClearanceTest(unittest.TestCase):
         self.assertEqual(steps["p0a_real_batches"]["status"], "blocked")
         self.assertEqual(
             steps["p0a_real_batches"]["linked_request_context"]["request_artifact_id"],
-            "p0a_real_batch_request",
+            "p0a_real_batch_fulfillment",
+        )
+        self.assertEqual(
+            steps["p0a_real_batches"]["linked_request_context"]["runtime_endpoint"],
+            "GET /v1/p0a-real-batch-fulfillment/au",
         )
         self.assertIn("prerequisite_step_not_ready:p0a_provider_credentials", steps["p0a_real_batches"]["blocked_by"])
+        self.assertIn("make verify-au-p0a-real-batch-fulfillment", steps["p0a_real_batches"]["recommended_sequence"])
+        self.assertTrue(steps["p0a_real_batches"]["strict_gate_command"].endswith("--require-fulfilled"))
         self.assertIn("make verify-au-launch-status", execution["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-request", execution["hard_gate_commands"])
         self.assertTrue(any(command.endswith("--require-credentials-ready") for command in execution["hard_gate_commands"]))

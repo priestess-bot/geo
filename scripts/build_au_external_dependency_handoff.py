@@ -531,6 +531,36 @@ def _p0a_provider_credentials_group(
 def _p0a_real_batches_group(p0a_execution_checklist: dict[str, Any], work_items: list[dict[str, Any]]) -> dict[str, Any]:
     phase_handoff = _as_dict(p0a_execution_checklist.get("real_batch_phase_handoff"))
     ready = phase_handoff.get("ready") is True
+    verification_commands = _unique_strings(
+        [
+            "make au-p0a-real-batch-fulfillment",
+            "make verify-au-p0a-real-batch-fulfillment",
+            (
+                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "scripts/verify_au_p0a_real_batch_fulfillment.py "
+                "${GENO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json} "
+                "--require-fulfilled"
+            ),
+            "make au-p0a-status",
+            "make verify-au-p0a-status",
+            "make au-p0a-execution-checklist",
+            "make verify-au-p0a-execution-checklist",
+            (
+                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "scripts/verify_au_p0a_execution_checklist.py "
+                "${GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-execution-checklist-latest.json} "
+                "--require-design-partner-ready"
+            ),
+        ]
+    )
+    evidence_outputs = _unique_strings(
+        _strings(phase_handoff.get("evidence_outputs"))
+        + [
+            "docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json",
+            "docs/runtime_preflight/au-p0a-status-latest.json",
+            "docs/runtime_preflight/au-p0a-execution-checklist-latest.json",
+        ]
+    )
     return {
         "id": "p0a_real_batches",
         "stage": "P0a",
@@ -547,6 +577,8 @@ def _p0a_real_batches_group(p0a_execution_checklist: dict[str, Any], work_items:
         "blocked_phase_count": int(phase_handoff.get("blocked_phase_count") or 0),
         "total_planned_runs": int(phase_handoff.get("total_planned_runs") or 0),
         "phases": _as_list(phase_handoff.get("phases")),
+        "verification_commands": verification_commands,
+        "evidence_outputs": evidence_outputs,
         "redaction_policy": _as_dict(phase_handoff.get("redaction_policy")),
     }
 

@@ -286,6 +286,15 @@ def _validate_groups(handoff: dict[str, Any], errors: list[str]) -> None:
         errors.append("p0a_real_batches_blocked_phase_count_mismatch")
     if int(p0a_batches.get("total_planned_runs") or 0) <= 0:
         errors.append("p0a_real_batches_total_planned_runs_invalid")
+    p0a_batch_verification_commands = _strings(p0a_batches.get("verification_commands"))
+    if "make verify-au-p0a-real-batch-fulfillment" not in p0a_batch_verification_commands:
+        errors.append("p0a_real_batches_fulfillment_verifier_missing")
+    if not any("--require-fulfilled" in command for command in p0a_batch_verification_commands):
+        errors.append("p0a_real_batches_fulfillment_strict_gate_missing")
+    if "docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json" not in _strings(
+        p0a_batches.get("evidence_outputs")
+    ):
+        errors.append("p0a_real_batches_fulfillment_evidence_missing")
 
     p0b_environment = groups.get("p0b_google_environment", {})
     p0b_missing = _strings(p0b_environment.get("missing_required"))

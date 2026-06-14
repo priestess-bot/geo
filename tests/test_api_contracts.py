@@ -39,6 +39,7 @@ from scripts.build_au_p0b_google_phase_execution_fulfillment import (
     compute_p0b_google_phase_execution_fulfillment_hash,
 )
 from scripts.build_au_p0a_real_batch_request_packet import compute_p0a_real_batch_request_packet_hash
+from scripts.build_au_p0a_real_batch_fulfillment import compute_p0a_real_batch_fulfillment_hash
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
 from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTest
 from tests.test_au_p0a_execution_checklist import AuP0aExecutionChecklistTest
@@ -1065,6 +1066,71 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(
             payload["p0a_real_batch_request_packet_hash"],
             compute_p0a_real_batch_request_packet_hash(payload),
+        )
+        serialized = json.dumps(payload)
+        self.assertNotIn("raw_value", serialized)
+        self.assertNotIn("perplexity-key", serialized)
+
+    def test_au_p0a_real_batch_fulfillment_endpoint_returns_current_status(self) -> None:
+        helper = AuP0aExecutionChecklistTest()
+        with TemporaryDirectory() as temp_dir:
+            runbook_path, _runbook = helper._write_runbook(temp_dir)
+            environment_path = Path(temp_dir) / "environment.json"
+            execution_path = Path(temp_dir) / "execution.json"
+            readiness_path = Path(temp_dir) / "readiness.json"
+            package_path = Path(temp_dir) / "package.json"
+            status_path = Path(temp_dir) / "status.json"
+            helper._write_env_report(environment_path, runbook_path, ready=False)
+            helper._write_runbook_execution(execution_path, runbook_path, ready=False)
+            helper._write_readiness(readiness_path, ready=False)
+            helper._write_package_and_status(
+                runbook_path=runbook_path,
+                environment_path=environment_path,
+                execution_path=execution_path,
+                readiness_path=readiness_path,
+                package_path=package_path,
+                status_path=status_path,
+                ready=False,
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "GENO_AU_P0A_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GENO_AU_P0A_ENV_OUTPUT_PATH": str(environment_path),
+                    "GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GENO_AU_P0A_READINESS_OUTPUT_PATH": str(readiness_path),
+                    "GENO_AU_P0A_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GENO_AU_P0A_STATUS_OUTPUT_PATH": str(status_path),
+                    "GENO_AU_P0A_ENV_FILE": str(Path(temp_dir) / "missing.env"),
+                    "GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "execution-checklist.json"),
+                    "GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH": str(Path(temp_dir) / "real-batch-request.json"),
+                    "GENO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH": str(Path(temp_dir) / "real-batch-fulfillment.json"),
+                },
+                clear=False,
+            ):
+                response = self.client.get("/v1/p0a-real-batch-fulfillment/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["p0a_real_batch_fulfillment_version"], "au_p0a_real_batch_fulfillment_v1")
+        self.assertEqual(payload["status"], "pass")
+        self.assertTrue(payload["real_batch_fulfillment_ready"])
+        self.assertFalse(payload["real_batches_fulfilled"])
+        self.assertFalse(payload["ready_for_design_partner"])
+        self.assertEqual(payload["summary"]["phase_order"], ["preflight", "small_batch", "full_batch"])
+        self.assertEqual(payload["summary"]["total_planned_runs"], 2436)
+        self.assertEqual(payload["summary"]["next_phase"], "preflight")
+        self.assertEqual(payload["summary"]["missing_required_count"], 3)
+        self.assertTrue(payload["summary"]["source_checklist_hash_aligned"])
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0a_real_batch_fulfillment"],
+            "GET /v1/p0a-real-batch-fulfillment/au",
+        )
+        self.assertIn("make verify-au-p0a-real-batch-fulfillment", payload["hard_gate_commands"])
+        self.assertTrue(any(command.endswith("--require-fulfilled") for command in payload["hard_gate_commands"]))
+        self.assertEqual(
+            payload["p0a_real_batch_fulfillment_hash"],
+            compute_p0a_real_batch_fulfillment_hash(payload),
         )
         serialized = json.dumps(payload)
         self.assertNotIn("raw_value", serialized)
@@ -7012,6 +7078,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/p0a-credential-request/au", payload["persistence"])
         self.assertIn("/v1/p0a-credential-fulfillment/au", payload["persistence"])
         self.assertIn("/v1/p0a-real-batch-request/au", payload["persistence"])
+        self.assertIn("/v1/p0a-real-batch-fulfillment/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-execution-checklist/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-environment-request/au", payload["persistence"])
         self.assertIn("/v1/p0b-google-environment-fulfillment/au", payload["persistence"])
