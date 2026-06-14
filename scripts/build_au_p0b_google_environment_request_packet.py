@@ -17,6 +17,8 @@ from scripts.build_au_p0b_google_execution_checklist import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_P0B_GOOGLE_EXECUTION_CHECKLIST_PATH,
     build_au_p0b_google_execution_checklist,
 )
+from scripts.build_au_p0a_env_report import DEFAULT_OUTPUT_PATH as DEFAULT_P0A_ENV_REPORT_PATH  # noqa: E402
+from scripts.verify_au_p0a_env_report import verify_au_p0a_env_report  # noqa: E402
 from scripts.verify_au_p0b_google_execution_checklist import (  # noqa: E402
     verify_au_p0b_google_execution_checklist,
 )
@@ -98,6 +100,123 @@ def _load_or_build_p0b_google_execution_checklist(
         return payload, {"path": str(path), "exists": True, "source": "existing_file", "errors": []}
     checklist = build_au_p0b_google_execution_checklist(output_path=path, generated_at=generated_at)
     return checklist, {"path": str(path), "exists": True, "source": "generated_in_memory", "errors": ["not_json_object"]}
+
+
+def _load_p0a_env_report(path: Path, p0a_env_report: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
+    if p0a_env_report is not None:
+        return p0a_env_report, {
+            "path": str(path),
+            "exists": True,
+            "source": "provided_payload",
+            "environment_report_hash": str(p0a_env_report.get("environment_report_hash") or ""),
+            "ready_for_real_batch": p0a_env_report.get("ready_for_real_batch") is True,
+            "errors": [],
+        }
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}, {
+            "path": str(path),
+            "exists": False,
+            "source": "missing",
+            "environment_report_hash": "",
+            "ready_for_real_batch": False,
+            "errors": ["p0a_env_report_file_missing"],
+        }
+    except json.JSONDecodeError as exc:
+        return {}, {
+            "path": str(path),
+            "exists": True,
+            "source": "invalid_json",
+            "environment_report_hash": "",
+            "ready_for_real_batch": False,
+            "errors": [f"p0a_env_report_json_invalid:{exc.msg}"],
+        }
+    if not isinstance(payload, dict):
+        return {}, {
+            "path": str(path),
+            "exists": True,
+            "source": "not_json_object",
+            "environment_report_hash": "",
+            "ready_for_real_batch": False,
+            "errors": ["p0a_env_report_not_json_object"],
+        }
+    return payload, {
+        "path": str(path),
+        "exists": True,
+        "source": "existing_file",
+        "environment_report_hash": str(payload.get("environment_report_hash") or ""),
+        "ready_for_real_batch": payload.get("ready_for_real_batch") is True,
+        "errors": [],
+    }
+
+
+def _p0a_database_url_check(p0a_env_report: dict[str, Any]) -> dict[str, Any]:
+    for item in _as_list(p0a_env_report.get("required")):
+        check = _as_dict(item)
+        if check.get("name") == "DATABASE_URL":
+            return {
+                "name": "DATABASE_URL",
+                "present": check.get("present") is True,
+                "source": str(check.get("source") or "missing"),
+                "value_length": int(check.get("value_length") or 0),
+                "sha256_prefix": str(check.get("sha256_prefix") or ""),
+                "secret_redacted": check.get("secret_redacted") is True,
+            }
+    return {
+        "name": "DATABASE_URL",
+        "present": False,
+        "source": "missing",
+        "value_length": 0,
+        "sha256_prefix": "",
+        "secret_redacted": True,
+    }
+
+
+def _cross_stage_reuse_hints(
+    *,
+    p0a_env_report: dict[str, Any],
+    p0a_source: dict[str, Any],
+    p0a_verifier: dict[str, Any],
+    missing_required: list[str],
+    target_env_file: str,
+) -> list[dict[str, Any]]:
+    database_check = _p0a_database_url_check(p0a_env_report)
+    if "full_run_env:DATABASE_URL" not in missing_required:
+        return []
+    if p0a_verifier.get("status") != "pass" or p0a_verifier.get("hash_valid") is not True:
+        return []
+    if database_check.get("present") is not True:
+        return []
+    if database_check.get("secret_redacted") is not True:
+        return []
+    return [
+        {
+            "id": "reuse_p0a_database_url_for_p0b_google",
+            "source_stage": "P0a",
+            "target_stage": "P0b Google",
+            "source_artifact": str(p0a_source.get("path") or ""),
+            "source_environment_report_hash": str(p0a_source.get("environment_report_hash") or ""),
+            "source_verifier_status": str(p0a_verifier.get("status") or ""),
+            "source_hash_valid": p0a_verifier.get("hash_valid") is True,
+            "source_key": "DATABASE_URL",
+            "target_env_file": target_env_file,
+            "target_key": "DATABASE_URL",
+            "target_missing_id": "full_run_env:DATABASE_URL",
+            "reuse_available": True,
+            "secret_redacted": True,
+            "value_length": int(database_check.get("value_length") or 0),
+            "sha256_prefix": str(database_check.get("sha256_prefix") or ""),
+            "copy_raw_value_required": False,
+            "operator_action": "copy_or_reference_database_url_into_p0b_google_env",
+            "post_update_checks": [
+                "make au-p0b-google-playwright-env",
+                "make verify-au-p0b-google-playwright-env",
+                "make au-p0b-google-environment-request",
+                "make verify-au-p0b-google-environment-request",
+            ],
+        }
+    ]
 
 
 def _environment_items(handoff: dict[str, Any]) -> list[dict[str, Any]]:
@@ -263,6 +382,8 @@ def build_au_p0b_google_environment_request_packet(
     *,
     p0b_google_execution_checklist_path: Path = Path(DEFAULT_P0B_GOOGLE_EXECUTION_CHECKLIST_PATH),
     p0b_google_execution_checklist: dict[str, Any] | None = None,
+    p0a_env_report_path: Path = Path(DEFAULT_P0A_ENV_REPORT_PATH),
+    p0a_env_report: dict[str, Any] | None = None,
     output_path: Path | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
@@ -278,6 +399,14 @@ def build_au_p0b_google_environment_request_packet(
             "source": "provided_payload",
             "errors": [],
         }
+    p0a_env_report, p0a_source = _load_p0a_env_report(p0a_env_report_path, p0a_env_report)
+    p0a_verifier = verify_au_p0a_env_report(p0a_env_report, path=p0a_env_report_path) if p0a_env_report else {
+        "status": "fail",
+        "errors": [*(_string_list(p0a_source.get("errors")) or ["p0a_env_report_missing"])],
+        "hash_valid": False,
+        "environment_report_hash": "",
+        "ready_for_real_batch": False,
+    }
 
     verifier = verify_au_p0b_google_execution_checklist(
         p0b_google_execution_checklist,
@@ -294,6 +423,13 @@ def build_au_p0b_google_environment_request_packet(
     verification_commands = _string_list(handoff.get("verification_commands"))
     evidence_outputs = _string_list(handoff.get("evidence_outputs"))
     redaction_policy = _as_dict(handoff.get("redaction_policy"))
+    cross_stage_reuse_hints = _cross_stage_reuse_hints(
+        p0a_env_report=p0a_env_report,
+        p0a_source=p0a_source,
+        p0a_verifier=p0a_verifier,
+        missing_required=missing_required,
+        target_env_file=str(handoff.get("target_env_file") or ""),
+    )
     packet_ready = verifier.get("status") == "pass" and verifier.get("hash_valid") is True
 
     hard_gate_commands = [
@@ -328,12 +464,21 @@ def build_au_p0b_google_environment_request_packet(
             "google_main_scoring_allowed": p0b_google_execution_checklist.get("google_main_scoring_allowed") is True,
             "source": source,
         },
+        "source_p0a_env_report": p0a_source,
         "p0b_google_execution_checklist_verifier": {
             "status": verifier.get("status", ""),
             "hash_valid": verifier.get("hash_valid") is True,
             "google_execution_checklist_hash": str(verifier.get("google_execution_checklist_hash") or ""),
             "errors": [str(value) for value in _as_list(verifier.get("errors"))],
             "next_action": str(verifier.get("next_action") or ""),
+        },
+        "p0a_env_report_verifier": {
+            "status": p0a_verifier.get("status", ""),
+            "hash_valid": p0a_verifier.get("hash_valid") is True,
+            "environment_report_hash": str(p0a_verifier.get("environment_report_hash") or ""),
+            "ready_for_real_batch": p0a_verifier.get("ready_for_real_batch") is True,
+            "missing_required": _string_list(p0a_verifier.get("missing_required")),
+            "errors": [str(value) for value in _as_list(p0a_verifier.get("errors"))],
         },
         "summary": {
             "source_environment_handoff_version": str(handoff.get("version") or ""),
@@ -355,6 +500,8 @@ def build_au_p0b_google_environment_request_packet(
             "setup_command_count": len(setup_commands),
             "verification_command_count": len(verification_commands),
             "evidence_output_count": len(evidence_outputs),
+            "cross_stage_reuse_hint_count": len(cross_stage_reuse_hints),
+            "database_url_reuse_available": bool(cross_stage_reuse_hints),
             "env_file_hygiene_ready": _as_dict(p0b_google_execution_checklist.get("summary")).get(
                 "env_file_hygiene_ready"
             )
@@ -370,6 +517,7 @@ def build_au_p0b_google_environment_request_packet(
         "selector_items": selector_items,
         "file_items": file_items,
         "dependency_items": dependency_items,
+        "cross_stage_reuse_hints": cross_stage_reuse_hints,
         "setup_commands": setup_commands,
         "verification_commands": verification_commands,
         "evidence_outputs": evidence_outputs,
@@ -388,7 +536,10 @@ def build_au_p0b_google_environment_request_packet(
             "next_work_item": "GET /v1/next-work-item/au",
         },
         "hard_gate_commands": hard_gate_commands,
-        "evidence_sources": [_source_file_entry("p0b_google_execution_checklist", p0b_google_execution_checklist_path)],
+        "evidence_sources": [
+            _source_file_entry("p0b_google_execution_checklist", p0b_google_execution_checklist_path),
+            _source_file_entry("p0a_env_report", p0a_env_report_path),
+        ],
     }
     payload["p0b_google_environment_request_packet_hash"] = compute_p0b_google_environment_request_packet_hash(payload)
     return payload
@@ -409,6 +560,11 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0b Google environment request packet JSON.",
     )
+    parser.add_argument(
+        "--p0a-env-report-path",
+        default=os.environ.get("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_P0A_ENV_REPORT_PATH),
+        help="Path to the AU P0a environment report used only for redacted cross-stage reuse hints.",
+    )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")
     return parser.parse_args()
 
@@ -418,6 +574,7 @@ def main() -> None:
     output_path = Path(args.output_path)
     payload = build_au_p0b_google_environment_request_packet(
         p0b_google_execution_checklist_path=Path(args.p0b_google_execution_checklist_path),
+        p0a_env_report_path=Path(args.p0a_env_report_path),
         output_path=output_path,
         generated_at=args.generated_at,
     )

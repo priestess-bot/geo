@@ -1549,6 +1549,8 @@ type AuP0bGoogleEnvironmentRequest = {
     setup_command_count?: number;
     verification_command_count?: number;
     evidence_output_count?: number;
+    cross_stage_reuse_hint_count?: number;
+    database_url_reuse_available?: boolean;
     env_file_hygiene_ready?: boolean;
     raw_secret_values_allowed?: boolean;
     forbidden_exact_secret_fields_redacted?: boolean;
@@ -1602,6 +1604,26 @@ type AuP0bGoogleEnvironmentRequest = {
     owner_hint?: string;
     secret_redacted?: boolean;
   }>;
+  cross_stage_reuse_hints?: Array<{
+    id?: string;
+    source_stage?: string;
+    target_stage?: string;
+    source_artifact?: string;
+    source_environment_report_hash?: string;
+    source_verifier_status?: string;
+    source_hash_valid?: boolean;
+    source_key?: string;
+    target_env_file?: string;
+    target_key?: string;
+    target_missing_id?: string;
+    reuse_available?: boolean;
+    secret_redacted?: boolean;
+    value_length?: number;
+    sha256_prefix?: string;
+    copy_raw_value_required?: boolean;
+    operator_action?: string;
+    post_update_checks?: string[];
+  }>;
   setup_commands?: string[];
   verification_commands?: string[];
   evidence_outputs?: string[];
@@ -1618,6 +1640,18 @@ type AuP0bGoogleEnvironmentRequest = {
     google_execution_checklist_ready?: boolean;
     google_main_scoring_allowed?: boolean;
     path?: string;
+  };
+  source_p0a_env_report?: {
+    environment_report_hash?: string;
+    ready_for_real_batch?: boolean;
+    path?: string;
+  };
+  p0a_env_report_verifier?: {
+    status?: string;
+    hash_valid?: boolean;
+    environment_report_hash?: string;
+    ready_for_real_batch?: boolean;
+    missing_required?: string[];
   };
 };
 
@@ -4842,6 +4876,7 @@ export default async function Home({
   const p0bGoogleSelectorItems = p0bGoogleEnvironmentRequest?.selector_items || [];
   const p0bGoogleFileItems = p0bGoogleEnvironmentRequest?.file_items || [];
   const p0bGoogleDependencyItems = p0bGoogleEnvironmentRequest?.dependency_items || [];
+  const p0bGoogleCrossStageReuseHints = p0bGoogleEnvironmentRequest?.cross_stage_reuse_hints || [];
   const p0bGoogleManualBackfillRequest = data.p0bGoogleManualBackfillRequest;
   const p0bGoogleManualBackfillRequestSummary = p0bGoogleManualBackfillRequest?.summary;
   const p0bGoogleManualBackfillRequestMissing = p0bGoogleManualBackfillRequestSummary?.missing_reasons || [];
@@ -5655,6 +5690,10 @@ export default async function Home({
             <span>Env items {p0bGoogleEnvironmentRequestSummary?.environment_item_count || 0}</span>
             <span>Selector groups {p0bGoogleEnvironmentRequestSummary?.selector_item_count || 0}</span>
             <span>File gates {p0bGoogleEnvironmentRequestSummary?.file_item_count || 0}</span>
+            <span>Reuse hints {p0bGoogleEnvironmentRequestSummary?.cross_stage_reuse_hint_count || 0}</span>
+            <span>
+              DB reuse {p0bGoogleEnvironmentRequestSummary?.database_url_reuse_available ? "available" : "not available"}
+            </span>
             <span>Raw secret allowed {p0bGoogleEnvironmentRequestSummary?.raw_secret_values_allowed ? "yes" : "no"}</span>
           </div>
           <div className="handoffBoundary">
@@ -5686,6 +5725,14 @@ export default async function Home({
               )}
             </span>
             <span>
+              P0a env hash{" "}
+              {shortHash(p0bGoogleEnvironmentRequest?.source_p0a_env_report?.environment_report_hash)}
+            </span>
+            <span>
+              P0a env verifier {p0bGoogleEnvironmentRequest?.p0a_env_report_verifier?.status || "unknown"} · hash{" "}
+              {p0bGoogleEnvironmentRequest?.p0a_env_report_verifier?.hash_valid ? "valid" : "invalid"}
+            </span>
+            <span>
               {p0bGoogleEnvironmentRequest?.runtime_endpoints?.p0b_google_environment_request ||
                 "GET /v1/p0b-google-environment-request/au"}
             </span>
@@ -5698,6 +5745,27 @@ export default async function Home({
                 "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py docs/runtime_preflight/au-p0b-google-playwright-env-latest.json --require-ready-smoke"}
             </span>
           </div>
+          {p0bGoogleCrossStageReuseHints.length ? (
+            <div className="dependencyGroupGrid">
+              {p0bGoogleCrossStageReuseHints.map((hint) => (
+                <div className="dependencyGroup" key={hint.id || `${hint.source_key}-${hint.target_key}`}>
+                  <strong>{hint.operator_action || hint.id}</strong>
+                  <span>
+                    {hint.source_stage || "source"} to {hint.target_stage || "target"} ·{" "}
+                    {hint.reuse_available ? "available" : "blocked"}
+                  </span>
+                  <small>
+                    {hint.source_key || "source"} to {hint.target_key || "target"} · missing{" "}
+                    {hint.target_missing_id || "none"}
+                  </small>
+                  <small>
+                    len {hint.value_length || 0} · sha {shortHash(hint.sha256_prefix)} · raw copy{" "}
+                    {hint.copy_raw_value_required ? "required" : "not stored"}
+                  </small>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <div className="dependencyGroupGrid">
             {p0bGoogleEnvironmentItems.slice(0, 4).map((item) => (
               <div className="dependencyGroup" key={`env-${item.name}`}>

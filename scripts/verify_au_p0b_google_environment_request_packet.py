@@ -27,12 +27,15 @@ REQUIRED_FIELDS = (
     "google_main_scoring_allowed",
     "output_path",
     "source_p0b_google_execution_checklist",
+    "source_p0a_env_report",
     "p0b_google_execution_checklist_verifier",
+    "p0a_env_report_verifier",
     "summary",
     "environment_items",
     "selector_items",
     "file_items",
     "dependency_items",
+    "cross_stage_reuse_hints",
     "setup_commands",
     "verification_commands",
     "evidence_outputs",
@@ -61,7 +64,7 @@ def _find_forbidden_secret_fields(value: object, *, path: str = "$") -> list[str
     if isinstance(value, dict):
         for key, child in value.items():
             child_path = f"{path}.{key}"
-            if key in {"value", "raw_value"}:
+            if key in {"value", "raw_value", "database_url"}:
                 findings.append(child_path)
             findings.extend(_find_forbidden_secret_fields(child, path=child_path))
     elif isinstance(value, list):
@@ -293,11 +296,14 @@ def verify_au_p0b_google_environment_request_packet(
 
     verifier = _as_dict(payload.get("p0b_google_execution_checklist_verifier"))
     source = _as_dict(payload.get("source_p0b_google_execution_checklist"))
+    p0a_source = _as_dict(payload.get("source_p0a_env_report"))
+    p0a_verifier = _as_dict(payload.get("p0a_env_report_verifier"))
     summary = _as_dict(payload.get("summary"))
     environment_items = [_as_dict(item) for item in _as_list(payload.get("environment_items"))]
     selector_items = [_as_dict(item) for item in _as_list(payload.get("selector_items"))]
     file_items = [_as_dict(item) for item in _as_list(payload.get("file_items"))]
     dependency_items = [_as_dict(item) for item in _as_list(payload.get("dependency_items"))]
+    reuse_hints = [_as_dict(item) for item in _as_list(payload.get("cross_stage_reuse_hints"))]
     setup_commands = _string_list(payload.get("setup_commands"))
     verification_commands = _string_list(payload.get("verification_commands"))
     evidence_outputs = _string_list(payload.get("evidence_outputs"))
@@ -314,6 +320,10 @@ def verify_au_p0b_google_environment_request_packet(
         "google_execution_checklist_hash"
     ):
         errors.append("source_p0b_google_execution_checklist_hash_mismatch")
+    if p0a_source.get("environment_report_hash") != p0a_verifier.get("environment_report_hash") and p0a_verifier.get(
+        "environment_report_hash"
+    ):
+        errors.append("source_p0a_env_report_hash_mismatch")
 
     observed_environment_missing: list[str] = []
     for item in environment_items:
@@ -373,6 +383,80 @@ def verify_au_p0b_google_environment_request_packet(
         errors.append("summary_verification_command_count_mismatch")
     if summary.get("evidence_output_count") != len(evidence_outputs):
         errors.append("summary_evidence_output_count_mismatch")
+    if summary.get("cross_stage_reuse_hint_count") != len(reuse_hints):
+        errors.append("summary_cross_stage_reuse_hint_count_mismatch")
+    expected_database_reuse_available = bool(reuse_hints)
+    if summary.get("database_url_reuse_available") is not expected_database_reuse_available:
+        errors.append("summary_database_url_reuse_available_mismatch")
+    expected_reuse_hint_count = 0
+    if "full_run_env:DATABASE_URL" in expected_missing:
+        expected_reuse_hint_count = 1
+    if reuse_hints and expected_reuse_hint_count != 1:
+        errors.append("cross_stage_reuse_hint_unexpected")
+    if len(reuse_hints) > 1:
+        errors.append("cross_stage_reuse_hint_count_invalid")
+    for hint in reuse_hints:
+        expected_fields = {
+            "id",
+            "source_stage",
+            "target_stage",
+            "source_artifact",
+            "source_environment_report_hash",
+            "source_verifier_status",
+            "source_hash_valid",
+            "source_key",
+            "target_env_file",
+            "target_key",
+            "target_missing_id",
+            "reuse_available",
+            "secret_redacted",
+            "value_length",
+            "sha256_prefix",
+            "copy_raw_value_required",
+            "operator_action",
+            "post_update_checks",
+        }
+        for field in expected_fields:
+            if field not in hint:
+                errors.append(f"cross_stage_reuse_hint_field_missing:{field}")
+        if hint.get("id") != "reuse_p0a_database_url_for_p0b_google":
+            errors.append("cross_stage_reuse_hint_id_invalid")
+        if hint.get("source_stage") != "P0a" or hint.get("target_stage") != "P0b Google":
+            errors.append("cross_stage_reuse_hint_stage_invalid")
+        if hint.get("source_artifact") != p0a_source.get("path"):
+            errors.append("cross_stage_reuse_hint_source_artifact_mismatch")
+        if hint.get("source_environment_report_hash") != p0a_source.get("environment_report_hash"):
+            errors.append("cross_stage_reuse_hint_source_hash_mismatch")
+        if hint.get("source_environment_report_hash") != p0a_verifier.get("environment_report_hash"):
+            errors.append("cross_stage_reuse_hint_verifier_hash_mismatch")
+        if hint.get("source_verifier_status") != p0a_verifier.get("status"):
+            errors.append("cross_stage_reuse_hint_verifier_status_mismatch")
+        if hint.get("source_hash_valid") is not (p0a_verifier.get("hash_valid") is True):
+            errors.append("cross_stage_reuse_hint_hash_valid_mismatch")
+        if hint.get("source_key") != "DATABASE_URL" or hint.get("target_key") != "DATABASE_URL":
+            errors.append("cross_stage_reuse_hint_key_invalid")
+        if hint.get("target_env_file") != summary.get("target_env_file"):
+            errors.append("cross_stage_reuse_hint_target_env_file_mismatch")
+        if hint.get("target_missing_id") != "full_run_env:DATABASE_URL":
+            errors.append("cross_stage_reuse_hint_missing_id_invalid")
+        if hint.get("reuse_available") is not True:
+            errors.append("cross_stage_reuse_hint_reuse_available_invalid")
+        if hint.get("secret_redacted") is not True:
+            errors.append("cross_stage_reuse_hint_secret_redaction_missing")
+        if hint.get("copy_raw_value_required") is not False:
+            errors.append("cross_stage_reuse_hint_raw_copy_policy_invalid")
+        if not isinstance(hint.get("value_length"), int) or hint.get("value_length") <= 0:
+            errors.append("cross_stage_reuse_hint_value_length_invalid")
+        if not isinstance(hint.get("sha256_prefix"), str) or len(hint.get("sha256_prefix")) != 12:
+            errors.append("cross_stage_reuse_hint_sha256_prefix_invalid")
+        for command in (
+            "make au-p0b-google-playwright-env",
+            "make verify-au-p0b-google-playwright-env",
+            "make au-p0b-google-environment-request",
+            "make verify-au-p0b-google-environment-request",
+        ):
+            if command not in _string_list(hint.get("post_update_checks")):
+                errors.append(f"cross_stage_reuse_hint_post_update_check_missing:{command}")
     if summary.get("raw_secret_values_allowed") is not False:
         errors.append("summary_raw_secret_policy_invalid")
     if summary.get("forbidden_exact_secret_fields_redacted") is not True:
@@ -449,6 +533,8 @@ def verify_au_p0b_google_environment_request_packet(
         "google_environment_request_packet_ready": expected_ready,
         "environment_handoff_ready": payload.get("environment_handoff_ready") is True,
         "missing_required_count": len(expected_missing),
+        "cross_stage_reuse_hint_count": len(reuse_hints),
+        "database_url_reuse_available": bool(reuse_hints),
         "target_env_file": summary.get("target_env_file", ""),
         "next_command": summary.get("next_command", ""),
     }

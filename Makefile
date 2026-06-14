@@ -239,7 +239,7 @@ verify-au-p0b-google-execution-checklist:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_execution_checklist.py $${GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json}
 
 au-p0b-google-environment-request:
-	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_p0b_google_environment_request_packet.py --p0b-google-execution-checklist-path $${GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json} --output-path $${GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-request-latest.json}
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_p0b_google_environment_request_packet.py --p0b-google-execution-checklist-path $${GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json} --p0a-env-report-path $${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --output-path $${GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-request-latest.json}
 
 verify-au-p0b-google-environment-request:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_environment_request_packet.py $${GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-request-latest.json}

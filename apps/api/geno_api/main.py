@@ -1883,6 +1883,7 @@ def au_p0b_google_environment_request() -> dict[str, object]:
     return build_au_p0b_google_environment_request_packet(
         p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
         p0b_google_execution_checklist=au_p0b_google_execution_checklist(),
+        p0a_env_report_path=Path(os.getenv("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_AU_P0A_ENV_OUTPUT_PATH)),
         output_path=Path(
             os.getenv(
                 "GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH",

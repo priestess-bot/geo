@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives import hashes
 
 from geno_api.main import app, close_runtime_resources, reset_runtime_auth_caches, reset_runtime_metrics
 from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
+from scripts.build_au_p0a_env_report import compute_env_report_hash
 from scripts.build_au_launch_status import compute_launch_status_hash
 from scripts.build_au_external_dependency_handoff import compute_external_dependency_handoff_hash
 from scripts.build_au_p0b_google_environment_request_packet import (
@@ -97,6 +98,83 @@ from geno_core.models import (
     RuntimeReportExportJobQueueStats,
     RuntimeScoreWeightConfig,
 )
+
+
+def _find_forbidden_exact_fields(value: object, *, path: str = "$") -> list[str]:
+    findings: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}"
+            if key in {"value", "raw_value", "database_url"}:
+                findings.append(child_path)
+            findings.extend(_find_forbidden_exact_fields(child, path=child_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            findings.extend(_find_forbidden_exact_fields(child, path=f"{path}[{index}]"))
+    return findings
+
+
+def _write_p0a_env_report_with_database(temp_dir: str) -> Path:
+    report: dict[str, object] = {
+        "environment_report_version": "au_p0a_environment_report_v1",
+        "generated_at": "2026-06-12T00:00:00Z",
+        "status": "fail",
+        "ready_for_real_batch": False,
+        "next_action": "populate_required_environment",
+        "runbook_path": "runbook.json",
+        "runbook": {"status": "pass"},
+        "env_file": {
+            "exists": True,
+            "errors": [],
+            "hygiene": {
+                "exists": True,
+                "hygiene_ready": True,
+                "hygiene_required": True,
+                "errors": [],
+                "warnings": [],
+                "secret_redacted": True,
+            },
+        },
+        "required": [
+            {
+                "name": "PERPLEXITY_API_KEY",
+                "present": False,
+                "source": "missing",
+                "value_length": 0,
+                "sha256_prefix": "",
+                "secret_redacted": True,
+            },
+            {
+                "name": "OPENAI_API_KEY",
+                "present": False,
+                "source": "missing",
+                "value_length": 0,
+                "sha256_prefix": "",
+                "secret_redacted": True,
+            },
+            {
+                "name": "DATABASE_URL",
+                "present": True,
+                "source": "env_file",
+                "value_length": 66,
+                "sha256_prefix": "237b9d13d4e5",
+                "secret_redacted": True,
+            },
+        ],
+        "recommended": [],
+        "missing_required": ["OPENAI_API_KEY", "PERPLEXITY_API_KEY"],
+        "missing_recommended": [],
+        "warnings": [],
+        "errors": [
+            "required_env_missing:PERPLEXITY_API_KEY",
+            "required_env_missing:OPENAI_API_KEY",
+        ],
+        "secrets_redacted": True,
+    }
+    report["environment_report_hash"] = compute_env_report_hash(report)
+    path = Path(temp_dir) / "p0a-env.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+    return path
 
 
 class ApiContractsTest(unittest.TestCase):
@@ -524,6 +602,7 @@ class ApiContractsTest(unittest.TestCase):
                 temp_dir,
                 google_ready=False,
             )
+            p0a_env_path = _write_p0a_env_report_with_database(temp_dir)
             with patch.dict(
                 os.environ,
                 {
@@ -532,6 +611,7 @@ class ApiContractsTest(unittest.TestCase):
                     "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
                     "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
                     "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GENO_AU_P0A_ENV_OUTPUT_PATH": str(p0a_env_path),
                     "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
                     "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
                     "GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH": str(
@@ -559,6 +639,16 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("selector_group:google_aio_prompt_selector", payload["summary"]["missing_required"])
         self.assertEqual(payload["summary"]["next_command"], "make verify-au-p0b-google-env-template")
         self.assertEqual(payload["summary"]["post_update_verification_command"], "make au-p0b-google-playwright-env")
+        self.assertEqual(payload["summary"]["cross_stage_reuse_hint_count"], 1)
+        self.assertTrue(payload["summary"]["database_url_reuse_available"])
+        self.assertEqual(payload["cross_stage_reuse_hints"][0]["id"], "reuse_p0a_database_url_for_p0b_google")
+        self.assertEqual(payload["cross_stage_reuse_hints"][0]["target_missing_id"], "full_run_env:DATABASE_URL")
+        self.assertFalse(payload["cross_stage_reuse_hints"][0]["copy_raw_value_required"])
+        self.assertTrue(payload["cross_stage_reuse_hints"][0]["secret_redacted"])
+        self.assertEqual(payload["source_p0a_env_report"]["path"], str(p0a_env_path))
+        self.assertTrue(payload["source_p0a_env_report"]["environment_report_hash"])
+        self.assertEqual(payload["p0a_env_report_verifier"]["status"], "pass")
+        self.assertTrue(payload["p0a_env_report_verifier"]["hash_valid"])
         self.assertFalse(payload["summary"]["raw_secret_values_allowed"])
         self.assertTrue(payload["summary"]["forbidden_exact_secret_fields_redacted"])
         self.assertIn("make au-p0b-google-env-bootstrap", payload["setup_commands"])
@@ -574,7 +664,8 @@ class ApiContractsTest(unittest.TestCase):
             payload["p0b_google_environment_request_packet_hash"],
             compute_p0b_google_environment_request_packet_hash(payload),
         )
-        self.assertNotIn("raw_value", json.dumps(payload))
+        self.assertNotIn("postgres://", json.dumps(payload))
+        self.assertEqual(_find_forbidden_exact_fields(payload), [])
 
     def test_au_p0b_google_manual_backfill_request_endpoint_returns_current_handoff_packet(self) -> None:
         helper = AuP0bGoogleExecutionChecklistTest()
