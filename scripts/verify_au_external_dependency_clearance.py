@@ -13,8 +13,10 @@ if str(ROOT) not in sys.path:
 
 from scripts.build_au_external_dependency_handoff import CLEARANCE_SEQUENCE_VERSION, CLEARANCE_STEP_ORDER  # noqa: E402
 from scripts.run_au_external_dependency_clearance import (  # noqa: E402
+    CLEARANCE_REQUEST_CONTEXTS,
     DEFAULT_OUTPUT_PATH,
     EXECUTION_VERSION,
+    REQUEST_CONTEXT_VERSION,
     compute_clearance_execution_hash,
 )
 
@@ -40,6 +42,10 @@ REQUIRED_TOP_LEVEL_FIELDS = (
     "next_command",
     "stop_after_step",
     "stopped_after_step",
+    "current_step_request_context",
+    "current_recommended_sequence",
+    "current_recommended_sequence_count",
+    "current_strict_gate_command",
     "hard_gate_commands",
     "steps",
     "clearance_execution_hash",
@@ -126,6 +132,8 @@ def verify_au_external_dependency_clearance(
         errors.append("external_dependency_handoff_not_ready")
 
     steps = [_as_dict(item) for item in _as_list(execution.get("steps"))]
+    current_step_request_context = _as_dict(execution.get("current_step_request_context"))
+    current_recommended_sequence = _strings(execution.get("current_recommended_sequence"))
     if execution.get("clearance_sequence_version") != CLEARANCE_SEQUENCE_VERSION:
         errors.append("clearance_sequence_version_invalid")
     if execution.get("planned_step_count") != len(CLEARANCE_STEP_ORDER):
@@ -162,6 +170,19 @@ def verify_au_external_dependency_clearance(
         errors.append("stopped_after_step_without_target")
     if execution.get("stop_after_step") and execution.get("stopped_after_step") is not True:
         errors.append("stop_after_step_not_reached")
+    current_step = next(
+        (step for step in steps if step.get("id") == execution.get("current_step_id")),
+        {},
+    )
+    current_step_context = _as_dict(current_step.get("linked_request_context")) if current_step else {}
+    if current_step_context and current_step_request_context != current_step_context:
+        errors.append("current_step_request_context_mismatch")
+    if execution.get("current_recommended_sequence_count") != len(current_recommended_sequence):
+        errors.append("current_recommended_sequence_count_mismatch")
+    if current_step and current_recommended_sequence != _strings(current_step.get("recommended_sequence")):
+        errors.append("current_recommended_sequence_mismatch")
+    if current_step and execution.get("current_strict_gate_command") != current_step.get("strict_gate_command"):
+        errors.append("current_strict_gate_command_mismatch")
 
     for step in steps:
         step_id = str(step.get("id") or "")
@@ -181,6 +202,10 @@ def verify_au_external_dependency_clearance(
             "verification_commands",
             "evidence_outputs",
             "blocked_by",
+            "linked_request_context",
+            "recommended_sequence",
+            "recommended_sequence_count",
+            "strict_gate_command",
             "would_execute",
             "stops_after_this_step",
         ):
@@ -196,6 +221,43 @@ def verify_au_external_dependency_clearance(
             errors.append(f"clearance_step_verification_commands_missing:{step_id}")
         if not _as_list(step.get("evidence_outputs")):
             errors.append(f"clearance_step_evidence_outputs_missing:{step_id}")
+        request_context = _as_dict(step.get("linked_request_context"))
+        recommended_sequence = _strings(step.get("recommended_sequence"))
+        expected_context = CLEARANCE_REQUEST_CONTEXTS.get(step_id)
+        if request_context.get("request_context_version") != REQUEST_CONTEXT_VERSION:
+            errors.append(f"clearance_step_request_context_version_invalid:{step_id}")
+        if request_context.get("clearance_step_id") != step_id:
+            errors.append(f"clearance_step_request_context_step_id_mismatch:{step_id}")
+        if expected_context:
+            if request_context.get("request_context_available") is not True:
+                errors.append(f"clearance_step_request_context_unavailable:{step_id}")
+            for field in (
+                "artifact_type",
+                "request_artifact_id",
+                "request_artifact_title",
+                "output_path",
+                "hash_field",
+                "build_command",
+                "verify_command",
+                "strict_gate_command",
+                "runtime_endpoint",
+            ):
+                if request_context.get(field) != expected_context[field]:
+                    errors.append(f"clearance_step_request_context_{field}_mismatch:{step_id}")
+            for command in (
+                expected_context["build_command"],
+                expected_context["verify_command"],
+                expected_context["strict_gate_command"],
+            ):
+                if command not in recommended_sequence:
+                    errors.append(f"clearance_step_recommended_sequence_missing:{step_id}:{command}")
+        else:
+            if request_context.get("request_context_available") is True:
+                errors.append(f"clearance_step_unexpected_request_context:{step_id}")
+        if step.get("recommended_sequence_count") != len(recommended_sequence):
+            errors.append(f"clearance_step_recommended_sequence_count_mismatch:{step_id}")
+        if step.get("strict_gate_command") != request_context.get("strict_gate_command"):
+            errors.append(f"clearance_step_strict_gate_command_mismatch:{step_id}")
 
     hard_gate_commands = set(_strings(execution.get("hard_gate_commands")))
     for command in (
@@ -207,6 +269,14 @@ def verify_au_external_dependency_clearance(
             errors.append(f"hard_gate_command_missing:{command}")
     if not any("--require-ready" in command for command in hard_gate_commands):
         errors.append("hard_gate_require_ready_command_missing")
+    for step in steps:
+        request_context = _as_dict(step.get("linked_request_context"))
+        for command in (
+            str(request_context.get("verify_command") or ""),
+            str(request_context.get("strict_gate_command") or ""),
+        ):
+            if command and command not in hard_gate_commands:
+                errors.append(f"hard_gate_request_context_command_missing:{step.get('id')}:{command}")
 
     expected_status = "pass" if not _as_list(execution.get("errors")) else "fail"
     if execution.get("status") != expected_status:

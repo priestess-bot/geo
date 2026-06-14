@@ -1818,6 +1818,10 @@ type AuExternalDependencyClearance = {
   would_execute_step_count: number;
   current_step_id: string;
   next_command: string;
+  current_step_request_context?: ClearanceRequestContext;
+  current_recommended_sequence?: string[];
+  current_recommended_sequence_count?: number;
+  current_strict_gate_command?: string;
   hard_gate_commands?: string[];
   errors?: string[];
   steps?: Array<{
@@ -1831,7 +1835,29 @@ type AuExternalDependencyClearance = {
     blocked_by?: string[];
     verification_commands?: string[];
     evidence_outputs?: string[];
+    linked_request_context?: ClearanceRequestContext;
+    recommended_sequence?: string[];
+    recommended_sequence_count?: number;
+    strict_gate_command?: string;
   }>;
+};
+
+type ClearanceRequestContext = {
+  request_context_version?: string;
+  clearance_step_id?: string;
+  request_context_available?: boolean;
+  artifact_type?: string;
+  request_artifact_id?: string;
+  request_artifact_title?: string;
+  output_path?: string;
+  exists?: boolean;
+  hash_field?: string;
+  artifact_hash?: string;
+  file_sha256?: string;
+  build_command?: string;
+  verify_command?: string;
+  strict_gate_command?: string;
+  runtime_endpoint?: string;
 };
 
 type RuntimeProjectBrandKit = {
@@ -4744,6 +4770,8 @@ export default async function Home({
   const externalDependencyClearanceSteps = externalDependencyClearance?.steps || [];
   const topExternalDependencyClearanceSteps = externalDependencyClearanceSteps.slice(0, 6);
   const externalDependencyWouldExecuteStep = externalDependencyClearanceSteps.find((step) => step.would_execute);
+  const externalDependencyCurrentRequest = externalDependencyClearance?.current_step_request_context;
+  const externalDependencyCurrentSequence = externalDependencyClearance?.current_recommended_sequence || [];
   const broaderPlatformRegistry = data.broaderPlatformRegistry;
   const broaderPlatformSummary = broaderPlatformRegistry?.summary;
   const broaderPlatformCandidates = broaderPlatformRegistry?.candidate_platforms || [];
@@ -6346,10 +6374,28 @@ export default async function Home({
                 {externalDependencyClearance?.blocked_step_count || 0}
               </span>
               <span>
+                Request context {externalDependencyCurrentRequest?.request_artifact_id || "none"} ·{" "}
+                {shortHash(externalDependencyCurrentRequest?.artifact_hash)}
+              </span>
+              <span>Request build {externalDependencyCurrentRequest?.build_command || "none"}</span>
+              <span>Request verifier {externalDependencyCurrentRequest?.verify_command || "none"}</span>
+              <span>Request strict gate {externalDependencyCurrentRequest?.strict_gate_command || "none"}</span>
+              <span>Request endpoint {externalDependencyCurrentRequest?.runtime_endpoint || "none"}</span>
+              <span>
+                Recommended sequence {externalDependencyClearance?.current_recommended_sequence_count || 0} steps
+              </span>
+              <span>
                 Hard gate: scripts/verify_au_external_dependency_clearance.py --require-handoff-ready
               </span>
               <span>Would-execute step {externalDependencyWouldExecuteStep?.id || "none"}</span>
             </div>
+            {externalDependencyCurrentSequence.length ? (
+              <ul className="plainList compactList">
+                {externalDependencyCurrentSequence.slice(0, 6).map((command) => (
+                  <li key={command}>{command}</li>
+                ))}
+              </ul>
+            ) : null}
             <div className="clearanceStepGrid">
               {topExternalDependencyClearanceSteps.map((step) => (
                 <div className="clearanceStep" key={step.id}>
@@ -6359,6 +6405,7 @@ export default async function Home({
                   <span>
                     {step.would_execute ? "would execute" : step.ready ? "ready" : step.status || "blocked"}
                   </span>
+                  <small>{step.linked_request_context?.request_artifact_id || "no request context"}</small>
                   <small>{(step.blocked_by || []).slice(0, 2).join(" · ") || "gate clear"}</small>
                 </div>
               ))}

@@ -65,13 +65,42 @@ class AuExternalDependencyClearanceTest(unittest.TestCase):
         self.assertEqual(execution["current_step_id"], "p0a_provider_credentials")
         self.assertEqual(execution["next_command"], "make verify-au-p0a-env-template")
         self.assertEqual(execution["clearance_execution_hash"], compute_clearance_execution_hash(execution))
+        self.assertEqual(
+            execution["current_step_request_context"]["request_artifact_id"],
+            "p0a_credential_request",
+        )
+        self.assertEqual(
+            execution["current_step_request_context"]["runtime_endpoint"],
+            "GET /v1/p0a-credential-request/au",
+        )
+        self.assertIn("make au-p0a-credential-request", execution["current_recommended_sequence"])
+        self.assertIn("make verify-au-p0a-credential-request", execution["current_recommended_sequence"])
+        self.assertTrue(execution["current_strict_gate_command"].endswith("--require-credentials-ready"))
+        self.assertEqual(
+            execution["current_recommended_sequence_count"],
+            len(execution["current_recommended_sequence"]),
+        )
         steps = {step["id"]: step for step in execution["steps"]}
         self.assertEqual(steps["p0a_provider_credentials"]["status"], "dry_run_ready_to_start")
         self.assertTrue(steps["p0a_provider_credentials"]["would_execute"])
         self.assertIn("missing_required:DATABASE_URL", steps["p0a_provider_credentials"]["blocked_by"])
+        self.assertEqual(
+            steps["p0a_provider_credentials"]["linked_request_context"]["request_artifact_id"],
+            "p0a_credential_request",
+        )
+        self.assertIn("make au-p0a-credential-request", steps["p0a_provider_credentials"]["recommended_sequence"])
+        self.assertTrue(
+            steps["p0a_provider_credentials"]["strict_gate_command"].endswith("--require-credentials-ready")
+        )
         self.assertEqual(steps["p0a_real_batches"]["status"], "blocked")
+        self.assertEqual(
+            steps["p0a_real_batches"]["linked_request_context"]["request_artifact_id"],
+            "p0a_real_batch_request",
+        )
         self.assertIn("prerequisite_step_not_ready:p0a_provider_credentials", steps["p0a_real_batches"]["blocked_by"])
         self.assertIn("make verify-au-launch-status", execution["hard_gate_commands"])
+        self.assertIn("make verify-au-p0a-credential-request", execution["hard_gate_commands"])
+        self.assertTrue(any(command.endswith("--require-credentials-ready") for command in execution["hard_gate_commands"]))
         self.assertEqual(verification["status"], "pass")
         self.assertEqual(hard_gate["status"], "fail")
         self.assertIn("external_dependency_handoff_not_ready", hard_gate["errors"])
@@ -99,11 +128,19 @@ class AuExternalDependencyClearanceTest(unittest.TestCase):
             )
         tampered = copy.deepcopy(execution)
         tampered["steps"][0]["would_execute"] = False
+        tampered["steps"][0]["linked_request_context"]["request_artifact_id"] = "wrong_request"
+        tampered["current_recommended_sequence"] = []
+        tampered["current_recommended_sequence_count"] = 0
         tampered["clearance_execution_hash"] = compute_clearance_execution_hash(tampered)
         verification = verify_au_external_dependency_clearance(tampered)
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("would_execute_step_count_mismatch", verification["errors"])
+        self.assertIn(
+            "clearance_step_request_context_request_artifact_id_mismatch:p0a_provider_credentials",
+            verification["errors"],
+        )
+        self.assertIn("current_recommended_sequence_mismatch", verification["errors"])
 
     def test_cli_writes_and_verifies_clearance_dry_run(self) -> None:
         with TemporaryDirectory() as temp_dir:

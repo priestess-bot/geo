@@ -18,7 +18,107 @@ from scripts.verify_au_external_dependency_handoff import verify_au_external_dep
 
 
 EXECUTION_VERSION = "au_external_dependency_clearance_execution_v1"
+REQUEST_CONTEXT_VERSION = "au_external_dependency_clearance_request_context_v1"
 DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-external-dependency-clearance-latest.json"
+
+CLEARANCE_REQUEST_CONTEXTS: dict[str, dict[str, str]] = {
+    "p0a_provider_credentials": {
+        "artifact_type": "request_packet",
+        "request_artifact_id": "p0a_credential_request",
+        "request_artifact_title": "P0a credential request packet",
+        "output_path": "docs/runtime_preflight/au-p0a-credential-request-latest.json",
+        "hash_field": "p0a_credential_request_packet_hash",
+        "build_command": "make au-p0a-credential-request",
+        "verify_command": "make verify-au-p0a-credential-request",
+        "strict_gate_command": (
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_p0a_credential_request_packet.py "
+            "${GENO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-request-latest.json} "
+            "--require-credentials-ready"
+        ),
+        "runtime_endpoint": "GET /v1/p0a-credential-request/au",
+    },
+    "p0a_real_batches": {
+        "artifact_type": "request_packet",
+        "request_artifact_id": "p0a_real_batch_request",
+        "request_artifact_title": "P0a real batch request packet",
+        "output_path": "docs/runtime_preflight/au-p0a-real-batch-request-latest.json",
+        "hash_field": "p0a_real_batch_request_packet_hash",
+        "build_command": "make au-p0a-real-batch-request",
+        "verify_command": "make verify-au-p0a-real-batch-request",
+        "strict_gate_command": (
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_p0a_real_batch_request_packet.py "
+            "${GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-request-latest.json} "
+            "--require-real-batches-ready"
+        ),
+        "runtime_endpoint": "GET /v1/p0a-real-batch-request/au",
+    },
+    "p0b_google_environment": {
+        "artifact_type": "request_packet",
+        "request_artifact_id": "p0b_google_environment_request",
+        "request_artifact_title": "P0b Google environment request packet",
+        "output_path": "docs/runtime_preflight/au-p0b-google-environment-request-latest.json",
+        "hash_field": "p0b_google_environment_request_packet_hash",
+        "build_command": "make au-p0b-google-environment-request",
+        "verify_command": "make verify-au-p0b-google-environment-request",
+        "strict_gate_command": (
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_p0b_google_environment_request_packet.py "
+            "${GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-request-latest.json} "
+            "--require-environment-ready"
+        ),
+        "runtime_endpoint": "GET /v1/p0b-google-environment-request/au",
+    },
+    "p0b_google_manual_backfill": {
+        "artifact_type": "request_packet",
+        "request_artifact_id": "p0b_google_manual_backfill_request",
+        "request_artifact_title": "P0b Google manual backfill request packet",
+        "output_path": "docs/runtime_preflight/au-p0b-google-manual-backfill-request-latest.json",
+        "hash_field": "p0b_google_manual_backfill_request_packet_hash",
+        "build_command": "make au-p0b-google-manual-backfill-request",
+        "verify_command": "make verify-au-p0b-google-manual-backfill-request",
+        "strict_gate_command": (
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_p0b_google_manual_backfill_request_packet.py "
+            "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-request-latest.json} "
+            "--require-manual-backfill-ready"
+        ),
+        "runtime_endpoint": "GET /v1/p0b-google-manual-backfill-request/au",
+    },
+    "p0b_google_phase_execution": {
+        "artifact_type": "request_packet",
+        "request_artifact_id": "p0b_google_phase_execution_request",
+        "request_artifact_title": "P0b Google phase execution request packet",
+        "output_path": "docs/runtime_preflight/au-p0b-google-phase-execution-request-latest.json",
+        "hash_field": "p0b_google_phase_execution_request_packet_hash",
+        "build_command": "make au-p0b-google-phase-execution-request",
+        "verify_command": "make verify-au-p0b-google-phase-execution-request",
+        "strict_gate_command": (
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_p0b_google_phase_execution_request_packet.py "
+            "${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-request-latest.json} "
+            "--require-google-phases-ready"
+        ),
+        "runtime_endpoint": "GET /v1/p0b-google-phase-execution-request/au",
+    },
+    "customer_report_handoff_gate": {
+        "artifact_type": "readiness_artifact",
+        "request_artifact_id": "customer_handoff_readiness",
+        "request_artifact_title": "Customer handoff readiness artifact",
+        "output_path": "docs/runtime_preflight/au-customer-handoff-readiness-latest.json",
+        "hash_field": "customer_handoff_readiness_hash",
+        "build_command": "make au-customer-handoff-readiness",
+        "verify_command": "make verify-au-customer-handoff-readiness",
+        "strict_gate_command": (
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_customer_handoff_readiness.py "
+            "${GENO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-readiness-latest.json} "
+            "--require-customer-ready"
+        ),
+        "runtime_endpoint": "GET /v1/customer-handoff-readiness/au",
+    },
+}
 
 
 def _utc_now_iso() -> str:
@@ -52,6 +152,90 @@ def _strings(value: object) -> list[str]:
     return [str(item) for item in _as_list(value)]
 
 
+def _append_unique(items: list[str], item: str) -> None:
+    if item and item not in items:
+        items.append(item)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _load_json_file(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _empty_request_context(step_id: str) -> dict[str, Any]:
+    return {
+        "request_context_version": REQUEST_CONTEXT_VERSION,
+        "clearance_step_id": step_id,
+        "request_context_available": False,
+        "artifact_type": "",
+        "request_artifact_id": "",
+        "request_artifact_title": "",
+        "output_path": "",
+        "exists": False,
+        "hash_field": "",
+        "artifact_hash": "",
+        "file_sha256": "",
+        "build_command": "",
+        "verify_command": "",
+        "strict_gate_command": "",
+        "runtime_endpoint": "",
+    }
+
+
+def _request_context(step_id: str) -> dict[str, Any]:
+    context = CLEARANCE_REQUEST_CONTEXTS.get(step_id)
+    if not context:
+        return _empty_request_context(step_id)
+    output_path = Path(context["output_path"])
+    payload = _load_json_file(output_path)
+    return {
+        "request_context_version": REQUEST_CONTEXT_VERSION,
+        "clearance_step_id": step_id,
+        "request_context_available": True,
+        "artifact_type": context["artifact_type"],
+        "request_artifact_id": context["request_artifact_id"],
+        "request_artifact_title": context["request_artifact_title"],
+        "output_path": str(output_path),
+        "exists": output_path.is_file(),
+        "hash_field": context["hash_field"],
+        "artifact_hash": str(payload.get(context["hash_field"]) or ""),
+        "file_sha256": _file_sha256(output_path) if output_path.is_file() else "",
+        "build_command": context["build_command"],
+        "verify_command": context["verify_command"],
+        "strict_gate_command": context["strict_gate_command"],
+        "runtime_endpoint": context["runtime_endpoint"],
+    }
+
+
+def _recommended_sequence(
+    *,
+    request_context: dict[str, Any],
+    commands: list[str],
+    verification_commands: list[str],
+) -> list[str]:
+    sequence: list[str] = []
+    for command in (
+        str(request_context.get("build_command") or ""),
+        str(request_context.get("verify_command") or ""),
+        *commands,
+        *verification_commands,
+        str(request_context.get("strict_gate_command") or ""),
+    ):
+        _append_unique(sequence, command)
+    return sequence
+
+
 def _load_handoff(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -68,6 +252,14 @@ def _step_result(step: dict[str, Any], *, stop_after_step: str | None) -> dict[s
     step_id = str(step.get("id") or "")
     ready = step.get("ready") is True
     can_start = step.get("can_start") is True
+    commands = _strings(step.get("commands"))
+    verification_commands = _strings(step.get("verification_commands"))
+    request_context = _request_context(step_id)
+    recommended_sequence = _recommended_sequence(
+        request_context=request_context,
+        commands=commands,
+        verification_commands=verification_commands,
+    )
     if ready:
         status = "already_ready"
     elif can_start:
@@ -87,10 +279,14 @@ def _step_result(step: dict[str, Any], *, stop_after_step: str | None) -> dict[s
         "prerequisite_step_ids": _strings(step.get("prerequisite_step_ids")),
         "current_phase": str(step.get("current_phase") or ""),
         "planned_runs": int(step.get("planned_runs") or 0),
-        "commands": _strings(step.get("commands")),
-        "verification_commands": _strings(step.get("verification_commands")),
+        "commands": commands,
+        "verification_commands": verification_commands,
         "evidence_outputs": _strings(step.get("evidence_outputs")),
         "blocked_by": _strings(step.get("blocked_by")),
+        "linked_request_context": request_context,
+        "recommended_sequence": recommended_sequence,
+        "recommended_sequence_count": len(recommended_sequence),
+        "strict_gate_command": str(request_context.get("strict_gate_command") or ""),
         "would_execute": can_start and not ready,
         "stops_after_this_step": bool(stop_after_step and step_id == stop_after_step),
     }
@@ -135,6 +331,10 @@ def run_au_external_dependency_clearance(
                 "next_command": "",
                 "stop_after_step": stop_after_step or "",
                 "stopped_after_step": False,
+                "current_step_request_context": _empty_request_context("none"),
+                "current_recommended_sequence": [],
+                "current_recommended_sequence_count": 0,
+                "current_strict_gate_command": "",
                 "hard_gate_commands": [],
                 "steps": [],
             }
@@ -162,6 +362,19 @@ def run_au_external_dependency_clearance(
     ready_step_count = sum(1 for step in steps if step.get("ready") is True)
     blocked_step_count = sum(1 for step in steps if step.get("ready") is not True)
     would_execute_steps = [step for step in steps if step.get("would_execute") is True]
+    current_step = next(
+        (
+            step
+            for step in steps
+            if step.get("id") == str(sequence.get("current_step_id") or "none")
+        ),
+        would_execute_steps[0] if would_execute_steps else {},
+    )
+    hard_gate_commands = _strings(sequence.get("hard_gate_commands"))
+    for step in steps:
+        request_context = _as_dict(step.get("linked_request_context"))
+        _append_unique(hard_gate_commands, str(request_context.get("verify_command") or ""))
+        _append_unique(hard_gate_commands, str(request_context.get("strict_gate_command") or ""))
     result = {
         "clearance_execution_version": EXECUTION_VERSION,
         "generated_at": generated_at or _utc_now_iso(),
@@ -183,7 +396,11 @@ def run_au_external_dependency_clearance(
         "next_command": str(sequence.get("next_command") or ""),
         "stop_after_step": stop_after_step or "",
         "stopped_after_step": stopped_after_step,
-        "hard_gate_commands": _strings(sequence.get("hard_gate_commands")),
+        "current_step_request_context": _as_dict(current_step.get("linked_request_context")),
+        "current_recommended_sequence": _strings(current_step.get("recommended_sequence")),
+        "current_recommended_sequence_count": int(current_step.get("recommended_sequence_count") or 0),
+        "current_strict_gate_command": str(current_step.get("strict_gate_command") or ""),
+        "hard_gate_commands": hard_gate_commands,
         "steps": steps,
     }
     return _with_hash(result)

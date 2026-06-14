@@ -1181,8 +1181,25 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["current_step_id"], "p0a_provider_credentials")
         self.assertEqual(payload["next_command"], "make verify-au-p0a-env-template")
         self.assertTrue(payload["clearance_execution_hash"])
+        self.assertEqual(
+            payload["current_step_request_context"]["request_artifact_id"],
+            "p0a_credential_request",
+        )
+        self.assertEqual(
+            payload["current_step_request_context"]["runtime_endpoint"],
+            "GET /v1/p0a-credential-request/au",
+        )
+        self.assertIn("make au-p0a-credential-request", payload["current_recommended_sequence"])
+        self.assertIn("make verify-au-p0a-credential-request", payload["current_recommended_sequence"])
+        self.assertEqual(
+            payload["current_recommended_sequence_count"],
+            len(payload["current_recommended_sequence"]),
+        )
+        self.assertTrue(payload["current_strict_gate_command"].endswith("--require-credentials-ready"))
         self.assertEqual(payload["steps"][0]["status"], "dry_run_ready_to_start")
         self.assertTrue(payload["steps"][0]["would_execute"])
+        self.assertEqual(payload["steps"][0]["linked_request_context"]["request_artifact_id"], "p0a_credential_request")
+        self.assertIn("make verify-au-p0a-credential-request", payload["hard_gate_commands"])
 
     def test_metrics_endpoint_exports_request_and_pool_metrics(self) -> None:
         self.client.get("/health")
