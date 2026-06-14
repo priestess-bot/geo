@@ -205,6 +205,10 @@ from scripts.build_au_p0b_google_manual_backfill_request_packet import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH,
     build_au_p0b_google_manual_backfill_request_packet,
 )
+from scripts.build_au_p0b_google_manual_backfill_fulfillment import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH,
+    build_au_p0b_google_manual_backfill_fulfillment,
+)
 from scripts.build_au_p0b_google_phase_execution_request_packet import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH,
     build_au_p0b_google_phase_execution_request_packet,
@@ -1940,6 +1944,35 @@ def au_p0b_google_manual_backfill_request() -> dict[str, object]:
             os.getenv(
                 "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH",
                 DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-manual-backfill-fulfillment/au")
+def au_p0b_google_manual_backfill_fulfillment() -> dict[str, object]:
+    manual_backfill_request_path = Path(
+        os.getenv(
+            "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH,
+        )
+    )
+    return build_au_p0b_google_manual_backfill_fulfillment(
+        manual_backfill_request_path=manual_backfill_request_path,
+        manual_backfill_verification_path=Path(
+            os.getenv(
+                "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH",
+                "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
+            )
+        ),
+        manual_jsonl_path=Path(
+            os.getenv("MANUAL_BACKFILL_PATH", "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl")
+        ),
+        manual_backfill_request=au_p0b_google_manual_backfill_request(),
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH,
             )
         ),
     )
@@ -5950,6 +5983,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/p0b-google-environment-request/au",
             "/v1/p0b-google-environment-fulfillment/au",
             "/v1/p0b-google-manual-backfill-request/au",
+            "/v1/p0b-google-manual-backfill-fulfillment/au",
             "/v1/p0b-google-phase-execution-request/au",
             "/v1/au-broader-platform-registry",
             "/v1/au-retest-scheduler-plan",

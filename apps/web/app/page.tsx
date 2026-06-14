@@ -723,6 +723,7 @@ type RuntimeData = {
   p0bGoogleEnvironmentRequest: AuP0bGoogleEnvironmentRequest | null;
   p0bGoogleEnvironmentFulfillment: AuP0bGoogleEnvironmentFulfillment | null;
   p0bGoogleManualBackfillRequest: AuP0bGoogleManualBackfillRequest | null;
+  p0bGoogleManualBackfillFulfillment: AuP0bGoogleManualBackfillFulfillment | null;
   p0bGooglePhaseExecutionRequest: AuP0bGooglePhaseExecutionRequest | null;
   externalDependencyHandoff: AuExternalDependencyHandoff | null;
   externalDependencyClearance: AuExternalDependencyClearance | null;
@@ -1813,6 +1814,76 @@ type AuP0bGoogleManualBackfillRequest = {
   };
 };
 
+type AuP0bGoogleManualBackfillFulfillment = {
+  p0b_google_manual_backfill_fulfillment_version: string;
+  generated_at: string;
+  status: string;
+  manual_backfill_fulfillment_ready: boolean;
+  manual_backfill_fulfilled: boolean;
+  google_main_scoring_allowed: boolean;
+  p0b_google_manual_backfill_fulfillment_hash: string;
+  summary?: {
+    manual_backfill_fulfilled?: boolean;
+    manual_backfill_request_ready?: boolean;
+    manual_backfill_handoff_ready?: boolean;
+    manual_backfill_verification_ready?: boolean;
+    manual_backfill_verification_status?: string;
+    expected_record_count?: number;
+    record_count?: number;
+    expected_prompt_city_count?: number;
+    covered_prompt_city_count?: number;
+    expected_sample_size?: number;
+    verification_expected_sample_size?: number;
+    verification_error_count?: number;
+    verification_errors?: string[];
+    required_count?: number;
+    fulfilled_required_count?: number;
+    missing_required_count?: number;
+    missing_required?: string[];
+    missing_required_by_owner?: Record<string, string[]>;
+    target_jsonl_path?: string;
+    resolved_manual_jsonl_path?: string;
+    verification_path?: string;
+    file_sha256_present?: boolean;
+    verification_hash_present?: boolean;
+    content_redacted?: boolean;
+    next_action?: string;
+    next_command?: string;
+    strict_gate_command?: string;
+    request_strict_gate_command?: string;
+  };
+  manual_backfill_fulfillment_items?: Array<{
+    key?: string;
+    category?: string;
+    required?: boolean;
+    fulfilled?: boolean;
+    expected_value?: string | number | boolean;
+    actual_value?: string | number | boolean;
+    owner_hint?: string;
+    source_request_field?: string;
+    source_verification_field?: string;
+    blocking_reasons?: string[];
+  }>;
+  source_p0b_google_manual_backfill_request?: {
+    p0b_google_manual_backfill_request_packet_hash?: string;
+    manual_backfill_request_packet_ready?: boolean;
+    manual_backfill_handoff_ready?: boolean;
+  };
+  source_p0b_google_manual_backfill_verification?: {
+    verification_hash?: string;
+    manual_backfill_status?: string;
+    file_sha256?: string;
+    manual_jsonl_path?: string;
+  };
+  runtime_endpoints?: {
+    p0b_google_manual_backfill_fulfillment?: string;
+    p0b_google_manual_backfill_request?: string;
+    p0b_google_execution_checklist?: string;
+    external_dependency_clearance?: string;
+  };
+  hard_gate_commands?: string[];
+};
+
 type AuP0bGooglePhaseExecutionRequest = {
   p0b_google_phase_execution_request_packet_version: string;
   generated_at: string;
@@ -2534,6 +2605,7 @@ const endpoints = {
   p0bGoogleEnvironmentRequest: "/v1/p0b-google-environment-request/au",
   p0bGoogleEnvironmentFulfillment: "/v1/p0b-google-environment-fulfillment/au",
   p0bGoogleManualBackfillRequest: "/v1/p0b-google-manual-backfill-request/au",
+  p0bGoogleManualBackfillFulfillment: "/v1/p0b-google-manual-backfill-fulfillment/au",
   p0bGooglePhaseExecutionRequest: "/v1/p0b-google-phase-execution-request/au",
   externalDependencyHandoff: "/v1/external-dependency-handoff/au",
   externalDependencyClearance: "/v1/external-dependency-clearance/au",
@@ -3955,6 +4027,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleEnvironmentRequest: endpoints.p0bGoogleEnvironmentRequest,
     p0bGoogleEnvironmentFulfillment: endpoints.p0bGoogleEnvironmentFulfillment,
     p0bGoogleManualBackfillRequest: endpoints.p0bGoogleManualBackfillRequest,
+    p0bGoogleManualBackfillFulfillment: endpoints.p0bGoogleManualBackfillFulfillment,
     p0bGooglePhaseExecutionRequest: endpoints.p0bGooglePhaseExecutionRequest,
     externalDependencyHandoff: endpoints.externalDependencyHandoff,
     externalDependencyClearance: endpoints.externalDependencyClearance,
@@ -4277,6 +4350,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleEnvironmentRequest,
     p0bGoogleEnvironmentFulfillment,
     p0bGoogleManualBackfillRequest,
+    p0bGoogleManualBackfillFulfillment,
     p0bGooglePhaseExecutionRequest,
     externalDependencyHandoff,
     externalDependencyClearance,
@@ -4341,6 +4415,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0bGoogleManualBackfillRequest | null>(
       baseUrl,
       paths.p0bGoogleManualBackfillRequest,
+      null
+    ),
+    fetchRuntimeEndpoint<AuP0bGoogleManualBackfillFulfillment | null>(
+      baseUrl,
+      paths.p0bGoogleManualBackfillFulfillment,
       null
     ),
     fetchRuntimeEndpoint<AuP0bGooglePhaseExecutionRequest | null>(
@@ -4517,6 +4596,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0bGoogleEnvironmentRequest,
     p0bGoogleEnvironmentFulfillment,
     p0bGoogleManualBackfillRequest,
+    p0bGoogleManualBackfillFulfillment,
     p0bGooglePhaseExecutionRequest,
     externalDependencyHandoff,
     externalDependencyClearance,
@@ -4580,6 +4660,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0bGoogleEnvironmentRequest: p0bGoogleEnvironmentRequest.payload,
       p0bGoogleEnvironmentFulfillment: p0bGoogleEnvironmentFulfillment.payload,
       p0bGoogleManualBackfillRequest: p0bGoogleManualBackfillRequest.payload,
+      p0bGoogleManualBackfillFulfillment: p0bGoogleManualBackfillFulfillment.payload,
       p0bGooglePhaseExecutionRequest: p0bGooglePhaseExecutionRequest.payload,
       externalDependencyHandoff: externalDependencyHandoff.payload,
       externalDependencyClearance: externalDependencyClearance.payload,
@@ -4968,6 +5049,14 @@ export default async function Home({
   const p0bGoogleManualBackfillRequiredFields = p0bGoogleManualBackfillRequest?.required_fields || [];
   const p0bGoogleManualBackfillOperatorRequirements = p0bGoogleManualBackfillRequest?.operator_requirements || [];
   const p0bGoogleManualBackfillEvidenceOutputs = p0bGoogleManualBackfillRequest?.evidence_outputs || [];
+  const p0bGoogleManualBackfillFulfillment = data.p0bGoogleManualBackfillFulfillment;
+  const p0bGoogleManualBackfillFulfillmentSummary = p0bGoogleManualBackfillFulfillment?.summary;
+  const p0bGoogleManualBackfillFulfillmentMissing =
+    p0bGoogleManualBackfillFulfillmentSummary?.missing_required || [];
+  const p0bGoogleManualBackfillFulfillmentErrors =
+    p0bGoogleManualBackfillFulfillmentSummary?.verification_errors || [];
+  const p0bGoogleManualBackfillFulfillmentItems =
+    p0bGoogleManualBackfillFulfillment?.manual_backfill_fulfillment_items || [];
   const p0bGooglePhaseExecutionRequest = data.p0bGooglePhaseExecutionRequest;
   const p0bGooglePhaseExecutionRequestSummary = p0bGooglePhaseExecutionRequest?.summary;
   const p0bGooglePhaseExecutionPhases = p0bGooglePhaseExecutionRequest?.phase_requests || [];
@@ -6072,6 +6161,96 @@ export default async function Home({
             </div>
           </div>
           <code>{paths.p0bGoogleManualBackfillRequest}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>P0b Google manual backfill fulfillment</strong>
+            <span>
+              {p0bGoogleManualBackfillFulfillment?.p0b_google_manual_backfill_fulfillment_version ||
+                "au_p0b_google_manual_backfill_fulfillment_v1"}{" "}
+              · p0b_google_manual_backfill_fulfillment_hash{" "}
+              {shortHash(p0bGoogleManualBackfillFulfillment?.p0b_google_manual_backfill_fulfillment_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>
+              Fulfillment ready{" "}
+              {p0bGoogleManualBackfillFulfillment?.manual_backfill_fulfillment_ready ? "yes" : "no"}
+            </span>
+            <span>
+              Manual fulfilled {p0bGoogleManualBackfillFulfillment?.manual_backfill_fulfilled ? "yes" : "no"}
+            </span>
+            <span>
+              Verification{" "}
+              {p0bGoogleManualBackfillFulfillmentSummary?.manual_backfill_verification_status || "unknown"}
+            </span>
+            <span>
+              Records {p0bGoogleManualBackfillFulfillmentSummary?.record_count || 0}/
+              {p0bGoogleManualBackfillFulfillmentSummary?.expected_record_count || 0}
+            </span>
+            <span>
+              Prompt-city {p0bGoogleManualBackfillFulfillmentSummary?.covered_prompt_city_count || 0}/
+              {p0bGoogleManualBackfillFulfillmentSummary?.expected_prompt_city_count || 0}
+            </span>
+            <span>
+              Fulfilled required {p0bGoogleManualBackfillFulfillmentSummary?.fulfilled_required_count || 0}/
+              {p0bGoogleManualBackfillFulfillmentSummary?.required_count || 0}
+            </span>
+            <span>Missing required {p0bGoogleManualBackfillFulfillmentSummary?.missing_required_count || 0}</span>
+            <span>Errors {p0bGoogleManualBackfillFulfillmentSummary?.verification_error_count || 0}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>Missing {p0bGoogleManualBackfillFulfillmentMissing.slice(0, 6).join(", ") || "none"}</span>
+            <span>Verification errors {p0bGoogleManualBackfillFulfillmentErrors.slice(0, 4).join(", ") || "none"}</span>
+            <span>Next action {p0bGoogleManualBackfillFulfillmentSummary?.next_action || "none"}</span>
+            <span>Next command {p0bGoogleManualBackfillFulfillmentSummary?.next_command || "none"}</span>
+            <span>Target JSONL {p0bGoogleManualBackfillFulfillmentSummary?.target_jsonl_path || "none"}</span>
+            <span>Verification {p0bGoogleManualBackfillFulfillmentSummary?.verification_path || "none"}</span>
+            <span>
+              Request hash{" "}
+              {shortHash(
+                p0bGoogleManualBackfillFulfillment?.source_p0b_google_manual_backfill_request
+                  ?.p0b_google_manual_backfill_request_packet_hash
+              )}
+            </span>
+            <span>
+              Verification hash{" "}
+              {shortHash(
+                p0bGoogleManualBackfillFulfillment?.source_p0b_google_manual_backfill_verification?.verification_hash
+              )}
+            </span>
+            <span>
+              {p0bGoogleManualBackfillFulfillment?.runtime_endpoints?.p0b_google_manual_backfill_fulfillment ||
+                "GET /v1/p0b-google-manual-backfill-fulfillment/au"}
+            </span>
+            <span>Hard gate: make verify-au-p0b-google-manual-backfill-fulfillment</span>
+            <span>
+              Strict gate:{" "}
+              {p0bGoogleManualBackfillFulfillmentSummary?.strict_gate_command ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_manual_backfill_fulfillment.py docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json --require-fulfilled"}
+            </span>
+          </div>
+          {p0bGoogleManualBackfillFulfillmentItems.length ? (
+            <div className="dependencyGroupGrid">
+              {p0bGoogleManualBackfillFulfillmentItems.slice(0, 8).map((item) => (
+                <div className="dependencyGroup" key={item.key || item.category}>
+                  <strong>{item.key || item.category}</strong>
+                  <span>
+                    {item.owner_hint || "owner"} · {item.fulfilled ? "fulfilled" : "missing"}
+                  </span>
+                  <small>
+                    expected {String(item.expected_value ?? "none")} · actual {String(item.actual_value ?? "none")}
+                  </small>
+                  <small>
+                    request {item.source_request_field || "none"} · verifier{" "}
+                    {item.source_verification_field || "none"}
+                  </small>
+                  <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "gate clear"}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <code>{paths.p0bGoogleManualBackfillFulfillment}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">

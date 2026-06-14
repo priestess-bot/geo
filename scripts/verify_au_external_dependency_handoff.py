@@ -323,6 +323,15 @@ def _validate_groups(handoff: dict[str, Any], errors: list[str]) -> None:
         errors.append("p0b_google_manual_backfill_raw_citation_policy_invalid")
     if manual_redaction.get("raw_asset_urls_allowed") is not False:
         errors.append("p0b_google_manual_backfill_raw_asset_policy_invalid")
+    p0b_manual_verification_commands = _strings(p0b_manual.get("verification_commands"))
+    if "make verify-au-p0b-google-manual-backfill-fulfillment" not in p0b_manual_verification_commands:
+        errors.append("p0b_google_manual_backfill_fulfillment_verifier_missing")
+    if not any("--require-fulfilled" in command for command in p0b_manual_verification_commands):
+        errors.append("p0b_google_manual_backfill_fulfillment_strict_gate_missing")
+    if "docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json" not in _strings(
+        p0b_manual.get("evidence_outputs")
+    ):
+        errors.append("p0b_google_manual_backfill_fulfillment_evidence_missing")
 
     p0b_phase = groups.get("p0b_google_phase_execution", {})
     expected_phase_order = ("environment", "browser_smoke", "manual_backfill", "health_check", "full_spike", "main_scoring")

@@ -145,6 +145,10 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn('p0bGoogleEnvironmentRequest: "/v1/p0b-google-environment-request/au"', page_source)
         self.assertIn('p0bGoogleEnvironmentFulfillment: "/v1/p0b-google-environment-fulfillment/au"', page_source)
         self.assertIn('p0bGoogleManualBackfillRequest: "/v1/p0b-google-manual-backfill-request/au"', page_source)
+        self.assertIn(
+            'p0bGoogleManualBackfillFulfillment: "/v1/p0b-google-manual-backfill-fulfillment/au"',
+            page_source,
+        )
         self.assertIn('p0bGooglePhaseExecutionRequest: "/v1/p0b-google-phase-execution-request/au"', page_source)
         self.assertIn('externalDependencyHandoff: "/v1/external-dependency-handoff/au"', page_source)
         self.assertIn('externalDependencyClearance: "/v1/external-dependency-clearance/au"', page_source)
@@ -357,6 +361,13 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("p0bGoogleManualBackfillRequiredFields", page_source)
         self.assertIn("p0bGoogleManualBackfillOperatorRequirements", page_source)
         self.assertIn("paths.p0bGoogleManualBackfillRequest", page_source)
+        self.assertIn("P0b Google manual backfill fulfillment", page_source)
+        self.assertIn("p0b_google_manual_backfill_fulfillment_hash", page_source)
+        self.assertIn("GET /v1/p0b-google-manual-backfill-fulfillment/au", page_source)
+        self.assertIn("make verify-au-p0b-google-manual-backfill-fulfillment", page_source)
+        self.assertIn("manual_backfill_fulfilled", page_source)
+        self.assertIn("p0bGoogleManualBackfillFulfillmentItems", page_source)
+        self.assertIn("paths.p0bGoogleManualBackfillFulfillment", page_source)
         self.assertIn("P0b Google phase execution request packet", page_source)
         self.assertIn("p0b_google_phase_execution_request_packet_hash", page_source)
         self.assertIn("au_p0b_google_phase_execution_request_packet_v1", page_source)

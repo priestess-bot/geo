@@ -132,6 +132,32 @@ class AuExternalDependencyClearanceTest(unittest.TestCase):
         )
         self.assertTrue(execution["steps"][-1]["strict_gate_command"].endswith("--require-fulfilled"))
 
+    def test_stop_after_manual_backfill_uses_fulfillment_artifact(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            handoff_path = self._write_handoff(temp_dir)
+            execution = run_au_external_dependency_clearance(
+                handoff_path=handoff_path,
+                stop_after_step="p0b_google_manual_backfill",
+                generated_at="2026-06-13T00:00:00Z",
+            )
+
+        self.assertEqual(execution["status"], "pass")
+        self.assertEqual(execution["recorded_step_count"], 4)
+        self.assertEqual(execution["steps"][-1]["id"], "p0b_google_manual_backfill")
+        self.assertEqual(
+            execution["steps"][-1]["linked_request_context"]["request_artifact_id"],
+            "p0b_google_manual_backfill_fulfillment",
+        )
+        self.assertEqual(
+            execution["steps"][-1]["linked_request_context"]["runtime_endpoint"],
+            "GET /v1/p0b-google-manual-backfill-fulfillment/au",
+        )
+        self.assertIn(
+            "make verify-au-p0b-google-manual-backfill-fulfillment",
+            execution["steps"][-1]["recommended_sequence"],
+        )
+        self.assertTrue(execution["steps"][-1]["strict_gate_command"].endswith("--require-fulfilled"))
+
     def test_verifier_detects_clearance_execution_tampering(self) -> None:
         with TemporaryDirectory() as temp_dir:
             handoff_path = self._write_handoff(temp_dir)

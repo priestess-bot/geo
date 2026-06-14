@@ -605,6 +605,23 @@ def _p0b_google_manual_backfill_group(
     manual_handoff = _as_dict(p0b_google_execution_checklist.get("manual_backfill_handoff"))
     redaction = _as_dict(manual_handoff.get("redaction_policy"))
     ready = manual_handoff.get("ready") is True
+    verification_commands = _unique_strings(
+        _commands(manual_handoff.get("verification_commands"))
+        + [
+            "make au-p0b-google-manual-backfill-fulfillment",
+            "make verify-au-p0b-google-manual-backfill-fulfillment",
+            (
+                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "scripts/verify_au_p0b_google_manual_backfill_fulfillment.py "
+                "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json} "
+                "--require-fulfilled"
+            ),
+        ]
+    )
+    evidence_outputs = _unique_strings(
+        _strings(manual_handoff.get("evidence_outputs"))
+        + ["docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json"]
+    )
     return {
         "id": "p0b_google_manual_backfill",
         "stage": "P0b",
@@ -633,8 +650,8 @@ def _p0b_google_manual_backfill_group(
         "required_fields": _strings(manual_handoff.get("required_fields")),
         "operator_requirements": _strings(manual_handoff.get("operator_requirements")),
         "setup_commands": _commands(manual_handoff.get("setup_commands")),
-        "verification_commands": _commands(manual_handoff.get("verification_commands")),
-        "evidence_outputs": _strings(manual_handoff.get("evidence_outputs")),
+        "verification_commands": verification_commands,
+        "evidence_outputs": evidence_outputs,
         "redaction_policy": {
             "raw_answer_values_allowed": redaction.get("raw_answer_values_allowed") is True,
             "raw_citation_values_allowed": redaction.get("raw_citation_values_allowed") is True,

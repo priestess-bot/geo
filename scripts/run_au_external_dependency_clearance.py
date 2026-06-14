@@ -71,20 +71,20 @@ CLEARANCE_REQUEST_CONTEXTS: dict[str, dict[str, str]] = {
         "runtime_endpoint": "GET /v1/p0b-google-environment-fulfillment/au",
     },
     "p0b_google_manual_backfill": {
-        "artifact_type": "request_packet",
-        "request_artifact_id": "p0b_google_manual_backfill_request",
-        "request_artifact_title": "P0b Google manual backfill request packet",
-        "output_path": "docs/runtime_preflight/au-p0b-google-manual-backfill-request-latest.json",
-        "hash_field": "p0b_google_manual_backfill_request_packet_hash",
-        "build_command": "make au-p0b-google-manual-backfill-request",
-        "verify_command": "make verify-au-p0b-google-manual-backfill-request",
+        "artifact_type": "fulfillment_artifact",
+        "request_artifact_id": "p0b_google_manual_backfill_fulfillment",
+        "request_artifact_title": "P0b Google manual backfill fulfillment artifact",
+        "output_path": "docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json",
+        "hash_field": "p0b_google_manual_backfill_fulfillment_hash",
+        "build_command": "make au-p0b-google-manual-backfill-fulfillment",
+        "verify_command": "make verify-au-p0b-google-manual-backfill-fulfillment",
         "strict_gate_command": (
             "PYTHONPATH=packages/geno_core:apps/api python3 "
-            "scripts/verify_au_p0b_google_manual_backfill_request_packet.py "
-            "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-request-latest.json} "
-            "--require-manual-backfill-ready"
+            "scripts/verify_au_p0b_google_manual_backfill_fulfillment.py "
+            "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json} "
+            "--require-fulfilled"
         ),
-        "runtime_endpoint": "GET /v1/p0b-google-manual-backfill-request/au",
+        "runtime_endpoint": "GET /v1/p0b-google-manual-backfill-fulfillment/au",
     },
     "p0b_google_phase_execution": {
         "artifact_type": "request_packet",
