@@ -389,7 +389,7 @@ api-browser-fidelity-preflight:
 	PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 1 --cities Sydney --sample-size 1 --include-browser-fidelity-playwright --require-ready-collectors --require-no-collection-failures
 
 report-export-worker:
-	PYTHONPATH=packages/geno_core:apps/api python3 workers/report_export_worker/run_report_export_jobs.py
+	PYTHONPATH=packages/geno_core:apps/api python3 workers/report_export_worker/run_report_export_jobs.py --max-jobs $${GENO_REPORT_EXPORT_WORKER_MAX_JOBS:-1} --max-attempts $${GENO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS:-3} --retry-backoff-seconds $${GENO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS:-300} --lease-seconds $${GENO_REPORT_EXPORT_WORKER_LEASE_SECONDS:-900}
 
 runtime-alert-notification-worker:
 	PYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_runtime_alert_notifications.py --market-code $${GENO_RUNTIME_ALERT_MARKET_CODE:-AU}
@@ -410,7 +410,7 @@ entity-alias-assignment-dispatch-apply-worker:
 	PYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_dispatch_apply.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --reviewer-id $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS:-runtime-console} --max-per-reviewer $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER:-10} --limit-per-project $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT:-50}
 
 notification-delivery-worker:
-	PYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_notification_deliveries.py
+	PYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_notification_deliveries.py --max-deliveries $${GENO_NOTIFICATION_DELIVERY_MAX_DELIVERIES:-1} --max-attempts $${GENO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS:-3} --retry-backoff-seconds $${GENO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS:-120} --lease-seconds $${GENO_NOTIFICATION_DELIVERY_LEASE_SECONDS:-300} --timeout-seconds $${GENO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS:-5.0}
 
 worker-fixture:
 	PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode fixture

@@ -1073,6 +1073,8 @@ Webhook 外发签名已作为上述投递链路的最小安全增强落地：订
 
 调度部署状态：`report-export-worker` 与 `notification-delivery-worker` 已纳入 Compose `scheduler` profile。`report-export-worker` 以 `workers/report_export_worker/run_report_export_jobs.py` 为入口，默认接 Postgres + MinIO，并通过 `GENO_REPORT_EXPORT_WORKER_MAX_JOBS/MAX_ATTEMPTS/RETRY_BACKOFF_SECONDS/LEASE_SECONDS` 控制单次处理量、重试和 lease；`notification-delivery-worker` 以 `workers/notification_worker/run_notification_deliveries.py` 为入口，默认只依赖 Postgres，并通过 `GENO_NOTIFICATION_DELIVERY_MAX_DELIVERIES/MAX_ATTEMPTS/RETRY_BACKOFF_SECONDS/LEASE_SECONDS/TIMEOUT_SECONDS` 控制投递节奏，同时保留 webhook signing secret 与 SMTP env 的空默认占位。该状态只补齐 cron/K8s CronJob 级部署入口，不引入长驻 worker、并发池或新的可变状态表；审计仍由 `report_export_job_status_updated`、`runtime_notification_delivery_status_updated` 和既有 notification/job 终态事件承担。
 
+本地运行入口也已对齐同一参数口径：`make report-export-worker` 会传入 `GENO_REPORT_EXPORT_WORKER_MAX_JOBS/MAX_ATTEMPTS/RETRY_BACKOFF_SECONDS/LEASE_SECONDS`，`make notification-delivery-worker` 会传入 `GENO_NOTIFICATION_DELIVERY_MAX_DELIVERIES/MAX_ATTEMPTS/RETRY_BACKOFF_SECONDS/LEASE_SECONDS/TIMEOUT_SECONDS`。这保证本地手工执行、cron 和 Compose/K8s CronJob 在 retry/dead-letter 行为上使用同一默认值。
+
 报告必须展示：
 
 - 采集时间窗口。
