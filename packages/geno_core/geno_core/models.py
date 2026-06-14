@@ -1644,6 +1644,15 @@ class RuntimeEntityAliasAssignmentNotificationResult:
 
 
 @dataclass(frozen=True)
+class RuntimeEntityAliasAssignmentEscalationResult:
+    project_id: str
+    escalation_count: int
+    skipped_count: int
+    escalated_reviews: tuple[dict[str, Any], ...]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class RuntimeContentDraft:
     draft: dict[str, Any]
     target_questions: tuple[dict[str, Any], ...]

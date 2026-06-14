@@ -3450,6 +3450,7 @@ const endpoints = {
   alerts: "/v1/runtime-alerts",
   alertNotifications: "/v1/runtime-alerts/notifications",
   entityAliasAssignmentNotifications: "/v1/entity-aliases/runtime/candidates/assignment-notifications",
+  entityAliasAssignmentEscalations: "/v1/entity-aliases/runtime/candidates/assignment-escalations",
   content: "/v1/content-engines/runtime",
   traceability: "/v1/traceability/runtime"
 } as const;
@@ -3896,6 +3897,36 @@ async function enqueueEntityAliasAssignmentNotifications(formData: FormData) {
   });
   if (!response.ok) {
     throw new Error(`${endpoints.entityAliasAssignmentNotifications} returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
+async function escalateEntityAliasAssignmentReviews(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  if (!projectId) {
+    throw new Error("project_id is required to escalate alias assignment reviews");
+  }
+  const payload = {
+    project_id: projectId,
+    assigned_to: String(formData.get("assigned_to") || "").trim() || undefined,
+    priority: String(formData.get("priority") || "").trim() || undefined,
+    due_before: String(formData.get("due_before") || "").trim() || undefined,
+    escalated_by: String(formData.get("escalated_by") || "runtime-console").trim(),
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}${endpoints.entityAliasAssignmentEscalations}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`${endpoints.entityAliasAssignmentEscalations} returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -4923,6 +4954,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     alerts: runtimePath(endpoints.alerts, { limit: 10 }),
     alertNotifications: endpoints.alertNotifications,
     entityAliasAssignmentNotifications: endpoints.entityAliasAssignmentNotifications,
+    entityAliasAssignmentEscalations: endpoints.entityAliasAssignmentEscalations,
     content: runtimePath(endpoints.content, { limit: 1 }),
     traceability: endpoints.traceability
   };
@@ -5053,6 +5085,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
         project_id: selectedProjectId
       })
     : paths.entityAliasAssignmentStats;
+  paths.entityAliasAssignmentEscalations = endpoints.entityAliasAssignmentEscalations;
   paths.savedViews = runtimePath(endpoints.savedViews, {
     ...selectedProjectParams,
     view_type: "runtime_evidence",
@@ -9436,10 +9469,12 @@ export default async function Home({
                       {data.entityAliasAssignmentStats.method_version} · status_counts{" "}
                       {JSON.stringify(data.entityAliasAssignmentStats.status_counts)} · priority_counts{" "}
                       {JSON.stringify(data.entityAliasAssignmentStats.priority_counts)}
+                      {` · active statuses ${data.entityAliasAssignmentStats.active_statuses.join(", ")}`}
                       {data.entityAliasAssignmentStats.next_due_at
                         ? ` · next due ${dateText(data.entityAliasAssignmentStats.next_due_at)}`
                         : " · no next due"}{" "}
-                      · actions: {paths.entityAliasAssignmentAction} · audit entity_alias_candidate_assignment_actioned
+                      · actions: {paths.entityAliasAssignmentAction} · audit entity_alias_candidate_assignment_actioned /
+                      entity_alias_candidate_assignment_escalated
                     </small>
                     <form action={enqueueEntityAliasAssignmentNotifications} className="inlineAliasForm">
                       <input type="hidden" name="project_id" value={selectedProjectId || ""} />
@@ -9457,6 +9492,23 @@ export default async function Home({
                         Queue overdue assignment notifications
                       </button>
                       <small>{paths.entityAliasAssignmentNotifications}</small>
+                    </form>
+                    <form action={escalateEntityAliasAssignmentReviews} className="inlineAliasForm">
+                      <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+                      <input type="hidden" name="escalated_by" value="runtime-console" />
+                      <input
+                        type="hidden"
+                        name="reason"
+                        value="Escalate overdue entity alias assignment reviews from console"
+                      />
+                      <button
+                        className="actionButton compactAction"
+                        type="submit"
+                        disabled={!selectedProjectId || data.entityAliasAssignmentStats.overdue_count < 1}
+                      >
+                        Escalate overdue assignments
+                      </button>
+                      <small>{paths.entityAliasAssignmentEscalations}</small>
                     </form>
                     <ul className="plainList">
                       {visibleAliasAssignmentQueue.map((record) => {

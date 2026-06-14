@@ -56,6 +56,7 @@ from geno_core.models import (
     RuntimeEvidencePage,
     RuntimeEvidenceRun,
     RuntimeEntityAlias,
+    RuntimeEntityAliasAssignmentEscalationResult,
     RuntimeEntityAliasAssignmentNotificationResult,
     RuntimeEntityAliasCandidate,
     RuntimeEntityAliasCandidateAssignmentQueueStats,
@@ -3706,7 +3707,7 @@ class PostgresEvidenceRepository:
     ) -> RuntimeEntityAliasCandidateAssignmentQueueStats:
         generated_at = datetime.now(UTC)
         due_soon_cutoff = due_soon_before or generated_at + timedelta(days=7)
-        active_statuses = ("assigned", "in_progress", "blocked")
+        active_statuses = ("assigned", "in_progress", "blocked", "escalated")
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -3836,6 +3837,116 @@ class PostgresEvidenceRepository:
             audit_events=tuple(asdict(event) for event in audit_events),
         )
 
+    def escalate_entity_alias_assignment_overdue_reviews(
+        self,
+        *,
+        project_id: str,
+        assigned_to: str | None = None,
+        priority: str | None = None,
+        due_before: datetime | None = None,
+        escalated_by: str = "entity-alias-assignment-escalation-worker",
+        reason: str | None = None,
+    ) -> RuntimeEntityAliasAssignmentEscalationResult:
+        project_id = project_id.strip()
+        escalated_by = escalated_by.strip() or "entity-alias-assignment-escalation-worker"
+        normalized_assigned_to = assigned_to.strip() if assigned_to else None
+        normalized_priority = priority.strip().lower() if priority else None
+        cutoff = due_before or datetime.now(UTC)
+        reason = reason.strip() if reason else "escalate overdue entity alias assignment reviews"
+        if not project_id:
+            raise ValueError("project_id is required")
+        active_statuses = ("assigned", "in_progress", "blocked")
+        filters = [
+            "project_id = %s",
+            "assignment_status = ANY(%s)",
+            "due_at IS NOT NULL",
+            "due_at < %s",
+        ]
+        params: list[Any] = [_uuid(project_id), list(active_statuses), cutoff]
+        if normalized_assigned_to:
+            filters.append("assigned_to = %s")
+            params.append(normalized_assigned_to)
+        if normalized_priority:
+            filters.append("priority = %s")
+            params.append(normalized_priority)
+        where_clause = f"WHERE {' AND '.join(filters)}"
+        escalated_reviews: list[dict[str, Any]] = []
+        audit_events: list[AuditEvent] = []
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM projects WHERE id = %s LIMIT 1", (_uuid(project_id),))
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)}
+                FROM entity_alias_candidate_reviews
+                {where_clause}
+                ORDER BY due_at ASC, priority DESC, updated_at DESC, candidate_id
+                LIMIT 200
+                FOR UPDATE
+                """,
+                tuple(params),
+            )
+            reviews = _rows_dict(cursor.fetchall(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
+            for before in reviews:
+                candidate_id = str(before.get("candidate_id") or "")
+                review_id = str(before.get("id") or "")
+                note = reason
+                cursor.execute(
+                    """
+                    UPDATE entity_alias_candidate_reviews
+                    SET assignment_status = 'escalated',
+                        assignment_note = %s,
+                        updated_at = now()
+                    WHERE project_id = %s AND candidate_id = %s
+                    """,
+                    (note, _uuid(project_id), candidate_id),
+                )
+                record = self._get_entity_alias_candidate_review_for_update(
+                    cursor=cursor,
+                    project_id=project_id,
+                    candidate_id=candidate_id,
+                    lock=False,
+                )
+                audit_event = build_audit_event(
+                    event_type="entity_alias_candidate_assignment_escalated",
+                    project_id=project_id,
+                    actor_type="worker",
+                    actor_id=escalated_by,
+                    target_type="entity_alias_candidate_review",
+                    target_id=review_id,
+                    before=before,
+                    after=record,
+                    input_refs={
+                        "candidate_id": candidate_id,
+                        "assigned_to": before.get("assigned_to"),
+                        "priority": before.get("priority"),
+                        "due_at": before.get("due_at"),
+                    },
+                    output_refs={
+                        "entity_alias_candidate_review_ids": [review_id],
+                        "candidate_ids": [candidate_id],
+                        "assignment_status": "escalated",
+                        "previous_assignment_status": before.get("assignment_status"),
+                        "assigned_to": record.get("assigned_to"),
+                        "priority": record.get("priority"),
+                    },
+                    method_version="entity_alias_candidate_assignment_escalation_v1",
+                    reason=reason,
+                )
+                escalated_reviews.append(record)
+                audit_events.append(audit_event)
+            if audit_events:
+                self.save_audit_events(tuple(audit_events), cursor=cursor)
+        self.connection.commit()
+        return RuntimeEntityAliasAssignmentEscalationResult(
+            project_id=project_id,
+            escalation_count=len(escalated_reviews),
+            skipped_count=0,
+            escalated_reviews=tuple(escalated_reviews),
+            audit_events=tuple(asdict(event) for event in audit_events),
+        )
+
     def _get_entity_alias_candidate_review_for_update(
         self,
         *,
@@ -3874,8 +3985,10 @@ class PostgresEvidenceRepository:
             raise ValueError("candidate_id is required")
         if not assigned_to:
             raise ValueError("assigned_to is required")
-        if assignment_status not in {"assigned", "in_progress", "blocked", "completed", "unassigned"}:
-            raise ValueError("assignment_status must be assigned, in_progress, blocked, completed, or unassigned")
+        if assignment_status not in {"assigned", "in_progress", "blocked", "escalated", "completed", "unassigned"}:
+            raise ValueError(
+                "assignment_status must be assigned, in_progress, blocked, escalated, completed, or unassigned"
+            )
         if priority not in {"low", "normal", "high", "urgent"}:
             raise ValueError("priority must be low, normal, high, or urgent")
         with self.connection.cursor() as cursor:

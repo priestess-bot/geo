@@ -94,6 +94,7 @@ class InfraContractsTest(unittest.TestCase):
         alert_worker = services["runtime-alert-notification-worker"]
         escalation_worker = services["runtime-alert-escalation-worker"]
         alias_assignment_worker = services["entity-alias-assignment-notification-worker"]
+        alias_assignment_escalation_worker = services["entity-alias-assignment-escalation-worker"]
 
         self.assertEqual(scheduler["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(scheduler["command"], ["python", "scripts/run_browser_fidelity_scheduler.py"])
@@ -139,6 +140,23 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("--max-projects", alias_assignment_worker["command"])
         self.assertIn("50", alias_assignment_worker["command"])
         self.assertIn("postgres", alias_assignment_worker["depends_on"])
+
+        self.assertEqual(alias_assignment_escalation_worker["build"]["dockerfile"], "apps/api/Dockerfile")
+        self.assertEqual(alias_assignment_escalation_worker["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
+        self.assertEqual(
+            alias_assignment_escalation_worker["environment"]["GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE"],
+            "AU",
+        )
+        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", alias_assignment_escalation_worker["environment"])
+        self.assertIn(
+            "workers/notification_worker/run_entity_alias_assignment_escalations.py",
+            alias_assignment_escalation_worker["command"],
+        )
+        self.assertIn("--market-code", alias_assignment_escalation_worker["command"])
+        self.assertIn("AU", alias_assignment_escalation_worker["command"])
+        self.assertIn("--max-projects", alias_assignment_escalation_worker["command"])
+        self.assertIn("50", alias_assignment_escalation_worker["command"])
+        self.assertIn("postgres", alias_assignment_escalation_worker["depends_on"])
 
     def test_observability_profile_wires_prometheus_and_grafana(self) -> None:
         config = self._compose_config("observability")
@@ -595,6 +613,11 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("entity-alias-assignment-notification-worker:", makefile)
         self.assertIn(
             "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_notifications.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}",
+            makefile,
+        )
+        self.assertIn("entity-alias-assignment-escalation-worker:", makefile)
+        self.assertIn(
+            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_escalations.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}",
             makefile,
         )
         self.assertIn("docker-config-scheduler:", makefile)

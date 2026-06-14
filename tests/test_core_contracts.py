@@ -11047,6 +11047,12 @@ class CoreContractsTest(unittest.TestCase):
                         "assigned_to": "reviewer@example.com",
                     },
                     {
+                        "assignment_status": "escalated",
+                        "priority": "urgent",
+                        "due_at": now - timedelta(days=2),
+                        "assigned_to": "lead@example.com",
+                    },
+                    {
                         "assignment_status": "unassigned",
                         "priority": "normal",
                         "due_at": None,
@@ -11063,15 +11069,16 @@ class CoreContractsTest(unittest.TestCase):
 
         self.assertIsInstance(stats, RuntimeEntityAliasCandidateAssignmentQueueStats)
         self.assertEqual(stats.method_version, "entity_alias_assignment_queue_stats_v1")
-        self.assertEqual(stats.total_count, 5)
-        self.assertEqual(stats.active_count, 3)
+        self.assertEqual(stats.total_count, 6)
+        self.assertEqual(stats.active_count, 4)
         self.assertEqual(stats.unassigned_count, 1)
-        self.assertEqual(stats.overdue_count, 1)
+        self.assertEqual(stats.overdue_count, 2)
         self.assertEqual(stats.due_soon_count, 1)
         self.assertEqual(stats.status_counts["assigned"], 1)
         self.assertEqual(stats.status_counts["completed"], 1)
-        self.assertEqual(stats.priority_counts["urgent"], 1)
-        self.assertEqual(stats.active_statuses, ("assigned", "in_progress", "blocked"))
+        self.assertEqual(stats.status_counts["escalated"], 1)
+        self.assertEqual(stats.priority_counts["urgent"], 2)
+        self.assertEqual(stats.active_statuses, ("assigned", "in_progress", "blocked", "escalated"))
         self.assertLessEqual(stats.oldest_due_at, now)
         self.assertGreater(stats.next_due_at, now)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
@@ -11201,6 +11208,70 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("INSERT INTO runtime_notifications", executed_sql)
         self.assertIn("INSERT INTO runtime_notification_deliveries", executed_sql)
         self.assertIn("entity_alias_assignment_overdue", str(connection.calls))
+
+    def test_postgres_repository_escalates_entity_alias_assignment_overdue_reviews(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        review_id = "60f1e5a4-d1d0-511e-b0c8-15dfc081ee9b"
+        candidate_id = "candidate-1"
+        brand_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+        now = datetime(2026, 6, 13, tzinfo=UTC)
+        before = {
+            "id": review_id,
+            "project_id": project_id,
+            "candidate_id": candidate_id,
+            "entity_id": brand_id,
+            "entity_kind": "brand",
+            "alias": "ExampleBrand AU",
+            "alias_type": "alias",
+            "source": "evidence_answer_text",
+            "confidence": 0.8,
+            "decision": "needs_review",
+            "reviewed_by": "analyst-1",
+            "reason": "review required",
+            "notes": "Needs reviewer assignment",
+            "assigned_to": "reviewer@example.com",
+            "assigned_by": "lead@example.com",
+            "assignment_status": "assigned",
+            "assignment_note": "Review by Monday",
+            "assigned_at": now,
+            "due_at": now - timedelta(days=1),
+            "priority": "urgent",
+            "evidence_answer_run_ids": ["answer-run-1"],
+            "evidence_urls": ["https://examplebrand.com.au/reviews"],
+            "payload": {"source_panel": "runtime_entity_alias_candidates"},
+            "created_at": now,
+            "updated_at": now,
+        }
+        after = {**before, "assignment_status": "escalated", "assignment_note": "escalate overdue assignments"}
+        connection = RecordingConnection(
+            result_sets=[
+                {"id": project_id},
+                [before],
+                after,
+            ]
+        )
+
+        result = PostgresEvidenceRepository(connection).escalate_entity_alias_assignment_overdue_reviews(
+            project_id=project_id,
+            assigned_to="reviewer@example.com",
+            priority="urgent",
+            due_before=now,
+            escalated_by="alias-escalation-worker",
+            reason="escalate overdue assignments",
+        )
+
+        self.assertEqual(result.escalation_count, 1)
+        self.assertEqual(result.escalated_reviews[0]["assignment_status"], "escalated")
+        self.assertEqual(result.audit_events[0]["event_type"], "entity_alias_candidate_assignment_escalated")
+        self.assertEqual(result.audit_events[0]["method_version"], "entity_alias_candidate_assignment_escalation_v1")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM entity_alias_candidate_reviews", executed_sql)
+        self.assertIn("assignment_status = ANY(%s)", executed_sql)
+        self.assertIn("due_at < %s", executed_sql)
+        self.assertIn("FOR UPDATE", executed_sql)
+        self.assertIn("SET assignment_status = 'escalated'", executed_sql)
+        self.assertIn("entity_alias_candidate_assignment_escalated", str(connection.calls))
 
     def test_postgres_repository_assigns_runtime_entity_alias_candidate_review(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

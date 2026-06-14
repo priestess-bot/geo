@@ -1589,6 +1589,15 @@ class EntityAliasAssignmentNotificationRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class EntityAliasAssignmentEscalationRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    assigned_to: str | None = Field(default=None, min_length=1, max_length=120)
+    priority: str | None = Field(default=None, min_length=1, max_length=40)
+    due_before: str | None = Field(default=None, min_length=1, max_length=80)
+    escalated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class RuntimeProjectCreateRequest(BaseModel):
     tenant_name: str = Field(default="Design Partner AU", min_length=1, max_length=160)
     project_name: str = Field(default="AU DTC Evidence Pilot", min_length=1, max_length=160)
@@ -3493,6 +3502,40 @@ def enqueue_runtime_entity_alias_assignment_notifications(
                 priority=payload.priority.strip() if payload.priority else None,
                 due_before=_parse_optional_datetime(payload.due_before),
                 created_by=actor_id or payload.created_by.strip(),
+                reason=payload.reason.strip() if payload.reason else None,
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/entity-aliases/runtime/candidates/assignment-escalations")
+def escalate_runtime_entity_alias_assignment_overdue_reviews(
+    payload: EntityAliasAssignmentEscalationRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id.strip(),
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            record = repository.escalate_entity_alias_assignment_overdue_reviews(
+                project_id=payload.project_id.strip(),
+                assigned_to=payload.assigned_to.strip() if payload.assigned_to else None,
+                priority=payload.priority.strip() if payload.priority else None,
+                due_before=_parse_optional_datetime(payload.due_before),
+                escalated_by=actor_id or payload.escalated_by.strip(),
                 reason=payload.reason.strip() if payload.reason else None,
             )
         except ValueError as exc:
@@ -6399,6 +6442,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/entity-aliases/runtime/candidates/reviews",
             "/v1/entity-aliases/runtime/candidates/assignment-stats",
             "/v1/entity-aliases/runtime/candidates/assignment-notifications",
+            "/v1/entity-aliases/runtime/candidates/assignment-escalations",
             "/v1/entity-aliases/runtime/candidates/review",
             "/v1/entity-aliases/runtime/candidates/review-batch",
             "/v1/entity-aliases/runtime/candidates/assign",

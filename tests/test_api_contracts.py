@@ -58,6 +58,7 @@ from tests.test_au_p0a_execution_checklist import AuP0aExecutionChecklistTest
 from tests.test_au_p0b_google_execution_checklist import AuP0bGoogleExecutionChecklistTest
 from geno_core.models import (
     RuntimeEntityAlias,
+    RuntimeEntityAliasAssignmentEscalationResult,
     RuntimeEntityAliasAssignmentNotificationResult,
     RuntimeEntityAliasCandidateAssignmentQueueStats,
     RuntimeEntityAliasCandidate,
@@ -4874,6 +4875,58 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["due_before"].isoformat(), "2026-06-20T00:00:00+00:00")
         self.assertEqual(fake_repository.kwargs["created_by"], "analyst-1")
 
+    def test_runtime_entity_alias_assignment_escalations_endpoint_passes_payload(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+
+        class FakeRepository:
+            connection = type("Connection", (), {"close": lambda self: None})()
+
+            def escalate_entity_alias_assignment_overdue_reviews(self, **kwargs):
+                self.kwargs = kwargs
+                return RuntimeEntityAliasAssignmentEscalationResult(
+                    project_id=kwargs["project_id"],
+                    escalation_count=1,
+                    skipped_count=0,
+                    escalated_reviews=(
+                        {
+                            "id": "review-1",
+                            "candidate_id": "candidate-1",
+                            "assignment_status": "escalated",
+                        },
+                    ),
+                    audit_events=(
+                        {
+                            "event_type": "entity_alias_candidate_assignment_escalated",
+                            "method_version": "entity_alias_candidate_assignment_escalation_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+            response = self.client.post(
+                "/v1/entity-aliases/runtime/candidates/assignment-escalations",
+                json={
+                    "project_id": project_id,
+                    "assigned_to": "reviewer@example.com",
+                    "priority": "urgent",
+                    "due_before": "2026-06-20T00:00:00Z",
+                    "escalated_by": "lead-1",
+                    "reason": "escalate overdue assignments",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["escalation_count"], 1)
+        self.assertEqual(payload["escalated_reviews"][0]["assignment_status"], "escalated")
+        self.assertEqual(payload["audit_events"][0]["event_type"], "entity_alias_candidate_assignment_escalated")
+        self.assertEqual(fake_repository.kwargs["project_id"], project_id)
+        self.assertEqual(fake_repository.kwargs["assigned_to"], "reviewer@example.com")
+        self.assertEqual(fake_repository.kwargs["priority"], "urgent")
+        self.assertEqual(fake_repository.kwargs["due_before"].isoformat(), "2026-06-20T00:00:00+00:00")
+        self.assertEqual(fake_repository.kwargs["escalated_by"], "lead-1")
+
     def test_runtime_entity_alias_candidate_review_endpoint_records_decision(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         entity_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
@@ -7474,6 +7527,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/entity-aliases/runtime/candidates", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/reviews", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/assignment-notifications", payload["persistence"])
+        self.assertIn("/v1/entity-aliases/runtime/candidates/assignment-escalations", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/review", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/review-batch", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/assign", payload["persistence"])
