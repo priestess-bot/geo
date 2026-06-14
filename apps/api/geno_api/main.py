@@ -96,6 +96,7 @@ from geno_core.models import (
     RuntimeProjectUpdateInput,
     RuntimePromptImportInput,
     RuntimeNotificationEmailFeedbackInput,
+    RuntimeNotificationEmailFeedbackSuppressionInput,
     RuntimeNotificationSubscriptionInput,
     RuntimeNotificationStatusInput,
     RuntimeReportExportJobInput,
@@ -1806,6 +1807,11 @@ class RuntimeNotificationEmailFeedbackRequest(BaseModel):
     occurred_at: datetime | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
     recorded_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationEmailFeedbackSuppressionRequest(BaseModel):
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     reason: str | None = Field(default=None, max_length=500)
 
 
@@ -5765,6 +5771,48 @@ def record_runtime_notification_email_feedback(
         close_repository_connection(repository)
 
 
+@app.post("/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient")
+def apply_runtime_notification_email_feedback_suppression(
+    feedback_event_id: str,
+    payload: RuntimeNotificationEmailFeedbackSuppressionRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_id = repository.get_runtime_notification_email_feedback_project_id(
+            feedback_event_id=feedback_event_id
+        )
+        if project_id is None:
+            raise HTTPException(status_code=404, detail="runtime notification email feedback event not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        record = repository.apply_runtime_notification_email_feedback_suppression(
+            RuntimeNotificationEmailFeedbackSuppressionInput(
+                feedback_event_id=feedback_event_id,
+                updated_by=actor_id or payload.updated_by,
+                reason=payload.reason,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        not_found_errors = {
+            "runtime notification email feedback event not found",
+            "runtime notification subscription not found",
+        }
+        status_code = 404 if str(exc) in not_found_errors else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/runtime-notifications/{notification_id}/status")
 def update_runtime_notification_status(
     notification_id: str,
@@ -6790,6 +6838,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeNotificationEmailFeedbackInput",
             "RuntimeNotificationEmailFeedbackPage",
             "RuntimeNotificationEmailFeedbackRequest",
+            "RuntimeNotificationEmailFeedbackSuppressionInput",
+            "RuntimeNotificationEmailFeedbackSuppressionRequest",
             "RuntimeNotificationPage",
             "RuntimeNotificationSubscription",
             "RuntimeNotificationSubscriptionInput",
@@ -6885,6 +6935,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/runtime-notification-subscriptions",
             "/v1/runtime-notification-deliveries",
             "/v1/runtime-notification-email-feedback-events",
+            "/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient",
             "/v1/runtime-notification-deliveries/{delivery_id}/email-feedback",
             "/v1/runtime-notifications/{notification_id}/status",
             "/v1/reports/runtime/{report_export_id}/management-events",

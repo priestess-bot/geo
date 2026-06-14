@@ -1722,6 +1722,13 @@ class RuntimeNotificationEmailFeedbackInput:
 
 
 @dataclass(frozen=True)
+class RuntimeNotificationEmailFeedbackSuppressionInput:
+    feedback_event_id: str
+    updated_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeReportArtifact:
     report_export: dict[str, Any]
     artifact_type: str

@@ -127,6 +127,7 @@ from geno_core.models import (
     RuntimeNotificationEmailFeedback,
     RuntimeNotificationEmailFeedbackInput,
     RuntimeNotificationEmailFeedbackPage,
+    RuntimeNotificationEmailFeedbackSuppressionInput,
     RuntimeNotificationPage,
     RuntimeNotificationStatusInput,
     RuntimeNotificationSubscription,
@@ -7705,6 +7706,84 @@ class CoreContractsTest(unittest.TestCase):
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertNotIn("INSERT INTO runtime_notification_deliveries", executed_sql)
 
+    def test_postgres_repository_suppresses_email_notification_delivery_by_recipient_hash(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        muted_hash = runtime_email_body_hash("muted@example.com")
+        notification_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "runtime_alert",
+            "severity": "critical",
+            "title": "Brand absent in Sydney",
+            "message": "Brand was absent from critical AI search prompts.",
+            "target_type": "runtime_alert",
+            "target_id": "brand_absent:project-1",
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {"alert_type": "brand_absent"},
+            "created_by": "runtime-worker",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        subscription_row = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "email",
+            "endpoint_url": "mailto:ops@example.com,muted@example.com",
+            "event_types": ["runtime_alert"],
+            "severity_threshold": "warning",
+            "status": "active",
+            "metadata": {"email_suppressed_recipient_hashes": [muted_hash]},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        delivery_row = {
+            "id": "118e5c66-7bb4-558e-ab97-e74ef9928b46",
+            "project_id": project_id,
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "channel": "email",
+            "endpoint_url": "mailto:ops@example.com,muted@example.com",
+            "status": "queued",
+            "attempt_count": 0,
+            "max_attempts": 3,
+            "lease_expires_at": None,
+            "next_attempt_at": None,
+            "response_status": None,
+            "response_body_hash": None,
+            "error_message": None,
+            "payload": {"delivery_version": "runtime_notification_delivery_email_v1"},
+            "created_at": now,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        connection = RecordingConnection(result_sets=[[subscription_row], delivery_row])
+        repository = PostgresEvidenceRepository(connection)
+
+        with connection.cursor() as cursor:
+            deliveries, audit_events = repository._enqueue_runtime_notification_deliveries(
+                cursor=cursor,
+                notification=notification_row,
+                updated_by="runtime-worker",
+            )
+
+        self.assertEqual(deliveries[0]["channel"], "email")
+        self.assertEqual(audit_events[0].event_type, "runtime_notification_delivery_queued")
+        delivery_insert_params = next(
+            params for sql, params in connection.calls if "INSERT INTO runtime_notification_deliveries" in sql
+        )
+        self.assertIn("ops@example.com", str(delivery_insert_params[8]))
+        self.assertNotIn('"muted@example.com"', str(delivery_insert_params[8]))
+        self.assertIn(muted_hash, str(delivery_insert_params[8]))
+        self.assertIn(muted_hash, str(audit_events[0].output_refs))
+
     def test_postgres_repository_lists_runtime_notification_deliveries_with_context(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
@@ -8235,6 +8314,97 @@ class CoreContractsTest(unittest.TestCase):
             "FROM runtime_notification_email_feedback_events WHERE project_id = %s AND delivery_id = %s",
             executed_sql,
         )
+
+    def test_postgres_repository_applies_runtime_notification_email_feedback_suppression(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        delivery_id = "118e5c66-7bb4-558e-ab97-e74ef9928b46"
+        feedback_id = "a0129f72-7ac9-48d5-89cf-32d9b897b02d"
+        existing_hash = runtime_email_body_hash("existing@example.com")
+        recipient_hash = runtime_email_body_hash("ops@example.com")
+        feedback_row = {
+            "id": feedback_id,
+            "project_id": project_id,
+            "delivery_id": delivery_id,
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "feedback_type": "complaint",
+            "recipient_hash": recipient_hash,
+            "provider": "smtp",
+            "provider_event_id_hash": runtime_email_body_hash("smtp-feedback-1"),
+            "occurred_at": now,
+            "metadata": {"source": "manual"},
+            "recorded_by": "runtime-console",
+            "created_at": now,
+        }
+        subscription_before = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "email",
+            "endpoint_url": "mailto:ops@example.com,muted@example.com",
+            "event_types": ["runtime_alert"],
+            "severity_threshold": "warning",
+            "status": "active",
+            "metadata": {
+                "source": "api-test",
+                "email_suppressed_recipient_hashes": [existing_hash],
+                "email_suppression_feedback_event_ids": ["existing-feedback"],
+            },
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        subscription_after = {
+            **subscription_before,
+            "metadata": {
+                "source": "api-test",
+                "email_suppressed_recipient_hashes": [existing_hash, recipient_hash],
+                "email_suppression_feedback_event_ids": ["existing-feedback", feedback_id],
+            },
+            "updated_by": "runtime-console",
+        }
+        audit_row = {
+            "id": "2ce4310a-1c5f-4272-8a61-6d8b1aa9ea99",
+            "event_type": "runtime_notification_email_feedback_suppression_applied",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "runtime_notification_subscription",
+            "target_id": subscription_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {"runtime_notification_email_feedback_event_ids": [feedback_id]},
+            "output_refs": {"email_suppression_hashes": [existing_hash, recipient_hash]},
+            "method_version": "runtime_notification_email_feedback_suppression_v1",
+            "reason": "apply complaint suppression",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[feedback_row, subscription_before, subscription_after, [audit_row]])
+
+        record = PostgresEvidenceRepository(connection).apply_runtime_notification_email_feedback_suppression(
+            RuntimeNotificationEmailFeedbackSuppressionInput(
+                feedback_event_id=feedback_id,
+                updated_by="runtime-console",
+                reason="apply complaint suppression",
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeNotificationSubscription)
+        self.assertEqual(record.subscription["metadata"]["email_suppressed_recipient_hashes"], [existing_hash, recipient_hash])
+        self.assertEqual(record.subscription["metadata"]["email_suppression_feedback_event_ids"], ["existing-feedback", feedback_id])
+        self.assertEqual(record.audit_events[0]["event_type"], "runtime_notification_email_feedback_suppression_applied")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("UPDATE runtime_notification_subscriptions SET metadata = %s", executed_sql)
+        update_params = [
+            params for sql, params in connection.calls if "UPDATE runtime_notification_subscriptions SET metadata" in sql
+        ][0]
+        self.assertIn(recipient_hash, str(update_params))
+        self.assertIn(feedback_id, str(update_params))
+        self.assertNotIn("ops@example.com", str(update_params))
 
     def test_postgres_repository_renders_runtime_report_artifact(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

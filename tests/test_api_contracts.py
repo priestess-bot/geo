@@ -7283,6 +7283,60 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["provider"], "smtp")
         self.assertEqual(fake_repository.kwargs["delivery_id"], "delivery-1")
 
+    def test_runtime_notification_email_feedback_suppression_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def get_runtime_notification_email_feedback_project_id(self, *, feedback_event_id: str) -> str:
+                self.feedback_project_lookup = feedback_event_id
+                return "project-1"
+
+            def apply_runtime_notification_email_feedback_suppression(self, suppression: object) -> RuntimeNotificationSubscription:
+                self.suppression = suppression
+                return RuntimeNotificationSubscription(
+                    subscription={
+                        "id": "subscription-1",
+                        "project_id": "project-1",
+                        "channel": "email",
+                        "endpoint_url": "mailto:ops@example.com",
+                        "event_types": ["runtime_alert"],
+                        "severity_threshold": "warning",
+                        "status": "active",
+                        "metadata": {
+                            "email_suppressed_recipient_hashes": ["recipient-hash"],
+                            "email_suppression_feedback_event_ids": [suppression.feedback_event_id],
+                        },
+                        "created_by": "runtime-console",
+                        "updated_by": suppression.updated_by,
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "runtime_notification_email_feedback_suppression_applied",
+                            "method_version": "runtime_notification_email_feedback_suppression_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/runtime-notification-email-feedback-events/feedback-1/suppress-recipient",
+                json={
+                    "updated_by": "runtime-console",
+                    "reason": "apply complaint suppression",
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["subscription"]["metadata"]["email_suppressed_recipient_hashes"], ["recipient-hash"])
+        self.assertEqual(
+            payload["audit_events"][0]["event_type"],
+            "runtime_notification_email_feedback_suppression_applied",
+        )
+        self.assertEqual(fake_repository.feedback_project_lookup, "feedback-1")
+        self.assertEqual(fake_repository.suppression.feedback_event_id, "feedback-1")
+        self.assertEqual(fake_repository.suppression.reason, "apply complaint suppression")
+
     def test_runtime_report_export_job_enqueue_and_status_endpoints_pass_payload(self) -> None:
         class FakeRepository:
             def __init__(self) -> None:
@@ -8141,6 +8195,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeNotificationEmailFeedbackInput", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedbackPage", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedbackRequest", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailFeedbackSuppressionInput", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailFeedbackSuppressionRequest", payload["persistence"])
         self.assertIn("RuntimeReportManagementInput", payload["persistence"])
         self.assertIn("RuntimeReportManagementEventRequest", payload["persistence"])
         self.assertIn("RuntimeActionPlan", payload["persistence"])
@@ -8219,6 +8275,12 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/runtime-notifications", payload["persistence"])
         self.assertIn("/v1/runtime-notification-subscriptions", payload["persistence"])
         self.assertIn("/v1/runtime-notification-deliveries", payload["persistence"])
+        self.assertIn("/v1/runtime-notification-email-feedback-events", payload["persistence"])
+        self.assertIn(
+            "/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient",
+            payload["persistence"],
+        )
+        self.assertIn("/v1/runtime-notification-deliveries/{delivery_id}/email-feedback", payload["persistence"])
         self.assertIn("/v1/runtime-notifications/{notification_id}/status", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/management-events", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/artifact", payload["persistence"])
