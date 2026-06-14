@@ -1020,6 +1020,17 @@ class EntityAliasCandidateAssignmentActionInput:
 
 
 @dataclass(frozen=True)
+class EntityAliasCandidateAssignmentBatchActionInput:
+    project_id: str
+    candidate_ids: tuple[str, ...]
+    action: str
+    updated_by: str = "runtime-console"
+    note: str | None = None
+    force: bool = False
+    continue_on_error: bool = True
+
+
+@dataclass(frozen=True)
 class EntityAliasCandidateAssignmentReassignmentInput:
     project_id: str
     assigned_to: str
@@ -1085,6 +1096,18 @@ class RuntimeEntityAliasAssignmentWorkbench:
     oldest_due_at: datetime | None
     next_due_at: datetime | None
     records: tuple[RuntimeEntityAliasCandidateReview, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeEntityAliasAssignmentBatchActionResult:
+    project_id: str
+    action: str
+    requested_count: int
+    actioned_count: int
+    failed_count: int
+    records: tuple[RuntimeEntityAliasCandidateReview, ...]
+    errors: tuple[dict[str, Any], ...]
+    audit_summary: dict[str, Any]
 
 
 @dataclass(frozen=True)

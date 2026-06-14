@@ -81,6 +81,7 @@ from geno_core.models import (
     AnswerAnalysis,
     CollectionFailureRecord,
     EntityAliasCandidateAssignmentActionInput,
+    EntityAliasCandidateAssignmentBatchActionInput,
     EntityAliasCandidateAssignmentInput,
     EntityAliasCandidateAssignmentReassignmentInput,
     EntityAliasCandidateReviewInput,
@@ -92,6 +93,7 @@ from geno_core.models import (
     RuntimeEntityAlias,
     RuntimeEntityAliasAssignmentReassignmentResult,
     RuntimeEntityAliasAssignmentWorkbench,
+    RuntimeEntityAliasAssignmentBatchActionResult,
     RuntimeEntityAliasAssignmentNotificationResult,
     RuntimeEntityAliasCandidateAssignmentQueueStats,
     RuntimeEntityAliasCandidateBatchReviewResult,
@@ -11688,6 +11690,89 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(record.review["assignment_status"], "unassigned")
         self.assertEqual(record.audit_events[0]["method_version"], "entity_alias_candidate_assignment_action_v1")
         self.assertEqual(connection.commit_count, 1)
+
+    def test_postgres_repository_batch_claims_runtime_entity_alias_candidate_reviews(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        brand_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+        now = datetime(2026, 6, 13, tzinfo=UTC)
+        before_claim = {
+            "id": "60f1e5a4-d1d0-511e-b0c8-15dfc081ee9b",
+            "project_id": project_id,
+            "candidate_id": "candidate-1",
+            "entity_id": brand_id,
+            "entity_kind": "brand",
+            "alias": "ExampleBrand AU",
+            "alias_type": "alias",
+            "source": "evidence_answer_text",
+            "confidence": 0.8,
+            "decision": "needs_review",
+            "reviewed_by": "analyst-1",
+            "reason": "review required",
+            "notes": "Needs reviewer assignment",
+            "assigned_to": None,
+            "assigned_by": None,
+            "assignment_status": "unassigned",
+            "assignment_note": None,
+            "assigned_at": None,
+            "due_at": now + timedelta(days=2),
+            "priority": "normal",
+            "evidence_answer_run_ids": ["answer-run-1"],
+            "evidence_urls": ["https://examplebrand.com.au/reviews"],
+            "payload": {"source_panel": "runtime_entity_alias_candidates"},
+            "created_at": now,
+            "updated_at": now,
+        }
+        after_claim = {
+            **before_claim,
+            "assigned_to": "reviewer@example.com",
+            "assigned_by": "reviewer@example.com",
+            "assignment_status": "assigned",
+            "assignment_note": "Batch claim from workbench",
+            "assigned_at": now,
+        }
+        before_conflict = {**before_claim, "candidate_id": "candidate-2", "assigned_to": "other@example.com"}
+        audit_row = {
+            "id": "audit-batch-claim",
+            "project_id": project_id,
+            "event_type": "entity_alias_candidate_assignment_actioned",
+            "actor_type": "user",
+            "actor_id": "reviewer@example.com",
+            "target_type": "entity_alias_candidate_review",
+            "target_id": before_claim["id"],
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {},
+            "output_refs": {},
+            "method_version": "entity_alias_candidate_assignment_action_v1",
+            "reason": "Batch claim from workbench",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[before_claim, after_claim, [audit_row], before_conflict])
+
+        result = PostgresEvidenceRepository(connection).apply_entity_alias_candidate_assignment_batch_action(
+            EntityAliasCandidateAssignmentBatchActionInput(
+                project_id=project_id,
+                candidate_ids=("candidate-1", "candidate-2"),
+                action="claim",
+                updated_by="reviewer@example.com",
+                note="Batch claim from workbench",
+            )
+        )
+
+        self.assertIsInstance(result, RuntimeEntityAliasAssignmentBatchActionResult)
+        self.assertEqual(result.action, "claim")
+        self.assertEqual(result.requested_count, 2)
+        self.assertEqual(result.actioned_count, 1)
+        self.assertEqual(result.failed_count, 1)
+        self.assertEqual(result.records[0].review["assigned_to"], "reviewer@example.com")
+        self.assertEqual(result.errors[0]["candidate_id"], "candidate-2")
+        self.assertEqual(result.audit_summary["event_type"], "entity_alias_candidate_assignment_batch_actioned")
+        self.assertEqual(result.audit_summary["method_version"], "entity_alias_candidate_assignment_batch_action_v1")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FOR UPDATE", executed_sql)
+        self.assertIn("UPDATE entity_alias_candidate_reviews", executed_sql)
+        self.assertIn("entity_alias_candidate_assignment_batch_actioned", str(connection.calls))
 
     def test_postgres_repository_rejects_assignment_claim_when_already_owned(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

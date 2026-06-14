@@ -22,6 +22,7 @@ from geno_core.models import (
     CollectionFailureRecord,
     CollectionRunSummary,
     EntityAliasCandidateAssignmentActionInput,
+    EntityAliasCandidateAssignmentBatchActionInput,
     EntityAliasCandidateAssignmentReassignmentInput,
     ContentDraft,
     EntityAliasCandidateAssignmentInput,
@@ -60,6 +61,7 @@ from geno_core.models import (
     RuntimeEntityAliasAssignmentEscalationResult,
     RuntimeEntityAliasAssignmentNotificationResult,
     RuntimeEntityAliasAssignmentReassignmentResult,
+    RuntimeEntityAliasAssignmentBatchActionResult,
     RuntimeEntityAliasAssignmentWorkbench,
     RuntimeEntityAliasCandidate,
     RuntimeEntityAliasCandidateAssignmentQueueStats,
@@ -4349,81 +4351,15 @@ class PostgresEvidenceRepository:
         if action_name not in {"claim", "release"}:
             raise ValueError("assignment action must be claim or release")
         with self.connection.cursor() as cursor:
-            before = self._get_entity_alias_candidate_review_for_update(
+            record, _audit_event = self._apply_entity_alias_candidate_assignment_action_locked(
                 cursor=cursor,
                 project_id=project_id,
                 candidate_id=candidate_id,
-                lock=True,
+                action_name=action_name,
+                updated_by=updated_by,
+                note=note,
+                force=action.force,
             )
-            if not before:
-                raise ValueError("entity alias candidate review not found")
-            current_assignee = str(before.get("assigned_to") or "").strip()
-            current_status = str(before.get("assignment_status") or "unassigned").strip().lower()
-            if current_status == "completed":
-                raise ValueError("completed entity alias candidate review cannot be claimed or released")
-            if action_name == "claim":
-                if current_assignee and current_assignee != updated_by and not action.force:
-                    raise ValueError("entity alias candidate review is already assigned")
-                assigned_to: str | None = updated_by
-                assigned_by: str | None = updated_by
-                assignment_status = "in_progress" if current_status == "in_progress" else "assigned"
-                assignment_note = note or before.get("assignment_note")
-                assigned_at_sql = "COALESCE(assigned_at, now())"
-                reason = note or f"claim entity alias candidate review by {updated_by}"
-            else:
-                if current_assignee and current_assignee != updated_by and not action.force:
-                    raise ValueError("entity alias candidate review is assigned to another reviewer")
-                assigned_to = None
-                assigned_by = updated_by
-                assignment_status = "unassigned"
-                assignment_note = note
-                assigned_at_sql = "NULL"
-                reason = note or f"release entity alias candidate review by {updated_by}"
-            cursor.execute(
-                f"""
-                UPDATE entity_alias_candidate_reviews
-                SET assigned_to = %s,
-                    assigned_by = %s,
-                    assignment_status = %s,
-                    assignment_note = %s,
-                    assigned_at = {assigned_at_sql},
-                    updated_at = now()
-                WHERE project_id = %s AND candidate_id = %s
-                """,
-                (
-                    assigned_to,
-                    assigned_by,
-                    assignment_status,
-                    assignment_note,
-                    _uuid(project_id),
-                    candidate_id,
-                ),
-            )
-            record = self._get_entity_alias_candidate_review_for_update(
-                cursor=cursor,
-                project_id=project_id,
-                candidate_id=candidate_id,
-                lock=False,
-            )
-            audit_event = build_audit_event(
-                event_type="entity_alias_candidate_assignment_actioned",
-                project_id=project_id,
-                actor_type="user",
-                actor_id=updated_by,
-                target_type="entity_alias_candidate_review",
-                target_id=str(record["id"]),
-                before=before,
-                after=record,
-                input_refs={"candidate_id": candidate_id, "assignment_action": action_name},
-                output_refs={
-                    "entity_alias_candidate_review_ids": [str(record["id"])],
-                    "assigned_to": record.get("assigned_to"),
-                    "assignment_status": record.get("assignment_status"),
-                },
-                method_version="entity_alias_candidate_assignment_action_v1",
-                reason=reason,
-            )
-            self.save_audit_events((audit_event,), cursor=cursor)
             audit_events = self._load_entity_alias_candidate_review_audit_events(
                 cursor=cursor,
                 project_id=str(record["project_id"]),
@@ -4431,6 +4367,174 @@ class PostgresEvidenceRepository:
             )
         self.connection.commit()
         return RuntimeEntityAliasCandidateReview(review=record, audit_events=audit_events)
+
+    def apply_entity_alias_candidate_assignment_batch_action(
+        self,
+        batch: EntityAliasCandidateAssignmentBatchActionInput,
+    ) -> RuntimeEntityAliasAssignmentBatchActionResult:
+        project_id = batch.project_id.strip()
+        action_name = batch.action.strip().lower()
+        updated_by = batch.updated_by.strip() or "runtime-console"
+        note = batch.note.strip() if batch.note else None
+        candidate_ids = tuple(dict.fromkeys(item.strip() for item in batch.candidate_ids if item.strip()))
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not candidate_ids:
+            raise ValueError("candidate_ids are required")
+        if len(candidate_ids) > 50:
+            raise ValueError("candidate_ids can include at most 50 items")
+        if action_name not in {"claim", "release"}:
+            raise ValueError("assignment action must be claim or release")
+        records: list[RuntimeEntityAliasCandidateReview] = []
+        errors: list[dict[str, Any]] = []
+        audit_events: list[AuditEvent] = []
+        with self.connection.cursor() as cursor:
+            for index, candidate_id in enumerate(candidate_ids):
+                try:
+                    record, audit_event = self._apply_entity_alias_candidate_assignment_action_locked(
+                        cursor=cursor,
+                        project_id=project_id,
+                        candidate_id=candidate_id,
+                        action_name=action_name,
+                        updated_by=updated_by,
+                        note=note,
+                        force=batch.force,
+                    )
+                    audit_events.append(audit_event)
+                    audit_rows = self._load_entity_alias_candidate_review_audit_events(
+                        cursor=cursor,
+                        project_id=str(record["project_id"]),
+                        review_id=str(record["id"]),
+                    )
+                    records.append(RuntimeEntityAliasCandidateReview(review=record, audit_events=audit_rows))
+                except ValueError as exc:
+                    errors.append({"index": index, "candidate_id": candidate_id, "error": str(exc)})
+                    if not batch.continue_on_error:
+                        raise
+            audit_summary = build_audit_event(
+                event_type="entity_alias_candidate_assignment_batch_actioned",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="entity_alias_candidate_review_batch",
+                target_id=_stable_id("entity-alias-assignment-batch-action", project_id, action_name, *candidate_ids),
+                before=None,
+                after={
+                    "action": action_name,
+                    "requested_count": len(candidate_ids),
+                    "actioned_count": len(records),
+                    "failed_count": len(errors),
+                    "candidate_ids": list(candidate_ids),
+                },
+                input_refs={"candidate_ids": list(candidate_ids), "assignment_action": action_name},
+                output_refs={
+                    "entity_alias_candidate_review_ids": [str(record.review["id"]) for record in records],
+                    "candidate_ids": [str(record.review["candidate_id"]) for record in records],
+                    "failed_candidate_ids": [error["candidate_id"] for error in errors],
+                },
+                method_version="entity_alias_candidate_assignment_batch_action_v1",
+                reason=note or f"batch {action_name} entity alias candidate assignments by {updated_by}",
+            )
+            self.save_audit_events((audit_summary,), cursor=cursor)
+        self.connection.commit()
+        return RuntimeEntityAliasAssignmentBatchActionResult(
+            project_id=project_id,
+            action=action_name,
+            requested_count=len(candidate_ids),
+            actioned_count=len(records),
+            failed_count=len(errors),
+            records=tuple(records),
+            errors=tuple(errors),
+            audit_summary=asdict(audit_summary),
+        )
+
+    def _apply_entity_alias_candidate_assignment_action_locked(
+        self,
+        *,
+        cursor: DbCursor,
+        project_id: str,
+        candidate_id: str,
+        action_name: str,
+        updated_by: str,
+        note: str | None,
+        force: bool,
+    ) -> tuple[dict[str, Any], AuditEvent]:
+        before = self._get_entity_alias_candidate_review_for_update(
+            cursor=cursor,
+            project_id=project_id,
+            candidate_id=candidate_id,
+            lock=True,
+        )
+        if not before:
+            raise ValueError("entity alias candidate review not found")
+        current_assignee = str(before.get("assigned_to") or "").strip()
+        current_status = str(before.get("assignment_status") or "unassigned").strip().lower()
+        if current_status == "completed":
+            raise ValueError("completed entity alias candidate review cannot be claimed or released")
+        if action_name == "claim":
+            if current_assignee and current_assignee != updated_by and not force:
+                raise ValueError("entity alias candidate review is already assigned")
+            assigned_to: str | None = updated_by
+            assigned_by: str | None = updated_by
+            assignment_status = "in_progress" if current_status == "in_progress" else "assigned"
+            assignment_note = note or before.get("assignment_note")
+            assigned_at_sql = "COALESCE(assigned_at, now())"
+            reason = note or f"claim entity alias candidate review by {updated_by}"
+        else:
+            if current_assignee and current_assignee != updated_by and not force:
+                raise ValueError("entity alias candidate review is assigned to another reviewer")
+            assigned_to = None
+            assigned_by = updated_by
+            assignment_status = "unassigned"
+            assignment_note = note
+            assigned_at_sql = "NULL"
+            reason = note or f"release entity alias candidate review by {updated_by}"
+        cursor.execute(
+            f"""
+            UPDATE entity_alias_candidate_reviews
+            SET assigned_to = %s,
+                assigned_by = %s,
+                assignment_status = %s,
+                assignment_note = %s,
+                assigned_at = {assigned_at_sql},
+                updated_at = now()
+            WHERE project_id = %s AND candidate_id = %s
+            """,
+            (
+                assigned_to,
+                assigned_by,
+                assignment_status,
+                assignment_note,
+                _uuid(project_id),
+                candidate_id,
+            ),
+        )
+        record = self._get_entity_alias_candidate_review_for_update(
+            cursor=cursor,
+            project_id=project_id,
+            candidate_id=candidate_id,
+            lock=False,
+        )
+        audit_event = build_audit_event(
+            event_type="entity_alias_candidate_assignment_actioned",
+            project_id=project_id,
+            actor_type="user",
+            actor_id=updated_by,
+            target_type="entity_alias_candidate_review",
+            target_id=str(record["id"]),
+            before=before,
+            after=record,
+            input_refs={"candidate_id": candidate_id, "assignment_action": action_name},
+            output_refs={
+                "entity_alias_candidate_review_ids": [str(record["id"])],
+                "assigned_to": record.get("assigned_to"),
+                "assignment_status": record.get("assignment_status"),
+            },
+            method_version="entity_alias_candidate_assignment_action_v1",
+            reason=reason,
+        )
+        self.save_audit_events((audit_event,), cursor=cursor)
+        return record, audit_event
 
     def record_entity_alias_candidate_review(
         self,

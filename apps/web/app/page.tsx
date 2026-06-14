@@ -3449,6 +3449,7 @@ const endpoints = {
   entityAliasAssignmentStats: "/v1/entity-aliases/runtime/candidates/assignment-stats",
   entityAliasAssignmentWorkbench: "/v1/entity-aliases/runtime/candidates/assignment-workbench",
   entityAliasAssignmentAction: "/v1/entity-aliases/runtime/candidates/assignment-action",
+  entityAliasAssignmentBatchAction: "/v1/entity-aliases/runtime/candidates/assignment-actions",
   entityAliasConfirmBatch: "/v1/entity-aliases/runtime/confirm-batch",
   savedViews: "/v1/runtime-saved-views",
   brandKit: "/v1/project-brand-kits/runtime",
@@ -4781,6 +4782,41 @@ async function actionEntityAliasCandidateAssignment(formData: FormData) {
   revalidatePath("/");
 }
 
+async function actionEntityAliasCandidateAssignmentsBatch(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const candidateIds = formData
+    .getAll("candidate_id")
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const action = String(formData.get("action") || "").trim();
+  if (!projectId || !candidateIds.length || !action) {
+    throw new Error("project, candidate_ids, and assignment action are required");
+  }
+  const response = await fetch(`${baseUrl}${endpoints.entityAliasAssignmentBatchAction}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      project_id: projectId,
+      candidate_ids: candidateIds,
+      action,
+      updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
+      note: String(formData.get("note") || "").trim() || undefined,
+      force: String(formData.get("force") || "").trim() === "true",
+      continue_on_error: String(formData.get("continue_on_error") || "true").trim() !== "false"
+    }),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`${endpoints.entityAliasAssignmentBatchAction} returned ${response.status}`);
+  }
+  revalidatePath("/");
+}
+
 async function saveRuntimeNotificationSubscription(formData: FormData) {
   "use server";
   const baseUrl =
@@ -4999,6 +5035,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasAssignmentStats: endpoints.entityAliasAssignmentStats,
     entityAliasAssignmentWorkbench: endpoints.entityAliasAssignmentWorkbench,
     entityAliasAssignmentAction: endpoints.entityAliasAssignmentAction,
+    entityAliasAssignmentBatchAction: endpoints.entityAliasAssignmentBatchAction,
     entityAliasAssignmentReassignments: endpoints.entityAliasAssignmentReassignments,
     entityAliasConfirmBatch: endpoints.entityAliasConfirmBatch,
     fidelityChecks: runtimePath(endpoints.fidelityChecks, {
@@ -9570,11 +9607,46 @@ export default async function Home({
 	                    {data.entityAliasAssignmentWorkbench.next_due_at
 	                      ? ` · next due ${dateText(data.entityAliasAssignmentWorkbench.next_due_at)}`
 	                      : " · no next due"}{" "}
-	                    · audit entity_alias_candidate_review_recorded /
-	                    entity_alias_candidate_assignment_actioned / entity_alias_candidate_assignment_reassigned
-	                  </small>
-	                  {data.entityAliasAssignmentWorkbench.records.length ? (
-	                    <ul className="plainList compactList">
+		                    · audit entity_alias_candidate_review_recorded /
+		                    entity_alias_candidate_assignment_actioned /
+		                    entity_alias_candidate_assignment_batch_actioned /
+		                    entity_alias_candidate_assignment_reassigned
+		                  </small>
+		                  {data.entityAliasAssignmentWorkbench.records.length ? (
+		                    <div className="inlineActions">
+		                      {["claim", "release"].map((action) => (
+		                        <form
+		                          action={actionEntityAliasCandidateAssignmentsBatch}
+		                          className="inlineAliasForm"
+		                          key={`batch-${action}`}
+		                        >
+		                          <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+		                          <input type="hidden" name="action" value={action} />
+		                          <input type="hidden" name="updated_by" value="runtime-console" />
+		                          <input type="hidden" name="continue_on_error" value="true" />
+		                          <input
+		                            type="hidden"
+		                            name="note"
+		                            value={`Batch ${action} visible alias reviewer workbench records from Runtime Console`}
+		                          />
+		                          {data.entityAliasAssignmentWorkbench.records.map((record) => (
+		                            <input
+		                              key={`${action}-${record.review.candidate_id}`}
+		                              type="hidden"
+		                              name="candidate_id"
+		                              value={record.review.candidate_id}
+		                            />
+		                          ))}
+		                          <button className="actionButton compactAction" type="submit" disabled={!selectedProjectId}>
+		                            {action === "claim" ? "Claim workbench records" : "Release workbench records"}
+		                          </button>
+		                          <small>{endpoints.entityAliasAssignmentBatchAction}</small>
+		                        </form>
+		                      ))}
+		                    </div>
+		                  ) : null}
+		                  {data.entityAliasAssignmentWorkbench.records.length ? (
+		                    <ul className="plainList compactList">
 	                      {data.entityAliasAssignmentWorkbench.records.slice(0, 4).map((record) => (
 	                        <li key={`workbench-${record.review.id}`}>
 	                          <strong>
