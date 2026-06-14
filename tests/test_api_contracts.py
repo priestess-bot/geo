@@ -1412,6 +1412,42 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(payload["source_handoff_dossier"]["handoff_dossier_hash"])
         self.assertTrue(payload["next_work_item_packet_hash"])
 
+    def test_au_delivery_progress_endpoint_returns_current_machine_readable_progress(self) -> None:
+        helper = AuHandoffDossierTest()
+        helper.setUp()
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
+            status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
+            plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
+            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geno_api.main.build_au_launch_remediation_plan",
+                return_value=plan_payload,
+            ):
+                response = self.client.get("/v1/delivery-progress/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["delivery_progress_version"], "au_delivery_progress_v1")
+        self.assertEqual(payload["status"], "pass")
+        self.assertTrue(payload["delivery_progress_ready"])
+        self.assertFalse(payload["ready_for_customer_report_handoff"])
+        self.assertEqual(payload["summary"]["engineering_progress_percent"], 46.2)
+        self.assertEqual(payload["summary"]["customer_report_handoff_readiness_percent"], 10.0)
+        self.assertEqual(payload["summary"]["structural_auditability_percent"], 100.0)
+        self.assertEqual(payload["summary"]["ready_progress_gate_count"], 6)
+        self.assertEqual(payload["summary"]["total_progress_gate_count"], 13)
+        self.assertEqual(payload["summary"]["blocked_progress_gate_count"], 7)
+        self.assertIn("p0a_credentials_fulfilled", payload["summary"]["blocked_progress_gate_ids"])
+        self.assertEqual(payload["summary"]["next_work_item_id"], "p0a_environment")
+        self.assertEqual(payload["summary"]["current_clearance_step_id"], "p0a_provider_credentials")
+        self.assertEqual(payload["summary"]["next_command"], "make verify-au-p0a-env-template")
+        self.assertEqual(payload["runtime_endpoints"]["delivery_progress"], "GET /v1/delivery-progress/au")
+        self.assertIn("make verify-au-delivery-progress", payload["hard_gate_commands"])
+        self.assertTrue(any(command.endswith("--require-customer-ready") for command in payload["hard_gate_commands"]))
+        self.assertEqual(payload["source_artifacts"]["next_work_item"]["hash_field"], "next_work_item_packet_hash")
+        self.assertEqual(payload["verifiers"]["next_work_item"]["status"], "pass")
+        self.assertTrue(payload["delivery_progress_hash"])
+
     def test_au_p0a_credential_request_endpoint_returns_current_handoff_packet(self) -> None:
         response = self.client.get("/v1/p0a-credential-request/au")
 
@@ -7094,6 +7130,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/handoff-dossier/au", payload["persistence"])
         self.assertIn("/v1/customer-handoff-readiness/au", payload["persistence"])
         self.assertIn("/v1/next-work-item/au", payload["persistence"])
+        self.assertIn("/v1/delivery-progress/au", payload["persistence"])
         self.assertIn("/v1/external-dependency-handoff/au", payload["persistence"])
         self.assertIn("/v1/external-dependency-clearance/au", payload["persistence"])
         self.assertIn("/metrics", payload["persistence"])

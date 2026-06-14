@@ -735,6 +735,7 @@ type RuntimeData = {
   handoffDossier: AuHandoffDossier | null;
   customerHandoffReadiness: AuCustomerHandoffReadiness | null;
   nextWorkItemPacket: AuNextWorkItemPacket | null;
+  deliveryProgress: AuDeliveryProgress | null;
   projects: PageResponse<RuntimeProject>;
   projectLifecycleEvents: PageResponse<RuntimeProjectLifecycleEvent>;
   auditEvents: PageResponse<RuntimeAuditEvent>;
@@ -1201,6 +1202,63 @@ type AuCustomerHandoffReadiness = {
     customer_handoff_readiness?: string;
     handoff_dossier?: string;
     launch_status?: string;
+    external_dependency_handoff?: string;
+    external_dependency_clearance?: string;
+  };
+  hard_gate_commands?: string[];
+};
+
+type AuDeliveryProgress = {
+  delivery_progress_version: string;
+  generated_at: string;
+  status: string;
+  delivery_progress_ready: boolean;
+  ready_for_customer_report_handoff: boolean;
+  delivery_progress_hash: string;
+  summary?: {
+    engineering_progress_percent?: number;
+    customer_report_handoff_readiness_percent?: number;
+    structural_auditability_percent?: number;
+    ready_progress_gate_count?: number;
+    total_progress_gate_count?: number;
+    blocked_progress_gate_count?: number;
+    blocked_progress_gate_ids?: string[];
+    blocked_customer_gate_count?: number;
+    blocked_customer_gate_ids?: string[];
+    remaining_blocker_count?: number;
+    external_dependency_blocker_count?: number;
+    next_action?: string;
+    next_work_item_id?: string;
+    next_work_item_title?: string;
+    next_work_item_stage?: string;
+    next_command?: string;
+    current_clearance_step_id?: string;
+    would_execute_step_count?: number;
+    external_dependency_handoff_ready?: boolean;
+    handoff_posture?: string;
+    launch_status_hash?: string;
+    handoff_dossier_hash?: string;
+    customer_handoff_readiness_hash?: string;
+    next_work_item_packet_hash?: string;
+    external_dependency_handoff_hash?: string;
+    clearance_execution_hash?: string;
+  };
+  progress_gates?: Array<{
+    id?: string;
+    label?: string;
+    ready?: boolean;
+    status?: string;
+    source?: string;
+    evidence_ref?: string;
+    customer_gate_ids?: string[];
+    blocking_reasons?: string[];
+  }>;
+  runtime_endpoints?: {
+    delivery_progress?: string;
+    launch_status?: string;
+    handoff_dossier?: string;
+    customer_handoff_readiness?: string;
+    next_work_item?: string;
     external_dependency_handoff?: string;
     external_dependency_clearance?: string;
   };
@@ -2784,6 +2842,7 @@ const endpoints = {
   handoffDossier: "/v1/handoff-dossier/au",
   customerHandoffReadiness: "/v1/customer-handoff-readiness/au",
   nextWorkItem: "/v1/next-work-item/au",
+  deliveryProgress: "/v1/delivery-progress/au",
   projects: "/v1/projects/runtime",
   projectAction: "/v1/projects/runtime/action",
   projectLifecycleEvents: "/v1/projects/runtime/lifecycle-events",
@@ -4208,6 +4267,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     handoffDossier: endpoints.handoffDossier,
     customerHandoffReadiness: endpoints.customerHandoffReadiness,
     nextWorkItem: endpoints.nextWorkItem,
+    deliveryProgress: endpoints.deliveryProgress,
     projects: runtimePath(endpoints.projects, projectListParams),
     projectAction: endpoints.projectAction,
     projectLifecycleEvents: endpoints.projectLifecycleEvents,
@@ -4533,6 +4593,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     handoffDossier,
     customerHandoffReadiness,
     nextWorkItemPacket,
+    deliveryProgress,
     prompts,
     projectLifecycleEvents,
     auditEvents,
@@ -4614,6 +4675,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuHandoffDossier | null>(baseUrl, paths.handoffDossier, null),
     fetchRuntimeEndpoint<AuCustomerHandoffReadiness | null>(baseUrl, paths.customerHandoffReadiness, null),
     fetchRuntimeEndpoint<AuNextWorkItemPacket | null>(baseUrl, paths.nextWorkItem, null),
+    fetchRuntimeEndpoint<AuDeliveryProgress | null>(baseUrl, paths.deliveryProgress, null),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
     selectedProjectId
       ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectLifecycleEvent>>(
@@ -4787,6 +4849,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     handoffDossier,
     customerHandoffReadiness,
     nextWorkItemPacket,
+    deliveryProgress,
     projects,
     prompts,
     projectLifecycleEvents,
@@ -4853,6 +4916,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       handoffDossier: handoffDossier.payload,
       customerHandoffReadiness: customerHandoffReadiness.payload,
       nextWorkItemPacket: nextWorkItemPacket.payload,
+      deliveryProgress: deliveryProgress.payload,
       projects: projects.payload,
       projectLifecycleEvents: projectLifecycleEvents.payload,
       auditEvents: auditEvents.payload,
@@ -5300,6 +5364,11 @@ export default async function Home({
   const nextWorkItemLinkedRequest = nextWorkItemExecutionContext?.linked_request_packet;
   const nextWorkItemLinkedDependencyGroup = nextWorkItemExecutionContext?.linked_dependency_group;
   const nextWorkItemRecommendedSequence = nextWorkItemExecutionContext?.recommended_sequence || [];
+  const deliveryProgress = data.deliveryProgress;
+  const deliveryProgressSummary = deliveryProgress?.summary;
+  const deliveryProgressGates = deliveryProgress?.progress_gates || [];
+  const blockedDeliveryProgressGateIds = deliveryProgressSummary?.blocked_progress_gate_ids || [];
+  const topDeliveryProgressGates = deliveryProgressGates.slice(0, 8);
   const scoreWeightConfig = data.scoreWeights?.score_weight_config || null;
   const savedScoreWeightConfig = scoreWeightConfig?.id ? scoreWeightConfig : null;
   const scoreWeightAuditEvent = data.scoreWeights?.audit_events[0]?.event_type || "default weights";
@@ -6801,6 +6870,70 @@ export default async function Home({
             </span>
           </div>
           <code>{paths.handoffDossier}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>AU delivery progress</strong>
+            <span>
+              {deliveryProgress?.delivery_progress_version || "au_delivery_progress_v1"} · delivery_progress_hash{" "}
+              {shortHash(deliveryProgress?.delivery_progress_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>Engineering progress {deliveryProgressSummary?.engineering_progress_percent ?? 0}%</span>
+            <span>
+              Customer readiness {deliveryProgressSummary?.customer_report_handoff_readiness_percent ?? 0}%
+            </span>
+            <span>Auditability {deliveryProgressSummary?.structural_auditability_percent ?? 0}%</span>
+            <span>Progress ready {deliveryProgress?.delivery_progress_ready ? "yes" : "no"}</span>
+            <span>
+              Customer report {deliveryProgress?.ready_for_customer_report_handoff ? "ready" : "blocked"}
+            </span>
+            <span>Status {deliveryProgress?.status || "unknown"}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>
+              Progress gates {deliveryProgressSummary?.ready_progress_gate_count || 0}/
+              {deliveryProgressSummary?.total_progress_gate_count || 0} · blocked{" "}
+              {deliveryProgressSummary?.blocked_progress_gate_count || 0}
+            </span>
+            <span>
+              Customer gates blocked {deliveryProgressSummary?.blocked_customer_gate_count || 0}
+            </span>
+            <span>Remaining blockers {deliveryProgressSummary?.remaining_blocker_count || 0}</span>
+            <span>External blockers {deliveryProgressSummary?.external_dependency_blocker_count || 0}</span>
+            <span>Next work item {deliveryProgressSummary?.next_work_item_id || "none"}</span>
+            <span>Next stage {deliveryProgressSummary?.next_work_item_stage || "none"}</span>
+            <span>Next command {deliveryProgressSummary?.next_command || "none"}</span>
+            <span>Clearance step {deliveryProgressSummary?.current_clearance_step_id || "none"}</span>
+            <span>Would execute {deliveryProgressSummary?.would_execute_step_count || 0}</span>
+            <span>Handoff posture {deliveryProgressSummary?.handoff_posture || "unknown"}</span>
+            <span>
+              Blocked progress gates {blockedDeliveryProgressGateIds.slice(0, 6).join(", ") || "none"}
+            </span>
+            <span>Launch hash {shortHash(deliveryProgressSummary?.launch_status_hash)}</span>
+            <span>Readiness hash {shortHash(deliveryProgressSummary?.customer_handoff_readiness_hash)}</span>
+            <span>Next item hash {shortHash(deliveryProgressSummary?.next_work_item_packet_hash)}</span>
+            <span>
+              {deliveryProgress?.runtime_endpoints?.delivery_progress || "GET /v1/delivery-progress/au"}
+            </span>
+            <span>Hard gate: make verify-au-delivery-progress</span>
+          </div>
+          {topDeliveryProgressGates.length ? (
+            <div className="dependencyGroupGrid">
+              {topDeliveryProgressGates.map((gate) => (
+                <div className="dependencyGroup" key={gate.id || gate.label}>
+                  <strong>{gate.label || gate.id}</strong>
+                  <span>
+                    {gate.ready ? "ready" : "blocked"} · {gate.source || "source"}
+                  </span>
+                  <small>{gate.evidence_ref || "no evidence ref"}</small>
+                  <small>{(gate.blocking_reasons || []).slice(0, 2).join(" · ") || "gate clear"}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <code>{paths.deliveryProgress}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">

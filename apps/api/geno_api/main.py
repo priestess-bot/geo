@@ -141,6 +141,10 @@ from scripts.build_au_next_work_item_packet import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_NEXT_WORK_ITEM_OUTPUT_PATH,
     build_au_next_work_item_packet,
 )
+from scripts.build_au_delivery_progress import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_DELIVERY_PROGRESS_OUTPUT_PATH,
+    build_au_delivery_progress,
+)
 from scripts.build_au_p0a_credential_request_packet import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH,
     build_au_p0a_credential_request_packet,
@@ -2209,6 +2213,65 @@ def au_next_work_item() -> dict[str, object]:
         handoff_dossier=au_handoff_dossier(),
         external_dependency_handoff=_build_au_external_dependency_handoff_from_env(),
         output_path=Path(os.getenv("GENO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_AU_NEXT_WORK_ITEM_OUTPUT_PATH)),
+    )
+
+
+@app.get("/v1/delivery-progress/au")
+def au_delivery_progress() -> dict[str, object]:
+    launch_status_path = Path(os.getenv("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH))
+    handoff_dossier_path = Path(
+        os.getenv("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH)
+    )
+    customer_handoff_readiness_path = Path(
+        os.getenv(
+            "GENO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH",
+            DEFAULT_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH,
+        )
+    )
+    next_work_item_path = Path(os.getenv("GENO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_AU_NEXT_WORK_ITEM_OUTPUT_PATH))
+    external_dependency_handoff_path = Path(
+        os.getenv(
+            "GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
+        )
+    )
+    external_dependency_clearance_path = Path(
+        os.getenv(
+            "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    launch_status = _build_au_launch_status_from_env()
+    handoff_dossier = au_handoff_dossier()
+    external_dependency_handoff = _build_au_external_dependency_handoff_from_env()
+    return build_au_delivery_progress(
+        launch_status_path=launch_status_path,
+        handoff_dossier_path=handoff_dossier_path,
+        customer_handoff_readiness_path=customer_handoff_readiness_path,
+        next_work_item_path=next_work_item_path,
+        external_dependency_handoff_path=external_dependency_handoff_path,
+        external_dependency_clearance_path=external_dependency_clearance_path,
+        launch_status=launch_status,
+        handoff_dossier=handoff_dossier,
+        customer_handoff_readiness=build_au_customer_handoff_readiness(
+            handoff_dossier_path=handoff_dossier_path,
+            handoff_dossier=handoff_dossier,
+            output_path=customer_handoff_readiness_path,
+        ),
+        next_work_item=build_au_next_work_item_packet(
+            handoff_dossier_path=handoff_dossier_path,
+            external_dependency_handoff_path=external_dependency_handoff_path,
+            handoff_dossier=handoff_dossier,
+            external_dependency_handoff=external_dependency_handoff,
+            output_path=next_work_item_path,
+        ),
+        external_dependency_handoff=external_dependency_handoff,
+        external_dependency_clearance=run_au_external_dependency_clearance(
+            handoff_path=external_dependency_handoff_path,
+            handoff=external_dependency_handoff,
+            output_path=external_dependency_clearance_path,
+        ),
+        output_path=Path(os.getenv("GENO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", DEFAULT_AU_DELIVERY_PROGRESS_OUTPUT_PATH)),
     )
 
 
@@ -6057,6 +6120,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/handoff-dossier/au",
             "/v1/customer-handoff-readiness/au",
             "/v1/next-work-item/au",
+            "/v1/delivery-progress/au",
             "/v1/external-dependency-handoff/au",
             "/v1/external-dependency-clearance/au",
             "/metrics",
