@@ -1547,6 +1547,8 @@ EntityAlias
 
 补充状态：assignment workload 决策依据已补齐。`GET /v1/entity-aliases/runtime/candidates/assignment-workload` 会按 project 读取 `assigned/in_progress/blocked/escalated` active review，并按 reviewer 或 `unassigned` 聚合为 `entity_alias_assignment_workload_v1`：顶层返回 `total_active_count/reviewer_count/unassigned_count/overdue_count/due_soon_count/escalated_count/blocked_count`，每个 `reviewer_loads` 项返回 active、overdue、due soon、escalated、blocked、urgent/high、status_counts、priority_counts、oldest_due_at 和 next_due_at，并按 unassigned、escalated、overdue、urgent、active count 排序。Runtime Console 已新增 `Alias Reviewer Workload` 面板，和 `Alias Reviewer Workbench` 同源展示 workload endpoint、active statuses 与 reviewer loads。该读模型提供后续自动调度、值班分配或容量均衡的可解释依据，但它本身不自动改派、不写 assignment 状态、不生成动作审计，也不替代 claim/release、escalation、reassignment 或人工审批记录。
 
+补充状态：assignment dispatch dry-run 计划已补齐。`GET /v1/entity-aliases/runtime/candidates/assignment-dispatch-plan` 会读取同项目 workload，再按 `include_statuses`（默认 `unassigned,escalated`）、可选 `reviewer_ids`、`max_per_reviewer` 和 `limit` 生成 `entity_alias_assignment_dispatch_plan_v1`。计划使用 `least_loaded_round_robin` 策略，把待处理候选按 escalated/blocked/unassigned、overdue、priority、due date、updated_at 排序，并在 reviewer capacity 内输出 `proposed_assignments`，同时把缺少 eligible reviewer 或 capacity exhausted 的候选写入 `skipped_candidates`；顶层固定 `dry_run=true`、`source_summary`、workload 方法版本和“不会写 assignment 状态”的 invariant。Runtime Console 已新增 `Alias Assignment Dispatch Plan` 面板，展示候选数、计划数、跳过数、reviewer capacity、reviewer_loads 和推荐派单列表。该计划是后续自动调度 apply、值班排班或容量均衡的可审计输入，不会替代现有 `assign/reassign/claim/release/escalate` 写入动作，也不会生成动作审计；真正自动改派必须另接显式 apply endpoint 并逐条写审计。
+
 ### 8.15 CollectionCost（单位经济，新增）
 
 跟踪每次采集与分析的成本，支撑定价与 unit economics。

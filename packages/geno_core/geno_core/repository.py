@@ -26,6 +26,7 @@ from geno_core.models import (
     EntityAliasCandidateAssignmentReassignmentInput,
     ContentDraft,
     EntityAliasCandidateAssignmentInput,
+    EntityAliasAssignmentDispatchPlanInput,
     EntityAliasCandidateReviewInput,
     EntityAliasInput,
     IntegrationConnector,
@@ -62,6 +63,7 @@ from geno_core.models import (
     RuntimeEntityAliasAssignmentNotificationResult,
     RuntimeEntityAliasAssignmentReassignmentResult,
     RuntimeEntityAliasAssignmentBatchActionResult,
+    RuntimeEntityAliasAssignmentDispatchPlan,
     RuntimeEntityAliasAssignmentWorkbench,
     RuntimeEntityAliasAssignmentWorkloadSummary,
     RuntimeEntityAliasCandidate,
@@ -3996,6 +3998,191 @@ class PostgresEvidenceRepository:
             escalated_count=escalated_count,
             blocked_count=blocked_count,
             reviewer_loads=tuple(normalized_loads),
+        )
+
+    def build_entity_alias_assignment_dispatch_plan(
+        self,
+        plan_input: EntityAliasAssignmentDispatchPlanInput,
+    ) -> RuntimeEntityAliasAssignmentDispatchPlan:
+        project_id = plan_input.project_id.strip()
+        if not project_id:
+            raise ValueError("project_id is required")
+        include_statuses = tuple(
+            dict.fromkeys(
+                status.strip().lower()
+                for status in (plan_input.include_statuses or ("unassigned", "escalated"))
+                if status.strip()
+            )
+        )
+        if not include_statuses:
+            raise ValueError("include_statuses are required")
+        allowed_statuses = {"unassigned", "assigned", "in_progress", "blocked", "escalated"}
+        invalid_statuses = [status for status in include_statuses if status not in allowed_statuses]
+        if invalid_statuses:
+            raise ValueError(f"unsupported include_statuses: {', '.join(invalid_statuses)}")
+        max_per_reviewer = max(1, min(int(plan_input.max_per_reviewer or 10), 200))
+        limit = max(1, min(int(plan_input.limit or 50), 200))
+        strategy = plan_input.strategy.strip() or "least_loaded_round_robin"
+        if strategy != "least_loaded_round_robin":
+            raise ValueError("strategy must be least_loaded_round_robin")
+        generated_at = datetime.now(UTC)
+        workload = self.get_entity_alias_assignment_workload_summary(
+            project_id=project_id,
+            due_soon_before=plan_input.due_soon_before,
+        )
+        explicit_reviewer_ids = tuple(
+            dict.fromkeys(reviewer.strip() for reviewer in plan_input.reviewer_ids if reviewer.strip())
+        )
+        inferred_reviewer_ids = tuple(
+            str(load["reviewer_id"])
+            for load in workload.reviewer_loads
+            if str(load.get("reviewer_id") or "") != "unassigned"
+        )
+        reviewer_ids = explicit_reviewer_ids or inferred_reviewer_ids
+        reviewer_loads: dict[str, dict[str, Any]] = {}
+        workload_by_reviewer = {str(load["reviewer_id"]): load for load in workload.reviewer_loads}
+        for reviewer_id in reviewer_ids:
+            current_load = workload_by_reviewer.get(reviewer_id, {})
+            active_count = int(current_load.get("active_count") or 0)
+            reviewer_loads[reviewer_id] = {
+                "reviewer_id": reviewer_id,
+                "current_active_count": active_count,
+                "planned_assignment_count": 0,
+                "planned_active_count": active_count,
+                "capacity_remaining": max(0, max_per_reviewer - active_count),
+                "over_capacity": active_count >= max_per_reviewer,
+                "status_counts": dict(current_load.get("status_counts") or {}),
+                "priority_counts": dict(current_load.get("priority_counts") or {}),
+                "next_due_at": current_load.get("next_due_at"),
+            }
+        filters = ["project_id = %s"]
+        params: list[Any] = [_uuid(project_id)]
+        status_filters: list[str] = []
+        if "unassigned" in include_statuses:
+            status_filters.append("(assignment_status = 'unassigned' OR assigned_to IS NULL OR assigned_to = '')")
+        concrete_statuses = [status for status in include_statuses if status != "unassigned"]
+        if concrete_statuses:
+            status_filters.append("assignment_status = ANY(%s)")
+            params.append(concrete_statuses)
+        filters.append(f"({' OR '.join(status_filters)})")
+        where_clause = f"WHERE {' AND '.join(filters)}"
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)}
+                FROM entity_alias_candidate_reviews
+                {where_clause}
+                ORDER BY
+                  CASE assignment_status
+                    WHEN 'escalated' THEN 0
+                    WHEN 'blocked' THEN 1
+                    WHEN 'unassigned' THEN 2
+                    WHEN 'assigned' THEN 3
+                    WHEN 'in_progress' THEN 4
+                    ELSE 5
+                  END,
+                  CASE WHEN due_at IS NOT NULL AND due_at < now() THEN 0 ELSE 1 END,
+                  CASE priority
+                    WHEN 'urgent' THEN 0
+                    WHEN 'high' THEN 1
+                    WHEN 'normal' THEN 2
+                    WHEN 'low' THEN 3
+                    ELSE 4
+                  END,
+                  due_at NULLS LAST,
+                  updated_at DESC,
+                  candidate_id
+                LIMIT %s
+                """,
+                (*params, limit),
+            )
+            candidates = _rows_dict(cursor.fetchall(), ENTITY_ALIAS_CANDIDATE_REVIEW_COLUMNS)
+        proposed_assignments: list[dict[str, Any]] = []
+        skipped_candidates: list[dict[str, Any]] = []
+        for index, candidate in enumerate(candidates):
+            if not reviewer_loads:
+                skipped_candidates.append(
+                    {
+                        "candidate_id": candidate.get("candidate_id"),
+                        "assignment_status": candidate.get("assignment_status"),
+                        "reason": "no eligible reviewers",
+                    }
+                )
+                continue
+            available_loads = [
+                load for load in reviewer_loads.values() if int(load["capacity_remaining"]) > 0
+            ]
+            if not available_loads:
+                skipped_candidates.append(
+                    {
+                        "candidate_id": candidate.get("candidate_id"),
+                        "assignment_status": candidate.get("assignment_status"),
+                        "reason": "reviewer capacity exhausted",
+                    }
+                )
+                continue
+            selected_load = sorted(
+                available_loads,
+                key=lambda load: (
+                    int(load["planned_active_count"]),
+                    int(load["planned_assignment_count"]),
+                    str(load["reviewer_id"]),
+                ),
+            )[0]
+            selected_load["planned_assignment_count"] += 1
+            selected_load["planned_active_count"] += 1
+            selected_load["capacity_remaining"] = max(0, int(selected_load["capacity_remaining"]) - 1)
+            proposed_assignments.append(
+                {
+                    "order": len(proposed_assignments) + 1,
+                    "source_index": index,
+                    "review_id": str(candidate.get("id") or ""),
+                    "candidate_id": str(candidate.get("candidate_id") or ""),
+                    "alias": candidate.get("alias"),
+                    "entity_kind": candidate.get("entity_kind"),
+                    "current_assigned_to": candidate.get("assigned_to"),
+                    "current_assignment_status": candidate.get("assignment_status"),
+                    "priority": candidate.get("priority"),
+                    "due_at": candidate.get("due_at"),
+                    "recommended_assigned_to": selected_load["reviewer_id"],
+                    "recommended_assignment_status": "assigned",
+                    "reason": "least loaded eligible reviewer within capacity",
+                }
+            )
+        normalized_reviewer_loads = tuple(
+            sorted(
+                reviewer_loads.values(),
+                key=lambda load: (
+                    -int(load["planned_assignment_count"]),
+                    int(load["planned_active_count"]),
+                    str(load["reviewer_id"]),
+                ),
+            )
+        )
+        return RuntimeEntityAliasAssignmentDispatchPlan(
+            project_id=project_id,
+            generated_at=generated_at,
+            method_version="entity_alias_assignment_dispatch_plan_v1",
+            dry_run=True,
+            strategy=strategy,
+            include_statuses=include_statuses,
+            reviewer_ids=reviewer_ids,
+            active_statuses=workload.active_statuses,
+            max_per_reviewer=max_per_reviewer,
+            candidate_count=len(candidates),
+            planned_assignment_count=len(proposed_assignments),
+            skipped_count=len(skipped_candidates),
+            reviewer_loads=normalized_reviewer_loads,
+            proposed_assignments=tuple(proposed_assignments),
+            skipped_candidates=tuple(skipped_candidates),
+            source_summary={
+                "workload_method_version": workload.method_version,
+                "workload_generated_at": workload.generated_at,
+                "workload_total_active_count": workload.total_active_count,
+                "workload_unassigned_count": workload.unassigned_count,
+                "workload_reviewer_count": workload.reviewer_count,
+                "dry_run_does_not_write_assignment_state": True,
+            },
         )
 
     def enqueue_entity_alias_assignment_overdue_notifications(

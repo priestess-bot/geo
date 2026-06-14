@@ -84,6 +84,7 @@ from geno_core.models import (
     EntityAliasCandidateAssignmentBatchActionInput,
     EntityAliasCandidateAssignmentInput,
     EntityAliasCandidateAssignmentReassignmentInput,
+    EntityAliasAssignmentDispatchPlanInput,
     EntityAliasCandidateReviewInput,
     EntityAliasInput,
     ManualBackfillInput,
@@ -94,6 +95,7 @@ from geno_core.models import (
     RuntimeEntityAliasAssignmentReassignmentResult,
     RuntimeEntityAliasAssignmentWorkbench,
     RuntimeEntityAliasAssignmentWorkloadSummary,
+    RuntimeEntityAliasAssignmentDispatchPlan,
     RuntimeEntityAliasAssignmentBatchActionResult,
     RuntimeEntityAliasAssignmentNotificationResult,
     RuntimeEntityAliasCandidateAssignmentQueueStats,
@@ -11252,6 +11254,106 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("SELECT assignment_status, priority, due_at, assigned_to", executed_sql)
         self.assertIn("FROM entity_alias_candidate_reviews", executed_sql)
         self.assertIn("assignment_status = ANY(%s)", executed_sql)
+
+    def test_postgres_repository_builds_runtime_entity_alias_assignment_dispatch_plan(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        brand_id = "3ba88c1e-3ddc-5075-9ac9-29687d539830"
+        now = datetime.now(UTC)
+        unassigned_review = {
+            "id": "f3990d72-a58f-5963-9e58-3057ba83b5f7",
+            "project_id": project_id,
+            "candidate_id": "candidate-unassigned",
+            "entity_id": brand_id,
+            "entity_kind": "brand",
+            "alias": "ExampleBrand AU",
+            "alias_type": "alias",
+            "source": "evidence_answer_text",
+            "confidence": 0.8,
+            "decision": "needs_review",
+            "reviewed_by": "analyst-1",
+            "reason": "review required",
+            "notes": "Needs reviewer assignment",
+            "assigned_to": None,
+            "assigned_by": None,
+            "assignment_status": "unassigned",
+            "assignment_note": None,
+            "assigned_at": None,
+            "due_at": now + timedelta(days=2),
+            "priority": "high",
+            "evidence_answer_run_ids": ["answer-run-1"],
+            "evidence_urls": ["https://examplebrand.com.au/reviews"],
+            "payload": {"source_panel": "runtime_entity_alias_candidates"},
+            "created_at": now,
+            "updated_at": now,
+        }
+        escalated_review = {
+            **unassigned_review,
+            "id": "7b549d23-e657-5375-8520-b9794c29ab78",
+            "candidate_id": "candidate-escalated",
+            "alias": "Example Brand Australia",
+            "assigned_to": "reviewer-b@example.com",
+            "assignment_status": "escalated",
+            "due_at": now - timedelta(days=1),
+            "priority": "urgent",
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                [
+                    {
+                        "assignment_status": "assigned",
+                        "priority": "normal",
+                        "due_at": now + timedelta(days=3),
+                        "assigned_to": "reviewer-a@example.com",
+                    },
+                    {
+                        "assignment_status": "in_progress",
+                        "priority": "urgent",
+                        "due_at": now + timedelta(days=1),
+                        "assigned_to": "reviewer-b@example.com",
+                    },
+                    {
+                        "assignment_status": "unassigned",
+                        "priority": "high",
+                        "due_at": now + timedelta(days=2),
+                        "assigned_to": None,
+                    },
+                ],
+                [escalated_review, unassigned_review],
+            ]
+        )
+
+        plan = PostgresEvidenceRepository(connection).build_entity_alias_assignment_dispatch_plan(
+            EntityAliasAssignmentDispatchPlanInput(
+                project_id=project_id,
+                reviewer_ids=("reviewer-a@example.com", "reviewer-b@example.com"),
+                include_statuses=("unassigned", "escalated"),
+                max_per_reviewer=2,
+                due_soon_before=now + timedelta(days=7),
+                limit=10,
+            )
+        )
+
+        self.assertIsInstance(plan, RuntimeEntityAliasAssignmentDispatchPlan)
+        self.assertEqual(plan.method_version, "entity_alias_assignment_dispatch_plan_v1")
+        self.assertTrue(plan.dry_run)
+        self.assertEqual(plan.strategy, "least_loaded_round_robin")
+        self.assertEqual(plan.include_statuses, ("unassigned", "escalated"))
+        self.assertEqual(plan.reviewer_ids, ("reviewer-a@example.com", "reviewer-b@example.com"))
+        self.assertEqual(plan.candidate_count, 2)
+        self.assertEqual(plan.planned_assignment_count, 2)
+        self.assertEqual(plan.skipped_count, 0)
+        self.assertEqual(plan.proposed_assignments[0]["candidate_id"], "candidate-escalated")
+        self.assertEqual(plan.proposed_assignments[0]["recommended_assigned_to"], "reviewer-a@example.com")
+        self.assertEqual(plan.proposed_assignments[1]["recommended_assigned_to"], "reviewer-b@example.com")
+        reviewer_a = next(load for load in plan.reviewer_loads if load["reviewer_id"] == "reviewer-a@example.com")
+        self.assertEqual(reviewer_a["planned_assignment_count"], 1)
+        self.assertEqual(reviewer_a["planned_active_count"], 2)
+        self.assertEqual(plan.source_summary["dry_run_does_not_write_assignment_state"], True)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("SELECT assignment_status, priority, due_at, assigned_to", executed_sql)
+        self.assertIn("SELECT id, project_id, candidate_id", executed_sql)
+        self.assertIn("assignment_status = ANY(%s)", executed_sql)
+        self.assertIn("LIMIT %s", executed_sql)
 
     def test_postgres_repository_enqueues_entity_alias_assignment_overdue_notifications(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

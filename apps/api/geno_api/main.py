@@ -73,6 +73,7 @@ from geno_core.models import (
     EntityAliasCandidateAssignmentBatchActionInput,
     EntityAliasCandidateAssignmentInput,
     EntityAliasCandidateAssignmentReassignmentInput,
+    EntityAliasAssignmentDispatchPlanInput,
     EntityAliasCandidateReviewInput,
     EntityAliasInput,
     RuntimeAlertEventInput,
@@ -3554,6 +3555,41 @@ def runtime_entity_alias_assignment_workload(
         close_repository_connection(repository)
 
 
+@app.get("/v1/entity-aliases/runtime/candidates/assignment-dispatch-plan")
+def runtime_entity_alias_assignment_dispatch_plan(
+    project_id: str = Query(min_length=1),
+    reviewer_ids: str | None = Query(default=None, max_length=1200),
+    include_statuses: str = Query(default="unassigned,escalated", min_length=1, max_length=200),
+    max_per_reviewer: int = Query(default=10, ge=1, le=200),
+    due_soon_before: str | None = Query(default=None, min_length=1, max_length=80),
+    limit: int = Query(default=50, ge=1, le=200),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            plan = repository.build_entity_alias_assignment_dispatch_plan(
+                EntityAliasAssignmentDispatchPlanInput(
+                    project_id=project_id.strip(),
+                    reviewer_ids=_parse_csv_tuple(reviewer_ids),
+                    include_statuses=_parse_csv_tuple(include_statuses),
+                    max_per_reviewer=max_per_reviewer,
+                    due_soon_before=_parse_optional_datetime(due_soon_before),
+                    limit=limit,
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return asdict(plan)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/entity-aliases/runtime/candidates/assignment-notifications")
 def enqueue_runtime_entity_alias_assignment_notifications(
     payload: EntityAliasAssignmentNotificationRequest,
@@ -3915,6 +3951,12 @@ def _parse_optional_datetime(value: str | None) -> datetime | None:
         return datetime.fromisoformat(normalized)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="due_at must be an ISO 8601 datetime") from exc
+
+
+def _parse_csv_tuple(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return ()
+    return tuple(dict.fromkeys(item.strip() for item in value.split(",") if item.strip()))
 
 
 @app.post("/v1/entity-aliases/runtime/confirm")
@@ -6325,6 +6367,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasCandidateAssignmentQueueStats",
             "RuntimeEntityAliasAssignmentWorkbench",
             "RuntimeEntityAliasAssignmentWorkloadSummary",
+            "RuntimeEntityAliasAssignmentDispatchPlan",
             "RuntimeEntityAliasAssignmentNotificationResult",
             "RuntimeEntityAliasAssignmentEscalationResult",
             "RuntimeEntityAliasAssignmentReassignmentResult",
@@ -6333,6 +6376,7 @@ def contracts() -> dict[str, list[str]]:
             "EntityAliasCandidateAssignmentBatchActionInput",
             "EntityAliasCandidateAssignmentInput",
             "EntityAliasCandidateAssignmentReassignmentInput",
+            "EntityAliasAssignmentDispatchPlanInput",
             "RuntimeEntityAliasAssignmentBatchActionResult",
             "RuntimeEntityAliasPage",
             "IndustryProfile",
@@ -6528,6 +6572,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeEntityAliasCandidateAssignmentQueueStats",
             "RuntimeEntityAliasAssignmentWorkbench",
             "RuntimeEntityAliasAssignmentWorkloadSummary",
+            "RuntimeEntityAliasAssignmentDispatchPlan",
             "RuntimeEntityAliasAssignmentEscalationResult",
             "RuntimeEntityAliasAssignmentReassignmentResult",
             "RuntimeEntityAliasCandidateBatchReviewResult",
@@ -6536,6 +6581,7 @@ def contracts() -> dict[str, list[str]]:
             "EntityAliasCandidateAssignmentBatchActionInput",
             "EntityAliasCandidateAssignmentInput",
             "EntityAliasCandidateAssignmentReassignmentInput",
+            "EntityAliasAssignmentDispatchPlanInput",
             "RuntimeEntityAliasAssignmentBatchActionResult",
             "EntityAliasCandidateReviewRequest",
             "EntityAliasCandidateBatchReviewRequest",
@@ -6627,6 +6673,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/entity-aliases/runtime/candidates/assignment-stats",
             "/v1/entity-aliases/runtime/candidates/assignment-workbench",
             "/v1/entity-aliases/runtime/candidates/assignment-workload",
+            "/v1/entity-aliases/runtime/candidates/assignment-dispatch-plan",
             "/v1/entity-aliases/runtime/candidates/assignment-notifications",
             "/v1/entity-aliases/runtime/candidates/assignment-escalations",
             "/v1/entity-aliases/runtime/candidates/assignment-reassignments",

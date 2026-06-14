@@ -769,6 +769,7 @@ type RuntimeData = {
   entityAliasAssignmentStats: RuntimeEntityAliasCandidateAssignmentQueueStats;
   entityAliasAssignmentWorkbench: RuntimeEntityAliasAssignmentWorkbench;
   entityAliasAssignmentWorkload: RuntimeEntityAliasAssignmentWorkloadSummary;
+  entityAliasAssignmentDispatchPlan: RuntimeEntityAliasAssignmentDispatchPlan;
   savedViews: PageResponse<RuntimeSavedView>;
   scores: PageResponse<ScoreSnapshot>;
   graphs: PageResponse<CitationGraph>;
@@ -3374,6 +3375,44 @@ type RuntimeEntityAliasAssignmentWorkloadSummary = {
   reviewer_loads: RuntimeEntityAliasAssignmentWorkloadReviewer[];
 };
 
+type RuntimeEntityAliasAssignmentDispatchPlan = {
+  project_id: string;
+  generated_at: string;
+  method_version: string;
+  dry_run: boolean;
+  strategy: string;
+  include_statuses: string[];
+  reviewer_ids: string[];
+  active_statuses: string[];
+  max_per_reviewer: number;
+  candidate_count: number;
+  planned_assignment_count: number;
+  skipped_count: number;
+  reviewer_loads: Array<{
+    reviewer_id: string;
+    current_active_count: number;
+    planned_assignment_count: number;
+    planned_active_count: number;
+    capacity_remaining: number;
+    over_capacity: boolean;
+  }>;
+  proposed_assignments: Array<{
+    order: number;
+    review_id: string;
+    candidate_id: string;
+    alias?: string | null;
+    current_assigned_to?: string | null;
+    current_assignment_status?: string | null;
+    priority?: string | null;
+    due_at?: string | null;
+    recommended_assigned_to: string;
+    recommended_assignment_status: string;
+    reason: string;
+  }>;
+  skipped_candidates: Array<{ candidate_id?: string | null; assignment_status?: string | null; reason: string }>;
+  source_summary: Record<string, unknown>;
+};
+
 type RuntimeFilters = {
   project_id?: string;
   platform?: string;
@@ -3480,6 +3519,7 @@ const endpoints = {
   entityAliasAssignmentStats: "/v1/entity-aliases/runtime/candidates/assignment-stats",
   entityAliasAssignmentWorkbench: "/v1/entity-aliases/runtime/candidates/assignment-workbench",
   entityAliasAssignmentWorkload: "/v1/entity-aliases/runtime/candidates/assignment-workload",
+  entityAliasAssignmentDispatchPlan: "/v1/entity-aliases/runtime/candidates/assignment-dispatch-plan",
   entityAliasAssignmentAction: "/v1/entity-aliases/runtime/candidates/assignment-action",
   entityAliasAssignmentBatchAction: "/v1/entity-aliases/runtime/candidates/assignment-actions",
   entityAliasConfirmBatch: "/v1/entity-aliases/runtime/confirm-batch",
@@ -3570,6 +3610,25 @@ const emptyAliasAssignmentWorkload = (): RuntimeEntityAliasAssignmentWorkloadSum
   escalated_count: 0,
   blocked_count: 0,
   reviewer_loads: []
+});
+
+const emptyAliasAssignmentDispatchPlan = (): RuntimeEntityAliasAssignmentDispatchPlan => ({
+  project_id: "",
+  generated_at: "",
+  method_version: "entity_alias_assignment_dispatch_plan_v1",
+  dry_run: true,
+  strategy: "least_loaded_round_robin",
+  include_statuses: ["unassigned", "escalated"],
+  reviewer_ids: [],
+  active_statuses: ["assigned", "in_progress", "blocked", "escalated"],
+  max_per_reviewer: 10,
+  candidate_count: 0,
+  planned_assignment_count: 0,
+  skipped_count: 0,
+  reviewer_loads: [],
+  proposed_assignments: [],
+  skipped_candidates: [],
+  source_summary: {}
 });
 
 const scoreComponentNames = [
@@ -5082,6 +5141,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasAssignmentStats: endpoints.entityAliasAssignmentStats,
     entityAliasAssignmentWorkbench: endpoints.entityAliasAssignmentWorkbench,
     entityAliasAssignmentWorkload: endpoints.entityAliasAssignmentWorkload,
+    entityAliasAssignmentDispatchPlan: endpoints.entityAliasAssignmentDispatchPlan,
     entityAliasAssignmentAction: endpoints.entityAliasAssignmentAction,
     entityAliasAssignmentBatchAction: endpoints.entityAliasAssignmentBatchAction,
     entityAliasAssignmentReassignments: endpoints.entityAliasAssignmentReassignments,
@@ -5263,6 +5323,14 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
         project_id: selectedProjectId
       })
     : paths.entityAliasAssignmentWorkload;
+  paths.entityAliasAssignmentDispatchPlan = selectedProjectId
+    ? runtimePath(endpoints.entityAliasAssignmentDispatchPlan, {
+        project_id: selectedProjectId,
+        include_statuses: "unassigned,escalated",
+        max_per_reviewer: 10,
+        limit: 20
+      })
+    : paths.entityAliasAssignmentDispatchPlan;
   paths.entityAliasAssignmentEscalations = endpoints.entityAliasAssignmentEscalations;
   paths.entityAliasAssignmentReassignments = endpoints.entityAliasAssignmentReassignments;
   paths.savedViews = runtimePath(endpoints.savedViews, {
@@ -5397,6 +5465,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasAssignmentStats,
     entityAliasAssignmentWorkbench,
     entityAliasAssignmentWorkload,
+    entityAliasAssignmentDispatchPlan,
     savedViews,
     brandKit,
     brandAssets,
@@ -5571,6 +5640,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
           emptyAliasAssignmentWorkload()
         )
       : Promise.resolve({ payload: emptyAliasAssignmentWorkload(), error: null }),
+    selectedProjectId
+      ? fetchRuntimeEndpoint<RuntimeEntityAliasAssignmentDispatchPlan>(
+          baseUrl,
+          paths.entityAliasAssignmentDispatchPlan,
+          emptyAliasAssignmentDispatchPlan()
+        )
+      : Promise.resolve({ payload: emptyAliasAssignmentDispatchPlan(), error: null }),
     fetchRuntimeEndpoint<PageResponse<RuntimeSavedView>>(baseUrl, paths.savedViews, emptyPage<RuntimeSavedView>()),
     selectedProjectId
       ? fetchRuntimeEndpoint<RuntimeProjectBrandKit | null>(baseUrl, paths.brandKit, null, { optionalNotFound: true })
@@ -5692,6 +5768,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasAssignmentStats,
     entityAliasAssignmentWorkbench,
     entityAliasAssignmentWorkload,
+    entityAliasAssignmentDispatchPlan,
     savedViews,
     brandKit,
     brandAssets,
@@ -5775,6 +5852,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       entityAliasAssignmentStats: entityAliasAssignmentStats.payload,
       entityAliasAssignmentWorkbench: entityAliasAssignmentWorkbench.payload,
       entityAliasAssignmentWorkload: entityAliasAssignmentWorkload.payload,
+      entityAliasAssignmentDispatchPlan: entityAliasAssignmentDispatchPlan.payload,
       savedViews: savedViews.payload,
       scores: scores.payload,
       graphs: graphs.payload,
@@ -9786,6 +9864,79 @@ export default async function Home({
 	                    </ul>
 	                  ) : (
 	                    <small>No active reviewer workload records found.</small>
+	                  )}
+	                </div>
+	                <div className="aliasBatchQueue">
+	                  <div className="formHeader">
+	                    <h3>Alias Assignment Dispatch Plan</h3>
+	                    <small>
+	                      {data.entityAliasAssignmentDispatchPlan.planned_assignment_count} planned ·{" "}
+	                      {data.entityAliasAssignmentDispatchPlan.skipped_count} skipped ·{" "}
+	                      {paths.entityAliasAssignmentDispatchPlan}
+	                    </small>
+	                  </div>
+	                  <div className="facts aliasAssignmentStats" aria-label="Alias Assignment Dispatch Plan Stats">
+	                    <div>
+	                      <span>Candidates</span>
+	                      <strong>{data.entityAliasAssignmentDispatchPlan.candidate_count}</strong>
+	                    </div>
+	                    <div>
+	                      <span>Planned</span>
+	                      <strong>{data.entityAliasAssignmentDispatchPlan.planned_assignment_count}</strong>
+	                    </div>
+	                    <div>
+	                      <span>Skipped</span>
+	                      <strong>{data.entityAliasAssignmentDispatchPlan.skipped_count}</strong>
+	                    </div>
+	                    <div>
+	                      <span>Reviewers</span>
+	                      <strong>{data.entityAliasAssignmentDispatchPlan.reviewer_ids.length}</strong>
+	                    </div>
+	                    <div>
+	                      <span>Capacity</span>
+	                      <strong>{data.entityAliasAssignmentDispatchPlan.max_per_reviewer}</strong>
+	                    </div>
+	                  </div>
+	                  <small>
+	                    dispatch plan: {data.entityAliasAssignmentDispatchPlan.method_version} · dry_run{" "}
+	                    {data.entityAliasAssignmentDispatchPlan.dry_run ? "yes" : "no"} · strategy{" "}
+	                    {data.entityAliasAssignmentDispatchPlan.strategy} · include{" "}
+	                    {data.entityAliasAssignmentDispatchPlan.include_statuses.join(", ")}
+	                  </small>
+	                  {data.entityAliasAssignmentDispatchPlan.reviewer_loads.length ? (
+	                    <ul className="plainList compactList">
+	                      {data.entityAliasAssignmentDispatchPlan.reviewer_loads.slice(0, 4).map((load) => (
+	                        <li key={`dispatch-load-${load.reviewer_id}`}>
+	                          <strong>
+	                            {load.reviewer_id} · planned {load.planned_assignment_count}
+	                          </strong>
+	                          <span>
+	                            current {load.current_active_count} · after plan {load.planned_active_count} · remaining{" "}
+	                            {load.capacity_remaining}
+	                          </span>
+	                          <small>{load.over_capacity ? "over capacity before dispatch" : "within capacity"}</small>
+	                        </li>
+	                      ))}
+	                    </ul>
+	                  ) : null}
+	                  {data.entityAliasAssignmentDispatchPlan.proposed_assignments.length ? (
+	                    <ul className="plainList compactList">
+	                      {data.entityAliasAssignmentDispatchPlan.proposed_assignments.slice(0, 5).map((item) => (
+	                        <li key={`dispatch-${item.candidate_id}-${item.order}`}>
+	                          <strong>
+	                            {item.alias || item.candidate_id}{" "}
+	                            {"->"} {item.recommended_assigned_to}
+	                          </strong>
+	                          <span>
+	                            {item.current_assignment_status || "unknown"} · {item.priority || "normal"} ·{" "}
+	                            {item.due_at ? dateText(item.due_at) : "no due date"}
+	                          </span>
+	                          <small>{item.reason}</small>
+	                        </li>
+	                      ))}
+	                    </ul>
+	                  ) : (
+	                    <small>No dispatch assignments planned.</small>
 	                  )}
 	                </div>
 	                {visibleAliasAssignmentQueue.length ? (
