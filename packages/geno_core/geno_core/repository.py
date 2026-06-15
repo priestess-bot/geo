@@ -2572,6 +2572,133 @@ def _render_runtime_traceability_csv(detail: RuntimeTraceabilityDetail) -> str:
     return output.getvalue()
 
 
+def _render_runtime_citation_graphs_csv(page: RuntimeCitationGraphPage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "project_id",
+            "source_node_count",
+            "evidence_link_count",
+            "source_gap_count",
+            "competitor_benchmark_count",
+            "source_graph_id",
+            "source_url_hash",
+            "source_domain",
+            "source_type",
+            "topic",
+            "source_gap_type",
+            "citation_count",
+            "source_answer_run_count",
+            "source_answer_run_ids",
+            "source_prompt_text_hashes",
+            "source_prompt_versions",
+            "source_platforms",
+            "source_cities",
+            "graph_evidence_link_count",
+            "graph_evidence_link_ids",
+            "graph_evidence_relation_types",
+            "graph_evidence_answer_run_ids",
+            "graph_evidence_citation_ids",
+            "source_gap_ids",
+            "source_gap_types",
+            "source_gap_source_types",
+            "source_gap_observed_counts",
+            "source_gap_expected_weights",
+            "source_gap_recommendation_hashes",
+            "competitor_benchmark_ids",
+            "competitor_names",
+            "competitor_metric_scopes",
+            "competitor_payload_keys",
+            "competitor_payload_hashes",
+            "competitor_answer_run_ids",
+            "created_at",
+        ],
+    )
+    writer.writeheader()
+    for graph in page.records:
+        graph_evidence_by_source: dict[str, list[dict[str, Any]]] = {}
+        for link in graph.evidence_links:
+            graph_evidence_by_source.setdefault(str(link.get("source_graph_id") or ""), []).append(link)
+        base_row = {
+            "project_id": graph.project_id,
+            "source_node_count": len(graph.nodes),
+            "evidence_link_count": len(graph.evidence_links),
+            "source_gap_count": len(graph.source_gaps),
+            "competitor_benchmark_count": len(graph.competitor_benchmarks),
+            "source_gap_ids": _pipe_join([gap.get("id") for gap in graph.source_gaps]),
+            "source_gap_types": _pipe_join([gap.get("gap_type") for gap in graph.source_gaps]),
+            "source_gap_source_types": _pipe_join([gap.get("source_type") for gap in graph.source_gaps]),
+            "source_gap_observed_counts": _pipe_join([gap.get("observed_count") for gap in graph.source_gaps]),
+            "source_gap_expected_weights": _pipe_join([gap.get("expected_weight") for gap in graph.source_gaps]),
+            "source_gap_recommendation_hashes": _pipe_join(
+                [_hash_text_field(gap.get("recommendation")) for gap in graph.source_gaps]
+            ),
+            "competitor_benchmark_ids": _pipe_join(
+                [benchmark.get("id") for benchmark in graph.competitor_benchmarks]
+            ),
+            "competitor_names": _pipe_join(
+                [benchmark.get("competitor_name") for benchmark in graph.competitor_benchmarks]
+            ),
+            "competitor_metric_scopes": _pipe_join(
+                [benchmark.get("metric_scope") for benchmark in graph.competitor_benchmarks]
+            ),
+            "competitor_payload_keys": _pipe_join(
+                [
+                    "|".join(sorted(str(key) for key in (benchmark.get("payload") or {})))
+                    if isinstance(benchmark.get("payload"), dict)
+                    else ""
+                    for benchmark in graph.competitor_benchmarks
+                ]
+            ),
+            "competitor_payload_hashes": _pipe_join(
+                [
+                    _artifact_hash(json.dumps(benchmark.get("payload") or {}, ensure_ascii=False, sort_keys=True))
+                    for benchmark in graph.competitor_benchmarks
+                ]
+            ),
+            "competitor_answer_run_ids": _pipe_join(
+                [
+                    _pipe_join(benchmark.get("answer_run_ids"))
+                    for benchmark in graph.competitor_benchmarks
+                ]
+            ),
+        }
+        nodes = graph.nodes or (RuntimeCitationGraphNode(node={}, answer_runs=()),)
+        for item in nodes:
+            node = item.node
+            answer_runs = item.answer_runs
+            source_graph_id = str(node.get("id") or "")
+            links = tuple(graph_evidence_by_source.get(source_graph_id, ()))
+            writer.writerow(
+                {
+                    **base_row,
+                    "source_graph_id": source_graph_id,
+                    "source_url_hash": _hash_text_field(node.get("source_url")),
+                    "source_domain": node.get("source_domain") or "",
+                    "source_type": node.get("source_type") or "",
+                    "topic": node.get("topic") or "",
+                    "source_gap_type": node.get("source_gap_type") or "",
+                    "citation_count": node.get("citation_count") or "",
+                    "source_answer_run_count": len(answer_runs),
+                    "source_answer_run_ids": _pipe_join([run.get("id") for run in answer_runs]),
+                    "source_prompt_text_hashes": _pipe_join(
+                        [_hash_text_field(run.get("prompt_text")) for run in answer_runs]
+                    ),
+                    "source_prompt_versions": _pipe_join([run.get("prompt_version") for run in answer_runs]),
+                    "source_platforms": _pipe_join([run.get("platform") for run in answer_runs]),
+                    "source_cities": _pipe_join([run.get("city") for run in answer_runs]),
+                    "graph_evidence_link_count": len(links),
+                    "graph_evidence_link_ids": _pipe_join([link.get("id") for link in links]),
+                    "graph_evidence_relation_types": _pipe_join([link.get("relation_type") for link in links]),
+                    "graph_evidence_answer_run_ids": _pipe_join([link.get("answer_run_id") for link in links]),
+                    "graph_evidence_citation_ids": _pipe_join([link.get("answer_citation_id") for link in links]),
+                    "created_at": node.get("created_at") or "",
+                }
+            )
+    return output.getvalue()
+
+
 def _render_runtime_action_plans_csv(page: RuntimeActionPlanPage) -> str:
     output = StringIO()
     writer = csv.DictWriter(
@@ -9554,6 +9681,39 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=records,
+        )
+
+    def export_runtime_citation_graphs_csv(
+        self,
+        *,
+        project_id: str,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        normalized_project_id = project_id.strip()
+        if not normalized_project_id:
+            raise ValueError("project_id is required")
+        page = self.list_runtime_citation_graphs(
+            project_id=normalized_project_id,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_citation_graphs_csv(page)
+        row_count = sum(max(1, len(record.nodes)) for record in page.records)
+        filters = {
+            "project_id": normalized_project_id,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_citation_graphs_csv",
+            filename="runtime-citation-graphs.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters=filters,
+            total_count=page.total_count,
+            row_count=row_count,
         )
 
     def list_runtime_report_exports(

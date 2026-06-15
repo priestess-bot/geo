@@ -974,6 +974,17 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Score CSV", page_source)
         self.assertIn("Download score CSV", page_source)
 
+    def test_runtime_console_surfaces_citation_graph_export(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("Citation Graph & Competitors", page_source)
+        self.assertIn('graphs: "/v1/citation-graphs/runtime"', page_source)
+        self.assertIn('graphsExport: "/v1/citation-graphs/runtime/export.csv"', page_source)
+        self.assertIn("citationGraphsExportUrl", page_source)
+        self.assertIn("Graph query", page_source)
+        self.assertIn("Graph CSV", page_source)
+        self.assertIn("Download graph CSV", page_source)
+
     def test_runtime_console_surfaces_entity_alias_batch_review_queue(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")

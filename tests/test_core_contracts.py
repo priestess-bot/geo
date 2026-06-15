@@ -6936,6 +6936,119 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM source_gaps", executed_sql)
         self.assertIn("FROM competitor_benchmarks", executed_sql)
 
+    def test_postgres_repository_exports_runtime_citation_graphs_csv(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        source_graph_id = "41c2fd71-a32f-51a7-92e4-3d4c0f7ab1c2"
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        source_gap_id = "7cc36d44-0f20-5681-8613-3998050e3267"
+        competitor_benchmark_id = "8c6e21aa-5df2-558e-ad5d-220b0de78a98"
+        page = RuntimeCitationGraphPage(
+            total_count=1,
+            limit=10,
+            offset=0,
+            records=(
+                RuntimeCitationGraph(
+                    project_id=project_id,
+                    nodes=(
+                        RuntimeCitationGraphNode(
+                            node={
+                                "id": source_graph_id,
+                                "project_id": project_id,
+                                "source_url": "https://reviews.example/koala",
+                                "source_domain": "reviews.example",
+                                "source_type": "review_site",
+                                "topic": "reviews",
+                                "source_gap_type": None,
+                                "answer_run_ids": [answer_run_id],
+                                "citation_count": 1,
+                                "created_at": now,
+                            },
+                            answer_runs=(
+                                {
+                                    "id": answer_run_id,
+                                    "platform": "perplexity",
+                                    "city": "Australia",
+                                    "prompt_text": "Is ExampleBrand good in Australia?",
+                                    "prompt_version": "au_dtc_ecommerce_v1",
+                                },
+                            ),
+                        ),
+                    ),
+                    evidence_links=(
+                        {
+                            "id": "36bf7c88-0d03-52a9-87f5-7f2a0e35e72a",
+                            "source_graph_id": source_graph_id,
+                            "answer_run_id": answer_run_id,
+                            "answer_citation_id": "6e5c424e-1674-58ce-b075-6c52259bbbe5",
+                            "relation_type": "cited_by_answer",
+                            "created_at": now,
+                        },
+                    ),
+                    source_gaps=(
+                        {
+                            "id": source_gap_id,
+                            "project_id": project_id,
+                            "source_type": "official_site",
+                            "gap_type": "missing_high_weight_source_type",
+                            "observed_count": 0,
+                            "expected_weight": 0.95,
+                            "recommendation": "Add official AU evidence",
+                            "created_at": now,
+                        },
+                    ),
+                    competitor_benchmarks=(
+                        {
+                            "id": competitor_benchmark_id,
+                            "project_id": project_id,
+                            "competitor_name": "Emma Sleep",
+                            "metric_scope": "project",
+                            "payload": {"mention_count": 2, "mention_rate": 0.4},
+                            "answer_run_ids": [answer_run_id],
+                            "created_at": now,
+                        },
+                    ),
+                ),
+            ),
+        )
+        repository = PostgresEvidenceRepository(RecordingConnection())
+        with patch.object(repository, "list_runtime_citation_graphs", return_value=page):
+            export = repository.export_runtime_citation_graphs_csv(
+                project_id=project_id,
+                limit=10,
+                offset=0,
+            )
+
+        self.assertEqual(export.export_type, "runtime_citation_graphs_csv")
+        self.assertEqual(export.filename, "runtime-citation-graphs.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertIn("project_id,source_node_count,evidence_link_count", export.content)
+        self.assertIn(source_graph_id, export.content)
+        self.assertIn(source_gap_id, export.content)
+        self.assertIn(competitor_benchmark_id, export.content)
+        self.assertIn(answer_run_id, export.content)
+        self.assertIn("reviews.example", export.content)
+        self.assertIn("review_site", export.content)
+        self.assertIn("cited_by_answer", export.content)
+        self.assertIn("missing_high_weight_source_type", export.content)
+        self.assertIn("Emma Sleep", export.content)
+        self.assertIn("mention_count", export.content)
+        self.assertIn(_artifact_hash("https://reviews.example/koala"), export.content)
+        self.assertIn(_artifact_hash("Is ExampleBrand good in Australia?"), export.content)
+        self.assertIn(_artifact_hash("Add official AU evidence"), export.content)
+        self.assertIn(
+            _artifact_hash(json.dumps({"mention_count": 2, "mention_rate": 0.4}, ensure_ascii=False, sort_keys=True)),
+            export.content,
+        )
+        self.assertNotIn("https://reviews.example/koala", export.content)
+        self.assertNotIn("Is ExampleBrand good in Australia?", export.content)
+        self.assertNotIn("Add official AU evidence", export.content)
+        self.assertNotIn('"mention_count": 2', export.content)
+        self.assertEqual(export.content_hash, hashlib.sha256(export.content.encode("utf-8")).hexdigest())
+
     def test_postgres_repository_reads_runtime_report_export_page(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
         answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"

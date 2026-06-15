@@ -3581,6 +3581,7 @@ const endpoints = {
   scores: "/v1/visibility-scores/runtime",
   scoresExport: "/v1/visibility-scores/runtime/export.csv",
   graphs: "/v1/citation-graphs/runtime",
+  graphsExport: "/v1/citation-graphs/runtime/export.csv",
   reports: "/v1/reports/runtime",
   reportManagementEventsExport: "/v1/reports/runtime/management-events/export.csv",
   reportJobs: "/v1/report-export-jobs/runtime",
@@ -5440,6 +5441,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     scores: runtimePath(endpoints.scores, { limit: 1 }),
     scoresExport: runtimePath(endpoints.scoresExport, { limit: 200 }),
     graphs: runtimePath(endpoints.graphs, { limit: 1 }),
+    graphsExport: runtimePath(endpoints.graphsExport, { limit: 200 }),
     reports: runtimePath(endpoints.reports, { limit: 5 }),
     reportManagementEventsExport: endpoints.reportManagementEventsExport,
     reportJobs: runtimePath(endpoints.reportJobs, { limit: 5 }),
@@ -5668,6 +5670,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.graphs = runtimePath(endpoints.graphs, {
     ...selectedProjectParams,
     limit: 1
+  });
+  paths.graphsExport = runtimePath(endpoints.graphsExport, {
+    ...selectedProjectParams,
+    limit: 200
   });
   paths.reports = runtimePath(endpoints.reports, {
     ...selectedProjectParams,
@@ -6843,6 +6849,7 @@ export default async function Home({
   const runtimeAlertsExportUrl = `${displayUrl}${paths.alertsExport}`;
   const humanReviewsExportUrl = `${displayUrl}${paths.humanReviewsExport}`;
   const scoreSnapshotsExportUrl = `${displayUrl}${paths.scoresExport}`;
+  const citationGraphsExportUrl = `${displayUrl}${paths.graphsExport}`;
   const contentEnginesExportUrl = `${displayUrl}${paths.contentExport}`;
   const traceabilityExportUrl = `${displayUrl}${paths.traceabilityExport}`;
   const evidenceSort = data.evidence.sort || filters.sort || "collected_at_desc";
@@ -13132,6 +13139,13 @@ export default async function Home({
         >
           {latestGraph ? (
             <div className="graphDetail">
+              <dl className="facts contributionFacts">
+                <Fact label="Graph query" value={paths.graphs} />
+                <Fact label="Graph CSV" value={paths.graphsExport} />
+              </dl>
+              <div className="linkRow">
+                <a href={citationGraphsExportUrl}>Download graph CSV</a>
+              </div>
               <CitationGraphMap graph={latestGraph} />
               <div className="graphColumns">
                 <section className="graphSection">

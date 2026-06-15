@@ -770,6 +770,8 @@ last_seen_at
 哪些澳洲本地信源缺失
 ```
 
+Citation Graph 的可审计附件先做只读 CSV，而不是把图谱截图当作交付凭证。`GET /v1/citation-graphs/runtime/export.csv?project_id=...` 复用 runtime citation graph read model，按 source node 行导出 source graph id、source domain/type/topic、source URL hash、answer run ids、prompt hash、graph evidence link ids/relation/citation ids、source gap id/type/expected weight/recommendation hash、competitor benchmark id/name/metric scope/payload keys/payload hash/answer run ids。响应头返回 `X-GENO-Citation-Graph-Export-Hash`、row count 和 total count，Runtime Console 的 `Citation Graph & Competitors` 面板提供 `Graph CSV` 路径和下载入口。CSV 不输出 raw source URL、raw prompt text、raw source gap recommendation 或完整 competitor payload；一期用它证明 source gap 和竞品压制结论来自哪些 source node、citation evidence 和 answer run。
+
 澳洲高价值信源层：
 
 | 信源层 | 代表 |
