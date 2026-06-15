@@ -129,6 +129,7 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
         )
         self.assertEqual(handoff["dependency_groups"][0]["target_env_file"], ".env.au-p0a")
         self.assertEqual(handoff["dependency_groups"][0]["next_command"], "make verify-au-p0a-env-template")
+        self.assertFalse(handoff["dependency_groups"][0]["env_file_hygiene_exists"])
         self.assertIn("make au-p0a-env-bootstrap", handoff["dependency_groups"][0]["commands"])
         self.assertIn("make verify-au-p0a-credential-fulfillment", handoff["dependency_groups"][0]["verification_commands"])
         self.assertTrue(

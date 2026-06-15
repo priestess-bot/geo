@@ -52,6 +52,13 @@ EXPECTED_GROUP_IDS = (
     "p0b_google_manual_backfill",
     "p0b_google_phase_execution",
 )
+P0A_PROVIDER_CREDENTIAL_BOOTSTRAPPED_COMMAND_PRIORITY = (
+    "make au-p0a-env",
+    "make verify-au-p0a-env",
+    "make au-p0a-environment-checklist",
+    "make verify-au-p0a-environment-checklist",
+    "make au-p0a-readiness",
+)
 FORBIDDEN_EXACT_FIELDS = {
     "value",
     "raw_value",
@@ -147,11 +154,18 @@ def _first_unready_phase(group: dict[str, Any]) -> dict[str, Any]:
 def _expected_group_commands(handoff: dict[str, Any], group: dict[str, Any]) -> list[str]:
     phase = _first_unready_phase(group)
     work_item_ids = _strings(group.get("work_item_ids"))
-    return _unique_strings(
+    commands = _unique_strings(
         _commands(phase.get("commands"))
         + _strings(group.get("setup_commands"))
         + _work_item_field_values(handoff, work_item_ids, "commands")
     )
+    if (
+        group.get("id") == "p0a_provider_credentials"
+        and group.get("env_file_hygiene_exists") is True
+        and group.get("env_file_hygiene_ready") is True
+    ):
+        return _unique_strings(list(P0A_PROVIDER_CREDENTIAL_BOOTSTRAPPED_COMMAND_PRIORITY) + commands)
+    return commands
 
 
 def _expected_group_blocking_reasons(group: dict[str, Any]) -> list[str]:
@@ -255,6 +269,10 @@ def _validate_groups(handoff: dict[str, Any], errors: list[str]) -> None:
         errors.append("p0a_provider_credentials_missing_required_count_mismatch")
     if p0a_credentials.get("target_env_file") != ".env.au-p0a":
         errors.append("p0a_provider_credentials_target_env_file_invalid")
+    if "env_file_hygiene_exists" not in p0a_credentials:
+        errors.append("p0a_provider_credentials_env_file_hygiene_exists_missing")
+    if "env_file_hygiene_entry_count" not in p0a_credentials:
+        errors.append("p0a_provider_credentials_env_file_hygiene_entry_count_missing")
     credential_names = {str(_as_dict(item).get("name") or "") for item in _as_list(p0a_credentials.get("credential_items"))}
     for required in {"DATABASE_URL", "OPENAI_API_KEY", "PERPLEXITY_API_KEY"}:
         if required not in credential_names:

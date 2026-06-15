@@ -112,7 +112,7 @@ def verify_au_next_work_item_packet(
     combined_commands = _string_list(execution_context.get("combined_commands"))
     combined_verification_commands = _string_list(execution_context.get("combined_verification_commands"))
     combined_evidence_outputs = _string_list(execution_context.get("combined_evidence_outputs"))
-    expected_combined_commands = _unique_strings(work_item_commands + group_commands)
+    expected_combined_commands = _unique_strings(group_commands + work_item_commands)
     expected_combined_verification_commands = _unique_strings(
         work_item_verification_commands + group_verification_commands
     )

@@ -51,6 +51,13 @@ CLEARANCE_STEP_ORDER = (
     "p0b_google_phase_execution",
     "customer_report_handoff_gate",
 )
+P0A_PROVIDER_CREDENTIAL_BOOTSTRAPPED_COMMAND_PRIORITY = (
+    "make au-p0a-env",
+    "make verify-au-p0a-env",
+    "make au-p0a-environment-checklist",
+    "make verify-au-p0a-environment-checklist",
+    "make au-p0a-readiness",
+)
 
 
 def _utc_now_iso() -> str:
@@ -299,11 +306,18 @@ def _blocking_reasons_for_group(group: dict[str, Any]) -> list[str]:
 def _commands_for_group(group: dict[str, Any], work_items: list[dict[str, Any]]) -> list[str]:
     phase = _first_unready_phase(group)
     work_item_ids = _strings(group.get("work_item_ids"))
-    return _unique_strings(
+    commands = _unique_strings(
         _commands(phase.get("commands"))
         + _strings(group.get("setup_commands"))
         + _work_item_field_values(work_items, work_item_ids, "commands")
     )
+    if (
+        group.get("id") == "p0a_provider_credentials"
+        and group.get("env_file_hygiene_exists") is True
+        and group.get("env_file_hygiene_ready") is True
+    ):
+        return _unique_strings(list(P0A_PROVIDER_CREDENTIAL_BOOTSTRAPPED_COMMAND_PRIORITY) + commands)
+    return commands
 
 
 def _with_group_execution_fields(group: dict[str, Any], work_items: list[dict[str, Any]]) -> dict[str, Any]:
@@ -514,6 +528,11 @@ def _p0a_provider_credentials_group(
         "verification_commands": verification_commands,
         "evidence_outputs": evidence_outputs,
         "credential_items": _as_list(credential_handoff.get("credential_items")),
+        "env_file_hygiene_path": str(_as_dict(p0a_environment_checklist.get("env_file_hygiene")).get("path") or ""),
+        "env_file_hygiene_exists": _as_dict(p0a_environment_checklist.get("env_file_hygiene")).get("exists") is True,
+        "env_file_hygiene_entry_count": int(
+            _as_dict(p0a_environment_checklist.get("env_file_hygiene")).get("entry_count") or 0
+        ),
         "env_file_hygiene_ready": env_summary.get("env_file_hygiene_ready") is True,
         "env_file_hygiene_error_count": int(env_summary.get("env_file_hygiene_error_count") or 0),
         "env_file_hygiene_warning_count": int(env_summary.get("env_file_hygiene_warning_count") or 0),

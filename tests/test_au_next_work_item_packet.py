@@ -114,8 +114,10 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         self.assertEqual(packet["execution_context"]["linked_dependency_group"]["status"], "requires_external_input")
         self.assertEqual(
             packet["execution_context"]["linked_dependency_group"]["next_command"],
-            "make verify-au-p0a-env-template",
+            "make au-p0a-env",
         )
+        self.assertTrue(packet["execution_context"]["linked_dependency_group"]["env_file_hygiene_exists"])
+        self.assertTrue(packet["execution_context"]["linked_dependency_group"]["env_file_hygiene_ready"])
         self.assertIn("make au-p0a-credential-fulfillment", packet["execution_context"]["group_verification_commands"])
         self.assertIn("make verify-au-p0a-credential-fulfillment", packet["execution_context"]["group_verification_commands"])
         self.assertIn(
@@ -143,7 +145,7 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
             any(command.endswith("--require-credentials-ready") for command in packet["execution_context"]["recommended_sequence"])
         )
         self.assertEqual(packet["summary"]["recommended_sequence_count"], 20)
-        self.assertEqual(packet["commands"][0], "make verify-au-p0a-env-template")
+        self.assertEqual(packet["commands"][0], "make au-p0a-env")
         self.assertIn("make au-p0a-env-bootstrap", packet["commands"])
         self.assertIn("make verify-au-p0a-env-bootstrap", packet["commands"])
         self.assertIn("make verify-au-p0a-status", packet["verification_commands"])

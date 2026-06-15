@@ -250,6 +250,10 @@ def _dependency_group_context(
                 "dependency_class": str(group_payload.get("dependency_class") or ""),
                 "ready": group_payload.get("ready") is True,
                 "target_env_file": str(group_payload.get("target_env_file") or ""),
+                "env_file_hygiene_path": str(group_payload.get("env_file_hygiene_path") or ""),
+                "env_file_hygiene_exists": group_payload.get("env_file_hygiene_exists") is True,
+                "env_file_hygiene_ready": group_payload.get("env_file_hygiene_ready") is True,
+                "env_file_hygiene_entry_count": int(group_payload.get("env_file_hygiene_entry_count") or 0),
                 "next_command": str(group_payload.get("next_command") or ""),
                 "commands": _string_list(group_payload.get("commands")),
                 "verification_commands": _string_list(group_payload.get("verification_commands")),
@@ -343,7 +347,7 @@ def _execution_context(
     combined_commands: list[str] = []
     combined_verification_commands: list[str] = []
     combined_evidence_outputs: list[str] = []
-    for command in (*commands, *group_commands):
+    for command in (*group_commands, *commands):
         if command:
             _append_unique(combined_commands, command)
     for command in (*verification_commands, *group_verification_commands):

@@ -1709,7 +1709,7 @@ class ApiContractsTest(unittest.TestCase):
         )
         self.assertEqual(payload["summary"]["linked_dependency_group_id"], "p0a_provider_credentials")
         self.assertEqual(payload["summary"]["linked_dependency_group_status"], "requires_external_input")
-        self.assertEqual(payload["summary"]["linked_dependency_group_next_command"], "make verify-au-p0a-env-template")
+        self.assertEqual(payload["summary"]["linked_dependency_group_next_command"], "make au-p0a-env")
         self.assertGreater(payload["summary"]["linked_dependency_group_blocking_reason_count"], 0)
         self.assertEqual(payload["summary"]["linked_request_packet_id"], "p0a_credential_request")
         self.assertEqual(payload["summary"]["linked_request_artifact_type"], "request_packet")
@@ -1719,8 +1719,10 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["execution_context"]["linked_dependency_group"]["status"], "requires_external_input")
         self.assertEqual(
             payload["execution_context"]["linked_dependency_group"]["next_command"],
-            "make verify-au-p0a-env-template",
+            "make au-p0a-env",
         )
+        self.assertTrue(payload["execution_context"]["linked_dependency_group"]["env_file_hygiene_exists"])
+        self.assertTrue(payload["execution_context"]["linked_dependency_group"]["env_file_hygiene_ready"])
         self.assertGreater(payload["execution_context"]["linked_dependency_group"]["blocking_reason_count"], 0)
         self.assertEqual(payload["execution_context"]["linked_request_packet"]["request_packet_id"], "p0a_credential_request")
         self.assertEqual(payload["execution_context"]["linked_request_packet"]["artifact_type"], "request_packet")
@@ -1736,7 +1738,7 @@ class ApiContractsTest(unittest.TestCase):
             any(command.endswith("--require-fulfilled") for command in payload["execution_context"]["recommended_sequence"])
         )
         self.assertEqual(payload["summary"]["recommended_sequence_count"], 20)
-        self.assertEqual(payload["commands"][0], "make verify-au-p0a-env-template")
+        self.assertEqual(payload["commands"][0], "make au-p0a-env")
         self.assertIn("make au-p0a-env-bootstrap", payload["commands"])
         self.assertIn("make verify-au-p0a-status", payload["verification_commands"])
         self.assertIn("make verify-au-p0a-credential-fulfillment", payload["verification_commands"])
@@ -1782,7 +1784,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("p0a_credentials_fulfilled", payload["summary"]["blocked_progress_gate_ids"])
         self.assertEqual(payload["summary"]["next_work_item_id"], "p0a_environment")
         self.assertEqual(payload["summary"]["current_clearance_step_id"], "p0a_provider_credentials")
-        self.assertEqual(payload["summary"]["next_command"], "make verify-au-p0a-env-template")
+        self.assertEqual(payload["summary"]["next_command"], "make au-p0a-env")
         self.assertEqual(payload["runtime_endpoints"]["delivery_progress"], "GET /v1/delivery-progress/au")
         self.assertIn("make verify-au-delivery-progress", payload["hard_gate_commands"])
         self.assertTrue(any(command.endswith("--require-customer-ready") for command in payload["hard_gate_commands"]))
@@ -1819,7 +1821,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["engineering_progress_percent"], 46.2)
         self.assertEqual(payload["summary"]["customer_report_handoff_readiness_percent"], 10.0)
         self.assertEqual(payload["summary"]["next_action"], "clear_customer_handoff_prerequisites_first")
-        self.assertEqual(payload["summary"]["next_command"], "make verify-au-p0a-env-template")
+        self.assertEqual(payload["summary"]["next_command"], "make au-p0a-env")
         self.assertIn("customer_gate:customer_report_handoff_gate", payload["summary"]["missing_required"])
         self.assertEqual(
             payload["runtime_endpoints"]["customer_handoff_clearance"],
@@ -1984,8 +1986,10 @@ class ApiContractsTest(unittest.TestCase):
         dependency_groups_by_id = {group["id"]: group for group in payload["dependency_groups"]}
         self.assertEqual(
             dependency_groups_by_id["p0a_provider_credentials"]["next_command"],
-            "make verify-au-p0a-env-template",
+            "make au-p0a-env",
         )
+        self.assertTrue(dependency_groups_by_id["p0a_provider_credentials"]["env_file_hygiene_exists"])
+        self.assertTrue(dependency_groups_by_id["p0a_provider_credentials"]["env_file_hygiene_ready"])
         self.assertIn(
             "missing_required:OPENAI_API_KEY",
             dependency_groups_by_id["p0a_provider_credentials"]["blocking_reasons"],
@@ -2015,7 +2019,7 @@ class ApiContractsTest(unittest.TestCase):
         )
         self.assertEqual(payload["clearance_sequence"]["version"], "au_external_dependency_clearance_sequence_v1")
         self.assertEqual(payload["clearance_sequence"]["current_step_id"], "p0a_provider_credentials")
-        self.assertIn("make verify-au-p0a-env-template", payload["clearance_sequence"]["next_command"])
+        self.assertEqual(payload["clearance_sequence"]["next_command"], "make au-p0a-env")
         self.assertEqual(payload["clearance_sequence"]["steps"][-1]["id"], "customer_report_handoff_gate")
         self.assertFalse(payload["redaction_policy"]["raw_secret_values_allowed"])
         self.assertFalse(payload["redaction_policy"]["raw_database_url_allowed"])
@@ -2049,7 +2053,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["blocked_step_count"], 6)
         self.assertEqual(payload["would_execute_step_count"], 1)
         self.assertEqual(payload["current_step_id"], "p0a_provider_credentials")
-        self.assertEqual(payload["next_command"], "make verify-au-p0a-env-template")
+        self.assertEqual(payload["next_command"], "make au-p0a-env")
         self.assertTrue(payload["clearance_execution_hash"])
         self.assertEqual(
             payload["current_step_request_context"]["request_artifact_id"],
