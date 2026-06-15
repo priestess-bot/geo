@@ -6692,6 +6692,141 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM score_snapshot_runs ssr JOIN answer_runs ar ON ar.id = ssr.answer_run_id", executed_sql)
         self.assertIn("LEFT JOIN prompt_questions pq ON pq.id = ar.prompt_question_id", executed_sql)
 
+    def test_postgres_repository_exports_runtime_score_snapshots_csv(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        snapshot_id = "a7f7f8aa-5d40-4fdf-a2b3-b8729a9a5e2f"
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [
+                    {
+                        "id": snapshot_id,
+                        "project_id": project_id,
+                        "scope_type": "collection_slice",
+                        "scope_value": "worker_runtime",
+                        "formula_version": "au_visibility_v1",
+                        "platform_weights_snapshot": {"chatgpt": 0.30, "perplexity": 0.25},
+                        "final_score": 72.5,
+                        "trigger_rate": 1.0,
+                        "mention_rate": 1.0,
+                        "recommendation_rate": 0.75,
+                        "answer_run_ids": [answer_run_id],
+                        "created_at": now,
+                        "dispersion": 2.5,
+                        "component_weights_snapshot": {"MentionScore": 0.18, "FreshnessScore": 0.03},
+                    }
+                ],
+                [
+                    {
+                        "id": "df03794b-e8fc-4b69-aa62-2304a55ff3a9",
+                        "score_snapshot_id": snapshot_id,
+                        "component_name": "MentionScore",
+                        "component_score": 100.0,
+                        "weight": 0.18,
+                        "weighted_contribution": 18.0,
+                        "denominator": "surface_triggered",
+                        "evidence_answer_run_ids": [answer_run_id],
+                        "positive_evidence_summary": "brand mentioned",
+                        "negative_evidence_summary": "competitor preferred",
+                        "confidence_note": "avg_parser_confidence=0.9",
+                        "created_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": answer_run_id,
+                        "project_id": project_id,
+                        "prompt_question_id": "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0",
+                        "platform": "perplexity",
+                        "surface": "sonar",
+                        "access_method": "official_api",
+                        "market_code": "AU",
+                        "city": "Australia",
+                        "language": "en-AU",
+                        "device": "desktop",
+                        "answer_present": True,
+                        "surface_triggered": True,
+                        "sample_index": 1,
+                        "sample_size": 1,
+                        "model_or_surface": "sonar",
+                        "account_state": "api_key",
+                        "collector_backend_id": "fixture_perplexity_sonar",
+                        "collector_version": "fixture-v1",
+                        "collected_at": now,
+                        "status": "completed",
+                        "prompt_text": "Is ExampleBrand good in Australia?",
+                        "prompt_intent_type": "brand_awareness",
+                        "prompt_priority": 1,
+                        "prompt_version": "au_dtc_ecommerce_v1",
+                    }
+                ],
+                {
+                    "id": "d1466dad-237b-5f5f-b7cc-44e67d628d15",
+                    "answer_run_id": answer_run_id,
+                    "parser_engine_id": "rule_based_v2_aliases",
+                    "analysis_version": "rule_based_v2_aliases",
+                    "payload": {"brand_mentioned": True},
+                    "confidence": 0.9,
+                    "created_at": now,
+                },
+                [
+                    {
+                        "id": "9b663656-4a0e-4fda-a764-0a4d62fa15f1",
+                        "event_type": "visibility_score_snapshot_created",
+                        "project_id": project_id,
+                        "actor_type": "system",
+                        "actor_id": "geno-core.scoring",
+                        "target_type": "visibility_score_snapshot",
+                        "target_id": snapshot_id,
+                        "before_hash": None,
+                        "after_hash": "after",
+                        "input_refs": {"answer_run_ids": [answer_run_id]},
+                        "output_refs": {"score_snapshot_ids": [snapshot_id]},
+                        "method_version": "au_visibility_v1",
+                        "reason": "test",
+                        "created_at": now,
+                    }
+                ],
+            ]
+        )
+
+        export = PostgresEvidenceRepository(connection).export_runtime_score_snapshots_csv(
+            project_id=project_id,
+            scope_type="collection_slice",
+            limit=10,
+            offset=0,
+        )
+
+        self.assertEqual(export.export_type, "runtime_score_snapshots_csv")
+        self.assertEqual(export.filename, "runtime-score-snapshots.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertEqual(export.filters["scope_type"], "collection_slice")
+        self.assertIn("score_snapshot_id,project_id,scope_type,scope_value", export.content)
+        self.assertIn(snapshot_id, export.content)
+        self.assertIn("MentionScore", export.content)
+        self.assertIn("surface_triggered", export.content)
+        self.assertIn("FreshnessScore|MentionScore", export.content)
+        self.assertIn("chatgpt|perplexity", export.content)
+        self.assertIn("rule_based_v2_aliases", export.content)
+        self.assertIn("fixture-v1", export.content)
+        self.assertIn(_artifact_hash("brand mentioned"), export.content)
+        self.assertIn(_artifact_hash("competitor preferred"), export.content)
+        self.assertIn(_artifact_hash("avg_parser_confidence=0.9"), export.content)
+        self.assertIn(_artifact_hash("Is ExampleBrand good in Australia?"), export.content)
+        self.assertIn("visibility_score_snapshot_created", export.content)
+        self.assertIn("au_visibility_v1", export.content)
+        self.assertIn("after", export.content)
+        self.assertNotIn("brand mentioned", export.content)
+        self.assertNotIn("competitor preferred", export.content)
+        self.assertNotIn("avg_parser_confidence=0.9", export.content)
+        self.assertNotIn("Is ExampleBrand good in Australia?", export.content)
+        self.assertEqual(export.content_hash, hashlib.sha256(export.content.encode("utf-8")).hexdigest())
+
     def test_postgres_repository_reads_runtime_citation_graph_page(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
         answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"

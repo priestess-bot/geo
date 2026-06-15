@@ -3579,6 +3579,7 @@ const endpoints = {
   humanReviewQueue: "/v1/human-reviews/runtime/queue",
   knowledgeSearch: "/v1/knowledge-facts/runtime/search",
   scores: "/v1/visibility-scores/runtime",
+  scoresExport: "/v1/visibility-scores/runtime/export.csv",
   graphs: "/v1/citation-graphs/runtime",
   reports: "/v1/reports/runtime",
   reportManagementEventsExport: "/v1/reports/runtime/management-events/export.csv",
@@ -5435,6 +5436,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     }),
     knowledgeSearch: endpoints.knowledgeSearch,
     scores: runtimePath(endpoints.scores, { limit: 1 }),
+    scoresExport: runtimePath(endpoints.scoresExport, { limit: 200 }),
     graphs: runtimePath(endpoints.graphs, { limit: 1 }),
     reports: runtimePath(endpoints.reports, { limit: 5 }),
     reportManagementEventsExport: endpoints.reportManagementEventsExport,
@@ -5654,6 +5656,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.scores = runtimePath(endpoints.scores, {
     ...selectedProjectParams,
     limit: 1
+  });
+  paths.scoresExport = runtimePath(endpoints.scoresExport, {
+    ...selectedProjectParams,
+    limit: 200
   });
   paths.graphs = runtimePath(endpoints.graphs, {
     ...selectedProjectParams,
@@ -6827,6 +6833,7 @@ export default async function Home({
   const actionPlansExportUrl = `${displayUrl}${paths.actionsExport}`;
   const runtimeAlertsExportUrl = `${displayUrl}${paths.alertsExport}`;
   const humanReviewsExportUrl = `${displayUrl}${paths.humanReviewsExport}`;
+  const scoreSnapshotsExportUrl = `${displayUrl}${paths.scoresExport}`;
   const evidenceSort = data.evidence.sort || filters.sort || "collected_at_desc";
   const runtimeViewName = activeFilterCount
     ? `${selectedProject?.project.name || "Runtime project"} · ${filterLabel} · ${evidenceSort}`
@@ -13029,7 +13036,12 @@ export default async function Home({
                   <Fact label="Answer runs" value={latestScore.answer_runs.length} />
                   <Fact label="Parser agreement" value={parserAgreement(latestScore.answer_runs[0])} />
                   <Fact label="Audit events" value={latestScore.audit_events.length} />
+                  <Fact label="Score query" value={paths.scores} />
+                  <Fact label="Score CSV" value={paths.scoresExport} />
                 </dl>
+              </div>
+              <div className="linkRow">
+                <a href={scoreSnapshotsExportUrl}>Download score CSV</a>
               </div>
               <div className="contributionGrid">
                 {latestScore.contributions.map((item) => (

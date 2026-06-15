@@ -772,6 +772,17 @@ def _latest_audit_event(events: tuple[dict[str, Any], ...]) -> dict[str, Any]:
     )
 
 
+def _hash_text_field(value: object) -> str:
+    text = str(value or "")
+    return _artifact_hash(text) if text else ""
+
+
+def _pipe_join(values: object) -> str:
+    if not isinstance(values, (list, tuple)):
+        return ""
+    return "|".join(str(value) for value in values if value is not None)
+
+
 def _prompt_import_history(audit_event: dict[str, Any]) -> dict[str, Any]:
     input_refs = audit_event.get("input_refs") or {}
     output_refs = audit_event.get("output_refs") or {}
@@ -2144,6 +2155,143 @@ def _render_runtime_human_reviews_csv(page: RuntimeHumanReviewPage) -> str:
                 "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
             }
         )
+    return output.getvalue()
+
+
+def _render_runtime_score_snapshots_csv(page: RuntimeScoreSnapshotPage) -> str:
+    def ordered_unique(values: tuple[object, ...] | list[object]) -> str:
+        seen: set[str] = set()
+        normalized: list[str] = []
+        for value in values:
+            text = str(value or "")
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            normalized.append(text)
+        return "|".join(normalized)
+
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "score_snapshot_id",
+            "project_id",
+            "scope_type",
+            "scope_value",
+            "formula_version",
+            "final_score",
+            "trigger_rate",
+            "mention_rate",
+            "recommendation_rate",
+            "dispersion",
+            "platform_weights_keys",
+            "component_weights_keys",
+            "snapshot_answer_run_count",
+            "linked_answer_run_count",
+            "linked_answer_run_ids",
+            "linked_prompt_text_hashes",
+            "linked_prompt_versions",
+            "linked_platforms",
+            "linked_cities",
+            "linked_collector_versions",
+            "linked_analysis_versions",
+            "linked_analysis_payload_hashes",
+            "score_contribution_id",
+            "component_name",
+            "component_score",
+            "component_weight",
+            "weighted_contribution",
+            "denominator",
+            "evidence_answer_run_count",
+            "evidence_answer_run_ids",
+            "positive_evidence_summary_hash",
+            "negative_evidence_summary_hash",
+            "confidence_note_hash",
+            "created_at",
+            "audit_event_count",
+            "latest_audit_event_type",
+            "latest_audit_method_version",
+            "latest_audit_after_hash",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        snapshot = record.snapshot
+        latest_audit_event = _latest_audit_event(record.audit_events)
+        snapshot_answer_run_ids = snapshot.get("answer_run_ids")
+        if not isinstance(snapshot_answer_run_ids, (list, tuple)):
+            snapshot_answer_run_ids = ()
+        linked_runs = tuple(run.answer_run for run in record.answer_runs)
+        linked_analyses = tuple(run.analysis for run in record.answer_runs if run.analysis)
+        platform_weights = snapshot.get("platform_weights_snapshot")
+        component_weights = snapshot.get("component_weights_snapshot")
+        base_row = {
+            "score_snapshot_id": snapshot.get("id") or "",
+            "project_id": snapshot.get("project_id") or "",
+            "scope_type": snapshot.get("scope_type") or "",
+            "scope_value": snapshot.get("scope_value") or "",
+            "formula_version": snapshot.get("formula_version") or "",
+            "final_score": snapshot.get("final_score") if snapshot.get("final_score") is not None else "",
+            "trigger_rate": snapshot.get("trigger_rate") if snapshot.get("trigger_rate") is not None else "",
+            "mention_rate": snapshot.get("mention_rate") if snapshot.get("mention_rate") is not None else "",
+            "recommendation_rate": snapshot.get("recommendation_rate")
+            if snapshot.get("recommendation_rate") is not None
+            else "",
+            "dispersion": snapshot.get("dispersion") if snapshot.get("dispersion") is not None else "",
+            "platform_weights_keys": "|".join(sorted(str(key) for key in platform_weights))
+            if isinstance(platform_weights, dict)
+            else "",
+            "component_weights_keys": "|".join(sorted(str(key) for key in component_weights))
+            if isinstance(component_weights, dict)
+            else "",
+            "snapshot_answer_run_count": len(snapshot_answer_run_ids),
+            "linked_answer_run_count": len(linked_runs),
+            "linked_answer_run_ids": ordered_unique([run.get("id") for run in linked_runs]),
+            "linked_prompt_text_hashes": ordered_unique(
+                [_hash_text_field(run.get("prompt_text")) for run in linked_runs]
+            ),
+            "linked_prompt_versions": ordered_unique([run.get("prompt_version") for run in linked_runs]),
+            "linked_platforms": ordered_unique([run.get("platform") for run in linked_runs]),
+            "linked_cities": ordered_unique([run.get("city") for run in linked_runs]),
+            "linked_collector_versions": ordered_unique([run.get("collector_version") for run in linked_runs]),
+            "linked_analysis_versions": ordered_unique([analysis.get("analysis_version") for analysis in linked_analyses]),
+            "linked_analysis_payload_hashes": ordered_unique(
+                [
+                    _artifact_hash(json.dumps(analysis.get("payload") or {}, ensure_ascii=False, sort_keys=True))
+                    for analysis in linked_analyses
+                ]
+            ),
+            "created_at": snapshot.get("created_at") or "",
+            "audit_event_count": len(record.audit_events),
+            "latest_audit_event_type": latest_audit_event.get("event_type") or "",
+            "latest_audit_method_version": latest_audit_event.get("method_version") or "",
+            "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
+        }
+        contributions = record.contributions or ({},)
+        for contribution in contributions:
+            evidence_answer_run_ids = contribution.get("evidence_answer_run_ids")
+            if not isinstance(evidence_answer_run_ids, (list, tuple)):
+                evidence_answer_run_ids = ()
+            writer.writerow(
+                {
+                    **base_row,
+                    "score_contribution_id": contribution.get("id") or "",
+                    "component_name": contribution.get("component_name") or "",
+                    "component_score": contribution.get("component_score")
+                    if contribution.get("component_score") is not None
+                    else "",
+                    "component_weight": contribution.get("weight") if contribution.get("weight") is not None else "",
+                    "weighted_contribution": contribution.get("weighted_contribution")
+                    if contribution.get("weighted_contribution") is not None
+                    else "",
+                    "denominator": contribution.get("denominator") or "",
+                    "evidence_answer_run_count": len(evidence_answer_run_ids),
+                    "evidence_answer_run_ids": _pipe_join(evidence_answer_run_ids),
+                    "positive_evidence_summary_hash": _hash_text_field(contribution.get("positive_evidence_summary")),
+                    "negative_evidence_summary_hash": _hash_text_field(contribution.get("negative_evidence_summary")),
+                    "confidence_note_hash": _hash_text_field(contribution.get("confidence_note")),
+                }
+            )
     return output.getvalue()
 
 
@@ -9049,6 +9197,43 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=records,
+        )
+
+    def export_runtime_score_snapshots_csv(
+        self,
+        *,
+        project_id: str,
+        scope_type: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        normalized_project_id = project_id.strip()
+        if not normalized_project_id:
+            raise ValueError("project_id is required")
+        normalized_scope_type = scope_type.strip() if scope_type else None
+        page = self.list_runtime_score_snapshots(
+            project_id=normalized_project_id,
+            scope_type=normalized_scope_type,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_score_snapshots_csv(page)
+        row_count = sum(max(1, len(record.contributions)) for record in page.records)
+        filters = {
+            "project_id": normalized_project_id,
+            "scope_type": normalized_scope_type,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_score_snapshots_csv",
+            filename="runtime-score-snapshots.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=page.total_count,
+            row_count=row_count,
         )
 
     def list_runtime_citation_graphs(

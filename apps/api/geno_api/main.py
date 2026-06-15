@@ -5516,6 +5516,46 @@ def runtime_visibility_scores(
         close_repository_connection(repository)
 
 
+@app.get("/v1/visibility-scores/runtime/export.csv")
+def runtime_visibility_scores_export_csv(
+    project_id: str = Query(min_length=1),
+    scope_type: str | None = Query(default=None, min_length=1, max_length=80),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_score_snapshots_csv(
+                project_id=project_id.strip(),
+                scope_type=scope_type.strip() if scope_type else None,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GENO-Score-Snapshot-Export-Hash": export.content_hash,
+                "X-GENO-Score-Snapshot-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GENO-Score-Snapshot-Scope-Type": str(export.filters.get("scope_type", "")),
+                "X-GENO-Score-Snapshot-Row-Count": str(export.row_count),
+                "X-GENO-Score-Snapshot-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/citation-graphs/runtime")
 def runtime_citation_graphs(
     project_id: str | None = None,
@@ -8014,6 +8054,7 @@ def contracts() -> dict[str, list[str]]:
             "worker --persist",
             "worker --persist-analysis",
             "/v1/visibility-scores/runtime",
+            "/v1/visibility-scores/runtime/export.csv",
             "/v1/citation-graphs/runtime",
             "/v1/reports/runtime",
             "/v1/reports/runtime/management-events/export.csv",

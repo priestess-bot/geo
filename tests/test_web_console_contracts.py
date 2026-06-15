@@ -963,6 +963,17 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".humanReviewGrid", css_source)
         self.assertIn(".humanReviewForm", css_source)
 
+    def test_runtime_console_surfaces_score_contribution_export(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("Score Contributions", page_source)
+        self.assertIn('scores: "/v1/visibility-scores/runtime"', page_source)
+        self.assertIn('scoresExport: "/v1/visibility-scores/runtime/export.csv"', page_source)
+        self.assertIn("scoreSnapshotsExportUrl", page_source)
+        self.assertIn("Score query", page_source)
+        self.assertIn("Score CSV", page_source)
+        self.assertIn("Download score CSV", page_source)
+
     def test_runtime_console_surfaces_entity_alias_batch_review_queue(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
