@@ -87,6 +87,7 @@ from geno_core.models import (
     RuntimeAlertPage,
     RuntimeAuditEventExport,
     RuntimeAuditEventPage,
+    RuntimeEvidenceExport,
     RuntimeFidelityCheck,
     RuntimeFidelityCheckPage,
     RuntimeFidelityTrend,
@@ -7728,6 +7729,42 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["records"][0]["audit_events"][0]["event_type"], "runtime_notification_email_suppression_saved")
         self.assertEqual(fake_repository.kwargs["status"], "active")
 
+    def test_runtime_notification_email_suppressions_export_endpoint_returns_csv_with_hash_headers(self) -> None:
+        class FakeRepository:
+            def export_runtime_notification_email_suppressions_csv(self, **kwargs: object) -> RuntimeEvidenceExport:
+                self.kwargs = kwargs
+                return RuntimeEvidenceExport(
+                    export_type="runtime_notification_email_suppressions_csv",
+                    filename="runtime-notification-email-suppressions.csv",
+                    media_type="text/csv; charset=utf-8",
+                    content="suppression_id,recipient_hash\nsuppression-1,aaaaaaaa\n",
+                    content_hash="hash-email-suppression-csv",
+                    filters={"project_id": kwargs["project_id"], "status": kwargs["status"]},
+                    total_count=3,
+                    row_count=1,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/runtime-notification-email-suppressions/export.csv?project_id=project-1&status=active&limit=5",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
+        self.assertEqual(response.headers["x-geno-email-suppression-export-hash"], "hash-email-suppression-csv")
+        self.assertEqual(response.headers["x-geno-email-suppression-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geno-email-suppression-status"], "active")
+        self.assertEqual(response.headers["x-geno-email-suppression-row-count"], "1")
+        self.assertEqual(response.headers["x-geno-email-suppression-total-count"], "3")
+        self.assertIn("runtime-notification-email-suppressions.csv", response.headers["content-disposition"])
+        self.assertIn("suppression-1", response.text)
+        self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.kwargs["status"], "active")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+
     def test_runtime_notification_email_suppression_save_endpoint_passes_payload(self) -> None:
         class FakeRepository:
             def save_runtime_notification_email_suppression(self, suppression: object) -> RuntimeNotificationEmailSuppression:
@@ -9032,6 +9069,7 @@ class ApiContractsTest(unittest.TestCase):
             payload["persistence"],
         )
         self.assertIn("/v1/runtime-notification-email-suppressions", payload["persistence"])
+        self.assertIn("/v1/runtime-notification-email-suppressions/export.csv", payload["persistence"])
         self.assertIn("/v1/runtime-notification-email-preferences/status", payload["persistence"])
         self.assertIn("/v1/runtime-notification-email-preferences/resubscribe", payload["persistence"])
         self.assertIn("/v1/runtime-notification-email-preferences/unsubscribe", payload["persistence"])

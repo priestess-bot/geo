@@ -1559,6 +1559,69 @@ def _render_runtime_audit_events_csv(page: RuntimeAuditEventPage) -> str:
     return output.getvalue()
 
 
+def _render_runtime_notification_email_suppressions_csv(page: RuntimeNotificationEmailSuppressionPage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "suppression_id",
+            "project_id",
+            "recipient_hash",
+            "status",
+            "source",
+            "source_ref",
+            "created_by",
+            "created_at",
+            "updated_by",
+            "updated_at",
+            "feedback_event_id",
+            "delivery_id",
+            "notification_id",
+            "subscription_id",
+            "feedback_type",
+            "provider",
+            "provider_event_id_hash",
+            "metadata_keys",
+            "audit_event_count",
+            "latest_audit_event_type",
+            "latest_audit_method_version",
+            "latest_audit_after_hash",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        suppression = record.suppression
+        metadata = suppression.get("metadata") if isinstance(suppression.get("metadata"), dict) else {}
+        latest_audit_event = record.audit_events[0] if record.audit_events else {}
+        writer.writerow(
+            {
+                "suppression_id": suppression.get("id") or "",
+                "project_id": suppression.get("project_id") or "",
+                "recipient_hash": suppression.get("recipient_hash") or "",
+                "status": suppression.get("status") or "",
+                "source": suppression.get("source") or "",
+                "source_ref": suppression.get("source_ref") or "",
+                "created_by": suppression.get("created_by") or "",
+                "created_at": suppression.get("created_at") or "",
+                "updated_by": suppression.get("updated_by") or "",
+                "updated_at": suppression.get("updated_at") or "",
+                "feedback_event_id": metadata.get("feedback_event_id") or "",
+                "delivery_id": metadata.get("delivery_id") or "",
+                "notification_id": metadata.get("notification_id") or "",
+                "subscription_id": metadata.get("subscription_id") or "",
+                "feedback_type": metadata.get("feedback_type") or "",
+                "provider": metadata.get("provider") or "",
+                "provider_event_id_hash": metadata.get("provider_event_id_hash") or "",
+                "metadata_keys": "|".join(sorted(str(key) for key in metadata)),
+                "audit_event_count": len(record.audit_events),
+                "latest_audit_event_type": latest_audit_event.get("event_type") or "",
+                "latest_audit_method_version": latest_audit_event.get("method_version") or "",
+                "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
+            }
+        )
+    return output.getvalue()
+
+
 ANSWER_RUN_COLUMNS = (
     "id",
     "project_id",
@@ -9642,6 +9705,38 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=tuple(records),
+        )
+
+    def export_runtime_notification_email_suppressions_csv(
+        self,
+        *,
+        project_id: str,
+        status: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        page = self.list_runtime_notification_email_suppressions(
+            project_id=project_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_notification_email_suppressions_csv(page)
+        filters = {
+            "project_id": project_id.strip(),
+            "status": status.strip().lower() if status else None,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_notification_email_suppressions_csv",
+            filename="runtime-notification-email-suppressions.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=page.total_count,
+            row_count=len(page.records),
         )
 
     def save_runtime_notification_email_suppression(

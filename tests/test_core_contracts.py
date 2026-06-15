@@ -9106,6 +9106,75 @@ class CoreContractsTest(unittest.TestCase):
         )
         self.assertIn("target_type = %s AND target_id = %s", executed_sql)
 
+    def test_postgres_repository_exports_runtime_notification_email_suppressions_csv(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        suppression_id = "29b509ef-0c07-4588-a6ed-e0d25d48cfb2"
+        recipient_hash = runtime_email_body_hash("ops@example.com")
+        provider_event_id_hash = runtime_email_body_hash("smtp-feedback-1")
+        suppression_row = {
+            "id": suppression_id,
+            "project_id": project_id,
+            "recipient_hash": recipient_hash,
+            "status": "active",
+            "source": "feedback",
+            "source_ref": "feedback-1",
+            "metadata": {
+                "feedback_event_id": "feedback-1",
+                "delivery_id": "delivery-1",
+                "notification_id": "notification-1",
+                "subscription_id": "subscription-1",
+                "feedback_type": "complaint",
+                "provider": "smtp",
+                "provider_event_id_hash": provider_event_id_hash,
+                "note": "do not export raw metadata",
+            },
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "2ce4310a-1c5f-4272-8a61-6d8b1aa9ea99",
+            "event_type": "runtime_notification_email_feedback_project_suppression_applied",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "runtime_notification_email_suppression",
+            "target_id": suppression_id,
+            "before_hash": None,
+            "after_hash": "after-hash",
+            "input_refs": {"recipient_hashes": [recipient_hash]},
+            "output_refs": {"runtime_notification_email_suppression_ids": [suppression_id]},
+            "method_version": "runtime_notification_email_feedback_project_suppression_v1",
+            "reason": "apply complaint project suppression",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[(1,), [suppression_row], [audit_row]])
+
+        export = PostgresEvidenceRepository(connection).export_runtime_notification_email_suppressions_csv(
+            project_id=project_id,
+            status="active",
+            limit=5,
+            offset=0,
+        )
+
+        self.assertEqual(export.export_type, "runtime_notification_email_suppressions_csv")
+        self.assertEqual(export.filename, "runtime-notification-email-suppressions.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertEqual(export.filters["status"], "active")
+        self.assertIn("suppression_id,project_id,recipient_hash,status,source", export.content)
+        self.assertIn(suppression_id, export.content)
+        self.assertIn(recipient_hash, export.content)
+        self.assertIn(provider_event_id_hash, export.content)
+        self.assertIn("runtime_notification_email_feedback_project_suppression_v1", export.content)
+        self.assertIn("metadata_keys", export.content)
+        self.assertNotIn("ops@example.com", export.content)
+        self.assertNotIn("do not export raw metadata", export.content)
+
     def test_postgres_repository_applies_runtime_notification_email_preference_unsubscribe(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

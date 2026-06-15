@@ -3585,6 +3585,7 @@ const endpoints = {
   notificationDeliveries: "/v1/runtime-notification-deliveries",
   notificationEmailFeedback: "/v1/runtime-notification-email-feedback-events",
   notificationEmailSuppressions: "/v1/runtime-notification-email-suppressions",
+  notificationEmailSuppressionsExport: "/v1/runtime-notification-email-suppressions/export.csv",
   notificationEmailFeedbackWebhook: "/v1/runtime-notification-email-feedback-webhooks/geno",
   notificationEmailPreferenceStatus: "/v1/runtime-notification-email-preferences/status",
   notificationEmailPreferenceResubscribe: "/v1/runtime-notification-email-preferences/resubscribe",
@@ -5428,6 +5429,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     notificationDeliveries: runtimePath(endpoints.notificationDeliveries, { limit: 5 }),
     notificationEmailFeedback: runtimePath(endpoints.notificationEmailFeedback, { limit: 5 }),
     notificationEmailSuppressions: runtimePath(endpoints.notificationEmailSuppressions, { limit: 5 }),
+    notificationEmailSuppressionsExport: runtimePath(endpoints.notificationEmailSuppressionsExport, { limit: 200 }),
     notificationEmailFeedbackWebhook: endpoints.notificationEmailFeedbackWebhook,
     notificationEmailPreferenceStatus: endpoints.notificationEmailPreferenceStatus,
     notificationEmailPreferenceResubscribe: endpoints.notificationEmailPreferenceResubscribe,
@@ -5664,6 +5666,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     ...selectedProjectParams,
     status: "active",
     limit: 5
+  });
+  paths.notificationEmailSuppressionsExport = runtimePath(endpoints.notificationEmailSuppressionsExport, {
+    ...selectedProjectParams,
+    status: "active",
+    limit: 200
   });
   paths.actions = runtimePath(endpoints.actions, {
     ...selectedProjectParams,
@@ -11873,11 +11880,15 @@ export default async function Home({
             <Fact label="Delivery API" value={paths.notificationDeliveries} />
             <Fact label="Feedback API" value={paths.notificationEmailFeedback} />
             <Fact label="Suppression API" value={paths.notificationEmailSuppressions} />
+            <Fact label="Suppression CSV" value={paths.notificationEmailSuppressionsExport} />
             <Fact label="Feedback webhook" value={paths.notificationEmailFeedbackWebhook} />
             <Fact label="Preference status API" value={paths.notificationEmailPreferenceStatus} />
             <Fact label="Resubscribe API" value={paths.notificationEmailPreferenceResubscribe} />
             <Fact label="Unsubscribe API" value={paths.notificationEmailPreferenceUnsubscribe} />
           </dl>
+          <div className="downloadRow">
+            <a href={paths.notificationEmailSuppressionsExport}>Download suppression CSV</a>
+          </div>
           <form action={saveRuntimeNotificationEmailSuppression} className="reportManagementForm">
             <input type="hidden" name="project_id" value={selectedProjectId || ""} />
             <input type="hidden" name="updated_by" value="runtime-console" />
