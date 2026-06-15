@@ -760,6 +760,18 @@ def _first_ref(value: object, default: object = None) -> object:
     return value if value is not None else default
 
 
+def _latest_audit_event(events: tuple[dict[str, Any], ...]) -> dict[str, Any]:
+    if not events:
+        return {}
+    return max(
+        events,
+        key=lambda event: (
+            _coerce_datetime(event.get("created_at")) or datetime.min.replace(tzinfo=UTC),
+            str(event.get("id") or ""),
+        ),
+    )
+
+
 def _prompt_import_history(audit_event: dict[str, Any]) -> dict[str, Any]:
     input_refs = audit_event.get("input_refs") or {}
     output_refs = audit_event.get("output_refs") or {}
@@ -2082,6 +2094,105 @@ def _render_runtime_project_member_invitations_csv(page: RuntimeProjectMemberInv
                 "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
             }
         )
+    return output.getvalue()
+
+
+def _render_runtime_action_plans_csv(page: RuntimeActionPlanPage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "action_recommendation_id",
+            "project_id",
+            "retest_schedule_id",
+            "prompt_version",
+            "priority",
+            "status",
+            "owner_id_hash",
+            "source_gap_type",
+            "related_source_types",
+            "title_hash",
+            "description_hash",
+            "evidence_answer_run_count",
+            "schedule_answer_run_count",
+            "sample_size",
+            "offsets_days",
+            "scheduled_date_count",
+            "next_check_date",
+            "action_created_at",
+            "schedule_created_at",
+            "latest_retest_comparison_id",
+            "latest_retest_trend",
+            "latest_baseline_score",
+            "latest_retest_score",
+            "latest_score_delta",
+            "latest_retest_created_at",
+            "answer_run_count",
+            "audit_event_count",
+            "latest_audit_event_type",
+            "latest_audit_method_version",
+            "latest_audit_after_hash",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        schedule = record.retest_schedule
+        latest_comparison = record.retest_comparisons[0] if record.retest_comparisons else {}
+        latest_audit_event = _latest_audit_event(record.audit_events)
+        schedule_answer_run_ids = schedule.get("answer_run_ids")
+        if not isinstance(schedule_answer_run_ids, (list, tuple)):
+            schedule_answer_run_ids = ()
+        offsets_days = schedule.get("offsets_days")
+        if not isinstance(offsets_days, (list, tuple)):
+            offsets_days = ()
+        scheduled_dates = schedule.get("scheduled_dates")
+        if not isinstance(scheduled_dates, (list, tuple)):
+            scheduled_dates = ()
+        actions = record.action_recommendations or ({},)
+        for action in actions:
+            related_source_types = action.get("related_source_types") if isinstance(action, dict) else ()
+            if not isinstance(related_source_types, (list, tuple)):
+                related_source_types = ()
+            evidence_answer_run_ids = action.get("evidence_answer_run_ids") if isinstance(action, dict) else ()
+            if not isinstance(evidence_answer_run_ids, (list, tuple)):
+                evidence_answer_run_ids = ()
+            owner_id = str(action.get("owner_id") or "") if isinstance(action, dict) else ""
+            title = str(action.get("title") or "") if isinstance(action, dict) else ""
+            description = str(action.get("description") or "") if isinstance(action, dict) else ""
+            writer.writerow(
+                {
+                    "action_recommendation_id": action.get("id") or "" if isinstance(action, dict) else "",
+                    "project_id": schedule.get("project_id") or "",
+                    "retest_schedule_id": schedule.get("id") or "",
+                    "prompt_version": schedule.get("prompt_version") or "",
+                    "priority": action.get("priority") or "" if isinstance(action, dict) else "",
+                    "status": action.get("status") or "" if isinstance(action, dict) else "",
+                    "owner_id_hash": _artifact_hash(owner_id) if owner_id else "",
+                    "source_gap_type": action.get("source_gap_type") or "" if isinstance(action, dict) else "",
+                    "related_source_types": "|".join(str(source_type) for source_type in related_source_types),
+                    "title_hash": _artifact_hash(title) if title else "",
+                    "description_hash": _artifact_hash(description) if description else "",
+                    "evidence_answer_run_count": len(evidence_answer_run_ids),
+                    "schedule_answer_run_count": len(schedule_answer_run_ids),
+                    "sample_size": schedule.get("sample_size") or 0,
+                    "offsets_days": "|".join(str(offset_day) for offset_day in offsets_days),
+                    "scheduled_date_count": len(scheduled_dates),
+                    "next_check_date": action.get("next_check_date") or "" if isinstance(action, dict) else "",
+                    "action_created_at": action.get("created_at") or "" if isinstance(action, dict) else "",
+                    "schedule_created_at": schedule.get("created_at") or "",
+                    "latest_retest_comparison_id": latest_comparison.get("id") or "",
+                    "latest_retest_trend": latest_comparison.get("trend") or "",
+                    "latest_baseline_score": latest_comparison.get("baseline_score") or "",
+                    "latest_retest_score": latest_comparison.get("retest_score") or "",
+                    "latest_score_delta": latest_comparison.get("score_delta") or "",
+                    "latest_retest_created_at": latest_comparison.get("created_at") or "",
+                    "answer_run_count": len(record.answer_runs),
+                    "audit_event_count": len(record.audit_events),
+                    "latest_audit_event_type": latest_audit_event.get("event_type") or "",
+                    "latest_audit_method_version": latest_audit_event.get("method_version") or "",
+                    "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
+                }
+            )
     return output.getvalue()
 
 
@@ -12213,6 +12324,43 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=records,
+        )
+
+    def export_runtime_action_plans_csv(
+        self,
+        *,
+        project_id: str,
+        status: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        normalized_project_id = project_id.strip()
+        if not normalized_project_id:
+            raise ValueError("project_id is required")
+        normalized_status = status.strip().lower() if status else None
+        page = self.list_runtime_action_plans(
+            project_id=normalized_project_id,
+            status=normalized_status,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_action_plans_csv(page)
+        row_count = sum(max(1, len(record.action_recommendations)) for record in page.records)
+        filters = {
+            "project_id": normalized_project_id,
+            "status": normalized_status,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_action_plans_csv",
+            filename="runtime-action-plans.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=page.total_count,
+            row_count=row_count,
         )
 
     def record_runtime_alert_event(self, event: RuntimeAlertEventInput) -> RuntimeAlertEvent:

@@ -3598,6 +3598,7 @@ const endpoints = {
   notificationEmailPreferenceResubscribe: "/v1/runtime-notification-email-preferences/resubscribe",
   notificationEmailPreferenceUnsubscribe: "/v1/runtime-notification-email-preferences/unsubscribe",
   actions: "/v1/action-plans/runtime",
+  actionsExport: "/v1/action-plans/runtime/export.csv",
   alerts: "/v1/runtime-alerts",
   alertNotifications: "/v1/runtime-alerts/notifications",
   entityAliasAssignmentNotifications: "/v1/entity-aliases/runtime/candidates/assignment-notifications",
@@ -5449,6 +5450,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     notificationEmailPreferenceResubscribe: endpoints.notificationEmailPreferenceResubscribe,
     notificationEmailPreferenceUnsubscribe: endpoints.notificationEmailPreferenceUnsubscribe,
     actions: runtimePath(endpoints.actions, { limit: 1 }),
+    actionsExport: runtimePath(endpoints.actionsExport, { limit: 200 }),
     alerts: runtimePath(endpoints.alerts, { limit: 10 }),
     alertNotifications: endpoints.alertNotifications,
     entityAliasAssignmentNotifications: endpoints.entityAliasAssignmentNotifications,
@@ -6808,6 +6810,7 @@ export default async function Home({
   const auditEventsExportUrl = `${displayUrl}${paths.auditEventsExport}`;
   const projectMembersExportUrl = `${displayUrl}${paths.projectMembersExport}`;
   const projectMemberInvitationsExportUrl = `${displayUrl}${paths.projectMemberInvitationsExport}`;
+  const actionPlansExportUrl = `${displayUrl}${paths.actionsExport}`;
   const evidenceSort = data.evidence.sort || filters.sort || "collected_at_desc";
   const runtimeViewName = activeFilterCount
     ? `${selectedProject?.project.name || "Runtime project"} · ${filterLabel} · ${evidenceSort}`
@@ -12555,7 +12558,9 @@ export default async function Home({
                   <Fact label="Baseline runs" value={latestRetestComparison?.baseline_answer_run_ids?.length || 0} />
                   <Fact label="Retest runs" value={latestRetestComparison?.retest_answer_run_ids?.length || 0} />
                   <Fact label="Compared at" value={dateText(latestRetestComparison?.created_at)} />
+                  <Fact label="Action Plan CSV" value={paths.actionsExport} />
                 </dl>
+                <a href={actionPlansExportUrl}>Download action plan CSV</a>
               </section>
 
               <section className="actionSection retestSchedulerPlan">

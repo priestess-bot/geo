@@ -8663,6 +8663,43 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_action_plans_export_endpoint_returns_csv_with_hash_headers(self) -> None:
+        class FakeRepository:
+            def export_runtime_action_plans_csv(self, **kwargs: object) -> RuntimeEvidenceExport:
+                self.kwargs = kwargs
+                return RuntimeEvidenceExport(
+                    export_type="runtime_action_plans_csv",
+                    filename="runtime-action-plans.csv",
+                    media_type="text/csv; charset=utf-8",
+                    content="action_recommendation_id,status\nact-1,open\n",
+                    content_hash="hash-action-plans-csv",
+                    filters={"project_id": kwargs["project_id"], "status": kwargs["status"]},
+                    total_count=2,
+                    row_count=1,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/action-plans/runtime/export.csv?project_id=project-1&status=open&limit=5",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
+        self.assertEqual(response.headers["x-geno-action-plan-export-hash"], "hash-action-plans-csv")
+        self.assertEqual(response.headers["x-geno-action-plan-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geno-action-plan-status"], "open")
+        self.assertEqual(response.headers["x-geno-action-plan-row-count"], "1")
+        self.assertEqual(response.headers["x-geno-action-plan-total-count"], "2")
+        self.assertIn("runtime-action-plans.csv", response.headers["content-disposition"])
+        self.assertIn("act-1", response.text)
+        self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.kwargs["status"], "open")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+
     def test_au_retest_scheduler_plan_endpoint_returns_replayable_plan(self) -> None:
         response = self.client.get("/v1/au-retest-scheduler-plan")
         self.assertEqual(response.status_code, 200)
@@ -9267,6 +9304,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeReportManagementInput", payload["persistence"])
         self.assertIn("RuntimeReportManagementEventRequest", payload["persistence"])
         self.assertIn("RuntimeActionPlan", payload["persistence"])
+        self.assertIn("RuntimeActionPlanPage", payload["persistence"])
         self.assertIn("RuntimeAlertItem", payload["persistence"])
         self.assertIn("RuntimeAlertPage", payload["persistence"])
         self.assertIn("RuntimeAlertEvent", payload["persistence"])
@@ -9368,6 +9406,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/reports/runtime/{report_export_id}/artifact", payload["persistence"])
         self.assertIn("/v1/reports/runtime/{report_export_id}/artifact/signed-url", payload["persistence"])
         self.assertIn("/v1/action-plans/runtime", payload["persistence"])
+        self.assertIn("/v1/action-plans/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/runtime-alerts", payload["persistence"])
         self.assertIn("/v1/runtime-alerts/notifications", payload["persistence"])
         self.assertIn("/v1/runtime-alerts/{alert_id}/events", payload["persistence"])

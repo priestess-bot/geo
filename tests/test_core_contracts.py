@@ -10664,7 +10664,7 @@ class CoreContractsTest(unittest.TestCase):
                         "output_refs": {"retest_schedule_ids": [schedule_id]},
                         "method_version": "action_plan_v1",
                         "reason": "test",
-                        "created_at": now,
+                        "created_at": datetime(2026, 6, 10, 8, tzinfo=UTC),
                     }
                 ],
                 [
@@ -10682,7 +10682,7 @@ class CoreContractsTest(unittest.TestCase):
                         "output_refs": {"retest_comparison_ids": [comparison_id]},
                         "method_version": "retest_comparison_v1",
                         "reason": "test",
-                        "created_at": now,
+                        "created_at": datetime(2026, 6, 10, 7, tzinfo=UTC),
                     }
                 ],
             ]
@@ -10707,6 +10707,153 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM action_recommendations WHERE project_id = %s AND status = %s", executed_sql)
         self.assertIn("FROM retest_comparisons", executed_sql)
         self.assertIn("WHERE target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_exports_runtime_action_plans_csv(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        schedule_id = "7fbc98b0-6b37-529d-ad3c-1c70b8f6a880"
+        action_id = "4cfd7cd0-a0cc-580f-b448-7b52f3b2937e"
+        comparison_id = "fd17704e-8f18-5cb5-a1e4-28f6d0af62cf"
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [
+                    {
+                        "id": schedule_id,
+                        "project_id": project_id,
+                        "prompt_version": "au_dtc_ecommerce_v1",
+                        "sample_size": 1,
+                        "offsets_days": [0, 7, 14, 30],
+                        "scheduled_dates": [now],
+                        "answer_run_ids": [answer_run_id],
+                        "created_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": action_id,
+                        "project_id": project_id,
+                        "title": "Strengthen AU review evidence",
+                        "description": "Add review evidence",
+                        "priority": "high",
+                        "status": "open",
+                        "owner_id": "agency-owner",
+                        "source_gap_type": "missing_high_weight_source_type",
+                        "evidence_answer_run_ids": [answer_run_id],
+                        "related_source_types": ["review_site"],
+                        "next_check_date": now,
+                        "created_at": now,
+                    }
+                ],
+                [
+                    {
+                        "id": comparison_id,
+                        "project_id": project_id,
+                        "baseline_score": 87.35,
+                        "retest_score": 89.85,
+                        "score_delta": 2.5,
+                        "baseline_answer_run_ids": [answer_run_id],
+                        "retest_answer_run_ids": [answer_run_id],
+                        "trend": "improved",
+                        "created_at": now,
+                    }
+                ],
+                {
+                    "id": answer_run_id,
+                    "project_id": project_id,
+                    "prompt_question_id": "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0",
+                    "platform": "perplexity",
+                    "surface": "sonar",
+                    "access_method": "official_api",
+                    "market_code": "AU",
+                    "city": "Australia",
+                    "language": "en-AU",
+                    "device": "desktop",
+                    "answer_present": True,
+                    "surface_triggered": True,
+                    "sample_index": 1,
+                    "sample_size": 1,
+                    "model_or_surface": "sonar",
+                    "account_state": "api_key",
+                    "collector_backend_id": "fixture_perplexity_sonar",
+                    "collector_version": "fixture-v1",
+                    "collected_at": now,
+                    "status": "completed",
+                    "prompt_text": "Is ExampleBrand good in Australia?",
+                    "prompt_intent_type": "brand_awareness",
+                    "prompt_priority": 1,
+                    "prompt_version": "au_dtc_ecommerce_v1",
+                },
+                [
+                    {
+                        "id": "425f980b-138f-4afa-8784-79d6f16f92ce",
+                        "event_type": "action_plan_created",
+                        "project_id": project_id,
+                        "actor_type": "system",
+                        "actor_id": "geno-core.action_plan",
+                        "target_type": "action_plan",
+                        "target_id": schedule_id,
+                        "before_hash": None,
+                        "after_hash": "action-after",
+                        "input_refs": {"answer_run_ids": [answer_run_id]},
+                        "output_refs": {"retest_schedule_ids": [schedule_id]},
+                        "method_version": "action_plan_v1",
+                        "reason": "test",
+                        "created_at": datetime(2026, 6, 10, 8, tzinfo=UTC),
+                    }
+                ],
+                [
+                    {
+                        "id": "e0d7a395-b585-481a-bffa-07c3375416fe",
+                        "event_type": "retest_comparison_created",
+                        "project_id": project_id,
+                        "actor_type": "system",
+                        "actor_id": "geno-core.action_plan",
+                        "target_type": "retest_comparison",
+                        "target_id": comparison_id,
+                        "before_hash": "before",
+                        "after_hash": "comparison-after",
+                        "input_refs": {"baseline_answer_run_ids": [answer_run_id]},
+                        "output_refs": {"retest_comparison_ids": [comparison_id]},
+                        "method_version": "retest_comparison_v1",
+                        "reason": "test",
+                        "created_at": datetime(2026, 6, 10, 7, tzinfo=UTC),
+                    }
+                ],
+            ]
+        )
+
+        export = PostgresEvidenceRepository(connection).export_runtime_action_plans_csv(
+            project_id=project_id,
+            status="open",
+            limit=10,
+            offset=0,
+        )
+
+        self.assertEqual(export.export_type, "runtime_action_plans_csv")
+        self.assertEqual(export.filename, "runtime-action-plans.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertEqual(export.filters["status"], "open")
+        self.assertIn("action_recommendation_id,project_id,retest_schedule_id", export.content)
+        self.assertIn(action_id, export.content)
+        self.assertIn(schedule_id, export.content)
+        self.assertIn(comparison_id, export.content)
+        self.assertIn("improved", export.content)
+        self.assertIn("2.5", export.content)
+        self.assertIn(_artifact_hash("Strengthen AU review evidence"), export.content)
+        self.assertIn(_artifact_hash("Add review evidence"), export.content)
+        self.assertIn(_artifact_hash("agency-owner"), export.content)
+        self.assertIn("action_plan_created", export.content)
+        self.assertIn("action_plan_v1", export.content)
+        self.assertIn("action-after", export.content)
+        self.assertNotIn("Strengthen AU review evidence", export.content)
+        self.assertNotIn("Add review evidence", export.content)
+        self.assertNotIn("agency-owner", export.content)
+        self.assertEqual(export.content_hash, hashlib.sha256(export.content.encode("utf-8")).hexdigest())
 
     def test_postgres_repository_builds_runtime_alerts_from_score_graph_and_actions(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
