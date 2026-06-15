@@ -2097,6 +2097,56 @@ def _render_runtime_project_member_invitations_csv(page: RuntimeProjectMemberInv
     return output.getvalue()
 
 
+def _render_runtime_human_reviews_csv(page: RuntimeHumanReviewPage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "human_review_id",
+            "project_id",
+            "target_type",
+            "target_id",
+            "review_status",
+            "decision_hash",
+            "reviewer_id_hash",
+            "notes_hash",
+            "payload_keys",
+            "created_at",
+            "audit_event_count",
+            "latest_audit_event_type",
+            "latest_audit_method_version",
+            "latest_audit_after_hash",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        human_review = record.human_review
+        latest_audit_event = _latest_audit_event(record.audit_events)
+        payload = human_review.get("payload") if isinstance(human_review.get("payload"), dict) else {}
+        decision = str(human_review.get("decision") or "")
+        reviewer_id = str(human_review.get("reviewer_id") or "")
+        notes = str(human_review.get("notes") or "")
+        writer.writerow(
+            {
+                "human_review_id": human_review.get("id") or "",
+                "project_id": human_review.get("project_id") or "",
+                "target_type": human_review.get("target_type") or "",
+                "target_id": human_review.get("target_id") or "",
+                "review_status": human_review.get("review_status") or "",
+                "decision_hash": _artifact_hash(decision) if decision else "",
+                "reviewer_id_hash": _artifact_hash(reviewer_id) if reviewer_id else "",
+                "notes_hash": _artifact_hash(notes) if notes else "",
+                "payload_keys": "|".join(sorted(str(key) for key in payload)),
+                "created_at": human_review.get("created_at") or "",
+                "audit_event_count": len(record.audit_events),
+                "latest_audit_event_type": latest_audit_event.get("event_type") or "",
+                "latest_audit_method_version": latest_audit_event.get("method_version") or "",
+                "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
+            }
+        )
+    return output.getvalue()
+
+
 def _render_runtime_action_plans_csv(page: RuntimeActionPlanPage) -> str:
     output = StringIO()
     writer = csv.DictWriter(
@@ -8293,6 +8343,46 @@ class PostgresEvidenceRepository:
             reviews = _rows_dict(cursor.fetchall(), HUMAN_REVIEW_COLUMNS)
             records = tuple(self._load_runtime_human_review(cursor=cursor, human_review=review) for review in reviews)
         return RuntimeHumanReviewPage(total_count=total_count, limit=limit, offset=offset, records=records)
+
+    def export_runtime_human_reviews_csv(
+        self,
+        *,
+        project_id: str,
+        target_type: str | None = None,
+        review_status: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        normalized_project_id = project_id.strip()
+        if not normalized_project_id:
+            raise ValueError("project_id is required")
+        normalized_target_type = target_type.strip() if target_type else None
+        normalized_review_status = review_status.strip().lower() if review_status else None
+        page = self.list_runtime_human_reviews(
+            project_id=normalized_project_id,
+            target_type=normalized_target_type,
+            review_status=normalized_review_status,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_human_reviews_csv(page)
+        filters = {
+            "project_id": normalized_project_id,
+            "target_type": normalized_target_type,
+            "review_status": normalized_review_status,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_human_reviews_csv",
+            filename="runtime-human-reviews.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=page.total_count,
+            row_count=len(page.records),
+        )
 
     def list_runtime_human_review_queue(
         self,

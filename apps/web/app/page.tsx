@@ -3575,6 +3575,7 @@ const endpoints = {
   scoreWeights: "/v1/score-weight-configs/runtime",
   scoreFormulas: "/v1/score-formulas/runtime",
   humanReviews: "/v1/human-reviews/runtime",
+  humanReviewsExport: "/v1/human-reviews/runtime/export.csv",
   humanReviewQueue: "/v1/human-reviews/runtime/queue",
   knowledgeSearch: "/v1/knowledge-facts/runtime/search",
   scores: "/v1/visibility-scores/runtime",
@@ -5426,6 +5427,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     humanReviews: runtimePath(endpoints.humanReviews, {
       limit: 5
     }),
+    humanReviewsExport: runtimePath(endpoints.humanReviewsExport, {
+      limit: 200
+    }),
     humanReviewQueue: runtimePath(endpoints.humanReviewQueue, {
       limit: 5
     }),
@@ -5638,14 +5642,6 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     ? runtimePath(endpoints.scoreWeights, { project_id: selectedProjectId })
     : endpoints.scoreWeights;
   paths.scoreFormulas = endpoints.scoreFormulas;
-  paths.humanReviews = runtimePath(endpoints.humanReviews, {
-    ...selectedProjectParams,
-    limit: 5
-  });
-  paths.humanReviewQueue = runtimePath(endpoints.humanReviewQueue, {
-    ...selectedProjectParams,
-    limit: 5
-  });
   paths.knowledgeSearch = selectedProjectId
     ? runtimePath(endpoints.knowledgeSearch, {
         project_id: selectedProjectId,
@@ -5664,6 +5660,18 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     limit: 1
   });
   paths.reports = runtimePath(endpoints.reports, {
+    ...selectedProjectParams,
+    limit: 5
+  });
+  paths.humanReviews = runtimePath(endpoints.humanReviews, {
+    ...selectedProjectParams,
+    limit: 5
+  });
+  paths.humanReviewsExport = runtimePath(endpoints.humanReviewsExport, {
+    ...selectedProjectParams,
+    limit: 200
+  });
+  paths.humanReviewQueue = runtimePath(endpoints.humanReviewQueue, {
     ...selectedProjectParams,
     limit: 5
   });
@@ -6818,6 +6826,7 @@ export default async function Home({
   const projectMemberInvitationsExportUrl = `${displayUrl}${paths.projectMemberInvitationsExport}`;
   const actionPlansExportUrl = `${displayUrl}${paths.actionsExport}`;
   const runtimeAlertsExportUrl = `${displayUrl}${paths.alertsExport}`;
+  const humanReviewsExportUrl = `${displayUrl}${paths.humanReviewsExport}`;
   const evidenceSort = data.evidence.sort || filters.sort || "collected_at_desc";
   const runtimeViewName = activeFilterCount
     ? `${selectedProject?.project.name || "Runtime project"} · ${filterLabel} · ${evidenceSort}`
@@ -11479,11 +11488,13 @@ export default async function Home({
               )}
               <dl className="facts">
                 <Fact label="Review query" value={paths.humanReviews} />
+                <Fact label="Review CSV" value={paths.humanReviewsExport} />
                 <Fact label="Queue query" value={paths.humanReviewQueue} />
                 <Fact label="Method" value="human_review_v1" />
                 <Fact label="Audit event" value="human_review_recorded" />
                 <Fact label="Draft projection" value="content_draft_review_status_updated" />
               </dl>
+              <a href={humanReviewsExportUrl}>Download review CSV</a>
             </div>
           </div>
         </Panel>

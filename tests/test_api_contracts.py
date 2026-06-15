@@ -6780,6 +6780,50 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["limit"], 5)
         self.assertEqual(fake_repository.kwargs["offset"], 1)
 
+    def test_runtime_human_reviews_export_endpoint_returns_csv_with_hash_headers(self) -> None:
+        class FakeRepository:
+            def export_runtime_human_reviews_csv(self, **kwargs: object) -> RuntimeEvidenceExport:
+                self.kwargs = kwargs
+                return RuntimeEvidenceExport(
+                    export_type="runtime_human_reviews_csv",
+                    filename="runtime-human-reviews.csv",
+                    media_type="text/csv; charset=utf-8",
+                    content="human_review_id,review_status\nreview-1,needs_changes\n",
+                    content_hash="hash-human-reviews-csv",
+                    filters={
+                        "project_id": kwargs["project_id"],
+                        "target_type": kwargs["target_type"],
+                        "review_status": kwargs["review_status"],
+                    },
+                    total_count=4,
+                    row_count=1,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/human-reviews/runtime/export.csv"
+                "?project_id=project-1&target_type=content_draft&review_status=needs_changes&limit=5",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
+        self.assertEqual(response.headers["x-geno-human-review-export-hash"], "hash-human-reviews-csv")
+        self.assertEqual(response.headers["x-geno-human-review-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geno-human-review-target-type"], "content_draft")
+        self.assertEqual(response.headers["x-geno-human-review-status"], "needs_changes")
+        self.assertEqual(response.headers["x-geno-human-review-row-count"], "1")
+        self.assertEqual(response.headers["x-geno-human-review-total-count"], "4")
+        self.assertIn("runtime-human-reviews.csv", response.headers["content-disposition"])
+        self.assertIn("review-1", response.text)
+        self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.kwargs["target_type"], "content_draft")
+        self.assertEqual(fake_repository.kwargs["review_status"], "needs_changes")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+
     def test_runtime_human_review_queue_endpoint_passes_filters(self) -> None:
         class FakeRepository:
             def list_runtime_human_review_queue(self, **kwargs: object) -> RuntimeHumanReviewQueuePage:
@@ -9414,6 +9458,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/score-weight-configs/runtime", payload["persistence"])
         self.assertIn("/v1/score-formulas/runtime", payload["persistence"])
         self.assertIn("/v1/human-reviews/runtime", payload["persistence"])
+        self.assertIn("/v1/human-reviews/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/human-reviews/runtime/queue", payload["persistence"])
         self.assertIn("/v1/visibility-scores/runtime", payload["persistence"])
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])

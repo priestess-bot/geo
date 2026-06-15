@@ -12936,6 +12936,73 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM human_review_records WHERE project_id = %s AND target_type = %s AND review_status = %s", executed_sql)
         self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
 
+    def test_postgres_repository_exports_runtime_human_reviews_csv(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        review_id = "f25cdddc-c3e7-4fcb-90b8-557fd6465ea7"
+        review_row = {
+            "id": review_id,
+            "project_id": project_id,
+            "target_type": "content_draft",
+            "target_id": "1e53e0b4-7b1a-54d6-a918-fd8774df7bdd",
+            "review_status": "needs_changes",
+            "decision": "rewrite_local_examples",
+            "reviewer_id": "editor@example.com",
+            "notes": "needs stronger AU evidence",
+            "payload": {"target_label": "draft", "source": "runtime-console"},
+            "created_at": now,
+        }
+        audit_row = {
+            "id": "b9b398cf-7a61-465e-bfdd-0870b9633523",
+            "event_type": "human_review_recorded",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "editor@example.com",
+            "target_type": "human_review_record",
+            "target_id": review_id,
+            "before_hash": None,
+            "after_hash": "review-after",
+            "input_refs": {"review_target": [{"target_type": "content_draft", "target_id": review_row["target_id"]}]},
+            "output_refs": {"human_review_record_ids": [review_id]},
+            "method_version": "human_review_v1",
+            "reason": "record human review decision for an auditable runtime object",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, [review_row], [audit_row]])
+
+        export = PostgresEvidenceRepository(connection).export_runtime_human_reviews_csv(
+            project_id=project_id,
+            target_type="content_draft",
+            review_status="needs_changes",
+            limit=10,
+            offset=0,
+        )
+
+        self.assertEqual(export.export_type, "runtime_human_reviews_csv")
+        self.assertEqual(export.filename, "runtime-human-reviews.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertEqual(export.filters["target_type"], "content_draft")
+        self.assertEqual(export.filters["review_status"], "needs_changes")
+        self.assertIn("human_review_id,project_id,target_type,target_id", export.content)
+        self.assertIn(review_id, export.content)
+        self.assertIn("content_draft", export.content)
+        self.assertIn("needs_changes", export.content)
+        self.assertIn("source|target_label", export.content)
+        self.assertIn(_artifact_hash("rewrite_local_examples"), export.content)
+        self.assertIn(_artifact_hash("editor@example.com"), export.content)
+        self.assertIn(_artifact_hash("needs stronger AU evidence"), export.content)
+        self.assertIn("human_review_recorded", export.content)
+        self.assertIn("human_review_v1", export.content)
+        self.assertIn("review-after", export.content)
+        self.assertNotIn("rewrite_local_examples", export.content)
+        self.assertNotIn("editor@example.com", export.content)
+        self.assertNotIn("needs stronger AU evidence", export.content)
+        self.assertNotIn("runtime-console", export.content)
+        self.assertEqual(export.content_hash, hashlib.sha256(export.content.encode("utf-8")).hexdigest())
+
     def test_postgres_repository_lists_runtime_human_review_queue(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

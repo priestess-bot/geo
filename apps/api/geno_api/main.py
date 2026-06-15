@@ -5382,6 +5382,49 @@ def runtime_human_reviews(
         close_repository_connection(repository)
 
 
+@app.get("/v1/human-reviews/runtime/export.csv")
+def runtime_human_reviews_export_csv(
+    project_id: str = Query(min_length=1),
+    target_type: str | None = Query(default=None, min_length=1, max_length=80),
+    review_status: str | None = Query(default=None, min_length=1, max_length=80),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_human_reviews_csv(
+                project_id=project_id.strip(),
+                target_type=target_type.strip() if target_type else None,
+                review_status=review_status.strip().lower() if review_status else None,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GENO-Human-Review-Export-Hash": export.content_hash,
+                "X-GENO-Human-Review-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GENO-Human-Review-Target-Type": str(export.filters.get("target_type", "")),
+                "X-GENO-Human-Review-Status": str(export.filters.get("review_status", "")),
+                "X-GENO-Human-Review-Row-Count": str(export.row_count),
+                "X-GENO-Human-Review-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/human-reviews/runtime/queue")
 def runtime_human_review_queue(
     project_id: str | None = None,
@@ -7966,6 +8009,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/score-weight-configs/runtime",
             "/v1/score-formulas/runtime",
             "/v1/human-reviews/runtime",
+            "/v1/human-reviews/runtime/export.csv",
             "/v1/human-reviews/runtime/queue",
             "worker --persist",
             "worker --persist-analysis",
