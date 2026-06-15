@@ -302,6 +302,45 @@ def _next_action(runbook_status: dict[str, Any], env_file: dict[str, Any], missi
     return "run_au_p0a_runbook_dry_run"
 
 
+def _summary(
+    *,
+    required: list[dict[str, Any]],
+    recommended: list[dict[str, Any]],
+    missing_required: list[str],
+    missing_recommended: list[str],
+    runbook_status: dict[str, Any],
+    env_file: dict[str, Any],
+    ready_for_real_batch: bool,
+    next_action: str,
+) -> dict[str, Any]:
+    env_file_hygiene = env_file.get("hygiene") if isinstance(env_file.get("hygiene"), dict) else {}
+    hygiene_errors = [str(item) for item in env_file_hygiene.get("errors", [])] if isinstance(env_file_hygiene, dict) else []
+    hygiene_warnings = (
+        [str(item) for item in env_file_hygiene.get("warnings", [])] if isinstance(env_file_hygiene, dict) else []
+    )
+    return {
+        "required_count": len(required),
+        "present_required_count": len(required) - len(missing_required),
+        "missing_required_count": len(missing_required),
+        "missing_required": missing_required,
+        "recommended_count": len(recommended),
+        "present_recommended_count": len(recommended) - len(missing_recommended),
+        "missing_recommended_count": len(missing_recommended),
+        "missing_recommended": missing_recommended,
+        "runbook_status": runbook_status.get("status", ""),
+        "runbook_hash_valid": runbook_status.get("hash_valid") is True,
+        "env_file_exists": env_file.get("exists") is True,
+        "env_file_loaded": env_file.get("loaded") is True,
+        "env_file_entry_count": env_file.get("entry_count", 0),
+        "env_file_hygiene_ready": env_file_hygiene.get("hygiene_ready") is True,
+        "env_file_hygiene_error_count": len(hygiene_errors),
+        "env_file_hygiene_warning_count": len(hygiene_warnings),
+        "ready_for_real_batch": ready_for_real_batch,
+        "next_action": next_action,
+        "raw_secret_values_allowed": False,
+    }
+
+
 def build_au_p0a_env_report(
     *,
     runbook_path: Path = Path(DEFAULT_RUNBOOK_PATH),
@@ -327,12 +366,13 @@ def build_au_p0a_env_report(
         and not env_file_errors
         and env_file_hygiene_ready
     )
+    next_action = _next_action(runbook_status, env_file, missing_required)
     report: dict[str, Any] = {
         "environment_report_version": ENV_REPORT_VERSION,
         "generated_at": generated_at or _utc_now_iso(),
         "status": "pass" if ready_for_real_batch else "fail",
         "ready_for_real_batch": ready_for_real_batch,
-        "next_action": _next_action(runbook_status, env_file, missing_required),
+        "next_action": next_action,
         "runbook_path": str(runbook_path),
         "output_path": str(output_path) if output_path else "",
         "runbook": runbook_status,
@@ -341,6 +381,16 @@ def build_au_p0a_env_report(
         "recommended": recommended,
         "missing_required": missing_required,
         "missing_recommended": missing_recommended,
+        "summary": _summary(
+            required=required,
+            recommended=recommended,
+            missing_required=missing_required,
+            missing_recommended=missing_recommended,
+            runbook_status=runbook_status,
+            env_file=env_file,
+            ready_for_real_batch=ready_for_real_batch,
+            next_action=next_action,
+        ),
         "warnings": [f"recommended_env_missing:{name}" for name in missing_recommended],
         "errors": [
             *[f"runbook:{error}" for error in runbook_status.get("errors", [])],

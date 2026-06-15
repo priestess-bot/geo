@@ -31,6 +31,7 @@ REQUIRED_TOP_LEVEL_FIELDS = (
     "recommended",
     "missing_required",
     "missing_recommended",
+    "summary",
     "warnings",
     "errors",
     "secrets_redacted",
@@ -164,6 +165,45 @@ def verify_au_p0a_env_report(
     expected_next_action = _expected_next_action(report, required_missing)
     if report.get("next_action") != expected_next_action:
         errors.append("next_action_mismatch")
+    summary = _as_dict(report.get("summary"))
+    if summary.get("required_count") != len(_as_list(report.get("required"))):
+        errors.append("summary_required_count_mismatch")
+    if summary.get("present_required_count") != len(_as_list(report.get("required"))) - len(required_missing):
+        errors.append("summary_present_required_count_mismatch")
+    if summary.get("missing_required_count") != len(required_missing):
+        errors.append("summary_missing_required_count_mismatch")
+    if sorted(str(item) for item in _as_list(summary.get("missing_required"))) != sorted(required_missing):
+        errors.append("summary_missing_required_mismatch")
+    if summary.get("recommended_count") != len(_as_list(report.get("recommended"))):
+        errors.append("summary_recommended_count_mismatch")
+    if summary.get("present_recommended_count") != len(_as_list(report.get("recommended"))) - len(recommended_missing):
+        errors.append("summary_present_recommended_count_mismatch")
+    if summary.get("missing_recommended_count") != len(recommended_missing):
+        errors.append("summary_missing_recommended_count_mismatch")
+    if sorted(str(item) for item in _as_list(summary.get("missing_recommended"))) != sorted(recommended_missing):
+        errors.append("summary_missing_recommended_mismatch")
+    if summary.get("runbook_status") != runbook.get("status", ""):
+        errors.append("summary_runbook_status_mismatch")
+    if summary.get("runbook_hash_valid") is not (runbook.get("hash_valid") is True):
+        errors.append("summary_runbook_hash_valid_mismatch")
+    if summary.get("env_file_exists") is not (env_file.get("exists") is True):
+        errors.append("summary_env_file_exists_mismatch")
+    if summary.get("env_file_loaded") is not (env_file.get("loaded") is True):
+        errors.append("summary_env_file_loaded_mismatch")
+    if summary.get("env_file_entry_count") != env_file.get("entry_count", 0):
+        errors.append("summary_env_file_entry_count_mismatch")
+    if summary.get("env_file_hygiene_ready") is not (hygiene.get("hygiene_ready") is True):
+        errors.append("summary_env_file_hygiene_ready_mismatch")
+    if summary.get("env_file_hygiene_error_count") != len(hygiene_errors):
+        errors.append("summary_env_file_hygiene_error_count_mismatch")
+    if summary.get("env_file_hygiene_warning_count") != len(hygiene_warnings):
+        errors.append("summary_env_file_hygiene_warning_count_mismatch")
+    if summary.get("ready_for_real_batch") is not expected_ready:
+        errors.append("summary_ready_for_real_batch_mismatch")
+    if summary.get("next_action") != expected_next_action:
+        errors.append("summary_next_action_mismatch")
+    if summary.get("raw_secret_values_allowed") is not False:
+        errors.append("summary_raw_secret_values_policy_invalid")
     expected_warnings = sorted(f"recommended_env_missing:{name}" for name in recommended_missing)
     if sorted(str(item) for item in _as_list(report.get("warnings"))) != expected_warnings:
         errors.append("warnings_mismatch")

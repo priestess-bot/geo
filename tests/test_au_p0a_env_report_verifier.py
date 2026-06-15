@@ -55,6 +55,20 @@ class AuP0aEnvReportVerifierTest(unittest.TestCase):
         self.assertIn("environment_report_hash_mismatch", result["errors"])
         self.assertIn("next_action_mismatch", result["errors"])
 
+    def test_summary_tampering_fails_even_when_hash_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            report = self._report(temp_dir, ready=False)
+            report["summary"]["missing_required_count"] = 0  # type: ignore[index]
+            report["summary"]["ready_for_real_batch"] = True  # type: ignore[index]
+            report["summary"]["raw_secret_values_allowed"] = True  # type: ignore[index]
+            report["environment_report_hash"] = compute_env_report_hash(report)
+            result = verify_au_p0a_env_report(report)
+
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("summary_missing_required_count_mismatch", result["errors"])
+        self.assertIn("summary_ready_for_real_batch_mismatch", result["errors"])
+        self.assertIn("summary_raw_secret_values_policy_invalid", result["errors"])
+
     def test_raw_secret_field_fails_even_when_hash_recomputed(self) -> None:
         with TemporaryDirectory() as temp_dir:
             report = self._report(temp_dir, ready=True)
