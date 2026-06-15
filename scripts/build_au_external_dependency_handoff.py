@@ -540,11 +540,31 @@ def _p0a_provider_credentials_group(
                 "${GENO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json} "
                 "--require-fulfilled"
             ),
+            "make au-p0a-credential-clearance",
+            "make verify-au-p0a-credential-clearance",
+            (
+                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "scripts/verify_au_p0a_credential_clearance.py "
+                "${GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-clearance-latest.json} "
+                "--require-cleared"
+            ),
+            "make au-p0a-credential-update-receipt",
+            "make verify-au-p0a-credential-update-receipt",
+            (
+                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "scripts/verify_au_p0a_credential_update_receipt.py "
+                "${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
+                "--require-complete"
+            ),
         ]
     )
     evidence_outputs = _unique_strings(
         _strings(credential_handoff.get("evidence_outputs"))
-        + ["docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json"]
+        + [
+            "docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json",
+            "docs/runtime_preflight/au-p0a-credential-clearance-latest.json",
+            "docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json",
+        ]
     )
     return {
         "id": "p0a_provider_credentials",

@@ -283,14 +283,25 @@ def _validate_groups(handoff: dict[str, Any], errors: list[str]) -> None:
     if p0a_redaction.get("credential_items_redacted") is not True:
         errors.append("p0a_provider_credentials_item_redaction_invalid")
     p0a_verification_commands = _strings(p0a_credentials.get("verification_commands"))
+    p0a_evidence_outputs = _strings(p0a_credentials.get("evidence_outputs"))
     if "make verify-au-p0a-credential-fulfillment" not in p0a_verification_commands:
         errors.append("p0a_provider_credentials_fulfillment_verifier_missing")
     if not any("--require-fulfilled" in command for command in p0a_verification_commands):
         errors.append("p0a_provider_credentials_fulfillment_strict_gate_missing")
-    if "docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json" not in _strings(
-        p0a_credentials.get("evidence_outputs")
-    ):
+    if "docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json" not in p0a_evidence_outputs:
         errors.append("p0a_provider_credentials_fulfillment_evidence_missing")
+    if "make verify-au-p0a-credential-clearance" not in p0a_verification_commands:
+        errors.append("p0a_provider_credentials_clearance_verifier_missing")
+    if not any("--require-cleared" in command for command in p0a_verification_commands):
+        errors.append("p0a_provider_credentials_clearance_strict_gate_missing")
+    if "docs/runtime_preflight/au-p0a-credential-clearance-latest.json" not in p0a_evidence_outputs:
+        errors.append("p0a_provider_credentials_clearance_evidence_missing")
+    if "make verify-au-p0a-credential-update-receipt" not in p0a_verification_commands:
+        errors.append("p0a_provider_credentials_update_receipt_verifier_missing")
+    if not any("--require-complete" in command for command in p0a_verification_commands):
+        errors.append("p0a_provider_credentials_update_receipt_strict_gate_missing")
+    if "docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json" not in p0a_evidence_outputs:
+        errors.append("p0a_provider_credentials_update_receipt_evidence_missing")
 
     p0a_batches = groups.get("p0a_real_batches", {})
     if tuple(_strings(p0a_batches.get("phase_order"))) != ("preflight", "small_batch", "full_batch"):

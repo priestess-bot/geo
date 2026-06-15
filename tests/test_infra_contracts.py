@@ -577,6 +577,16 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("GENO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0a-credential-fulfillment:", makefile)
         self.assertIn("scripts/verify_au_p0a_credential_fulfillment.py", makefile)
+        self.assertIn("au-p0a-credential-clearance:", makefile)
+        self.assertIn("scripts/build_au_p0a_credential_clearance.py", makefile)
+        self.assertIn("GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("verify-au-p0a-credential-clearance:", makefile)
+        self.assertIn("scripts/verify_au_p0a_credential_clearance.py", makefile)
+        self.assertIn("au-p0a-credential-update-receipt:", makefile)
+        self.assertIn("scripts/build_au_p0a_credential_update_receipt.py", makefile)
+        self.assertIn("GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH", makefile)
+        self.assertIn("verify-au-p0a-credential-update-receipt:", makefile)
+        self.assertIn("scripts/verify_au_p0a_credential_update_receipt.py", makefile)
         self.assertIn("au-p0b-google-environment-fulfillment:", makefile)
         self.assertIn("scripts/build_au_p0b_google_environment_fulfillment.py", makefile)
         self.assertIn("GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH", makefile)
@@ -648,6 +658,16 @@ class InfraContractsTest(unittest.TestCase):
         refresh_block = makefile.split("au-delivery-evidence-refresh:", 1)[1].split("\nau-next-work-item:", 1)[0]
         self.assertIn("$(MAKE) au-p0a-env", makefile)
         self.assertIn("$(MAKE) verify-au-p0a-credential-clearance", makefile)
+        self.assertIn("$(MAKE) au-p0a-credential-update-receipt", makefile)
+        self.assertIn("$(MAKE) verify-au-p0a-credential-update-receipt", makefile)
+        self.assertLess(
+            refresh_block.index("$(MAKE) verify-au-p0a-credential-clearance"),
+            refresh_block.index("$(MAKE) au-p0a-credential-update-receipt"),
+        )
+        self.assertLess(
+            refresh_block.index("$(MAKE) verify-au-p0a-credential-update-receipt"),
+            refresh_block.index("$(MAKE) au-p0a-real-batch-fulfillment"),
+        )
         self.assertIn("$(MAKE) au-external-dependency-handoff", makefile)
         self.assertIn("$(MAKE) verify-au-external-dependency-clearance", makefile)
         self.assertIn("$(MAKE) au-p0a-real-batch-fulfillment", makefile)

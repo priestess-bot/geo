@@ -180,6 +180,25 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
             "docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json",
             handoff["dependency_groups"][0]["evidence_outputs"],
         )
+        self.assertIn("make verify-au-p0a-credential-clearance", handoff["dependency_groups"][0]["verification_commands"])
+        self.assertTrue(
+            any("--require-cleared" in command for command in handoff["dependency_groups"][0]["verification_commands"])
+        )
+        self.assertIn(
+            "docs/runtime_preflight/au-p0a-credential-clearance-latest.json",
+            handoff["dependency_groups"][0]["evidence_outputs"],
+        )
+        self.assertIn(
+            "make verify-au-p0a-credential-update-receipt",
+            handoff["dependency_groups"][0]["verification_commands"],
+        )
+        self.assertTrue(
+            any("--require-complete" in command for command in handoff["dependency_groups"][0]["verification_commands"])
+        )
+        self.assertIn(
+            "docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json",
+            handoff["dependency_groups"][0]["evidence_outputs"],
+        )
         self.assertIn("missing_required:DATABASE_URL", handoff["dependency_groups"][0]["blocking_reasons"])
         self.assertTrue(handoff["dependency_groups"][2]["target_env_file"])
         self.assertEqual(handoff["dependency_groups"][2]["next_command"], "make verify-au-p0b-google-env-template")

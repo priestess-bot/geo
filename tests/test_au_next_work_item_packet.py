@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from scripts.build_au_external_dependency_handoff import build_au_external_dependency_handoff
 from scripts.build_au_handoff_dossier import build_au_handoff_dossier
 from scripts.build_au_next_work_item_packet import (
     PACKET_VERSION,
@@ -23,11 +24,27 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         self._helper = AuHandoffDossierTest()
         self._helper.setUp()
 
-    def _build_handoff_dossier(self, temp_dir: str, *, ready: bool) -> tuple[Path, dict[str, object]]:
+    def _build_handoff_dossier(
+        self,
+        temp_dir: str,
+        *,
+        ready: bool,
+    ) -> tuple[Path, dict[str, object], Path, dict[str, object]]:
         launch_status_path, remediation_plan_path = self._helper._write_launch_status_and_plan(temp_dir, ready=ready)
         checklist_path = self._helper._write_p0a_environment_checklist(temp_dir, ready=ready)
         p0a_execution_checklist_path = self._helper._write_p0a_execution_checklist(temp_dir, ready=ready)
         p0b_checklist_path = self._helper._write_p0b_google_execution_checklist(temp_dir, ready=ready)
+        external_handoff_path = Path(temp_dir) / "external-dependency-handoff.json"
+        external_handoff = build_au_external_dependency_handoff(
+            launch_status_path=launch_status_path,
+            remediation_plan_path=remediation_plan_path,
+            p0a_environment_checklist_path=checklist_path,
+            p0a_execution_checklist_path=p0a_execution_checklist_path,
+            p0b_google_execution_checklist_path=p0b_checklist_path,
+            output_path=external_handoff_path,
+            generated_at="2026-06-12T00:00:00Z",
+        )
+        external_handoff_path.write_text(json.dumps(external_handoff), encoding="utf-8")
         dossier_path = Path(temp_dir) / "dossier.json"
         dossier = build_au_handoff_dossier(
             launch_status_path=launch_status_path,
@@ -40,14 +57,19 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
             generated_at="2026-06-12T00:00:00Z",
         )
         dossier_path.write_text(json.dumps(dossier), encoding="utf-8")
-        return dossier_path, dossier
+        return dossier_path, dossier, external_handoff_path, external_handoff
 
     def test_packet_records_current_p0a_environment_work_item(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            dossier_path, dossier = self._build_handoff_dossier(temp_dir, ready=False)
+            dossier_path, dossier, external_handoff_path, external_handoff = self._build_handoff_dossier(
+                temp_dir,
+                ready=False,
+            )
             packet = build_au_next_work_item_packet(
                 handoff_dossier_path=dossier_path,
+                external_dependency_handoff_path=external_handoff_path,
                 handoff_dossier=dossier,
+                external_dependency_handoff=external_handoff,
                 output_path=Path(temp_dir) / "next-work-item.json",
                 generated_at="2026-06-12T00:00:00Z",
             )
@@ -114,14 +136,32 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         self.assertEqual(packet["execution_context"]["linked_dependency_group"]["status"], "requires_external_input")
         self.assertEqual(
             packet["execution_context"]["linked_dependency_group"]["next_command"],
-            "make au-p0a-env",
+            "make verify-au-p0a-env-template",
         )
-        self.assertTrue(packet["execution_context"]["linked_dependency_group"]["env_file_hygiene_exists"])
+        self.assertFalse(packet["execution_context"]["linked_dependency_group"]["env_file_hygiene_exists"])
         self.assertTrue(packet["execution_context"]["linked_dependency_group"]["env_file_hygiene_ready"])
         self.assertIn("make au-p0a-credential-fulfillment", packet["execution_context"]["group_verification_commands"])
         self.assertIn("make verify-au-p0a-credential-fulfillment", packet["execution_context"]["group_verification_commands"])
         self.assertIn(
             "docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json",
+            packet["execution_context"]["group_evidence_outputs"],
+        )
+        self.assertIn("make au-p0a-credential-clearance", packet["execution_context"]["group_verification_commands"])
+        self.assertIn("make verify-au-p0a-credential-clearance", packet["execution_context"]["group_verification_commands"])
+        self.assertIn(
+            "docs/runtime_preflight/au-p0a-credential-clearance-latest.json",
+            packet["execution_context"]["group_evidence_outputs"],
+        )
+        self.assertIn(
+            "make au-p0a-credential-update-receipt",
+            packet["execution_context"]["group_verification_commands"],
+        )
+        self.assertIn(
+            "make verify-au-p0a-credential-update-receipt",
+            packet["execution_context"]["group_verification_commands"],
+        )
+        self.assertIn(
+            "docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json",
             packet["execution_context"]["group_evidence_outputs"],
         )
         self.assertGreater(packet["execution_context"]["linked_dependency_group"]["blocking_reason_count"], 0)
@@ -138,21 +178,35 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         self.assertIn("make verify-au-p0a-credential-request", packet["execution_context"]["recommended_sequence"])
         self.assertIn("make au-p0a-credential-fulfillment", packet["execution_context"]["recommended_sequence"])
         self.assertIn("make verify-au-p0a-credential-fulfillment", packet["execution_context"]["recommended_sequence"])
+        self.assertIn("make au-p0a-credential-clearance", packet["execution_context"]["recommended_sequence"])
+        self.assertIn("make verify-au-p0a-credential-clearance", packet["execution_context"]["recommended_sequence"])
+        self.assertIn("make au-p0a-credential-update-receipt", packet["execution_context"]["recommended_sequence"])
+        self.assertIn("make verify-au-p0a-credential-update-receipt", packet["execution_context"]["recommended_sequence"])
         self.assertTrue(
             any(command.endswith("--require-fulfilled") for command in packet["execution_context"]["recommended_sequence"])
         )
         self.assertTrue(
+            any(command.endswith("--require-cleared") for command in packet["execution_context"]["recommended_sequence"])
+        )
+        self.assertTrue(
+            any(command.endswith("--require-complete") for command in packet["execution_context"]["recommended_sequence"])
+        )
+        self.assertTrue(
             any(command.endswith("--require-credentials-ready") for command in packet["execution_context"]["recommended_sequence"])
         )
-        self.assertEqual(packet["summary"]["recommended_sequence_count"], 20)
-        self.assertEqual(packet["commands"][0], "make au-p0a-env")
+        self.assertEqual(packet["summary"]["recommended_sequence_count"], 26)
+        self.assertEqual(packet["commands"][0], "make verify-au-p0a-env-template")
         self.assertIn("make au-p0a-env-bootstrap", packet["commands"])
         self.assertIn("make verify-au-p0a-env-bootstrap", packet["commands"])
         self.assertIn("make verify-au-p0a-status", packet["verification_commands"])
         self.assertIn("make verify-au-p0a-credential-fulfillment", packet["verification_commands"])
+        self.assertIn("make verify-au-p0a-credential-clearance", packet["verification_commands"])
+        self.assertIn("make verify-au-p0a-credential-update-receipt", packet["verification_commands"])
         self.assertIn("docs/runtime_preflight/au-p0a-env-bootstrap-latest.json", packet["evidence_outputs"])
         self.assertIn("docs/runtime_preflight/au-p0a-env-latest.json", packet["evidence_outputs"])
         self.assertIn("docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json", packet["evidence_outputs"])
+        self.assertIn("docs/runtime_preflight/au-p0a-credential-clearance-latest.json", packet["evidence_outputs"])
+        self.assertIn("docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json", packet["evidence_outputs"])
         self.assertEqual(packet["runtime_endpoints"]["next_work_item"], "GET /v1/next-work-item/au")
         self.assertEqual(packet["runtime_endpoints"]["customer_handoff_readiness"], "GET /v1/customer-handoff-readiness/au")
         self.assertIn("make au-next-work-item", packet["hard_gate_commands"])
@@ -160,9 +214,13 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         self.assertIn("make au-p0a-credential-request", packet["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-request", packet["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-fulfillment", packet["hard_gate_commands"])
+        self.assertIn("make verify-au-p0a-credential-clearance", packet["hard_gate_commands"])
+        self.assertIn("make verify-au-p0a-credential-update-receipt", packet["hard_gate_commands"])
         self.assertTrue(any(command.endswith("--require-customer-ready") for command in packet["hard_gate_commands"]))
         self.assertTrue(any(command.endswith("--require-credentials-ready") for command in packet["hard_gate_commands"]))
         self.assertTrue(any(command.endswith("--require-fulfilled") for command in packet["hard_gate_commands"]))
+        self.assertTrue(any(command.endswith("--require-cleared") for command in packet["hard_gate_commands"]))
+        self.assertTrue(any(command.endswith("--require-complete") for command in packet["hard_gate_commands"]))
         self.assertEqual(packet["next_work_item_packet_hash"], compute_next_work_item_packet_hash(packet))
         self.assertEqual(verification["status"], "pass")
         self.assertEqual(hard_gate["status"], "fail")
@@ -247,10 +305,15 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
 
     def test_packet_records_none_work_item_after_customer_ready(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            dossier_path, dossier = self._build_handoff_dossier(temp_dir, ready=True)
+            dossier_path, dossier, external_handoff_path, external_handoff = self._build_handoff_dossier(
+                temp_dir,
+                ready=True,
+            )
             packet = build_au_next_work_item_packet(
                 handoff_dossier_path=dossier_path,
+                external_dependency_handoff_path=external_handoff_path,
                 handoff_dossier=dossier,
+                external_dependency_handoff=external_handoff,
                 output_path=Path(temp_dir) / "next-work-item.json",
                 generated_at="2026-06-12T00:00:00Z",
             )
@@ -263,10 +326,15 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
 
     def test_verifier_rejects_tampered_command_count_even_when_hash_is_recomputed(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            dossier_path, dossier = self._build_handoff_dossier(temp_dir, ready=False)
+            dossier_path, dossier, external_handoff_path, external_handoff = self._build_handoff_dossier(
+                temp_dir,
+                ready=False,
+            )
             packet = build_au_next_work_item_packet(
                 handoff_dossier_path=dossier_path,
+                external_dependency_handoff_path=external_handoff_path,
                 handoff_dossier=dossier,
+                external_dependency_handoff=external_handoff,
                 output_path=Path(temp_dir) / "next-work-item.json",
                 generated_at="2026-06-12T00:00:00Z",
             )
@@ -279,10 +347,15 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
 
     def test_verifier_rejects_tampered_linked_request_context(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            dossier_path, dossier = self._build_handoff_dossier(temp_dir, ready=False)
+            dossier_path, dossier, external_handoff_path, external_handoff = self._build_handoff_dossier(
+                temp_dir,
+                ready=False,
+            )
             packet = build_au_next_work_item_packet(
                 handoff_dossier_path=dossier_path,
+                external_dependency_handoff_path=external_handoff_path,
                 handoff_dossier=dossier,
+                external_dependency_handoff=external_handoff,
                 output_path=Path(temp_dir) / "next-work-item.json",
                 generated_at="2026-06-12T00:00:00Z",
             )
@@ -303,7 +376,10 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
 
     def test_verifier_rejects_stale_linked_request_artifact_file(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            dossier_path, dossier = self._build_handoff_dossier(temp_dir, ready=False)
+            dossier_path, dossier, external_handoff_path, external_handoff = self._build_handoff_dossier(
+                temp_dir,
+                ready=False,
+            )
             linked_path = Path(temp_dir) / "linked-request.json"
             linked_payload = {
                 "p0a_credential_request_packet_hash": "current-request-hash",
@@ -315,7 +391,9 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
             try:
                 packet = build_au_next_work_item_packet(
                     handoff_dossier_path=dossier_path,
+                    external_dependency_handoff_path=external_handoff_path,
                     handoff_dossier=dossier,
+                    external_dependency_handoff=external_handoff,
                     output_path=Path(temp_dir) / "next-work-item.json",
                     generated_at="2026-06-12T00:00:00Z",
                 )
@@ -340,7 +418,7 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
 
     def test_cli_writes_next_work_item_packet_json(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            dossier_path, _ = self._build_handoff_dossier(temp_dir, ready=False)
+            dossier_path, _, external_handoff_path, _ = self._build_handoff_dossier(temp_dir, ready=False)
             output_path = Path(temp_dir) / "next-work-item.json"
             result = subprocess.run(
                 [
@@ -348,6 +426,8 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
                     "scripts/build_au_next_work_item_packet.py",
                     "--handoff-dossier-path",
                     str(dossier_path),
+                    "--external-dependency-handoff-path",
+                    str(external_handoff_path),
                     "--output-path",
                     str(output_path),
                     "--generated-at",
