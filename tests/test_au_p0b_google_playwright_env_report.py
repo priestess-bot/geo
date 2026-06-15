@@ -46,6 +46,16 @@ class AuP0bGooglePlaywrightEnvReportTest(unittest.TestCase):
         self.assertIn("GOOGLE_PLAYWRIGHT_ENABLED", report["missing_required"])
         self.assertIn("google_aio_prompt_selector", report["missing_selector_groups"])
         self.assertIn("google_aio_answer_selector", report["missing_selector_groups"])
+        self.assertEqual(report["summary"]["required_count"], 1)
+        self.assertEqual(report["summary"]["missing_required_count"], 1)
+        self.assertEqual(report["summary"]["selector_group_count"], 2)
+        self.assertEqual(report["summary"]["missing_selector_group_count"], 2)
+        self.assertEqual(report["summary"]["missing_dependency_count"], 1)
+        self.assertFalse(report["summary"]["playwright_available"])
+        self.assertFalse(report["summary"]["ready_for_playwright_smoke"])
+        self.assertFalse(report["summary"]["ready_for_full_google_run"])
+        self.assertFalse(report["summary"]["raw_secret_values_allowed"])
+        self.assertFalse(report["summary"]["selector_values_allowed"])
         self.assertIn("python_playwright_package_missing", report["errors"])
         self.assertTrue(report["secrets_redacted"])
         self.assertEqual(report["environment_report_hash"], compute_google_playwright_env_report_hash(report))
@@ -106,6 +116,15 @@ class AuP0bGooglePlaywrightEnvReportTest(unittest.TestCase):
         self.assertEqual(report["missing_required"], [])
         self.assertEqual(set(report["missing_full_run_required"]), {"DATABASE_URL", "MANUAL_BACKFILL_PATH"})
         self.assertEqual(report["missing_selector_groups"], [])
+        self.assertTrue(report["summary"]["ready_for_playwright_smoke"])
+        self.assertFalse(report["summary"]["ready_for_full_google_run"])
+        self.assertEqual(report["summary"]["missing_full_run_required_count"], 2)
+        self.assertEqual(
+            set(report["summary"]["missing_full_run_required"]),
+            {"DATABASE_URL", "MANUAL_BACKFILL_PATH"},
+        )
+        self.assertFalse(report["summary"]["manual_backfill_file_ready"])
+        self.assertTrue(report["summary"]["playwright_available"])
 
         verification = verify_google_playwright_env_report(report, require_ready_smoke=True)
         self.assertEqual(verification["status"], "pass")
@@ -165,6 +184,10 @@ class AuP0bGooglePlaywrightEnvReportTest(unittest.TestCase):
         self.assertTrue(report["ready_for_playwright_smoke"])
         self.assertTrue(report["ready_for_full_google_run"])
         self.assertEqual(report["missing_full_run_required"], [])
+        self.assertTrue(report["summary"]["ready_for_full_google_run"])
+        self.assertEqual(report["summary"]["missing_full_run_required_count"], 0)
+        self.assertTrue(report["summary"]["manual_backfill_file_ready"])
+        self.assertFalse(report["summary"]["database_urls_allowed"])
         self.assertNotIn("postgresql://user", json.dumps(report))
 
     def test_report_can_load_env_file_and_redact_fingerprints(self) -> None:
@@ -272,6 +295,31 @@ class AuP0bGooglePlaywrightEnvReportTest(unittest.TestCase):
         self.assertFalse(result["env_file_hygiene_ready"])
         self.assertIn("env_file_permissions_not_0600", result["env_file_hygiene_errors"])
         self.assertIn("ready_for_playwright_smoke_mismatch", result["errors"])
+
+    def test_verifier_fails_summary_tampering_even_when_hash_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            runbook_path = self._write_runbook(temp_dir)
+            report = build_google_playwright_env_report(
+                runbook_path=runbook_path,
+                env_file_path=Path(temp_dir) / "missing.env",
+                env={
+                    "GOOGLE_PLAYWRIGHT_ENABLED": "1",
+                    "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR": "#prompt",
+                    "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR": ".answer",
+                },
+                playwright_available=True,
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            report["summary"]["missing_full_run_required_count"] = 0  # type: ignore[index]
+            report["summary"]["ready_for_full_google_run"] = True  # type: ignore[index]
+            report["summary"]["database_urls_allowed"] = True  # type: ignore[index]
+            report["environment_report_hash"] = compute_google_playwright_env_report_hash(report)
+            result = verify_google_playwright_env_report(report)
+
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("summary_missing_full_run_required_count_mismatch", result["errors"])
+        self.assertIn("summary_ready_for_full_google_run_mismatch", result["errors"])
+        self.assertIn("summary_database_urls_policy_invalid", result["errors"])
 
     def test_cli_writes_report_and_verifier_cli_reads_it(self) -> None:
         with TemporaryDirectory() as temp_dir:

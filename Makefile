@@ -213,6 +213,8 @@ au-delivery-evidence-refresh:
 	$(MAKE) verify-au-p0a-real-batch-fulfillment; \
 	$(MAKE) au-p0a-real-batch-clearance; \
 	$(MAKE) verify-au-p0a-real-batch-clearance; \
+	$(MAKE) au-p0b-google-playwright-env; \
+	$(MAKE) verify-au-p0b-google-playwright-env; \
 	$(MAKE) au-p0b-google-environment-fulfillment; \
 	$(MAKE) verify-au-p0b-google-environment-fulfillment; \
 	$(MAKE) au-p0b-google-environment-clearance; \

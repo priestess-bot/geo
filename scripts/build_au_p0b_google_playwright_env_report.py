@@ -301,6 +301,78 @@ def _next_action(
     return "run_au_p0b_google_playwright_smoke"
 
 
+def _summary(
+    *,
+    required: list[dict[str, Any]],
+    full_run_required: list[dict[str, Any]],
+    recommended: list[dict[str, Any]],
+    selector_groups: list[dict[str, Any]],
+    dependency_checks: list[dict[str, Any]],
+    missing_required: list[str],
+    missing_full_run_required: list[str],
+    missing_selector_groups: list[str],
+    runbook: dict[str, Any],
+    env_file: dict[str, Any],
+    storage_state_ok: bool,
+    manual_backfill_ok: bool,
+    playwright_ok: bool,
+    collector_health: str,
+    ready_for_smoke: bool,
+    ready_for_full_run: bool,
+    next_action: str,
+) -> dict[str, Any]:
+    missing_recommended = [str(item.get("name") or "") for item in recommended if item.get("present") is not True]
+    missing_dependencies = [
+        str(item.get("name") or "") for item in dependency_checks if item.get("present") is not True
+    ]
+    env_file_hygiene = env_file.get("hygiene") if isinstance(env_file.get("hygiene"), dict) else {}
+    hygiene_errors = [str(item) for item in env_file_hygiene.get("errors", [])] if isinstance(env_file_hygiene, dict) else []
+    hygiene_warnings = (
+        [str(item) for item in env_file_hygiene.get("warnings", [])] if isinstance(env_file_hygiene, dict) else []
+    )
+    return {
+        "required_count": len(required),
+        "present_required_count": len(required) - len(missing_required),
+        "missing_required_count": len(missing_required),
+        "missing_required": missing_required,
+        "full_run_required_count": len(full_run_required),
+        "present_full_run_required_count": len(full_run_required) - len(missing_full_run_required),
+        "missing_full_run_required_count": len(missing_full_run_required),
+        "missing_full_run_required": missing_full_run_required,
+        "recommended_count": len(recommended),
+        "present_recommended_count": len(recommended) - len(missing_recommended),
+        "missing_recommended_count": len(missing_recommended),
+        "missing_recommended": missing_recommended,
+        "selector_group_count": len(selector_groups),
+        "present_selector_group_count": len(selector_groups) - len(missing_selector_groups),
+        "missing_selector_group_count": len(missing_selector_groups),
+        "missing_selector_groups": missing_selector_groups,
+        "dependency_count": len(dependency_checks),
+        "present_dependency_count": len(dependency_checks) - len(missing_dependencies),
+        "missing_dependency_count": len(missing_dependencies),
+        "missing_dependencies": missing_dependencies,
+        "runbook_status": runbook.get("status", ""),
+        "runbook_hash_valid": runbook.get("hash_valid") is True,
+        "env_file_exists": env_file.get("exists") is True,
+        "env_file_loaded": env_file.get("loaded") is True,
+        "env_file_entry_count": env_file.get("entry_count", 0),
+        "env_file_hygiene_ready": env_file_hygiene.get("hygiene_ready") is True,
+        "env_file_hygiene_error_count": len(hygiene_errors),
+        "env_file_hygiene_warning_count": len(hygiene_warnings),
+        "storage_state_file_ready": storage_state_ok,
+        "manual_backfill_file_ready": manual_backfill_ok,
+        "playwright_available": playwright_ok,
+        "collector_health": collector_health,
+        "ready_for_playwright_smoke": ready_for_smoke,
+        "ready_for_full_google_run": ready_for_full_run,
+        "next_action": next_action,
+        "raw_secret_values_allowed": False,
+        "selector_values_allowed": False,
+        "database_urls_allowed": False,
+        "provider_response_values_allowed": False,
+    }
+
+
 def build_google_playwright_env_report(
     *,
     runbook_path: Path = Path(DEFAULT_RUNBOOK_PATH),
@@ -406,6 +478,15 @@ def build_google_playwright_env_report(
         errors.append("python_playwright_package_missing")
     if collector_health != "ready":
         errors.append(f"collector_health:{collector_health}")
+    next_action = _next_action(
+        runbook=runbook,
+        env_file=env_file,
+        missing_required=missing_required,
+        missing_selector_groups=missing_selector_groups,
+        storage_state_ok=storage_state_ok,
+        playwright_available=playwright_ok,
+        collector_health=collector_health,
+    )
 
     report: dict[str, Any] = {
         "environment_report_version": ENV_REPORT_VERSION,
@@ -413,15 +494,7 @@ def build_google_playwright_env_report(
         "status": "pass" if ready_for_smoke else "fail",
         "ready_for_playwright_smoke": ready_for_smoke,
         "ready_for_full_google_run": ready_for_full_run,
-        "next_action": _next_action(
-            runbook=runbook,
-            env_file=env_file,
-            missing_required=missing_required,
-            missing_selector_groups=missing_selector_groups,
-            storage_state_ok=storage_state_ok,
-            playwright_available=playwright_ok,
-            collector_health=collector_health,
-        ),
+        "next_action": next_action,
         "runbook_path": str(runbook_path),
         "output_path": str(output_path) if output_path else "",
         "runbook": runbook,
@@ -436,6 +509,25 @@ def build_google_playwright_env_report(
         "missing_required": missing_required,
         "missing_full_run_required": missing_full_run_required,
         "missing_selector_groups": missing_selector_groups,
+        "summary": _summary(
+            required=required,
+            full_run_required=full_run_required,
+            recommended=recommended,
+            selector_groups=selector_groups,
+            dependency_checks=dependency_checks,
+            missing_required=missing_required,
+            missing_full_run_required=missing_full_run_required,
+            missing_selector_groups=missing_selector_groups,
+            runbook=runbook,
+            env_file=env_file,
+            storage_state_ok=storage_state_ok,
+            manual_backfill_ok=manual_backfill_ok,
+            playwright_ok=playwright_ok,
+            collector_health=collector_health,
+            ready_for_smoke=ready_for_smoke,
+            ready_for_full_run=ready_for_full_run,
+            next_action=next_action,
+        ),
         "warnings": warnings,
         "errors": errors,
         "secrets_redacted": True,

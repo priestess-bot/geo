@@ -38,6 +38,7 @@ REQUIRED_TOP_LEVEL_FIELDS = (
     "missing_required",
     "missing_full_run_required",
     "missing_selector_groups",
+    "summary",
     "warnings",
     "errors",
     "secrets_redacted",
@@ -185,7 +186,7 @@ def verify_google_playwright_env_report(
         _as_list(report.get("full_run_required")),
         errors,
     )
-    _validate_env_checks("recommended", _as_list(report.get("recommended")), errors)
+    missing_recommended = _validate_env_checks("recommended", _as_list(report.get("recommended")), errors)
     missing_selector_groups = _validate_selector_groups(_as_list(report.get("selector_groups")), errors)
     if sorted(str(item) for item in _as_list(report.get("missing_required"))) != sorted(missing_required):
         errors.append("missing_required_mismatch")
@@ -255,6 +256,99 @@ def verify_google_playwright_env_report(
     )
     if report.get("next_action") != expected_next_action:
         errors.append("next_action_mismatch")
+    dependency_checks = [_as_dict(item) for item in _as_list(report.get("dependency_checks"))]
+    missing_dependencies = sorted(
+        str(item.get("name") or "") for item in dependency_checks if item.get("present") is not True
+    )
+    summary = _as_dict(report.get("summary"))
+    if summary.get("required_count") != len(_as_list(report.get("required"))):
+        errors.append("summary_required_count_mismatch")
+    if summary.get("present_required_count") != len(_as_list(report.get("required"))) - len(missing_required):
+        errors.append("summary_present_required_count_mismatch")
+    if summary.get("missing_required_count") != len(missing_required):
+        errors.append("summary_missing_required_count_mismatch")
+    if sorted(str(item) for item in _as_list(summary.get("missing_required"))) != sorted(missing_required):
+        errors.append("summary_missing_required_mismatch")
+    if summary.get("full_run_required_count") != len(_as_list(report.get("full_run_required"))):
+        errors.append("summary_full_run_required_count_mismatch")
+    if summary.get("present_full_run_required_count") != len(_as_list(report.get("full_run_required"))) - len(
+        missing_full_required
+    ):
+        errors.append("summary_present_full_run_required_count_mismatch")
+    if summary.get("missing_full_run_required_count") != len(missing_full_required):
+        errors.append("summary_missing_full_run_required_count_mismatch")
+    if sorted(str(item) for item in _as_list(summary.get("missing_full_run_required"))) != sorted(
+        missing_full_required
+    ):
+        errors.append("summary_missing_full_run_required_mismatch")
+    if summary.get("recommended_count") != len(_as_list(report.get("recommended"))):
+        errors.append("summary_recommended_count_mismatch")
+    if summary.get("present_recommended_count") != len(_as_list(report.get("recommended"))) - len(
+        missing_recommended
+    ):
+        errors.append("summary_present_recommended_count_mismatch")
+    if summary.get("missing_recommended_count") != len(missing_recommended):
+        errors.append("summary_missing_recommended_count_mismatch")
+    if sorted(str(item) for item in _as_list(summary.get("missing_recommended"))) != sorted(missing_recommended):
+        errors.append("summary_missing_recommended_mismatch")
+    if summary.get("selector_group_count") != len(_as_list(report.get("selector_groups"))):
+        errors.append("summary_selector_group_count_mismatch")
+    if summary.get("present_selector_group_count") != len(_as_list(report.get("selector_groups"))) - len(
+        missing_selector_groups
+    ):
+        errors.append("summary_present_selector_group_count_mismatch")
+    if summary.get("missing_selector_group_count") != len(missing_selector_groups):
+        errors.append("summary_missing_selector_group_count_mismatch")
+    if sorted(str(item) for item in _as_list(summary.get("missing_selector_groups"))) != sorted(
+        missing_selector_groups
+    ):
+        errors.append("summary_missing_selector_groups_mismatch")
+    if summary.get("dependency_count") != len(dependency_checks):
+        errors.append("summary_dependency_count_mismatch")
+    if summary.get("present_dependency_count") != len(dependency_checks) - len(missing_dependencies):
+        errors.append("summary_present_dependency_count_mismatch")
+    if summary.get("missing_dependency_count") != len(missing_dependencies):
+        errors.append("summary_missing_dependency_count_mismatch")
+    if sorted(str(item) for item in _as_list(summary.get("missing_dependencies"))) != missing_dependencies:
+        errors.append("summary_missing_dependencies_mismatch")
+    if summary.get("runbook_status") != runbook.get("status", ""):
+        errors.append("summary_runbook_status_mismatch")
+    if summary.get("runbook_hash_valid") is not (runbook.get("hash_valid") is True):
+        errors.append("summary_runbook_hash_valid_mismatch")
+    if summary.get("env_file_exists") is not (env_file.get("exists") is True):
+        errors.append("summary_env_file_exists_mismatch")
+    if summary.get("env_file_loaded") is not (env_file.get("loaded") is True):
+        errors.append("summary_env_file_loaded_mismatch")
+    if summary.get("env_file_entry_count") != env_file.get("entry_count", 0):
+        errors.append("summary_env_file_entry_count_mismatch")
+    if summary.get("env_file_hygiene_ready") is not (hygiene.get("hygiene_ready") is True):
+        errors.append("summary_env_file_hygiene_ready_mismatch")
+    if summary.get("env_file_hygiene_error_count") != len(hygiene_errors):
+        errors.append("summary_env_file_hygiene_error_count_mismatch")
+    if summary.get("env_file_hygiene_warning_count") != len(hygiene_warnings):
+        errors.append("summary_env_file_hygiene_warning_count_mismatch")
+    if summary.get("storage_state_file_ready") is not storage_state_ok:
+        errors.append("summary_storage_state_file_ready_mismatch")
+    if summary.get("manual_backfill_file_ready") is not manual_backfill_ok:
+        errors.append("summary_manual_backfill_file_ready_mismatch")
+    if summary.get("playwright_available") is not playwright_ok:
+        errors.append("summary_playwright_available_mismatch")
+    if summary.get("collector_health") != collector_health:
+        errors.append("summary_collector_health_mismatch")
+    if summary.get("ready_for_playwright_smoke") is not expected_ready:
+        errors.append("summary_ready_for_playwright_smoke_mismatch")
+    if summary.get("ready_for_full_google_run") is not expected_full_ready:
+        errors.append("summary_ready_for_full_google_run_mismatch")
+    if summary.get("next_action") != expected_next_action:
+        errors.append("summary_next_action_mismatch")
+    if summary.get("raw_secret_values_allowed") is not False:
+        errors.append("summary_raw_secret_values_policy_invalid")
+    if summary.get("selector_values_allowed") is not False:
+        errors.append("summary_selector_values_policy_invalid")
+    if summary.get("database_urls_allowed") is not False:
+        errors.append("summary_database_urls_policy_invalid")
+    if summary.get("provider_response_values_allowed") is not False:
+        errors.append("summary_provider_response_values_policy_invalid")
     if require_ready_smoke and not expected_ready:
         errors.append("playwright_smoke_environment_not_ready")
 

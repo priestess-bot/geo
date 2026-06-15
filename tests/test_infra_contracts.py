@@ -674,7 +674,13 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("$(MAKE) verify-au-external-dependency-clearance", makefile)
         self.assertIn("$(MAKE) au-p0a-real-batch-fulfillment", makefile)
         self.assertIn("$(MAKE) verify-au-p0a-real-batch-clearance", makefile)
+        self.assertIn("$(MAKE) au-p0b-google-playwright-env", makefile)
+        self.assertIn("$(MAKE) verify-au-p0b-google-playwright-env", makefile)
         self.assertIn("$(MAKE) au-p0b-google-environment-fulfillment", makefile)
+        self.assertLess(
+            refresh_block.index("$(MAKE) verify-au-p0b-google-playwright-env"),
+            refresh_block.index("$(MAKE) au-p0b-google-environment-fulfillment"),
+        )
         self.assertIn("$(MAKE) verify-au-p0b-google-environment-clearance", makefile)
         self.assertIn("$(MAKE) au-p0b-google-manual-backfill-fulfillment", makefile)
         self.assertLess(
