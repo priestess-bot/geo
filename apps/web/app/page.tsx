@@ -1253,6 +1253,11 @@ type AuDeliveryProgress = {
     next_work_item_packet_hash?: string;
     external_dependency_handoff_hash?: string;
     clearance_execution_hash?: string;
+    p0a_credential_clearance_hash?: string;
+    p0a_credential_clearance_ready?: boolean;
+    p0a_credentials_fulfilled?: boolean;
+    p0a_credential_missing_required_count?: number;
+    p0a_credential_missing_required?: string[];
   };
   progress_gates?: Array<{
     id?: string;
@@ -1272,6 +1277,7 @@ type AuDeliveryProgress = {
     next_work_item?: string;
     external_dependency_handoff?: string;
     external_dependency_clearance?: string;
+    p0a_credential_clearance?: string;
   };
   hard_gate_commands?: string[];
 };
@@ -1318,6 +1324,10 @@ type AuCustomerHandoffClearance = {
     delivery_progress_hash?: string;
     external_dependency_handoff_hash?: string;
     clearance_execution_hash?: string;
+    p0a_credential_clearance_hash?: string;
+    p0a_credential_clearance_ready?: boolean;
+    p0a_credentials_fulfilled?: boolean;
+    p0a_credential_missing_required_count?: number;
   };
   clearance_step?: {
     id?: string;
@@ -1354,6 +1364,7 @@ type AuCustomerHandoffClearance = {
     delivery_progress?: string;
     external_dependency_handoff?: string;
     external_dependency_clearance?: string;
+    p0a_credential_clearance?: string;
   };
   hard_gate_commands?: string[];
 };
@@ -8631,6 +8642,20 @@ export default async function Home({
             <span>Next stage {deliveryProgressSummary?.next_work_item_stage || "none"}</span>
             <span>Next command {deliveryProgressSummary?.next_command || "none"}</span>
             <span>Clearance step {deliveryProgressSummary?.current_clearance_step_id || "none"}</span>
+            <span>
+              P0a credentials {deliveryProgressSummary?.p0a_credentials_fulfilled ? "fulfilled" : "blocked"}
+            </span>
+            <span>
+              P0a credential clearance{" "}
+              {deliveryProgressSummary?.p0a_credential_clearance_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              P0a credential missing {deliveryProgressSummary?.p0a_credential_missing_required_count ?? 0}
+            </span>
+            <span>
+              P0a missing keys{" "}
+              {deliveryProgressSummary?.p0a_credential_missing_required?.slice(0, 3).join(", ") || "none"}
+            </span>
             <span>Would execute {deliveryProgressSummary?.would_execute_step_count || 0}</span>
             <span>Handoff posture {deliveryProgressSummary?.handoff_posture || "unknown"}</span>
             <span>
@@ -8640,7 +8665,14 @@ export default async function Home({
             <span>Readiness hash {shortHash(deliveryProgressSummary?.customer_handoff_readiness_hash)}</span>
             <span>Next item hash {shortHash(deliveryProgressSummary?.next_work_item_packet_hash)}</span>
             <span>
+              P0a clearance hash {shortHash(deliveryProgressSummary?.p0a_credential_clearance_hash)}
+            </span>
+            <span>
               {deliveryProgress?.runtime_endpoints?.delivery_progress || "GET /v1/delivery-progress/au"}
+            </span>
+            <span>
+              {deliveryProgress?.runtime_endpoints?.p0a_credential_clearance ||
+                "GET /v1/p0a-credential-clearance/au"}
             </span>
             <span>Hard gate: make verify-au-delivery-progress</span>
           </div>
@@ -8700,6 +8732,17 @@ export default async function Home({
             </span>
             <span>Clearance step {customerHandoffClearanceSummary?.target_clearance_step_id || "none"}</span>
             <span>Current global step {customerHandoffClearanceSummary?.current_global_clearance_step_id || "none"}</span>
+            <span>
+              P0a credentials{" "}
+              {customerHandoffClearanceSummary?.p0a_credentials_fulfilled ? "fulfilled" : "blocked"}
+            </span>
+            <span>
+              P0a credential clearance{" "}
+              {customerHandoffClearanceSummary?.p0a_credential_clearance_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              P0a credential missing {customerHandoffClearanceSummary?.p0a_credential_missing_required_count ?? 0}
+            </span>
             <span>Next action {customerHandoffClearanceSummary?.next_action || "none"}</span>
             <span>Next command {customerHandoffClearanceSummary?.next_command || "none"}</span>
             <span>
@@ -8710,8 +8753,15 @@ export default async function Home({
             <span>Progress hash {shortHash(customerHandoffClearanceSummary?.delivery_progress_hash)}</span>
             <span>External hash {shortHash(customerHandoffClearanceSummary?.external_dependency_handoff_hash)}</span>
             <span>
+              P0a clearance hash {shortHash(customerHandoffClearanceSummary?.p0a_credential_clearance_hash)}
+            </span>
+            <span>
               {customerHandoffClearance?.runtime_endpoints?.customer_handoff_clearance ||
                 "GET /v1/customer-handoff-clearance/au"}
+            </span>
+            <span>
+              {customerHandoffClearance?.runtime_endpoints?.p0a_credential_clearance ||
+                "GET /v1/p0a-credential-clearance/au"}
             </span>
             <span>Hard gate: make verify-au-customer-handoff-clearance</span>
             <span>
