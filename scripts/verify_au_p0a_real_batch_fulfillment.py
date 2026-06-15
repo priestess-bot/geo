@@ -216,6 +216,15 @@ def verify_au_p0a_real_batch_fulfillment(
         errors.append("summary_execution_checklist_ready_mismatch")
     if summary.get("source_checklist_hash_aligned") is not source_checklist_hash_aligned:
         errors.append("summary_source_checklist_hash_aligned_mismatch")
+    expected_execution_plan_ready = (
+        expected_ready
+        and len(items) == len(PHASE_ORDER)
+        and summary.get("total_planned_runs") == sum(EXPECTED_PLANNED_RUNS.values())
+        and bool(phase_commands)
+        and bool(evidence_outputs)
+    )
+    if summary.get("real_batch_execution_plan_ready") is not expected_execution_plan_ready:
+        errors.append("summary_real_batch_execution_plan_ready_mismatch")
     if summary.get("real_batch_phase_handoff_ready") is not real_batches_fulfilled:
         errors.append("summary_real_batch_phase_handoff_ready_mismatch")
     if summary.get("ready_for_design_partner") is not expected_design_partner:
@@ -356,7 +365,13 @@ def verify_au_p0a_real_batch_fulfillment(
         "real_batch_fulfillment_ready": expected_ready,
         "real_batches_fulfilled": real_batches_fulfilled,
         "ready_for_design_partner": expected_design_partner,
+        "real_batch_execution_plan_ready": summary.get("real_batch_execution_plan_ready") is True,
         "next_phase": summary.get("next_phase", ""),
+        "total_planned_runs": summary.get("total_planned_runs"),
+        "ready_phase_count": summary.get("ready_phase_count"),
+        "blocked_phase_count": summary.get("blocked_phase_count"),
+        "command_count": summary.get("command_count"),
+        "evidence_output_count": summary.get("evidence_output_count"),
         "missing_required_count": len(missing_required),
         "missing_required": missing_required,
     }

@@ -252,10 +252,24 @@ def verify_au_delivery_progress(
         p0a_real_batch_clearance_verifier.get("blocked_by_prerequisite_step") is True
     ):
         errors.append("summary_p0a_real_batch_blocked_by_prerequisite_mismatch")
+    if summary.get("p0a_real_batch_execution_plan_ready") is not (
+        p0a_real_batch_clearance_verifier.get("real_batch_execution_plan_ready") is True
+    ):
+        errors.append("summary_p0a_real_batch_execution_plan_ready_mismatch")
     if summary.get("p0a_real_batch_missing_required_count") != p0a_real_batch_clearance_verifier.get(
         "missing_required_count"
     ):
         errors.append("summary_p0a_real_batch_missing_required_count_mismatch")
+    real_batch_summary_field_map = {
+        "p0a_real_batch_total_planned_runs": "total_planned_runs",
+        "p0a_real_batch_ready_phase_count": "ready_phase_count",
+        "p0a_real_batch_blocked_phase_count": "blocked_phase_count",
+        "p0a_real_batch_phase_command_count": "phase_command_count",
+        "p0a_real_batch_evidence_output_count": "evidence_output_count",
+    }
+    for summary_field, verifier_field in real_batch_summary_field_map.items():
+        if summary.get(summary_field) != p0a_real_batch_clearance_verifier.get(verifier_field):
+            errors.append(f"summary_{summary_field}_mismatch")
 
     p0b_google_environment_clearance_verifier = _as_dict(verifiers.get("p0b_google_environment_clearance"))
     if summary.get("p0b_google_environment_clearance_ready") is not (
@@ -395,6 +409,12 @@ def verify_au_delivery_progress(
         "blocked_progress_gate_ids": blocked_gate_ids,
         "next_work_item_id": str(summary.get("next_work_item_id") or ""),
         "next_command": str(summary.get("next_command") or ""),
+        "p0a_real_batch_execution_plan_ready": summary.get("p0a_real_batch_execution_plan_ready") is True,
+        "p0a_real_batch_total_planned_runs": summary.get("p0a_real_batch_total_planned_runs"),
+        "p0a_real_batch_ready_phase_count": summary.get("p0a_real_batch_ready_phase_count"),
+        "p0a_real_batch_blocked_phase_count": summary.get("p0a_real_batch_blocked_phase_count"),
+        "p0a_real_batch_phase_command_count": summary.get("p0a_real_batch_phase_command_count"),
+        "p0a_real_batch_evidence_output_count": summary.get("p0a_real_batch_evidence_output_count"),
         "p0b_google_manual_backfill_ready": summary.get("p0b_google_manual_backfill_ready") is True,
         "p0b_google_manual_backfill_coverage_complete": summary.get(
             "p0b_google_manual_backfill_coverage_complete"

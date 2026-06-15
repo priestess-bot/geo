@@ -317,6 +317,16 @@ def build_au_p0a_real_batch_fulfillment(
             for reason in _strings(item.get("blocking_reasons"))
         )
     )
+    phase_commands = _phase_commands(items)
+    evidence_outputs = _evidence_outputs(items)
+    total_planned_runs = _int(request_summary.get("total_planned_runs") or checklist_handoff.get("total_planned_runs"))
+    real_batch_execution_plan_ready = (
+        fulfillment_ready
+        and len(items) == len(PHASE_ORDER)
+        and total_planned_runs == sum(_int(item.get("planned_runs")) for item in items)
+        and bool(phase_commands)
+        and bool(evidence_outputs)
+    )
     strict_gate_command = (
         "PYTHONPATH=packages/geno_core:apps/api python3 "
         "scripts/verify_au_p0a_real_batch_fulfillment.py "
@@ -340,6 +350,7 @@ def build_au_p0a_real_batch_fulfillment(
         "real_batch_request_ready": request_ready,
         "execution_checklist_ready": checklist_ready,
         "source_checklist_hash_aligned": source_checklist_hash_aligned,
+        "real_batch_execution_plan_ready": real_batch_execution_plan_ready,
         "real_batch_phase_handoff_ready": real_batches_fulfilled,
         "ready_for_design_partner": (
             real_batches_fulfilled
@@ -351,7 +362,7 @@ def build_au_p0a_real_batch_fulfillment(
         "ready_phase_count": len(fulfilled_required),
         "blocked_phase_count": len(required_items) - len(fulfilled_required),
         "next_phase": _next_phase(items),
-        "total_planned_runs": _int(request_summary.get("total_planned_runs") or checklist_handoff.get("total_planned_runs")),
+        "total_planned_runs": total_planned_runs,
         "required_count": len(required_items),
         "fulfilled_required_count": len(fulfilled_required),
         "missing_required_count": len(missing_required),
@@ -364,8 +375,8 @@ def build_au_p0a_real_batch_fulfillment(
         "blocking_reasons": blocking_reasons,
         "checklist_remaining_blocker_count": _int(checklist_summary.get("remaining_blocker_count")),
         "checklist_next_action": str(p0a_execution_checklist.get("next_action") or ""),
-        "command_count": len(_phase_commands(items)),
-        "evidence_output_count": len(_evidence_outputs(items)),
+        "command_count": len(phase_commands),
+        "evidence_output_count": len(evidence_outputs),
         "next_action": _next_action(
             missing_required=missing_required,
             mismatches=mismatches,
@@ -427,7 +438,7 @@ def build_au_p0a_real_batch_fulfillment(
         },
         "summary": summary,
         "real_batch_fulfillment_items": items,
-        "phase_commands": _phase_commands(items),
+        "phase_commands": phase_commands,
         "verification_commands": [
             "make au-p0a-real-batch-request",
             "make verify-au-p0a-real-batch-request",
@@ -435,7 +446,7 @@ def build_au_p0a_real_batch_fulfillment(
             "make verify-au-p0a-execution-checklist",
             "make verify-au-p0a-real-batch-fulfillment",
         ],
-        "evidence_outputs": _evidence_outputs(items),
+        "evidence_outputs": evidence_outputs,
         "hard_gate_commands": [
             "make verify-au-p0a-real-batch-fulfillment",
             strict_gate_command,

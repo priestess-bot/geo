@@ -300,6 +300,16 @@ def verify_au_p0a_real_batch_clearance(
         errors.append("summary_ready_phase_count_mismatch")
     if summary.get("blocked_phase_count") != sum(1 for item in phase_items if item.get("fulfilled") is not True):
         errors.append("summary_blocked_phase_count_mismatch")
+    if summary.get("total_planned_runs") != fulfillment_verifier.get("total_planned_runs"):
+        errors.append("summary_total_planned_runs_mismatch")
+    if summary.get("real_batch_execution_plan_ready") is not (
+        fulfillment_verifier.get("real_batch_execution_plan_ready") is True
+    ):
+        errors.append("summary_real_batch_execution_plan_ready_mismatch")
+    if summary.get("phase_command_count") != fulfillment_verifier.get("command_count"):
+        errors.append("summary_phase_command_count_mismatch")
+    if summary.get("evidence_output_count") != fulfillment_verifier.get("evidence_output_count"):
+        errors.append("summary_evidence_output_count_mismatch")
     if summary.get("operator_step_count") != len(operator_steps):
         errors.append("summary_operator_step_count_mismatch")
     if summary.get("post_update_validation_command_count") != len(validation_sequence):
@@ -405,7 +415,13 @@ def verify_au_p0a_real_batch_clearance(
         "blocked_by_prerequisite_step": blocked_by_prerequisite,
         "missing_required_count": len(missing_required),
         "missing_required": missing_required,
+        "real_batch_execution_plan_ready": summary.get("real_batch_execution_plan_ready") is True,
         "next_phase": summary.get("next_phase", ""),
+        "total_planned_runs": summary.get("total_planned_runs"),
+        "ready_phase_count": summary.get("ready_phase_count"),
+        "blocked_phase_count": summary.get("blocked_phase_count"),
+        "phase_command_count": summary.get("phase_command_count"),
+        "evidence_output_count": summary.get("evidence_output_count"),
         "next_command": summary.get("next_command", ""),
     }
 

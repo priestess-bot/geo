@@ -90,6 +90,11 @@ class AuP0aRealBatchClearanceTest(unittest.TestCase):
         self.assertEqual(packet["summary"]["phase_order"], ["preflight", "small_batch", "full_batch"])
         self.assertEqual(packet["summary"]["missing_required_count"], 3)
         self.assertEqual(packet["summary"]["total_planned_runs"], 2436)
+        self.assertTrue(packet["summary"]["real_batch_execution_plan_ready"])
+        self.assertEqual(packet["summary"]["ready_phase_count"], 0)
+        self.assertEqual(packet["summary"]["blocked_phase_count"], 3)
+        self.assertEqual(packet["summary"]["phase_command_count"], 8)
+        self.assertEqual(packet["summary"]["evidence_output_count"], 6)
         self.assertEqual(packet["summary"]["next_phase"], "preflight")
         self.assertEqual(packet["summary"]["next_action"], "clear_p0a_provider_credentials_first")
         self.assertEqual(packet["summary"]["next_command"], "make au-p0a-credential-clearance")
@@ -110,6 +115,10 @@ class AuP0aRealBatchClearanceTest(unittest.TestCase):
             compute_p0a_real_batch_clearance_hash(packet),
         )
         self.assertEqual(verification["status"], "pass")
+        self.assertTrue(verification["real_batch_execution_plan_ready"])
+        self.assertEqual(verification["total_planned_runs"], 2436)
+        self.assertEqual(verification["phase_command_count"], 8)
+        self.assertEqual(verification["evidence_output_count"], 6)
         self.assertEqual(hard_gate["status"], "fail")
         self.assertIn("p0a_real_batches_not_cleared", hard_gate["errors"])
         serialized = json.dumps(packet)
@@ -173,6 +182,29 @@ class AuP0aRealBatchClearanceTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_phase_count_mismatch", verification["errors"])
+
+    def test_verifier_rejects_tampered_execution_plan_count_even_when_hash_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            request_path, checklist_path, fulfillment_path, clearance_path, request, checklist, fulfillment, external_clearance = (
+                self._build_sources(temp_dir, ready=False)
+            )
+            packet = build_au_p0a_real_batch_clearance(
+                real_batch_request_path=request_path,
+                p0a_execution_checklist_path=checklist_path,
+                real_batch_fulfillment_path=fulfillment_path,
+                external_dependency_clearance_path=clearance_path,
+                real_batch_request=request,
+                p0a_execution_checklist=checklist,
+                real_batch_fulfillment=fulfillment,
+                external_dependency_clearance=external_clearance,
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            packet["summary"]["total_planned_runs"] = 2400
+            packet["p0a_real_batch_clearance_hash"] = compute_p0a_real_batch_clearance_hash(packet)
+            verification = verify_au_p0a_real_batch_clearance(packet)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("summary_total_planned_runs_mismatch", verification["errors"])
 
     def test_path_verifier_detects_stale_real_batch_source_file(self) -> None:
         with TemporaryDirectory() as temp_dir:

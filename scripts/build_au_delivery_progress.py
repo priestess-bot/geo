@@ -776,6 +776,22 @@ def build_au_delivery_progress(
             "p0a_real_batches_fulfilled": p0a_real_batch_clearance.get("real_batches_fulfilled") is True,
             "p0a_real_batch_blocked_by_prerequisite": p0a_real_batch_clearance.get("blocked_by_prerequisite_step")
             is True,
+            "p0a_real_batch_execution_plan_ready": _as_dict(p0a_real_batch_clearance.get("summary")).get(
+                "real_batch_execution_plan_ready"
+            )
+            is True,
+            "p0a_real_batch_total_planned_runs": _as_dict(p0a_real_batch_clearance.get("summary")).get(
+                "total_planned_runs",
+                0,
+            ),
+            "p0a_real_batch_ready_phase_count": _as_dict(p0a_real_batch_clearance.get("summary")).get(
+                "ready_phase_count",
+                0,
+            ),
+            "p0a_real_batch_blocked_phase_count": _as_dict(p0a_real_batch_clearance.get("summary")).get(
+                "blocked_phase_count",
+                0,
+            ),
             "p0a_real_batch_missing_required_count": _as_dict(p0a_real_batch_clearance.get("summary")).get(
                 "missing_required_count",
                 0,
@@ -785,6 +801,14 @@ def build_au_delivery_progress(
                 [],
             ),
             "p0a_real_batch_next_phase": _as_dict(p0a_real_batch_clearance.get("summary")).get("next_phase", ""),
+            "p0a_real_batch_phase_command_count": _as_dict(p0a_real_batch_clearance.get("summary")).get(
+                "phase_command_count",
+                0,
+            ),
+            "p0a_real_batch_evidence_output_count": _as_dict(p0a_real_batch_clearance.get("summary")).get(
+                "evidence_output_count",
+                0,
+            ),
             "p0b_google_environment_clearance_hash": p0b_google_environment_clearance.get(
                 "p0b_google_environment_clearance_hash",
                 "",

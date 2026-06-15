@@ -488,6 +488,7 @@ def build_au_p0a_real_batch_clearance(
             "next_phase": str(fulfillment_summary.get("next_phase") or ""),
             "real_batches_fulfilled": real_batches_fulfilled,
             "real_batch_fulfillment_ready": real_batch_fulfillment.get("real_batch_fulfillment_ready") is True,
+            "real_batch_execution_plan_ready": fulfillment_summary.get("real_batch_execution_plan_ready") is True,
             "ready_for_design_partner": real_batch_fulfillment.get("ready_for_design_partner") is True,
             "blocked_by_prerequisite_step": blocked_by_prerequisite,
             "prerequisite_step_id": PREREQUISITE_STEP_ID,
@@ -501,6 +502,8 @@ def build_au_p0a_real_batch_clearance(
             "missing_required_by_owner": _missing_by_owner(phase_items),
             "blocking_reason_count": len(_strings(fulfillment_summary.get("blocking_reasons"))),
             "blocking_reasons": _strings(fulfillment_summary.get("blocking_reasons")),
+            "phase_command_count": int(fulfillment_summary.get("command_count") or 0),
+            "evidence_output_count": int(fulfillment_summary.get("evidence_output_count") or 0),
             "next_action": (
                 "clear_p0a_provider_credentials_first"
                 if blocked_by_prerequisite
