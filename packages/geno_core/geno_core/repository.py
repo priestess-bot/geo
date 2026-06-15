@@ -1708,6 +1708,92 @@ def _render_runtime_notification_deliveries_csv(page: RuntimeNotificationDeliver
     return output.getvalue()
 
 
+def _render_runtime_notification_subscriptions_csv(page: RuntimeNotificationSubscriptionPage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "subscription_id",
+            "project_id",
+            "channel",
+            "endpoint_url_hash",
+            "event_types",
+            "severity_threshold",
+            "status",
+            "created_by",
+            "created_at",
+            "updated_by",
+            "updated_at",
+            "metadata_keys",
+            "email_reply_to_hash",
+            "email_unsubscribe_url_hash",
+            "email_unsubscribe_mailto_hash",
+            "email_preferences_url_hash",
+            "email_suppressed_recipient_hash_count",
+            "webhook_signing_secret_env_present",
+            "webhook_signing_secret_key_id",
+            "webhook_previous_signing_secret_env_present",
+            "webhook_previous_signing_secret_key_id",
+            "slack_channel_configured",
+            "audit_event_count",
+            "latest_audit_event_type",
+            "latest_audit_method_version",
+            "latest_audit_after_hash",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        subscription = record.subscription
+        metadata = subscription.get("metadata") if isinstance(subscription.get("metadata"), dict) else {}
+        latest_audit_event = record.audit_events[0] if record.audit_events else {}
+        endpoint_url = str(subscription.get("endpoint_url") or "")
+        email_reply_to = str(metadata.get("email_reply_to") or "")
+        email_unsubscribe_url = str(metadata.get("email_unsubscribe_url") or "")
+        email_unsubscribe_mailto = str(metadata.get("email_unsubscribe_mailto") or "")
+        email_preferences_url = str(metadata.get("email_preferences_url") or "")
+        suppressed_hashes = tuple(
+            str(item).strip()
+            for item in metadata.get("email_suppressed_recipient_hashes", ())
+            if str(item).strip()
+        ) if isinstance(metadata.get("email_suppressed_recipient_hashes"), (list, tuple)) else ()
+        signing_secret_env = str(metadata.get("signing_secret_env") or metadata.get("webhook_signing_secret_env") or "")
+        previous_signing_secret_env = str(
+            metadata.get("previous_signing_secret_env") or metadata.get("previous_webhook_signing_secret_env") or ""
+        )
+        event_types = subscription.get("event_types") if isinstance(subscription.get("event_types"), (list, tuple)) else ()
+        writer.writerow(
+            {
+                "subscription_id": subscription.get("id") or "",
+                "project_id": subscription.get("project_id") or "",
+                "channel": subscription.get("channel") or "",
+                "endpoint_url_hash": _artifact_hash(endpoint_url) if endpoint_url else "",
+                "event_types": "|".join(str(event_type) for event_type in event_types),
+                "severity_threshold": subscription.get("severity_threshold") or "",
+                "status": subscription.get("status") or "",
+                "created_by": subscription.get("created_by") or "",
+                "created_at": subscription.get("created_at") or "",
+                "updated_by": subscription.get("updated_by") or "",
+                "updated_at": subscription.get("updated_at") or "",
+                "metadata_keys": "|".join(sorted(str(key) for key in metadata)),
+                "email_reply_to_hash": runtime_email_body_hash(email_reply_to) if email_reply_to else "",
+                "email_unsubscribe_url_hash": _artifact_hash(email_unsubscribe_url) if email_unsubscribe_url else "",
+                "email_unsubscribe_mailto_hash": _artifact_hash(email_unsubscribe_mailto) if email_unsubscribe_mailto else "",
+                "email_preferences_url_hash": _artifact_hash(email_preferences_url) if email_preferences_url else "",
+                "email_suppressed_recipient_hash_count": len(suppressed_hashes),
+                "webhook_signing_secret_env_present": bool(signing_secret_env),
+                "webhook_signing_secret_key_id": metadata.get("signing_secret_key_id") or "",
+                "webhook_previous_signing_secret_env_present": bool(previous_signing_secret_env),
+                "webhook_previous_signing_secret_key_id": metadata.get("previous_signing_secret_key_id") or "",
+                "slack_channel_configured": bool(str(metadata.get("slack_channel") or "")),
+                "audit_event_count": len(record.audit_events),
+                "latest_audit_event_type": latest_audit_event.get("event_type") or "",
+                "latest_audit_method_version": latest_audit_event.get("method_version") or "",
+                "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
+            }
+        )
+    return output.getvalue()
+
+
 ANSWER_RUN_COLUMNS = (
     "id",
     "project_id",
@@ -9063,6 +9149,38 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=records,
+        )
+
+    def export_runtime_notification_subscriptions_csv(
+        self,
+        *,
+        project_id: str,
+        status: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        page = self.list_runtime_notification_subscriptions(
+            project_id=project_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_notification_subscriptions_csv(page)
+        filters = {
+            "project_id": project_id.strip(),
+            "status": status.strip().lower() if status else None,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_notification_subscriptions_csv",
+            filename="runtime-notification-subscriptions.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=page.total_count,
+            row_count=len(page.records),
         )
 
     def list_runtime_notification_deliveries(

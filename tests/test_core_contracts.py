@@ -7474,6 +7474,85 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("ON CONFLICT (project_id, channel, endpoint_url) DO UPDATE", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
 
+    def test_postgres_repository_exports_runtime_notification_subscriptions_csv(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        endpoint_url = "https://hooks.example.com/geno/raw-secret-path"
+        reply_to = "reports@example.com"
+        unsubscribe_url = "https://app.example.com/notifications/unsubscribe"
+        subscription_row = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "webhook",
+            "endpoint_url": endpoint_url,
+            "event_types": ["report_export_job", "runtime_alert"],
+            "severity_threshold": "warning",
+            "status": "active",
+            "metadata": {
+                "source": "contract",
+                "signing_secret_env": "GENO_TEST_WEBHOOK_SECRET",
+                "signing_secret_key_id": "current-v1",
+                "previous_signing_secret_env": "GENO_TEST_WEBHOOK_SECRET_PREVIOUS",
+                "previous_signing_secret_key_id": "previous-v1",
+                "slack_channel": "#geno-alerts",
+                "email_reply_to": reply_to,
+                "email_unsubscribe_url": unsubscribe_url,
+                "email_unsubscribe_mailto": "mailto:unsubscribe@example.com",
+                "email_preferences_url": "https://app.example.com/notifications/preferences",
+                "email_suppressed_recipient_hashes": [runtime_email_body_hash("muted@example.com")],
+                "do_not_export": "raw metadata value",
+            },
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "de6e0fec-0084-43c7-8f64-b16e412aab9e",
+            "event_type": "runtime_notification_subscription_saved",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "runtime_notification_subscription",
+            "target_id": subscription_id,
+            "before_hash": None,
+            "after_hash": "after",
+            "input_refs": {"event_types": ["report_export_job"]},
+            "output_refs": {"runtime_notification_subscription_ids": [subscription_id]},
+            "method_version": "runtime_notification_subscription_v1",
+            "reason": "save webhook",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, [subscription_row], [audit_row]])
+
+        export = PostgresEvidenceRepository(connection).export_runtime_notification_subscriptions_csv(
+            project_id=project_id,
+            status="active",
+            limit=5,
+            offset=0,
+        )
+
+        self.assertEqual(export.export_type, "runtime_notification_subscriptions_csv")
+        self.assertEqual(export.filename, "runtime-notification-subscriptions.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertEqual(export.filters["status"], "active")
+        self.assertIn("subscription_id,project_id,channel,endpoint_url_hash,event_types", export.content)
+        self.assertIn(subscription_id, export.content)
+        self.assertIn("report_export_job|runtime_alert", export.content)
+        self.assertIn("runtime_notification_subscription_v1", export.content)
+        self.assertIn("signing_secret_env", export.content)
+        self.assertIn(_artifact_hash(endpoint_url), export.content)
+        self.assertIn(runtime_email_body_hash(reply_to), export.content)
+        self.assertIn(_artifact_hash(unsubscribe_url), export.content)
+        self.assertNotIn(endpoint_url, export.content)
+        self.assertNotIn("raw-secret-path", export.content)
+        self.assertNotIn("raw metadata value", export.content)
+        self.assertNotIn("muted@example.com", export.content)
+
     def test_postgres_repository_saves_slack_notification_subscription_with_audit_event(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
