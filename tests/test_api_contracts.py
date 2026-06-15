@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
+import inspect
 from io import BytesIO
 import json
 import os
@@ -14,7 +16,11 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from zipfile import ZipFile
 
-from fastapi.testclient import TestClient
+import fastapi.dependencies.utils
+import fastapi.routing
+import httpx
+import starlette.concurrency
+import starlette.routing
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import hashes
 
@@ -140,6 +146,21 @@ from geno_core.models import (
 )
 
 
+# API contract tests drive ASGI directly because Starlette TestClient's portal
+# can hang in this Python/anyio stack even for a minimal synchronous endpoint.
+async def _run_inline_in_test_threadpool(func: object, *args: object, **kwargs: object) -> object:
+    result = func(*args, **kwargs)  # type: ignore[misc]
+    if inspect.isawaitable(result):
+        return await result
+    return result
+
+
+fastapi.dependencies.utils.run_in_threadpool = _run_inline_in_test_threadpool
+fastapi.routing.run_in_threadpool = _run_inline_in_test_threadpool
+starlette.concurrency.run_in_threadpool = _run_inline_in_test_threadpool
+starlette.routing.run_in_threadpool = _run_inline_in_test_threadpool
+
+
 def _find_forbidden_exact_fields(value: object, *, path: str = "$") -> list[str]:
     findings: list[str] = []
     if isinstance(value, dict):
@@ -217,11 +238,41 @@ def _write_p0a_env_report_with_database(temp_dir: str) -> Path:
     return path
 
 
+class RuntimeApiTestClient:
+    def __init__(self, app: object) -> None:
+        self._app = app
+
+    def request(self, method: str, url: str, **kwargs: object) -> httpx.Response:
+        async def _request() -> httpx.Response:
+            transport = httpx.ASGITransport(app=self._app, raise_app_exceptions=True)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+                response = await client.request(method, url, **kwargs)
+                await response.aread()
+                return response
+
+        return asyncio.run(_request())
+
+    def get(self, url: str, **kwargs: object) -> httpx.Response:
+        return self.request("GET", url, **kwargs)
+
+    def post(self, url: str, **kwargs: object) -> httpx.Response:
+        return self.request("POST", url, **kwargs)
+
+    def patch(self, url: str, **kwargs: object) -> httpx.Response:
+        return self.request("PATCH", url, **kwargs)
+
+    def put(self, url: str, **kwargs: object) -> httpx.Response:
+        return self.request("PUT", url, **kwargs)
+
+    def delete(self, url: str, **kwargs: object) -> httpx.Response:
+        return self.request("DELETE", url, **kwargs)
+
+
 class ApiContractsTest(unittest.TestCase):
     def setUp(self) -> None:
         reset_runtime_metrics()
         reset_runtime_auth_caches()
-        self.client = TestClient(app)
+        self.client = RuntimeApiTestClient(app)
 
     def _runtime_jwt(self, *, secret: str = "test-runtime-secret", payload: dict[str, object] | None = None) -> str:
         header = {"alg": "HS256", "typ": "JWT"}
