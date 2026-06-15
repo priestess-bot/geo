@@ -217,7 +217,7 @@ from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.prompt_import import prompt_import_file_to_csv
 from geno_core.parser import ComparativeAnswerParser, LLMJudgeAnswerParser, RuleBasedAnswerParser
 from geno_core.report import MarkdownCsvReportExporter
-from geno_core.repository import PostgresEvidenceRepository, _artifact_hash
+from geno_core.repository import PostgresEvidenceRepository, _artifact_hash, _stable_id
 from geno_core.runtime import (
     RuntimePersistenceError,
     build_runtime_diagnostics,
@@ -11019,6 +11019,137 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM action_recommendations WHERE project_id = %s", executed_sql)
         self.assertIn("FROM answer_analyses", executed_sql)
         self.assertIn("FROM runtime_alert_events", executed_sql)
+
+    def test_postgres_repository_exports_runtime_alerts_csv(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        snapshot_id = "a7f7f8aa-5d40-4fdf-a2b3-b8729a9a5e2f"
+        mention_contribution_id = "1dd2957f-050b-5d02-899a-2dfe889136dd"
+        action_id = "e5f3964b-54d5-5d2f-9ff7-9ec9ea24eb47"
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        snapshot_row = {
+            "id": snapshot_id,
+            "project_id": project_id,
+            "scope_type": "collection_slice",
+            "scope_value": "p0a_runtime",
+            "formula_version": "au_visibility_v1",
+            "platform_weights_snapshot": {"perplexity": 0.25},
+            "final_score": 42.0,
+            "trigger_rate": 1.0,
+            "mention_rate": 0.25,
+            "recommendation_rate": 0.5,
+            "answer_run_ids": [answer_run_id],
+            "created_at": now,
+            "dispersion": 0.2,
+            "component_weights_snapshot": {"MentionScore": 0.18},
+        }
+        management_event = {
+            "id": "e7b5cf79-3fc6-4f0f-8eb4-89882d0bf212",
+            "project_id": project_id,
+            "alert_id": _stable_id("runtime-alert", project_id, snapshot_id, "brand_absent"),
+            "alert_type": "brand_absent",
+            "source": "visibility_score_snapshot",
+            "source_id": snapshot_id,
+            "status": "acknowledged",
+            "updated_by": "analyst-1",
+            "note": "Investigating mention gap",
+            "metadata": {"severity": "high", "owner": "ops"},
+            "created_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                snapshot_row,
+                [
+                    {
+                        "id": mention_contribution_id,
+                        "score_snapshot_id": snapshot_id,
+                        "component_name": "MentionScore",
+                        "component_score": 25.0,
+                        "weight": 0.18,
+                        "weighted_contribution": 4.5,
+                        "denominator": "all_answer_runs",
+                        "evidence_answer_run_ids": [answer_run_id],
+                        "positive_evidence_summary": "few mentions",
+                        "negative_evidence_summary": "brand missing in many answers",
+                        "confidence_note": "fixture",
+                        "created_at": now,
+                    }
+                ],
+                [],
+                [],
+                [
+                    {
+                        "id": action_id,
+                        "project_id": project_id,
+                        "title": "Improve brand mention coverage",
+                        "description": "Create citation ready pages",
+                        "priority": "high",
+                        "status": "open",
+                        "owner_id": "system",
+                        "source_gap_type": "low_mention_rate",
+                        "evidence_answer_run_ids": [answer_run_id],
+                        "related_source_types": [],
+                        "next_check_date": now,
+                        "created_at": now,
+                    }
+                ],
+                [],
+                [
+                    {
+                        "id": "9b663656-4a0e-4fda-a764-0a4d62fa15f1",
+                        "event_type": "visibility_score_snapshot_created",
+                        "project_id": project_id,
+                        "actor_type": "system",
+                        "actor_id": "geno-core.scoring",
+                        "target_type": "visibility_score_snapshot",
+                        "target_id": snapshot_id,
+                        "before_hash": None,
+                        "after_hash": "snapshot-after",
+                        "input_refs": {"answer_run_ids": [answer_run_id]},
+                        "output_refs": {"score_snapshot_ids": [snapshot_id]},
+                        "method_version": "au_visibility_v1",
+                        "reason": "test",
+                        "created_at": now,
+                    }
+                ],
+                [management_event],
+            ]
+        )
+
+        export = PostgresEvidenceRepository(connection).export_runtime_alerts_csv(
+            project_id=project_id,
+            alert_type="brand_absent",
+            severity="high",
+            limit=10,
+            offset=0,
+        )
+
+        self.assertEqual(export.export_type, "runtime_alerts_csv")
+        self.assertEqual(export.filename, "runtime-alerts.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertEqual(export.filters["alert_type"], "brand_absent")
+        self.assertEqual(export.filters["severity"], "high")
+        self.assertIn("alert_id,project_id,alert_type,severity", export.content)
+        self.assertIn("brand_absent", export.content)
+        self.assertIn("mention_rate", export.content)
+        self.assertIn("visibility_score_snapshot", export.content)
+        self.assertIn(snapshot_id, export.content)
+        self.assertIn(action_id, export.content)
+        self.assertIn(_artifact_hash("Brand mention coverage is below threshold"), export.content)
+        self.assertIn(_artifact_hash("Investigating mention gap"), export.content)
+        self.assertIn(_artifact_hash("analyst-1"), export.content)
+        self.assertIn("owner|severity", export.content)
+        self.assertIn("visibility_score_snapshot_created", export.content)
+        self.assertIn("snapshot-after", export.content)
+        self.assertNotIn("Brand mention coverage is below threshold", export.content)
+        self.assertNotIn("AI answers are not mentioning", export.content)
+        self.assertNotIn("Improve brand mention coverage", export.content)
+        self.assertNotIn("Investigating mention gap", export.content)
+        self.assertNotIn("analyst-1", export.content)
+        self.assertEqual(export.content_hash, hashlib.sha256(export.content.encode("utf-8")).hexdigest())
 
     def test_postgres_repository_records_runtime_alert_event_with_audit_event(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

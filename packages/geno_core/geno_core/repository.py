@@ -2196,6 +2196,108 @@ def _render_runtime_action_plans_csv(page: RuntimeActionPlanPage) -> str:
     return output.getvalue()
 
 
+def _render_runtime_alerts_csv(page: RuntimeAlertPage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "alert_id",
+            "project_id",
+            "alert_type",
+            "severity",
+            "metric_name",
+            "metric_value",
+            "threshold",
+            "rule_version",
+            "source",
+            "source_id",
+            "title_hash",
+            "summary_hash",
+            "created_at",
+            "evidence_ref_count",
+            "evidence_ref_types",
+            "evidence_ref_target_ids",
+            "related_action_count",
+            "related_action_ids",
+            "related_action_title_hashes",
+            "management_event_count",
+            "latest_management_event_id",
+            "latest_management_status",
+            "latest_management_updated_by_hash",
+            "latest_management_note_hash",
+            "latest_management_metadata_keys",
+            "latest_management_created_at",
+            "audit_event_count",
+            "latest_audit_event_type",
+            "latest_audit_method_version",
+            "latest_audit_after_hash",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        alert = record.alert
+        evidence_ref_types = tuple(
+            sorted({str(ref.get("target_type") or "") for ref in record.evidence_refs if ref.get("target_type")})
+        )
+        evidence_ref_target_ids = tuple(
+            str(ref.get("target_id") or "") for ref in record.evidence_refs if ref.get("target_id")
+        )
+        related_action_ids = tuple(
+            str(action.get("id") or "") for action in record.related_actions if action.get("id")
+        )
+        related_action_title_hashes = tuple(
+            _artifact_hash(str(action.get("title") or ""))
+            for action in record.related_actions
+            if str(action.get("title") or "")
+        )
+        latest_management_event = _latest_audit_event(record.management_events)
+        latest_audit_event = _latest_audit_event(record.audit_events)
+        management_metadata = (
+            latest_management_event.get("metadata")
+            if isinstance(latest_management_event.get("metadata"), dict)
+            else {}
+        )
+        title = str(alert.get("title") or "")
+        summary = str(alert.get("summary") or "")
+        updated_by = str(latest_management_event.get("updated_by") or "")
+        note = str(latest_management_event.get("note") or "")
+        writer.writerow(
+            {
+                "alert_id": alert.get("id") or "",
+                "project_id": alert.get("project_id") or "",
+                "alert_type": alert.get("alert_type") or "",
+                "severity": alert.get("severity") or "",
+                "metric_name": alert.get("metric_name") or "",
+                "metric_value": alert.get("metric_value") if alert.get("metric_value") is not None else "",
+                "threshold": alert.get("threshold") if alert.get("threshold") is not None else "",
+                "rule_version": alert.get("rule_version") or "",
+                "source": alert.get("source") or "",
+                "source_id": alert.get("source_id") or "",
+                "title_hash": _artifact_hash(title) if title else "",
+                "summary_hash": _artifact_hash(summary) if summary else "",
+                "created_at": alert.get("created_at") or "",
+                "evidence_ref_count": len(record.evidence_refs),
+                "evidence_ref_types": "|".join(evidence_ref_types),
+                "evidence_ref_target_ids": "|".join(evidence_ref_target_ids),
+                "related_action_count": len(record.related_actions),
+                "related_action_ids": "|".join(related_action_ids),
+                "related_action_title_hashes": "|".join(related_action_title_hashes),
+                "management_event_count": len(record.management_events),
+                "latest_management_event_id": latest_management_event.get("id") or "",
+                "latest_management_status": latest_management_event.get("status") or "",
+                "latest_management_updated_by_hash": _artifact_hash(updated_by) if updated_by else "",
+                "latest_management_note_hash": _artifact_hash(note) if note else "",
+                "latest_management_metadata_keys": "|".join(sorted(str(key) for key in management_metadata)),
+                "latest_management_created_at": latest_management_event.get("created_at") or "",
+                "audit_event_count": len(record.audit_events),
+                "latest_audit_event_type": latest_audit_event.get("event_type") or "",
+                "latest_audit_method_version": latest_audit_event.get("method_version") or "",
+                "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
+            }
+        )
+    return output.getvalue()
+
+
 ANSWER_RUN_COLUMNS = (
     "id",
     "project_id",
@@ -12800,6 +12902,46 @@ class PostgresEvidenceRepository:
         total_count = len(alerts)
         paged = tuple(alerts[offset : offset + limit])
         return RuntimeAlertPage(total_count=total_count, limit=limit, offset=offset, records=paged)
+
+    def export_runtime_alerts_csv(
+        self,
+        *,
+        project_id: str,
+        alert_type: str | None = None,
+        severity: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        normalized_project_id = project_id.strip()
+        if not normalized_project_id:
+            raise ValueError("project_id is required")
+        normalized_alert_type = alert_type.strip() if alert_type else None
+        normalized_severity = severity.strip().lower() if severity else None
+        page = self.list_runtime_alerts(
+            project_id=normalized_project_id,
+            alert_type=normalized_alert_type,
+            severity=normalized_severity,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_alerts_csv(page)
+        filters = {
+            "project_id": normalized_project_id,
+            "alert_type": normalized_alert_type,
+            "severity": normalized_severity,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_alerts_csv",
+            filename="runtime-alerts.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=page.total_count,
+            row_count=len(page.records),
+        )
 
     def _load_runtime_alert_events(
         self,

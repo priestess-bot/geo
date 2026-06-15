@@ -8784,6 +8784,49 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["limit"], 5)
         self.assertEqual(fake_repository.kwargs["offset"], 2)
 
+    def test_runtime_alerts_export_endpoint_returns_csv_with_hash_headers(self) -> None:
+        class FakeRepository:
+            def export_runtime_alerts_csv(self, **kwargs: object) -> RuntimeEvidenceExport:
+                self.kwargs = kwargs
+                return RuntimeEvidenceExport(
+                    export_type="runtime_alerts_csv",
+                    filename="runtime-alerts.csv",
+                    media_type="text/csv; charset=utf-8",
+                    content="alert_id,alert_type\nruntime-alert-1,brand_absent\n",
+                    content_hash="hash-runtime-alerts-csv",
+                    filters={
+                        "project_id": kwargs["project_id"],
+                        "alert_type": kwargs["alert_type"],
+                        "severity": kwargs["severity"],
+                    },
+                    total_count=3,
+                    row_count=1,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/runtime-alerts/export.csv?project_id=project-1&alert_type=brand_absent&severity=high&limit=5",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
+        self.assertEqual(response.headers["x-geno-runtime-alert-export-hash"], "hash-runtime-alerts-csv")
+        self.assertEqual(response.headers["x-geno-runtime-alert-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geno-runtime-alert-type"], "brand_absent")
+        self.assertEqual(response.headers["x-geno-runtime-alert-severity"], "high")
+        self.assertEqual(response.headers["x-geno-runtime-alert-row-count"], "1")
+        self.assertEqual(response.headers["x-geno-runtime-alert-total-count"], "3")
+        self.assertIn("runtime-alerts.csv", response.headers["content-disposition"])
+        self.assertIn("runtime-alert-1", response.text)
+        self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.kwargs["alert_type"], "brand_absent")
+        self.assertEqual(fake_repository.kwargs["severity"], "high")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+
     def test_runtime_alert_event_endpoint_passes_payload(self) -> None:
         class FakeRepository:
             def record_runtime_alert_event(self, event: object) -> RuntimeAlertEvent:
@@ -9408,6 +9451,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/action-plans/runtime", payload["persistence"])
         self.assertIn("/v1/action-plans/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/runtime-alerts", payload["persistence"])
+        self.assertIn("/v1/runtime-alerts/export.csv", payload["persistence"])
         self.assertIn("/v1/runtime-alerts/notifications", payload["persistence"])
         self.assertIn("/v1/runtime-alerts/{alert_id}/events", payload["persistence"])
         self.assertIn("/v1/content-engines/runtime", payload["persistence"])

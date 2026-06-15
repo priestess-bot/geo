@@ -6967,6 +6967,49 @@ def runtime_alerts(
         close_repository_connection(repository)
 
 
+@app.get("/v1/runtime-alerts/export.csv")
+def runtime_alerts_export_csv(
+    project_id: str = Query(min_length=1),
+    alert_type: str | None = Query(default=None, min_length=1, max_length=120),
+    severity: str | None = Query(default=None, min_length=1, max_length=40),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_alerts_csv(
+                project_id=project_id.strip(),
+                alert_type=alert_type.strip() if alert_type else None,
+                severity=severity.strip().lower() if severity else None,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GENO-Runtime-Alert-Export-Hash": export.content_hash,
+                "X-GENO-Runtime-Alert-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GENO-Runtime-Alert-Type": str(export.filters.get("alert_type", "")),
+                "X-GENO-Runtime-Alert-Severity": str(export.filters.get("severity", "")),
+                "X-GENO-Runtime-Alert-Row-Count": str(export.row_count),
+                "X-GENO-Runtime-Alert-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/runtime-alerts/notifications")
 def enqueue_runtime_alert_notifications(
     payload: RuntimeAlertNotificationRequest,
@@ -7958,6 +8001,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/action-plans/runtime",
             "/v1/action-plans/runtime/export.csv",
             "/v1/runtime-alerts",
+            "/v1/runtime-alerts/export.csv",
             "/v1/runtime-alerts/notifications",
             "/v1/runtime-alerts/{alert_id}/events",
             "/v1/content-engines/runtime",

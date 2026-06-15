@@ -3600,6 +3600,7 @@ const endpoints = {
   actions: "/v1/action-plans/runtime",
   actionsExport: "/v1/action-plans/runtime/export.csv",
   alerts: "/v1/runtime-alerts",
+  alertsExport: "/v1/runtime-alerts/export.csv",
   alertNotifications: "/v1/runtime-alerts/notifications",
   entityAliasAssignmentNotifications: "/v1/entity-aliases/runtime/candidates/assignment-notifications",
   entityAliasAssignmentEscalations: "/v1/entity-aliases/runtime/candidates/assignment-escalations",
@@ -5452,6 +5453,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     actions: runtimePath(endpoints.actions, { limit: 1 }),
     actionsExport: runtimePath(endpoints.actionsExport, { limit: 200 }),
     alerts: runtimePath(endpoints.alerts, { limit: 10 }),
+    alertsExport: runtimePath(endpoints.alertsExport, { limit: 200 }),
     alertNotifications: endpoints.alertNotifications,
     entityAliasAssignmentNotifications: endpoints.entityAliasAssignmentNotifications,
     entityAliasAssignmentEscalations: endpoints.entityAliasAssignmentEscalations,
@@ -5727,6 +5729,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.alerts = runtimePath(endpoints.alerts, {
     ...selectedProjectParams,
     limit: 10
+  });
+  paths.alertsExport = runtimePath(endpoints.alertsExport, {
+    ...selectedProjectParams,
+    limit: 200
   });
   paths.alertNotifications = endpoints.alertNotifications;
   paths.entityAliasAssignmentNotifications = endpoints.entityAliasAssignmentNotifications;
@@ -6811,6 +6817,7 @@ export default async function Home({
   const projectMembersExportUrl = `${displayUrl}${paths.projectMembersExport}`;
   const projectMemberInvitationsExportUrl = `${displayUrl}${paths.projectMemberInvitationsExport}`;
   const actionPlansExportUrl = `${displayUrl}${paths.actionsExport}`;
+  const runtimeAlertsExportUrl = `${displayUrl}${paths.alertsExport}`;
   const evidenceSort = data.evidence.sort || filters.sort || "collected_at_desc";
   const runtimeViewName = activeFilterCount
     ? `${selectedProject?.project.name || "Runtime project"} · ${filterLabel} · ${evidenceSort}`
@@ -12480,10 +12487,12 @@ export default async function Home({
               ))}
               <dl className="facts">
                 <Fact label="Alert query" value={paths.alerts} />
+                <Fact label="Alert CSV" value={paths.alertsExport} />
                 <Fact label="Alert notification API" value={paths.alertNotifications} />
                 <Fact label="Method" value="runtime_alerts_v1" />
                 <Fact label="Evidence refs" value="score/source_gap/benchmark/action" />
               </dl>
+              <a href={runtimeAlertsExportUrl}>Download alert CSV</a>
             </div>
           ) : (
             <EmptyState />
