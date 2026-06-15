@@ -6020,6 +6020,47 @@ def runtime_notification_deliveries(
         close_repository_connection(repository)
 
 
+@app.get("/v1/runtime-notification-deliveries/export.csv")
+def runtime_notification_deliveries_export_csv(
+    project_id: str = Query(min_length=1),
+    notification_id: str | None = None,
+    subscription_id: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        export = repository.export_runtime_notification_deliveries_csv(
+            project_id=project_id,
+            notification_id=notification_id,
+            subscription_id=subscription_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GENO-Notification-Delivery-Export-Hash": export.content_hash,
+                "X-GENO-Notification-Delivery-Project-Id": project_id,
+                "X-GENO-Notification-Delivery-Status": status or "",
+                "X-GENO-Notification-Delivery-Row-Count": str(export.row_count),
+                "X-GENO-Notification-Delivery-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/runtime-notification-email-feedback-events")
 def runtime_notification_email_feedback_events(
     project_id: str | None = None,
@@ -7603,6 +7644,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/runtime-notifications",
             "/v1/runtime-notification-subscriptions",
             "/v1/runtime-notification-deliveries",
+            "/v1/runtime-notification-deliveries/export.csv",
             "/v1/runtime-notification-email-feedback-events",
             "/v1/runtime-notification-email-feedback-webhooks/geno",
             "/v1/runtime-notification-email-feedback-webhooks/{provider}",

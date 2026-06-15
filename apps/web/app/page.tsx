@@ -3583,6 +3583,7 @@ const endpoints = {
   notifications: "/v1/runtime-notifications",
   notificationSubscriptions: "/v1/runtime-notification-subscriptions",
   notificationDeliveries: "/v1/runtime-notification-deliveries",
+  notificationDeliveriesExport: "/v1/runtime-notification-deliveries/export.csv",
   notificationEmailFeedback: "/v1/runtime-notification-email-feedback-events",
   notificationEmailSuppressions: "/v1/runtime-notification-email-suppressions",
   notificationEmailSuppressionsExport: "/v1/runtime-notification-email-suppressions/export.csv",
@@ -5427,6 +5428,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     notifications: runtimePath(endpoints.notifications, { limit: 8 }),
     notificationSubscriptions: runtimePath(endpoints.notificationSubscriptions, { limit: 5 }),
     notificationDeliveries: runtimePath(endpoints.notificationDeliveries, { limit: 5 }),
+    notificationDeliveriesExport: runtimePath(endpoints.notificationDeliveriesExport, { limit: 200 }),
     notificationEmailFeedback: runtimePath(endpoints.notificationEmailFeedback, { limit: 5 }),
     notificationEmailSuppressions: runtimePath(endpoints.notificationEmailSuppressions, { limit: 5 }),
     notificationEmailSuppressionsExport: runtimePath(endpoints.notificationEmailSuppressionsExport, { limit: 200 }),
@@ -5657,6 +5659,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.notificationDeliveries = runtimePath(endpoints.notificationDeliveries, {
     ...selectedProjectParams,
     limit: 5
+  });
+  paths.notificationDeliveriesExport = runtimePath(endpoints.notificationDeliveriesExport, {
+    ...selectedProjectParams,
+    limit: 200
   });
   paths.notificationEmailFeedback = runtimePath(endpoints.notificationEmailFeedback, {
     ...selectedProjectParams,
@@ -11878,6 +11884,7 @@ export default async function Home({
             <Fact label="Project suppressions" value={data.notificationEmailSuppressions.total_count} />
             <Fact label="Subscription API" value={paths.notificationSubscriptions} />
             <Fact label="Delivery API" value={paths.notificationDeliveries} />
+            <Fact label="Delivery CSV" value={paths.notificationDeliveriesExport} />
             <Fact label="Feedback API" value={paths.notificationEmailFeedback} />
             <Fact label="Suppression API" value={paths.notificationEmailSuppressions} />
             <Fact label="Suppression CSV" value={paths.notificationEmailSuppressionsExport} />
@@ -11887,6 +11894,7 @@ export default async function Home({
             <Fact label="Unsubscribe API" value={paths.notificationEmailPreferenceUnsubscribe} />
           </dl>
           <div className="downloadRow">
+            <a href={paths.notificationDeliveriesExport}>Download delivery CSV</a>
             <a href={paths.notificationEmailSuppressionsExport}>Download suppression CSV</a>
           </div>
           <form action={saveRuntimeNotificationEmailSuppression} className="reportManagementForm">

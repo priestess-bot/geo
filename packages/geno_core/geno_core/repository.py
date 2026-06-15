@@ -1622,6 +1622,92 @@ def _render_runtime_notification_email_suppressions_csv(page: RuntimeNotificatio
     return output.getvalue()
 
 
+def _render_runtime_notification_deliveries_csv(page: RuntimeNotificationDeliveryPage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "delivery_id",
+            "project_id",
+            "notification_id",
+            "subscription_id",
+            "channel",
+            "endpoint_url_hash",
+            "status",
+            "attempt_count",
+            "max_attempts",
+            "lease_expires_at",
+            "next_attempt_at",
+            "response_status",
+            "response_body_hash",
+            "error_message_hash",
+            "created_at",
+            "updated_by",
+            "updated_at",
+            "notification_type",
+            "notification_severity",
+            "notification_status",
+            "notification_target_type",
+            "notification_target_id",
+            "subscription_status",
+            "subscription_severity_threshold",
+            "payload_version",
+            "payload_keys",
+            "payload_metadata_keys",
+            "audit_event_count",
+            "latest_audit_event_type",
+            "latest_audit_method_version",
+            "latest_audit_after_hash",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        delivery = record.delivery
+        notification = record.notification or {}
+        subscription = record.subscription or {}
+        payload = delivery.get("payload") if isinstance(delivery.get("payload"), dict) else {}
+        payload_metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+        latest_audit_event = record.audit_events[0] if record.audit_events else {}
+        endpoint_url = str(delivery.get("endpoint_url") or "")
+        error_message = str(delivery.get("error_message") or "")
+        writer.writerow(
+            {
+                "delivery_id": delivery.get("id") or "",
+                "project_id": delivery.get("project_id") or "",
+                "notification_id": delivery.get("notification_id") or "",
+                "subscription_id": delivery.get("subscription_id") or "",
+                "channel": delivery.get("channel") or "",
+                "endpoint_url_hash": _artifact_hash(endpoint_url) if endpoint_url else "",
+                "status": delivery.get("status") or "",
+                "attempt_count": delivery.get("attempt_count") or 0,
+                "max_attempts": delivery.get("max_attempts") or 0,
+                "lease_expires_at": delivery.get("lease_expires_at") or "",
+                "next_attempt_at": delivery.get("next_attempt_at") or "",
+                "response_status": delivery.get("response_status") or "",
+                "response_body_hash": delivery.get("response_body_hash") or "",
+                "error_message_hash": _artifact_hash(error_message) if error_message else "",
+                "created_at": delivery.get("created_at") or "",
+                "updated_by": delivery.get("updated_by") or "",
+                "updated_at": delivery.get("updated_at") or "",
+                "notification_type": notification.get("notification_type") or "",
+                "notification_severity": notification.get("severity") or "",
+                "notification_status": notification.get("status") or "",
+                "notification_target_type": notification.get("target_type") or "",
+                "notification_target_id": notification.get("target_id") or "",
+                "subscription_status": subscription.get("status") or "",
+                "subscription_severity_threshold": subscription.get("severity_threshold") or "",
+                "payload_version": payload.get("delivery_version") or "",
+                "payload_keys": "|".join(sorted(str(key) for key in payload)),
+                "payload_metadata_keys": "|".join(sorted(str(key) for key in payload_metadata)),
+                "audit_event_count": len(record.audit_events),
+                "latest_audit_event_type": latest_audit_event.get("event_type") or "",
+                "latest_audit_method_version": latest_audit_event.get("method_version") or "",
+                "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
+            }
+        )
+    return output.getvalue()
+
+
 ANSWER_RUN_COLUMNS = (
     "id",
     "project_id",
@@ -9027,6 +9113,44 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=records,
+        )
+
+    def export_runtime_notification_deliveries_csv(
+        self,
+        *,
+        project_id: str,
+        notification_id: str | None = None,
+        subscription_id: str | None = None,
+        status: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        page = self.list_runtime_notification_deliveries(
+            project_id=project_id,
+            notification_id=notification_id,
+            subscription_id=subscription_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_notification_deliveries_csv(page)
+        filters = {
+            "project_id": project_id.strip(),
+            "notification_id": notification_id.strip() if notification_id else None,
+            "subscription_id": subscription_id.strip() if subscription_id else None,
+            "status": status.strip().lower() if status else None,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_notification_deliveries_csv",
+            filename="runtime-notification-deliveries.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=page.total_count,
+            row_count=len(page.records),
         )
 
     def list_runtime_notification_email_feedback_events(

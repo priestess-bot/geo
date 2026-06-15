@@ -217,7 +217,7 @@ from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.prompt_import import prompt_import_file_to_csv
 from geno_core.parser import ComparativeAnswerParser, LLMJudgeAnswerParser, RuleBasedAnswerParser
 from geno_core.report import MarkdownCsvReportExporter
-from geno_core.repository import PostgresEvidenceRepository
+from geno_core.repository import PostgresEvidenceRepository, _artifact_hash
 from geno_core.runtime import (
     RuntimePersistenceError,
     build_runtime_diagnostics,
@@ -8242,6 +8242,116 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(page.records[0].audit_events[0]["event_type"], "runtime_notification_delivery_queued")
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FROM runtime_notification_deliveries WHERE project_id = %s AND status = %s", executed_sql)
+
+    def test_postgres_repository_exports_runtime_notification_deliveries_csv(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        delivery_id = "118e5c66-7bb4-558e-ab97-e74ef9928b46"
+        endpoint_url = "https://hooks.example.com/geno/raw-secret-path"
+        notification_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "report_export_job",
+            "severity": "warning",
+            "title": "Report export failed",
+            "message": "pdf/standard report export job failed.",
+            "target_type": "report_export_job",
+            "target_id": "8f4f2a24-d6cf-5050-96a4-942d2c337fd0",
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {"status": "failed"},
+            "created_by": "runtime-worker",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        subscription_row = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "webhook",
+            "endpoint_url": endpoint_url,
+            "event_types": ["report_export_job"],
+            "severity_threshold": "info",
+            "status": "active",
+            "metadata": {},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        delivery_row = {
+            "id": delivery_id,
+            "project_id": project_id,
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "channel": "webhook",
+            "endpoint_url": endpoint_url,
+            "status": "dead_letter",
+            "attempt_count": 3,
+            "max_attempts": 3,
+            "lease_expires_at": None,
+            "next_attempt_at": None,
+            "response_status": 500,
+            "response_body_hash": "response-body-hash",
+            "error_message": "webhook secret leaked in upstream error",
+            "payload": {
+                "delivery_version": "runtime_notification_delivery_v1",
+                "metadata": {
+                    "signing_secret_env": "GENO_TEST_WEBHOOK_SECRET",
+                    "do_not_export": "raw payload metadata value",
+                },
+            },
+            "created_at": now,
+            "updated_by": "notification-worker",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "37931ff6-07d0-4825-8d41-46b7d197f98e",
+            "event_type": "runtime_notification_delivery_status_updated",
+            "project_id": project_id,
+            "actor_type": "worker",
+            "actor_id": "notification-worker",
+            "target_type": "runtime_notification_delivery",
+            "target_id": delivery_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {"runtime_notification_delivery_ids": [delivery_id]},
+            "output_refs": {"runtime_notification_delivery_ids": [delivery_id]},
+            "method_version": "runtime_notification_delivery_status_v1",
+            "reason": "runtime notification delivery dead-lettered",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, [delivery_row], notification_row, subscription_row, [audit_row]])
+
+        export = PostgresEvidenceRepository(connection).export_runtime_notification_deliveries_csv(
+            project_id=project_id,
+            status="dead_letter",
+            limit=5,
+            offset=0,
+        )
+
+        self.assertEqual(export.export_type, "runtime_notification_deliveries_csv")
+        self.assertEqual(export.filename, "runtime-notification-deliveries.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertEqual(export.filters["status"], "dead_letter")
+        self.assertIn("delivery_id,project_id,notification_id,subscription_id,channel,endpoint_url_hash", export.content)
+        self.assertIn(delivery_id, export.content)
+        self.assertIn("dead_letter", export.content)
+        self.assertIn("runtime_notification_delivery_status_v1", export.content)
+        self.assertIn("payload_metadata_keys", export.content)
+        self.assertIn("signing_secret_env", export.content)
+        self.assertIn(_artifact_hash(endpoint_url), export.content)
+        self.assertIn(_artifact_hash("webhook secret leaked in upstream error"), export.content)
+        self.assertNotIn(endpoint_url, export.content)
+        self.assertNotIn("raw-secret-path", export.content)
+        self.assertNotIn("raw payload metadata value", export.content)
+        self.assertNotIn("webhook secret leaked in upstream error", export.content)
 
     def test_postgres_repository_claims_next_runtime_notification_delivery_with_audit_event(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)

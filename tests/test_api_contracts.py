@@ -7190,6 +7190,45 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["records"][0]["audit_events"][0]["event_type"], "runtime_notification_delivery_queued")
         self.assertEqual(fake_repository.kwargs["status"], "queued")
 
+    def test_runtime_notification_deliveries_export_endpoint_returns_csv_with_hash_headers(self) -> None:
+        class FakeRepository:
+            def export_runtime_notification_deliveries_csv(self, **kwargs: object) -> RuntimeEvidenceExport:
+                self.kwargs = kwargs
+                return RuntimeEvidenceExport(
+                    export_type="runtime_notification_deliveries_csv",
+                    filename="runtime-notification-deliveries.csv",
+                    media_type="text/csv; charset=utf-8",
+                    content="delivery_id,status\nsubscription-1,queued\n",
+                    content_hash="hash-notification-deliveries-csv",
+                    filters={"project_id": kwargs["project_id"], "status": kwargs["status"]},
+                    total_count=4,
+                    row_count=1,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/runtime-notification-deliveries/export.csv"
+                "?project_id=project-1&status=queued&notification_id=notification-1&subscription_id=subscription-1&limit=5",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
+        self.assertEqual(response.headers["x-geno-notification-delivery-export-hash"], "hash-notification-deliveries-csv")
+        self.assertEqual(response.headers["x-geno-notification-delivery-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geno-notification-delivery-status"], "queued")
+        self.assertEqual(response.headers["x-geno-notification-delivery-row-count"], "1")
+        self.assertEqual(response.headers["x-geno-notification-delivery-total-count"], "4")
+        self.assertIn("runtime-notification-deliveries.csv", response.headers["content-disposition"])
+        self.assertIn("subscription-1", response.text)
+        self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.kwargs["status"], "queued")
+        self.assertEqual(fake_repository.kwargs["notification_id"], "notification-1")
+        self.assertEqual(fake_repository.kwargs["subscription_id"], "subscription-1")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+
     def test_runtime_notification_email_feedback_endpoint_passes_payload(self) -> None:
         class FakeRepository:
             def get_runtime_notification_delivery_project_id(self, *, delivery_id: str) -> str:
