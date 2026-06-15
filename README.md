@@ -42,6 +42,8 @@
 
 补充：P0a real batch execution plan 摘要也已从 fulfillment 传播到 clearance、delivery progress 和 customer handoff clearance。最新刷新后 `p0a_real_batch_fulfillment_hash=50d156c0cb7729ca8a28e9a3eab4942831fbb38ed435beb036f5700aaadc26c1`、`p0a_real_batch_clearance_hash=57d6e851ba9000c45ed1b69d3b69cc0df62f07d583aff5e7f58a56b5617d70e3`，顶层 summary 均可读到 `p0a_real_batch_execution_plan_ready=true`、`p0a_real_batch_total_planned_runs=2436`、`p0a_real_batch_ready_phase_count=0`、`p0a_real_batch_blocked_phase_count=3`、`p0a_real_batch_phase_command_count=8`、`p0a_real_batch_evidence_output_count=6`。这只证明 preflight/small/full 三阶段执行计划已经可审计，不代表真实 provider preflight、30-run small batch 或 2400-run full batch 已执行。
 
+补充：Runtime Console 现在也显式展示同一组 P0a real batch execution plan 字段。`P0a real batch fulfillment`、`P0a real batch clearance`、`AU delivery progress` 和 `Customer handoff clearance` 卡片都会显示 plan ready、planned runs、phase ready/blocked、commands/evidence counts；界面只消费既有 artifact summary，不绕过 verifier，也不把 `real_batches_fulfilled=false` 解释成真实批次完成。
+
 补充：Runtime Console 的 `Customer handoff package` 卡片现在直接展示 `Credential receipt hash`、`GET /v1/p0a-credential-update-receipt/au` 和扩展后的 handoff index 预览，确保最终交付视图能直接看到 P0a credential update receipt 已进入 16 项 source artifact，而不是只通过 JSON 或上游 clearance 间接确认。
 
 补充：AU next work item、delivery progress 与 customer handoff clearance 的 verifier 现在区分落盘 artifact 和 runtime 内存态 payload。CLI/Make 或函数传入 `path` 时会自动启用当前源文件重读校验，逐项比对 linked/source artifact 当前 JSON hash 与 `file_sha256`，用于交付前防止落盘包引用过期上游文件；直接校验 FastAPI 同请求内合成的 in-memory payload 时默认只验证包内自洽，避免被磁盘上另一份旧默认文件误判。需要在内存态也强制重读磁盘时，可显式传 `verify_current_files=True`。

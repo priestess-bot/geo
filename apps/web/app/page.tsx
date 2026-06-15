@@ -1264,9 +1264,15 @@ type AuDeliveryProgress = {
     p0a_real_batch_clearance_ready?: boolean;
     p0a_real_batches_fulfilled?: boolean;
     p0a_real_batch_blocked_by_prerequisite?: boolean;
+    p0a_real_batch_execution_plan_ready?: boolean;
+    p0a_real_batch_total_planned_runs?: number;
+    p0a_real_batch_ready_phase_count?: number;
+    p0a_real_batch_blocked_phase_count?: number;
     p0a_real_batch_missing_required_count?: number;
     p0a_real_batch_missing_required?: string[];
     p0a_real_batch_next_phase?: string;
+    p0a_real_batch_phase_command_count?: number;
+    p0a_real_batch_evidence_output_count?: number;
     p0b_google_environment_clearance_hash?: string;
     p0b_google_environment_clearance_ready?: boolean;
     p0b_google_environment_fulfilled?: boolean;
@@ -1375,8 +1381,14 @@ type AuCustomerHandoffClearance = {
     p0a_real_batch_clearance_ready?: boolean;
     p0a_real_batches_fulfilled?: boolean;
     p0a_real_batch_blocked_by_prerequisite?: boolean;
+    p0a_real_batch_execution_plan_ready?: boolean;
+    p0a_real_batch_total_planned_runs?: number;
+    p0a_real_batch_ready_phase_count?: number;
+    p0a_real_batch_blocked_phase_count?: number;
     p0a_real_batch_missing_required_count?: number;
     p0a_real_batch_next_phase?: string;
+    p0a_real_batch_phase_command_count?: number;
+    p0a_real_batch_evidence_output_count?: number;
     p0b_google_environment_clearance_hash?: string;
     p0b_google_environment_clearance_ready?: boolean;
     p0b_google_environment_fulfilled?: boolean;
@@ -2059,6 +2071,7 @@ type AuP0aRealBatchFulfillment = {
     real_batch_request_ready?: boolean;
     execution_checklist_ready?: boolean;
     source_checklist_hash_aligned?: boolean;
+    real_batch_execution_plan_ready?: boolean;
     real_batch_phase_handoff_ready?: boolean;
     ready_for_design_partner?: boolean;
     phase_count?: number;
@@ -2080,6 +2093,8 @@ type AuP0aRealBatchFulfillment = {
     strict_gate_command?: string;
     request_strict_gate_command?: string;
     design_partner_strict_gate_command?: string;
+    command_count?: number;
+    evidence_output_count?: number;
     raw_secret_values_allowed?: boolean;
   };
   real_batch_fulfillment_items?: Array<{
@@ -2165,6 +2180,7 @@ type AuP0aRealBatchClearance = {
     ready_phase_count?: number;
     blocked_phase_count?: number;
     total_planned_runs?: number;
+    real_batch_execution_plan_ready?: boolean;
     next_phase?: string;
     real_batches_fulfilled?: boolean;
     real_batch_fulfillment_ready?: boolean;
@@ -2187,6 +2203,8 @@ type AuP0aRealBatchClearance = {
     design_partner_strict_gate_command?: string;
     operator_step_count?: number;
     post_update_validation_command_count?: number;
+    phase_command_count?: number;
+    evidence_output_count?: number;
     raw_secret_values_allowed?: boolean;
     provider_response_values_allowed?: boolean;
   };
@@ -8967,7 +8985,24 @@ export default async function Home({
               {deliveryProgressSummary?.p0a_real_batch_clearance_ready ? "ready" : "blocked"}
             </span>
             <span>
+              P0a real batch plan{" "}
+              {deliveryProgressSummary?.p0a_real_batch_execution_plan_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              P0a planned runs {deliveryProgressSummary?.p0a_real_batch_total_planned_runs ?? 0}
+            </span>
+            <span>
+              P0a real batch phases {deliveryProgressSummary?.p0a_real_batch_ready_phase_count ?? 0}/
+              {(deliveryProgressSummary?.p0a_real_batch_ready_phase_count ?? 0) +
+                (deliveryProgressSummary?.p0a_real_batch_blocked_phase_count ?? 0)}
+            </span>
+            <span>
               P0a real batch missing {deliveryProgressSummary?.p0a_real_batch_missing_required_count ?? 0}
+            </span>
+            <span>
+              P0a real batch commands/evidence{" "}
+              {deliveryProgressSummary?.p0a_real_batch_phase_command_count ?? 0}/
+              {deliveryProgressSummary?.p0a_real_batch_evidence_output_count ?? 0}
             </span>
             <span>Next P0a real batch phase {deliveryProgressSummary?.p0a_real_batch_next_phase || "none"}</span>
             <span>
@@ -9153,7 +9188,24 @@ export default async function Home({
               {customerHandoffClearanceSummary?.p0a_real_batch_clearance_ready ? "ready" : "blocked"}
             </span>
             <span>
+              P0a real batch plan{" "}
+              {customerHandoffClearanceSummary?.p0a_real_batch_execution_plan_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              P0a planned runs {customerHandoffClearanceSummary?.p0a_real_batch_total_planned_runs ?? 0}
+            </span>
+            <span>
+              P0a real batch phases {customerHandoffClearanceSummary?.p0a_real_batch_ready_phase_count ?? 0}/
+              {(customerHandoffClearanceSummary?.p0a_real_batch_ready_phase_count ?? 0) +
+                (customerHandoffClearanceSummary?.p0a_real_batch_blocked_phase_count ?? 0)}
+            </span>
+            <span>
               P0a real batch missing {customerHandoffClearanceSummary?.p0a_real_batch_missing_required_count ?? 0}
+            </span>
+            <span>
+              P0a real batch commands/evidence{" "}
+              {customerHandoffClearanceSummary?.p0a_real_batch_phase_command_count ?? 0}/
+              {customerHandoffClearanceSummary?.p0a_real_batch_evidence_output_count ?? 0}
             </span>
             <span>
               P0b environment{" "}
@@ -9935,6 +9987,9 @@ export default async function Home({
             <span>Real batches {p0aRealBatchFulfillment?.real_batches_fulfilled ? "fulfilled" : "blocked"}</span>
             <span>Design partner {p0aRealBatchFulfillment?.ready_for_design_partner ? "ready" : "blocked"}</span>
             <span>
+              Execution plan {p0aRealBatchFulfillmentSummary?.real_batch_execution_plan_ready ? "ready" : "blocked"}
+            </span>
+            <span>
               Phases {p0aRealBatchFulfillmentSummary?.ready_phase_count || 0}/
               {p0aRealBatchFulfillmentSummary?.phase_count || 0}
             </span>
@@ -9942,6 +9997,10 @@ export default async function Home({
             <span>Missing required {p0aRealBatchFulfillmentSummary?.missing_required_count || 0}</span>
             <span>Presence mismatches {p0aRealBatchFulfillmentSummary?.presence_mismatch_count || 0}</span>
             <span>Total planned runs {p0aRealBatchFulfillmentSummary?.total_planned_runs || 0}</span>
+            <span>
+              Commands/evidence {p0aRealBatchFulfillmentSummary?.command_count || 0}/
+              {p0aRealBatchFulfillmentSummary?.evidence_output_count || 0}
+            </span>
           </div>
           <div className="handoffBoundary">
             <span>Next action {p0aRealBatchFulfillmentSummary?.next_action || "none"}</span>
@@ -10003,12 +10062,19 @@ export default async function Home({
             <span>Clearance ready {p0aRealBatchClearance?.real_batch_clearance_ready ? "yes" : "no"}</span>
             <span>Next clearance {p0aRealBatchClearance?.ready_for_next_clearance_step ? "ready" : "blocked"}</span>
             <span>Prerequisite blocked {p0aRealBatchClearance?.blocked_by_prerequisite_step ? "yes" : "no"}</span>
+            <span>
+              Execution plan {p0aRealBatchClearanceSummary?.real_batch_execution_plan_ready ? "ready" : "blocked"}
+            </span>
             <span>Total planned runs {p0aRealBatchClearanceSummary?.total_planned_runs || 0}</span>
             <span>
               Phases {p0aRealBatchClearanceSummary?.ready_phase_count || 0}/
               {p0aRealBatchClearanceSummary?.phase_count || 0}
             </span>
             <span>Missing required {p0aRealBatchClearanceSummary?.missing_required_count || 0}</span>
+            <span>
+              Commands/evidence {p0aRealBatchClearanceSummary?.phase_command_count || 0}/
+              {p0aRealBatchClearanceSummary?.evidence_output_count || 0}
+            </span>
           </div>
           <div className="handoffBoundary">
             <span>Current global step {p0aRealBatchClearanceSummary?.current_global_clearance_step_id || "none"}</span>
