@@ -7417,6 +7417,82 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("UPDATE runtime_notifications SET status = %s", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
 
+    def test_postgres_repository_exports_runtime_notifications_csv(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        title = "Report export dead-lettered"
+        message = "pdf/standard report export job dead_letter with raw detail"
+        notification_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "report_export_job",
+            "severity": "critical",
+            "title": title,
+            "message": message,
+            "target_type": "report_export_job",
+            "target_id": "8f4f2a24-d6cf-5050-96a4-942d2c337fd0",
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {
+                "status": "dead_letter",
+                "artifact_type": "pdf",
+                "template": "white_label",
+                "raw_note": "do not export payload value",
+            },
+            "created_by": "runtime-worker",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "b6b7c7c1-5d19-44c2-95e8-18437a84db53",
+            "event_type": "runtime_notification_created",
+            "project_id": project_id,
+            "actor_type": "worker",
+            "actor_id": "runtime-worker",
+            "target_type": "runtime_notification",
+            "target_id": notification_id,
+            "before_hash": None,
+            "after_hash": "notification-after-hash",
+            "input_refs": {"runtime_report_export_job_ids": ["job-1"]},
+            "output_refs": {"runtime_notification_ids": [notification_id]},
+            "method_version": "runtime_notification_v1",
+            "reason": "queue terminal notification",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, {"count": 1}, [notification_row], [audit_row]])
+
+        export = PostgresEvidenceRepository(connection).export_runtime_notifications_csv(
+            project_id=project_id,
+            status="unread",
+            notification_type="report_export_job",
+            limit=5,
+            offset=0,
+        )
+
+        self.assertEqual(export.export_type, "runtime_notifications_csv")
+        self.assertEqual(export.filename, "runtime-notifications.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertEqual(export.filters["status"], "unread")
+        self.assertEqual(export.filters["notification_type"], "report_export_job")
+        self.assertIn("notification_id,project_id,notification_type,severity,status,target_type", export.content)
+        self.assertIn(notification_id, export.content)
+        self.assertIn("dead_letter", export.content)
+        self.assertIn("pdf", export.content)
+        self.assertIn("white_label", export.content)
+        self.assertIn("runtime_notification_v1", export.content)
+        self.assertIn("notification-after-hash", export.content)
+        self.assertIn(_artifact_hash(title), export.content)
+        self.assertIn(_artifact_hash(message), export.content)
+        self.assertNotIn(title, export.content)
+        self.assertNotIn(message, export.content)
+        self.assertNotIn("do not export payload value", export.content)
+
     def test_postgres_repository_saves_runtime_notification_subscription_with_audit_event(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

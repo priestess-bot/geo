@@ -5824,6 +5824,46 @@ def runtime_notifications(
         close_repository_connection(repository)
 
 
+@app.get("/v1/runtime-notifications/export.csv")
+def runtime_notifications_export_csv(
+    project_id: str = Query(min_length=1),
+    status: str | None = None,
+    notification_type: str | None = None,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        export = repository.export_runtime_notifications_csv(
+            project_id=project_id,
+            status=status,
+            notification_type=notification_type,
+            limit=limit,
+            offset=offset,
+        )
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GENO-Notification-Export-Hash": export.content_hash,
+                "X-GENO-Notification-Project-Id": project_id,
+                "X-GENO-Notification-Status": status or "",
+                "X-GENO-Notification-Type": notification_type or "",
+                "X-GENO-Notification-Row-Count": str(export.row_count),
+                "X-GENO-Notification-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/runtime-notification-subscriptions")
 def runtime_notification_subscriptions(
     project_id: str | None = None,
@@ -7679,6 +7719,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/report-export-jobs/runtime/stats",
             "/v1/report-export-jobs/runtime/{job_id}/status",
             "/v1/runtime-notifications",
+            "/v1/runtime-notifications/export.csv",
             "/v1/runtime-notification-subscriptions",
             "/v1/runtime-notification-subscriptions/export.csv",
             "/v1/runtime-notification-deliveries",

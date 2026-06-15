@@ -3581,6 +3581,7 @@ const endpoints = {
   reportJobs: "/v1/report-export-jobs/runtime",
   reportJobStats: "/v1/report-export-jobs/runtime/stats",
   notifications: "/v1/runtime-notifications",
+  notificationsExport: "/v1/runtime-notifications/export.csv",
   notificationSubscriptions: "/v1/runtime-notification-subscriptions",
   notificationSubscriptionsExport: "/v1/runtime-notification-subscriptions/export.csv",
   notificationDeliveries: "/v1/runtime-notification-deliveries",
@@ -5427,6 +5428,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     reportJobs: runtimePath(endpoints.reportJobs, { limit: 5 }),
     reportJobStats: endpoints.reportJobStats,
     notifications: runtimePath(endpoints.notifications, { limit: 8 }),
+    notificationsExport: runtimePath(endpoints.notificationsExport, { limit: 200 }),
     notificationSubscriptions: runtimePath(endpoints.notificationSubscriptions, { limit: 5 }),
     notificationSubscriptionsExport: runtimePath(endpoints.notificationSubscriptionsExport, { limit: 200 }),
     notificationDeliveries: runtimePath(endpoints.notificationDeliveries, { limit: 5 }),
@@ -5653,6 +5655,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.notifications = runtimePath(endpoints.notifications, {
     ...selectedProjectParams,
     limit: 8
+  });
+  paths.notificationsExport = runtimePath(endpoints.notificationsExport, {
+    ...selectedProjectParams,
+    limit: 200
   });
   paths.notificationSubscriptions = runtimePath(endpoints.notificationSubscriptions, {
     ...selectedProjectParams,
@@ -11889,6 +11895,7 @@ export default async function Home({
             <Fact label="Deliveries" value={data.notificationDeliveries.total_count} />
             <Fact label="Email feedback" value={data.notificationEmailFeedback.total_count} />
             <Fact label="Project suppressions" value={data.notificationEmailSuppressions.total_count} />
+            <Fact label="Notification CSV" value={paths.notificationsExport} />
             <Fact label="Subscription API" value={paths.notificationSubscriptions} />
             <Fact label="Subscription CSV" value={paths.notificationSubscriptionsExport} />
             <Fact label="Delivery API" value={paths.notificationDeliveries} />
@@ -11902,6 +11909,7 @@ export default async function Home({
             <Fact label="Unsubscribe API" value={paths.notificationEmailPreferenceUnsubscribe} />
           </dl>
           <div className="downloadRow">
+            <a href={paths.notificationsExport}>Download notification CSV</a>
             <a href={paths.notificationSubscriptionsExport}>Download subscription CSV</a>
             <a href={paths.notificationDeliveriesExport}>Download delivery CSV</a>
             <a href={paths.notificationEmailSuppressionsExport}>Download suppression CSV</a>

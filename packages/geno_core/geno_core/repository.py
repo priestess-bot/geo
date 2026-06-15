@@ -1794,6 +1794,73 @@ def _render_runtime_notification_subscriptions_csv(page: RuntimeNotificationSubs
     return output.getvalue()
 
 
+def _render_runtime_notifications_csv(page: RuntimeNotificationPage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "notification_id",
+            "project_id",
+            "notification_type",
+            "severity",
+            "status",
+            "target_type",
+            "target_id",
+            "recipient_role",
+            "title_hash",
+            "message_hash",
+            "payload_keys",
+            "payload_status",
+            "payload_artifact_type",
+            "payload_template",
+            "created_by",
+            "created_at",
+            "read_at",
+            "updated_by",
+            "updated_at",
+            "audit_event_count",
+            "latest_audit_event_type",
+            "latest_audit_method_version",
+            "latest_audit_after_hash",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        notification = record.notification
+        payload = notification.get("payload") if isinstance(notification.get("payload"), dict) else {}
+        latest_audit_event = record.audit_events[0] if record.audit_events else {}
+        title = str(notification.get("title") or "")
+        message = str(notification.get("message") or "")
+        writer.writerow(
+            {
+                "notification_id": notification.get("id") or "",
+                "project_id": notification.get("project_id") or "",
+                "notification_type": notification.get("notification_type") or "",
+                "severity": notification.get("severity") or "",
+                "status": notification.get("status") or "",
+                "target_type": notification.get("target_type") or "",
+                "target_id": notification.get("target_id") or "",
+                "recipient_role": notification.get("recipient_role") or "",
+                "title_hash": _artifact_hash(title) if title else "",
+                "message_hash": _artifact_hash(message) if message else "",
+                "payload_keys": "|".join(sorted(str(key) for key in payload)),
+                "payload_status": payload.get("status") or "",
+                "payload_artifact_type": payload.get("artifact_type") or "",
+                "payload_template": payload.get("template") or "",
+                "created_by": notification.get("created_by") or "",
+                "created_at": notification.get("created_at") or "",
+                "read_at": notification.get("read_at") or "",
+                "updated_by": notification.get("updated_by") or "",
+                "updated_at": notification.get("updated_at") or "",
+                "audit_event_count": len(record.audit_events),
+                "latest_audit_event_type": latest_audit_event.get("event_type") or "",
+                "latest_audit_method_version": latest_audit_event.get("method_version") or "",
+                "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
+            }
+        )
+    return output.getvalue()
+
+
 ANSWER_RUN_COLUMNS = (
     "id",
     "project_id",
@@ -8911,6 +8978,41 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=records,
+        )
+
+    def export_runtime_notifications_csv(
+        self,
+        *,
+        project_id: str,
+        status: str | None = None,
+        notification_type: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        page = self.list_runtime_notifications(
+            project_id=project_id,
+            status=status,
+            notification_type=notification_type,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_notifications_csv(page)
+        filters = {
+            "project_id": project_id.strip(),
+            "status": status.strip().lower() if status else None,
+            "notification_type": notification_type.strip().lower() if notification_type else None,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_notifications_csv",
+            filename="runtime-notifications.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=page.total_count,
+            row_count=len(page.records),
         )
 
     def update_runtime_notification_status(
