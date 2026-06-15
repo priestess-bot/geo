@@ -106,6 +106,7 @@ from geno_core.models import (
     RuntimeNotificationEmailFeedback,
     RuntimeNotificationEmailFeedbackInput,
     RuntimeNotificationEmailFeedbackPage,
+    RuntimeNotificationEmailFeedbackProjectSuppressionInput,
     RuntimeNotificationEmailSuppression,
     RuntimeNotificationEmailSuppressionInput,
     RuntimeNotificationEmailSuppressionPage,
@@ -222,6 +223,31 @@ def _json_payload(value: object) -> object:
     except ModuleNotFoundError:
         return payload
     return Jsonb(payload)
+
+
+def _contains_forbidden_email_feedback_project_suppression_metadata(value: object) -> bool:
+    forbidden_keys = {
+        "recipient",
+        "raw_recipient",
+        "email",
+        "email_address",
+        "provider_event_id",
+        "raw_provider_event_id",
+        "secret",
+        "raw_secret",
+        "token",
+        "raw_token",
+    }
+    if isinstance(value, dict):
+        for key, child in value.items():
+            normalized_key = str(key).strip().lower()
+            if normalized_key in forbidden_keys or normalized_key.endswith("_secret") or normalized_key.startswith("raw_"):
+                return True
+            if _contains_forbidden_email_feedback_project_suppression_metadata(child):
+                return True
+    elif isinstance(value, (list, tuple, set)):
+        return any(_contains_forbidden_email_feedback_project_suppression_metadata(child) for child in value)
+    return False
 
 
 def _runtime_notification_slack_payload(
@@ -9427,6 +9453,137 @@ class PostgresEvidenceRepository:
             record = self._runtime_notification_subscription_from_row(cursor=cursor, row=after)
         self.connection.commit()
         return record
+
+    def apply_runtime_notification_email_feedback_project_suppression(
+        self,
+        suppression: RuntimeNotificationEmailFeedbackProjectSuppressionInput,
+    ) -> RuntimeNotificationEmailSuppression:
+        feedback_event_id = suppression.feedback_event_id.strip()
+        updated_by = suppression.updated_by.strip() or "runtime-console"
+        reason = suppression.reason.strip() if suppression.reason else None
+        if not feedback_event_id:
+            raise ValueError("feedback_event_id is required")
+        input_metadata = _json_compatible(suppression.metadata or {})
+        if not isinstance(input_metadata, dict):
+            input_metadata = {}
+        if _contains_forbidden_email_feedback_project_suppression_metadata(input_metadata):
+            raise ValueError("email feedback project suppression metadata must be hash-only")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_COLUMNS)}
+                FROM runtime_notification_email_feedback_events
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(feedback_event_id),),
+            )
+            feedback_event = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_COLUMNS)
+            if not feedback_event:
+                raise ValueError("runtime notification email feedback event not found")
+            recipient_hash = _sha256_hex_or_none(
+                str(feedback_event.get("recipient_hash") or ""),
+                field_name="recipient_hash",
+            )
+            if not recipient_hash:
+                raise ValueError("email feedback event has no recipient_hash to suppress")
+            project_id = str(feedback_event["project_id"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_NOTIFICATION_EMAIL_SUPPRESSION_COLUMNS)}
+                FROM runtime_notification_email_suppressions
+                WHERE project_id = %s AND recipient_hash = %s
+                LIMIT 1
+                FOR UPDATE
+                """,
+                (_uuid(project_id), recipient_hash),
+            )
+            before = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_EMAIL_SUPPRESSION_COLUMNS)
+            existing_metadata = _json_compatible(before.get("metadata") if before else {})
+            if not isinstance(existing_metadata, dict):
+                existing_metadata = {}
+            provider = str(feedback_event.get("provider") or "").strip()
+            provider_event_id_hash = _sha256_hex_or_none(
+                str(feedback_event.get("provider_event_id_hash") or ""),
+                field_name="provider_event_id_hash",
+            )
+            metadata = {
+                **existing_metadata,
+                **input_metadata,
+                "source": "runtime_notification_email_feedback_project_suppression",
+                "feedback_event_id": str(feedback_event["id"]),
+                "delivery_id": str(feedback_event["delivery_id"]),
+                "notification_id": str(feedback_event["notification_id"]),
+                "subscription_id": str(feedback_event["subscription_id"]),
+                "feedback_type": str(feedback_event["feedback_type"]),
+                "recipient_hash": recipient_hash,
+            }
+            if provider:
+                metadata["provider"] = provider
+            if provider_event_id_hash:
+                metadata["provider_event_id_hash"] = provider_event_id_hash
+            cursor.execute(
+                f"""
+                INSERT INTO runtime_notification_email_suppressions (
+                  project_id, recipient_hash, status, source, source_ref, metadata,
+                  created_by, updated_by
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (project_id, recipient_hash) DO UPDATE SET
+                  status = EXCLUDED.status,
+                  source = EXCLUDED.source,
+                  source_ref = EXCLUDED.source_ref,
+                  metadata = EXCLUDED.metadata,
+                  updated_by = EXCLUDED.updated_by,
+                  updated_at = now()
+                RETURNING {RUNTIME_NOTIFICATION_EMAIL_SUPPRESSION_RETURNING}
+                """,
+                (
+                    _uuid(project_id),
+                    recipient_hash,
+                    "active",
+                    "feedback",
+                    str(feedback_event["id"]),
+                    _json_payload(metadata),
+                    updated_by,
+                    updated_by,
+                ),
+            )
+            after = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_EMAIL_SUPPRESSION_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="runtime_notification_email_feedback_project_suppression_applied",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="runtime_notification_email_suppression",
+                target_id=str(after["id"]),
+                before=before or None,
+                after=after,
+                input_refs={
+                    "runtime_notification_email_feedback_event_ids": [str(feedback_event["id"])],
+                    "runtime_notification_delivery_ids": [str(feedback_event["delivery_id"])],
+                    "runtime_notification_ids": [str(feedback_event["notification_id"])],
+                    "runtime_notification_subscription_ids": [str(feedback_event["subscription_id"])],
+                    "feedback_type": [str(feedback_event["feedback_type"])],
+                    "recipient_hashes": [recipient_hash],
+                    "provider_event_id_hashes": [provider_event_id_hash] if provider_event_id_hash else [],
+                },
+                output_refs={
+                    "runtime_notification_email_suppression_ids": [str(after["id"])],
+                    "runtime_notification_email_feedback_event_ids": [str(feedback_event["id"])],
+                    "recipient_hashes": [recipient_hash],
+                    "status": [str(after["status"])],
+                    "source": [str(after["source"])],
+                },
+                method_version="runtime_notification_email_feedback_project_suppression_v1",
+                reason=reason or "apply runtime notification email feedback project suppression",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+        self.connection.commit()
+        return RuntimeNotificationEmailSuppression(
+            suppression=after,
+            audit_events=(asdict(audit_event),),
+        )
 
     def list_runtime_notification_email_suppressions(
         self,

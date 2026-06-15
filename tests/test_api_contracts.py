@@ -7629,6 +7629,65 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.suppression.feedback_event_id, "feedback-1")
         self.assertEqual(fake_repository.suppression.reason, "apply complaint suppression")
 
+    def test_runtime_notification_email_feedback_project_suppression_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def get_runtime_notification_email_feedback_project_id(self, *, feedback_event_id: str) -> str:
+                self.feedback_project_lookup = feedback_event_id
+                return "project-1"
+
+            def apply_runtime_notification_email_feedback_project_suppression(
+                self,
+                suppression: object,
+            ) -> RuntimeNotificationEmailSuppression:
+                self.suppression = suppression
+                return RuntimeNotificationEmailSuppression(
+                    suppression={
+                        "id": "suppression-1",
+                        "project_id": "project-1",
+                        "recipient_hash": "a" * 64,
+                        "status": "active",
+                        "source": "feedback",
+                        "source_ref": suppression.feedback_event_id,
+                        "metadata": {
+                            "source": "runtime_notification_email_feedback_project_suppression",
+                            "feedback_event_id": suppression.feedback_event_id,
+                        },
+                        "created_by": "runtime-console",
+                        "updated_by": suppression.updated_by,
+                    },
+                    audit_events=(
+                        {
+                            "event_type": "runtime_notification_email_feedback_project_suppression_applied",
+                            "method_version": "runtime_notification_email_feedback_project_suppression_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/runtime-notification-email-feedback-events/feedback-1/project-suppression",
+                json={
+                    "metadata": {"note": "manual review"},
+                    "updated_by": "runtime-console",
+                    "reason": "apply complaint project suppression",
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["suppression"]["source"], "feedback")
+        self.assertEqual(payload["suppression"]["source_ref"], "feedback-1")
+        self.assertEqual(
+            payload["audit_events"][0]["event_type"],
+            "runtime_notification_email_feedback_project_suppression_applied",
+        )
+        self.assertEqual(fake_repository.feedback_project_lookup, "feedback-1")
+        self.assertEqual(fake_repository.suppression.feedback_event_id, "feedback-1")
+        self.assertEqual(fake_repository.suppression.metadata, {"note": "manual review"})
+        self.assertEqual(fake_repository.suppression.reason, "apply complaint project suppression")
+
     def test_runtime_notification_email_suppressions_endpoint_returns_page(self) -> None:
         class FakeRepository:
             def list_runtime_notification_email_suppressions(self, **kwargs: object) -> RuntimeNotificationEmailSuppressionPage:
@@ -8870,6 +8929,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeNotificationEmailFeedbackRequest", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedbackWebhookRequest", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailProviderFeedbackAdapter", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailFeedbackProjectSuppressionInput", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailFeedbackProjectSuppressionRequest", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedbackSuppressionInput", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedbackSuppressionRequest", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailSuppression", payload["persistence"])
@@ -8964,6 +9025,10 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/runtime-notification-email-feedback-webhooks/{provider}", payload["persistence"])
         self.assertIn(
             "/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient",
+            payload["persistence"],
+        )
+        self.assertIn(
+            "/v1/runtime-notification-email-feedback-events/{feedback_event_id}/project-suppression",
             payload["persistence"],
         )
         self.assertIn("/v1/runtime-notification-email-suppressions", payload["persistence"])

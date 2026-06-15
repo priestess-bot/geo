@@ -4328,6 +4328,40 @@ async function applyRuntimeNotificationEmailFeedbackSuppression(formData: FormDa
   revalidatePath("/");
 }
 
+async function applyRuntimeNotificationEmailFeedbackProjectSuppression(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const feedbackEventId = String(formData.get("feedback_event_id") || "").trim();
+  if (!feedbackEventId) {
+    throw new Error("feedback_event_id is required to apply notification email project suppression");
+  }
+  const payload = {
+    updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
+    metadata: {
+      source: "runtime_console_email_feedback_project_suppression"
+    },
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(
+    `${baseUrl}/v1/runtime-notification-email-feedback-events/${feedbackEventId}/project-suppression`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      cache: "no-store"
+    }
+  );
+  if (!response.ok) {
+    throw new Error(
+      `/v1/runtime-notification-email-feedback-events/${feedbackEventId}/project-suppression returned ${response.status}`
+    );
+  }
+  revalidatePath("/");
+}
+
 async function saveRuntimeNotificationEmailSuppression(formData: FormData) {
   "use server";
   const baseUrl =
@@ -12057,22 +12091,40 @@ export default async function Home({
                     {dateText(record.feedback_event.occurred_at || record.feedback_event.created_at)}
                   </small>
                   {record.feedback_event.recipient_hash ? (
-                    <form action={applyRuntimeNotificationEmailFeedbackSuppression} className="inlineStatusForm">
-                      <input type="hidden" name="feedback_event_id" value={record.feedback_event.id} />
-                      <input type="hidden" name="updated_by" value="runtime-console" />
-                      <input
-                        type="hidden"
-                        name="reason"
-                        value={`apply ${record.feedback_event.feedback_type} feedback suppression`}
-                      />
-                      <button className="actionButton compactAction" type="submit">
-                        Apply suppression
-                      </button>
-                      <small>
-                        /v1/runtime-notification-email-feedback-events/{record.feedback_event.id}/suppress-recipient ·{" "}
-                        runtime_notification_email_feedback_suppression_applied
-                      </small>
-                    </form>
+                    <div className="inlineStatusForm">
+                      <form action={applyRuntimeNotificationEmailFeedbackSuppression} className="inlineStatusForm">
+                        <input type="hidden" name="feedback_event_id" value={record.feedback_event.id} />
+                        <input type="hidden" name="updated_by" value="runtime-console" />
+                        <input
+                          type="hidden"
+                          name="reason"
+                          value={`apply ${record.feedback_event.feedback_type} feedback suppression`}
+                        />
+                        <button className="actionButton compactAction" type="submit">
+                          Apply suppression
+                        </button>
+                        <small>
+                          /v1/runtime-notification-email-feedback-events/{record.feedback_event.id}/suppress-recipient ·{" "}
+                          runtime_notification_email_feedback_suppression_applied
+                        </small>
+                      </form>
+                      <form action={applyRuntimeNotificationEmailFeedbackProjectSuppression} className="inlineStatusForm">
+                        <input type="hidden" name="feedback_event_id" value={record.feedback_event.id} />
+                        <input type="hidden" name="updated_by" value="runtime-console" />
+                        <input
+                          type="hidden"
+                          name="reason"
+                          value={`apply ${record.feedback_event.feedback_type} feedback project suppression`}
+                        />
+                        <button className="actionButton compactAction" type="submit">
+                          Apply project suppression
+                        </button>
+                        <small>
+                          /v1/runtime-notification-email-feedback-events/{record.feedback_event.id}/project-suppression ·{" "}
+                          runtime_notification_email_feedback_project_suppression_applied
+                        </small>
+                      </form>
+                    </div>
                   ) : null}
                 </li>
               ))}

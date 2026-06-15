@@ -655,6 +655,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("updateRuntimeNotificationStatus", page_source)
         self.assertIn("recordRuntimeNotificationEmailFeedback", page_source)
         self.assertIn("applyRuntimeNotificationEmailFeedbackSuppression", page_source)
+        self.assertIn("applyRuntimeNotificationEmailFeedbackProjectSuppression", page_source)
         self.assertIn("saveRuntimeNotificationEmailSuppression", page_source)
         self.assertIn("/v1/runtime-notifications", page_source)
         self.assertIn("/v1/runtime-notification-subscriptions", page_source)
@@ -664,6 +665,10 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("/v1/runtime-notification-email-feedback-webhooks/geno", page_source)
         self.assertIn(
             "/v1/runtime-notification-email-feedback-events/${feedbackEventId}/suppress-recipient",
+            page_source,
+        )
+        self.assertIn(
+            "/v1/runtime-notification-email-feedback-events/${feedbackEventId}/project-suppression",
             page_source,
         )
         self.assertIn("/v1/runtime-notification-email-preferences/status", page_source)
@@ -677,6 +682,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("runtime_notification_delivery_status_updated", page_source)
         self.assertIn("runtime_notification_email_feedback_recorded", page_source)
         self.assertIn("runtime_notification_email_feedback_suppression_applied", page_source)
+        self.assertIn("runtime_notification_email_feedback_project_suppression_applied", page_source)
         self.assertIn("runtime_notification_email_suppression_saved", page_source)
         self.assertIn("runtime_notification_email_suppression_v1", page_source)
         self.assertIn("Project email suppression", page_source)

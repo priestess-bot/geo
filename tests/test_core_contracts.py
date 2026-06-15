@@ -143,6 +143,7 @@ from geno_core.models import (
     RuntimeNotificationEmailFeedback,
     RuntimeNotificationEmailFeedbackInput,
     RuntimeNotificationEmailFeedbackPage,
+    RuntimeNotificationEmailFeedbackProjectSuppressionInput,
     RuntimeNotificationEmailSuppression,
     RuntimeNotificationEmailSuppressionInput,
     RuntimeNotificationEmailSuppressionPage,
@@ -8905,6 +8906,106 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn(recipient_hash, str(update_params))
         self.assertIn(feedback_id, str(update_params))
         self.assertNotIn("ops@example.com", str(update_params))
+
+    def test_postgres_repository_applies_runtime_notification_email_feedback_project_suppression(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        delivery_id = "118e5c66-7bb4-558e-ab97-e74ef9928b46"
+        feedback_id = "a0129f72-7ac9-48d5-89cf-32d9b897b02d"
+        suppression_id = "29b509ef-0c07-4588-a6ed-e0d25d48cfb2"
+        recipient_hash = runtime_email_body_hash("ops@example.com")
+        provider_event_id_hash = runtime_email_body_hash("smtp-feedback-1")
+        feedback_row = {
+            "id": feedback_id,
+            "project_id": project_id,
+            "delivery_id": delivery_id,
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "feedback_type": "complaint",
+            "recipient_hash": recipient_hash,
+            "provider": "smtp",
+            "provider_event_id_hash": provider_event_id_hash,
+            "occurred_at": now,
+            "metadata": {"source": "manual"},
+            "recorded_by": "runtime-console",
+            "created_at": now,
+        }
+        suppression_row = {
+            "id": suppression_id,
+            "project_id": project_id,
+            "recipient_hash": recipient_hash,
+            "status": "active",
+            "source": "feedback",
+            "source_ref": feedback_id,
+            "metadata": {
+                "source": "runtime_notification_email_feedback_project_suppression",
+                "feedback_event_id": feedback_id,
+                "delivery_id": delivery_id,
+                "notification_id": notification_id,
+                "subscription_id": subscription_id,
+                "feedback_type": "complaint",
+                "recipient_hash": recipient_hash,
+                "provider": "smtp",
+                "provider_event_id_hash": provider_event_id_hash,
+                "note": "manual review",
+            },
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        connection = RecordingConnection(result_sets=[feedback_row, None, suppression_row])
+
+        record = PostgresEvidenceRepository(connection).apply_runtime_notification_email_feedback_project_suppression(
+            RuntimeNotificationEmailFeedbackProjectSuppressionInput(
+                feedback_event_id=feedback_id,
+                metadata={"note": "manual review"},
+                updated_by="runtime-console",
+                reason="apply complaint project suppression",
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeNotificationEmailSuppression)
+        self.assertEqual(record.suppression["id"], suppression_id)
+        self.assertEqual(record.suppression["recipient_hash"], recipient_hash)
+        self.assertEqual(record.suppression["source"], "feedback")
+        self.assertEqual(record.suppression["source_ref"], feedback_id)
+        self.assertEqual(record.audit_events[0]["event_type"], "runtime_notification_email_feedback_project_suppression_applied")
+        self.assertEqual(record.audit_events[0]["method_version"], "runtime_notification_email_feedback_project_suppression_v1")
+        self.assertEqual(record.audit_events[0]["input_refs"]["recipient_hashes"], [recipient_hash])
+        self.assertEqual(record.audit_events[0]["input_refs"]["provider_event_id_hashes"], [provider_event_id_hash])
+        self.assertEqual(record.audit_events[0]["output_refs"]["runtime_notification_email_suppression_ids"], [suppression_id])
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO runtime_notification_email_suppressions", executed_sql)
+        self.assertIn("ON CONFLICT (project_id, recipient_hash) DO UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+        insert_params = [
+            params for sql, params in connection.calls if "INSERT INTO runtime_notification_email_suppressions" in sql
+        ][0]
+        self.assertIn(recipient_hash, str(insert_params))
+        self.assertIn(feedback_id, str(insert_params))
+        self.assertIn("runtime_notification_email_feedback_project_suppression", str(insert_params))
+        self.assertNotIn("ops@example.com", str(connection.calls))
+        self.assertNotIn("smtp-feedback-1", str(connection.calls))
+
+    def test_postgres_repository_rejects_raw_metadata_for_feedback_project_suppression(self) -> None:
+        connection = RecordingConnection()
+
+        with self.assertRaisesRegex(ValueError, "metadata must be hash-only"):
+            PostgresEvidenceRepository(connection).apply_runtime_notification_email_feedback_project_suppression(
+                RuntimeNotificationEmailFeedbackProjectSuppressionInput(
+                    feedback_event_id="a0129f72-7ac9-48d5-89cf-32d9b897b02d",
+                    metadata={"recipient": "ops@example.com"},
+                    updated_by="runtime-console",
+                    reason="apply complaint project suppression",
+                )
+            )
+
+        self.assertEqual(connection.commit_count, 0)
+        self.assertEqual(connection.calls, [])
 
     def test_postgres_repository_saves_runtime_notification_email_suppression_with_hash_only_audit(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)
