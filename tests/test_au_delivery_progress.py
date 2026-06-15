@@ -19,6 +19,9 @@ from scripts.build_au_next_work_item_packet import build_au_next_work_item_packe
 from scripts.build_au_p0a_credential_clearance import build_au_p0a_credential_clearance
 from scripts.build_au_p0a_credential_fulfillment import build_au_p0a_credential_fulfillment
 from scripts.build_au_p0a_credential_request_packet import build_au_p0a_credential_request_packet
+from scripts.build_au_p0a_real_batch_clearance import build_au_p0a_real_batch_clearance
+from scripts.build_au_p0a_real_batch_fulfillment import build_au_p0a_real_batch_fulfillment
+from scripts.build_au_p0a_real_batch_request_packet import build_au_p0a_real_batch_request_packet
 from scripts.run_au_external_dependency_clearance import run_au_external_dependency_clearance
 from scripts.verify_au_delivery_progress import verify_au_delivery_progress
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
@@ -121,6 +124,38 @@ class AuDeliveryProgressTest(unittest.TestCase):
             generated_at="2026-06-12T00:00:00Z",
         )
         credential_clearance_path.write_text(json.dumps(credential_clearance), encoding="utf-8")
+        real_batch_request_path = Path(temp_dir) / "real-batch-request.json"
+        real_batch_request = build_au_p0a_real_batch_request_packet(
+            p0a_execution_checklist_path=p0a_execution_path,
+            p0a_execution_checklist=p0a_execution,
+            output_path=real_batch_request_path,
+            generated_at="2026-06-12T00:00:00Z",
+        )
+        real_batch_request_path.write_text(json.dumps(real_batch_request), encoding="utf-8")
+        real_batch_fulfillment_path = Path(temp_dir) / "real-batch-fulfillment.json"
+        real_batch_fulfillment = build_au_p0a_real_batch_fulfillment(
+            real_batch_request_path=real_batch_request_path,
+            p0a_execution_checklist_path=p0a_execution_path,
+            real_batch_request=real_batch_request,
+            p0a_execution_checklist=p0a_execution,
+            output_path=real_batch_fulfillment_path,
+            generated_at="2026-06-12T00:00:00Z",
+        )
+        real_batch_fulfillment_path.write_text(json.dumps(real_batch_fulfillment), encoding="utf-8")
+        real_batch_clearance_path = Path(temp_dir) / "real-batch-clearance.json"
+        real_batch_clearance = build_au_p0a_real_batch_clearance(
+            real_batch_request_path=real_batch_request_path,
+            p0a_execution_checklist_path=p0a_execution_path,
+            real_batch_fulfillment_path=real_batch_fulfillment_path,
+            external_dependency_clearance_path=clearance_path,
+            real_batch_request=real_batch_request,
+            p0a_execution_checklist=p0a_execution,
+            real_batch_fulfillment=real_batch_fulfillment,
+            external_dependency_clearance=clearance,
+            output_path=real_batch_clearance_path,
+            generated_at="2026-06-12T00:00:00Z",
+        )
+        real_batch_clearance_path.write_text(json.dumps(real_batch_clearance), encoding="utf-8")
         return {
             "launch_status_path": launch_status_path,
             "handoff_path": handoff_path,
@@ -129,6 +164,7 @@ class AuDeliveryProgressTest(unittest.TestCase):
             "dependency_handoff_path": dependency_handoff_path,
             "clearance_path": clearance_path,
             "credential_clearance_path": credential_clearance_path,
+            "real_batch_clearance_path": real_batch_clearance_path,
             "launch_status": launch_status,
             "handoff": handoff,
             "readiness": readiness,
@@ -136,6 +172,7 @@ class AuDeliveryProgressTest(unittest.TestCase):
             "dependency_handoff": dependency_handoff,
             "clearance": clearance,
             "credential_clearance": credential_clearance,
+            "real_batch_clearance": real_batch_clearance,
         }
 
     def test_progress_records_blocked_customer_handoff_with_machine_readable_percent(self) -> None:
@@ -149,6 +186,7 @@ class AuDeliveryProgressTest(unittest.TestCase):
                 external_dependency_handoff_path=sources["dependency_handoff_path"],  # type: ignore[arg-type]
                 external_dependency_clearance_path=sources["clearance_path"],  # type: ignore[arg-type]
                 p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
+                p0a_real_batch_clearance_path=sources["real_batch_clearance_path"],  # type: ignore[arg-type]
                 launch_status=sources["launch_status"],  # type: ignore[arg-type]
                 handoff_dossier=sources["handoff"],  # type: ignore[arg-type]
                 customer_handoff_readiness=sources["readiness"],  # type: ignore[arg-type]
@@ -156,6 +194,7 @@ class AuDeliveryProgressTest(unittest.TestCase):
                 external_dependency_handoff=sources["dependency_handoff"],  # type: ignore[arg-type]
                 external_dependency_clearance=sources["clearance"],  # type: ignore[arg-type]
                 p0a_credential_clearance=sources["credential_clearance"],  # type: ignore[arg-type]
+                p0a_real_batch_clearance=sources["real_batch_clearance"],  # type: ignore[arg-type]
                 output_path=Path(temp_dir) / "progress.json",
                 generated_at="2026-06-12T00:00:00Z",
             )
@@ -182,14 +221,23 @@ class AuDeliveryProgressTest(unittest.TestCase):
         self.assertEqual(progress["summary"]["p0a_credential_missing_required_count"], 3)
         self.assertFalse(progress["summary"]["p0a_credential_clearance_ready"])
         self.assertFalse(progress["summary"]["p0a_credentials_fulfilled"])
+        self.assertEqual(progress["summary"]["p0a_real_batch_missing_required_count"], 3)
+        self.assertFalse(progress["summary"]["p0a_real_batch_clearance_ready"])
+        self.assertFalse(progress["summary"]["p0a_real_batches_fulfilled"])
+        self.assertTrue(progress["summary"]["p0a_real_batch_blocked_by_prerequisite"])
         self.assertEqual(progress["runtime_endpoints"]["delivery_progress"], "GET /v1/delivery-progress/au")
         self.assertEqual(
             progress["runtime_endpoints"]["p0a_credential_clearance"],
             "GET /v1/p0a-credential-clearance/au",
         )
+        self.assertEqual(
+            progress["runtime_endpoints"]["p0a_real_batch_clearance"],
+            "GET /v1/p0a-real-batch-clearance/au",
+        )
         self.assertIn("make au-delivery-progress", progress["hard_gate_commands"])
         self.assertIn("make verify-au-delivery-progress", progress["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-clearance", progress["hard_gate_commands"])
+        self.assertIn("make verify-au-p0a-real-batch-clearance", progress["hard_gate_commands"])
         self.assertTrue(any(command.endswith("--require-customer-ready") for command in progress["hard_gate_commands"]))
         self.assertTrue(progress["source_artifacts"]["next_work_item"]["hash"])
         self.assertEqual(
@@ -198,6 +246,12 @@ class AuDeliveryProgressTest(unittest.TestCase):
         )
         self.assertTrue(progress["source_artifacts"]["p0a_credential_clearance"]["hash_valid"])
         self.assertEqual(progress["verifiers"]["p0a_credential_clearance"]["status"], "pass")
+        self.assertEqual(
+            progress["source_artifacts"]["p0a_real_batch_clearance"]["hash_field"],
+            "p0a_real_batch_clearance_hash",
+        )
+        self.assertTrue(progress["source_artifacts"]["p0a_real_batch_clearance"]["hash_valid"])
+        self.assertEqual(progress["verifiers"]["p0a_real_batch_clearance"]["status"], "pass")
         self.assertEqual(progress["delivery_progress_hash"], compute_delivery_progress_hash(progress))
         self.assertEqual(verification["status"], "pass")
         self.assertEqual(hard_gate["status"], "fail")
@@ -214,6 +268,7 @@ class AuDeliveryProgressTest(unittest.TestCase):
                 external_dependency_handoff_path=sources["dependency_handoff_path"],  # type: ignore[arg-type]
                 external_dependency_clearance_path=sources["clearance_path"],  # type: ignore[arg-type]
                 p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
+                p0a_real_batch_clearance_path=sources["real_batch_clearance_path"],  # type: ignore[arg-type]
                 launch_status=sources["launch_status"],  # type: ignore[arg-type]
                 handoff_dossier=sources["handoff"],  # type: ignore[arg-type]
                 customer_handoff_readiness=sources["readiness"],  # type: ignore[arg-type]
@@ -221,6 +276,7 @@ class AuDeliveryProgressTest(unittest.TestCase):
                 external_dependency_handoff=sources["dependency_handoff"],  # type: ignore[arg-type]
                 external_dependency_clearance=sources["clearance"],  # type: ignore[arg-type]
                 p0a_credential_clearance=sources["credential_clearance"],  # type: ignore[arg-type]
+                p0a_real_batch_clearance=sources["real_batch_clearance"],  # type: ignore[arg-type]
                 output_path=Path(temp_dir) / "progress.json",
                 generated_at="2026-06-12T00:00:00Z",
             )
@@ -243,6 +299,7 @@ class AuDeliveryProgressTest(unittest.TestCase):
                 external_dependency_handoff_path=sources["dependency_handoff_path"],  # type: ignore[arg-type]
                 external_dependency_clearance_path=sources["clearance_path"],  # type: ignore[arg-type]
                 p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
+                p0a_real_batch_clearance_path=sources["real_batch_clearance_path"],  # type: ignore[arg-type]
                 output_path=Path(temp_dir) / "progress.json",
                 generated_at="2026-06-12T00:00:00Z",
             )
@@ -275,6 +332,8 @@ class AuDeliveryProgressTest(unittest.TestCase):
                     str(sources["clearance_path"]),
                     "--p0a-credential-clearance-path",
                     str(sources["credential_clearance_path"]),
+                    "--p0a-real-batch-clearance-path",
+                    str(sources["real_batch_clearance_path"]),
                     "--output-path",
                     str(output_path),
                     "--generated-at",

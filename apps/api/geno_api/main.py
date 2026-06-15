@@ -2277,6 +2277,13 @@ def au_p0a_real_batch_fulfillment() -> dict[str, object]:
 
 @app.get("/v1/p0a-real-batch-clearance/au")
 def au_p0a_real_batch_clearance() -> dict[str, object]:
+    return _build_au_p0a_real_batch_clearance_from_env()
+
+
+def _build_au_p0a_real_batch_clearance_from_env(
+    *,
+    external_dependency_clearance: dict[str, object] | None = None,
+) -> dict[str, object]:
     real_batch_request_path = Path(
         os.getenv(
             "GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH",
@@ -2301,15 +2308,28 @@ def au_p0a_real_batch_clearance() -> dict[str, object]:
             DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
         )
     )
+    p0a_execution_checklist = au_p0a_execution_checklist()
+    real_batch_request = build_au_p0a_real_batch_request_packet(
+        p0a_execution_checklist_path=p0a_execution_checklist_path,
+        p0a_execution_checklist=p0a_execution_checklist,
+        output_path=real_batch_request_path,
+    )
+    real_batch_fulfillment = build_au_p0a_real_batch_fulfillment(
+        real_batch_request_path=real_batch_request_path,
+        p0a_execution_checklist_path=p0a_execution_checklist_path,
+        real_batch_request=real_batch_request,
+        p0a_execution_checklist=p0a_execution_checklist,
+        output_path=real_batch_fulfillment_path,
+    )
     return build_au_p0a_real_batch_clearance(
         real_batch_request_path=real_batch_request_path,
         p0a_execution_checklist_path=p0a_execution_checklist_path,
         real_batch_fulfillment_path=real_batch_fulfillment_path,
         external_dependency_clearance_path=external_dependency_clearance_path,
-        real_batch_request=au_p0a_real_batch_request(),
-        p0a_execution_checklist=au_p0a_execution_checklist(),
-        real_batch_fulfillment=au_p0a_real_batch_fulfillment(),
-        external_dependency_clearance=au_external_dependency_clearance(),
+        real_batch_request=real_batch_request,
+        p0a_execution_checklist=p0a_execution_checklist,
+        real_batch_fulfillment=real_batch_fulfillment,
+        external_dependency_clearance=external_dependency_clearance or au_external_dependency_clearance(),
         output_path=Path(
             os.getenv(
                 "GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH",
@@ -2843,6 +2863,12 @@ def au_delivery_progress() -> dict[str, object]:
             DEFAULT_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH,
         )
     )
+    p0a_real_batch_clearance_path = Path(
+        os.getenv(
+            "GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH,
+        )
+    )
     launch_status = _build_au_launch_status_from_env()
     handoff_dossier = au_handoff_dossier()
     external_dependency_handoff = _build_au_external_dependency_handoff_from_env()
@@ -2854,6 +2880,9 @@ def au_delivery_progress() -> dict[str, object]:
     p0a_credential_clearance = _build_au_p0a_credential_clearance_from_env(
         external_dependency_clearance=external_dependency_clearance
     )
+    p0a_real_batch_clearance = _build_au_p0a_real_batch_clearance_from_env(
+        external_dependency_clearance=external_dependency_clearance
+    )
     return build_au_delivery_progress(
         launch_status_path=launch_status_path,
         handoff_dossier_path=handoff_dossier_path,
@@ -2862,6 +2891,7 @@ def au_delivery_progress() -> dict[str, object]:
         external_dependency_handoff_path=external_dependency_handoff_path,
         external_dependency_clearance_path=external_dependency_clearance_path,
         p0a_credential_clearance_path=p0a_credential_clearance_path,
+        p0a_real_batch_clearance_path=p0a_real_batch_clearance_path,
         launch_status=launch_status,
         handoff_dossier=handoff_dossier,
         customer_handoff_readiness=build_au_customer_handoff_readiness(
@@ -2879,6 +2909,7 @@ def au_delivery_progress() -> dict[str, object]:
         external_dependency_handoff=external_dependency_handoff,
         external_dependency_clearance=external_dependency_clearance,
         p0a_credential_clearance=p0a_credential_clearance,
+        p0a_real_batch_clearance=p0a_real_batch_clearance,
         output_path=Path(os.getenv("GENO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", DEFAULT_AU_DELIVERY_PROGRESS_OUTPUT_PATH)),
     )
 
@@ -2915,6 +2946,12 @@ def au_customer_handoff_clearance() -> dict[str, object]:
             DEFAULT_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH,
         )
     )
+    p0a_real_batch_clearance_path = Path(
+        os.getenv(
+            "GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH,
+        )
+    )
     handoff_dossier = au_handoff_dossier()
     customer_handoff_readiness = build_au_customer_handoff_readiness(
         handoff_dossier_path=handoff_dossier_path,
@@ -2930,17 +2967,22 @@ def au_customer_handoff_clearance() -> dict[str, object]:
     p0a_credential_clearance = _build_au_p0a_credential_clearance_from_env(
         external_dependency_clearance=external_dependency_clearance
     )
+    p0a_real_batch_clearance = _build_au_p0a_real_batch_clearance_from_env(
+        external_dependency_clearance=external_dependency_clearance
+    )
     delivery_progress = build_au_delivery_progress(
         handoff_dossier_path=handoff_dossier_path,
         customer_handoff_readiness_path=customer_handoff_readiness_path,
         external_dependency_handoff_path=external_dependency_handoff_path,
         external_dependency_clearance_path=external_dependency_clearance_path,
         p0a_credential_clearance_path=p0a_credential_clearance_path,
+        p0a_real_batch_clearance_path=p0a_real_batch_clearance_path,
         handoff_dossier=handoff_dossier,
         customer_handoff_readiness=customer_handoff_readiness,
         external_dependency_handoff=external_dependency_handoff,
         external_dependency_clearance=external_dependency_clearance,
         p0a_credential_clearance=p0a_credential_clearance,
+        p0a_real_batch_clearance=p0a_real_batch_clearance,
         output_path=delivery_progress_path,
     )
     return build_au_customer_handoff_clearance(
@@ -2950,12 +2992,14 @@ def au_customer_handoff_clearance() -> dict[str, object]:
         external_dependency_handoff_path=external_dependency_handoff_path,
         external_dependency_clearance_path=external_dependency_clearance_path,
         p0a_credential_clearance_path=p0a_credential_clearance_path,
+        p0a_real_batch_clearance_path=p0a_real_batch_clearance_path,
         handoff_dossier=handoff_dossier,
         customer_handoff_readiness=customer_handoff_readiness,
         delivery_progress=delivery_progress,
         external_dependency_handoff=external_dependency_handoff,
         external_dependency_clearance=external_dependency_clearance,
         p0a_credential_clearance=p0a_credential_clearance,
+        p0a_real_batch_clearance=p0a_real_batch_clearance,
         output_path=Path(
             os.getenv(
                 "GENO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH",

@@ -1258,6 +1258,13 @@ type AuDeliveryProgress = {
     p0a_credentials_fulfilled?: boolean;
     p0a_credential_missing_required_count?: number;
     p0a_credential_missing_required?: string[];
+    p0a_real_batch_clearance_hash?: string;
+    p0a_real_batch_clearance_ready?: boolean;
+    p0a_real_batches_fulfilled?: boolean;
+    p0a_real_batch_blocked_by_prerequisite?: boolean;
+    p0a_real_batch_missing_required_count?: number;
+    p0a_real_batch_missing_required?: string[];
+    p0a_real_batch_next_phase?: string;
   };
   progress_gates?: Array<{
     id?: string;
@@ -1278,6 +1285,7 @@ type AuDeliveryProgress = {
     external_dependency_handoff?: string;
     external_dependency_clearance?: string;
     p0a_credential_clearance?: string;
+    p0a_real_batch_clearance?: string;
   };
   hard_gate_commands?: string[];
 };
@@ -1328,6 +1336,12 @@ type AuCustomerHandoffClearance = {
     p0a_credential_clearance_ready?: boolean;
     p0a_credentials_fulfilled?: boolean;
     p0a_credential_missing_required_count?: number;
+    p0a_real_batch_clearance_hash?: string;
+    p0a_real_batch_clearance_ready?: boolean;
+    p0a_real_batches_fulfilled?: boolean;
+    p0a_real_batch_blocked_by_prerequisite?: boolean;
+    p0a_real_batch_missing_required_count?: number;
+    p0a_real_batch_next_phase?: string;
   };
   clearance_step?: {
     id?: string;
@@ -1365,6 +1379,7 @@ type AuCustomerHandoffClearance = {
     external_dependency_handoff?: string;
     external_dependency_clearance?: string;
     p0a_credential_clearance?: string;
+    p0a_real_batch_clearance?: string;
   };
   hard_gate_commands?: string[];
 };
@@ -8656,6 +8671,17 @@ export default async function Home({
               P0a missing keys{" "}
               {deliveryProgressSummary?.p0a_credential_missing_required?.slice(0, 3).join(", ") || "none"}
             </span>
+            <span>
+              P0a real batches {deliveryProgressSummary?.p0a_real_batches_fulfilled ? "fulfilled" : "blocked"}
+            </span>
+            <span>
+              P0a real batch clearance{" "}
+              {deliveryProgressSummary?.p0a_real_batch_clearance_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              P0a real batch missing {deliveryProgressSummary?.p0a_real_batch_missing_required_count ?? 0}
+            </span>
+            <span>Next P0a real batch phase {deliveryProgressSummary?.p0a_real_batch_next_phase || "none"}</span>
             <span>Would execute {deliveryProgressSummary?.would_execute_step_count || 0}</span>
             <span>Handoff posture {deliveryProgressSummary?.handoff_posture || "unknown"}</span>
             <span>
@@ -8668,11 +8694,18 @@ export default async function Home({
               P0a clearance hash {shortHash(deliveryProgressSummary?.p0a_credential_clearance_hash)}
             </span>
             <span>
+              P0a real batch hash {shortHash(deliveryProgressSummary?.p0a_real_batch_clearance_hash)}
+            </span>
+            <span>
               {deliveryProgress?.runtime_endpoints?.delivery_progress || "GET /v1/delivery-progress/au"}
             </span>
             <span>
               {deliveryProgress?.runtime_endpoints?.p0a_credential_clearance ||
                 "GET /v1/p0a-credential-clearance/au"}
+            </span>
+            <span>
+              {deliveryProgress?.runtime_endpoints?.p0a_real_batch_clearance ||
+                "GET /v1/p0a-real-batch-clearance/au"}
             </span>
             <span>Hard gate: make verify-au-delivery-progress</span>
           </div>
@@ -8743,6 +8776,17 @@ export default async function Home({
             <span>
               P0a credential missing {customerHandoffClearanceSummary?.p0a_credential_missing_required_count ?? 0}
             </span>
+            <span>
+              P0a real batches{" "}
+              {customerHandoffClearanceSummary?.p0a_real_batches_fulfilled ? "fulfilled" : "blocked"}
+            </span>
+            <span>
+              P0a real batch clearance{" "}
+              {customerHandoffClearanceSummary?.p0a_real_batch_clearance_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              P0a real batch missing {customerHandoffClearanceSummary?.p0a_real_batch_missing_required_count ?? 0}
+            </span>
             <span>Next action {customerHandoffClearanceSummary?.next_action || "none"}</span>
             <span>Next command {customerHandoffClearanceSummary?.next_command || "none"}</span>
             <span>
@@ -8756,12 +8800,19 @@ export default async function Home({
               P0a clearance hash {shortHash(customerHandoffClearanceSummary?.p0a_credential_clearance_hash)}
             </span>
             <span>
+              P0a real batch hash {shortHash(customerHandoffClearanceSummary?.p0a_real_batch_clearance_hash)}
+            </span>
+            <span>
               {customerHandoffClearance?.runtime_endpoints?.customer_handoff_clearance ||
                 "GET /v1/customer-handoff-clearance/au"}
             </span>
             <span>
               {customerHandoffClearance?.runtime_endpoints?.p0a_credential_clearance ||
                 "GET /v1/p0a-credential-clearance/au"}
+            </span>
+            <span>
+              {customerHandoffClearance?.runtime_endpoints?.p0a_real_batch_clearance ||
+                "GET /v1/p0a-real-batch-clearance/au"}
             </span>
             <span>Hard gate: make verify-au-customer-handoff-clearance</span>
             <span>
