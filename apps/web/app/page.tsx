@@ -1459,6 +1459,7 @@ type AuCustomerHandoffPackage = {
     customer_handoff_readiness_hash?: string;
     delivery_progress_hash?: string;
     customer_handoff_clearance_hash?: string;
+    p0a_credential_update_receipt_hash?: string;
     p0a_evidence_package_hash?: string;
     p0b_google_evidence_package_hash?: string;
     p0c_report_package_hash?: string;
@@ -1495,6 +1496,7 @@ type AuCustomerHandoffPackage = {
     customer_handoff_clearance?: string;
     handoff_dossier?: string;
     delivery_progress?: string;
+    p0a_credential_update_receipt?: string;
   };
   hard_gate_commands?: string[];
 };
@@ -7008,7 +7010,7 @@ export default async function Home({
   const customerHandoffPackage = data.customerHandoffPackage;
   const customerHandoffPackageSummary = customerHandoffPackage?.summary;
   const customerHandoffPackageIndex = customerHandoffPackage?.handoff_index || [];
-  const topCustomerHandoffPackageIndex = customerHandoffPackageIndex.slice(0, 6);
+  const topCustomerHandoffPackageIndex = customerHandoffPackageIndex.slice(0, 9);
   const nextWorkItemPacket = data.nextWorkItemPacket;
   const nextWorkItemSummary = nextWorkItemPacket?.summary;
   const nextWorkItemCommands = nextWorkItemPacket?.commands || [];
@@ -9275,6 +9277,10 @@ export default async function Home({
             <span>
               Clearance hash {shortHash(customerHandoffPackageSummary?.customer_handoff_clearance_hash)}
             </span>
+            <span>
+              Credential receipt hash{" "}
+              {shortHash(customerHandoffPackageSummary?.p0a_credential_update_receipt_hash)}
+            </span>
             <span>P0a package hash {shortHash(customerHandoffPackageSummary?.p0a_evidence_package_hash)}</span>
             <span>
               P0b package hash {shortHash(customerHandoffPackageSummary?.p0b_google_evidence_package_hash)}
@@ -9290,6 +9296,10 @@ export default async function Home({
             <span>
               {customerHandoffPackage?.runtime_endpoints?.customer_handoff_clearance ||
                 "GET /v1/customer-handoff-clearance/au"}
+            </span>
+            <span>
+              {customerHandoffPackage?.runtime_endpoints?.p0a_credential_update_receipt ||
+                "GET /v1/p0a-credential-update-receipt/au"}
             </span>
             <span>Hard gate: make verify-au-customer-handoff-package</span>
             <span>
