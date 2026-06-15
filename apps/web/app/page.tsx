@@ -740,6 +740,7 @@ type RuntimeData = {
   handoffDossier: AuHandoffDossier | null;
   customerHandoffReadiness: AuCustomerHandoffReadiness | null;
   customerHandoffClearance: AuCustomerHandoffClearance | null;
+  customerHandoffPackage: AuCustomerHandoffPackage | null;
   nextWorkItemPacket: AuNextWorkItemPacket | null;
   deliveryProgress: AuDeliveryProgress | null;
   projects: PageResponse<RuntimeProject>;
@@ -1419,6 +1420,80 @@ type AuCustomerHandoffClearance = {
     p0b_google_environment_clearance?: string;
     p0b_google_manual_backfill_clearance?: string;
     p0b_google_phase_execution_clearance?: string;
+  };
+  hard_gate_commands?: string[];
+};
+
+type AuCustomerHandoffPackage = {
+  customer_handoff_package_version: string;
+  generated_at: string;
+  status: string;
+  customer_handoff_package_manifest_ready: boolean;
+  customer_handoff_package_ready: boolean;
+  ready_for_report_export_handoff: boolean;
+  ready_for_customer_delivery: boolean;
+  next_action: string;
+  customer_handoff_package_hash: string;
+  summary?: {
+    source_artifact_count?: number;
+    required_source_artifact_count?: number;
+    ready_source_artifact_count?: number;
+    blocked_source_artifact_count?: number;
+    customer_visible_artifacts?: string[];
+    customer_handoff_package_manifest_ready?: boolean;
+    customer_handoff_package_ready?: boolean;
+    customer_handoff_clearance_ready?: boolean;
+    ready_for_report_export_handoff?: boolean;
+    p0c_report_contract_ready?: boolean;
+    engineering_progress_percent?: number;
+    customer_report_handoff_readiness_percent?: number;
+    structural_auditability_percent?: number;
+    missing_required_count?: number;
+    missing_required?: string[];
+    blocked_customer_gate_ids?: string[];
+    blocked_progress_gate_ids?: string[];
+    next_action?: string;
+    next_command?: string;
+    handoff_dossier_hash?: string;
+    customer_handoff_readiness_hash?: string;
+    delivery_progress_hash?: string;
+    customer_handoff_clearance_hash?: string;
+    p0a_evidence_package_hash?: string;
+    p0b_google_evidence_package_hash?: string;
+    p0c_report_package_hash?: string;
+    handoff_dossier_markdown_sha256?: string;
+  };
+  source_artifacts?: Record<
+    string,
+    {
+      name?: string;
+      stage?: string;
+      artifact_type?: string;
+      path?: string;
+      hash_field?: string;
+      hash?: string;
+      file_sha256?: string;
+      customer_visible?: boolean;
+      required_for_customer_handoff?: boolean;
+      verifier_status?: string;
+      hash_valid?: boolean;
+    }
+  >;
+  handoff_index?: Array<{
+    name?: string;
+    stage?: string;
+    artifact_type?: string;
+    path?: string;
+    hash_field?: string;
+    hash?: string;
+    customer_visible?: boolean;
+    status?: string;
+  }>;
+  runtime_endpoints?: {
+    customer_handoff_package?: string;
+    customer_handoff_clearance?: string;
+    handoff_dossier?: string;
+    delivery_progress?: string;
   };
   hard_gate_commands?: string[];
 };
@@ -3599,6 +3674,7 @@ const endpoints = {
   handoffDossier: "/v1/handoff-dossier/au",
   customerHandoffReadiness: "/v1/customer-handoff-readiness/au",
   customerHandoffClearance: "/v1/customer-handoff-clearance/au",
+  customerHandoffPackage: "/v1/customer-handoff-package/au",
   nextWorkItem: "/v1/next-work-item/au",
   deliveryProgress: "/v1/delivery-progress/au",
   projects: "/v1/projects/runtime",
@@ -5417,6 +5493,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     handoffDossier: endpoints.handoffDossier,
     customerHandoffReadiness: endpoints.customerHandoffReadiness,
     customerHandoffClearance: endpoints.customerHandoffClearance,
+    customerHandoffPackage: endpoints.customerHandoffPackage,
     nextWorkItem: endpoints.nextWorkItem,
     deliveryProgress: endpoints.deliveryProgress,
     projects: runtimePath(endpoints.projects, projectListParams),
@@ -5894,6 +5971,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     handoffDossier,
     customerHandoffReadiness,
     customerHandoffClearance,
+    customerHandoffPackage,
     nextWorkItemPacket,
     deliveryProgress,
     prompts,
@@ -5999,6 +6077,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuHandoffDossier | null>(baseUrl, paths.handoffDossier, null),
     fetchRuntimeEndpoint<AuCustomerHandoffReadiness | null>(baseUrl, paths.customerHandoffReadiness, null),
     fetchRuntimeEndpoint<AuCustomerHandoffClearance | null>(baseUrl, paths.customerHandoffClearance, null),
+    fetchRuntimeEndpoint<AuCustomerHandoffPackage | null>(baseUrl, paths.customerHandoffPackage, null),
     fetchRuntimeEndpoint<AuNextWorkItemPacket | null>(baseUrl, paths.nextWorkItem, null),
     fetchRuntimeEndpoint<AuDeliveryProgress | null>(baseUrl, paths.deliveryProgress, null),
     fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
@@ -6210,6 +6289,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     handoffDossier,
     customerHandoffReadiness,
     customerHandoffClearance,
+    customerHandoffPackage,
     nextWorkItemPacket,
     deliveryProgress,
     projects,
@@ -6288,6 +6368,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       handoffDossier: handoffDossier.payload,
       customerHandoffReadiness: customerHandoffReadiness.payload,
       customerHandoffClearance: customerHandoffClearance.payload,
+      customerHandoffPackage: customerHandoffPackage.payload,
       nextWorkItemPacket: nextWorkItemPacket.payload,
       deliveryProgress: deliveryProgress.payload,
       projects: projects.payload,
@@ -6786,6 +6867,10 @@ export default async function Home({
   const topCustomerHandoffClearanceSteps = customerHandoffClearanceSteps.slice(0, 5);
   const customerHandoffClearanceValidation =
     customerHandoffClearance?.post_update_validation_sequence || [];
+  const customerHandoffPackage = data.customerHandoffPackage;
+  const customerHandoffPackageSummary = customerHandoffPackage?.summary;
+  const customerHandoffPackageIndex = customerHandoffPackage?.handoff_index || [];
+  const topCustomerHandoffPackageIndex = customerHandoffPackageIndex.slice(0, 6);
   const nextWorkItemPacket = data.nextWorkItemPacket;
   const nextWorkItemSummary = nextWorkItemPacket?.summary;
   const nextWorkItemCommands = nextWorkItemPacket?.commands || [];
@@ -9005,6 +9090,91 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.customerHandoffClearance}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>Customer handoff package</strong>
+            <span>
+              {customerHandoffPackage?.customer_handoff_package_version ||
+                "au_customer_handoff_package_v1"} · customer_handoff_package_hash{" "}
+              {shortHash(customerHandoffPackage?.customer_handoff_package_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>
+              Manifest{" "}
+              {customerHandoffPackage?.customer_handoff_package_manifest_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              Customer delivery {customerHandoffPackage?.customer_handoff_package_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              Report export handoff{" "}
+              {customerHandoffPackage?.ready_for_report_export_handoff ? "ready" : "blocked"}
+            </span>
+            <span>
+              P0c report{" "}
+              {customerHandoffPackageSummary?.p0c_report_contract_ready ? "ready" : "blocked"}
+            </span>
+            <span>Status {customerHandoffPackage?.status || "unknown"}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>
+              Source artifacts {customerHandoffPackageSummary?.ready_source_artifact_count || 0}/
+              {customerHandoffPackageSummary?.required_source_artifact_count || 0} · blocked{" "}
+              {customerHandoffPackageSummary?.blocked_source_artifact_count || 0}
+            </span>
+            <span>Engineering progress {customerHandoffPackageSummary?.engineering_progress_percent ?? 0}%</span>
+            <span>
+              Customer readiness {customerHandoffPackageSummary?.customer_report_handoff_readiness_percent ?? 0}%
+            </span>
+            <span>Auditability {customerHandoffPackageSummary?.structural_auditability_percent ?? 0}%</span>
+            <span>Missing customer gates {customerHandoffPackageSummary?.missing_required_count ?? 0}</span>
+            <span>Next action {customerHandoffPackageSummary?.next_action || "none"}</span>
+            <span>Next command {customerHandoffPackageSummary?.next_command || "none"}</span>
+            <span>Handoff hash {shortHash(customerHandoffPackageSummary?.handoff_dossier_hash)}</span>
+            <span>Progress hash {shortHash(customerHandoffPackageSummary?.delivery_progress_hash)}</span>
+            <span>
+              Clearance hash {shortHash(customerHandoffPackageSummary?.customer_handoff_clearance_hash)}
+            </span>
+            <span>P0a package hash {shortHash(customerHandoffPackageSummary?.p0a_evidence_package_hash)}</span>
+            <span>
+              P0b package hash {shortHash(customerHandoffPackageSummary?.p0b_google_evidence_package_hash)}
+            </span>
+            <span>P0c package hash {shortHash(customerHandoffPackageSummary?.p0c_report_package_hash)}</span>
+            <span>
+              Markdown sha {shortHash(customerHandoffPackageSummary?.handoff_dossier_markdown_sha256)}
+            </span>
+            <span>
+              {customerHandoffPackage?.runtime_endpoints?.customer_handoff_package ||
+                "GET /v1/customer-handoff-package/au"}
+            </span>
+            <span>
+              {customerHandoffPackage?.runtime_endpoints?.customer_handoff_clearance ||
+                "GET /v1/customer-handoff-clearance/au"}
+            </span>
+            <span>Hard gate: make verify-au-customer-handoff-package</span>
+            <span>
+              Strict gate:{" "}
+              {customerHandoffPackage?.hard_gate_commands?.find((command) => command.endsWith("--require-ready")) ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_package.py docs/runtime_preflight/au-customer-handoff-package-latest.json --require-ready"}
+            </span>
+          </div>
+          {topCustomerHandoffPackageIndex.length ? (
+            <div className="dependencyGroupGrid">
+              {topCustomerHandoffPackageIndex.map((item) => (
+                <div className="dependencyGroup" key={item.name || item.path}>
+                  <strong>{item.name || "artifact"}</strong>
+                  <span>
+                    {item.status || "unknown"} · {item.stage || "handoff"} · {item.artifact_type || "json"}
+                  </span>
+                  <small>{item.path || "no path"}</small>
+                  <small>{item.hash_field || "hash"} {shortHash(item.hash)}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <code>{paths.customerHandoffPackage}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">

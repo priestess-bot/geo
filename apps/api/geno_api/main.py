@@ -168,6 +168,11 @@ from scripts.build_au_customer_handoff_clearance import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH,
     build_au_customer_handoff_clearance,
 )
+from scripts.build_au_customer_handoff_package import (
+    DEFAULT_HANDOFF_DOSSIER_MARKDOWN_PATH as DEFAULT_AU_HANDOFF_DOSSIER_MARKDOWN_PATH,
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH,
+    build_au_customer_handoff_package,
+)
 from scripts.build_au_next_work_item_packet import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_NEXT_WORK_ITEM_OUTPUT_PATH,
     build_au_next_work_item_packet,
@@ -3097,6 +3102,90 @@ def au_customer_handoff_clearance() -> dict[str, object]:
             os.getenv(
                 "GENO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH",
                 DEFAULT_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/customer-handoff-package/au")
+def au_customer_handoff_package() -> dict[str, object]:
+    return build_au_customer_handoff_package(
+        handoff_dossier_path=Path(
+            os.getenv("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH)
+        ),
+        handoff_dossier_markdown_path=Path(
+            os.getenv("GENO_AU_HANDOFF_DOSSIER_MARKDOWN_PATH", DEFAULT_AU_HANDOFF_DOSSIER_MARKDOWN_PATH)
+        ),
+        customer_handoff_readiness_path=Path(
+            os.getenv(
+                "GENO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH",
+                DEFAULT_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH,
+            )
+        ),
+        delivery_progress_path=Path(
+            os.getenv("GENO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", DEFAULT_AU_DELIVERY_PROGRESS_OUTPUT_PATH)
+        ),
+        customer_handoff_clearance_path=Path(
+            os.getenv(
+                "GENO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        external_dependency_handoff_path=Path(
+            os.getenv(
+                "GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",
+                DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
+            )
+        ),
+        external_dependency_clearance_path=Path(
+            os.getenv(
+                "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        p0a_credential_clearance_path=Path(
+            os.getenv(
+                "GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        p0a_real_batch_clearance_path=Path(
+            os.getenv(
+                "GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        p0b_google_environment_clearance_path=Path(
+            os.getenv(
+                "GENO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        p0b_google_manual_backfill_clearance_path=Path(
+            os.getenv(
+                "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        p0b_google_phase_execution_clearance_path=Path(
+            os.getenv(
+                "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        p0a_evidence_package_path=Path(
+            os.getenv("GENO_AU_P0A_PACKAGE_OUTPUT_PATH", DEFAULT_AU_P0A_PACKAGE_OUTPUT_PATH)
+        ),
+        p0b_google_evidence_package_path=Path(
+            os.getenv("GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_PACKAGE_PATH)
+        ),
+        p0c_report_package_path=Path(
+            os.getenv("GENO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", DEFAULT_P0C_REPORT_PACKAGE_PATH)
+        ),
+        output_path=Path(
+            os.getenv(
+                "GENO_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH",
+                DEFAULT_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH,
             )
         ),
     )
@@ -8553,6 +8642,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/handoff-dossier/au",
             "/v1/customer-handoff-readiness/au",
             "/v1/customer-handoff-clearance/au",
+            "/v1/customer-handoff-package/au",
             "/v1/next-work-item/au",
             "/v1/delivery-progress/au",
             "/v1/external-dependency-handoff/au",
