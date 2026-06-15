@@ -1861,6 +1861,75 @@ def _render_runtime_notifications_csv(page: RuntimeNotificationPage) -> str:
     return output.getvalue()
 
 
+def _render_runtime_report_export_jobs_csv(page: RuntimeReportExportJobPage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "job_id",
+            "project_id",
+            "report_export_id",
+            "status",
+            "artifact_type",
+            "template",
+            "filter_keys",
+            "sort",
+            "requested_by",
+            "requested_at",
+            "started_at",
+            "completed_at",
+            "attempt_count",
+            "max_attempts",
+            "lease_expires_at",
+            "next_attempt_at",
+            "artifact_url_hash",
+            "error_message_hash",
+            "updated_by",
+            "updated_at",
+            "audit_event_count",
+            "latest_audit_event_type",
+            "latest_audit_method_version",
+            "latest_audit_after_hash",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        job = record.report_export_job
+        filters = job.get("filters") if isinstance(job.get("filters"), dict) else {}
+        latest_audit_event = record.audit_events[0] if record.audit_events else {}
+        artifact_url = str(job.get("artifact_url") or "")
+        error_message = str(job.get("error_message") or "")
+        writer.writerow(
+            {
+                "job_id": job.get("id") or "",
+                "project_id": job.get("project_id") or "",
+                "report_export_id": job.get("report_export_id") or "",
+                "status": job.get("status") or "",
+                "artifact_type": job.get("artifact_type") or "",
+                "template": job.get("template") or "",
+                "filter_keys": "|".join(sorted(str(key) for key in filters)),
+                "sort": job.get("sort") or "",
+                "requested_by": job.get("requested_by") or "",
+                "requested_at": job.get("requested_at") or "",
+                "started_at": job.get("started_at") or "",
+                "completed_at": job.get("completed_at") or "",
+                "attempt_count": job.get("attempt_count") or 0,
+                "max_attempts": job.get("max_attempts") or "",
+                "lease_expires_at": job.get("lease_expires_at") or "",
+                "next_attempt_at": job.get("next_attempt_at") or "",
+                "artifact_url_hash": _artifact_hash(artifact_url) if artifact_url else "",
+                "error_message_hash": _artifact_hash(error_message) if error_message else "",
+                "updated_by": job.get("updated_by") or "",
+                "updated_at": job.get("updated_at") or "",
+                "audit_event_count": len(record.audit_events),
+                "latest_audit_event_type": latest_audit_event.get("event_type") or "",
+                "latest_audit_method_version": latest_audit_event.get("method_version") or "",
+                "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
+            }
+        )
+    return output.getvalue()
+
+
 ANSWER_RUN_COLUMNS = (
     "id",
     "project_id",
@@ -8849,6 +8918,41 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=records,
+        )
+
+    def export_runtime_report_export_jobs_csv(
+        self,
+        *,
+        project_id: str,
+        status: str | None = None,
+        report_export_id: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        page = self.list_runtime_report_export_jobs(
+            project_id=project_id,
+            status=status,
+            report_export_id=report_export_id,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_report_export_jobs_csv(page)
+        filters = {
+            "project_id": project_id.strip(),
+            "status": status.strip().lower() if status else None,
+            "report_export_id": report_export_id.strip() if report_export_id else None,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_report_export_jobs_csv",
+            filename="runtime-report-export-jobs.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=page.total_count,
+            row_count=len(page.records),
         )
 
     def get_runtime_report_export_job_queue_stats(

@@ -7089,6 +7089,81 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM report_export_jobs WHERE project_id = %s AND status = %s", executed_sql)
         self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
 
+    def test_postgres_repository_exports_report_export_jobs_csv(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        job_id = "8f4f2a24-d6cf-5050-96a4-942d2c337fd0"
+        artifact_url = "s3://geno-reports/private/report.pdf"
+        error_message = "renderer failed with private object detail"
+        job_row = {
+            "id": job_id,
+            "project_id": project_id,
+            "report_export_id": report_export_id,
+            "status": "dead_letter",
+            "artifact_type": "pdf",
+            "template": "white_label",
+            "filters": {"city": "Sydney", "platform": "perplexity"},
+            "sort": "cost_desc",
+            "requested_by": "runtime-console",
+            "requested_at": now,
+            "started_at": now,
+            "completed_at": now,
+            "attempt_count": 3,
+            "max_attempts": 3,
+            "lease_expires_at": None,
+            "next_attempt_at": None,
+            "artifact_url": artifact_url,
+            "error_message": error_message,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "e011f214-7cf4-40e4-b73e-8cc4308cc7d9",
+            "event_type": "report_export_job_status_updated",
+            "project_id": project_id,
+            "actor_type": "worker",
+            "actor_id": "runtime-worker",
+            "target_type": "report_export_job",
+            "target_id": job_id,
+            "before_hash": "before",
+            "after_hash": "job-after-hash",
+            "input_refs": {"report_export_job_ids": [job_id], "status": ["dead_letter"]},
+            "output_refs": {"report_export_job_ids": [job_id], "status": ["dead_letter"]},
+            "method_version": "runtime_report_export_job_status_v1",
+            "reason": "report export job dead-lettered",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, [job_row], [audit_row]])
+
+        export = PostgresEvidenceRepository(connection).export_runtime_report_export_jobs_csv(
+            project_id=project_id,
+            status="dead_letter",
+            report_export_id=report_export_id,
+            limit=5,
+            offset=0,
+        )
+
+        self.assertEqual(export.export_type, "runtime_report_export_jobs_csv")
+        self.assertEqual(export.filename, "runtime-report-export-jobs.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertEqual(export.filters["status"], "dead_letter")
+        self.assertEqual(export.filters["report_export_id"], report_export_id)
+        self.assertIn("job_id,project_id,report_export_id,status,artifact_type,template,filter_keys", export.content)
+        self.assertIn(job_id, export.content)
+        self.assertIn("dead_letter", export.content)
+        self.assertIn("city|platform", export.content)
+        self.assertIn("runtime_report_export_job_status_v1", export.content)
+        self.assertIn("job-after-hash", export.content)
+        self.assertIn(_artifact_hash(artifact_url), export.content)
+        self.assertIn(_artifact_hash(error_message), export.content)
+        self.assertNotIn(artifact_url, export.content)
+        self.assertNotIn("private/report.pdf", export.content)
+        self.assertNotIn(error_message, export.content)
+
     def test_postgres_repository_claims_next_report_export_job_with_audit_event(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

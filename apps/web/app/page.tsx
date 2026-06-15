@@ -3579,6 +3579,7 @@ const endpoints = {
   graphs: "/v1/citation-graphs/runtime",
   reports: "/v1/reports/runtime",
   reportJobs: "/v1/report-export-jobs/runtime",
+  reportJobsExport: "/v1/report-export-jobs/runtime/export.csv",
   reportJobStats: "/v1/report-export-jobs/runtime/stats",
   notifications: "/v1/runtime-notifications",
   notificationsExport: "/v1/runtime-notifications/export.csv",
@@ -5426,6 +5427,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     graphs: runtimePath(endpoints.graphs, { limit: 1 }),
     reports: runtimePath(endpoints.reports, { limit: 5 }),
     reportJobs: runtimePath(endpoints.reportJobs, { limit: 5 }),
+    reportJobsExport: runtimePath(endpoints.reportJobsExport, { limit: 200 }),
     reportJobStats: endpoints.reportJobStats,
     notifications: runtimePath(endpoints.notifications, { limit: 8 }),
     notificationsExport: runtimePath(endpoints.notificationsExport, { limit: 200 }),
@@ -5648,6 +5650,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.reportJobs = runtimePath(endpoints.reportJobs, {
     ...selectedProjectParams,
     limit: 5
+  });
+  paths.reportJobsExport = runtimePath(endpoints.reportJobsExport, {
+    ...selectedProjectParams,
+    limit: 200
   });
   paths.reportJobStats = runtimePath(endpoints.reportJobStats, {
     ...selectedProjectParams
@@ -11720,6 +11726,14 @@ export default async function Home({
             <Metric label="Expired leases" value={String(data.reportJobStats.expired_running_count)} />
             <Metric label="Dead letter" value={String(data.reportJobStats.status_counts.dead_letter || 0)} />
             <Metric label="Oldest queued" value={dateText(data.reportJobStats.oldest_queued_at || undefined)} />
+          </div>
+          <dl className="facts contributionFacts">
+            <Fact label="Report Jobs API" value={paths.reportJobs} />
+            <Fact label="Report Jobs CSV" value={paths.reportJobsExport} />
+            <Fact label="Queue Stats API" value={paths.reportJobStats} />
+          </dl>
+          <div className="downloadRow">
+            <a href={paths.reportJobsExport}>Download report jobs CSV</a>
           </div>
           {data.reportJobs.records.length ? (
             <div className="reportHistory">

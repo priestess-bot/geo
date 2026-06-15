@@ -5778,6 +5778,53 @@ def runtime_report_export_jobs(
         close_repository_connection(repository)
 
 
+@app.get("/v1/report-export-jobs/runtime/export.csv")
+def runtime_report_export_jobs_export_csv(
+    project_id: str = Query(min_length=1),
+    status: str | None = None,
+    report_export_id: str | None = None,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        if runtime_project_access_control_enabled() and report_export_id:
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
+            report_project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            if report_project_id is None:
+                raise HTTPException(status_code=404, detail="report_export not found")
+            if report_project_id != project_id:
+                raise HTTPException(status_code=400, detail="report_export does not belong to project")
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        export = repository.export_runtime_report_export_jobs_csv(
+            project_id=project_id,
+            status=status,
+            report_export_id=report_export_id,
+            limit=limit,
+            offset=offset,
+        )
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GENO-Report-Export-Job-Export-Hash": export.content_hash,
+                "X-GENO-Report-Export-Job-Project-Id": project_id,
+                "X-GENO-Report-Export-Job-Status": status or "",
+                "X-GENO-Report-Export-Job-Report-Export-Id": report_export_id or "",
+                "X-GENO-Report-Export-Job-Row-Count": str(export.row_count),
+                "X-GENO-Report-Export-Job-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/report-export-jobs/runtime/stats")
 def runtime_report_export_job_stats(
     project_id: str | None = None,
@@ -7716,6 +7763,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/citation-graphs/runtime",
             "/v1/reports/runtime",
             "/v1/report-export-jobs/runtime",
+            "/v1/report-export-jobs/runtime/export.csv",
             "/v1/report-export-jobs/runtime/stats",
             "/v1/report-export-jobs/runtime/{job_id}/status",
             "/v1/runtime-notifications",
