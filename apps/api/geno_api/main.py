@@ -7296,6 +7296,49 @@ def runtime_traceability(
         close_repository_connection(repository)
 
 
+@app.get("/v1/traceability/runtime/export.csv")
+def runtime_traceability_export_csv(
+    project_id: str | None = Query(default=None, min_length=1),
+    report_export_id: str | None = Query(default=None, min_length=1),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        resolved_project_id = project_id.strip() if project_id else None
+        normalized_report_export_id = report_export_id.strip() if report_export_id else None
+        if runtime_project_access_control_enabled() and normalized_report_export_id and not resolved_project_id:
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
+            resolved_project_id = repository.get_report_export_project_id(report_export_id=normalized_report_export_id)
+            if resolved_project_id is None:
+                raise HTTPException(status_code=404, detail="report_export not found")
+        assert_runtime_project_access(repository, project_id=resolved_project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_traceability_csv(
+                project_id=resolved_project_id,
+                report_export_id=normalized_report_export_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GENO-Traceability-Export-Hash": export.content_hash,
+                "X-GENO-Traceability-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GENO-Traceability-Report-Export-Id": str(export.filters.get("report_export_id", "")),
+                "X-GENO-Traceability-Row-Count": str(export.row_count),
+                "X-GENO-Traceability-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/google-spikes/au/plan")
 def au_google_spike_plan() -> dict[str, object]:
     bootstrap = build_au_project_bootstrap()
@@ -8133,6 +8176,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/content-engines/runtime/export.csv",
             "/v1/knowledge-facts/runtime/search",
             "/v1/traceability/runtime",
+            "/v1/traceability/runtime/export.csv",
             "/ready",
             "/v1/runtime-diagnostics",
             "/v1/launch-status/au",

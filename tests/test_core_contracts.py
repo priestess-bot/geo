@@ -115,6 +115,7 @@ from geno_core.models import (
     ReportExport,
     RuntimeEvidencePage,
     RuntimeEvidenceExport,
+    RuntimeEvidenceRun,
     RuntimeEntityAlias,
     RuntimeEntityAliasAssignmentReassignmentResult,
     RuntimeEntityAliasAssignmentWorkbench,
@@ -136,6 +137,8 @@ from geno_core.models import (
     RuntimeHumanReviewPage,
     RuntimeHumanReviewQueuePage,
     RuntimeHumanReviewRecord,
+    RuntimeCitationGraph,
+    RuntimeCitationGraphNode,
     RuntimeCitationGraphPage,
     RuntimeNotificationDelivery,
     RuntimeNotificationDeliveryPage,
@@ -189,7 +192,9 @@ from geno_core.models import (
     RuntimeAlertEventInput,
     RuntimeAlertNotificationResult,
     RuntimeContentEnginePage,
+    RuntimeContentDraft,
     RuntimeCollectionRunPage,
+    RuntimeScoreSnapshot,
     RuntimeScoreSnapshotPage,
     RuntimeReportArtifact,
     RuntimeReportExportJob,
@@ -12268,6 +12273,192 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM evidence_links WHERE project_id = %s", executed_sql)
         self.assertIn("FROM report_exports WHERE id = %s", executed_sql)
         self.assertIn("FROM content_drafts WHERE id = %s", executed_sql)
+
+    def test_postgres_repository_exports_runtime_traceability_csv(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        snapshot_id = "a7f7f8aa-5d40-4fdf-a2b3-b8729a9a5e2f"
+        contribution_id = "df03794b-e8fc-4b69-aa62-2304a55ff3a9"
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        action_id = "4cfd7cd0-a0cc-580f-b448-7b52f3b2937e"
+        draft_id = "51dcc4cb-c798-5eac-a08d-86f596c78f0f"
+        audit_event_id = "495d24da-90cf-4073-bd9c-16afeb5b3169"
+        detail = RuntimeTraceabilityDetail(
+            traceability_bundle={
+                "id": "b11a8445-6d8f-58f8-b1b5-50c45e22d384",
+                "project_id": project_id,
+                "subject_type": "report_export",
+                "subject_id": report_export_id,
+                "report_export_ids": [report_export_id],
+                "score_snapshot_ids": [snapshot_id],
+                "score_contribution_ids": [contribution_id],
+                "answer_run_ids": [answer_run_id],
+                "raw_answer_ids": ["5d714ed1-25aa-5651-b8b3-5e4b275d278a"],
+                "answer_citation_ids": ["6e5c424e-1674-58ce-b075-6c52259bbbe5"],
+                "evidence_asset_ids": ["29a279b8-3313-5306-a959-4f0f0de9c950"],
+                "source_graph_ids": ["41c2fd71-a32f-51a7-92e4-3d4c0f7ab1c2"],
+                "source_gap_types": ["official_site:missing_high_weight_source_type"],
+                "action_recommendation_ids": [action_id],
+                "content_draft_ids": [draft_id],
+                "audit_event_ids": [audit_event_id],
+                "explanation_summary": "Report worker-runtime-v1 traces 1 answer runs.",
+            },
+            report_exports=(
+                {
+                    "id": report_export_id,
+                    "project_id": project_id,
+                    "report_version": "worker-runtime-v1",
+                },
+            ),
+            score_snapshots=(
+                RuntimeScoreSnapshot(
+                    snapshot={"id": snapshot_id, "project_id": project_id, "final_score": 87.35},
+                    contributions=(
+                        {
+                            "id": contribution_id,
+                            "component_name": "MentionScore",
+                            "positive_evidence_summary": "brand mentioned",
+                        },
+                    ),
+                    answer_runs=(),
+                    audit_events=(),
+                ),
+            ),
+            evidence_runs=(
+                RuntimeEvidenceRun(
+                    answer_run={
+                        "id": answer_run_id,
+                        "project_id": project_id,
+                        "prompt_text": "Is ExampleBrand good in Australia?",
+                        "platform": "perplexity",
+                        "city": "Australia",
+                    },
+                    raw_answer={
+                        "id": "5d714ed1-25aa-5651-b8b3-5e4b275d278a",
+                        "answer_text": "ExampleBrand is mentioned in this raw answer.",
+                        "raw_payload_hash": "raw-payload-hash",
+                    },
+                    citations=(
+                        {
+                            "id": "6e5c424e-1674-58ce-b075-6c52259bbbe5",
+                            "domain": "reviews.example",
+                            "url": "https://reviews.example/koala",
+                        },
+                    ),
+                    evidence_assets=(
+                        {
+                            "id": "29a279b8-3313-5306-a959-4f0f0de9c950",
+                            "asset_type": "html_snapshot",
+                            "url": "s3://asset.html",
+                            "content_hash": "asset-hash",
+                        },
+                    ),
+                    collector_logs=(),
+                    collection_cost=None,
+                    audit_events=(),
+                ),
+            ),
+            citation_graph=RuntimeCitationGraph(
+                project_id=project_id,
+                nodes=(
+                    RuntimeCitationGraphNode(
+                        node={
+                            "id": "41c2fd71-a32f-51a7-92e4-3d4c0f7ab1c2",
+                            "source_domain": "reviews.example",
+                            "source_type": "review_site",
+                        },
+                        answer_runs=(),
+                    ),
+                ),
+                evidence_links=(),
+                source_gaps=({"gap_type": "missing_high_weight_source_type"},),
+                competitor_benchmarks=(),
+            ),
+            action_recommendations=(
+                {
+                    "id": action_id,
+                    "title": "Improve brand mention coverage",
+                    "description": "Create citation-ready pages.",
+                },
+            ),
+            content_drafts=(
+                RuntimeContentDraft(
+                    draft={
+                        "id": draft_id,
+                        "title": "ExampleBrand FAQ for Australian customers",
+                        "draft_markdown": "# ExampleBrand FAQ",
+                        "review_status": "pending_human_review",
+                    },
+                    target_questions=(),
+                    knowledge_facts=(),
+                    answer_runs=(),
+                    action_recommendation=None,
+                    manual_distribution_records=(),
+                    audit_events=(),
+                ),
+            ),
+            audit_events=(
+                {
+                    "id": audit_event_id,
+                    "event_type": "answer_run_collected",
+                    "project_id": project_id,
+                    "target_type": "answer_run",
+                    "target_id": answer_run_id,
+                    "after_hash": "after",
+                    "method_version": "fixture-v1",
+                    "created_at": now,
+                },
+            ),
+            evidence_links=(
+                {
+                    "id": "53ce3658-f908-56bf-b6de-585bcb7900d1",
+                    "project_id": project_id,
+                    "source_type": "report_export",
+                    "source_id": report_export_id,
+                    "target_type": "visibility_score_snapshot",
+                    "target_id": snapshot_id,
+                    "relation_type": "contains_score_snapshot",
+                    "answer_run_ids": [answer_run_id],
+                },
+            ),
+        )
+        repository = PostgresEvidenceRepository(RecordingConnection())
+        with patch.object(repository, "get_runtime_traceability_detail", return_value=detail):
+            export = repository.export_runtime_traceability_csv(
+                project_id=project_id,
+                report_export_id=report_export_id,
+            )
+
+        self.assertEqual(export.export_type, "runtime_traceability_csv")
+        self.assertEqual(export.filename, "runtime-traceability.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertEqual(export.filters["report_export_id"], report_export_id)
+        self.assertIn("traceability_bundle_id,project_id,subject_type,subject_id", export.content)
+        self.assertIn(report_export_id, export.content)
+        self.assertIn(snapshot_id, export.content)
+        self.assertIn(contribution_id, export.content)
+        self.assertIn(answer_run_id, export.content)
+        self.assertIn("contains_score_snapshot", export.content)
+        self.assertIn("answer_run_collected", export.content)
+        self.assertIn("raw-payload-hash", export.content)
+        self.assertIn(_artifact_hash("Report worker-runtime-v1 traces 1 answer runs."), export.content)
+        self.assertIn(_artifact_hash("Is ExampleBrand good in Australia?"), export.content)
+        self.assertIn(_artifact_hash("Improve brand mention coverage"), export.content)
+        self.assertIn(_artifact_hash("ExampleBrand FAQ for Australian customers"), export.content)
+        self.assertIn(_artifact_hash("# ExampleBrand FAQ"), export.content)
+        self.assertNotIn("Report worker-runtime-v1 traces 1 answer runs.", export.content)
+        self.assertNotIn("Is ExampleBrand good in Australia?", export.content)
+        self.assertNotIn("ExampleBrand is mentioned in this raw answer.", export.content)
+        self.assertNotIn("Improve brand mention coverage", export.content)
+        self.assertNotIn("Create citation-ready pages.", export.content)
+        self.assertNotIn("ExampleBrand FAQ for Australian customers", export.content)
+        self.assertNotIn("# ExampleBrand FAQ", export.content)
+        self.assertNotIn("https://reviews.example/koala", export.content)
+        self.assertEqual(export.content_hash, hashlib.sha256(export.content.encode("utf-8")).hexdigest())
 
     def test_postgres_repository_saves_runtime_saved_view_with_audit_event(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

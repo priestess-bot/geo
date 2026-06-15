@@ -2464,6 +2464,114 @@ def _render_runtime_content_engines_csv(page: RuntimeContentEnginePage) -> str:
     return output.getvalue()
 
 
+def _render_runtime_traceability_csv(detail: RuntimeTraceabilityDetail) -> str:
+    bundle = detail.traceability_bundle
+    latest_audit_event = _latest_audit_event(detail.audit_events)
+    score_contribution_count = sum(len(snapshot.contributions) for snapshot in detail.score_snapshots)
+    citation_count = sum(len(run.citations) for run in detail.evidence_runs)
+    asset_count = sum(len(run.evidence_assets) for run in detail.evidence_runs)
+    raw_payload_hashes = _pipe_join(
+        [
+            run.raw_answer.get("raw_payload_hash")
+            for run in detail.evidence_runs
+            if run.raw_answer and run.raw_answer.get("raw_payload_hash")
+        ]
+    )
+    answer_prompt_text_hashes = _pipe_join(
+        [_hash_text_field(run.answer_run.get("prompt_text")) for run in detail.evidence_runs]
+    )
+    source_domains = (
+        _pipe_join([node.node.get("source_domain") for node in detail.citation_graph.nodes])
+        if detail.citation_graph
+        else ""
+    )
+    source_gap_types = (
+        _pipe_join([gap.get("gap_type") or gap.get("source_gap_type") for gap in detail.citation_graph.source_gaps])
+        if detail.citation_graph
+        else _pipe_join(bundle.get("source_gap_types"))
+    )
+    action_title_hashes = _pipe_join(
+        [_hash_text_field(action.get("title")) for action in detail.action_recommendations]
+    )
+    content_draft_title_hashes = _pipe_join(
+        [_hash_text_field(record.draft.get("title")) for record in detail.content_drafts]
+    )
+    content_draft_markdown_hashes = _pipe_join(
+        [_hash_text_field(record.draft.get("draft_markdown")) for record in detail.content_drafts]
+    )
+    base_row = {
+        "traceability_bundle_id": bundle.get("id") or "",
+        "project_id": bundle.get("project_id") or "",
+        "subject_type": bundle.get("subject_type") or "",
+        "subject_id": bundle.get("subject_id") or "",
+        "report_export_count": len(bundle.get("report_export_ids") or ()),
+        "report_export_ids": _pipe_join(bundle.get("report_export_ids")),
+        "score_snapshot_count": len(bundle.get("score_snapshot_ids") or ()),
+        "score_snapshot_ids": _pipe_join(bundle.get("score_snapshot_ids")),
+        "score_contribution_count": score_contribution_count,
+        "score_contribution_ids": _pipe_join(bundle.get("score_contribution_ids")),
+        "answer_run_count": len(bundle.get("answer_run_ids") or ()),
+        "answer_run_ids": _pipe_join(bundle.get("answer_run_ids")),
+        "raw_answer_count": len(bundle.get("raw_answer_ids") or ()),
+        "raw_answer_ids": _pipe_join(bundle.get("raw_answer_ids")),
+        "citation_count": citation_count,
+        "answer_citation_ids": _pipe_join(bundle.get("answer_citation_ids")),
+        "asset_count": asset_count,
+        "evidence_asset_ids": _pipe_join(bundle.get("evidence_asset_ids")),
+        "source_graph_count": len(bundle.get("source_graph_ids") or ()),
+        "source_graph_ids": _pipe_join(bundle.get("source_graph_ids")),
+        "source_domains": source_domains,
+        "source_gap_types": source_gap_types,
+        "action_count": len(bundle.get("action_recommendation_ids") or ()),
+        "action_recommendation_ids": _pipe_join(bundle.get("action_recommendation_ids")),
+        "action_title_hashes": action_title_hashes,
+        "content_draft_count": len(bundle.get("content_draft_ids") or ()),
+        "content_draft_ids": _pipe_join(bundle.get("content_draft_ids")),
+        "content_draft_title_hashes": content_draft_title_hashes,
+        "content_draft_markdown_hashes": content_draft_markdown_hashes,
+        "audit_event_count": len(detail.audit_events),
+        "audit_event_ids": _pipe_join(bundle.get("audit_event_ids")),
+        "latest_audit_event_type": latest_audit_event.get("event_type") or "",
+        "latest_audit_method_version": latest_audit_event.get("method_version") or "",
+        "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
+        "explanation_summary_hash": _hash_text_field(bundle.get("explanation_summary")),
+        "raw_payload_hashes": raw_payload_hashes,
+        "answer_prompt_text_hashes": answer_prompt_text_hashes,
+    }
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            *base_row.keys(),
+            "evidence_link_id",
+            "evidence_link_source_type",
+            "evidence_link_source_id",
+            "evidence_link_target_type",
+            "evidence_link_target_id",
+            "evidence_link_relation_type",
+            "evidence_link_answer_run_count",
+            "evidence_link_answer_run_ids",
+        ],
+    )
+    writer.writeheader()
+    evidence_links = detail.evidence_links or ({},)
+    for link in evidence_links:
+        writer.writerow(
+            {
+                **base_row,
+                "evidence_link_id": link.get("id") or "",
+                "evidence_link_source_type": link.get("source_type") or "",
+                "evidence_link_source_id": link.get("source_id") or "",
+                "evidence_link_target_type": link.get("target_type") or "",
+                "evidence_link_target_id": link.get("target_id") or "",
+                "evidence_link_relation_type": link.get("relation_type") or "",
+                "evidence_link_answer_run_count": len(link.get("answer_run_ids") or ()),
+                "evidence_link_answer_run_ids": _pipe_join(link.get("answer_run_ids")),
+            }
+        )
+    return output.getvalue()
+
+
 def _render_runtime_action_plans_csv(page: RuntimeActionPlanPage) -> str:
     output = StringIO()
     writer = csv.DictWriter(
@@ -11996,6 +12104,37 @@ class PostgresEvidenceRepository:
             content_drafts=content_drafts,
             audit_events=audit_events,
             evidence_links=evidence_links,
+        )
+
+    def export_runtime_traceability_csv(
+        self,
+        *,
+        project_id: str | None = None,
+        report_export_id: str | None = None,
+    ) -> RuntimeEvidenceExport:
+        normalized_project_id = project_id.strip() if project_id else None
+        normalized_report_export_id = report_export_id.strip() if report_export_id else None
+        detail = self.get_runtime_traceability_detail(
+            project_id=normalized_project_id,
+            report_export_id=normalized_report_export_id,
+        )
+        if detail is None:
+            raise ValueError("Runtime traceability bundle not found")
+        content = _render_runtime_traceability_csv(detail)
+        bundle = detail.traceability_bundle
+        filters = {
+            "project_id": normalized_project_id or str(bundle.get("project_id") or ""),
+            "report_export_id": normalized_report_export_id,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_traceability_csv",
+            filename="runtime-traceability.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=1,
+            row_count=max(1, len(detail.evidence_links)),
         )
 
     def _load_report_export_by_id(

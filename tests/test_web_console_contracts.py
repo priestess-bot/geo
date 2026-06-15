@@ -1117,6 +1117,17 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Content CSV", page_source)
         self.assertIn("Download content CSV", page_source)
 
+    def test_runtime_console_surfaces_traceability_export(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("Traceability Detail", page_source)
+        self.assertIn('traceability: "/v1/traceability/runtime"', page_source)
+        self.assertIn('traceabilityExport: "/v1/traceability/runtime/export.csv"', page_source)
+        self.assertIn("traceabilityExportUrl", page_source)
+        self.assertIn("Traceability query", page_source)
+        self.assertIn("Traceability CSV", page_source)
+        self.assertIn("Download traceability CSV", page_source)
+
 
 if __name__ == "__main__":
     unittest.main()

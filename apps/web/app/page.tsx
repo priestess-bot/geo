@@ -3609,7 +3609,8 @@ const endpoints = {
   entityAliasAssignmentReassignments: "/v1/entity-aliases/runtime/candidates/assignment-reassignments",
   content: "/v1/content-engines/runtime",
   contentExport: "/v1/content-engines/runtime/export.csv",
-  traceability: "/v1/traceability/runtime"
+  traceability: "/v1/traceability/runtime",
+  traceabilityExport: "/v1/traceability/runtime/export.csv"
 } as const;
 
 const brandLogoEndpoint = "/v1/project-brand-kits/runtime/logo";
@@ -5466,7 +5467,8 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasAssignmentEscalations: endpoints.entityAliasAssignmentEscalations,
     content: runtimePath(endpoints.content, { limit: 1 }),
     contentExport: runtimePath(endpoints.contentExport, { limit: 200 }),
-    traceability: endpoints.traceability
+    traceability: endpoints.traceability,
+    traceabilityExport: endpoints.traceabilityExport
   };
   const projects = await fetchRuntimeEndpoint<PageResponse<RuntimeProject>>(
     baseUrl,
@@ -5762,6 +5764,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     limit: 200
   });
   paths.traceability = runtimePath(endpoints.traceability, selectedProjectParams);
+  paths.traceabilityExport = runtimePath(endpoints.traceabilityExport, selectedProjectParams);
 
   const [
     launchStatus,
@@ -6841,6 +6844,7 @@ export default async function Home({
   const humanReviewsExportUrl = `${displayUrl}${paths.humanReviewsExport}`;
   const scoreSnapshotsExportUrl = `${displayUrl}${paths.scoresExport}`;
   const contentEnginesExportUrl = `${displayUrl}${paths.contentExport}`;
+  const traceabilityExportUrl = `${displayUrl}${paths.traceabilityExport}`;
   const evidenceSort = data.evidence.sort || filters.sort || "collected_at_desc";
   const runtimeViewName = activeFilterCount
     ? `${selectedProject?.project.name || "Runtime project"} · ${filterLabel} · ${evidenceSort}`
@@ -13228,7 +13232,12 @@ export default async function Home({
                   <a href={`/traceability${selectedProjectId ? `?project_id=${encodeURIComponent(selectedProjectId)}` : ""}`}>
                     Open traceability detail
                   </a>
+                  <a href={traceabilityExportUrl}>Download traceability CSV</a>
                 </div>
+                <dl className="facts contributionFacts">
+                  <Fact label="Traceability query" value={paths.traceability} />
+                  <Fact label="Traceability CSV" value={paths.traceabilityExport} />
+                </dl>
                 <dl className="facts">
                   <Fact label="Reports" value={traceability.traceability_bundle.report_export_ids.length} />
                   <Fact label="Score snapshots" value={traceability.traceability_bundle.score_snapshot_ids.length} />

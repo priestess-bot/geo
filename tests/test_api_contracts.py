@@ -9122,6 +9122,45 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_traceability_export_endpoint_returns_csv_with_hash_headers(self) -> None:
+        class FakeRepository:
+            def export_runtime_traceability_csv(self, **kwargs: object) -> RuntimeEvidenceExport:
+                self.kwargs = kwargs
+                return RuntimeEvidenceExport(
+                    export_type="runtime_traceability_csv",
+                    filename="runtime-traceability.csv",
+                    media_type="text/csv; charset=utf-8",
+                    content="traceability_bundle_id,project_id\nbundle-1,project-1\n",
+                    content_hash="hash-traceability-csv",
+                    filters={
+                        "project_id": kwargs["project_id"],
+                        "report_export_id": kwargs["report_export_id"],
+                    },
+                    total_count=1,
+                    row_count=2,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/traceability/runtime/export.csv?project_id=project-1&report_export_id=report-1",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
+        self.assertEqual(response.headers["x-geno-traceability-export-hash"], "hash-traceability-csv")
+        self.assertEqual(response.headers["x-geno-traceability-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geno-traceability-report-export-id"], "report-1")
+        self.assertEqual(response.headers["x-geno-traceability-row-count"], "2")
+        self.assertEqual(response.headers["x-geno-traceability-total-count"], "1")
+        self.assertIn("runtime-traceability.csv", response.headers["content-disposition"])
+        self.assertIn("bundle-1", response.text)
+        self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.kwargs["report_export_id"], "report-1")
+
     def test_m2b_google_spike_plan_endpoint(self) -> None:
         response = self.client.get("/v1/google-spikes/au/plan")
         self.assertEqual(response.status_code, 200)
@@ -9586,6 +9625,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/content-engines/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/knowledge-facts/runtime/search", payload["persistence"])
         self.assertIn("/v1/traceability/runtime", payload["persistence"])
+        self.assertIn("/v1/traceability/runtime/export.csv", payload["persistence"])
         self.assertIn("/ready", payload["persistence"])
         self.assertIn("/v1/runtime-diagnostics", payload["persistence"])
         self.assertIn("/v1/launch-status/au", payload["persistence"])
