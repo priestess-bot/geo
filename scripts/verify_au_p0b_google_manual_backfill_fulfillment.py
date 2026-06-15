@@ -12,8 +12,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.build_au_p0b_google_manual_backfill_fulfillment import (  # noqa: E402
+    CONTENT_COMPLETION_HANDOFF_VERSION,
     DEFAULT_OUTPUT_PATH,
     FULFILLMENT_VERSION,
+    POST_CONTENT_COMPLETION_VALIDATION_COMMANDS,
     compute_p0b_google_manual_backfill_fulfillment_hash,
 )
 
@@ -32,6 +34,8 @@ REQUIRED_FIELDS = (
     "p0b_google_manual_backfill_verification_verifier",
     "summary",
     "manual_backfill_fulfillment_items",
+    "manual_content_completion_handoff",
+    "post_content_completion_validation_commands",
     "verification_commands",
     "hard_gate_commands",
     "runtime_endpoints",
@@ -67,6 +71,17 @@ def _as_list(value: object) -> list[object]:
 
 def _strings(value: object) -> list[str]:
     return [str(item) for item in _as_list(value)]
+
+
+def _int_list(value: object, *, limit: int = 20) -> list[int]:
+    numbers: list[int] = []
+    for item in _as_list(value):
+        number = _int(item)
+        if number > 0:
+            numbers.append(number)
+        if len(numbers) >= limit:
+            break
+    return numbers
 
 
 def _find_forbidden_fields(value: object, *, path: str = "$") -> list[str]:
@@ -135,6 +150,10 @@ def verify_au_p0b_google_manual_backfill_fulfillment(
     verification_verifier = _as_dict(payload.get("p0b_google_manual_backfill_verification_verifier"))
     summary = _as_dict(payload.get("summary"))
     items = [_as_dict(item) for item in _as_list(payload.get("manual_backfill_fulfillment_items"))]
+    manual_content_completion_handoff = _as_dict(payload.get("manual_content_completion_handoff"))
+    missing_manual_fields = _as_dict(manual_content_completion_handoff.get("missing_manual_fields"))
+    handoff_redaction_policy = _as_dict(manual_content_completion_handoff.get("redaction_policy"))
+    post_content_completion_validation_commands = _strings(payload.get("post_content_completion_validation_commands"))
     verification_commands = _strings(payload.get("verification_commands"))
     hard_gate_commands = _strings(payload.get("hard_gate_commands"))
     endpoints = _as_dict(payload.get("runtime_endpoints"))
@@ -198,6 +217,24 @@ def verify_au_p0b_google_manual_backfill_fulfillment(
         errors.append("summary_manual_backfill_coverage_complete_mismatch")
     if summary.get("manual_backfill_content_complete") is not (verification_verifier.get("content_complete") is True):
         errors.append("summary_manual_backfill_content_complete_mismatch")
+    missing_total_content_cell_count = (
+        _int(verification_verifier.get("missing_answer_line_count"))
+        + _int(verification_verifier.get("missing_citation_line_count"))
+        + _int(verification_verifier.get("missing_asset_line_count"))
+    )
+    expected_content_handoff_ready = (
+        request_ok
+        and verification_ok
+        and verification_verifier.get("coverage_complete") is True
+        and verification_verifier.get("content_complete") is not True
+        and missing_total_content_cell_count > 0
+    )
+    if summary.get("manual_content_completion_handoff_ready") is not expected_content_handoff_ready:
+        errors.append("summary_manual_content_completion_handoff_ready_mismatch")
+    if summary.get("missing_total_content_cell_count") != missing_total_content_cell_count:
+        errors.append("summary_missing_total_content_cell_count_mismatch")
+    if summary.get("post_content_completion_validation_command_count") != len(POST_CONTENT_COMPLETION_VALIDATION_COMMANDS):
+        errors.append("summary_post_content_completion_validation_command_count_mismatch")
     if summary.get("required_count") != len(required_items):
         errors.append("summary_required_count_mismatch")
     if summary.get("fulfilled_required_count") != len(fulfilled_required):
@@ -241,6 +278,96 @@ def verify_au_p0b_google_manual_backfill_fulfillment(
         "",
     ):
         errors.append("summary_strict_gate_command_missing")
+
+    if post_content_completion_validation_commands != POST_CONTENT_COMPLETION_VALIDATION_COMMANDS:
+        errors.append("post_content_completion_validation_commands_mismatch")
+    if manual_content_completion_handoff.get(
+        "manual_content_completion_handoff_version"
+    ) != CONTENT_COMPLETION_HANDOFF_VERSION:
+        errors.append("manual_content_completion_handoff_version_invalid")
+    if manual_content_completion_handoff.get("ready_to_complete_content") is not expected_content_handoff_ready:
+        errors.append("manual_content_completion_handoff_ready_mismatch")
+    if manual_content_completion_handoff.get("manual_backfill_fulfilled") is not manual_backfill_fulfilled:
+        errors.append("manual_content_completion_handoff_fulfilled_mismatch")
+    if manual_content_completion_handoff.get("target_jsonl_path") != summary.get("target_jsonl_path"):
+        errors.append("manual_content_completion_handoff_target_jsonl_path_mismatch")
+    if manual_content_completion_handoff.get("resolved_manual_jsonl_path") != summary.get("resolved_manual_jsonl_path"):
+        errors.append("manual_content_completion_handoff_resolved_manual_jsonl_path_mismatch")
+    if manual_content_completion_handoff.get("verification_path") != summary.get("verification_path"):
+        errors.append("manual_content_completion_handoff_verification_path_mismatch")
+    for field in (
+        "expected_record_count",
+        "record_count",
+        "expected_prompt_city_count",
+        "covered_prompt_city_count",
+        "expected_sample_size",
+        "verification_expected_sample_size",
+    ):
+        if manual_content_completion_handoff.get(field) != summary.get(field):
+            errors.append(f"manual_content_completion_handoff_{field}_mismatch")
+    if manual_content_completion_handoff.get("coverage_complete") is not summary.get(
+        "manual_backfill_coverage_complete"
+    ):
+        errors.append("manual_content_completion_handoff_coverage_complete_mismatch")
+    if manual_content_completion_handoff.get("content_complete") is not summary.get("manual_backfill_content_complete"):
+        errors.append("manual_content_completion_handoff_content_complete_mismatch")
+    if manual_content_completion_handoff.get("missing_total_content_cell_count") != missing_total_content_cell_count:
+        errors.append("manual_content_completion_handoff_missing_total_content_cell_count_mismatch")
+    if missing_manual_fields.get("answer_line_count") != _int(verification_verifier.get("missing_answer_line_count")):
+        errors.append("manual_content_completion_handoff_answer_line_count_mismatch")
+    if missing_manual_fields.get("citation_line_count") != _int(
+        verification_verifier.get("missing_citation_line_count")
+    ):
+        errors.append("manual_content_completion_handoff_citation_line_count_mismatch")
+    if missing_manual_fields.get("asset_line_count") != _int(verification_verifier.get("missing_asset_line_count")):
+        errors.append("manual_content_completion_handoff_asset_line_count_mismatch")
+    if _int_list(missing_manual_fields.get("answer_line_number_sample")) != _int_list(
+        source_verification.get("missing_answer_line_numbers")
+    ):
+        errors.append("manual_content_completion_handoff_answer_line_number_sample_mismatch")
+    if _int_list(missing_manual_fields.get("citation_line_number_sample")) != _int_list(
+        source_verification.get("missing_citation_line_numbers")
+    ):
+        errors.append("manual_content_completion_handoff_citation_line_number_sample_mismatch")
+    if _int_list(missing_manual_fields.get("asset_line_number_sample")) != _int_list(
+        source_verification.get("missing_asset_line_numbers")
+    ):
+        errors.append("manual_content_completion_handoff_asset_line_number_sample_mismatch")
+    if _strings(manual_content_completion_handoff.get("required_field_names")) != [
+        "answer_text",
+        "citation_urls",
+        "screenshot_url",
+        "html_snapshot_url",
+    ]:
+        errors.append("manual_content_completion_handoff_required_field_names_mismatch")
+    if manual_content_completion_handoff.get(
+        "post_content_completion_validation_commands"
+    ) != POST_CONTENT_COMPLETION_VALIDATION_COMMANDS:
+        errors.append("manual_content_completion_handoff_validation_commands_mismatch")
+    if manual_content_completion_handoff.get("post_content_completion_validation_command_count") != len(
+        POST_CONTENT_COMPLETION_VALIDATION_COMMANDS
+    ):
+        errors.append("manual_content_completion_handoff_validation_command_count_mismatch")
+    expected_handoff_next_action = (
+        "run_p0b_google_manual_backfill_strict_gate"
+        if manual_backfill_fulfilled
+        else str(verification_verifier.get("next_action") or "rerun_manual_backfill_verification")
+    )
+    if manual_content_completion_handoff.get("next_action") != expected_handoff_next_action:
+        errors.append("manual_content_completion_handoff_next_action_mismatch")
+    if manual_backfill_fulfilled:
+        expected_handoff_next_command = "make verify-au-p0b-google-manual-backfill-fulfillment"
+    elif expected_handoff_next_action == "build_manual_backfill_template":
+        expected_handoff_next_command = "make au-p0b-google-manual-template"
+    else:
+        expected_handoff_next_command = "make verify-au-p0b-google-manual-backfill"
+    if manual_content_completion_handoff.get("next_command") != expected_handoff_next_command:
+        errors.append("manual_content_completion_handoff_next_command_mismatch")
+    for policy_key in ("raw_answer_values_allowed", "raw_citation_values_allowed", "raw_asset_urls_allowed"):
+        if handoff_redaction_policy.get(policy_key) is not False:
+            errors.append(f"manual_content_completion_handoff_redaction_{policy_key}_invalid")
+    if handoff_redaction_policy.get("line_number_samples_allowed") is not True:
+        errors.append("manual_content_completion_handoff_line_number_policy_invalid")
 
     for item in items:
         key = str(item.get("key") or "")
@@ -320,6 +447,11 @@ def verify_au_p0b_google_manual_backfill_fulfillment(
         "missing_answer_line_count": summary.get("missing_answer_line_count"),
         "missing_citation_line_count": summary.get("missing_citation_line_count"),
         "missing_asset_line_count": summary.get("missing_asset_line_count"),
+        "missing_total_content_cell_count": summary.get("missing_total_content_cell_count"),
+        "manual_content_completion_handoff_ready": summary.get("manual_content_completion_handoff_ready") is True,
+        "post_content_completion_validation_command_count": summary.get(
+            "post_content_completion_validation_command_count",
+        ),
         "verification_next_action": summary.get("verification_next_action", ""),
         "next_action": summary.get("next_action", ""),
     }

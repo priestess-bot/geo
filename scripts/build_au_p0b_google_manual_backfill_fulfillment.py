@@ -29,7 +29,28 @@ from scripts.verify_au_p0b_manual_backfill import (  # noqa: E402
 
 
 FULFILLMENT_VERSION = "au_p0b_google_manual_backfill_fulfillment_v1"
+CONTENT_COMPLETION_HANDOFF_VERSION = "au_p0b_google_manual_content_completion_handoff_v1"
 DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json"
+POST_CONTENT_COMPLETION_VALIDATION_COMMANDS = [
+    "make verify-au-p0b-google-manual-backfill",
+    "make au-p0b-google-manual-backfill-fulfillment",
+    "make verify-au-p0b-google-manual-backfill-fulfillment",
+    (
+        "PYTHONPATH=packages/geno_core:apps/api python3 "
+        "scripts/verify_au_p0b_google_manual_backfill_fulfillment.py "
+        "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json} "
+        "--require-fulfilled"
+    ),
+    "make au-p0b-google-manual-backfill-clearance",
+    "make verify-au-p0b-google-manual-backfill-clearance",
+    (
+        "PYTHONPATH=packages/geno_core:apps/api python3 "
+        "scripts/verify_au_p0b_google_manual_backfill_clearance.py "
+        "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-clearance-latest.json} "
+        "--require-cleared"
+    ),
+    "make au-delivery-evidence-refresh",
+]
 
 
 def _utc_now_iso() -> str:
@@ -56,6 +77,17 @@ def _as_list(value: object) -> list[object]:
 
 def _strings(value: object) -> list[str]:
     return [str(item) for item in _as_list(value)]
+
+
+def _int_list(value: object, *, limit: int = 20) -> list[int]:
+    numbers: list[int] = []
+    for item in _as_list(value):
+        number = _int(item)
+        if number > 0:
+            numbers.append(number)
+        if len(numbers) >= limit:
+            break
+    return numbers
 
 
 def _int(value: object) -> int:
@@ -333,6 +365,129 @@ def _next_action(missing_required: list[str], verification_status: str) -> str:
     return "run_p0b_google_manual_backfill_strict_gate"
 
 
+def _content_completion_next_command(next_action: str, *, fulfilled: bool) -> str:
+    if fulfilled:
+        return "make verify-au-p0b-google-manual-backfill-fulfillment"
+    if next_action == "build_manual_backfill_template":
+        return "make au-p0b-google-manual-template"
+    if next_action in {
+        "complete_manual_backfill_jsonl",
+        "fix_google_manual_backfill_coverage",
+        "fix_manual_backfill_jsonl",
+        "rerun_manual_backfill_verification",
+        "refresh_manual_backfill_verification",
+    }:
+        return "make verify-au-p0b-google-manual-backfill"
+    return "make verify-au-p0b-google-manual-backfill"
+
+
+def _manual_content_completion_handoff(
+    *,
+    request_ready: bool,
+    verification_ready: bool,
+    manual_backfill_fulfilled: bool,
+    target_jsonl_path: str,
+    resolved_manual_jsonl_path: Path,
+    verification_path: str,
+    expected_record_count: int,
+    record_count: int,
+    expected_prompt_city_count: int,
+    covered_prompt_city_count: int,
+    expected_sample_size: int,
+    verification_expected_sample_size: int,
+    coverage_complete: bool,
+    content_complete: bool,
+    missing_answer_line_count: int,
+    missing_citation_line_count: int,
+    missing_asset_line_count: int,
+    missing_answer_line_numbers: list[int],
+    missing_citation_line_numbers: list[int],
+    missing_asset_line_numbers: list[int],
+    verification_next_action: str,
+) -> dict[str, Any]:
+    missing_total_content_cell_count = (
+        missing_answer_line_count + missing_citation_line_count + missing_asset_line_count
+    )
+    ready_to_complete_content = (
+        request_ready
+        and verification_ready
+        and coverage_complete
+        and not content_complete
+        and missing_total_content_cell_count > 0
+    )
+    next_action = (
+        "run_p0b_google_manual_backfill_strict_gate"
+        if manual_backfill_fulfilled
+        else verification_next_action or "rerun_manual_backfill_verification"
+    )
+    return {
+        "manual_content_completion_handoff_version": CONTENT_COMPLETION_HANDOFF_VERSION,
+        "ready_to_complete_content": ready_to_complete_content,
+        "manual_backfill_fulfilled": manual_backfill_fulfilled,
+        "target_jsonl_path": target_jsonl_path,
+        "resolved_manual_jsonl_path": str(resolved_manual_jsonl_path),
+        "verification_path": verification_path,
+        "expected_record_count": expected_record_count,
+        "record_count": record_count,
+        "expected_prompt_city_count": expected_prompt_city_count,
+        "covered_prompt_city_count": covered_prompt_city_count,
+        "expected_sample_size": expected_sample_size,
+        "verification_expected_sample_size": verification_expected_sample_size,
+        "coverage_complete": coverage_complete,
+        "content_complete": content_complete,
+        "missing_total_content_cell_count": missing_total_content_cell_count,
+        "missing_manual_fields": {
+            "answer_line_count": missing_answer_line_count,
+            "citation_line_count": missing_citation_line_count,
+            "asset_line_count": missing_asset_line_count,
+            "answer_line_number_sample": missing_answer_line_numbers,
+            "citation_line_number_sample": missing_citation_line_numbers,
+            "asset_line_number_sample": missing_asset_line_numbers,
+        },
+        "required_field_names": [
+            "answer_text",
+            "citation_urls",
+            "screenshot_url",
+            "html_snapshot_url",
+        ],
+        "operator_sequence": [
+            "fill_missing_manual_fields_in_target_jsonl",
+            "rerun_manual_backfill_verification",
+            "rebuild_manual_backfill_fulfillment",
+            "run_fulfillment_strict_gate",
+            "rebuild_manual_backfill_clearance",
+            "refresh_delivery_evidence",
+        ],
+        "post_content_completion_validation_commands": POST_CONTENT_COMPLETION_VALIDATION_COMMANDS,
+        "post_content_completion_validation_command_count": len(POST_CONTENT_COMPLETION_VALIDATION_COMMANDS),
+        "next_action": next_action,
+        "next_command": _content_completion_next_command(next_action, fulfilled=manual_backfill_fulfilled),
+        "redaction_policy": {
+            "raw_answer_values_allowed": False,
+            "raw_citation_values_allowed": False,
+            "raw_asset_urls_allowed": False,
+            "line_number_samples_allowed": True,
+            "forbidden_payload_field_names": [
+                "answer_text",
+                "answer",
+                "content",
+                "citation_urls",
+                "citations",
+                "sources",
+                "screenshot_url",
+                "screenshot",
+                "html_snapshot_url",
+                "html_snapshot",
+                "raw_answer",
+                "raw_citation",
+                "raw_asset_url",
+                "raw_value",
+                "value",
+            ],
+        },
+    }
+
+
 def build_au_p0b_google_manual_backfill_fulfillment(
     *,
     manual_backfill_request_path: Path = Path(DEFAULT_MANUAL_BACKFILL_REQUEST_PATH),
@@ -403,6 +558,69 @@ def build_au_p0b_google_manual_backfill_fulfillment(
         "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-request-latest.json} "
         "--require-manual-backfill-ready"
     )
+    target_jsonl_path = str(
+        request_summary.get("target_jsonl_path") or request_payload.get("target_jsonl_path") or ""
+    )
+    verification_path = str(request_summary.get("verification_path") or request_payload.get("verification_path") or "")
+    expected_record_count = _int(request_summary.get("expected_record_count") or request_payload.get("expected_record_count"))
+    record_count = _int(manual_backfill_verification.get("record_count"))
+    expected_prompt_city_count = _int(
+        request_summary.get("expected_prompt_city_count") or request_payload.get("expected_prompt_city_count")
+    )
+    covered_prompt_city_count = _int(manual_backfill_verification.get("covered_prompt_city_count"))
+    expected_sample_size = _int(request_summary.get("expected_sample_size") or request_payload.get("expected_sample_size"))
+    verification_expected_sample_size = _int(manual_backfill_verification.get("expected_sample_size"))
+    missing_prompt_city_sample_count = _int(
+        verification_summary.get("missing_prompt_city_sample_count")
+        or manual_backfill_verification.get("missing_prompt_city_sample_count")
+    )
+    duplicate_prompt_city_sample_count = _int(
+        verification_summary.get("duplicate_prompt_city_sample_count")
+        or manual_backfill_verification.get("duplicate_prompt_city_sample_count")
+    )
+    unexpected_prompt_city_record_count = _int(
+        verification_summary.get("unexpected_prompt_city_record_count")
+        or manual_backfill_verification.get("unexpected_prompt_city_record_count")
+    )
+    missing_answer_line_count = _int(
+        verification_summary.get("missing_answer_line_count") or manual_backfill_verification.get("missing_answer_line_count")
+    )
+    missing_citation_line_count = _int(
+        verification_summary.get("missing_citation_line_count")
+        or manual_backfill_verification.get("missing_citation_line_count")
+    )
+    missing_asset_line_count = _int(
+        verification_summary.get("missing_asset_line_count") or manual_backfill_verification.get("missing_asset_line_count")
+    )
+    missing_total_content_cell_count = (
+        missing_answer_line_count + missing_citation_line_count + missing_asset_line_count
+    )
+    coverage_complete = verification_summary.get("coverage_complete") is True
+    content_complete = verification_summary.get("content_complete") is True
+    verification_next_action = str(verification_summary.get("next_action") or "")
+    manual_content_completion_handoff = _manual_content_completion_handoff(
+        request_ready=request_ready,
+        verification_ready=verification_ready,
+        manual_backfill_fulfilled=manual_backfill_fulfilled,
+        target_jsonl_path=target_jsonl_path,
+        resolved_manual_jsonl_path=resolved_manual_jsonl_path,
+        verification_path=verification_path,
+        expected_record_count=expected_record_count,
+        record_count=record_count,
+        expected_prompt_city_count=expected_prompt_city_count,
+        covered_prompt_city_count=covered_prompt_city_count,
+        expected_sample_size=expected_sample_size,
+        verification_expected_sample_size=verification_expected_sample_size,
+        coverage_complete=coverage_complete,
+        content_complete=content_complete,
+        missing_answer_line_count=missing_answer_line_count,
+        missing_citation_line_count=missing_citation_line_count,
+        missing_asset_line_count=missing_asset_line_count,
+        missing_answer_line_numbers=_int_list(manual_backfill_verification.get("missing_answer_line_numbers")),
+        missing_citation_line_numbers=_int_list(manual_backfill_verification.get("missing_citation_line_numbers")),
+        missing_asset_line_numbers=_int_list(manual_backfill_verification.get("missing_asset_line_numbers")),
+        verification_next_action=verification_next_action,
+    )
     summary = {
         "manual_backfill_fulfilled": manual_backfill_fulfilled,
         "manual_backfill_request_ready": request_ready,
@@ -411,38 +629,23 @@ def build_au_p0b_google_manual_backfill_fulfillment(
         "manual_backfill_verification_status": str(manual_backfill_verification.get("status") or ""),
         "manual_backfill_verification_hash": str(manual_backfill_verification.get("verification_hash") or ""),
         "manual_backfill_ready": verification_summary.get("manual_backfill_ready") is True,
-        "manual_backfill_coverage_complete": verification_summary.get("coverage_complete") is True,
-        "manual_backfill_content_complete": verification_summary.get("content_complete") is True,
-        "expected_record_count": _int(request_summary.get("expected_record_count") or request_payload.get("expected_record_count")),
-        "record_count": _int(manual_backfill_verification.get("record_count")),
-        "expected_prompt_city_count": _int(
-            request_summary.get("expected_prompt_city_count") or request_payload.get("expected_prompt_city_count")
-        ),
-        "covered_prompt_city_count": _int(manual_backfill_verification.get("covered_prompt_city_count")),
-        "expected_sample_size": _int(request_summary.get("expected_sample_size") or request_payload.get("expected_sample_size")),
-        "verification_expected_sample_size": _int(manual_backfill_verification.get("expected_sample_size")),
-        "missing_prompt_city_sample_count": _int(
-            verification_summary.get("missing_prompt_city_sample_count")
-            or manual_backfill_verification.get("missing_prompt_city_sample_count")
-        ),
-        "duplicate_prompt_city_sample_count": _int(
-            verification_summary.get("duplicate_prompt_city_sample_count")
-            or manual_backfill_verification.get("duplicate_prompt_city_sample_count")
-        ),
-        "unexpected_prompt_city_record_count": _int(
-            verification_summary.get("unexpected_prompt_city_record_count")
-            or manual_backfill_verification.get("unexpected_prompt_city_record_count")
-        ),
-        "missing_answer_line_count": _int(
-            verification_summary.get("missing_answer_line_count") or manual_backfill_verification.get("missing_answer_line_count")
-        ),
-        "missing_citation_line_count": _int(
-            verification_summary.get("missing_citation_line_count")
-            or manual_backfill_verification.get("missing_citation_line_count")
-        ),
-        "missing_asset_line_count": _int(
-            verification_summary.get("missing_asset_line_count") or manual_backfill_verification.get("missing_asset_line_count")
-        ),
+        "manual_backfill_coverage_complete": coverage_complete,
+        "manual_backfill_content_complete": content_complete,
+        "manual_content_completion_handoff_ready": manual_content_completion_handoff["ready_to_complete_content"],
+        "expected_record_count": expected_record_count,
+        "record_count": record_count,
+        "expected_prompt_city_count": expected_prompt_city_count,
+        "covered_prompt_city_count": covered_prompt_city_count,
+        "expected_sample_size": expected_sample_size,
+        "verification_expected_sample_size": verification_expected_sample_size,
+        "missing_prompt_city_sample_count": missing_prompt_city_sample_count,
+        "duplicate_prompt_city_sample_count": duplicate_prompt_city_sample_count,
+        "unexpected_prompt_city_record_count": unexpected_prompt_city_record_count,
+        "missing_answer_line_count": missing_answer_line_count,
+        "missing_citation_line_count": missing_citation_line_count,
+        "missing_asset_line_count": missing_asset_line_count,
+        "missing_total_content_cell_count": missing_total_content_cell_count,
+        "post_content_completion_validation_command_count": len(POST_CONTENT_COMPLETION_VALIDATION_COMMANDS),
         "verification_error_count": len(verification_errors),
         "verification_errors": verification_errors,
         "required_count": len(required_items),
@@ -450,16 +653,16 @@ def build_au_p0b_google_manual_backfill_fulfillment(
         "missing_required_count": len(missing_required),
         "missing_required": missing_required,
         "missing_required_by_owner": _missing_by_owner(items),
-        "target_jsonl_path": str(request_summary.get("target_jsonl_path") or request_payload.get("target_jsonl_path") or ""),
+        "target_jsonl_path": target_jsonl_path,
         "resolved_manual_jsonl_path": str(resolved_manual_jsonl_path),
-        "verification_path": str(request_summary.get("verification_path") or request_payload.get("verification_path") or ""),
+        "verification_path": verification_path,
         "file_sha256_present": bool(manual_backfill_verification.get("file_sha256")),
         "verification_hash_present": bool(manual_backfill_verification.get("verification_hash")),
         "content_redacted": request_summary.get("content_redacted") is True,
         "raw_answer_values_allowed": False,
         "raw_citation_values_allowed": False,
         "raw_asset_urls_allowed": False,
-        "verification_next_action": str(verification_summary.get("next_action") or ""),
+        "verification_next_action": verification_next_action,
         "next_action": _next_action(missing_required, str(manual_backfill_verification.get("status") or "")),
         "next_command": "make verify-au-p0b-google-manual-backfill"
         if missing_required
@@ -499,6 +702,9 @@ def build_au_p0b_google_manual_backfill_fulfillment(
             "manual_backfill_status": str(manual_backfill_verification.get("status") or ""),
             "file_sha256": str(manual_backfill_verification.get("file_sha256") or ""),
             "allow_template_placeholders": manual_backfill_verification.get("allow_template_placeholders") is True,
+            "missing_answer_line_numbers": _int_list(manual_backfill_verification.get("missing_answer_line_numbers")),
+            "missing_citation_line_numbers": _int_list(manual_backfill_verification.get("missing_citation_line_numbers")),
+            "missing_asset_line_numbers": _int_list(manual_backfill_verification.get("missing_asset_line_numbers")),
         },
         "p0b_google_manual_backfill_request_verifier": {
             "status": request_verifier.get("status", ""),
@@ -535,6 +741,8 @@ def build_au_p0b_google_manual_backfill_fulfillment(
         },
         "summary": summary,
         "manual_backfill_fulfillment_items": items,
+        "manual_content_completion_handoff": manual_content_completion_handoff,
+        "post_content_completion_validation_commands": POST_CONTENT_COMPLETION_VALIDATION_COMMANDS,
         "verification_commands": [
             "make au-p0b-google-manual-backfill-request",
             "make verify-au-p0b-google-manual-backfill-request",
