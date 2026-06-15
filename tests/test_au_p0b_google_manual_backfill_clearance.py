@@ -186,6 +186,65 @@ class AuP0bGoogleManualBackfillClearanceTest(unittest.TestCase):
         self.assertEqual(packet["summary"]["missing_asset_line_count"], 0)
         self.assertEqual(hard_gate["status"], "pass")
 
+    def test_clearance_packet_propagates_manual_content_completion_handoff(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            fulfillment_helper = AuP0bGoogleManualBackfillFulfillmentTest()
+            fulfillment_helper.setUp()
+            request_path, request = fulfillment_helper._write_request(temp_dir, ready=False)
+            manual_jsonl_path = fulfillment_helper._template_jsonl(temp_dir)
+            from scripts.verify_au_p0b_manual_backfill import verify_manual_backfill
+
+            verification = verify_manual_backfill(manual_jsonl_path)
+            verification_path = Path(temp_dir) / "manual-verification.json"
+            verification_path.write_text(json.dumps(verification), encoding="utf-8")
+            fulfillment_path = Path(temp_dir) / "manual-fulfillment.json"
+            fulfillment = build_au_p0b_google_manual_backfill_fulfillment(
+                manual_backfill_request_path=request_path,
+                manual_backfill_request=request,
+                manual_backfill_verification_path=verification_path,
+                manual_backfill_verification=verification,
+                manual_jsonl_path=manual_jsonl_path,
+                output_path=fulfillment_path,
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            fulfillment_path.write_text(json.dumps(fulfillment), encoding="utf-8")
+            clearance_helper = AuExternalDependencyClearanceTest()
+            clearance_helper.setUp()
+            handoff_path = clearance_helper._write_handoff(temp_dir)
+            external_clearance_path = Path(temp_dir) / "external-clearance.json"
+            external_clearance = run_au_external_dependency_clearance(
+                handoff_path=handoff_path,
+                output_path=external_clearance_path,
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            external_clearance_path.write_text(json.dumps(external_clearance), encoding="utf-8")
+            packet = build_au_p0b_google_manual_backfill_clearance(
+                manual_backfill_request_path=request_path,
+                manual_backfill_verification_path=verification_path,
+                manual_backfill_fulfillment_path=fulfillment_path,
+                external_dependency_clearance_path=external_clearance_path,
+                manual_jsonl_path=manual_jsonl_path,
+                manual_backfill_request=request,
+                manual_backfill_verification=verification,
+                manual_backfill_fulfillment=fulfillment,
+                external_dependency_clearance=external_clearance,
+                output_path=Path(temp_dir) / "manual-clearance.json",
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            verification_result = verify_au_p0b_google_manual_backfill_clearance(packet)
+
+        self.assertFalse(packet["summary"]["manual_backfill_content_complete"])
+        self.assertTrue(packet["summary"]["manual_content_completion_handoff_ready"])
+        self.assertEqual(packet["summary"]["missing_answer_line_count"], 120)
+        self.assertEqual(packet["summary"]["missing_citation_line_count"], 120)
+        self.assertEqual(packet["summary"]["missing_asset_line_count"], 120)
+        self.assertEqual(packet["summary"]["missing_total_content_cell_count"], 360)
+        self.assertEqual(packet["summary"]["post_content_completion_validation_command_count"], 8)
+        self.assertTrue(verification_result["manual_content_completion_handoff_ready"])
+        self.assertEqual(verification_result["missing_total_content_cell_count"], 360)
+        self.assertEqual(verification_result["post_content_completion_validation_command_count"], 8)
+        self.assertIn("make au-delivery-evidence-refresh", packet["post_update_validation_sequence"])
+
     def test_verifier_rejects_tampered_record_count_even_when_hash_recomputed(self) -> None:
         with TemporaryDirectory() as temp_dir:
             request_path, verification_path, fulfillment_path, clearance_path, request, verification, fulfillment, external_clearance = (
@@ -232,6 +291,58 @@ class AuP0bGoogleManualBackfillClearanceTest(unittest.TestCase):
 
         self.assertEqual(verification_result["status"], "fail")
         self.assertIn("summary_missing_citation_line_count_mismatch", verification_result["errors"])
+
+    def test_verifier_rejects_tampered_manual_content_handoff_count_even_when_hash_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            fulfillment_helper = AuP0bGoogleManualBackfillFulfillmentTest()
+            fulfillment_helper.setUp()
+            request_path, request = fulfillment_helper._write_request(temp_dir, ready=False)
+            manual_jsonl_path = fulfillment_helper._template_jsonl(temp_dir)
+            from scripts.verify_au_p0b_manual_backfill import verify_manual_backfill
+
+            verification = verify_manual_backfill(manual_jsonl_path)
+            verification_path = Path(temp_dir) / "manual-verification.json"
+            verification_path.write_text(json.dumps(verification), encoding="utf-8")
+            fulfillment_path = Path(temp_dir) / "manual-fulfillment.json"
+            fulfillment = build_au_p0b_google_manual_backfill_fulfillment(
+                manual_backfill_request_path=request_path,
+                manual_backfill_request=request,
+                manual_backfill_verification_path=verification_path,
+                manual_backfill_verification=verification,
+                manual_jsonl_path=manual_jsonl_path,
+                output_path=fulfillment_path,
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            fulfillment_path.write_text(json.dumps(fulfillment), encoding="utf-8")
+            clearance_helper = AuExternalDependencyClearanceTest()
+            clearance_helper.setUp()
+            handoff_path = clearance_helper._write_handoff(temp_dir)
+            external_clearance_path = Path(temp_dir) / "external-clearance.json"
+            external_clearance = run_au_external_dependency_clearance(
+                handoff_path=handoff_path,
+                output_path=external_clearance_path,
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            external_clearance_path.write_text(json.dumps(external_clearance), encoding="utf-8")
+            packet = build_au_p0b_google_manual_backfill_clearance(
+                manual_backfill_request_path=request_path,
+                manual_backfill_verification_path=verification_path,
+                manual_backfill_fulfillment_path=fulfillment_path,
+                external_dependency_clearance_path=external_clearance_path,
+                manual_backfill_request=request,
+                manual_backfill_verification=verification,
+                manual_backfill_fulfillment=fulfillment,
+                external_dependency_clearance=external_clearance,
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            packet["summary"]["missing_total_content_cell_count"] = 0
+            packet["p0b_google_manual_backfill_clearance_hash"] = compute_p0b_google_manual_backfill_clearance_hash(
+                packet
+            )
+            verification_result = verify_au_p0b_google_manual_backfill_clearance(packet)
+
+        self.assertEqual(verification_result["status"], "fail")
+        self.assertIn("summary_missing_total_content_cell_count_mismatch", verification_result["errors"])
 
     def test_path_verifier_detects_stale_manual_backfill_source_file(self) -> None:
         with TemporaryDirectory() as temp_dir:

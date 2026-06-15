@@ -334,9 +334,15 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
         self.assertFalse(packet["summary"]["p0b_google_manual_backfill_ready"])
         self.assertFalse(packet["summary"]["p0b_google_manual_backfill_coverage_complete"])
         self.assertFalse(packet["summary"]["p0b_google_manual_backfill_content_complete"])
+        self.assertFalse(packet["summary"]["p0b_google_manual_backfill_content_completion_handoff_ready"])
         self.assertGreaterEqual(packet["summary"]["p0b_google_manual_backfill_missing_answer_line_count"], 0)
         self.assertGreaterEqual(packet["summary"]["p0b_google_manual_backfill_missing_citation_line_count"], 0)
         self.assertGreaterEqual(packet["summary"]["p0b_google_manual_backfill_missing_asset_line_count"], 0)
+        self.assertGreaterEqual(packet["summary"]["p0b_google_manual_backfill_missing_total_content_cell_count"], 0)
+        self.assertGreaterEqual(
+            packet["summary"]["p0b_google_manual_backfill_post_content_completion_validation_command_count"],
+            0,
+        )
         self.assertFalse(packet["summary"]["p0b_google_phase_execution_clearance_ready"])
         self.assertFalse(packet["summary"]["p0b_google_phase_execution_fulfilled"])
         self.assertGreaterEqual(packet["summary"]["p0b_google_phase_execution_missing_required_count"], 1)
@@ -539,6 +545,44 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
         self.assertEqual(verification["status"], "fail")
         self.assertIn(
             "summary_p0b_google_manual_backfill_missing_answer_line_count_mismatch",
+            verification["errors"],
+        )
+
+    def test_verifier_rejects_tampered_manual_backfill_handoff_count_even_when_hash_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            sources = self._build_sources(temp_dir, ready=False)
+            packet = build_au_customer_handoff_clearance(
+                handoff_dossier_path=sources["handoff_path"],  # type: ignore[arg-type]
+                customer_handoff_readiness_path=sources["readiness_path"],  # type: ignore[arg-type]
+                delivery_progress_path=sources["delivery_progress_path"],  # type: ignore[arg-type]
+                external_dependency_handoff_path=sources["external_handoff_path"],  # type: ignore[arg-type]
+                external_dependency_clearance_path=sources["external_clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_update_receipt_path=sources["credential_update_receipt_path"],  # type: ignore[arg-type]
+                p0a_real_batch_clearance_path=sources["real_batch_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance_path=sources["p0b_environment_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance_path=sources["p0b_manual_backfill_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance_path=sources["p0b_phase_execution_clearance_path"],  # type: ignore[arg-type]
+                handoff_dossier=sources["handoff"],  # type: ignore[arg-type]
+                customer_handoff_readiness=sources["readiness"],  # type: ignore[arg-type]
+                delivery_progress=sources["delivery_progress"],  # type: ignore[arg-type]
+                external_dependency_handoff=sources["external_handoff"],  # type: ignore[arg-type]
+                external_dependency_clearance=sources["external_clearance"],  # type: ignore[arg-type]
+                p0a_credential_clearance=sources["credential_clearance"],  # type: ignore[arg-type]
+                p0a_credential_update_receipt=sources["credential_update_receipt"],  # type: ignore[arg-type]
+                p0a_real_batch_clearance=sources["real_batch_clearance"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance=sources["p0b_environment_clearance"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance=sources["p0b_manual_backfill_clearance"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance=sources["p0b_phase_execution_clearance"],  # type: ignore[arg-type]
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            packet["summary"]["p0b_google_manual_backfill_missing_total_content_cell_count"] = 999
+            packet["customer_handoff_clearance_hash"] = compute_customer_handoff_clearance_hash(packet)
+            verification = verify_au_customer_handoff_clearance(packet)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn(
+            "summary_p0b_google_manual_backfill_missing_total_content_cell_count_mismatch",
             verification["errors"],
         )
 

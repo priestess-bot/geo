@@ -443,6 +443,14 @@ def verify_au_customer_handoff_clearance(
         p0b_google_manual_backfill_clearance_verifier.get("manual_backfill_content_complete") is True
     ):
         errors.append("summary_p0b_google_manual_backfill_content_complete_mismatch")
+    if summary.get("p0b_google_manual_backfill_content_completion_handoff_ready") is not (
+        p0b_google_manual_backfill_clearance_verifier.get("manual_content_completion_handoff_ready") is True
+    ):
+        errors.append("summary_p0b_google_manual_backfill_content_completion_handoff_ready_mismatch")
+    if summary.get("p0b_google_manual_backfill_content_completion_handoff_ready") is not (
+        _as_dict(progress_verifier).get("p0b_google_manual_backfill_content_completion_handoff_ready") is True
+    ):
+        errors.append("summary_progress_p0b_google_manual_backfill_content_completion_handoff_ready_mismatch")
     manual_backfill_summary_field_map = {
         "p0b_google_manual_backfill_missing_prompt_city_sample_count": "missing_prompt_city_sample_count",
         "p0b_google_manual_backfill_duplicate_prompt_city_sample_count": "duplicate_prompt_city_sample_count",
@@ -450,6 +458,10 @@ def verify_au_customer_handoff_clearance(
         "p0b_google_manual_backfill_missing_answer_line_count": "missing_answer_line_count",
         "p0b_google_manual_backfill_missing_citation_line_count": "missing_citation_line_count",
         "p0b_google_manual_backfill_missing_asset_line_count": "missing_asset_line_count",
+        "p0b_google_manual_backfill_missing_total_content_cell_count": "missing_total_content_cell_count",
+        "p0b_google_manual_backfill_post_content_completion_validation_command_count": (
+            "post_content_completion_validation_command_count"
+        ),
     }
     for summary_field, verifier_field in manual_backfill_summary_field_map.items():
         if summary.get(summary_field) != _int(p0b_google_manual_backfill_clearance_verifier.get(verifier_field)):

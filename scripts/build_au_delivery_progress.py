@@ -842,6 +842,10 @@ def build_au_delivery_progress(
                 p0b_google_manual_backfill_clearance.get("summary")
             ).get("manual_backfill_content_complete")
             is True,
+            "p0b_google_manual_backfill_content_completion_handoff_ready": _as_dict(
+                p0b_google_manual_backfill_clearance.get("summary")
+            ).get("manual_content_completion_handoff_ready")
+            is True,
             "p0b_google_manual_backfill_missing_prompt_city_sample_count": _as_dict(
                 p0b_google_manual_backfill_clearance.get("summary")
             ).get("missing_prompt_city_sample_count", 0),
@@ -860,6 +864,12 @@ def build_au_delivery_progress(
             "p0b_google_manual_backfill_missing_asset_line_count": _as_dict(
                 p0b_google_manual_backfill_clearance.get("summary")
             ).get("missing_asset_line_count", 0),
+            "p0b_google_manual_backfill_missing_total_content_cell_count": _as_dict(
+                p0b_google_manual_backfill_clearance.get("summary")
+            ).get("missing_total_content_cell_count", 0),
+            "p0b_google_manual_backfill_post_content_completion_validation_command_count": _as_dict(
+                p0b_google_manual_backfill_clearance.get("summary")
+            ).get("post_content_completion_validation_command_count", 0),
             "p0b_google_manual_backfill_verification_next_action": _as_dict(
                 p0b_google_manual_backfill_clearance.get("summary")
             ).get("verification_next_action", ""),

@@ -356,6 +356,7 @@ def _post_update_validation_sequence(
     commands.extend(_strings(manual_request.get("verification_commands")))
     commands.extend(_strings(manual_fulfillment.get("verification_commands")))
     commands.extend(_strings(manual_fulfillment.get("hard_gate_commands")))
+    commands.extend(_strings(manual_fulfillment.get("post_content_completion_validation_commands")))
     commands.extend(_strings(manual_step.get("recommended_sequence")))
     return _unique_strings(commands)
 
@@ -578,6 +579,10 @@ def build_au_p0b_google_manual_backfill_clearance(
             "manual_backfill_ready": fulfillment_summary.get("manual_backfill_ready") is True,
             "manual_backfill_coverage_complete": fulfillment_summary.get("manual_backfill_coverage_complete") is True,
             "manual_backfill_content_complete": fulfillment_summary.get("manual_backfill_content_complete") is True,
+            "manual_content_completion_handoff_ready": fulfillment_summary.get(
+                "manual_content_completion_handoff_ready"
+            )
+            is True,
             "expected_record_count": _int(fulfillment_summary.get("expected_record_count")),
             "record_count": _int(fulfillment_summary.get("record_count")),
             "expected_prompt_city_count": _int(fulfillment_summary.get("expected_prompt_city_count")),
@@ -590,6 +595,10 @@ def build_au_p0b_google_manual_backfill_clearance(
             "missing_answer_line_count": _int(fulfillment_summary.get("missing_answer_line_count")),
             "missing_citation_line_count": _int(fulfillment_summary.get("missing_citation_line_count")),
             "missing_asset_line_count": _int(fulfillment_summary.get("missing_asset_line_count")),
+            "missing_total_content_cell_count": _int(fulfillment_summary.get("missing_total_content_cell_count")),
+            "post_content_completion_validation_command_count": _int(
+                fulfillment_summary.get("post_content_completion_validation_command_count")
+            ),
             "verification_error_count": len(verification_errors),
             "verification_errors": verification_errors,
             "verification_next_action": str(fulfillment_summary.get("verification_next_action") or ""),

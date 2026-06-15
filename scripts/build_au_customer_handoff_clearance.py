@@ -1257,6 +1257,10 @@ def build_au_customer_handoff_clearance(
                 "p0b_google_manual_backfill_content_complete"
             )
             is True,
+            "p0b_google_manual_backfill_content_completion_handoff_ready": progress_summary.get(
+                "p0b_google_manual_backfill_content_completion_handoff_ready"
+            )
+            is True,
             "p0b_google_manual_backfill_missing_prompt_city_sample_count": progress_summary.get(
                 "p0b_google_manual_backfill_missing_prompt_city_sample_count",
                 0,
@@ -1279,6 +1283,14 @@ def build_au_customer_handoff_clearance(
             ),
             "p0b_google_manual_backfill_missing_asset_line_count": progress_summary.get(
                 "p0b_google_manual_backfill_missing_asset_line_count",
+                0,
+            ),
+            "p0b_google_manual_backfill_missing_total_content_cell_count": progress_summary.get(
+                "p0b_google_manual_backfill_missing_total_content_cell_count",
+                0,
+            ),
+            "p0b_google_manual_backfill_post_content_completion_validation_command_count": progress_summary.get(
+                "p0b_google_manual_backfill_post_content_completion_validation_command_count",
                 0,
             ),
             "p0b_google_manual_backfill_verification_next_action": progress_summary.get(

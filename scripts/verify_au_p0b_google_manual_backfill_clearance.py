@@ -377,6 +377,10 @@ def verify_au_p0b_google_manual_backfill_clearance(
         fulfillment_verifier.get("manual_backfill_content_complete") is True
     ):
         errors.append("summary_manual_backfill_content_complete_mismatch")
+    if summary.get("manual_content_completion_handoff_ready") is not (
+        fulfillment_verifier.get("manual_content_completion_handoff_ready") is True
+    ):
+        errors.append("summary_manual_content_completion_handoff_ready_mismatch")
     if summary.get("record_count") != _actual_value(items, "count:record_count"):
         errors.append("summary_record_count_mismatch")
     if summary.get("covered_prompt_city_count") != _actual_value(items, "count:prompt_city_coverage"):
@@ -388,6 +392,8 @@ def verify_au_p0b_google_manual_backfill_clearance(
         "missing_answer_line_count",
         "missing_citation_line_count",
         "missing_asset_line_count",
+        "missing_total_content_cell_count",
+        "post_content_completion_validation_command_count",
     ):
         if summary.get(field) != _int(fulfillment_verifier.get(field)):
             errors.append(f"summary_{field}_mismatch")
@@ -527,12 +533,17 @@ def verify_au_p0b_google_manual_backfill_clearance(
         "manual_backfill_ready": summary.get("manual_backfill_ready") is True,
         "manual_backfill_coverage_complete": summary.get("manual_backfill_coverage_complete") is True,
         "manual_backfill_content_complete": summary.get("manual_backfill_content_complete") is True,
+        "manual_content_completion_handoff_ready": summary.get("manual_content_completion_handoff_ready") is True,
         "missing_prompt_city_sample_count": summary.get("missing_prompt_city_sample_count"),
         "duplicate_prompt_city_sample_count": summary.get("duplicate_prompt_city_sample_count"),
         "unexpected_prompt_city_record_count": summary.get("unexpected_prompt_city_record_count"),
         "missing_answer_line_count": summary.get("missing_answer_line_count"),
         "missing_citation_line_count": summary.get("missing_citation_line_count"),
         "missing_asset_line_count": summary.get("missing_asset_line_count"),
+        "missing_total_content_cell_count": summary.get("missing_total_content_cell_count"),
+        "post_content_completion_validation_command_count": summary.get(
+            "post_content_completion_validation_command_count"
+        ),
         "next_action": summary.get("next_action", ""),
         "next_command": summary.get("next_command", ""),
     }
