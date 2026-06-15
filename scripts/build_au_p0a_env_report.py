@@ -28,6 +28,25 @@ RECOMMENDED_ENV = (
     "OBJECT_STORE_ACCESS_KEY",
     "OBJECT_STORE_SECRET_KEY",
 )
+POST_UPDATE_VALIDATION_COMMANDS = (
+    "make au-p0a-env",
+    "make verify-au-p0a-env",
+    "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py "
+    "${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment",
+    "make au-p0a-credential-fulfillment",
+    "make verify-au-p0a-credential-fulfillment",
+    "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_fulfillment.py "
+    "${GENO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json} --require-fulfilled",
+    "make au-p0a-credential-clearance",
+    "make verify-au-p0a-credential-clearance",
+    "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_clearance.py "
+    "${GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-clearance-latest.json} --require-cleared",
+    "make au-p0a-credential-update-receipt",
+    "make verify-au-p0a-credential-update-receipt",
+    "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_update_receipt.py "
+    "${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} --require-complete",
+    "make au-delivery-evidence-refresh",
+)
 
 
 def _utc_now_iso() -> str:
@@ -302,6 +321,75 @@ def _next_action(runbook_status: dict[str, Any], env_file: dict[str, Any], missi
     return "run_au_p0a_runbook_dry_run"
 
 
+def _next_command(next_action: str) -> str:
+    if next_action == "run_or_fix_au_p0a_runbook":
+        return "make au-p0a-runbook"
+    if next_action == "run_au_p0a_runbook_dry_run":
+        return "make au-p0a-runbook-dry-run"
+    return "make au-p0a-env"
+
+
+def _credential_update_handoff(
+    *,
+    env_file: dict[str, Any],
+    missing_required: list[str],
+    runbook_status: dict[str, Any],
+    next_action: str,
+    next_command: str,
+) -> dict[str, Any]:
+    hygiene = env_file.get("hygiene") if isinstance(env_file.get("hygiene"), dict) else {}
+    ready_to_update = (
+        bool(missing_required)
+        and runbook_status.get("status") == "pass"
+        and not env_file.get("errors")
+        and not hygiene.get("errors")
+        and hygiene.get("hygiene_ready") is True
+    )
+    return {
+        "credential_update_handoff_version": "au_p0a_env_credential_update_handoff_v1",
+        "ready_to_update_credentials": ready_to_update,
+        "target_env_file": str(env_file.get("path") or DEFAULT_ENV_FILE),
+        "required_missing_keys": missing_required,
+        "allowed_update_surfaces": [
+            "process_environment",
+            "GENO_AU_P0A_ENV_FILE",
+            DEFAULT_ENV_FILE,
+        ],
+        "next_action": next_action,
+        "next_command": next_command,
+        "post_update_validation_commands": list(POST_UPDATE_VALIDATION_COMMANDS),
+        "post_update_validation_command_count": len(POST_UPDATE_VALIDATION_COMMANDS),
+        "completion_requirements": [
+            "OPENAI_API_KEY present in redacted env report",
+            "PERPLEXITY_API_KEY present in redacted env report",
+            "verify_au_p0a_env_report.py --require-ready-environment passes",
+            "verify_au_p0a_credential_fulfillment.py --require-fulfilled passes",
+            "verify_au_p0a_credential_clearance.py --require-cleared passes",
+            "verify_au_p0a_credential_update_receipt.py --require-complete passes",
+        ],
+        "redaction_policy": {
+            "raw_secret_values_allowed": False,
+            "secret_redacted": True,
+            "recorded_fields": [
+                "name",
+                "present",
+                "source",
+                "value_length",
+                "sha256_prefix",
+                "secret_redacted",
+            ],
+            "forbidden_artifact_fields": [
+                "value",
+                "raw_value",
+                "secret",
+                "token",
+                "api_key",
+                "database_url",
+            ],
+        },
+    }
+
+
 def _summary(
     *,
     required: list[dict[str, Any]],
@@ -312,6 +400,7 @@ def _summary(
     env_file: dict[str, Any],
     ready_for_real_batch: bool,
     next_action: str,
+    next_command: str,
 ) -> dict[str, Any]:
     env_file_hygiene = env_file.get("hygiene") if isinstance(env_file.get("hygiene"), dict) else {}
     hygiene_errors = [str(item) for item in env_file_hygiene.get("errors", [])] if isinstance(env_file_hygiene, dict) else []
@@ -337,6 +426,13 @@ def _summary(
         "env_file_hygiene_warning_count": len(hygiene_warnings),
         "ready_for_real_batch": ready_for_real_batch,
         "next_action": next_action,
+        "next_command": next_command,
+        "credential_update_handoff_ready": bool(missing_required)
+        and runbook_status.get("status") == "pass"
+        and env_file_hygiene.get("hygiene_ready") is True
+        and not env_file.get("errors")
+        and not env_file_hygiene.get("errors"),
+        "post_update_validation_command_count": len(POST_UPDATE_VALIDATION_COMMANDS),
         "raw_secret_values_allowed": False,
     }
 
@@ -367,12 +463,21 @@ def build_au_p0a_env_report(
         and env_file_hygiene_ready
     )
     next_action = _next_action(runbook_status, env_file, missing_required)
+    next_command = _next_command(next_action)
+    credential_update_handoff = _credential_update_handoff(
+        env_file=env_file,
+        missing_required=missing_required,
+        runbook_status=runbook_status,
+        next_action=next_action,
+        next_command=next_command,
+    )
     report: dict[str, Any] = {
         "environment_report_version": ENV_REPORT_VERSION,
         "generated_at": generated_at or _utc_now_iso(),
         "status": "pass" if ready_for_real_batch else "fail",
         "ready_for_real_batch": ready_for_real_batch,
         "next_action": next_action,
+        "next_command": next_command,
         "runbook_path": str(runbook_path),
         "output_path": str(output_path) if output_path else "",
         "runbook": runbook_status,
@@ -381,6 +486,8 @@ def build_au_p0a_env_report(
         "recommended": recommended,
         "missing_required": missing_required,
         "missing_recommended": missing_recommended,
+        "credential_update_handoff": credential_update_handoff,
+        "post_update_validation_commands": list(POST_UPDATE_VALIDATION_COMMANDS),
         "summary": _summary(
             required=required,
             recommended=recommended,
@@ -390,6 +497,7 @@ def build_au_p0a_env_report(
             env_file=env_file,
             ready_for_real_batch=ready_for_real_batch,
             next_action=next_action,
+            next_command=next_command,
         ),
         "warnings": [f"recommended_env_missing:{name}" for name in missing_recommended],
         "errors": [

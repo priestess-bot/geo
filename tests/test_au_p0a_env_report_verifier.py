@@ -44,6 +44,7 @@ class AuP0aEnvReportVerifierTest(unittest.TestCase):
         self.assertEqual(result["status"], "pass")
         self.assertTrue(result["hash_valid"])
         self.assertTrue(result["ready_for_real_batch"])
+        self.assertEqual(result["next_command"], "make au-p0a-runbook-dry-run")
 
     def test_hash_mismatch_fails(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -60,6 +61,9 @@ class AuP0aEnvReportVerifierTest(unittest.TestCase):
             report = self._report(temp_dir, ready=False)
             report["summary"]["missing_required_count"] = 0  # type: ignore[index]
             report["summary"]["ready_for_real_batch"] = True  # type: ignore[index]
+            report["summary"]["next_command"] = "make au-p0a-status"  # type: ignore[index]
+            report["summary"]["credential_update_handoff_ready"] = False  # type: ignore[index]
+            report["summary"]["post_update_validation_command_count"] = 0  # type: ignore[index]
             report["summary"]["raw_secret_values_allowed"] = True  # type: ignore[index]
             report["environment_report_hash"] = compute_env_report_hash(report)
             result = verify_au_p0a_env_report(report)
@@ -67,7 +71,36 @@ class AuP0aEnvReportVerifierTest(unittest.TestCase):
         self.assertEqual(result["status"], "fail")
         self.assertIn("summary_missing_required_count_mismatch", result["errors"])
         self.assertIn("summary_ready_for_real_batch_mismatch", result["errors"])
+        self.assertIn("summary_next_command_mismatch", result["errors"])
+        self.assertIn("summary_credential_update_handoff_ready_mismatch", result["errors"])
+        self.assertIn("summary_post_update_validation_command_count_mismatch", result["errors"])
         self.assertIn("summary_raw_secret_values_policy_invalid", result["errors"])
+
+    def test_credential_update_handoff_tampering_fails_even_when_hash_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            report = self._report(temp_dir, ready=False)
+            report["credential_update_handoff"]["next_command"] = "make au-p0a-status"  # type: ignore[index]
+            report["credential_update_handoff"]["required_missing_keys"] = []  # type: ignore[index]
+            report["credential_update_handoff"]["redaction_policy"]["raw_secret_values_allowed"] = True  # type: ignore[index]
+            report["post_update_validation_commands"] = ["make au-p0a-env"]  # type: ignore[assignment]
+            report["environment_report_hash"] = compute_env_report_hash(report)
+            result = verify_au_p0a_env_report(report)
+
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("credential_update_handoff_next_command_mismatch", result["errors"])
+        self.assertIn("credential_update_handoff_missing_required_mismatch", result["errors"])
+        self.assertIn("credential_update_handoff_raw_secret_policy_invalid", result["errors"])
+        self.assertIn("post_update_validation_commands_mismatch", result["errors"])
+
+    def test_credential_update_handoff_raw_secret_field_fails_even_when_hash_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            report = self._report(temp_dir, ready=False)
+            report["credential_update_handoff"]["raw_value"] = "leaked"  # type: ignore[index]
+            report["environment_report_hash"] = compute_env_report_hash(report)
+            result = verify_au_p0a_env_report(report)
+
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("forbidden_secret_field:credential_update_handoff.raw_value", result["errors"])
 
     def test_raw_secret_field_fails_even_when_hash_recomputed(self) -> None:
         with TemporaryDirectory() as temp_dir:

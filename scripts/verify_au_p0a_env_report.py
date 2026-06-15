@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 from scripts.build_au_p0a_env_report import (  # noqa: E402
     DEFAULT_OUTPUT_PATH,
     ENV_REPORT_VERSION,
+    POST_UPDATE_VALIDATION_COMMANDS,
     compute_env_report_hash,
 )
 
@@ -24,6 +25,7 @@ REQUIRED_TOP_LEVEL_FIELDS = (
     "status",
     "ready_for_real_batch",
     "next_action",
+    "next_command",
     "runbook_path",
     "runbook",
     "env_file",
@@ -31,6 +33,8 @@ REQUIRED_TOP_LEVEL_FIELDS = (
     "recommended",
     "missing_required",
     "missing_recommended",
+    "credential_update_handoff",
+    "post_update_validation_commands",
     "summary",
     "warnings",
     "errors",
@@ -59,6 +63,28 @@ def _expected_next_action(report: dict[str, Any], missing_required: list[str]) -
     if missing_required:
         return "populate_required_environment"
     return "run_au_p0a_runbook_dry_run"
+
+
+def _expected_next_command(next_action: str) -> str:
+    if next_action == "run_or_fix_au_p0a_runbook":
+        return "make au-p0a-runbook"
+    if next_action == "run_au_p0a_runbook_dry_run":
+        return "make au-p0a-runbook-dry-run"
+    return "make au-p0a-env"
+
+
+def _find_forbidden_secret_fields(value: object, *, prefix: str = "") -> list[str]:
+    forbidden: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            if key in {"value", "raw_value", "secret", "token", "api_key", "database_url"}:
+                forbidden.append(path)
+            forbidden.extend(_find_forbidden_secret_fields(child, prefix=path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            forbidden.extend(_find_forbidden_secret_fields(child, prefix=f"{prefix}[{index}]"))
+    return forbidden
 
 
 def _validate_checks(label: str, checks: list[object], errors: list[str]) -> list[str]:
@@ -165,6 +191,47 @@ def verify_au_p0a_env_report(
     expected_next_action = _expected_next_action(report, required_missing)
     if report.get("next_action") != expected_next_action:
         errors.append("next_action_mismatch")
+    expected_next_command = _expected_next_command(expected_next_action)
+    if report.get("next_command") != expected_next_command:
+        errors.append("next_command_mismatch")
+    post_update_commands = [str(item) for item in _as_list(report.get("post_update_validation_commands"))]
+    if post_update_commands != list(POST_UPDATE_VALIDATION_COMMANDS):
+        errors.append("post_update_validation_commands_mismatch")
+
+    credential_handoff = _as_dict(report.get("credential_update_handoff"))
+    for forbidden in _find_forbidden_secret_fields(credential_handoff, prefix="credential_update_handoff"):
+        errors.append(f"forbidden_secret_field:{forbidden}")
+    if credential_handoff.get("credential_update_handoff_version") != "au_p0a_env_credential_update_handoff_v1":
+        errors.append("credential_update_handoff_version_invalid")
+    expected_handoff_ready = (
+        bool(required_missing)
+        and runbook.get("status") == "pass"
+        and not _as_list(env_file.get("errors"))
+        and not hygiene_errors
+        and hygiene.get("hygiene_ready") is True
+    )
+    if credential_handoff.get("ready_to_update_credentials") is not expected_handoff_ready:
+        errors.append("credential_update_handoff_ready_mismatch")
+    if sorted(str(item) for item in _as_list(credential_handoff.get("required_missing_keys"))) != sorted(
+        required_missing
+    ):
+        errors.append("credential_update_handoff_missing_required_mismatch")
+    if credential_handoff.get("next_action") != expected_next_action:
+        errors.append("credential_update_handoff_next_action_mismatch")
+    if credential_handoff.get("next_command") != expected_next_command:
+        errors.append("credential_update_handoff_next_command_mismatch")
+    if [str(item) for item in _as_list(credential_handoff.get("post_update_validation_commands"))] != list(
+        POST_UPDATE_VALIDATION_COMMANDS
+    ):
+        errors.append("credential_update_handoff_validation_commands_mismatch")
+    if credential_handoff.get("post_update_validation_command_count") != len(POST_UPDATE_VALIDATION_COMMANDS):
+        errors.append("credential_update_handoff_validation_command_count_mismatch")
+    redaction_policy = _as_dict(credential_handoff.get("redaction_policy"))
+    if redaction_policy.get("raw_secret_values_allowed") is not False:
+        errors.append("credential_update_handoff_raw_secret_policy_invalid")
+    if redaction_policy.get("secret_redacted") is not True:
+        errors.append("credential_update_handoff_secret_redacted_missing")
+
     summary = _as_dict(report.get("summary"))
     if summary.get("required_count") != len(_as_list(report.get("required"))):
         errors.append("summary_required_count_mismatch")
@@ -202,6 +269,12 @@ def verify_au_p0a_env_report(
         errors.append("summary_ready_for_real_batch_mismatch")
     if summary.get("next_action") != expected_next_action:
         errors.append("summary_next_action_mismatch")
+    if summary.get("next_command") != expected_next_command:
+        errors.append("summary_next_command_mismatch")
+    if summary.get("credential_update_handoff_ready") is not expected_handoff_ready:
+        errors.append("summary_credential_update_handoff_ready_mismatch")
+    if summary.get("post_update_validation_command_count") != len(POST_UPDATE_VALIDATION_COMMANDS):
+        errors.append("summary_post_update_validation_command_count_mismatch")
     if summary.get("raw_secret_values_allowed") is not False:
         errors.append("summary_raw_secret_values_policy_invalid")
     expected_warnings = sorted(f"recommended_env_missing:{name}" for name in recommended_missing)
@@ -225,6 +298,9 @@ def verify_au_p0a_env_report(
         "env_file_hygiene_errors": hygiene_errors,
         "env_file_hygiene_warnings": hygiene_warnings,
         "next_action": expected_next_action,
+        "next_command": expected_next_command,
+        "credential_update_handoff_ready": expected_handoff_ready,
+        "post_update_validation_command_count": len(POST_UPDATE_VALIDATION_COMMANDS),
     }
 
 

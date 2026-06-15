@@ -9,6 +9,7 @@ from tempfile import TemporaryDirectory
 
 from scripts.build_au_p0a_env_report import (
     ENV_REPORT_VERSION,
+    POST_UPDATE_VALIDATION_COMMANDS,
     build_au_p0a_env_report,
     compute_env_report_hash,
 )
@@ -39,14 +40,25 @@ class AuP0aEnvReportTest(unittest.TestCase):
         self.assertEqual(report["status"], "fail")
         self.assertFalse(report["ready_for_real_batch"])
         self.assertEqual(report["next_action"], "populate_required_environment")
+        self.assertEqual(report["next_command"], "make au-p0a-env")
         self.assertIn("PERPLEXITY_API_KEY", report["missing_required"])
         self.assertEqual(report["summary"]["required_count"], 3)
         self.assertEqual(report["summary"]["present_required_count"], 0)
         self.assertEqual(report["summary"]["missing_required_count"], 3)
         self.assertIn("OPENAI_API_KEY", report["summary"]["missing_required"])
         self.assertEqual(report["summary"]["next_action"], "populate_required_environment")
+        self.assertEqual(report["summary"]["next_command"], "make au-p0a-env")
+        self.assertTrue(report["summary"]["credential_update_handoff_ready"])
+        self.assertEqual(report["summary"]["post_update_validation_command_count"], len(POST_UPDATE_VALIDATION_COMMANDS))
         self.assertFalse(report["summary"]["ready_for_real_batch"])
         self.assertFalse(report["summary"]["raw_secret_values_allowed"])
+        self.assertEqual(report["post_update_validation_commands"], list(POST_UPDATE_VALIDATION_COMMANDS))
+        self.assertEqual(report["credential_update_handoff"]["next_command"], "make au-p0a-env")
+        self.assertEqual(
+            report["credential_update_handoff"]["post_update_validation_commands"],
+            list(POST_UPDATE_VALIDATION_COMMANDS),
+        )
+        self.assertIn("OPENAI_API_KEY", report["credential_update_handoff"]["required_missing_keys"])
         self.assertTrue(report["secrets_redacted"])
         self.assertEqual(report["environment_report_hash"], compute_env_report_hash(report))
         self.assertNotIn("test-openai", json.dumps(report))
@@ -77,13 +89,18 @@ class AuP0aEnvReportTest(unittest.TestCase):
         self.assertTrue(report["ready_for_real_batch"])
         self.assertEqual(report["missing_required"], [])
         self.assertEqual(report["next_action"], "run_au_p0a_runbook_dry_run")
+        self.assertEqual(report["next_command"], "make au-p0a-runbook-dry-run")
         self.assertEqual(report["summary"]["present_required_count"], 3)
         self.assertEqual(report["summary"]["missing_required_count"], 0)
         self.assertEqual(report["summary"]["missing_required"], [])
         self.assertTrue(report["summary"]["ready_for_real_batch"])
+        self.assertEqual(report["summary"]["next_command"], "make au-p0a-runbook-dry-run")
+        self.assertFalse(report["summary"]["credential_update_handoff_ready"])
         self.assertTrue(report["summary"]["env_file_exists"])
         self.assertTrue(report["summary"]["env_file_loaded"])
         self.assertEqual(report["summary"]["env_file_entry_count"], 3)
+        self.assertFalse(report["credential_update_handoff"]["ready_to_update_credentials"])
+        self.assertEqual(report["credential_update_handoff"]["required_missing_keys"], [])
         self.assertTrue(report["env_file"]["hygiene"]["hygiene_ready"])
         self.assertTrue(report["env_file"]["hygiene"]["permission_safe"])
         self.assertIsNone(report["env_file"]["hygiene"]["git_tracked"])
