@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import base64
+import hmac
 import json
 import unittest
 from dataclasses import FrozenInstanceError
@@ -10,6 +12,9 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from uuid import NAMESPACE_URL, UUID, uuid5
 from zipfile import ZipFile
+
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 from geno_core.action_plan import (
     build_action_plan_audit_event,
@@ -45,6 +50,7 @@ from geno_core.email_feedback_adapters import (
     RUNTIME_NOTIFICATION_EMAIL_PROVIDER_FEEDBACK_ADAPTER_VERSION,
     parse_runtime_notification_email_provider_feedback,
 )
+from geno_core.email_feedback_signatures import verify_runtime_notification_email_provider_signature
 from geno_core.email_preferences import (
     RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
     runtime_notification_email_preference_token_hash,
@@ -542,6 +548,101 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(record.metadata["provider_delivery_id_source"], "default_delivery_id")
         self.assertEqual(record.metadata["postmark_bounce_type"], "HardBounce")
         self.assertNotIn("ops@example.com", str(record.metadata))
+
+    def test_runtime_notification_email_provider_signature_verifies_mailgun_hmac(self) -> None:
+        timestamp = "1781462400"
+        token = "mailgun-token"
+        signing_key = "mailgun-signing-key"
+        signature = hmac.new(signing_key.encode("utf-8"), f"{timestamp}{token}".encode("utf-8"), hashlib.sha256).hexdigest()
+
+        verification = verify_runtime_notification_email_provider_signature(
+            provider="mailgun",
+            headers={},
+            body=b'{"event-data":{}}',
+            payload={"signature": {"timestamp": timestamp, "token": token, "signature": signature}},
+            mailgun_signing_key=signing_key,
+            now=datetime.fromtimestamp(1781462402, tz=UTC),
+        )
+        invalid = verify_runtime_notification_email_provider_signature(
+            provider="mailgun",
+            headers={},
+            body=b'{"event-data":{}}',
+            payload={"signature": {"timestamp": timestamp, "token": token, "signature": "bad"}},
+            mailgun_signing_key=signing_key,
+            now=datetime.fromtimestamp(1781462402, tz=UTC),
+        )
+
+        self.assertTrue(verification.valid)
+        self.assertEqual(verification.status, "verified")
+        self.assertEqual(verification.method, "mailgun_hmac_sha256")
+        self.assertEqual(verification.metadata()["provider_native_signature_status"], "verified")
+        self.assertFalse(invalid.valid)
+        self.assertEqual(invalid.reason, "signature_mismatch")
+        self.assertNotIn(signing_key, str(verification.metadata()))
+
+    def test_runtime_notification_email_provider_signature_verifies_postmark_basic_auth(self) -> None:
+        credential = base64.b64encode(b"postmark-user:postmark-password").decode("ascii")
+
+        verification = verify_runtime_notification_email_provider_signature(
+            provider="postmark",
+            headers={"Authorization": f"Basic {credential}"},
+            body=b"{}",
+            postmark_basic_username="postmark-user",
+            postmark_basic_password="postmark-password",
+        )
+        missing = verify_runtime_notification_email_provider_signature(
+            provider="postmark",
+            headers={},
+            body=b"{}",
+            postmark_basic_username="postmark-user",
+            postmark_basic_password="postmark-password",
+        )
+
+        self.assertTrue(verification.valid)
+        self.assertEqual(verification.status, "verified")
+        self.assertEqual(verification.method, "postmark_basic_auth")
+        self.assertFalse(missing.valid)
+        self.assertEqual(missing.reason, "missing_basic_auth")
+        self.assertNotIn("postmark-password", str(verification.metadata()))
+
+    def test_runtime_notification_email_provider_signature_verifies_sendgrid_ecdsa(self) -> None:
+        private_key = ec.generate_private_key(ec.SECP256R1())
+        public_key = private_key.public_key()
+        public_key_pem = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        ).decode("ascii")
+        timestamp = "1781462400"
+        body = b'[{"event":"bounce"}]'
+        signature = private_key.sign(timestamp.encode("utf-8") + body, ec.ECDSA(hashes.SHA256()))
+
+        verification = verify_runtime_notification_email_provider_signature(
+            provider="sendgrid",
+            headers={
+                "X-Twilio-Email-Event-Webhook-Timestamp": timestamp,
+                "X-Twilio-Email-Event-Webhook-Signature": base64.b64encode(signature).decode("ascii"),
+            },
+            body=body,
+            sendgrid_public_key=public_key_pem,
+            now=datetime.fromtimestamp(1781462401, tz=UTC),
+        )
+        invalid = verify_runtime_notification_email_provider_signature(
+            provider="sendgrid",
+            headers={
+                "X-Twilio-Email-Event-Webhook-Timestamp": timestamp,
+                "X-Twilio-Email-Event-Webhook-Signature": base64.b64encode(b"bad-signature").decode("ascii"),
+            },
+            body=body,
+            sendgrid_public_key=public_key_pem,
+            now=datetime.fromtimestamp(1781462401, tz=UTC),
+        )
+
+        self.assertTrue(verification.valid)
+        self.assertEqual(verification.status, "verified")
+        self.assertEqual(verification.method, "sendgrid_ecdsa_sha256")
+        self.assertFalse(invalid.valid)
+        self.assertEqual(invalid.reason, "signature_mismatch")
+        self.assertNotIn("PRIVATE", str(verification.metadata()))
 
     def test_runtime_notification_email_preference_token_verifies_claims_and_rejects_tampering(self) -> None:
         token = sign_runtime_notification_email_preference_token(

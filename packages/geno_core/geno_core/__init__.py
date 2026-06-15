@@ -54,6 +54,10 @@ from geno_core.email_feedback_adapters import (
     RuntimeNotificationEmailProviderFeedbackParseResult,
     parse_runtime_notification_email_provider_feedback,
 )
+from geno_core.email_feedback_signatures import (
+    RuntimeNotificationEmailProviderSignatureVerification,
+    verify_runtime_notification_email_provider_signature,
+)
 from geno_core.email_preferences import (
     RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
     RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_RESUBSCRIBE_ACTION,
@@ -155,6 +159,7 @@ __all__ = [
     "SUPPORTED_RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_PROVIDERS",
     "RuntimeEmailTemplateRenderResult",
     "RuntimeNotificationEmailProviderFeedbackParseResult",
+    "RuntimeNotificationEmailProviderSignatureVerification",
     "RuntimeNotificationEmailPreferenceTokenClaims",
     "RuntimeNotificationEmailPreferenceTokenVerification",
     "render_project_member_invitation_email",
@@ -227,5 +232,6 @@ __all__ = [
     "StaticAUGeoProvider",
     "ThirdPartySerpCollector",
     "verify_runtime_notification_webhook_signature",
+    "verify_runtime_notification_email_provider_signature",
     "verify_runtime_notification_email_preference_token",
 ]

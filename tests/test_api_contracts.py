@@ -7444,6 +7444,90 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertIn("provider feedback webhook secret invalid", response.json()["detail"])
 
+    def test_runtime_notification_email_provider_feedback_webhook_verifies_mailgun_native_signature(self) -> None:
+        class FakeRepository:
+            def __init__(self) -> None:
+                self.feedback_inputs: list[object] = []
+
+            def record_runtime_notification_email_feedback(self, feedback: object) -> RuntimeNotificationEmailFeedback:
+                self.feedback_inputs.append(feedback)
+                return RuntimeNotificationEmailFeedback(
+                    feedback_event={
+                        "id": "feedback-1",
+                        "project_id": "project-1",
+                        "delivery_id": feedback.delivery_id,
+                        "notification_id": "notification-1",
+                        "subscription_id": "subscription-1",
+                        "feedback_type": feedback.feedback_type,
+                        "provider": feedback.provider,
+                        "metadata": feedback.metadata,
+                        "recorded_by": feedback.recorded_by,
+                    },
+                    delivery={"id": feedback.delivery_id, "channel": "email"},
+                    notification={"id": "notification-1", "title": "Report export failed"},
+                    subscription={"id": "subscription-1", "channel": "email"},
+                    audit_events=({"event_type": "runtime_notification_email_feedback_recorded"},),
+                )
+
+        timestamp = str(int(time.time()))
+        token = "mailgun-token"
+        signing_key = "mailgun-signing-key"
+        signature = hmac.new(signing_key.encode("utf-8"), f"{timestamp}{token}".encode("utf-8"), hashlib.sha256).hexdigest()
+        body = {
+            "signature": {"timestamp": timestamp, "token": token, "signature": signature},
+            "event-data": {
+                "event": "failed",
+                "recipient": "ops@example.com",
+                "id": "mailgun-event-1",
+                "user-variables": {"geno_delivery_id": "delivery-1"},
+            },
+        }
+        fake_repository = FakeRepository()
+        with patch.dict(
+            os.environ,
+            {
+                "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret",
+                "GENO_NOTIFICATION_EMAIL_MAILGUN_SIGNING_KEY": signing_key,
+            },
+            clear=False,
+        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/runtime-notification-email-feedback-webhooks/mailgun",
+                json=body,
+                headers={"x-geno-provider-webhook-secret": "feedback-secret"},
+            )
+        self.assertEqual(response.status_code, 200)
+        metadata = fake_repository.feedback_inputs[0].metadata
+        self.assertEqual(metadata["provider_native_signature_status"], "verified")
+        self.assertEqual(metadata["provider_native_signature_method"], "mailgun_hmac_sha256")
+        self.assertEqual(metadata["provider_native_signature_checked_count"], 1)
+        self.assertNotIn(signing_key, str(metadata))
+        self.assertNotIn("mailgun-event-1", str(metadata))
+
+    def test_runtime_notification_email_provider_feedback_webhook_rejects_bad_native_signature(self) -> None:
+        timestamp = str(int(time.time()))
+        with patch.dict(
+            os.environ,
+            {
+                "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret",
+                "GENO_NOTIFICATION_EMAIL_MAILGUN_SIGNING_KEY": "mailgun-signing-key",
+            },
+            clear=False,
+        ):
+            response = self.client.post(
+                "/v1/runtime-notification-email-feedback-webhooks/mailgun",
+                json={
+                    "signature": {"timestamp": timestamp, "token": "mailgun-token", "signature": "bad"},
+                    "event-data": {"event": "failed", "recipient": "ops@example.com"},
+                },
+                headers={"x-geno-provider-webhook-secret": "feedback-secret"},
+            )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("provider native signature invalid", response.json()["detail"])
+
     def test_runtime_notification_email_feedback_events_endpoint_returns_page(self) -> None:
         class FakeRepository:
             def list_runtime_notification_email_feedback_events(self, **kwargs: object) -> RuntimeNotificationEmailFeedbackPage:

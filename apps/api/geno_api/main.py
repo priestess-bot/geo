@@ -132,6 +132,7 @@ from geno_core.email_feedback_adapters import (
     RUNTIME_NOTIFICATION_EMAIL_PROVIDER_FEEDBACK_ADAPTER_VERSION,
     parse_runtime_notification_email_provider_feedback,
 )
+from geno_core.email_feedback_signatures import verify_runtime_notification_email_provider_signature
 from geno_core.webhook_signing import (
     RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER,
     RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER,
@@ -326,6 +327,13 @@ RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS_ENV = (
 DEFAULT_RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS = 300.0
 RUNTIME_NOTIFICATION_EMAIL_PROVIDER_WEBHOOK_SECRET_HEADER = "x-geno-provider-webhook-secret"
 RUNTIME_NOTIFICATION_EMAIL_PROVIDER_WEBHOOK_DELIVERY_ID_HEADER = "x-geno-provider-delivery-id"
+RUNTIME_NOTIFICATION_EMAIL_PROVIDER_SIGNATURE_TOLERANCE_SECONDS_ENV = (
+    "GENO_NOTIFICATION_EMAIL_PROVIDER_SIGNATURE_TOLERANCE_SECONDS"
+)
+RUNTIME_NOTIFICATION_EMAIL_SENDGRID_PUBLIC_KEY_ENV = "GENO_NOTIFICATION_EMAIL_SENDGRID_PUBLIC_KEY"
+RUNTIME_NOTIFICATION_EMAIL_MAILGUN_SIGNING_KEY_ENV = "GENO_NOTIFICATION_EMAIL_MAILGUN_SIGNING_KEY"
+RUNTIME_NOTIFICATION_EMAIL_POSTMARK_BASIC_USERNAME_ENV = "GENO_NOTIFICATION_EMAIL_POSTMARK_BASIC_USERNAME"
+RUNTIME_NOTIFICATION_EMAIL_POSTMARK_BASIC_PASSWORD_ENV = "GENO_NOTIFICATION_EMAIL_POSTMARK_BASIC_PASSWORD"
 RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV = "GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET"
 PROJECT_MANAGE_ROLES = ("owner", "admin")
 PROJECT_ANALYZE_ROLES = ("owner", "admin", "analyst")
@@ -592,6 +600,37 @@ def _verify_runtime_notification_email_provider_feedback_webhook(request: Reques
             RUNTIME_NOTIFICATION_EMAIL_PROVIDER_WEBHOOK_DELIVERY_ID_HEADER
         ),
     }
+
+
+def _verify_runtime_notification_email_provider_native_signature(
+    *,
+    provider: str,
+    request: Request,
+    body: bytes,
+    payload: object,
+) -> dict[str, object]:
+    verification = verify_runtime_notification_email_provider_signature(
+        provider=provider,
+        headers=dict(request.headers),
+        body=body,
+        payload=payload,
+        sendgrid_public_key=os.getenv(RUNTIME_NOTIFICATION_EMAIL_SENDGRID_PUBLIC_KEY_ENV, ""),
+        mailgun_signing_key=os.getenv(RUNTIME_NOTIFICATION_EMAIL_MAILGUN_SIGNING_KEY_ENV, ""),
+        postmark_basic_username=os.getenv(RUNTIME_NOTIFICATION_EMAIL_POSTMARK_BASIC_USERNAME_ENV, ""),
+        postmark_basic_password=os.getenv(RUNTIME_NOTIFICATION_EMAIL_POSTMARK_BASIC_PASSWORD_ENV, ""),
+        tolerance_seconds=int(
+            _positive_float_env(
+                RUNTIME_NOTIFICATION_EMAIL_PROVIDER_SIGNATURE_TOLERANCE_SECONDS_ENV,
+                DEFAULT_RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS,
+            )
+        ),
+    )
+    if not verification.valid:
+        raise HTTPException(
+            status_code=401,
+            detail=f"runtime notification email provider native signature invalid: {verification.reason}",
+        )
+    return verification.metadata()
 
 
 def _report_artifact_signature_payload(
@@ -6073,6 +6112,12 @@ async def record_runtime_notification_email_provider_feedback_webhook(
         raw_payload = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail="runtime notification email provider feedback payload must be JSON") from exc
+    native_signature_metadata = _verify_runtime_notification_email_provider_native_signature(
+        provider=provider,
+        request=request,
+        body=body,
+        payload=raw_payload,
+    )
     try:
         parsed = parse_runtime_notification_email_provider_feedback(
             provider=provider,
@@ -6093,6 +6138,7 @@ async def record_runtime_notification_email_provider_feedback_webhook(
             metadata = {
                 **feedback.metadata,
                 **provider_metadata,
+                **native_signature_metadata,
                 "adapter_version": parsed.adapter_version,
                 "provider_feedback_record_index": index,
                 "provider_feedback_record_count": len(parsed.records),
