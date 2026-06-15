@@ -43,6 +43,14 @@ def _stable_bytes(payload: dict[str, Any]) -> bytes:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def compute_p0a_credential_clearance_hash(payload: dict[str, Any]) -> str:
     payload_for_hash = dict(payload)
     payload_for_hash.pop("p0a_credential_clearance_hash", None)
@@ -85,7 +93,13 @@ def _load_json(path: Path) -> tuple[dict[str, Any] | None, dict[str, Any]]:
         }
     if not isinstance(payload, dict):
         return None, {"path": str(path), "exists": True, "source": "invalid_file", "errors": ["not_json_object"]}
-    return payload, {"path": str(path), "exists": True, "source": "existing_file", "errors": []}
+    return payload, {
+        "path": str(path),
+        "exists": True,
+        "source": "existing_file",
+        "file_sha256": _file_sha256(path),
+        "errors": [],
+    }
 
 
 def _load_or_build_request(path: Path, *, generated_at: str | None) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -319,7 +333,7 @@ def build_au_p0a_credential_clearance(
     request_verifier = verify_au_p0a_credential_request_packet(credential_request, path=credential_request_path)
     fulfillment_verifier = verify_au_p0a_credential_fulfillment(
         credential_fulfillment,
-        path=credential_fulfillment_path,
+        path=credential_fulfillment_path if fulfillment_source.get("source") == "existing_file" else None,
     )
     request_summary = _as_dict(credential_request.get("summary"))
     fulfillment_summary = _as_dict(credential_fulfillment.get("summary"))

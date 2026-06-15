@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -52,6 +53,64 @@ def _strings(value: object) -> list[str]:
     return [str(item) for item in _as_list(value)]
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _load_json_file(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _source_file_sha256(source: dict[str, Any]) -> str:
+    source_meta = _as_dict(source.get("source"))
+    return str(source_meta.get("file_sha256") or source.get("file_sha256") or "")
+
+
+def _source_declares_existing(source: dict[str, Any]) -> bool:
+    source_meta = _as_dict(source.get("source"))
+    return source_meta.get("exists") is True or source_meta.get("source") == "existing_file"
+
+
+def _check_current_source_file(
+    errors: list[str],
+    *,
+    source_key: str,
+    source: dict[str, Any],
+    hash_field: str,
+    expected_hash: str,
+) -> None:
+    source_path_value = str(source.get("path") or "")
+    if not source_path_value:
+        errors.append(f"{source_key}_source_path_missing")
+        return
+
+    source_path = Path(source_path_value)
+    if source_path.is_file():
+        current_payload = _load_json_file(source_path)
+        if not current_payload:
+            errors.append(f"{source_key}_current_json_invalid")
+        else:
+            current_hash = str(current_payload.get(hash_field) or "")
+            if not current_hash:
+                errors.append(f"{source_key}_current_hash_missing")
+            elif expected_hash != current_hash:
+                errors.append(f"{source_key}_current_hash_mismatch")
+
+        expected_file_sha = _source_file_sha256(source)
+        if expected_file_sha and expected_file_sha != _file_sha256(source_path):
+            errors.append(f"{source_key}_file_sha256_mismatch")
+    elif _source_declares_existing(source):
+        errors.append(f"{source_key}_source_file_missing")
+
+
 def _find_forbidden_secret_fields(value: object, *, path: str = "$") -> list[str]:
     findings: list[str] = []
     if isinstance(value, dict):
@@ -88,6 +147,7 @@ def verify_au_p0a_credential_fulfillment(
     *,
     path: Path | None = None,
     require_fulfilled: bool = False,
+    verify_current_files: bool | None = None,
 ) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {
@@ -96,8 +156,10 @@ def verify_au_p0a_credential_fulfillment(
             "hash_valid": False,
             "credential_fulfillment_ready": False,
             "credentials_fulfilled": False,
+            "current_file_check_enabled": path is not None if verify_current_files is None else verify_current_files,
         }
 
+    current_file_check_enabled = path is not None if verify_current_files is None else verify_current_files
     errors: list[str] = []
     for field in REQUIRED_FIELDS:
         if field not in payload:
@@ -137,6 +199,21 @@ def verify_au_p0a_credential_fulfillment(
         errors.append("source_p0a_credential_request_hash_mismatch")
     if source_env.get("environment_report_hash") != env_verifier.get("environment_report_hash"):
         errors.append("source_p0a_env_report_hash_mismatch")
+    if current_file_check_enabled:
+        _check_current_source_file(
+            errors,
+            source_key="source_p0a_credential_request",
+            source=source_request,
+            hash_field="p0a_credential_request_packet_hash",
+            expected_hash=str(source_request.get("p0a_credential_request_packet_hash") or ""),
+        )
+        _check_current_source_file(
+            errors,
+            source_key="source_p0a_env_report",
+            source=source_env,
+            hash_field="environment_report_hash",
+            expected_hash=str(source_env.get("environment_report_hash") or ""),
+        )
 
     required_names = {"PERPLEXITY_API_KEY", "OPENAI_API_KEY", "DATABASE_URL"}
     item_names = {str(item.get("name") or "") for item in items}
@@ -253,6 +330,7 @@ def verify_au_p0a_credential_fulfillment(
         "hash_valid": hash_valid,
         "credential_fulfillment_ready": expected_ready,
         "credentials_fulfilled": credentials_fulfilled,
+        "current_file_check_enabled": current_file_check_enabled,
         "missing_required_count": len(missing_required),
         "missing_required": missing_required,
         "next_action": summary.get("next_action", ""),

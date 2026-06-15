@@ -67,8 +67,10 @@ class AuP0aCredentialClearanceTest(unittest.TestCase):
 
         clearance_helper = AuExternalDependencyClearanceTest()
         clearance_helper.setUp()
-        handoff_path = clearance_helper._write_handoff(temp_dir)
-        clearance_path = Path(temp_dir) / "external-clearance.json"
+        external_dir = Path(temp_dir) / "external"
+        external_dir.mkdir()
+        handoff_path = clearance_helper._write_handoff(str(external_dir))
+        clearance_path = external_dir / "external-clearance.json"
         external_clearance = run_au_external_dependency_clearance(
             handoff_path=handoff_path,
             output_path=clearance_path,
@@ -177,6 +179,55 @@ class AuP0aCredentialClearanceTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_missing_required_count_mismatch", verification["errors"])
+
+    def test_path_verifier_detects_stale_fulfillment_source_file(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            request_path, env_path, fulfillment_path, clearance_path, request, fulfillment, external_clearance = (
+                self._build_sources(temp_dir, ready=False)
+            )
+            output_path = Path(temp_dir) / "credential-clearance.json"
+            packet = build_au_p0a_credential_clearance(
+                credential_request_path=request_path,
+                env_report_path=env_path,
+                credential_fulfillment_path=fulfillment_path,
+                external_dependency_clearance_path=clearance_path,
+                output_path=output_path,
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            output_path.write_text(json.dumps(packet), encoding="utf-8")
+            memory_verification = verify_au_p0a_credential_clearance(packet)
+
+            refreshed_env = build_au_p0a_env_report(
+                runbook_path=Path(temp_dir) / "runbook.json",
+                env_file_path=Path(temp_dir) / "missing.env",
+                output_path=env_path,
+                env={
+                    "PERPLEXITY_API_KEY": "perplexity-key",
+                    "OPENAI_API_KEY": "openai-key",
+                    "DATABASE_URL": "postgresql://user:pass@example.test/db",
+                },
+                generated_at="2026-06-14T00:01:00Z",
+            )
+            env_path.write_text(json.dumps(refreshed_env), encoding="utf-8")
+            refreshed_fulfillment = build_au_p0a_credential_fulfillment(
+                credential_request_path=request_path,
+                env_report_path=env_path,
+                output_path=fulfillment_path,
+                generated_at="2026-06-14T00:01:00Z",
+            )
+            fulfillment_path.write_text(json.dumps(refreshed_fulfillment), encoding="utf-8")
+            path_verification = verify_au_p0a_credential_clearance(packet, path=output_path)
+            explicit_verification = verify_au_p0a_credential_clearance(packet, verify_current_files=True)
+
+        self.assertEqual(memory_verification["status"], "pass")
+        self.assertFalse(memory_verification["current_file_check_enabled"])
+        self.assertEqual(path_verification["status"], "fail")
+        self.assertTrue(path_verification["current_file_check_enabled"])
+        self.assertIn("source_fulfillment_current_hash_mismatch", path_verification["errors"])
+        self.assertIn("source_fulfillment_file_sha256_mismatch", path_verification["errors"])
+        self.assertEqual(explicit_verification["status"], "fail")
+        self.assertTrue(explicit_verification["current_file_check_enabled"])
+        self.assertIn("source_fulfillment_current_hash_mismatch", explicit_verification["errors"])
 
     def test_cli_writes_and_verifies_clearance_json(self) -> None:
         with TemporaryDirectory() as temp_dir:

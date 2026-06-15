@@ -536,7 +536,7 @@ def build_au_delivery_progress(
     )
     p0a_credential_clearance_verifier = verify_au_p0a_credential_clearance(
         p0a_credential_clearance,
-        path=p0a_credential_clearance_path,
+        path=_path_for_current_file_check(p0a_credential_clearance_source, p0a_credential_clearance_path),
     )
     p0a_real_batch_clearance_verifier = verify_au_p0a_real_batch_clearance(
         p0a_real_batch_clearance,
