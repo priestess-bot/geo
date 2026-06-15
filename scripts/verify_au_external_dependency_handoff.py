@@ -343,6 +343,19 @@ def _validate_groups(handoff: dict[str, Any], errors: list[str]) -> None:
         errors.append("p0b_google_manual_backfill_expected_prompt_city_count_invalid")
     if p0b_manual.get("expected_sample_size") != 2:
         errors.append("p0b_google_manual_backfill_expected_sample_size_invalid")
+    if p0b_manual.get("fulfillment_available") is True:
+        if p0b_manual.get("fulfillment_verified") is not True:
+            errors.append("p0b_google_manual_backfill_fulfillment_not_verified")
+        if not p0b_manual.get("manual_backfill_fulfillment_hash"):
+            errors.append("p0b_google_manual_backfill_fulfillment_hash_missing")
+        if p0b_manual.get("record_count") != 120:
+            errors.append("p0b_google_manual_backfill_fulfillment_record_count_mismatch")
+        if p0b_manual.get("covered_prompt_city_count") != 60:
+            errors.append("p0b_google_manual_backfill_fulfillment_coverage_count_mismatch")
+        if p0b_manual.get("manual_backfill_fulfillment_missing_required_count") != len(
+            _strings(p0b_manual.get("manual_backfill_fulfillment_missing_required"))
+        ):
+            errors.append("p0b_google_manual_backfill_fulfillment_missing_required_count_mismatch")
     manual_redaction = _as_dict(p0b_manual.get("redaction_policy"))
     if manual_redaction.get("raw_answer_values_allowed") is not False:
         errors.append("p0b_google_manual_backfill_raw_answer_policy_invalid")
@@ -622,6 +635,18 @@ def verify_au_external_dependency_handoff(
         errors.append("summary_p0b_google_manual_backfill_record_count_mismatch")
     if summary.get("p0b_google_manual_backfill_expected_record_count") != p0b_manual.get("expected_record_count"):
         errors.append("summary_p0b_google_manual_backfill_expected_record_count_mismatch")
+    if summary.get("p0b_google_manual_backfill_covered_prompt_city_count") != p0b_manual.get(
+        "covered_prompt_city_count"
+    ):
+        errors.append("summary_p0b_google_manual_backfill_covered_prompt_city_count_mismatch")
+    if summary.get("p0b_google_manual_backfill_fulfillment_hash") != p0b_manual.get(
+        "manual_backfill_fulfillment_hash"
+    ):
+        errors.append("summary_p0b_google_manual_backfill_fulfillment_hash_mismatch")
+    if summary.get("p0b_google_manual_backfill_fulfillment_missing_required_count") != p0b_manual.get(
+        "manual_backfill_fulfillment_missing_required_count"
+    ):
+        errors.append("summary_p0b_google_manual_backfill_fulfillment_missing_required_count_mismatch")
     if summary.get("p0b_google_phase_next_phase") != p0b_phase.get("next_phase"):
         errors.append("summary_p0b_google_phase_next_phase_mismatch")
     if summary.get("p0b_google_phase_blocked_phase_count") != p0b_phase.get("blocked_phase_count"):

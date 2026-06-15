@@ -193,6 +193,8 @@ au-delivery-evidence-refresh:
 	$(MAKE) verify-au-p0a-env; \
 	$(MAKE) au-p0a-credential-fulfillment; \
 	$(MAKE) verify-au-p0a-credential-fulfillment; \
+	$(MAKE) au-p0b-google-manual-backfill-fulfillment; \
+	$(MAKE) verify-au-p0b-google-manual-backfill-fulfillment; \
 	$(MAKE) au-external-dependency-handoff; \
 	$(MAKE) verify-au-external-dependency-handoff; \
 	$(MAKE) au-external-dependency-clearance; \
@@ -207,8 +209,6 @@ au-delivery-evidence-refresh:
 	$(MAKE) verify-au-p0b-google-environment-fulfillment; \
 	$(MAKE) au-p0b-google-environment-clearance; \
 	$(MAKE) verify-au-p0b-google-environment-clearance; \
-	$(MAKE) au-p0b-google-manual-backfill-fulfillment; \
-	$(MAKE) verify-au-p0b-google-manual-backfill-fulfillment; \
 	$(MAKE) au-p0b-google-manual-backfill-clearance; \
 	$(MAKE) verify-au-p0b-google-manual-backfill-clearance; \
 	$(MAKE) au-p0b-google-phase-execution-fulfillment; \
@@ -237,7 +237,7 @@ verify-au-delivery-progress:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_delivery_progress.py $${GENO_AU_DELIVERY_PROGRESS_OUTPUT_PATH:-docs/runtime_preflight/au-delivery-progress-latest.json}
 
 au-external-dependency-handoff:
-	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_external_dependency_handoff.py --launch-status-path $${GENO_AU_LAUNCH_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-launch-status-latest.json} --remediation-plan-path $${GENO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH:-docs/runtime_preflight/au-launch-remediation-plan-latest.json} --p0a-environment-checklist-path $${GENO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-environment-checklist-latest.json} --p0a-execution-checklist-path $${GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-execution-checklist-latest.json} --p0b-google-execution-checklist-path $${GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json} --output-path $${GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH:-docs/runtime_preflight/au-external-dependency-handoff-latest.json}
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_external_dependency_handoff.py --launch-status-path $${GENO_AU_LAUNCH_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-launch-status-latest.json} --remediation-plan-path $${GENO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH:-docs/runtime_preflight/au-launch-remediation-plan-latest.json} --p0a-environment-checklist-path $${GENO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-environment-checklist-latest.json} --p0a-execution-checklist-path $${GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-execution-checklist-latest.json} --p0b-google-execution-checklist-path $${GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json} --p0b-google-manual-backfill-fulfillment-path $${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json} --output-path $${GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH:-docs/runtime_preflight/au-external-dependency-handoff-latest.json}
 
 verify-au-external-dependency-handoff:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_external_dependency_handoff.py $${GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH:-docs/runtime_preflight/au-external-dependency-handoff-latest.json}

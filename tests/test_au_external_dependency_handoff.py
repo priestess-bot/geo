@@ -13,6 +13,14 @@ from scripts.build_au_external_dependency_handoff import (
     build_au_external_dependency_handoff,
     compute_external_dependency_handoff_hash,
 )
+from scripts.build_au_p0b_google_manual_backfill_fulfillment import (
+    build_au_p0b_google_manual_backfill_fulfillment,
+)
+from scripts.build_au_p0b_google_manual_backfill_request_packet import (
+    build_au_p0b_google_manual_backfill_request_packet,
+)
+from scripts.build_au_p0b_manual_backfill_template import build_manual_backfill_template
+from scripts.verify_au_p0b_manual_backfill import verify_manual_backfill
 from scripts.verify_au_external_dependency_handoff import verify_au_external_dependency_handoff
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
 
@@ -28,6 +36,38 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
         p0a_execution_path = self._helper._write_p0a_execution_checklist(temp_dir)
         p0b_google_path = self._helper._write_p0b_google_execution_checklist(temp_dir)
         return launch_status_path, remediation_plan_path, p0a_environment_path, p0a_execution_path, p0b_google_path
+
+    def _write_manual_fulfillment(self, temp_dir: str, p0b_google_path: Path) -> tuple[Path, dict[str, object]]:
+        p0b_google = json.loads(p0b_google_path.read_text(encoding="utf-8"))
+        request = build_au_p0b_google_manual_backfill_request_packet(
+            p0b_google_execution_checklist_path=p0b_google_path,
+            p0b_google_execution_checklist=p0b_google,
+            output_path=Path(temp_dir) / "manual-request.json",
+            generated_at="2026-06-13T00:00:00Z",
+        )
+        request_path = Path(temp_dir) / "manual-request.json"
+        request_path.write_text(json.dumps(request), encoding="utf-8")
+        template_lines, _manifest = build_manual_backfill_template(generated_at="2026-06-13T00:00:00Z")
+        manual_path = Path(temp_dir) / "manual-template.jsonl"
+        manual_path.write_text(
+            "".join(json.dumps(line, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n" for line in template_lines),
+            encoding="utf-8",
+        )
+        verification = verify_manual_backfill(manual_path, allow_template_placeholders=True)
+        verification_path = Path(temp_dir) / "manual-verification.json"
+        verification_path.write_text(json.dumps(verification), encoding="utf-8")
+        fulfillment = build_au_p0b_google_manual_backfill_fulfillment(
+            manual_backfill_request_path=request_path,
+            manual_backfill_request=request,
+            manual_backfill_verification_path=verification_path,
+            manual_backfill_verification=verification,
+            manual_jsonl_path=manual_path,
+            output_path=Path(temp_dir) / "manual-fulfillment.json",
+            generated_at="2026-06-13T00:00:00Z",
+        )
+        fulfillment_path = Path(temp_dir) / "manual-fulfillment.json"
+        fulfillment_path.write_text(json.dumps(fulfillment), encoding="utf-8")
+        return fulfillment_path, fulfillment
 
     def test_handoff_records_external_dependency_boundary_without_raw_values(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -82,6 +122,7 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
         self.assertEqual(handoff["summary"]["p0b_google_required_input_missing_count"], 6)
         self.assertEqual(handoff["summary"]["p0b_google_manual_backfill_expected_record_count"], 120)
         self.assertEqual(handoff["summary"]["p0b_google_manual_backfill_record_count"], 0)
+        self.assertFalse(handoff["summary"]["p0b_google_manual_backfill_fulfillment_available"])
         self.assertEqual(handoff["summary"]["p0b_google_phase_next_phase"], "environment")
         self.assertEqual(handoff["summary"]["p0b_google_full_spike_planned_runs"], 240)
         self.assertEqual(
@@ -188,6 +229,48 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
         self.assertEqual(verification["status"], "pass")
         self.assertEqual(hard_gate["status"], "fail")
         self.assertIn("external_dependency_handoff_not_ready", hard_gate["errors"])
+
+    def test_handoff_uses_manual_backfill_fulfillment_counts_when_available(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path, remediation_plan_path, p0a_env_path, p0a_exec_path, p0b_path = self._write_inputs(
+                temp_dir
+            )
+            fulfillment_path, fulfillment = self._write_manual_fulfillment(temp_dir, p0b_path)
+            handoff = build_au_external_dependency_handoff(
+                launch_status_path=launch_status_path,
+                remediation_plan_path=remediation_plan_path,
+                p0a_environment_checklist_path=p0a_env_path,
+                p0a_execution_checklist_path=p0a_exec_path,
+                p0b_google_execution_checklist_path=p0b_path,
+                p0b_google_manual_backfill_fulfillment_path=fulfillment_path,
+                p0b_google_manual_backfill_fulfillment=fulfillment,
+                output_path=Path(temp_dir) / "external-dependency-handoff.json",
+                generated_at="2026-06-13T00:00:00Z",
+            )
+            verification = verify_au_external_dependency_handoff(handoff)
+
+        manual_group = next(group for group in handoff["dependency_groups"] if group["id"] == "p0b_google_manual_backfill")
+        self.assertEqual(verification["status"], "pass")
+        self.assertFalse(handoff["external_dependency_handoff_ready"])
+        self.assertTrue(handoff["summary"]["p0b_google_manual_backfill_fulfillment_available"])
+        self.assertTrue(handoff["summary"]["p0b_google_manual_backfill_fulfillment_verified"])
+        self.assertEqual(handoff["summary"]["p0b_google_manual_backfill_record_count"], 120)
+        self.assertEqual(handoff["summary"]["p0b_google_manual_backfill_covered_prompt_city_count"], 60)
+        self.assertEqual(
+            handoff["summary"]["p0b_google_manual_backfill_fulfillment_missing_required_count"],
+            fulfillment["summary"]["missing_required_count"],
+        )
+        self.assertEqual(
+            handoff["summary"]["p0b_google_manual_backfill_fulfillment_hash"],
+            fulfillment["p0b_google_manual_backfill_fulfillment_hash"],
+        )
+        self.assertEqual(manual_group["record_count"], 120)
+        self.assertEqual(manual_group["covered_prompt_city_count"], 60)
+        self.assertEqual(
+            manual_group["manual_backfill_fulfillment_missing_required_count"],
+            fulfillment["summary"]["missing_required_count"],
+        )
+        self.assertEqual(manual_group["manual_backfill_fulfilled"], fulfillment["manual_backfill_fulfilled"])
 
     def test_verifier_detects_summary_tampering(self) -> None:
         with TemporaryDirectory() as temp_dir:

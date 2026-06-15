@@ -3239,6 +3239,13 @@ def _build_au_external_dependency_handoff_from_env() -> dict[str, object]:
         p0a_environment_checklist=au_p0a_environment_checklist(),
         p0a_execution_checklist=au_p0a_execution_checklist(),
         p0b_google_execution_checklist=au_p0b_google_execution_checklist(),
+        p0b_google_manual_backfill_fulfillment_path=Path(
+            os.getenv(
+                "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH,
+            )
+        ),
+        p0b_google_manual_backfill_fulfillment=au_p0b_google_manual_backfill_fulfillment(),
         output_path=Path(
             os.getenv(
                 "GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",

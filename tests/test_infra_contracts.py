@@ -645,6 +645,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("verify-au-customer-handoff-package:", makefile)
         self.assertIn("scripts/verify_au_customer_handoff_package.py", makefile)
         self.assertIn("au-delivery-evidence-refresh:", makefile)
+        refresh_block = makefile.split("au-delivery-evidence-refresh:", 1)[1].split("\nau-next-work-item:", 1)[0]
         self.assertIn("$(MAKE) au-p0a-env", makefile)
         self.assertIn("$(MAKE) verify-au-p0a-credential-clearance", makefile)
         self.assertIn("$(MAKE) au-external-dependency-handoff", makefile)
@@ -654,6 +655,10 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("$(MAKE) au-p0b-google-environment-fulfillment", makefile)
         self.assertIn("$(MAKE) verify-au-p0b-google-environment-clearance", makefile)
         self.assertIn("$(MAKE) au-p0b-google-manual-backfill-fulfillment", makefile)
+        self.assertLess(
+            refresh_block.index("$(MAKE) au-p0b-google-manual-backfill-fulfillment"),
+            refresh_block.index("$(MAKE) au-external-dependency-handoff"),
+        )
         self.assertIn("$(MAKE) verify-au-p0b-google-manual-backfill-clearance", makefile)
         self.assertIn("$(MAKE) au-p0b-google-phase-execution-fulfillment", makefile)
         self.assertIn("$(MAKE) verify-au-p0b-google-phase-execution-clearance", makefile)
@@ -678,6 +683,10 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("au-external-dependency-handoff:", makefile)
         self.assertIn("scripts/build_au_external_dependency_handoff.py", makefile)
         self.assertIn("GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH", makefile)
+        self.assertIn(
+            "--p0b-google-manual-backfill-fulfillment-path $${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH",
+            makefile,
+        )
         self.assertIn("verify-au-external-dependency-handoff:", makefile)
         self.assertIn("scripts/verify_au_external_dependency_handoff.py", makefile)
         self.assertIn("au-external-dependency-clearance:", makefile)

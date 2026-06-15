@@ -33,11 +33,17 @@ from scripts.build_au_p0b_google_execution_checklist import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_P0B_GOOGLE_EXECUTION_CHECKLIST_PATH,
     build_au_p0b_google_execution_checklist,
 )
+from scripts.build_au_p0b_google_manual_backfill_fulfillment import (  # noqa: E402
+    DEFAULT_OUTPUT_PATH as DEFAULT_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_PATH,
+)
 from scripts.verify_au_launch_remediation_plan import verify_au_launch_remediation_plan  # noqa: E402
 from scripts.verify_au_launch_status import verify_au_launch_status  # noqa: E402
 from scripts.verify_au_p0a_environment_checklist import verify_au_p0a_environment_checklist  # noqa: E402
 from scripts.verify_au_p0a_execution_checklist import verify_au_p0a_execution_checklist  # noqa: E402
 from scripts.verify_au_p0b_google_execution_checklist import verify_au_p0b_google_execution_checklist  # noqa: E402
+from scripts.verify_au_p0b_google_manual_backfill_fulfillment import (  # noqa: E402
+    verify_au_p0b_google_manual_backfill_fulfillment,
+)
 
 
 HANDOFF_VERSION = "au_external_dependency_handoff_v1"
@@ -94,6 +100,19 @@ def _as_list(value: object) -> list[object]:
 
 def _strings(value: object) -> list[str]:
     return [str(item) for item in _as_list(value)]
+
+
+def _int(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _first_present(primary: dict[str, Any], secondary: dict[str, Any], key: str) -> object:
+    if key in primary and primary.get(key) is not None:
+        return primary.get(key)
+    return secondary.get(key)
 
 
 def _commands(value: object) -> list[str]:
@@ -214,6 +233,20 @@ def _load_or_build_p0b_google_execution_checklist(
     }
 
 
+def _load_optional_p0b_manual_backfill_fulfillment(
+    path: Path | None,
+    payload: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    if payload is not None:
+        return payload, {"path": str(path or ""), "exists": True, "source": "provided_payload", "errors": []}
+    if path is None:
+        return None, {"path": "", "exists": False, "source": "not_configured", "errors": []}
+    loaded, source = _load_json(path)
+    if isinstance(loaded, dict):
+        return loaded, source
+    return None, source
+
+
 def _verifier_summary(result: dict[str, Any]) -> dict[str, Any]:
     return {
         "status": result.get("status", ""),
@@ -226,6 +259,7 @@ def _verifier_summary(result: dict[str, Any]) -> dict[str, Any]:
                 "environment_checklist_ready",
                 "p0a_execution_checklist_ready",
                 "google_execution_checklist_ready",
+                "manual_backfill_fulfillment_ready",
             )
         ),
         "errors": _strings(result.get("errors")),
@@ -652,10 +686,28 @@ def _p0b_google_environment_group(p0b_google_execution_checklist: dict[str, Any]
 def _p0b_google_manual_backfill_group(
     p0b_google_execution_checklist: dict[str, Any],
     work_items: list[dict[str, Any]],
+    *,
+    manual_backfill_fulfillment: dict[str, Any] | None = None,
+    manual_backfill_fulfillment_verifier: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     manual_handoff = _as_dict(p0b_google_execution_checklist.get("manual_backfill_handoff"))
+    fulfillment_summary = _as_dict(_as_dict(manual_backfill_fulfillment).get("summary"))
     redaction = _as_dict(manual_handoff.get("redaction_policy"))
     ready = manual_handoff.get("ready") is True
+    fulfillment_hash = str(
+        _as_dict(manual_backfill_fulfillment).get("p0b_google_manual_backfill_fulfillment_hash") or ""
+    )
+    fulfillment_available = bool(manual_backfill_fulfillment)
+    fulfillment_verified = (
+        _as_dict(manual_backfill_fulfillment_verifier).get("status") == "pass"
+        and _as_dict(manual_backfill_fulfillment_verifier).get("hash_valid") is True
+    )
+    record_count = _int(_first_present(fulfillment_summary, manual_handoff, "record_count"))
+    covered_prompt_city_count = _int(_first_present(fulfillment_summary, manual_handoff, "covered_prompt_city_count"))
+    expected_record_count = _int(_first_present(fulfillment_summary, manual_handoff, "expected_record_count"))
+    expected_prompt_city_count = _int(_first_present(fulfillment_summary, manual_handoff, "expected_prompt_city_count"))
+    expected_sample_size = _int(_first_present(fulfillment_summary, manual_handoff, "expected_sample_size"))
+    missing_required = _strings(fulfillment_summary.get("missing_required"))
     verification_commands = _unique_strings(
         _commands(manual_handoff.get("verification_commands"))
         + [
@@ -688,16 +740,39 @@ def _p0b_google_manual_backfill_group(
         "target_jsonl_path": str(manual_handoff.get("target_jsonl_path") or ""),
         "template_path": str(manual_handoff.get("template_path") or ""),
         "template_manifest_path": str(manual_handoff.get("template_manifest_path") or ""),
-        "verification_path": str(manual_handoff.get("verification_path") or ""),
-        "expected_record_count": int(manual_handoff.get("expected_record_count") or 0),
-        "record_count": int(manual_handoff.get("record_count") or 0),
-        "expected_prompt_city_count": int(manual_handoff.get("expected_prompt_city_count") or 0),
-        "covered_prompt_city_count": int(manual_handoff.get("covered_prompt_city_count") or 0),
-        "expected_sample_size": int(manual_handoff.get("expected_sample_size") or 0),
+        "verification_path": str(fulfillment_summary.get("verification_path") or manual_handoff.get("verification_path") or ""),
+        "expected_record_count": expected_record_count,
+        "record_count": record_count,
+        "expected_prompt_city_count": expected_prompt_city_count,
+        "covered_prompt_city_count": covered_prompt_city_count,
+        "expected_sample_size": expected_sample_size,
         "prompt_count": int(manual_handoff.get("prompt_count") or 0),
         "geo_cities": _strings(manual_handoff.get("geo_cities")),
-        "file_sha256": str(manual_handoff.get("file_sha256") or ""),
-        "verification_hash": str(manual_handoff.get("verification_hash") or ""),
+        "file_sha256": str(
+            _as_dict(_as_dict(manual_backfill_fulfillment).get("source_p0b_google_manual_backfill_verification")).get(
+                "file_sha256"
+            )
+            or manual_handoff.get("file_sha256")
+            or ""
+        ),
+        "verification_hash": str(
+            _as_dict(_as_dict(manual_backfill_fulfillment).get("source_p0b_google_manual_backfill_verification")).get(
+                "verification_hash"
+            )
+            or manual_handoff.get("verification_hash")
+            or ""
+        ),
+        "fulfillment_available": fulfillment_available,
+        "fulfillment_verified": fulfillment_verified,
+        "manual_backfill_fulfilled": _as_dict(manual_backfill_fulfillment).get("manual_backfill_fulfilled") is True,
+        "manual_backfill_fulfillment_hash": fulfillment_hash,
+        "manual_backfill_fulfillment_missing_required_count": _int(
+            fulfillment_summary.get("missing_required_count")
+        ),
+        "manual_backfill_fulfillment_missing_required": missing_required,
+        "manual_backfill_verification_status": str(
+            fulfillment_summary.get("manual_backfill_verification_status") or ""
+        ),
         "required_fields": _strings(manual_handoff.get("required_fields")),
         "operator_requirements": _strings(manual_handoff.get("operator_requirements")),
         "setup_commands": _commands(manual_handoff.get("setup_commands")),
@@ -782,11 +857,13 @@ def build_au_external_dependency_handoff(
     p0a_environment_checklist_path: Path = Path(DEFAULT_P0A_ENVIRONMENT_CHECKLIST_PATH),
     p0a_execution_checklist_path: Path = Path(DEFAULT_P0A_EXECUTION_CHECKLIST_PATH),
     p0b_google_execution_checklist_path: Path = Path(DEFAULT_P0B_GOOGLE_EXECUTION_CHECKLIST_PATH),
+    p0b_google_manual_backfill_fulfillment_path: Path | None = None,
     launch_status: dict[str, Any] | None = None,
     remediation_plan: dict[str, Any] | None = None,
     p0a_environment_checklist: dict[str, Any] | None = None,
     p0a_execution_checklist: dict[str, Any] | None = None,
     p0b_google_execution_checklist: dict[str, Any] | None = None,
+    p0b_google_manual_backfill_fulfillment: dict[str, Any] | None = None,
     output_path: Path | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
@@ -844,6 +921,13 @@ def build_au_external_dependency_handoff(
             "source": "provided_payload",
             "errors": [],
         }
+    (
+        p0b_google_manual_backfill_fulfillment,
+        p0b_manual_fulfillment_source,
+    ) = _load_optional_p0b_manual_backfill_fulfillment(
+        p0b_google_manual_backfill_fulfillment_path,
+        p0b_google_manual_backfill_fulfillment,
+    )
 
     launch_verifier = verify_au_launch_status(launch_status, path=launch_status_path)
     remediation_verifier = verify_au_launch_remediation_plan(remediation_plan, path=remediation_plan_path)
@@ -859,6 +943,19 @@ def build_au_external_dependency_handoff(
         p0b_google_execution_checklist,
         path=p0b_google_execution_checklist_path,
     )
+    p0b_manual_fulfillment_verifier = (
+        verify_au_p0b_google_manual_backfill_fulfillment(
+            p0b_google_manual_backfill_fulfillment,
+            path=p0b_google_manual_backfill_fulfillment_path,
+        )
+        if p0b_google_manual_backfill_fulfillment is not None
+        else {
+            "status": "skip",
+            "hash_valid": False,
+            "manual_backfill_fulfillment_ready": False,
+            "errors": _strings(p0b_manual_fulfillment_source.get("errors")),
+        }
+    )
     source_verifiers = {
         "launch_status": _verifier_summary(launch_verifier),
         "remediation_plan": _verifier_summary(remediation_verifier),
@@ -866,6 +963,10 @@ def build_au_external_dependency_handoff(
         "p0a_execution_checklist": _verifier_summary(p0a_execution_verifier),
         "p0b_google_execution_checklist": _verifier_summary(p0b_google_verifier),
     }
+    if p0b_google_manual_backfill_fulfillment is not None:
+        source_verifiers["p0b_google_manual_backfill_fulfillment"] = _verifier_summary(
+            p0b_manual_fulfillment_verifier
+        )
     structural_ready = all(
         verifier.get("status") == "pass" and verifier.get("hash_valid") is True
         for verifier in source_verifiers.values()
@@ -887,7 +988,12 @@ def build_au_external_dependency_handoff(
         _p0a_provider_credentials_group(p0a_environment_checklist, p0a_execution_checklist, work_items),
         _p0a_real_batches_group(p0a_execution_checklist, work_items),
         _p0b_google_environment_group(p0b_google_execution_checklist, work_items),
-        _p0b_google_manual_backfill_group(p0b_google_execution_checklist, work_items),
+        _p0b_google_manual_backfill_group(
+            p0b_google_execution_checklist,
+            work_items,
+            manual_backfill_fulfillment=p0b_google_manual_backfill_fulfillment,
+            manual_backfill_fulfillment_verifier=p0b_manual_fulfillment_verifier,
+        ),
         _p0b_google_phase_execution_group(p0b_google_execution_checklist, work_items),
     ]
     dependency_groups = [_with_group_execution_fields(group, work_items) for group in dependency_groups]
@@ -909,7 +1015,7 @@ def build_au_external_dependency_handoff(
     p0a_phase = _as_dict(p0a_execution_checklist.get("real_batch_phase_handoff"))
     p0a_summary = _as_dict(p0a_execution_checklist.get("summary"))
     p0b_environment = _as_dict(p0b_google_execution_checklist.get("environment_handoff"))
-    p0b_manual = _as_dict(p0b_google_execution_checklist.get("manual_backfill_handoff"))
+    p0b_manual = _as_dict(next((group for group in dependency_groups if group.get("id") == "p0b_google_manual_backfill"), {}))
     p0b_phase = _as_dict(p0b_google_execution_checklist.get("google_spike_phase_handoff"))
     p0b_summary = _as_dict(p0b_google_execution_checklist.get("summary"))
     p0b_required_input_missing_count = int(p0b_environment.get("missing_required_count") or 0) + int(
@@ -964,6 +1070,20 @@ def build_au_external_dependency_handoff(
             "p0b_google_manual_backfill_expected_record_count": int(
                 p0b_manual.get("expected_record_count") or 0
             ),
+            "p0b_google_manual_backfill_covered_prompt_city_count": int(
+                p0b_manual.get("covered_prompt_city_count") or 0
+            ),
+            "p0b_google_manual_backfill_expected_prompt_city_count": int(
+                p0b_manual.get("expected_prompt_city_count") or 0
+            ),
+            "p0b_google_manual_backfill_fulfillment_available": p0b_manual.get("fulfillment_available") is True,
+            "p0b_google_manual_backfill_fulfillment_verified": p0b_manual.get("fulfillment_verified") is True,
+            "p0b_google_manual_backfill_fulfillment_hash": str(
+                p0b_manual.get("manual_backfill_fulfillment_hash") or ""
+            ),
+            "p0b_google_manual_backfill_fulfillment_missing_required_count": int(
+                p0b_manual.get("manual_backfill_fulfillment_missing_required_count") or 0
+            ),
             "p0b_google_remaining_blocker_count": int(p0b_summary.get("remaining_blocker_count") or 0),
             "p0b_google_phase_next_phase": str(p0b_phase.get("next_phase") or ""),
             "p0b_google_phase_blocked_phase_count": int(p0b_phase.get("blocked_phase_count") or 0),
@@ -975,6 +1095,7 @@ def build_au_external_dependency_handoff(
             "p0a_environment_checklist": str(p0a_environment_checklist_path),
             "p0a_execution_checklist": str(p0a_execution_checklist_path),
             "p0b_google_execution_checklist": str(p0b_google_execution_checklist_path),
+            "p0b_google_manual_backfill_fulfillment": str(p0b_google_manual_backfill_fulfillment_path or ""),
         },
         "source_loaders": {
             "launch_status": launch_source,
@@ -982,6 +1103,7 @@ def build_au_external_dependency_handoff(
             "p0a_environment_checklist": p0a_environment_source,
             "p0a_execution_checklist": p0a_execution_source,
             "p0b_google_execution_checklist": p0b_google_source,
+            "p0b_google_manual_backfill_fulfillment": p0b_manual_fulfillment_source,
         },
         "source_verifiers": source_verifiers,
         "source_artifacts": [
@@ -990,6 +1112,12 @@ def build_au_external_dependency_handoff(
             _source_file_entry("p0a_environment_checklist", p0a_environment_checklist_path),
             _source_file_entry("p0a_execution_checklist", p0a_execution_checklist_path),
             _source_file_entry("p0b_google_execution_checklist", p0b_google_execution_checklist_path),
+            *(
+                [_source_file_entry("p0b_google_manual_backfill_fulfillment", p0b_google_manual_backfill_fulfillment_path)]
+                if p0b_google_manual_backfill_fulfillment_path is not None
+                and p0b_google_manual_backfill_fulfillment_path.exists()
+                else []
+            ),
         ],
         "dependency_groups": dependency_groups,
         "clearance_sequence": clearance_sequence,
@@ -1072,6 +1200,14 @@ def parse_args() -> argparse.Namespace:
         help="Path to the AU P0b Google execution checklist JSON.",
     )
     parser.add_argument(
+        "--p0b-google-manual-backfill-fulfillment-path",
+        default=os.environ.get(
+            "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH",
+            DEFAULT_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_PATH,
+        ),
+        help="Optional path to the AU P0b Google manual backfill fulfillment JSON.",
+    )
+    parser.add_argument(
         "--output-path",
         default=os.environ.get("GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU external dependency handoff JSON.",
@@ -1089,6 +1225,7 @@ def main() -> None:
         p0a_environment_checklist_path=Path(args.p0a_environment_checklist_path),
         p0a_execution_checklist_path=Path(args.p0a_execution_checklist_path),
         p0b_google_execution_checklist_path=Path(args.p0b_google_execution_checklist_path),
+        p0b_google_manual_backfill_fulfillment_path=Path(args.p0b_google_manual_backfill_fulfillment_path),
         output_path=output_path,
         generated_at=args.generated_at,
     )
