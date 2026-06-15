@@ -439,9 +439,16 @@ class AuDeliveryProgressTest(unittest.TestCase):
             next_work_item["next_work_item_packet_hash"] = "refreshed-next-work-item-hash"
             Path(next_work_item_path).write_text(json.dumps(next_work_item), encoding="utf-8")
             progress["delivery_progress_hash"] = compute_delivery_progress_hash(progress)
-            verification = verify_au_delivery_progress(progress)
+            in_memory_verification = verify_au_delivery_progress(progress)
+            verification = verify_au_delivery_progress(progress, verify_current_files=True)
+            path_verification = verify_au_delivery_progress(progress, path=Path(temp_dir) / "progress.json")
 
+        self.assertEqual(in_memory_verification["status"], "pass")
+        self.assertFalse(in_memory_verification["current_file_check_enabled"])
         self.assertEqual(verification["status"], "fail")
+        self.assertTrue(verification["current_file_check_enabled"])
+        self.assertEqual(path_verification["status"], "fail")
+        self.assertTrue(path_verification["current_file_check_enabled"])
         self.assertIn("source_artifact_current_hash_mismatch:next_work_item", verification["errors"])
         self.assertIn("summary_source_artifact_current_hash_mismatch:next_work_item", verification["errors"])
         self.assertIn("evidence_source_file_sha256_mismatch:next_work_item", verification["errors"])

@@ -146,6 +146,12 @@ def _as_list(value: object) -> list[object]:
     return value if isinstance(value, list) else []
 
 
+def _path_for_current_file_check(source: dict[str, Any], path: Path) -> Path | None:
+    if source.get("source") == "existing_file":
+        return path
+    return None
+
+
 def _load_or_build(path: Path, builder: Any, *, generated_at: str | None) -> tuple[dict[str, Any], dict[str, Any]]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -516,7 +522,10 @@ def build_au_delivery_progress(
     launch_verifier = verify_au_launch_status(launch_status)
     handoff_verifier = verify_au_handoff_dossier(handoff_dossier, path=handoff_dossier_path)
     readiness_verifier = verify_au_customer_handoff_readiness(customer_handoff_readiness, path=customer_handoff_readiness_path)
-    next_work_item_verifier = verify_au_next_work_item_packet(next_work_item, path=next_work_item_path)
+    next_work_item_verifier = verify_au_next_work_item_packet(
+        next_work_item,
+        path=_path_for_current_file_check(next_work_item_source, next_work_item_path),
+    )
     dependency_handoff_verifier = verify_au_external_dependency_handoff(
         external_dependency_handoff,
         path=external_dependency_handoff_path,

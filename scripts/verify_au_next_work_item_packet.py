@@ -85,6 +85,7 @@ def verify_au_next_work_item_packet(
     *,
     path: Path | None = None,
     require_customer_ready: bool = False,
+    verify_current_files: bool | None = None,
 ) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {
@@ -95,6 +96,7 @@ def verify_au_next_work_item_packet(
             "ready_for_customer_report_handoff": False,
         }
 
+    current_file_check_enabled = path is not None if verify_current_files is None else verify_current_files
     errors: list[str] = []
     for field in REQUIRED_FIELDS:
         if field not in payload:
@@ -273,27 +275,28 @@ def verify_au_next_work_item_packet(
         ):
             if command not in recommended_sequence:
                 errors.append(f"recommended_sequence_missing:{command}")
-        linked_output_path = Path(str(linked_request_packet.get("output_path") or expected_context["output_path"]))
-        linked_file_exists = linked_output_path.is_file()
-        if linked_request_packet.get("exists") is not linked_file_exists:
-            errors.append("linked_request_packet_file_exists_mismatch")
-        if linked_file_exists:
-            current_payload = _load_json_file(linked_output_path)
-            if not current_payload:
-                errors.append("linked_request_packet_current_json_invalid")
-            else:
-                current_hash = str(current_payload.get(expected_context["hash_field"]) or "")
-                if not current_hash:
-                    errors.append("linked_request_packet_current_hash_missing")
-                if linked_request_packet.get("packet_hash") != current_hash:
-                    errors.append("linked_request_packet_current_hash_mismatch")
-                if summary.get("linked_request_packet_hash") != current_hash:
-                    errors.append("summary_linked_request_packet_current_hash_mismatch")
-            current_file_sha256 = _file_sha256(linked_output_path)
-            if linked_request_packet.get("file_sha256") != current_file_sha256:
-                errors.append("linked_request_packet_file_sha256_mismatch")
-        elif linked_request_packet.get("packet_hash"):
-            errors.append("linked_request_packet_hash_present_but_file_missing")
+        if current_file_check_enabled:
+            linked_output_path = Path(str(linked_request_packet.get("output_path") or expected_context["output_path"]))
+            linked_file_exists = linked_output_path.is_file()
+            if linked_request_packet.get("exists") is not linked_file_exists:
+                errors.append("linked_request_packet_file_exists_mismatch")
+            if linked_file_exists:
+                current_payload = _load_json_file(linked_output_path)
+                if not current_payload:
+                    errors.append("linked_request_packet_current_json_invalid")
+                else:
+                    current_hash = str(current_payload.get(expected_context["hash_field"]) or "")
+                    if not current_hash:
+                        errors.append("linked_request_packet_current_hash_missing")
+                    if linked_request_packet.get("packet_hash") != current_hash:
+                        errors.append("linked_request_packet_current_hash_mismatch")
+                    if summary.get("linked_request_packet_hash") != current_hash:
+                        errors.append("summary_linked_request_packet_current_hash_mismatch")
+                current_file_sha256 = _file_sha256(linked_output_path)
+                if linked_request_packet.get("file_sha256") != current_file_sha256:
+                    errors.append("linked_request_packet_file_sha256_mismatch")
+            elif linked_request_packet.get("packet_hash"):
+                errors.append("linked_request_packet_hash_present_but_file_missing")
     elif next_work_item_id != "none":
         if linked_request_packet.get("request_packet_available") is True:
             errors.append("unexpected_linked_request_packet_available")
@@ -364,6 +367,7 @@ def verify_au_next_work_item_packet(
         "status": "pass" if not errors else "fail",
         "errors": errors,
         "path": str(path) if path else "",
+        "current_file_check_enabled": current_file_check_enabled,
         "next_work_item_packet_version": payload.get("next_work_item_packet_version", ""),
         "next_work_item_packet_hash": expected_hash if isinstance(expected_hash, str) else "",
         "computed_next_work_item_packet_hash": computed_hash,

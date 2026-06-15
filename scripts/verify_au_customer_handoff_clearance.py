@@ -145,6 +145,7 @@ def verify_au_customer_handoff_clearance(
     *,
     path: Path | None = None,
     require_cleared: bool = False,
+    verify_current_files: bool | None = None,
 ) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {
@@ -155,6 +156,7 @@ def verify_au_customer_handoff_clearance(
             "customer_handoff_clearance_ready": False,
         }
 
+    current_file_check_enabled = path is not None if verify_current_files is None else verify_current_files
     errors: list[str] = []
     for field in REQUIRED_FIELDS:
         if field not in payload:
@@ -226,29 +228,30 @@ def verify_au_customer_handoff_clearance(
             errors.append(f"source_verifier_status_mismatch:{key}")
         if summary.get(hash_field) != source.get("hash"):
             errors.append(f"summary_source_hash_mismatch:{key}")
-        source_path = Path(str(source.get("path") or ""))
-        source_metadata = _as_dict(source.get("source"))
-        source_declares_existing = source_metadata.get("exists") is True or (
-            source_metadata.get("source") == "existing_file"
-        )
-        if source_path.is_file():
-            current_payload = _load_json_file(source_path)
-            if not current_payload:
-                errors.append(f"source_artifact_current_json_invalid:{key}")
-            else:
-                current_hash = str(current_payload.get(hash_field) or "")
-                if not current_hash:
-                    errors.append(f"source_artifact_current_hash_missing:{key}")
-                if source.get("hash") != current_hash:
-                    errors.append(f"source_artifact_current_hash_mismatch:{key}")
-                if summary.get(hash_field) != current_hash:
-                    errors.append(f"summary_source_artifact_current_hash_mismatch:{key}")
-            evidence_source = _as_dict(evidence_sources.get(key))
-            current_file_sha256 = _file_sha256(source_path)
-            if evidence_source.get("file_sha256") and evidence_source.get("file_sha256") != current_file_sha256:
-                errors.append(f"evidence_source_file_sha256_mismatch:{key}")
-        elif source_declares_existing:
-            errors.append(f"source_artifact_file_missing:{key}")
+        if current_file_check_enabled:
+            source_path = Path(str(source.get("path") or ""))
+            source_metadata = _as_dict(source.get("source"))
+            source_declares_existing = source_metadata.get("exists") is True or (
+                source_metadata.get("source") == "existing_file"
+            )
+            if source_path.is_file():
+                current_payload = _load_json_file(source_path)
+                if not current_payload:
+                    errors.append(f"source_artifact_current_json_invalid:{key}")
+                else:
+                    current_hash = str(current_payload.get(hash_field) or "")
+                    if not current_hash:
+                        errors.append(f"source_artifact_current_hash_missing:{key}")
+                    if source.get("hash") != current_hash:
+                        errors.append(f"source_artifact_current_hash_mismatch:{key}")
+                    if summary.get(hash_field) != current_hash:
+                        errors.append(f"summary_source_artifact_current_hash_mismatch:{key}")
+                evidence_source = _as_dict(evidence_sources.get(key))
+                current_file_sha256 = _file_sha256(source_path)
+                if evidence_source.get("file_sha256") and evidence_source.get("file_sha256") != current_file_sha256:
+                    errors.append(f"evidence_source_file_sha256_mismatch:{key}")
+            elif source_declares_existing:
+                errors.append(f"source_artifact_file_missing:{key}")
 
     expected_packet_ready = all(
         verifier.get("status") == "pass" and verifier.get("hash_valid") is True
@@ -541,6 +544,7 @@ def verify_au_customer_handoff_clearance(
         "status": "pass" if not errors else "fail",
         "errors": errors,
         "path": str(path) if path else "",
+        "current_file_check_enabled": current_file_check_enabled,
         "customer_handoff_clearance_version": payload.get("customer_handoff_clearance_version", ""),
         "customer_handoff_clearance_hash": expected_hash if isinstance(expected_hash, str) else "",
         "computed_customer_handoff_clearance_hash": computed_hash,

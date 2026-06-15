@@ -322,11 +322,18 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
                 linked_payload["p0a_credential_request_packet_hash"] = "refreshed-request-hash"
                 linked_path.write_text(json.dumps(linked_payload), encoding="utf-8")
                 packet["next_work_item_packet_hash"] = compute_next_work_item_packet_hash(packet)
-                verification = verify_au_next_work_item_packet(packet)
+                in_memory_verification = verify_au_next_work_item_packet(packet)
+                verification = verify_au_next_work_item_packet(packet, verify_current_files=True)
+                path_verification = verify_au_next_work_item_packet(packet, path=Path(temp_dir) / "next-work-item.json")
             finally:
                 REQUEST_PACKET_CONTEXTS["p0a_environment"] = original_context
 
+        self.assertEqual(in_memory_verification["status"], "pass")
+        self.assertFalse(in_memory_verification["current_file_check_enabled"])
         self.assertEqual(verification["status"], "fail")
+        self.assertTrue(verification["current_file_check_enabled"])
+        self.assertEqual(path_verification["status"], "fail")
+        self.assertTrue(path_verification["current_file_check_enabled"])
         self.assertIn("linked_request_packet_current_hash_mismatch", verification["errors"])
         self.assertIn("summary_linked_request_packet_current_hash_mismatch", verification["errors"])
         self.assertIn("linked_request_packet_file_sha256_mismatch", verification["errors"])

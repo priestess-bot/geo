@@ -142,6 +142,12 @@ def _unique_strings(values: list[str]) -> list[str]:
     return result
 
 
+def _path_for_current_file_check(source: dict[str, Any], path: Path) -> Path | None:
+    if source.get("source") == "existing_file":
+        return path
+    return None
+
+
 def _load_json(path: Path) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -788,7 +794,10 @@ def build_au_customer_handoff_clearance(
         customer_handoff_readiness,
         path=customer_handoff_readiness_path,
     )
-    progress_verifier = verify_au_delivery_progress(delivery_progress, path=delivery_progress_path)
+    progress_verifier = verify_au_delivery_progress(
+        delivery_progress,
+        path=_path_for_current_file_check(delivery_source, delivery_progress_path),
+    )
     external_handoff_verifier = verify_au_external_dependency_handoff(
         external_dependency_handoff,
         path=external_dependency_handoff_path,

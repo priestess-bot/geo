@@ -81,6 +81,7 @@ def verify_au_delivery_progress(
     *,
     path: Path | None = None,
     require_customer_ready: bool = False,
+    verify_current_files: bool | None = None,
 ) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {
@@ -91,6 +92,7 @@ def verify_au_delivery_progress(
             "ready_for_customer_report_handoff": False,
         }
 
+    current_file_check_enabled = path is not None if verify_current_files is None else verify_current_files
     errors: list[str] = []
     for field in REQUIRED_FIELDS:
         if field not in payload:
@@ -171,29 +173,30 @@ def verify_au_delivery_progress(
             errors.append(f"source_artifact_hash_mismatch:{artifact_key}")
         if artifact.get("hash_valid") is not True:
             errors.append(f"source_artifact_hash_not_valid:{artifact_key}")
-        artifact_path = Path(str(artifact.get("path") or ""))
-        artifact_source = _as_dict(artifact.get("source"))
-        artifact_source_declares_existing = artifact_source.get("exists") is True or (
-            artifact_source.get("source") == "existing_file"
-        )
-        if artifact_path.is_file():
-            current_payload = _load_json_file(artifact_path)
-            if not current_payload:
-                errors.append(f"source_artifact_current_json_invalid:{artifact_key}")
-            else:
-                current_hash = str(current_payload.get(hash_field) or "")
-                if not current_hash:
-                    errors.append(f"source_artifact_current_hash_missing:{artifact_key}")
-                if artifact.get("hash") != current_hash:
-                    errors.append(f"source_artifact_current_hash_mismatch:{artifact_key}")
-                if summary.get(summary_key) != current_hash:
-                    errors.append(f"summary_source_artifact_current_hash_mismatch:{artifact_key}")
-            evidence_source = _as_dict(evidence_sources.get(artifact_key))
-            current_file_sha256 = _file_sha256(artifact_path)
-            if evidence_source.get("file_sha256") and evidence_source.get("file_sha256") != current_file_sha256:
-                errors.append(f"evidence_source_file_sha256_mismatch:{artifact_key}")
-        elif artifact_source_declares_existing:
-            errors.append(f"source_artifact_file_missing:{artifact_key}")
+        if current_file_check_enabled:
+            artifact_path = Path(str(artifact.get("path") or ""))
+            artifact_source = _as_dict(artifact.get("source"))
+            artifact_source_declares_existing = artifact_source.get("exists") is True or (
+                artifact_source.get("source") == "existing_file"
+            )
+            if artifact_path.is_file():
+                current_payload = _load_json_file(artifact_path)
+                if not current_payload:
+                    errors.append(f"source_artifact_current_json_invalid:{artifact_key}")
+                else:
+                    current_hash = str(current_payload.get(hash_field) or "")
+                    if not current_hash:
+                        errors.append(f"source_artifact_current_hash_missing:{artifact_key}")
+                    if artifact.get("hash") != current_hash:
+                        errors.append(f"source_artifact_current_hash_mismatch:{artifact_key}")
+                    if summary.get(summary_key) != current_hash:
+                        errors.append(f"summary_source_artifact_current_hash_mismatch:{artifact_key}")
+                evidence_source = _as_dict(evidence_sources.get(artifact_key))
+                current_file_sha256 = _file_sha256(artifact_path)
+                if evidence_source.get("file_sha256") and evidence_source.get("file_sha256") != current_file_sha256:
+                    errors.append(f"evidence_source_file_sha256_mismatch:{artifact_key}")
+            elif artifact_source_declares_existing:
+                errors.append(f"source_artifact_file_missing:{artifact_key}")
 
     p0a_credential_clearance_verifier = _as_dict(verifiers.get("p0a_credential_clearance"))
     if summary.get("p0a_credential_clearance_ready") is not (
@@ -315,6 +318,7 @@ def verify_au_delivery_progress(
         "status": "pass" if not errors else "fail",
         "errors": errors,
         "path": str(path) if path else "",
+        "current_file_check_enabled": current_file_check_enabled,
         "delivery_progress_version": payload.get("delivery_progress_version", ""),
         "delivery_progress_hash": expected_hash if isinstance(expected_hash, str) else "",
         "computed_delivery_progress_hash": computed_hash,

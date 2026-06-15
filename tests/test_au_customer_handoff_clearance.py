@@ -479,9 +479,19 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
             delivery_progress["delivery_progress_hash"] = "refreshed-delivery-progress-hash"
             Path(delivery_progress_path).write_text(json.dumps(delivery_progress), encoding="utf-8")
             packet["customer_handoff_clearance_hash"] = compute_customer_handoff_clearance_hash(packet)
-            verification = verify_au_customer_handoff_clearance(packet)
+            in_memory_verification = verify_au_customer_handoff_clearance(packet)
+            verification = verify_au_customer_handoff_clearance(packet, verify_current_files=True)
+            path_verification = verify_au_customer_handoff_clearance(
+                packet,
+                path=Path(temp_dir) / "customer-clearance.json",
+            )
 
+        self.assertEqual(in_memory_verification["status"], "pass")
+        self.assertFalse(in_memory_verification["current_file_check_enabled"])
         self.assertEqual(verification["status"], "fail")
+        self.assertTrue(verification["current_file_check_enabled"])
+        self.assertEqual(path_verification["status"], "fail")
+        self.assertTrue(path_verification["current_file_check_enabled"])
         self.assertIn("source_artifact_current_hash_mismatch:delivery_progress", verification["errors"])
         self.assertIn("summary_source_artifact_current_hash_mismatch:delivery_progress", verification["errors"])
         self.assertIn("evidence_source_file_sha256_mismatch:delivery_progress", verification["errors"])
