@@ -389,6 +389,7 @@ def build_au_p0b_google_manual_backfill_fulfillment(
     manual_backfill_fulfilled = bool(required_items) and len(fulfilled_required) == len(required_items)
     request_summary = _as_dict(manual_backfill_request.get("summary"))
     request_payload = _as_dict(manual_backfill_request.get("manual_backfill_request"))
+    verification_summary = _as_dict(manual_backfill_verification.get("summary"))
     verification_errors = _strings(manual_backfill_verification.get("errors"))
     strict_gate_command = (
         "PYTHONPATH=packages/geno_core:apps/api python3 "
@@ -408,6 +409,10 @@ def build_au_p0b_google_manual_backfill_fulfillment(
         "manual_backfill_handoff_ready": manual_backfill_request.get("manual_backfill_handoff_ready") is True,
         "manual_backfill_verification_ready": verification_ready,
         "manual_backfill_verification_status": str(manual_backfill_verification.get("status") or ""),
+        "manual_backfill_verification_hash": str(manual_backfill_verification.get("verification_hash") or ""),
+        "manual_backfill_ready": verification_summary.get("manual_backfill_ready") is True,
+        "manual_backfill_coverage_complete": verification_summary.get("coverage_complete") is True,
+        "manual_backfill_content_complete": verification_summary.get("content_complete") is True,
         "expected_record_count": _int(request_summary.get("expected_record_count") or request_payload.get("expected_record_count")),
         "record_count": _int(manual_backfill_verification.get("record_count")),
         "expected_prompt_city_count": _int(
@@ -416,6 +421,28 @@ def build_au_p0b_google_manual_backfill_fulfillment(
         "covered_prompt_city_count": _int(manual_backfill_verification.get("covered_prompt_city_count")),
         "expected_sample_size": _int(request_summary.get("expected_sample_size") or request_payload.get("expected_sample_size")),
         "verification_expected_sample_size": _int(manual_backfill_verification.get("expected_sample_size")),
+        "missing_prompt_city_sample_count": _int(
+            verification_summary.get("missing_prompt_city_sample_count")
+            or manual_backfill_verification.get("missing_prompt_city_sample_count")
+        ),
+        "duplicate_prompt_city_sample_count": _int(
+            verification_summary.get("duplicate_prompt_city_sample_count")
+            or manual_backfill_verification.get("duplicate_prompt_city_sample_count")
+        ),
+        "unexpected_prompt_city_record_count": _int(
+            verification_summary.get("unexpected_prompt_city_record_count")
+            or manual_backfill_verification.get("unexpected_prompt_city_record_count")
+        ),
+        "missing_answer_line_count": _int(
+            verification_summary.get("missing_answer_line_count") or manual_backfill_verification.get("missing_answer_line_count")
+        ),
+        "missing_citation_line_count": _int(
+            verification_summary.get("missing_citation_line_count")
+            or manual_backfill_verification.get("missing_citation_line_count")
+        ),
+        "missing_asset_line_count": _int(
+            verification_summary.get("missing_asset_line_count") or manual_backfill_verification.get("missing_asset_line_count")
+        ),
         "verification_error_count": len(verification_errors),
         "verification_errors": verification_errors,
         "required_count": len(required_items),
@@ -432,6 +459,7 @@ def build_au_p0b_google_manual_backfill_fulfillment(
         "raw_answer_values_allowed": False,
         "raw_citation_values_allowed": False,
         "raw_asset_urls_allowed": False,
+        "verification_next_action": str(verification_summary.get("next_action") or ""),
         "next_action": _next_action(missing_required, str(manual_backfill_verification.get("status") or "")),
         "next_command": "make verify-au-p0b-google-manual-backfill"
         if missing_required
@@ -487,6 +515,22 @@ def build_au_p0b_google_manual_backfill_fulfillment(
             "hash_valid": verification_verifier.get("hash_valid") is True,
             "verification_hash": str(verification_verifier.get("verification_hash") or ""),
             "manual_backfill_status": str(verification_verifier.get("manual_backfill_status") or ""),
+            "manual_backfill_ready": verification_verifier.get("manual_backfill_ready") is True,
+            "coverage_complete": verification_verifier.get("coverage_complete") is True,
+            "content_complete": verification_verifier.get("content_complete") is True,
+            "expected_prompt_city_count": _int(verification_verifier.get("expected_prompt_city_count")),
+            "expected_sample_size": _int(verification_verifier.get("expected_sample_size")),
+            "expected_record_count": _int(verification_verifier.get("expected_record_count")),
+            "record_count": _int(verification_verifier.get("record_count")),
+            "covered_prompt_city_count": _int(verification_verifier.get("covered_prompt_city_count")),
+            "missing_prompt_city_sample_count": _int(verification_verifier.get("missing_prompt_city_sample_count")),
+            "duplicate_prompt_city_sample_count": _int(verification_verifier.get("duplicate_prompt_city_sample_count")),
+            "unexpected_prompt_city_record_count": _int(verification_verifier.get("unexpected_prompt_city_record_count")),
+            "missing_answer_line_count": _int(verification_verifier.get("missing_answer_line_count")),
+            "missing_citation_line_count": _int(verification_verifier.get("missing_citation_line_count")),
+            "missing_asset_line_count": _int(verification_verifier.get("missing_asset_line_count")),
+            "error_count": _int(verification_verifier.get("error_count")),
+            "next_action": str(verification_verifier.get("next_action") or ""),
             "errors": _strings(verification_verifier.get("errors")),
         },
         "summary": summary,

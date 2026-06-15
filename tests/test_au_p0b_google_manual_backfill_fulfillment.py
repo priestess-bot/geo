@@ -99,6 +99,13 @@ class AuP0bGoogleManualBackfillFulfillmentTest(unittest.TestCase):
         self.assertEqual(fulfillment["summary"]["expected_record_count"], 120)
         self.assertEqual(fulfillment["summary"]["record_count"], 0)
         self.assertEqual(fulfillment["summary"]["covered_prompt_city_count"], 0)
+        self.assertFalse(fulfillment["summary"]["manual_backfill_ready"])
+        self.assertFalse(fulfillment["summary"]["manual_backfill_coverage_complete"])
+        self.assertFalse(fulfillment["summary"]["manual_backfill_content_complete"])
+        self.assertEqual(fulfillment["summary"]["missing_answer_line_count"], 0)
+        self.assertEqual(fulfillment["summary"]["missing_citation_line_count"], 0)
+        self.assertEqual(fulfillment["summary"]["missing_asset_line_count"], 0)
+        self.assertEqual(fulfillment["summary"]["verification_next_action"], "build_manual_backfill_template")
         self.assertIn("manual_backfill_file_missing", fulfillment["summary"]["verification_errors"])
         self.assertIn("verification:status", fulfillment["summary"]["missing_required"])
         self.assertIn("count:record_count", fulfillment["summary"]["missing_required"])
@@ -113,6 +120,9 @@ class AuP0bGoogleManualBackfillFulfillmentTest(unittest.TestCase):
             compute_p0b_google_manual_backfill_fulfillment_hash(fulfillment),
         )
         self.assertEqual(verification["status"], "pass")
+        self.assertFalse(verification["manual_backfill_ready"])
+        self.assertFalse(verification["manual_backfill_coverage_complete"])
+        self.assertFalse(verification["manual_backfill_content_complete"])
         self.assertEqual(hard_gate["status"], "fail")
         self.assertIn("p0b_google_manual_backfill_not_fulfilled", hard_gate["errors"])
         serialized = json.dumps(fulfillment)
@@ -140,6 +150,12 @@ class AuP0bGoogleManualBackfillFulfillmentTest(unittest.TestCase):
         self.assertTrue(fulfillment["google_main_scoring_allowed"])
         self.assertEqual(fulfillment["summary"]["record_count"], 120)
         self.assertEqual(fulfillment["summary"]["covered_prompt_city_count"], 60)
+        self.assertTrue(fulfillment["summary"]["manual_backfill_ready"])
+        self.assertTrue(fulfillment["summary"]["manual_backfill_coverage_complete"])
+        self.assertTrue(fulfillment["summary"]["manual_backfill_content_complete"])
+        self.assertEqual(fulfillment["summary"]["missing_answer_line_count"], 0)
+        self.assertEqual(fulfillment["summary"]["missing_citation_line_count"], 0)
+        self.assertEqual(fulfillment["summary"]["missing_asset_line_count"], 0)
         self.assertEqual(fulfillment["summary"]["missing_required_count"], 0)
         self.assertEqual(hard_gate["status"], "pass")
 
@@ -162,6 +178,29 @@ class AuP0bGoogleManualBackfillFulfillmentTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_record_count_mismatch", verification["errors"])
+
+    def test_verifier_detects_tampered_missing_answer_line_count_even_when_hash_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            request_path, request = self._write_request(temp_dir, ready=True)
+            verification_path = Path(str(request["summary"]["verification_path"]))  # type: ignore[index]
+            verification_payload = json.loads(verification_path.read_text(encoding="utf-8"))
+            fulfillment = build_au_p0b_google_manual_backfill_fulfillment(
+                manual_backfill_request_path=request_path,
+                manual_backfill_request=request,
+                manual_backfill_verification_path=verification_path,
+                manual_backfill_verification=verification_payload,
+                manual_jsonl_path=Path(str(verification_payload["path"])),
+                output_path=Path(temp_dir) / "manual-fulfillment.json",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            fulfillment["summary"]["missing_answer_line_count"] = 1
+            fulfillment["p0b_google_manual_backfill_fulfillment_hash"] = (
+                compute_p0b_google_manual_backfill_fulfillment_hash(fulfillment)
+            )
+            verification = verify_au_p0b_google_manual_backfill_fulfillment(fulfillment)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("summary_missing_answer_line_count_mismatch", verification["errors"])
 
     def test_cli_writes_and_verifies_manual_backfill_fulfillment_json(self) -> None:
         with TemporaryDirectory() as temp_dir:

@@ -92,6 +92,13 @@ def _missing_by_owner(items: list[dict[str, Any]]) -> dict[str, list[str]]:
     return {owner: sorted(keys) for owner, keys in sorted(owners.items())}
 
 
+def _int(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def verify_au_p0b_google_manual_backfill_fulfillment(
     payload: Any,
     *,
@@ -181,6 +188,16 @@ def verify_au_p0b_google_manual_backfill_fulfillment(
         errors.append("summary_manual_backfill_verification_ready_mismatch")
     if summary.get("manual_backfill_verification_status") != source_verification.get("manual_backfill_status"):
         errors.append("summary_manual_backfill_verification_status_mismatch")
+    if summary.get("manual_backfill_verification_hash") != source_verification.get("verification_hash"):
+        errors.append("summary_manual_backfill_verification_hash_mismatch")
+    if summary.get("manual_backfill_ready") is not (verification_verifier.get("manual_backfill_ready") is True):
+        errors.append("summary_manual_backfill_ready_mismatch")
+    if summary.get("manual_backfill_coverage_complete") is not (
+        verification_verifier.get("coverage_complete") is True
+    ):
+        errors.append("summary_manual_backfill_coverage_complete_mismatch")
+    if summary.get("manual_backfill_content_complete") is not (verification_verifier.get("content_complete") is True):
+        errors.append("summary_manual_backfill_content_complete_mismatch")
     if summary.get("required_count") != len(required_items):
         errors.append("summary_required_count_mismatch")
     if summary.get("fulfilled_required_count") != len(fulfilled_required):
@@ -195,8 +212,22 @@ def verify_au_p0b_google_manual_backfill_fulfillment(
         errors.append("summary_record_count_mismatch")
     if summary.get("covered_prompt_city_count") != _actual_value(items, "count:prompt_city_coverage"):
         errors.append("summary_covered_prompt_city_count_mismatch")
+    for field in (
+        "missing_prompt_city_sample_count",
+        "duplicate_prompt_city_sample_count",
+        "unexpected_prompt_city_record_count",
+        "missing_answer_line_count",
+        "missing_citation_line_count",
+        "missing_asset_line_count",
+    ):
+        if summary.get(field) != _int(verification_verifier.get(field)):
+            errors.append(f"summary_{field}_mismatch")
     if summary.get("verification_error_count") != len(_strings(summary.get("verification_errors"))):
         errors.append("summary_verification_error_count_mismatch")
+    if summary.get("verification_error_count") != _int(verification_verifier.get("error_count")):
+        errors.append("summary_verification_error_count_source_mismatch")
+    if summary.get("verification_next_action") != verification_verifier.get("next_action"):
+        errors.append("summary_verification_next_action_mismatch")
     if summary.get("raw_answer_values_allowed") is not False:
         errors.append("summary_raw_answer_policy_invalid")
     if summary.get("raw_citation_values_allowed") is not False:
@@ -280,6 +311,16 @@ def verify_au_p0b_google_manual_backfill_fulfillment(
         "expected_record_count": summary.get("expected_record_count"),
         "covered_prompt_city_count": summary.get("covered_prompt_city_count"),
         "expected_prompt_city_count": summary.get("expected_prompt_city_count"),
+        "manual_backfill_ready": summary.get("manual_backfill_ready") is True,
+        "manual_backfill_coverage_complete": summary.get("manual_backfill_coverage_complete") is True,
+        "manual_backfill_content_complete": summary.get("manual_backfill_content_complete") is True,
+        "missing_prompt_city_sample_count": summary.get("missing_prompt_city_sample_count"),
+        "duplicate_prompt_city_sample_count": summary.get("duplicate_prompt_city_sample_count"),
+        "unexpected_prompt_city_record_count": summary.get("unexpected_prompt_city_record_count"),
+        "missing_answer_line_count": summary.get("missing_answer_line_count"),
+        "missing_citation_line_count": summary.get("missing_citation_line_count"),
+        "missing_asset_line_count": summary.get("missing_asset_line_count"),
+        "verification_next_action": summary.get("verification_next_action", ""),
         "next_action": summary.get("next_action", ""),
     }
 

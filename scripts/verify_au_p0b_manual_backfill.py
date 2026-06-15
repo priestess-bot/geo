@@ -174,7 +174,8 @@ def _summary(
         and unexpected_prompt_city_record_count == 0
     )
     content_complete = (
-        missing_answer_line_count == 0
+        record_count == expected_record_count
+        and missing_answer_line_count == 0
         and missing_citation_line_count == 0
         and missing_asset_line_count == 0
     )
@@ -416,6 +417,22 @@ def verify_manual_backfill_verification_result(
         "computed_verification_hash": computed_hash,
         "hash_valid": hash_valid,
         "manual_backfill_status": result.get("status", ""),
+        "manual_backfill_ready": summary.get("manual_backfill_ready") is True,
+        "coverage_complete": summary.get("coverage_complete") is True,
+        "content_complete": summary.get("content_complete") is True,
+        "expected_prompt_city_count": _int(result.get("expected_prompt_city_count")),
+        "expected_sample_size": _int(result.get("expected_sample_size")),
+        "expected_record_count": _int(result.get("expected_record_count")),
+        "record_count": _int(result.get("record_count")),
+        "covered_prompt_city_count": _int(result.get("covered_prompt_city_count")),
+        "missing_prompt_city_sample_count": _int(result.get("missing_prompt_city_sample_count")),
+        "duplicate_prompt_city_sample_count": _int(result.get("duplicate_prompt_city_sample_count")),
+        "unexpected_prompt_city_record_count": _int(result.get("unexpected_prompt_city_record_count")),
+        "missing_answer_line_count": _int(result.get("missing_answer_line_count")),
+        "missing_citation_line_count": _int(result.get("missing_citation_line_count")),
+        "missing_asset_line_count": _int(result.get("missing_asset_line_count")),
+        "error_count": len(errors_list),
+        "next_action": str(summary.get("next_action") or ""),
     }
 
 

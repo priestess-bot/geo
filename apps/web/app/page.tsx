@@ -1279,6 +1279,18 @@ type AuDeliveryProgress = {
     p0b_google_manual_backfill_missing_required?: string[];
     p0b_google_manual_backfill_record_count?: number;
     p0b_google_manual_backfill_expected_record_count?: number;
+    p0b_google_manual_backfill_covered_prompt_city_count?: number;
+    p0b_google_manual_backfill_expected_prompt_city_count?: number;
+    p0b_google_manual_backfill_ready?: boolean;
+    p0b_google_manual_backfill_coverage_complete?: boolean;
+    p0b_google_manual_backfill_content_complete?: boolean;
+    p0b_google_manual_backfill_missing_prompt_city_sample_count?: number;
+    p0b_google_manual_backfill_duplicate_prompt_city_sample_count?: number;
+    p0b_google_manual_backfill_unexpected_prompt_city_record_count?: number;
+    p0b_google_manual_backfill_missing_answer_line_count?: number;
+    p0b_google_manual_backfill_missing_citation_line_count?: number;
+    p0b_google_manual_backfill_missing_asset_line_count?: number;
+    p0b_google_manual_backfill_verification_next_action?: string;
     p0b_google_phase_execution_clearance_hash?: string;
     p0b_google_phase_execution_clearance_ready?: boolean;
     p0b_google_phase_execution_fulfilled?: boolean;
@@ -1375,6 +1387,18 @@ type AuCustomerHandoffClearance = {
     p0b_google_manual_backfill_missing_required_count?: number;
     p0b_google_manual_backfill_record_count?: number;
     p0b_google_manual_backfill_expected_record_count?: number;
+    p0b_google_manual_backfill_covered_prompt_city_count?: number;
+    p0b_google_manual_backfill_expected_prompt_city_count?: number;
+    p0b_google_manual_backfill_ready?: boolean;
+    p0b_google_manual_backfill_coverage_complete?: boolean;
+    p0b_google_manual_backfill_content_complete?: boolean;
+    p0b_google_manual_backfill_missing_prompt_city_sample_count?: number;
+    p0b_google_manual_backfill_duplicate_prompt_city_sample_count?: number;
+    p0b_google_manual_backfill_unexpected_prompt_city_record_count?: number;
+    p0b_google_manual_backfill_missing_answer_line_count?: number;
+    p0b_google_manual_backfill_missing_citation_line_count?: number;
+    p0b_google_manual_backfill_missing_asset_line_count?: number;
+    p0b_google_manual_backfill_verification_next_action?: string;
     p0b_google_phase_execution_clearance_hash?: string;
     p0b_google_phase_execution_clearance_ready?: boolean;
     p0b_google_phase_execution_fulfilled?: boolean;
@@ -8971,6 +8995,29 @@ export default async function Home({
               {deliveryProgressSummary?.p0b_google_manual_backfill_expected_record_count ?? 0}
             </span>
             <span>
+              P0b manual prompt-city{" "}
+              {deliveryProgressSummary?.p0b_google_manual_backfill_covered_prompt_city_count ?? 0}/
+              {deliveryProgressSummary?.p0b_google_manual_backfill_expected_prompt_city_count ?? 0}
+            </span>
+            <span>
+              P0b manual coverage{" "}
+              {deliveryProgressSummary?.p0b_google_manual_backfill_coverage_complete ? "complete" : "incomplete"}
+            </span>
+            <span>
+              P0b manual content{" "}
+              {deliveryProgressSummary?.p0b_google_manual_backfill_content_complete ? "complete" : "incomplete"}
+            </span>
+            <span>
+              P0b manual missing answer/citation/asset{" "}
+              {deliveryProgressSummary?.p0b_google_manual_backfill_missing_answer_line_count ?? 0}/
+              {deliveryProgressSummary?.p0b_google_manual_backfill_missing_citation_line_count ?? 0}/
+              {deliveryProgressSummary?.p0b_google_manual_backfill_missing_asset_line_count ?? 0}
+            </span>
+            <span>
+              P0b manual verification action{" "}
+              {deliveryProgressSummary?.p0b_google_manual_backfill_verification_next_action || "none"}
+            </span>
+            <span>
               P0b phase execution{" "}
               {deliveryProgressSummary?.p0b_google_phase_execution_fulfilled ? "fulfilled" : "blocked"}
             </span>
@@ -9131,6 +9178,27 @@ export default async function Home({
             <span>
               P0b manual rows {customerHandoffClearanceSummary?.p0b_google_manual_backfill_record_count ?? 0}/
               {customerHandoffClearanceSummary?.p0b_google_manual_backfill_expected_record_count ?? 0}
+            </span>
+            <span>
+              P0b manual prompt-city{" "}
+              {customerHandoffClearanceSummary?.p0b_google_manual_backfill_covered_prompt_city_count ?? 0}/
+              {customerHandoffClearanceSummary?.p0b_google_manual_backfill_expected_prompt_city_count ?? 0}
+            </span>
+            <span>
+              P0b manual coverage{" "}
+              {customerHandoffClearanceSummary?.p0b_google_manual_backfill_coverage_complete
+                ? "complete"
+                : "incomplete"}
+            </span>
+            <span>
+              P0b manual content{" "}
+              {customerHandoffClearanceSummary?.p0b_google_manual_backfill_content_complete ? "complete" : "incomplete"}
+            </span>
+            <span>
+              P0b manual missing answer/citation/asset{" "}
+              {customerHandoffClearanceSummary?.p0b_google_manual_backfill_missing_answer_line_count ?? 0}/
+              {customerHandoffClearanceSummary?.p0b_google_manual_backfill_missing_citation_line_count ?? 0}/
+              {customerHandoffClearanceSummary?.p0b_google_manual_backfill_missing_asset_line_count ?? 0}
             </span>
             <span>
               P0b phase execution{" "}

@@ -173,6 +173,13 @@ def _actual_value(items: list[dict[str, Any]], key: str) -> object:
     return None
 
 
+def _int(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def verify_au_p0b_google_manual_backfill_clearance(
     payload: Any,
     *,
@@ -358,12 +365,36 @@ def verify_au_p0b_google_manual_backfill_clearance(
         errors.append("summary_manual_backfill_verification_ready_mismatch")
     if summary.get("manual_backfill_verification_status") != verification_source.get("manual_backfill_status"):
         errors.append("summary_manual_backfill_verification_status_mismatch")
+    if summary.get("manual_backfill_verification_hash") != verification_source.get("hash"):
+        errors.append("summary_manual_backfill_verification_hash_mismatch")
+    if summary.get("manual_backfill_ready") is not (fulfillment_verifier.get("manual_backfill_ready") is True):
+        errors.append("summary_manual_backfill_ready_mismatch")
+    if summary.get("manual_backfill_coverage_complete") is not (
+        fulfillment_verifier.get("manual_backfill_coverage_complete") is True
+    ):
+        errors.append("summary_manual_backfill_coverage_complete_mismatch")
+    if summary.get("manual_backfill_content_complete") is not (
+        fulfillment_verifier.get("manual_backfill_content_complete") is True
+    ):
+        errors.append("summary_manual_backfill_content_complete_mismatch")
     if summary.get("record_count") != _actual_value(items, "count:record_count"):
         errors.append("summary_record_count_mismatch")
     if summary.get("covered_prompt_city_count") != _actual_value(items, "count:prompt_city_coverage"):
         errors.append("summary_covered_prompt_city_count_mismatch")
+    for field in (
+        "missing_prompt_city_sample_count",
+        "duplicate_prompt_city_sample_count",
+        "unexpected_prompt_city_record_count",
+        "missing_answer_line_count",
+        "missing_citation_line_count",
+        "missing_asset_line_count",
+    ):
+        if summary.get(field) != _int(fulfillment_verifier.get(field)):
+            errors.append(f"summary_{field}_mismatch")
     if summary.get("verification_error_count") != len(_strings(summary.get("verification_errors"))):
         errors.append("summary_verification_error_count_mismatch")
+    if summary.get("verification_next_action") != fulfillment_verifier.get("verification_next_action"):
+        errors.append("summary_verification_next_action_mismatch")
     if summary.get("prerequisite_step_ready") is not (prerequisite_step.get("ready") is True):
         errors.append("summary_prerequisite_step_ready_mismatch")
     if summary.get("target_clearance_step_ready") is not (clearance_step.get("step_ready") is True):
@@ -493,6 +524,15 @@ def verify_au_p0b_google_manual_backfill_clearance(
         "expected_record_count": summary.get("expected_record_count"),
         "covered_prompt_city_count": summary.get("covered_prompt_city_count"),
         "expected_prompt_city_count": summary.get("expected_prompt_city_count"),
+        "manual_backfill_ready": summary.get("manual_backfill_ready") is True,
+        "manual_backfill_coverage_complete": summary.get("manual_backfill_coverage_complete") is True,
+        "manual_backfill_content_complete": summary.get("manual_backfill_content_complete") is True,
+        "missing_prompt_city_sample_count": summary.get("missing_prompt_city_sample_count"),
+        "duplicate_prompt_city_sample_count": summary.get("duplicate_prompt_city_sample_count"),
+        "unexpected_prompt_city_record_count": summary.get("unexpected_prompt_city_record_count"),
+        "missing_answer_line_count": summary.get("missing_answer_line_count"),
+        "missing_citation_line_count": summary.get("missing_citation_line_count"),
+        "missing_asset_line_count": summary.get("missing_asset_line_count"),
         "next_action": summary.get("next_action", ""),
         "next_command": summary.get("next_command", ""),
     }

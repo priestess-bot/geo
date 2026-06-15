@@ -140,6 +140,13 @@ def _blocking_reasons(items: list[dict[str, Any]]) -> list[str]:
     )
 
 
+def _int(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def verify_au_customer_handoff_clearance(
     payload: Any,
     *,
@@ -424,6 +431,31 @@ def verify_au_customer_handoff_clearance(
         p0b_google_manual_backfill_clearance_verifier.get("missing_required_count")
     ):
         errors.append("summary_p0b_google_manual_backfill_missing_required_count_mismatch")
+    if summary.get("p0b_google_manual_backfill_ready") is not (
+        p0b_google_manual_backfill_clearance_verifier.get("manual_backfill_ready") is True
+    ):
+        errors.append("summary_p0b_google_manual_backfill_ready_mismatch")
+    if summary.get("p0b_google_manual_backfill_coverage_complete") is not (
+        p0b_google_manual_backfill_clearance_verifier.get("manual_backfill_coverage_complete") is True
+    ):
+        errors.append("summary_p0b_google_manual_backfill_coverage_complete_mismatch")
+    if summary.get("p0b_google_manual_backfill_content_complete") is not (
+        p0b_google_manual_backfill_clearance_verifier.get("manual_backfill_content_complete") is True
+    ):
+        errors.append("summary_p0b_google_manual_backfill_content_complete_mismatch")
+    manual_backfill_summary_field_map = {
+        "p0b_google_manual_backfill_missing_prompt_city_sample_count": "missing_prompt_city_sample_count",
+        "p0b_google_manual_backfill_duplicate_prompt_city_sample_count": "duplicate_prompt_city_sample_count",
+        "p0b_google_manual_backfill_unexpected_prompt_city_record_count": "unexpected_prompt_city_record_count",
+        "p0b_google_manual_backfill_missing_answer_line_count": "missing_answer_line_count",
+        "p0b_google_manual_backfill_missing_citation_line_count": "missing_citation_line_count",
+        "p0b_google_manual_backfill_missing_asset_line_count": "missing_asset_line_count",
+    }
+    for summary_field, verifier_field in manual_backfill_summary_field_map.items():
+        if summary.get(summary_field) != _int(p0b_google_manual_backfill_clearance_verifier.get(verifier_field)):
+            errors.append(f"summary_{summary_field}_mismatch")
+        if summary.get(summary_field) != _int(_as_dict(progress_verifier).get(summary_field)):
+            errors.append(f"summary_progress_{summary_field}_mismatch")
     if summary.get("p0b_google_phase_execution_clearance_ready") is not (
         p0b_google_phase_execution_clearance_verifier.get("phase_execution_clearance_ready") is True
     ):

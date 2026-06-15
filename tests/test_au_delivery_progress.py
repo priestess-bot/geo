@@ -308,6 +308,12 @@ class AuDeliveryProgressTest(unittest.TestCase):
         self.assertFalse(progress["summary"]["p0b_google_manual_backfill_clearance_ready"])
         self.assertFalse(progress["summary"]["p0b_google_manual_backfill_fulfilled"])
         self.assertGreaterEqual(progress["summary"]["p0b_google_manual_backfill_missing_required_count"], 1)
+        self.assertFalse(progress["summary"]["p0b_google_manual_backfill_ready"])
+        self.assertFalse(progress["summary"]["p0b_google_manual_backfill_coverage_complete"])
+        self.assertFalse(progress["summary"]["p0b_google_manual_backfill_content_complete"])
+        self.assertGreaterEqual(progress["summary"]["p0b_google_manual_backfill_missing_answer_line_count"], 0)
+        self.assertGreaterEqual(progress["summary"]["p0b_google_manual_backfill_missing_citation_line_count"], 0)
+        self.assertGreaterEqual(progress["summary"]["p0b_google_manual_backfill_missing_asset_line_count"], 0)
         self.assertFalse(progress["summary"]["p0b_google_phase_execution_clearance_ready"])
         self.assertFalse(progress["summary"]["p0b_google_phase_execution_fulfilled"])
         self.assertGreaterEqual(progress["summary"]["p0b_google_phase_execution_missing_required_count"], 1)
@@ -453,6 +459,35 @@ class AuDeliveryProgressTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_engineering_progress_percent_mismatch", verification["errors"])
+
+    def test_verifier_rejects_tampered_manual_backfill_content_count_even_when_hash_is_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            sources = self._build_sources(temp_dir, ready=False)
+            progress = build_au_delivery_progress(
+                launch_status_path=sources["launch_status_path"],  # type: ignore[arg-type]
+                handoff_dossier_path=sources["handoff_path"],  # type: ignore[arg-type]
+                customer_handoff_readiness_path=sources["readiness_path"],  # type: ignore[arg-type]
+                next_work_item_path=sources["next_work_item_path"],  # type: ignore[arg-type]
+                external_dependency_handoff_path=sources["dependency_handoff_path"],  # type: ignore[arg-type]
+                external_dependency_clearance_path=sources["clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_update_receipt_path=sources["credential_update_receipt_path"],  # type: ignore[arg-type]
+                p0a_real_batch_clearance_path=sources["real_batch_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance_path=sources["p0b_environment_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance_path=sources["p0b_manual_backfill_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance_path=sources["p0b_phase_execution_clearance_path"],  # type: ignore[arg-type]
+                output_path=Path(temp_dir) / "progress.json",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            progress["summary"]["p0b_google_manual_backfill_missing_asset_line_count"] = 999
+            progress["delivery_progress_hash"] = compute_delivery_progress_hash(progress)
+            verification = verify_au_delivery_progress(progress)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn(
+            "summary_p0b_google_manual_backfill_missing_asset_line_count_mismatch",
+            verification["errors"],
+        )
 
     def test_verifier_rejects_stale_next_work_item_source_artifact(self) -> None:
         with TemporaryDirectory() as temp_dir:

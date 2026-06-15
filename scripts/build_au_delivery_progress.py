@@ -830,6 +830,39 @@ def build_au_delivery_progress(
             "p0b_google_manual_backfill_expected_prompt_city_count": _as_dict(
                 p0b_google_manual_backfill_clearance.get("summary")
             ).get("expected_prompt_city_count", 0),
+            "p0b_google_manual_backfill_ready": _as_dict(
+                p0b_google_manual_backfill_clearance.get("summary")
+            ).get("manual_backfill_ready")
+            is True,
+            "p0b_google_manual_backfill_coverage_complete": _as_dict(
+                p0b_google_manual_backfill_clearance.get("summary")
+            ).get("manual_backfill_coverage_complete")
+            is True,
+            "p0b_google_manual_backfill_content_complete": _as_dict(
+                p0b_google_manual_backfill_clearance.get("summary")
+            ).get("manual_backfill_content_complete")
+            is True,
+            "p0b_google_manual_backfill_missing_prompt_city_sample_count": _as_dict(
+                p0b_google_manual_backfill_clearance.get("summary")
+            ).get("missing_prompt_city_sample_count", 0),
+            "p0b_google_manual_backfill_duplicate_prompt_city_sample_count": _as_dict(
+                p0b_google_manual_backfill_clearance.get("summary")
+            ).get("duplicate_prompt_city_sample_count", 0),
+            "p0b_google_manual_backfill_unexpected_prompt_city_record_count": _as_dict(
+                p0b_google_manual_backfill_clearance.get("summary")
+            ).get("unexpected_prompt_city_record_count", 0),
+            "p0b_google_manual_backfill_missing_answer_line_count": _as_dict(
+                p0b_google_manual_backfill_clearance.get("summary")
+            ).get("missing_answer_line_count", 0),
+            "p0b_google_manual_backfill_missing_citation_line_count": _as_dict(
+                p0b_google_manual_backfill_clearance.get("summary")
+            ).get("missing_citation_line_count", 0),
+            "p0b_google_manual_backfill_missing_asset_line_count": _as_dict(
+                p0b_google_manual_backfill_clearance.get("summary")
+            ).get("missing_asset_line_count", 0),
+            "p0b_google_manual_backfill_verification_next_action": _as_dict(
+                p0b_google_manual_backfill_clearance.get("summary")
+            ).get("verification_next_action", ""),
             "p0b_google_phase_execution_clearance_hash": p0b_google_phase_execution_clearance.get(
                 "p0b_google_phase_execution_clearance_hash",
                 "",

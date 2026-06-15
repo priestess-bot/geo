@@ -72,6 +72,13 @@ def _percent(ready_count: int, total_count: int) -> float:
     return round((ready_count / total_count) * 100, 1)
 
 
+def _int(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _progress_gate_lookup(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {str(gate.get("id") or ""): _as_dict(gate) for gate in _as_list(payload.get("progress_gates"))}
 
@@ -277,6 +284,29 @@ def verify_au_delivery_progress(
         p0b_google_manual_backfill_clearance_verifier.get("missing_required_count")
     ):
         errors.append("summary_p0b_google_manual_backfill_missing_required_count_mismatch")
+    if summary.get("p0b_google_manual_backfill_ready") is not (
+        p0b_google_manual_backfill_clearance_verifier.get("manual_backfill_ready") is True
+    ):
+        errors.append("summary_p0b_google_manual_backfill_ready_mismatch")
+    if summary.get("p0b_google_manual_backfill_coverage_complete") is not (
+        p0b_google_manual_backfill_clearance_verifier.get("manual_backfill_coverage_complete") is True
+    ):
+        errors.append("summary_p0b_google_manual_backfill_coverage_complete_mismatch")
+    if summary.get("p0b_google_manual_backfill_content_complete") is not (
+        p0b_google_manual_backfill_clearance_verifier.get("manual_backfill_content_complete") is True
+    ):
+        errors.append("summary_p0b_google_manual_backfill_content_complete_mismatch")
+    manual_backfill_summary_field_map = {
+        "p0b_google_manual_backfill_missing_prompt_city_sample_count": "missing_prompt_city_sample_count",
+        "p0b_google_manual_backfill_duplicate_prompt_city_sample_count": "duplicate_prompt_city_sample_count",
+        "p0b_google_manual_backfill_unexpected_prompt_city_record_count": "unexpected_prompt_city_record_count",
+        "p0b_google_manual_backfill_missing_answer_line_count": "missing_answer_line_count",
+        "p0b_google_manual_backfill_missing_citation_line_count": "missing_citation_line_count",
+        "p0b_google_manual_backfill_missing_asset_line_count": "missing_asset_line_count",
+    }
+    for summary_field, verifier_field in manual_backfill_summary_field_map.items():
+        if summary.get(summary_field) != _int(p0b_google_manual_backfill_clearance_verifier.get(verifier_field)):
+            errors.append(f"summary_{summary_field}_mismatch")
 
     p0b_google_phase_execution_clearance_verifier = _as_dict(verifiers.get("p0b_google_phase_execution_clearance"))
     if summary.get("p0b_google_phase_execution_clearance_ready") is not (
@@ -357,6 +387,31 @@ def verify_au_delivery_progress(
         "blocked_progress_gate_ids": blocked_gate_ids,
         "next_work_item_id": str(summary.get("next_work_item_id") or ""),
         "next_command": str(summary.get("next_command") or ""),
+        "p0b_google_manual_backfill_ready": summary.get("p0b_google_manual_backfill_ready") is True,
+        "p0b_google_manual_backfill_coverage_complete": summary.get(
+            "p0b_google_manual_backfill_coverage_complete"
+        )
+        is True,
+        "p0b_google_manual_backfill_content_complete": summary.get("p0b_google_manual_backfill_content_complete")
+        is True,
+        "p0b_google_manual_backfill_missing_prompt_city_sample_count": summary.get(
+            "p0b_google_manual_backfill_missing_prompt_city_sample_count",
+        ),
+        "p0b_google_manual_backfill_duplicate_prompt_city_sample_count": summary.get(
+            "p0b_google_manual_backfill_duplicate_prompt_city_sample_count",
+        ),
+        "p0b_google_manual_backfill_unexpected_prompt_city_record_count": summary.get(
+            "p0b_google_manual_backfill_unexpected_prompt_city_record_count",
+        ),
+        "p0b_google_manual_backfill_missing_answer_line_count": summary.get(
+            "p0b_google_manual_backfill_missing_answer_line_count",
+        ),
+        "p0b_google_manual_backfill_missing_citation_line_count": summary.get(
+            "p0b_google_manual_backfill_missing_citation_line_count",
+        ),
+        "p0b_google_manual_backfill_missing_asset_line_count": summary.get(
+            "p0b_google_manual_backfill_missing_asset_line_count",
+        ),
     }
 
 
