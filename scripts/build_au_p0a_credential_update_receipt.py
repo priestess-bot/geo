@@ -361,6 +361,7 @@ def build_au_p0a_credential_update_receipt(
         },
         "required_credential_records": records,
         "summary": {
+            "credential_update_receipt_ready": True,
             "required_count": len(required_records),
             "present_required_count": len(present_required),
             "missing_required_count": len(missing_required),

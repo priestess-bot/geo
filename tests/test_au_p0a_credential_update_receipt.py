@@ -127,6 +127,7 @@ class AuP0aCredentialUpdateReceiptTest(unittest.TestCase):
         self.assertEqual(receipt["status"], "pass")
         self.assertTrue(receipt["credential_update_receipt_ready"])
         self.assertFalse(receipt["credential_update_receipt_complete"])
+        self.assertTrue(receipt["summary"]["credential_update_receipt_ready"])
         self.assertEqual(receipt["summary"]["missing_required_count"], 3)
         self.assertEqual(receipt["summary"]["next_command"], "make au-p0a-env")
         self.assertEqual(
@@ -165,9 +166,34 @@ class AuP0aCredentialUpdateReceiptTest(unittest.TestCase):
             hard_gate = verify_au_p0a_credential_update_receipt(receipt, require_complete=True)
 
         self.assertTrue(receipt["credential_update_receipt_complete"])
+        self.assertTrue(receipt["summary"]["credential_update_receipt_ready"])
         self.assertEqual(receipt["summary"]["missing_required_count"], 0)
         self.assertEqual(receipt["summary"]["next_command"], "make au-external-dependency-clearance")
         self.assertEqual(hard_gate["status"], "pass")
+
+    def test_verifier_rejects_tampered_summary_ready_even_when_hash_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            request_path, env_path, fulfillment_path, clearance_path, request, env_report, fulfillment, clearance = (
+                self._build_sources(temp_dir, ready=False)
+            )
+            receipt = build_au_p0a_credential_update_receipt(
+                credential_request_path=request_path,
+                env_report_path=env_path,
+                credential_fulfillment_path=fulfillment_path,
+                credential_clearance_path=clearance_path,
+                credential_request=request,
+                env_report=env_report,
+                credential_fulfillment=fulfillment,
+                credential_clearance=clearance,
+                output_path=Path(temp_dir) / "receipt.json",
+                generated_at="2026-06-15T00:00:00Z",
+            )
+            receipt["summary"]["credential_update_receipt_ready"] = False
+            receipt["p0a_credential_update_receipt_hash"] = compute_p0a_credential_update_receipt_hash(receipt)
+            verification = verify_au_p0a_credential_update_receipt(receipt)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("summary_credential_update_receipt_ready_mismatch", verification["errors"])
 
     def test_verifier_rejects_tampered_raw_value_policy_even_when_hash_recomputed(self) -> None:
         with TemporaryDirectory() as temp_dir:

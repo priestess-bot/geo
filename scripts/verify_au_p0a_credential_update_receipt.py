@@ -250,6 +250,8 @@ def verify_au_p0a_credential_update_receipt(
         errors.append("summary_credentials_fulfilled_mismatch")
     if summary.get("credential_clearance_ready") is not credential_clearance_ready:
         errors.append("summary_credential_clearance_ready_mismatch")
+    if summary.get("credential_update_receipt_ready") is not True:
+        errors.append("summary_credential_update_receipt_ready_mismatch")
     if summary.get("credential_update_receipt_complete") is not expected_complete:
         errors.append("summary_credential_update_receipt_complete_mismatch")
     if summary.get("raw_secret_values_allowed") is not False:

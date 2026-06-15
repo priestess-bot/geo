@@ -2320,6 +2320,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertFalse(payload["credential_update_receipt_complete"])
         self.assertFalse(payload["credentials_fulfilled"])
         self.assertFalse(payload["credential_clearance_ready"])
+        self.assertTrue(payload["summary"]["credential_update_receipt_ready"])
         self.assertEqual(payload["summary"]["missing_required_count"], len(payload["summary"]["missing_required"]))
         self.assertIn("PERPLEXITY_API_KEY", payload["summary"]["missing_required"])
         self.assertIn("OPENAI_API_KEY", payload["summary"]["missing_required"])
