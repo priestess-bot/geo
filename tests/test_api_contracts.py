@@ -6956,6 +6956,50 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.event.updated_by, "runtime-console")
         self.assertEqual(fake_repository.event.note, "Ready for client")
 
+    def test_runtime_report_management_export_endpoint_returns_csv_with_hash_headers(self) -> None:
+        class FakeRepository:
+            def export_runtime_report_management_events_csv(self, **kwargs: object) -> RuntimeEvidenceExport:
+                self.kwargs = kwargs
+                return RuntimeEvidenceExport(
+                    export_type="runtime_report_management_events_csv",
+                    filename="runtime-report-management-events.csv",
+                    media_type="text/csv; charset=utf-8",
+                    content="report_export_id,management_status\nreport-1,client_ready\n",
+                    content_hash="hash-report-management-csv",
+                    filters={
+                        "project_id": kwargs["project_id"],
+                        "status": kwargs["status"],
+                        "report_type": kwargs["report_type"],
+                    },
+                    total_count=4,
+                    row_count=1,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/reports/runtime/management-events/export.csv"
+                "?project_id=project-1&status=client_ready&report_type=worker_runtime&limit=5",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
+        self.assertEqual(response.headers["x-geno-report-management-export-hash"], "hash-report-management-csv")
+        self.assertEqual(response.headers["x-geno-report-management-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geno-report-management-status"], "client_ready")
+        self.assertEqual(response.headers["x-geno-report-management-report-type"], "worker_runtime")
+        self.assertEqual(response.headers["x-geno-report-management-row-count"], "1")
+        self.assertEqual(response.headers["x-geno-report-management-total-count"], "4")
+        self.assertIn("runtime-report-management-events.csv", response.headers["content-disposition"])
+        self.assertIn("report-1", response.text)
+        self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.kwargs["status"], "client_ready")
+        self.assertEqual(fake_repository.kwargs["report_type"], "worker_runtime")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+
     def test_runtime_report_export_jobs_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/report-export-jobs/runtime")
         self.assertEqual(response.status_code, 503)
@@ -9293,6 +9337,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/visibility-scores/runtime", payload["persistence"])
         self.assertIn("/v1/citation-graphs/runtime", payload["persistence"])
         self.assertIn("/v1/reports/runtime", payload["persistence"])
+        self.assertIn("/v1/reports/runtime/management-events/export.csv", payload["persistence"])
         self.assertIn("/v1/report-export-jobs/runtime", payload["persistence"])
         self.assertIn("/v1/report-export-jobs/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/report-export-jobs/runtime/stats", payload["persistence"])

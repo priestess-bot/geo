@@ -1930,6 +1930,72 @@ def _render_runtime_report_export_jobs_csv(page: RuntimeReportExportJobPage) -> 
     return output.getvalue()
 
 
+def _render_runtime_report_management_events_csv(records: tuple[dict[str, Any], ...]) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "report_export_id",
+            "project_id",
+            "report_version",
+            "report_type",
+            "market_code",
+            "management_status",
+            "management_event_id",
+            "management_actor_hash",
+            "management_note_hash",
+            "management_method_version",
+            "management_after_hash",
+            "management_created_at",
+            "sample_size",
+            "scoring_formula_version",
+            "methodology_hash",
+            "markdown_url_hash",
+            "pdf_url_hash",
+            "csv_url_hash",
+            "exported_at",
+        ],
+    )
+    writer.writeheader()
+    for record in records:
+        management_event = record.get("management_event")
+        actor_id = str(management_event.get("actor_id") or "") if isinstance(management_event, dict) else ""
+        note = str(management_event.get("reason") or "") if isinstance(management_event, dict) else ""
+        input_refs = management_event.get("input_refs") if isinstance(management_event, dict) else {}
+        input_refs = input_refs if isinstance(input_refs, dict) else {}
+        status_refs = input_refs.get("status", [])
+        management_status = str(status_refs[0]) if status_refs else ""
+        markdown_url = str(record.get("markdown_url") or "")
+        pdf_url = str(record.get("pdf_url") or "")
+        csv_url = str(record.get("csv_url") or "")
+        writer.writerow(
+            {
+                "report_export_id": record.get("id") or "",
+                "project_id": record.get("project_id") or "",
+                "report_version": record.get("report_version") or "",
+                "report_type": record.get("report_type") or "",
+                "market_code": record.get("market_code") or "",
+                "management_status": management_status,
+                "management_event_id": management_event.get("id") if isinstance(management_event, dict) else "",
+                "management_actor_hash": _artifact_hash(actor_id) if actor_id else "",
+                "management_note_hash": _artifact_hash(note) if note else "",
+                "management_method_version": (
+                    management_event.get("method_version") if isinstance(management_event, dict) else ""
+                ),
+                "management_after_hash": management_event.get("after_hash") if isinstance(management_event, dict) else "",
+                "management_created_at": management_event.get("created_at") if isinstance(management_event, dict) else "",
+                "sample_size": record.get("sample_size") or "",
+                "scoring_formula_version": record.get("scoring_formula_version") or "",
+                "methodology_hash": record.get("methodology_hash") or "",
+                "markdown_url_hash": _artifact_hash(markdown_url) if markdown_url else "",
+                "pdf_url_hash": _artifact_hash(pdf_url) if pdf_url else "",
+                "csv_url_hash": _artifact_hash(csv_url) if csv_url else "",
+                "exported_at": record.get("exported_at") or "",
+            }
+        )
+    return output.getvalue()
+
+
 def _render_runtime_project_members_csv(page: RuntimeProjectMemberPage) -> str:
     output = StringIO()
     writer = csv.DictWriter(
@@ -8769,6 +8835,87 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=records,
+        )
+
+    def export_runtime_report_management_events_csv(
+        self,
+        *,
+        project_id: str,
+        status: str | None = None,
+        report_type: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        project_id = project_id.strip()
+        normalized_status = status.strip().lower() if status else None
+        normalized_report_type = report_type.strip() if report_type else None
+        if not project_id:
+            raise ValueError("project_id is required")
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        filters = ["re.project_id = %s", "ae.event_type = %s"]
+        params: list[object] = [_uuid(project_id), "report_export_management_recorded"]
+        if normalized_status:
+            filters.append("ae.input_refs->'status' ? %s")
+            params.append(normalized_status)
+        if normalized_report_type:
+            filters.append("re.report_type = %s")
+            params.append(normalized_report_type)
+        where_clause = f"WHERE {' AND '.join(filters)}"
+        report_columns = ", ".join(f"re.{column}" for column in REPORT_EXPORT_COLUMNS)
+        audit_columns = ", ".join(f"ae.{column} AS management_{column}" for column in AUDIT_EVENT_COLUMNS)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT count(*)
+                FROM report_exports re
+                JOIN audit_events ae ON ae.target_type = %s
+                  AND ae.target_id = re.id::text
+                {where_clause}
+                """,
+                ("report_export", *params),
+            )
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {report_columns}, {audit_columns}
+                FROM report_exports re
+                JOIN audit_events ae ON ae.target_type = %s
+                  AND ae.target_id = re.id::text
+                {where_clause}
+                ORDER BY ae.created_at DESC, re.exported_at DESC, re.id DESC
+                LIMIT %s OFFSET %s
+                """,
+                ("report_export", *params, limit, offset),
+            )
+            rows = cursor.fetchall()
+        records: list[dict[str, Any]] = []
+        for row in rows:
+            columns = (*REPORT_EXPORT_COLUMNS, *(f"management_{column}" for column in AUDIT_EVENT_COLUMNS))
+            source = row if isinstance(row, dict) else dict(zip(columns, row, strict=False))
+            report_export = {column: source.get(column) for column in REPORT_EXPORT_COLUMNS}
+            management_event = {
+                column: source.get(f"management_{column}", source.get(column)) for column in AUDIT_EVENT_COLUMNS
+            }
+            records.append({**report_export, "management_event": management_event})
+        content = _render_runtime_report_management_events_csv(tuple(records))
+        filters_payload = {
+            "project_id": project_id,
+            "status": normalized_status,
+            "report_type": normalized_report_type,
+            "limit": limit,
+            "offset": offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_report_management_events_csv",
+            filename="runtime-report-management-events.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters_payload.items() if value is not None},
+            total_count=total_count,
+            row_count=len(records),
         )
 
     def get_runtime_report_artifact(

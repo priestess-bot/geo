@@ -3580,6 +3580,7 @@ const endpoints = {
   scores: "/v1/visibility-scores/runtime",
   graphs: "/v1/citation-graphs/runtime",
   reports: "/v1/reports/runtime",
+  reportManagementEventsExport: "/v1/reports/runtime/management-events/export.csv",
   reportJobs: "/v1/report-export-jobs/runtime",
   reportJobsExport: "/v1/report-export-jobs/runtime/export.csv",
   reportJobStats: "/v1/report-export-jobs/runtime/stats",
@@ -5430,6 +5431,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     scores: runtimePath(endpoints.scores, { limit: 1 }),
     graphs: runtimePath(endpoints.graphs, { limit: 1 }),
     reports: runtimePath(endpoints.reports, { limit: 5 }),
+    reportManagementEventsExport: endpoints.reportManagementEventsExport,
     reportJobs: runtimePath(endpoints.reportJobs, { limit: 5 }),
     reportJobsExport: runtimePath(endpoints.reportJobsExport, { limit: 200 }),
     reportJobStats: endpoints.reportJobStats,
@@ -5660,6 +5662,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.reports = runtimePath(endpoints.reports, {
     ...selectedProjectParams,
     limit: 5
+  });
+  paths.reportManagementEventsExport = runtimePath(endpoints.reportManagementEventsExport, {
+    ...selectedProjectParams,
+    status: "client_ready",
+    limit: 200
   });
   paths.reportJobs = runtimePath(endpoints.reportJobs, {
     ...selectedProjectParams,
@@ -11630,6 +11637,12 @@ export default async function Home({
         <Panel title="Report History" subtitle={`${data.reports.total_count} stored exports`} wide>
           {data.reports.records.length ? (
             <div className="reportHistory">
+              <dl className="facts contributionFacts">
+                <Fact label="Report management CSV" value={paths.reportManagementEventsExport} />
+              </dl>
+              <div className="downloadRow">
+                <a href={paths.reportManagementEventsExport}>Download report management CSV</a>
+              </div>
               {data.reports.records.map((report) => {
                 const artifactBase = `${displayUrl}/v1/reports/runtime/${report.report_export.id}/artifact`;
                 const markdownUrl = reportArtifactPath(artifactBase, "markdown", reportArtifactFilters);

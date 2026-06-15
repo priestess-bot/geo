@@ -7073,6 +7073,87 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(audit_insert[11], "report_export_management_v1")
         self.assertEqual(audit_insert[12], "Ready for client delivery")
 
+    def test_postgres_repository_exports_report_management_events_csv(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        markdown_url = "s3://geno-reports/private/report.md"
+        pdf_url = "s3://geno-reports/private/report.pdf"
+        csv_url = "s3://geno-reports/private/report.csv"
+        actor_id = "delivery-manager@example.com"
+        note = "Ready for client delivery after internal QA"
+        row = {
+            "id": report_export_id,
+            "project_id": project_id,
+            "market_code": "AU",
+            "report_version": "worker-runtime-v1",
+            "report_type": "worker_runtime",
+            "score_snapshot_ids": [],
+            "answer_run_ids": [],
+            "prompt_version": "au_dtc_ecommerce_v1",
+            "scoring_formula_version": "au_visibility_v1",
+            "platform_weights_snapshot": {"chatgpt": 0.30},
+            "method_disclosure": {},
+            "sample_size": 1,
+            "window_start": now,
+            "window_end": now,
+            "methodology_hash": "methodology-hash",
+            "markdown_url": markdown_url,
+            "pdf_url": pdf_url,
+            "csv_url": csv_url,
+            "exported_by": "system",
+            "exported_at": now,
+            "management_id": "2778aa22-c350-5d59-a52a-946e5fbdeee1",
+            "management_event_type": "report_export_management_recorded",
+            "management_project_id": project_id,
+            "management_actor_type": "user",
+            "management_actor_id": actor_id,
+            "management_target_type": "report_export",
+            "management_target_id": report_export_id,
+            "management_before_hash": "before-management-hash",
+            "management_after_hash": "after-management-hash",
+            "management_input_refs": {"status": ["client_ready"]},
+            "management_output_refs": {"audit_event_ids": ["2778aa22-c350-5d59-a52a-946e5fbdeee1"]},
+            "management_method_version": "report_export_management_v1",
+            "management_reason": note,
+            "management_created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[{"count": 1}, [row]])
+
+        export = PostgresEvidenceRepository(connection).export_runtime_report_management_events_csv(
+            project_id=project_id,
+            status="client_ready",
+            report_type="worker_runtime",
+            limit=5,
+            offset=0,
+        )
+
+        self.assertEqual(export.export_type, "runtime_report_management_events_csv")
+        self.assertEqual(export.filename, "runtime-report-management-events.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertEqual(export.filters["status"], "client_ready")
+        self.assertIn("report_export_id,project_id,report_version,report_type", export.content)
+        self.assertIn(report_export_id, export.content)
+        self.assertIn("client_ready", export.content)
+        self.assertIn("report_export_management_v1", export.content)
+        self.assertIn("after-management-hash", export.content)
+        self.assertIn(_artifact_hash(actor_id), export.content)
+        self.assertIn(_artifact_hash(note), export.content)
+        self.assertIn(_artifact_hash(markdown_url), export.content)
+        self.assertIn(_artifact_hash(pdf_url), export.content)
+        self.assertIn(_artifact_hash(csv_url), export.content)
+        self.assertNotIn(actor_id, export.content)
+        self.assertNotIn(note, export.content)
+        self.assertNotIn(markdown_url, export.content)
+        self.assertNotIn("private/report.pdf", export.content)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM report_exports re", executed_sql)
+        self.assertIn("JOIN audit_events ae", executed_sql)
+        self.assertIn("ae.input_refs->'status' ? %s", executed_sql)
+
     def test_postgres_repository_enqueues_report_export_job_with_audit_event(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

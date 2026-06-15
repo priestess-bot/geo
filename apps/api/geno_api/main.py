@@ -5523,6 +5523,49 @@ def runtime_reports(
         close_repository_connection(repository)
 
 
+@app.get("/v1/reports/runtime/management-events/export.csv")
+def export_runtime_report_management_events_csv(
+    project_id: str = Query(min_length=1),
+    status: str | None = Query(default=None, min_length=1, max_length=40),
+    report_type: str | None = Query(default=None, min_length=1, max_length=80),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_report_management_events_csv(
+                project_id=project_id.strip(),
+                status=status.strip().lower() if status else None,
+                report_type=report_type.strip() if report_type else None,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GENO-Report-Management-Export-Hash": export.content_hash,
+                "X-GENO-Report-Management-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GENO-Report-Management-Status": str(export.filters.get("status", "")),
+                "X-GENO-Report-Management-Report-Type": str(export.filters.get("report_type", "")),
+                "X-GENO-Report-Management-Row-Count": str(export.row_count),
+                "X-GENO-Report-Management-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/reports/runtime/{report_export_id}/management-events")
 def record_runtime_report_management_event(
     report_export_id: str,
@@ -7846,6 +7889,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/visibility-scores/runtime",
             "/v1/citation-graphs/runtime",
             "/v1/reports/runtime",
+            "/v1/reports/runtime/management-events/export.csv",
             "/v1/report-export-jobs/runtime",
             "/v1/report-export-jobs/runtime/export.csv",
             "/v1/report-export-jobs/runtime/stats",
