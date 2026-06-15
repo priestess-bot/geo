@@ -598,6 +598,8 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("GENO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0b-google-environment-clearance:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_environment_clearance.py", makefile)
+        self.assertIn("au-p0b-google-manual-backfill-evidence:", makefile)
+        self.assertIn("--allow-blocked-output", makefile)
         self.assertIn("au-p0b-google-manual-backfill-fulfillment:", makefile)
         self.assertIn("scripts/build_au_p0b_google_manual_backfill_fulfillment.py", makefile)
         self.assertIn("GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH", makefile)
@@ -682,7 +684,12 @@ class InfraContractsTest(unittest.TestCase):
             refresh_block.index("$(MAKE) au-p0b-google-environment-fulfillment"),
         )
         self.assertIn("$(MAKE) verify-au-p0b-google-environment-clearance", makefile)
+        self.assertIn("$(MAKE) au-p0b-google-manual-backfill-evidence", makefile)
         self.assertIn("$(MAKE) au-p0b-google-manual-backfill-fulfillment", makefile)
+        self.assertLess(
+            refresh_block.index("$(MAKE) au-p0b-google-manual-backfill-evidence"),
+            refresh_block.index("$(MAKE) au-p0b-google-manual-backfill-fulfillment"),
+        )
         self.assertLess(
             refresh_block.index("$(MAKE) au-p0b-google-manual-backfill-fulfillment"),
             refresh_block.index("$(MAKE) au-external-dependency-handoff"),
@@ -728,6 +735,18 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("verify-au-p0c-report-package:", makefile)
         self.assertIn("scripts/verify_au_p0c_report_package.py", makefile)
         self.assertIn("GENO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", makefile)
+        manual_evidence_block = makefile.split("au-p0b-google-manual-backfill-evidence:", 1)[1].split(
+            "\nverify-au-p0b-google-manual-backfill:",
+            1,
+        )[0]
+        manual_strict_block = makefile.split("verify-au-p0b-google-manual-backfill:", 1)[1].split(
+            "\nau-p0b-google-playwright-env:",
+            1,
+        )[0]
+        self.assertIn("scripts/verify_au_p0b_manual_backfill.py", manual_evidence_block)
+        self.assertIn("--allow-blocked-output", manual_evidence_block)
+        self.assertIn("scripts/verify_au_p0b_manual_backfill.py", manual_strict_block)
+        self.assertNotIn("--allow-blocked-output", manual_strict_block)
         self.assertIn("au-p0b-google-manual-template:", makefile)
         self.assertIn("scripts/build_au_p0b_manual_backfill_template.py", makefile)
         self.assertIn("verify-au-p0b-google-manual-backfill:", makefile)

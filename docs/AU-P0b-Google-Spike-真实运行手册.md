@@ -103,6 +103,8 @@ MANUAL_BACKFILL_PATH=/absolute/path/to/google-ai-mode-manual-backfill.jsonl \
 
 `au-p0b-google-manual-template` 会生成 120 行模板：30 prompts × Australia/Sydney × k=2，只覆盖 `google_ai_mode` manual path。模板本身允许 `answer_text`、citation 和资产为空；真实运行前必须用 `verify-au-p0b-google-manual-backfill` strict 校验通过，它会要求 120 行全部填充、每个 prompt/city 有 2 条样本、每行有 answer、至少一个 citation、以及 screenshot 或 HTML snapshot 资产。该校验会把结果写入 `docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json`，其中包含原始 JSONL 的 `file_sha256` 和 verification 自身的 `verification_hash`，供 status report 离线复算。
 
+当需要在内容尚未填完时刷新交付证据链，使用 `make au-p0b-google-manual-backfill-evidence`。该 target 会在 strict verification 失败时仍写出 blocked-but-auditable artifact，并在 `summary` 中固定 `coverage_complete`、`content_complete`、120-row / 60 prompt-city 覆盖、answer/citation/asset 缺失行数、`next_action` 和 raw answer/citation/asset URL 禁止策略；当前模板态应表现为 `coverage_complete=true`、`content_complete=false`、`missing_answer_line_count=120`、`missing_citation_line_count=120`、`missing_asset_line_count=120`。该 target 只用于审计刷新，不是放行门禁；真实进入 health-only / 240-run 前仍必须让 `make verify-au-p0b-google-manual-backfill` strict 通过。
+
 所有运行产物默认写入 `docs/runtime_preflight/*.json`，该目录下 JSON 默认不提交，避免把真实 provider 状态、错误上下文或潜在敏感配置写入仓库。需要提交的是摘要、审计日志和代码。
 
 ## 3. 标准步骤
@@ -178,6 +180,14 @@ docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json
 ```
 
 只有 strict verifier 通过、verification hash 可复算，并且 status report 读取到该 artifact 后，才允许继续进入 collector health-only 和 240-run。
+
+若只需要更新 fulfillment/clearance/delivery progress 的 blocked 状态证据，运行：
+
+```bash
+make au-p0b-google-manual-backfill-evidence
+```
+
+该命令会写同一个默认 verification artifact，但允许以非 ready 状态退出 0，便于 `make au-delivery-evidence-refresh` 顺序刷新；它不得替代上面的 strict 校验步骤。
 
 6. 做 collector health-only 预检：
 
