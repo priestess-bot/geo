@@ -7353,6 +7353,97 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertIn("signature invalid", response.json()["detail"])
 
+    def test_runtime_notification_email_provider_feedback_webhook_records_sendgrid_payload(self) -> None:
+        class FakeRepository:
+            def __init__(self) -> None:
+                self.feedback_inputs: list[object] = []
+
+            def record_runtime_notification_email_feedback(self, feedback: object) -> RuntimeNotificationEmailFeedback:
+                self.feedback_inputs.append(feedback)
+                return RuntimeNotificationEmailFeedback(
+                    feedback_event={
+                        "id": f"feedback-{len(self.feedback_inputs)}",
+                        "project_id": "project-1",
+                        "delivery_id": feedback.delivery_id,
+                        "notification_id": "notification-1",
+                        "subscription_id": "subscription-1",
+                        "feedback_type": feedback.feedback_type,
+                        "recipient_hash": feedback.recipient_hash,
+                        "provider": feedback.provider,
+                        "provider_event_id_hash": feedback.provider_event_id_hash,
+                        "metadata": feedback.metadata,
+                        "recorded_by": feedback.recorded_by,
+                    },
+                    delivery={
+                        "id": feedback.delivery_id,
+                        "project_id": "project-1",
+                        "notification_id": "notification-1",
+                        "subscription_id": "subscription-1",
+                        "channel": "email",
+                    },
+                    notification={"id": "notification-1", "title": "Report export failed"},
+                    subscription={"id": "subscription-1", "channel": "email"},
+                    audit_events=({"event_type": "runtime_notification_email_feedback_recorded"},),
+                )
+
+        body = [
+            {
+                "event": "spamreport",
+                "email": "Ops@Example.com",
+                "sg_event_id": "sendgrid-event-1",
+                "timestamp": 1781462400,
+                "custom_args": {"geno_delivery_id": "delivery-1"},
+            },
+            {"event": "delivered", "email": "ignored@example.com"},
+        ]
+        fake_repository = FakeRepository()
+        with patch.dict(
+            os.environ,
+            {
+                "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret",
+                "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ID": "provider-feedback-v1",
+            },
+            clear=False,
+        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/runtime-notification-email-feedback-webhooks/sendgrid",
+                json=body,
+                headers={"x-geno-provider-webhook-secret": "feedback-secret"},
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["provider"], "sendgrid")
+        self.assertEqual(payload["record_count"], 1)
+        self.assertEqual(payload["ignored_event_count"], 1)
+        self.assertEqual(payload["ignored_event_types"], ["delivered"])
+        self.assertEqual(fake_repository.feedback_inputs[0].delivery_id, "delivery-1")
+        self.assertEqual(fake_repository.feedback_inputs[0].feedback_type, "complaint")
+        self.assertEqual(fake_repository.feedback_inputs[0].provider, "sendgrid")
+        self.assertEqual(fake_repository.feedback_inputs[0].recorded_by, "email-provider-webhook")
+        metadata = fake_repository.feedback_inputs[0].metadata
+        self.assertEqual(metadata["provider_webhook_secret_id"], "provider-feedback-v1")
+        self.assertEqual(metadata["provider_ignored_event_count"], 1)
+        self.assertNotIn("feedback-secret", str(payload))
+        self.assertNotIn("feedback-secret", str(metadata))
+        self.assertNotIn("Ops@Example.com", str(metadata))
+        self.assertNotIn("sendgrid-event-1", str(metadata))
+
+    def test_runtime_notification_email_provider_feedback_webhook_rejects_missing_secret(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret"},
+            clear=False,
+        ):
+            response = self.client.post(
+                "/v1/runtime-notification-email-feedback-webhooks/mailgun",
+                json={"event-data": {"event": "failed", "recipient": "ops@example.com"}},
+            )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("provider feedback webhook secret invalid", response.json()["detail"])
+
     def test_runtime_notification_email_feedback_events_endpoint_returns_page(self) -> None:
         class FakeRepository:
             def list_runtime_notification_email_feedback_events(self, **kwargs: object) -> RuntimeNotificationEmailFeedbackPage:
@@ -8694,6 +8785,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeNotificationEmailFeedbackPage", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedbackRequest", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedbackWebhookRequest", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailProviderFeedbackAdapter", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedbackSuppressionInput", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedbackSuppressionRequest", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailSuppression", payload["persistence"])
@@ -8785,6 +8877,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/runtime-notification-deliveries", payload["persistence"])
         self.assertIn("/v1/runtime-notification-email-feedback-events", payload["persistence"])
         self.assertIn("/v1/runtime-notification-email-feedback-webhooks/geno", payload["persistence"])
+        self.assertIn("/v1/runtime-notification-email-feedback-webhooks/{provider}", payload["persistence"])
         self.assertIn(
             "/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient",
             payload["persistence"],

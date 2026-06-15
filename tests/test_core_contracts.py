@@ -41,6 +41,10 @@ from geno_core.email_delivery import (
     render_runtime_notification_email,
     runtime_email_body_hash,
 )
+from geno_core.email_feedback_adapters import (
+    RUNTIME_NOTIFICATION_EMAIL_PROVIDER_FEEDBACK_ADAPTER_VERSION,
+    parse_runtime_notification_email_provider_feedback,
+)
 from geno_core.email_preferences import (
     RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
     runtime_notification_email_preference_token_hash,
@@ -456,6 +460,88 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(rendered.subject_hash, runtime_email_body_hash(rendered.subject))
         self.assertEqual(rendered.body_hash, runtime_email_body_hash(rendered.text))
         self.assertRegex(rendered.template_hash, r"^[0-9a-f]{64}$")
+
+    def test_runtime_notification_email_feedback_adapter_parses_sendgrid_events_hash_only(self) -> None:
+        result = parse_runtime_notification_email_provider_feedback(
+            provider="sendgrid",
+            payload=[
+                {
+                    "event": "bounce",
+                    "email": "Ops@Example.com",
+                    "timestamp": 1781462400,
+                    "sg_event_id": "sendgrid-event-1",
+                    "custom_args": {"geno_delivery_id": "delivery-1"},
+                    "reason": "550 mailbox unavailable",
+                },
+                {"event": "processed", "email": "ignored@example.com"},
+            ],
+            payload_hash="payload-hash",
+        )
+
+        self.assertEqual(result.adapter_version, RUNTIME_NOTIFICATION_EMAIL_PROVIDER_FEEDBACK_ADAPTER_VERSION)
+        self.assertEqual(result.provider, "sendgrid")
+        self.assertEqual(result.ignored_event_count, 1)
+        self.assertEqual(result.ignored_event_types, ("processed",))
+        self.assertEqual(len(result.records), 1)
+        record = result.records[0]
+        self.assertEqual(record.delivery_id, "delivery-1")
+        self.assertEqual(record.feedback_type, "bounce")
+        self.assertEqual(record.provider, "sendgrid")
+        self.assertEqual(record.provider_event_id, "sendgrid-event-1")
+        self.assertEqual(record.recipient, "Ops@Example.com")
+        self.assertEqual(record.recorded_by, "email-provider-webhook")
+        self.assertEqual(record.metadata["provider_recipient_hash"], runtime_email_body_hash("ops@example.com"))
+        self.assertEqual(record.metadata["provider_event_id_hash"], runtime_email_body_hash("sendgrid-event-1"))
+        self.assertEqual(record.metadata["provider_payload_sha256"], "payload-hash")
+        self.assertNotIn("Ops@Example.com", str(record.metadata))
+        self.assertNotIn("sendgrid-event-1", str(record.metadata))
+
+    def test_runtime_notification_email_feedback_adapter_parses_mailgun_events(self) -> None:
+        result = parse_runtime_notification_email_provider_feedback(
+            provider="mailgun",
+            payload={
+                "event-data": {
+                    "event": "complained",
+                    "recipient": "ops@example.com",
+                    "timestamp": 1781462400.5,
+                    "id": "mailgun-event-1",
+                    "user-variables": {"runtime_notification_delivery_id": "delivery-2"},
+                    "severity": "permanent",
+                }
+            },
+        )
+
+        self.assertEqual(len(result.records), 1)
+        record = result.records[0]
+        self.assertEqual(record.delivery_id, "delivery-2")
+        self.assertEqual(record.feedback_type, "complaint")
+        self.assertEqual(record.provider, "mailgun")
+        self.assertEqual(record.metadata["mailgun_severity"], "permanent")
+        self.assertNotIn("ops@example.com", str(record.metadata))
+        self.assertNotIn("mailgun-event-1", str(record.metadata))
+
+    def test_runtime_notification_email_feedback_adapter_parses_postmark_events_with_default_delivery(self) -> None:
+        result = parse_runtime_notification_email_provider_feedback(
+            provider="postmark",
+            payload={
+                "RecordType": "Bounce",
+                "Type": "HardBounce",
+                "Email": "ops@example.com",
+                "ID": 42,
+                "BouncedAt": "2026-06-15T00:00:00Z",
+            },
+            default_delivery_id="delivery-3",
+        )
+
+        self.assertEqual(len(result.records), 1)
+        record = result.records[0]
+        self.assertEqual(record.delivery_id, "delivery-3")
+        self.assertEqual(record.feedback_type, "bounce")
+        self.assertEqual(record.provider, "postmark")
+        self.assertEqual(record.provider_event_id, "42")
+        self.assertEqual(record.metadata["provider_delivery_id_source"], "default_delivery_id")
+        self.assertEqual(record.metadata["postmark_bounce_type"], "HardBounce")
+        self.assertNotIn("ops@example.com", str(record.metadata))
 
     def test_runtime_notification_email_preference_token_verifies_claims_and_rejects_tampering(self) -> None:
         token = sign_runtime_notification_email_preference_token(

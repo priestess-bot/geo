@@ -48,6 +48,12 @@ from geno_core.email_delivery import (
     render_project_member_invitation_email,
     render_runtime_notification_email,
 )
+from geno_core.email_feedback_adapters import (
+    RUNTIME_NOTIFICATION_EMAIL_PROVIDER_FEEDBACK_ADAPTER_VERSION,
+    SUPPORTED_RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_PROVIDERS,
+    RuntimeNotificationEmailProviderFeedbackParseResult,
+    parse_runtime_notification_email_provider_feedback,
+)
 from geno_core.email_preferences import (
     RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
     RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_RESUBSCRIBE_ACTION,
@@ -145,11 +151,15 @@ __all__ = [
     "build_browser_fidelity_sampling_plan",
     "PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION",
     "RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION",
+    "RUNTIME_NOTIFICATION_EMAIL_PROVIDER_FEEDBACK_ADAPTER_VERSION",
+    "SUPPORTED_RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_PROVIDERS",
     "RuntimeEmailTemplateRenderResult",
+    "RuntimeNotificationEmailProviderFeedbackParseResult",
     "RuntimeNotificationEmailPreferenceTokenClaims",
     "RuntimeNotificationEmailPreferenceTokenVerification",
     "render_project_member_invitation_email",
     "render_runtime_notification_email",
+    "parse_runtime_notification_email_provider_feedback",
     "RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION",
     "RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_RESUBSCRIBE_ACTION",
     "RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_VERSION",

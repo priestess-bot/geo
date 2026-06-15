@@ -128,10 +128,15 @@ from geno_core.email_preferences import (
     RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_UNSUBSCRIBE_ACTION,
     verify_runtime_notification_email_preference_token,
 )
+from geno_core.email_feedback_adapters import (
+    RUNTIME_NOTIFICATION_EMAIL_PROVIDER_FEEDBACK_ADAPTER_VERSION,
+    parse_runtime_notification_email_provider_feedback,
+)
 from geno_core.webhook_signing import (
     RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER,
     RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER,
     RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER,
+    runtime_notification_webhook_payload_hash,
     verify_runtime_notification_webhook_signature,
 )
 from scripts.build_au_launch_status import (
@@ -319,6 +324,8 @@ RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS_ENV = (
     "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS"
 )
 DEFAULT_RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS = 300.0
+RUNTIME_NOTIFICATION_EMAIL_PROVIDER_WEBHOOK_SECRET_HEADER = "x-geno-provider-webhook-secret"
+RUNTIME_NOTIFICATION_EMAIL_PROVIDER_WEBHOOK_DELIVERY_ID_HEADER = "x-geno-provider-delivery-id"
 RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV = "GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET"
 PROJECT_MANAGE_ROLES = ("owner", "admin")
 PROJECT_ANALYZE_ROLES = ("owner", "admin", "analyst")
@@ -568,6 +575,22 @@ def _verify_runtime_notification_email_feedback_webhook(
         "delivery_id_header": request.headers.get(RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER),
         "notification_id_header": request.headers.get(RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER),
         "payload_hash_header": request.headers.get(RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER),
+    }
+
+
+def _verify_runtime_notification_email_provider_feedback_webhook(request: Request, *, body: bytes) -> dict[str, object]:
+    secret = _runtime_notification_email_feedback_webhook_secret()
+    provided = request.headers.get(RUNTIME_NOTIFICATION_EMAIL_PROVIDER_WEBHOOK_SECRET_HEADER, "")
+    if not provided or not hmac.compare_digest(provided, secret):
+        raise HTTPException(status_code=401, detail="runtime notification email provider feedback webhook secret invalid")
+    return {
+        "source": "runtime_notification_email_provider_feedback_webhook",
+        "provider_webhook_secret_header_present": True,
+        "provider_webhook_secret_id": _runtime_notification_email_feedback_webhook_secret_id(),
+        "provider_webhook_payload_hash": runtime_notification_webhook_payload_hash(body),
+        "provider_webhook_delivery_id_header": request.headers.get(
+            RUNTIME_NOTIFICATION_EMAIL_PROVIDER_WEBHOOK_DELIVERY_ID_HEADER
+        ),
     }
 
 
@@ -6039,6 +6062,79 @@ async def record_runtime_notification_email_feedback_webhook(request: Request) -
         close_repository_connection(repository)
 
 
+@app.post("/v1/runtime-notification-email-feedback-webhooks/{provider}")
+async def record_runtime_notification_email_provider_feedback_webhook(
+    provider: str,
+    request: Request,
+) -> dict[str, object]:
+    body = await request.body()
+    provider_metadata = _verify_runtime_notification_email_provider_feedback_webhook(request, body=body)
+    try:
+        raw_payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="runtime notification email provider feedback payload must be JSON") from exc
+    try:
+        parsed = parse_runtime_notification_email_provider_feedback(
+            provider=provider,
+            payload=raw_payload,
+            payload_hash=str(provider_metadata["provider_webhook_payload_hash"]),
+            default_delivery_id=request.headers.get(RUNTIME_NOTIFICATION_EMAIL_PROVIDER_WEBHOOK_DELIVERY_ID_HEADER),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    records: list[dict[str, object]] = []
+    errors: list[dict[str, object]] = []
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        for index, feedback in enumerate(parsed.records):
+            metadata = {
+                **feedback.metadata,
+                **provider_metadata,
+                "adapter_version": parsed.adapter_version,
+                "provider_feedback_record_index": index,
+                "provider_feedback_record_count": len(parsed.records),
+                "provider_ignored_event_count": parsed.ignored_event_count,
+                "provider_ignored_event_types": list(parsed.ignored_event_types),
+            }
+            try:
+                record = repository.record_runtime_notification_email_feedback(
+                    RuntimeNotificationEmailFeedbackInput(
+                        delivery_id=feedback.delivery_id,
+                        feedback_type=feedback.feedback_type,
+                        recipient=feedback.recipient,
+                        recipient_hash=feedback.recipient_hash,
+                        provider=feedback.provider,
+                        provider_event_id=feedback.provider_event_id,
+                        provider_event_id_hash=feedback.provider_event_id_hash,
+                        occurred_at=feedback.occurred_at,
+                        metadata=metadata,
+                        recorded_by=feedback.recorded_by,
+                        reason=feedback.reason,
+                    )
+                )
+                records.append(asdict(record))
+            except ValueError as exc:
+                errors.append({"index": index, "delivery_id": feedback.delivery_id, "detail": str(exc)})
+        if errors and not records:
+            raise HTTPException(status_code=400, detail={"records": [], "errors": errors})
+        return {
+            "provider": parsed.provider,
+            "adapter_version": RUNTIME_NOTIFICATION_EMAIL_PROVIDER_FEEDBACK_ADAPTER_VERSION,
+            "record_count": len(records),
+            "ignored_event_count": parsed.ignored_event_count,
+            "ignored_event_types": list(parsed.ignored_event_types),
+            "error_count": len(errors),
+            "errors": errors,
+            "records": records,
+            "payload_hash": parsed.payload_hash,
+        }
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient")
 def apply_runtime_notification_email_feedback_suppression(
     feedback_event_id: str,
@@ -7266,6 +7362,7 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeNotificationEmailFeedbackWebhookRequest",
             "RuntimeNotificationEmailFeedbackSuppressionInput",
             "RuntimeNotificationEmailFeedbackSuppressionRequest",
+            "RuntimeNotificationEmailProviderFeedbackAdapter",
             "RuntimeNotificationEmailSuppression",
             "RuntimeNotificationEmailSuppressionInput",
             "RuntimeNotificationEmailSuppressionPage",
@@ -7371,6 +7468,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/runtime-notification-deliveries",
             "/v1/runtime-notification-email-feedback-events",
             "/v1/runtime-notification-email-feedback-webhooks/geno",
+            "/v1/runtime-notification-email-feedback-webhooks/{provider}",
             "/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient",
             "/v1/runtime-notification-email-suppressions",
             "/v1/runtime-notification-email-preferences/status",
