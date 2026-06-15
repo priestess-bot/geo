@@ -3553,6 +3553,7 @@ const endpoints = {
   promptImports: "/v1/prompts/runtime/imports",
   evidence: "/v1/evidence-runs/runtime",
   collectionRuns: "/v1/collection-runs/runtime",
+  collectionRunsExport: "/v1/collection-runs/runtime/export.csv",
   fidelityChecks: "/v1/fidelity-checks/runtime",
   fidelityTrend: "/v1/fidelity-checks/runtime/trend",
   evidenceExport: "/v1/evidence-runs/runtime/export.csv",
@@ -5389,6 +5390,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     collectionRuns: runtimePath(endpoints.collectionRuns, {
       limit: 5
     }),
+    collectionRunsExport: runtimePath(endpoints.collectionRunsExport, {
+      limit: 200
+    }),
     evidenceExport: runtimePath(endpoints.evidenceExport, {
       platform: filters.platform,
       city: filters.city,
@@ -5564,6 +5568,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.collectionRuns = runtimePath(endpoints.collectionRuns, {
     ...selectedProjectParams,
     limit: 5
+  });
+  paths.collectionRunsExport = runtimePath(endpoints.collectionRunsExport, {
+    ...selectedProjectParams,
+    limit: 200
   });
   paths.fidelityChecks = runtimePath(endpoints.fidelityChecks, {
     ...selectedProjectParams,
@@ -6845,6 +6853,7 @@ export default async function Home({
   const auditEventsExportUrl = `${displayUrl}${paths.auditEventsExport}`;
   const projectMembersExportUrl = `${displayUrl}${paths.projectMembersExport}`;
   const projectMemberInvitationsExportUrl = `${displayUrl}${paths.projectMemberInvitationsExport}`;
+  const collectionRunsExportUrl = `${displayUrl}${paths.collectionRunsExport}`;
   const actionPlansExportUrl = `${displayUrl}${paths.actionsExport}`;
   const runtimeAlertsExportUrl = `${displayUrl}${paths.alertsExport}`;
   const humanReviewsExportUrl = `${displayUrl}${paths.humanReviewsExport}`;
@@ -11527,6 +11536,13 @@ export default async function Home({
         <Panel title="Collection Run Quality" subtitle={latestCollectionRun?.collection_run.run_type || "No collection run"}>
           {latestCollectionRun ? (
             <div className="stack">
+              <dl className="facts contributionFacts">
+                <Fact label="Collection query" value={paths.collectionRuns} />
+                <Fact label="Collection CSV" value={paths.collectionRunsExport} />
+              </dl>
+              <div className="linkRow">
+                <a href={collectionRunsExportUrl}>Download collection CSV</a>
+              </div>
               <dl className="facts">
                 <Fact label="Planned" value={latestCollectionRun.collection_run.planned_runs || 0} />
                 <Fact label="Attempted" value={latestCollectionRun.collection_run.attempted_runs || 0} />

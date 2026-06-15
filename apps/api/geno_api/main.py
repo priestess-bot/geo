@@ -4784,6 +4784,46 @@ def runtime_collection_runs(
         close_repository_connection(repository)
 
 
+@app.get("/v1/collection-runs/runtime/export.csv")
+def runtime_collection_runs_export_csv(
+    project_id: str = Query(min_length=1),
+    run_type: str | None = Query(default=None, min_length=1, max_length=80),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_collection_runs_csv(
+                project_id=project_id.strip(),
+                run_type=run_type.strip() if run_type else None,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GENO-Collection-Run-Export-Hash": export.content_hash,
+                "X-GENO-Collection-Run-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GENO-Collection-Run-Type": str(export.filters.get("run_type", "")),
+                "X-GENO-Collection-Run-Row-Count": str(export.row_count),
+                "X-GENO-Collection-Run-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/evidence-runs/runtime/export.csv")
 def runtime_evidence_export_csv(
     project_id: str | None = None,
@@ -8155,6 +8195,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/prompts/runtime/import.file",
             "/v1/evidence-runs/runtime",
             "/v1/collection-runs/runtime",
+            "/v1/collection-runs/runtime/export.csv",
             "/v1/fidelity-checks/runtime",
             "/v1/fidelity-checks/runtime/trend",
             "/v1/evidence-runs/runtime/export.csv",

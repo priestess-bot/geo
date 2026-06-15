@@ -140,6 +140,7 @@ from geno_core.models import (
     RuntimeCitationGraph,
     RuntimeCitationGraphNode,
     RuntimeCitationGraphPage,
+    RuntimeCollectionRun,
     RuntimeNotificationDelivery,
     RuntimeNotificationDeliveryPage,
     RuntimeNotificationDeliveryStatusInput,
@@ -6160,6 +6161,89 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM collection_run_summaries WHERE project_id = %s AND run_type = %s", executed_sql)
         self.assertIn("ORDER BY created_at DESC, id DESC", executed_sql)
         self.assertIn("WHERE target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_exports_runtime_collection_runs_csv(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        collection_run_id = "7eb05834-b2ff-5f93-bb4d-4f1f6f8ed4b5"
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        page = RuntimeCollectionRunPage(
+            total_count=1,
+            limit=10,
+            offset=0,
+            records=(
+                RuntimeCollectionRun(
+                    collection_run={
+                        "id": collection_run_id,
+                        "project_id": project_id,
+                        "run_type": "p0a_slice",
+                        "mode": "fixture",
+                        "planned_runs": 4,
+                        "attempted_runs": 4,
+                        "success_count": 3,
+                        "failure_count": 1,
+                        "success_rate": 0.75,
+                        "trigger_rate": 0.5,
+                        "answer_present_rate": 0.75,
+                        "total_cost": 0.04,
+                        "average_cost_per_run": 0.01,
+                        "total_duration_ms": 400,
+                        "average_duration_ms": 100,
+                        "collector_backend_ids": ["fixture_perplexity_sonar"],
+                        "platform_distribution": {"perplexity": 4},
+                        "city_distribution": {"Australia": 4},
+                        "access_method_distribution": {"official_api": 4},
+                        "failure_summary": {"OPENAI_API_KEY is required": 1},
+                        "answer_run_ids": [answer_run_id],
+                        "started_at": now,
+                        "completed_at": now,
+                        "created_at": now,
+                    },
+                    audit_events=(
+                        {
+                            "id": "495d24da-90cf-4073-bd9c-16afeb5b3169",
+                            "event_type": "collection_run_summarized",
+                            "project_id": project_id,
+                            "target_type": "collection_run",
+                            "target_id": collection_run_id,
+                            "after_hash": "after",
+                            "method_version": "collection_run_summary_v1",
+                            "created_at": now,
+                        },
+                    ),
+                ),
+            ),
+        )
+        repository = PostgresEvidenceRepository(RecordingConnection())
+        with patch.object(repository, "list_runtime_collection_runs", return_value=page):
+            export = repository.export_runtime_collection_runs_csv(
+                project_id=project_id,
+                run_type="p0a_slice",
+                limit=10,
+                offset=0,
+            )
+
+        self.assertEqual(export.export_type, "runtime_collection_runs_csv")
+        self.assertEqual(export.filename, "runtime-collection-runs.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertEqual(export.filters["run_type"], "p0a_slice")
+        self.assertIn("collection_run_id,project_id,run_type,mode", export.content)
+        self.assertIn(collection_run_id, export.content)
+        self.assertIn(answer_run_id, export.content)
+        self.assertIn("p0a_slice", export.content)
+        self.assertIn("fixture_perplexity_sonar", export.content)
+        self.assertIn("perplexity=4", export.content)
+        self.assertIn("collection_run_summarized", export.content)
+        self.assertIn("collection_run_summary_v1", export.content)
+        self.assertIn(
+            _artifact_hash(json.dumps({"OPENAI_API_KEY is required": 1}, ensure_ascii=False, sort_keys=True)),
+            export.content,
+        )
+        self.assertNotIn("OPENAI_API_KEY is required", export.content)
+        self.assertEqual(export.content_hash, hashlib.sha256(export.content.encode("utf-8")).hexdigest())
 
     def test_runtime_fidelity_check_records_mismatch_and_audit_event(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

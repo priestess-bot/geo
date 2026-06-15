@@ -1487,6 +1487,108 @@ def _render_runtime_evidence_csv(page: RuntimeEvidencePage) -> str:
     return output.getvalue()
 
 
+def _render_runtime_collection_runs_csv(page: RuntimeCollectionRunPage) -> str:
+    def dict_keys(value: object) -> str:
+        if not isinstance(value, dict):
+            return ""
+        return _pipe_join(sorted(str(key) for key in value))
+
+    def dict_counts(value: object) -> str:
+        if not isinstance(value, dict):
+            return ""
+        return _pipe_join([f"{key}={value[key]}" for key in sorted(value)])
+
+    def dict_hash(value: object) -> str:
+        payload = value if isinstance(value, dict) else {}
+        return _artifact_hash(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "collection_run_id",
+            "project_id",
+            "run_type",
+            "mode",
+            "planned_runs",
+            "attempted_runs",
+            "success_count",
+            "failure_count",
+            "success_rate",
+            "trigger_rate",
+            "answer_present_rate",
+            "total_cost",
+            "average_cost_per_run",
+            "total_duration_ms",
+            "average_duration_ms",
+            "collector_backend_ids",
+            "platform_distribution_keys",
+            "platform_distribution_counts",
+            "city_distribution_keys",
+            "city_distribution_counts",
+            "access_method_distribution_keys",
+            "access_method_distribution_counts",
+            "failure_summary_key_count",
+            "failure_summary_hash",
+            "answer_run_count",
+            "answer_run_ids",
+            "started_at",
+            "completed_at",
+            "created_at",
+            "audit_event_count",
+            "latest_audit_event_type",
+            "latest_audit_method_version",
+            "latest_audit_after_hash",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        collection_run = record.collection_run
+        latest_audit_event = _latest_audit_event(record.audit_events)
+        failure_summary = collection_run.get("failure_summary") if isinstance(collection_run.get("failure_summary"), dict) else {}
+        answer_run_ids = collection_run.get("answer_run_ids")
+        if not isinstance(answer_run_ids, (list, tuple)):
+            answer_run_ids = ()
+        writer.writerow(
+            {
+                "collection_run_id": collection_run.get("id") or "",
+                "project_id": collection_run.get("project_id") or "",
+                "run_type": collection_run.get("run_type") or "",
+                "mode": collection_run.get("mode") or "",
+                "planned_runs": collection_run.get("planned_runs") or 0,
+                "attempted_runs": collection_run.get("attempted_runs") or 0,
+                "success_count": collection_run.get("success_count") or 0,
+                "failure_count": collection_run.get("failure_count") or 0,
+                "success_rate": collection_run.get("success_rate") or 0,
+                "trigger_rate": collection_run.get("trigger_rate") or 0,
+                "answer_present_rate": collection_run.get("answer_present_rate") or 0,
+                "total_cost": collection_run.get("total_cost") or 0,
+                "average_cost_per_run": collection_run.get("average_cost_per_run") or 0,
+                "total_duration_ms": collection_run.get("total_duration_ms") or 0,
+                "average_duration_ms": collection_run.get("average_duration_ms") or 0,
+                "collector_backend_ids": _pipe_join(collection_run.get("collector_backend_ids")),
+                "platform_distribution_keys": dict_keys(collection_run.get("platform_distribution")),
+                "platform_distribution_counts": dict_counts(collection_run.get("platform_distribution")),
+                "city_distribution_keys": dict_keys(collection_run.get("city_distribution")),
+                "city_distribution_counts": dict_counts(collection_run.get("city_distribution")),
+                "access_method_distribution_keys": dict_keys(collection_run.get("access_method_distribution")),
+                "access_method_distribution_counts": dict_counts(collection_run.get("access_method_distribution")),
+                "failure_summary_key_count": len(failure_summary),
+                "failure_summary_hash": dict_hash(failure_summary),
+                "answer_run_count": len(answer_run_ids),
+                "answer_run_ids": _pipe_join(answer_run_ids),
+                "started_at": collection_run.get("started_at") or "",
+                "completed_at": collection_run.get("completed_at") or "",
+                "created_at": collection_run.get("created_at") or "",
+                "audit_event_count": len(record.audit_events),
+                "latest_audit_event_type": latest_audit_event.get("event_type") or "",
+                "latest_audit_method_version": latest_audit_event.get("method_version") or "",
+                "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
+            }
+        )
+    return output.getvalue()
+
+
 def _render_runtime_project_lifecycle_events_csv(page: RuntimeProjectLifecycleEventPage) -> str:
     output = StringIO()
     writer = csv.DictWriter(
@@ -7702,6 +7804,42 @@ class PostgresEvidenceRepository:
                     )
                 )
         return RuntimeCollectionRunPage(total_count=total_count, limit=limit, offset=offset, records=tuple(records))
+
+    def export_runtime_collection_runs_csv(
+        self,
+        *,
+        project_id: str,
+        run_type: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        normalized_project_id = project_id.strip()
+        if not normalized_project_id:
+            raise ValueError("project_id is required")
+        normalized_run_type = run_type.strip() if run_type else None
+        page = self.list_runtime_collection_runs(
+            project_id=normalized_project_id,
+            run_type=normalized_run_type,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_collection_runs_csv(page)
+        filters = {
+            "project_id": normalized_project_id,
+            "run_type": normalized_run_type,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_collection_runs_csv",
+            filename="runtime-collection-runs.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=page.total_count,
+            row_count=len(page.records),
+        )
 
     def export_runtime_evidence_csv(
         self,

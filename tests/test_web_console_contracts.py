@@ -532,8 +532,13 @@ class WebConsoleContractsTest(unittest.TestCase):
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
 
         self.assertIn('collectionRuns: "/v1/collection-runs/runtime"', page_source)
+        self.assertIn('collectionRunsExport: "/v1/collection-runs/runtime/export.csv"', page_source)
         self.assertIn("type CollectionRun", page_source)
+        self.assertIn("collectionRunsExportUrl", page_source)
         self.assertIn("Collection Run Quality", page_source)
+        self.assertIn("Collection query", page_source)
+        self.assertIn("Collection CSV", page_source)
+        self.assertIn("Download collection CSV", page_source)
         self.assertIn("Success rate", page_source)
         self.assertIn("Trigger rate", page_source)
         self.assertIn("Answer rate", page_source)

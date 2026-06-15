@@ -4350,6 +4350,46 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["limit"], 2)
         self.assertEqual(fake_repository.kwargs["offset"], 1)
 
+    def test_runtime_collection_runs_export_endpoint_returns_csv_with_hash_headers(self) -> None:
+        class FakeRepository:
+            def export_runtime_collection_runs_csv(self, **kwargs: object) -> RuntimeEvidenceExport:
+                self.kwargs = kwargs
+                return RuntimeEvidenceExport(
+                    export_type="runtime_collection_runs_csv",
+                    filename="runtime-collection-runs.csv",
+                    media_type="text/csv; charset=utf-8",
+                    content="collection_run_id,project_id\nrun-1,project-1\n",
+                    content_hash="hash-collection-runs-csv",
+                    filters={
+                        "project_id": kwargs["project_id"],
+                        "run_type": kwargs["run_type"],
+                    },
+                    total_count=2,
+                    row_count=1,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/collection-runs/runtime/export.csv?project_id=project-1&run_type=p0a_slice&limit=5",
+                headers={"X-GENO-Actor-Id": "analyst-1"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("run-1", response.text)
+        self.assertEqual(response.headers["x-geno-collection-run-export-hash"], "hash-collection-runs-csv")
+        self.assertEqual(response.headers["x-geno-collection-run-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geno-collection-run-type"], "p0a_slice")
+        self.assertEqual(response.headers["x-geno-collection-run-row-count"], "1")
+        self.assertEqual(response.headers["x-geno-collection-run-total-count"], "2")
+        self.assertIn('filename="runtime-collection-runs.csv"', response.headers["content-disposition"])
+        self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.kwargs["run_type"], "p0a_slice")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+        self.assertEqual(fake_repository.kwargs["offset"], 0)
+
     def test_runtime_fidelity_checks_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/fidelity-checks/runtime?status=not_run")
         self.assertEqual(response.status_code, 503)
@@ -9601,6 +9641,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/prompts/runtime/import.file", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime", payload["persistence"])
         self.assertIn("/v1/collection-runs/runtime", payload["persistence"])
+        self.assertIn("/v1/collection-runs/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/fidelity-checks/runtime", payload["persistence"])
         self.assertIn("/v1/fidelity-checks/runtime/trend", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime/export.csv", payload["persistence"])
