@@ -1930,6 +1930,95 @@ def _render_runtime_report_export_jobs_csv(page: RuntimeReportExportJobPage) -> 
     return output.getvalue()
 
 
+def _render_runtime_project_members_csv(page: RuntimeProjectMemberPage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "member_id",
+            "project_id",
+            "user_id_hash",
+            "role",
+            "created_at",
+            "audit_event_count",
+            "latest_audit_event_type",
+            "latest_audit_method_version",
+            "latest_audit_after_hash",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        member = record.member
+        latest_audit_event = record.audit_events[0] if record.audit_events else {}
+        user_id = str(member.get("user_id") or "")
+        writer.writerow(
+            {
+                "member_id": member.get("id") or "",
+                "project_id": member.get("project_id") or "",
+                "user_id_hash": _artifact_hash(user_id) if user_id else "",
+                "role": member.get("role") or "",
+                "created_at": member.get("created_at") or "",
+                "audit_event_count": len(record.audit_events),
+                "latest_audit_event_type": latest_audit_event.get("event_type") or "",
+                "latest_audit_method_version": latest_audit_event.get("method_version") or "",
+                "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
+            }
+        )
+    return output.getvalue()
+
+
+def _render_runtime_project_member_invitations_csv(page: RuntimeProjectMemberInvitationPage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "invitation_id",
+            "project_id",
+            "email_hash",
+            "role",
+            "status",
+            "invite_token_hash_present",
+            "invited_by_hash",
+            "expires_at",
+            "accepted_at",
+            "revoked_at",
+            "created_at",
+            "updated_at",
+            "audit_event_count",
+            "latest_audit_event_type",
+            "latest_audit_method_version",
+            "latest_audit_after_hash",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        invitation = record.invitation
+        latest_audit_event = record.audit_events[0] if record.audit_events else {}
+        email = str(invitation.get("email") or "")
+        invited_by = str(invitation.get("invited_by") or "")
+        writer.writerow(
+            {
+                "invitation_id": invitation.get("id") or "",
+                "project_id": invitation.get("project_id") or "",
+                "email_hash": _artifact_hash(email) if email else "",
+                "role": invitation.get("role") or "",
+                "status": invitation.get("status") or "",
+                "invite_token_hash_present": bool(invitation.get("invite_token_hash")),
+                "invited_by_hash": _artifact_hash(invited_by) if invited_by else "",
+                "expires_at": invitation.get("expires_at") or "",
+                "accepted_at": invitation.get("accepted_at") or "",
+                "revoked_at": invitation.get("revoked_at") or "",
+                "created_at": invitation.get("created_at") or "",
+                "updated_at": invitation.get("updated_at") or "",
+                "audit_event_count": len(record.audit_events),
+                "latest_audit_event_type": latest_audit_event.get("event_type") or "",
+                "latest_audit_method_version": latest_audit_event.get("method_version") or "",
+                "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
+            }
+        )
+    return output.getvalue()
+
+
 ANSWER_RUN_COLUMNS = (
     "id",
     "project_id",
@@ -3258,6 +3347,31 @@ class PostgresEvidenceRepository:
             records = tuple(self._load_runtime_project_member(cursor=cursor, member=row) for row in rows)
         return RuntimeProjectMemberPage(total_count=total_count, limit=limit, offset=offset, records=records)
 
+    def export_runtime_project_members_csv(
+        self,
+        *,
+        project_id: str,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        page = self.list_runtime_project_members(project_id=project_id, limit=limit, offset=offset)
+        content = _render_runtime_project_members_csv(page)
+        filters = {
+            "project_id": project_id.strip(),
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_project_members_csv",
+            filename="runtime-project-members.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters=filters,
+            total_count=page.total_count,
+            row_count=len(page.records),
+        )
+
     def save_runtime_project_member(self, member: RuntimeProjectMemberInput) -> RuntimeProjectMember:
         project_id = member.project_id.strip()
         user_id = member.user_id.strip()
@@ -3399,6 +3513,38 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=records,
+        )
+
+    def export_runtime_project_member_invitations_csv(
+        self,
+        *,
+        project_id: str,
+        status: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        page = self.list_runtime_project_member_invitations(
+            project_id=project_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_project_member_invitations_csv(page)
+        filters = {
+            "project_id": project_id.strip(),
+            "status": status.strip().lower() if status else None,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_project_member_invitations_csv",
+            filename="runtime-project-member-invitations.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=page.total_count,
+            row_count=len(page.records),
         )
 
     def create_runtime_project_member_invitation(

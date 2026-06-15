@@ -4555,6 +4555,63 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM project_members WHERE project_id = %s", executed_sql)
         self.assertIn("target_type = %s AND target_id = %s", executed_sql)
 
+    def test_postgres_repository_exports_runtime_project_members_csv(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        member_id = "d83a98ab-57c1-52e8-90b9-8c488f263e48"
+        user_id = "owner@example.com"
+        audit_row = {
+            "id": "2782a901-8cdf-47e7-bbdb-345d9ca66efe",
+            "event_type": "project_member_saved",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "agency-owner",
+            "target_type": "project_member",
+            "target_id": member_id,
+            "before_hash": None,
+            "after_hash": "member-after-hash",
+            "input_refs": {"project_ids": [project_id], "user_ids": [user_id]},
+            "output_refs": {"project_member_ids": [member_id]},
+            "method_version": "project_member_v1",
+            "reason": "add owner",
+            "created_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [
+                    {
+                        "id": member_id,
+                        "project_id": project_id,
+                        "user_id": user_id,
+                        "role": "owner",
+                        "created_at": now,
+                    }
+                ],
+                [audit_row],
+            ]
+        )
+
+        export = PostgresEvidenceRepository(connection).export_runtime_project_members_csv(
+            project_id=project_id,
+            limit=5,
+            offset=0,
+        )
+
+        self.assertEqual(export.export_type, "runtime_project_members_csv")
+        self.assertEqual(export.filename, "runtime-project-members.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertIn("member_id,project_id,user_id_hash,role,created_at", export.content)
+        self.assertIn(member_id, export.content)
+        self.assertIn("owner", export.content)
+        self.assertIn(_artifact_hash(user_id), export.content)
+        self.assertIn("project_member_v1", export.content)
+        self.assertIn("member-after-hash", export.content)
+        self.assertNotIn(user_id, export.content)
+
     def test_postgres_repository_saves_runtime_project_member_with_audit_event(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
@@ -4750,6 +4807,80 @@ class CoreContractsTest(unittest.TestCase):
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FROM project_member_invitations WHERE project_id = %s AND status = %s", executed_sql)
         self.assertIn("target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_exports_runtime_project_member_invitations_csv(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
+        email = "viewer@example.com"
+        invited_by = "agency-owner"
+        token_hash = "stored-invite-token-hash"
+        audit_row = {
+            "id": "2782a901-8cdf-47e7-bbdb-345d9ca66efe",
+            "event_type": "project_member_invitation_created",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": invited_by,
+            "target_type": "project_member_invitation",
+            "target_id": invitation_id,
+            "before_hash": None,
+            "after_hash": "invitation-after-hash",
+            "input_refs": {"project_ids": [project_id], "emails": [email]},
+            "output_refs": {"project_member_invitation_ids": [invitation_id]},
+            "method_version": "project_member_invitation_v1",
+            "reason": "invite viewer",
+            "created_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                {"count": 1},
+                [
+                    {
+                        "id": invitation_id,
+                        "project_id": project_id,
+                        "email": email,
+                        "role": "viewer",
+                        "status": "pending",
+                        "invite_token_hash": token_hash,
+                        "invited_by": invited_by,
+                        "expires_at": now + timedelta(days=7),
+                        "accepted_at": None,
+                        "revoked_at": None,
+                        "metadata": {"source": "runtime-console"},
+                        "created_at": now,
+                        "updated_at": now,
+                    }
+                ],
+                [audit_row],
+            ]
+        )
+
+        export = PostgresEvidenceRepository(connection).export_runtime_project_member_invitations_csv(
+            project_id=project_id,
+            status="pending",
+            limit=5,
+            offset=0,
+        )
+
+        self.assertEqual(export.export_type, "runtime_project_member_invitations_csv")
+        self.assertEqual(export.filename, "runtime-project-member-invitations.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertEqual(export.filters["status"], "pending")
+        self.assertIn("invitation_id,project_id,email_hash,role,status", export.content)
+        self.assertIn(invitation_id, export.content)
+        self.assertIn("viewer", export.content)
+        self.assertIn("pending", export.content)
+        self.assertIn("True", export.content)
+        self.assertIn(_artifact_hash(email), export.content)
+        self.assertIn(_artifact_hash(invited_by), export.content)
+        self.assertIn("project_member_invitation_v1", export.content)
+        self.assertIn("invitation-after-hash", export.content)
+        self.assertNotIn(email, export.content)
+        self.assertNotIn(invited_by, export.content)
+        self.assertNotIn(token_hash, export.content)
 
     def test_postgres_repository_creates_runtime_project_member_invitation_with_audit_event(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

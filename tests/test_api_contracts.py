@@ -3245,6 +3245,42 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["limit"], 5)
         self.assertEqual(fake_repository.kwargs["offset"], 1)
 
+    def test_runtime_project_members_export_endpoint_returns_csv_with_hash_headers(self) -> None:
+        class FakeRepository:
+            def export_runtime_project_members_csv(self, **kwargs: object) -> RuntimeEvidenceExport:
+                self.kwargs = kwargs
+                return RuntimeEvidenceExport(
+                    export_type="runtime_project_members_csv",
+                    filename="runtime-project-members.csv",
+                    media_type="text/csv; charset=utf-8",
+                    content="member_id,user_id_hash\nmember-1,hash-user\n",
+                    content_hash="hash-project-members-csv",
+                    filters={"project_id": kwargs["project_id"]},
+                    total_count=2,
+                    row_count=1,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/project-members/runtime/export.csv?project_id=project-1&limit=5&offset=1",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
+        self.assertEqual(response.headers["x-geno-project-member-export-hash"], "hash-project-members-csv")
+        self.assertEqual(response.headers["x-geno-project-member-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geno-project-member-row-count"], "1")
+        self.assertEqual(response.headers["x-geno-project-member-total-count"], "2")
+        self.assertIn("runtime-project-members.csv", response.headers["content-disposition"])
+        self.assertIn("member-1", response.text)
+        self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+        self.assertEqual(fake_repository.kwargs["offset"], 1)
+
     def test_runtime_project_members_endpoint_checks_access_control_when_enabled(self) -> None:
         class FakeRepository:
             def user_can_access_project(self, **kwargs: object) -> bool:
@@ -3524,6 +3560,46 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["status"], "pending")
         self.assertEqual(fake_repository.kwargs["limit"], 5)
         self.assertEqual(fake_repository.kwargs["offset"], 1)
+
+    def test_runtime_project_member_invitations_export_endpoint_returns_csv_with_hash_headers(self) -> None:
+        class FakeRepository:
+            def export_runtime_project_member_invitations_csv(self, **kwargs: object) -> RuntimeEvidenceExport:
+                self.kwargs = kwargs
+                return RuntimeEvidenceExport(
+                    export_type="runtime_project_member_invitations_csv",
+                    filename="runtime-project-member-invitations.csv",
+                    media_type="text/csv; charset=utf-8",
+                    content="invitation_id,email_hash\ninvite-1,hash-email\n",
+                    content_hash="hash-project-member-invitations-csv",
+                    filters={"project_id": kwargs["project_id"], "status": kwargs["status"]},
+                    total_count=3,
+                    row_count=1,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/project-member-invitations/runtime/export.csv?project_id=project-1&status=pending&limit=5",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
+        self.assertEqual(
+            response.headers["x-geno-project-member-invitation-export-hash"],
+            "hash-project-member-invitations-csv",
+        )
+        self.assertEqual(response.headers["x-geno-project-member-invitation-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geno-project-member-invitation-status"], "pending")
+        self.assertEqual(response.headers["x-geno-project-member-invitation-row-count"], "1")
+        self.assertEqual(response.headers["x-geno-project-member-invitation-total-count"], "3")
+        self.assertIn("runtime-project-member-invitations.csv", response.headers["content-disposition"])
+        self.assertIn("invite-1", response.text)
+        self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.kwargs["status"], "pending")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
 
     def test_runtime_project_member_invitations_endpoint_requires_admin_or_owner_role(self) -> None:
         class FakeRepository:
@@ -9069,6 +9145,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("PATCH /v1/projects/runtime", payload["persistence"])
         self.assertIn("/v1/projects/runtime/lifecycle-events", payload["persistence"])
         self.assertIn("/v1/project-member-invitations/runtime", payload["persistence"])
+        self.assertIn("/v1/project-member-invitations/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/project-member-invitations/runtime/action", payload["persistence"])
         self.assertIn("/v1/project-member-invitations/runtime/email", payload["persistence"])
         self.assertIn("/v1/project-member-invitations/runtime/accept", payload["persistence"])
@@ -9175,6 +9252,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/audit-events/runtime", payload["persistence"])
         self.assertIn("/v1/audit-events/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/project-members/runtime", payload["persistence"])
+        self.assertIn("/v1/project-members/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/candidates/reviews", payload["persistence"])

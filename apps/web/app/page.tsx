@@ -3543,7 +3543,9 @@ const endpoints = {
   auditEvents: "/v1/audit-events/runtime",
   auditEventsExport: "/v1/audit-events/runtime/export.csv",
   projectMembers: "/v1/project-members/runtime",
+  projectMembersExport: "/v1/project-members/runtime/export.csv",
   projectMemberInvitations: "/v1/project-member-invitations/runtime",
+  projectMemberInvitationsExport: "/v1/project-member-invitations/runtime/export.csv",
   projectMemberInvitationAction: "/v1/project-member-invitations/runtime/action",
   projectMemberInvitationEmail: "/v1/project-member-invitations/runtime/email",
   projectMemberInvitationAccept: "/v1/project-member-invitations/runtime/accept",
@@ -5348,7 +5350,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     auditEvents: endpoints.auditEvents,
     auditEventsExport: endpoints.auditEventsExport,
     projectMembers: endpoints.projectMembers,
+    projectMembersExport: endpoints.projectMembersExport,
     projectMemberInvitations: endpoints.projectMemberInvitations,
+    projectMemberInvitationsExport: endpoints.projectMemberInvitationsExport,
     projectMemberInvitationAction: endpoints.projectMemberInvitationAction,
     projectMemberInvitationEmail: endpoints.projectMemberInvitationEmail,
     projectMemberInvitationAccept: endpoints.projectMemberInvitationAccept,
@@ -5496,6 +5500,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.projectMembers = selectedProjectId
     ? runtimePath(endpoints.projectMembers, { project_id: selectedProjectId, limit: 20 })
     : endpoints.projectMembers;
+  paths.projectMembersExport = selectedProjectId
+    ? runtimePath(endpoints.projectMembersExport, { project_id: selectedProjectId, limit: 200 })
+    : endpoints.projectMembersExport;
   paths.projectMemberInvitations = selectedProjectId
     ? runtimePath(endpoints.projectMemberInvitations, {
         project_id: selectedProjectId,
@@ -5503,6 +5510,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
         limit: 20
       })
     : endpoints.projectMemberInvitations;
+  paths.projectMemberInvitationsExport = selectedProjectId
+    ? runtimePath(endpoints.projectMemberInvitationsExport, {
+        project_id: selectedProjectId,
+        status: "pending",
+        limit: 200
+      })
+    : endpoints.projectMemberInvitationsExport;
   paths.prompts = runtimePath(endpoints.prompts, {
     ...selectedProjectParams,
     market_code: "AU",
@@ -6785,6 +6799,8 @@ export default async function Home({
   const evidenceExportUrl = `${displayUrl}${paths.evidenceExport}`;
   const projectLifecycleExportUrl = `${displayUrl}${paths.projectLifecycleExport}`;
   const auditEventsExportUrl = `${displayUrl}${paths.auditEventsExport}`;
+  const projectMembersExportUrl = `${displayUrl}${paths.projectMembersExport}`;
+  const projectMemberInvitationsExportUrl = `${displayUrl}${paths.projectMemberInvitationsExport}`;
   const evidenceSort = data.evidence.sort || filters.sort || "collected_at_desc";
   const runtimeViewName = activeFilterCount
     ? `${selectedProject?.project.name || "Runtime project"} · ${filterLabel} · ${evidenceSort}`
@@ -9605,6 +9621,14 @@ export default async function Home({
                       project_member_deleted · {data.projectMemberInvitations.total_count} pending invites
                     </small>
                   </div>
+                  <div className="downloadRow">
+                    <a href={projectMembersExportUrl}>Download members CSV</a>
+                    <a href={projectMemberInvitationsExportUrl}>Download invitations CSV</a>
+                  </div>
+                  <dl className="facts">
+                    <Fact label="Members CSV" value={paths.projectMembersExport} />
+                    <Fact label="Invitations CSV" value={paths.projectMemberInvitationsExport} />
+                  </dl>
                   {data.projectMembers.records.length ? (
                     <ul className="plainList">
                       {data.projectMembers.records.slice(0, 6).map((record) => (
