@@ -362,10 +362,16 @@ def verify_au_p0a_credential_clearance(
         errors.append("credential_update_contract_completion_credentials_invalid")
     if completion_requirements.get("credential_clearance_ready") is not True:
         errors.append("credential_update_contract_completion_clearance_invalid")
+    if completion_requirements.get("credential_update_receipt_complete") is not True:
+        errors.append("credential_update_contract_completion_receipt_invalid")
     if completion_requirements.get("missing_required_count") != 0:
         errors.append("credential_update_contract_completion_missing_count_invalid")
     required_verifiers = _strings(completion_requirements.get("required_verifiers"))
-    for command in ("make verify-au-p0a-env", "make verify-au-p0a-credential-fulfillment"):
+    for command in (
+        "make verify-au-p0a-env",
+        "make verify-au-p0a-credential-fulfillment",
+        "make verify-au-p0a-credential-update-receipt",
+    ):
         if command not in required_verifiers:
             errors.append(f"credential_update_contract_completion_verifier_missing:{command}")
     if not any("--require-fulfilled" in command for command in required_verifiers):
@@ -415,6 +421,8 @@ def verify_au_p0a_credential_clearance(
         "make verify-au-p0a-env",
         "make au-p0a-credential-fulfillment",
         "make verify-au-p0a-credential-fulfillment",
+        "make au-p0a-credential-update-receipt",
+        "make verify-au-p0a-credential-update-receipt",
     ):
         if command not in validation_sequence:
             errors.append(f"post_update_validation_command_missing:{command}")
@@ -425,6 +433,7 @@ def verify_au_p0a_credential_clearance(
         "p0a_credential_clearance": "GET /v1/p0a-credential-clearance/au",
         "p0a_credential_request": "GET /v1/p0a-credential-request/au",
         "p0a_credential_fulfillment": "GET /v1/p0a-credential-fulfillment/au",
+        "p0a_credential_update_receipt": "GET /v1/p0a-credential-update-receipt/au",
         "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
         "delivery_progress": "GET /v1/delivery-progress/au",
     }
@@ -438,6 +447,8 @@ def verify_au_p0a_credential_clearance(
         "make verify-au-p0a-credential-request",
         "make au-p0a-credential-fulfillment",
         "make verify-au-p0a-credential-fulfillment",
+        "make au-p0a-credential-update-receipt",
+        "make verify-au-p0a-credential-update-receipt",
     ):
         if command not in hard_gate_commands:
             errors.append(f"hard_gate_missing:{command}")

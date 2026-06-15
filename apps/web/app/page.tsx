@@ -719,6 +719,7 @@ type RuntimeData = {
   p0aCredentialRequest: AuP0aCredentialRequest | null;
   p0aCredentialFulfillment: AuP0aCredentialFulfillment | null;
   p0aCredentialClearance: AuP0aCredentialClearance | null;
+  p0aCredentialUpdateReceipt: AuP0aCredentialUpdateReceipt | null;
   p0aRealBatchRequest: AuP0aRealBatchRequest | null;
   p0aRealBatchFulfillment: AuP0aRealBatchFulfillment | null;
   p0aRealBatchClearance: AuP0aRealBatchClearance | null;
@@ -1860,6 +1861,7 @@ type AuP0aCredentialClearance = {
     p0a_credential_clearance?: string;
     p0a_credential_request?: string;
     p0a_credential_fulfillment?: string;
+    p0a_credential_update_receipt?: string;
     external_dependency_clearance?: string;
     delivery_progress?: string;
   };
@@ -1868,6 +1870,78 @@ type AuP0aCredentialClearance = {
     credential_request?: { hash?: string };
     credential_fulfillment?: { hash?: string };
     external_dependency_clearance?: { hash?: string };
+  };
+};
+
+type AuP0aCredentialUpdateReceipt = {
+  p0a_credential_update_receipt_version: string;
+  generated_at: string;
+  status: string;
+  credential_update_receipt_ready: boolean;
+  credential_update_receipt_complete: boolean;
+  credentials_fulfilled: boolean;
+  credential_clearance_ready: boolean;
+  p0a_credential_update_receipt_hash: string;
+  credential_update_contract?: {
+    version?: string;
+    target_env_file?: string;
+    required_missing_key_count_at_contract_time?: number;
+    required_missing_keys_at_contract_time?: string[];
+    raw_values_allowed_in_artifacts?: boolean;
+    allowed_update_surface_ids?: string[];
+  };
+  env_file_hygiene?: {
+    path?: string;
+    exists?: boolean;
+    entry_count?: number;
+    git_ignored?: boolean | null;
+    git_tracked?: boolean | null;
+    file_mode?: string;
+    permission_safe?: boolean;
+    hygiene_ready?: boolean;
+    errors?: string[];
+    warnings?: string[];
+    secret_redacted?: boolean;
+  };
+  required_credential_records?: Array<{
+    name?: string;
+    required?: boolean;
+    owner_hint?: string;
+    target_env_file?: string;
+    source?: string;
+    present?: boolean;
+    fulfilled?: boolean;
+    value_length?: number;
+    sha256_prefix?: string;
+    secret_redacted?: boolean;
+    raw_value_recorded?: boolean;
+    blocking_reasons?: string[];
+    post_update_checks?: string[];
+  }>;
+  summary?: {
+    required_count?: number;
+    present_required_count?: number;
+    missing_required_count?: number;
+    missing_required?: string[];
+    env_file_hygiene_ready?: boolean;
+    credentials_fulfilled?: boolean;
+    credential_clearance_ready?: boolean;
+    credential_update_receipt_complete?: boolean;
+    next_command?: string;
+    raw_secret_values_allowed?: boolean;
+  };
+  post_update_validation_sequence?: string[];
+  strict_gate_commands?: string[];
+  runtime_endpoints?: {
+    p0a_credential_update_receipt?: string;
+    p0a_credential_clearance?: string;
+    p0a_credential_fulfillment?: string;
+  };
+  source_artifacts?: {
+    credential_request?: { hash?: string };
+    env_report?: { hash?: string };
+    credential_fulfillment?: { hash?: string };
+    credential_clearance?: { hash?: string };
   };
 };
 
@@ -3701,6 +3775,7 @@ const endpoints = {
   p0aCredentialRequest: "/v1/p0a-credential-request/au",
   p0aCredentialFulfillment: "/v1/p0a-credential-fulfillment/au",
   p0aCredentialClearance: "/v1/p0a-credential-clearance/au",
+  p0aCredentialUpdateReceipt: "/v1/p0a-credential-update-receipt/au",
   p0aRealBatchRequest: "/v1/p0a-real-batch-request/au",
   p0aRealBatchFulfillment: "/v1/p0a-real-batch-fulfillment/au",
   p0aRealBatchClearance: "/v1/p0a-real-batch-clearance/au",
@@ -5520,6 +5595,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aCredentialRequest: endpoints.p0aCredentialRequest,
     p0aCredentialFulfillment: endpoints.p0aCredentialFulfillment,
     p0aCredentialClearance: endpoints.p0aCredentialClearance,
+    p0aCredentialUpdateReceipt: endpoints.p0aCredentialUpdateReceipt,
     p0aRealBatchRequest: endpoints.p0aRealBatchRequest,
     p0aRealBatchFulfillment: endpoints.p0aRealBatchFulfillment,
     p0aRealBatchClearance: endpoints.p0aRealBatchClearance,
@@ -5998,6 +6074,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aCredentialRequest,
     p0aCredentialFulfillment,
     p0aCredentialClearance,
+    p0aCredentialUpdateReceipt,
     p0aRealBatchRequest,
     p0aRealBatchFulfillment,
     p0aRealBatchClearance,
@@ -6072,6 +6149,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fetchRuntimeEndpoint<AuP0aCredentialRequest | null>(baseUrl, paths.p0aCredentialRequest, null),
     fetchRuntimeEndpoint<AuP0aCredentialFulfillment | null>(baseUrl, paths.p0aCredentialFulfillment, null),
     fetchRuntimeEndpoint<AuP0aCredentialClearance | null>(baseUrl, paths.p0aCredentialClearance, null),
+    fetchRuntimeEndpoint<AuP0aCredentialUpdateReceipt | null>(baseUrl, paths.p0aCredentialUpdateReceipt, null),
     fetchRuntimeEndpoint<AuP0aRealBatchRequest | null>(baseUrl, paths.p0aRealBatchRequest, null),
     fetchRuntimeEndpoint<AuP0aRealBatchFulfillment | null>(baseUrl, paths.p0aRealBatchFulfillment, null),
     fetchRuntimeEndpoint<AuP0aRealBatchClearance | null>(baseUrl, paths.p0aRealBatchClearance, null),
@@ -6318,6 +6396,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     p0aCredentialRequest,
     p0aCredentialFulfillment,
     p0aCredentialClearance,
+    p0aCredentialUpdateReceipt,
     p0aRealBatchRequest,
     p0aRealBatchFulfillment,
     p0bGoogleExecutionChecklist,
@@ -6395,6 +6474,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       p0aCredentialRequest: p0aCredentialRequest.payload,
       p0aCredentialFulfillment: p0aCredentialFulfillment.payload,
       p0aCredentialClearance: p0aCredentialClearance.payload,
+      p0aCredentialUpdateReceipt: p0aCredentialUpdateReceipt.payload,
       p0aRealBatchRequest: p0aRealBatchRequest.payload,
       p0aRealBatchFulfillment: p0aRealBatchFulfillment.payload,
       p0aRealBatchClearance: p0aRealBatchClearance.payload,
@@ -6776,6 +6856,11 @@ export default async function Home({
   const p0aCredentialUpdateContractMissing = p0aCredentialUpdateContract?.required_missing_keys || [];
   const p0aCredentialUpdateContractSurfaces = p0aCredentialUpdateContract?.allowed_update_surfaces || [];
   const p0aCredentialUpdateContractStrictGates = p0aCredentialUpdateContract?.strict_gate_commands || [];
+  const p0aCredentialUpdateReceipt = data.p0aCredentialUpdateReceipt;
+  const p0aCredentialUpdateReceiptSummary = p0aCredentialUpdateReceipt?.summary;
+  const p0aCredentialUpdateReceiptRecords = p0aCredentialUpdateReceipt?.required_credential_records || [];
+  const p0aCredentialUpdateReceiptMissing = p0aCredentialUpdateReceiptSummary?.missing_required || [];
+  const p0aCredentialUpdateReceiptHygiene = p0aCredentialUpdateReceipt?.env_file_hygiene;
   const p0aRealBatchRequest = data.p0aRealBatchRequest;
   const p0aRealBatchRequestSummary = p0aRealBatchRequest?.summary;
   const p0aRealBatchPhases = p0aRealBatchRequest?.phase_requests || [];
@@ -9614,6 +9699,78 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.p0aCredentialClearance}</code>
+        </div>
+        <div className="handoffDossier">
+          <div className="launchRemediationHeader">
+            <strong>P0a credential update receipt</strong>
+            <span>
+              {p0aCredentialUpdateReceipt?.p0a_credential_update_receipt_version ||
+                "au_p0a_credential_update_receipt_v1"}{" "}
+              · p0a_credential_update_receipt_hash{" "}
+              {shortHash(p0aCredentialUpdateReceipt?.p0a_credential_update_receipt_hash)}
+            </span>
+          </div>
+          <div className="launchEvidenceGrid">
+            <span>
+              Receipt {p0aCredentialUpdateReceipt?.credential_update_receipt_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              Complete {p0aCredentialUpdateReceipt?.credential_update_receipt_complete ? "yes" : "no"}
+            </span>
+            <span>Credentials fulfilled {p0aCredentialUpdateReceipt?.credentials_fulfilled ? "yes" : "no"}</span>
+            <span>Clearance ready {p0aCredentialUpdateReceipt?.credential_clearance_ready ? "yes" : "no"}</span>
+            <span>Present required {p0aCredentialUpdateReceiptSummary?.present_required_count || 0}</span>
+            <span>Missing required {p0aCredentialUpdateReceiptSummary?.missing_required_count || 0}</span>
+          </div>
+          <div className="handoffBoundary">
+            <span>
+              Contract {p0aCredentialUpdateReceipt?.credential_update_contract?.version || "none"}
+            </span>
+            <span>
+              Target env {p0aCredentialUpdateReceipt?.credential_update_contract?.target_env_file || "none"}
+            </span>
+            <span>Missing {p0aCredentialUpdateReceiptMissing.join(", ") || "none"}</span>
+            <span>
+              Env file {p0aCredentialUpdateReceiptHygiene?.path || "none"}
+            </span>
+            <span>Mode {p0aCredentialUpdateReceiptHygiene?.file_mode || "none"}</span>
+            <span>Hygiene {p0aCredentialUpdateReceiptHygiene?.hygiene_ready ? "ready" : "blocked"}</span>
+            <span>Git ignored {p0aCredentialUpdateReceiptHygiene?.git_ignored ? "yes" : "no"}</span>
+            <span>Git tracked {p0aCredentialUpdateReceiptHygiene?.git_tracked ? "yes" : "no"}</span>
+            <span>
+              Raw secret allowed {p0aCredentialUpdateReceiptSummary?.raw_secret_values_allowed ? "yes" : "no"}
+            </span>
+            <span>Next command {p0aCredentialUpdateReceiptSummary?.next_command || "none"}</span>
+            <span>
+              {p0aCredentialUpdateReceipt?.runtime_endpoints?.p0a_credential_update_receipt ||
+                "GET /v1/p0a-credential-update-receipt/au"}
+            </span>
+            <span>Hard gate: make verify-au-p0a-credential-update-receipt</span>
+            <span>
+              Strict gate:{" "}
+              {p0aCredentialUpdateReceipt?.strict_gate_commands?.find((command) =>
+                command.includes("--require-complete")
+              ) ||
+                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_update_receipt.py docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json --require-complete"}
+            </span>
+          </div>
+          {p0aCredentialUpdateReceiptRecords.length ? (
+            <div className="dependencyGroupGrid">
+              {p0aCredentialUpdateReceiptRecords.map((record) => (
+                <div className="dependencyGroup" key={record.name}>
+                  <strong>{record.name || "credential"}</strong>
+                  <span>
+                    {record.owner_hint || "owner"} · {record.present ? "present" : "missing"} ·{" "}
+                    {record.fulfilled ? "fulfilled" : "blocked"}
+                  </span>
+                  <small>{record.source || "source"} · length {record.value_length || 0}</small>
+                  <small>sha256 prefix {record.sha256_prefix || "none"}</small>
+                  <small>{(record.blocking_reasons || []).slice(0, 2).join(" · ") || "no blocking reasons"}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <code>{paths.p0aCredentialUpdateReceipt}</code>
         </div>
         <div className="handoffDossier">
           <div className="launchRemediationHeader">

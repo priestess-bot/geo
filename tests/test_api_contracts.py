@@ -64,6 +64,7 @@ from scripts.run_au_external_dependency_clearance import run_au_external_depende
 from scripts.build_au_p0a_real_batch_request_packet import compute_p0a_real_batch_request_packet_hash
 from scripts.build_au_p0a_real_batch_fulfillment import compute_p0a_real_batch_fulfillment_hash
 from scripts.build_au_p0a_credential_clearance import compute_p0a_credential_clearance_hash
+from scripts.build_au_p0a_credential_update_receipt import compute_p0a_credential_update_receipt_hash
 from scripts.build_au_p0a_real_batch_clearance import compute_p0a_real_batch_clearance_hash
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
 from tests.test_au_external_dependency_clearance import AuExternalDependencyClearanceTest
@@ -2166,12 +2167,22 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(update_contract["post_update_commands"], payload["post_update_validation_sequence"])
         self.assertTrue(any("--require-fulfilled" in command for command in update_contract["strict_gate_commands"]))
         self.assertTrue(any("--require-cleared" in command for command in update_contract["strict_gate_commands"]))
+        self.assertTrue(update_contract["completion_requirements"]["credential_update_receipt_complete"])
+        self.assertIn(
+            "make verify-au-p0a-credential-update-receipt",
+            update_contract["completion_requirements"]["required_verifiers"],
+        )
         self.assertTrue(update_contract["current_state"]["ready_to_update"])
         self.assertEqual(
             payload["runtime_endpoints"]["p0a_credential_clearance"],
             "GET /v1/p0a-credential-clearance/au",
         )
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0a_credential_update_receipt"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
         self.assertIn("make verify-au-p0a-credential-clearance", payload["hard_gate_commands"])
+        self.assertIn("make verify-au-p0a-credential-update-receipt", payload["hard_gate_commands"])
         self.assertTrue(any("--require-cleared" in command for command in payload["hard_gate_commands"]))
         self.assertTrue(any("--require-fulfilled" in command for command in payload["hard_gate_commands"]))
         self.assertEqual(payload["source_artifacts"]["credential_request"]["hash_field"], "p0a_credential_request_packet_hash")
@@ -2185,7 +2196,71 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("populate_missing_credentials", {step["id"] for step in payload["operator_steps"]})
         self.assertIn("make au-p0a-env", payload["post_update_validation_sequence"])
         self.assertIn("make verify-au-p0a-credential-fulfillment", payload["post_update_validation_sequence"])
+        self.assertIn("make au-p0a-credential-update-receipt", payload["post_update_validation_sequence"])
+        self.assertIn("make verify-au-p0a-credential-update-receipt", payload["post_update_validation_sequence"])
         self.assertEqual(payload["p0a_credential_clearance_hash"], compute_p0a_credential_clearance_hash(payload))
+
+    def test_au_p0a_credential_update_receipt_endpoint_returns_redacted_update_receipt(self) -> None:
+        helper = AuHandoffDossierTest()
+        helper.setUp()
+        with TemporaryDirectory() as temp_dir:
+            launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
+            status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
+            plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
+            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geno_api.main.build_au_launch_remediation_plan",
+                return_value=plan_payload,
+            ):
+                response = self.client.get("/v1/p0a-credential-update-receipt/au")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(
+            payload["p0a_credential_update_receipt_version"],
+            "au_p0a_credential_update_receipt_v1",
+        )
+        self.assertEqual(payload["status"], "pass")
+        self.assertTrue(payload["credential_update_receipt_ready"])
+        self.assertFalse(payload["credential_update_receipt_complete"])
+        self.assertFalse(payload["credentials_fulfilled"])
+        self.assertFalse(payload["credential_clearance_ready"])
+        self.assertEqual(payload["summary"]["missing_required_count"], len(payload["summary"]["missing_required"]))
+        self.assertIn("PERPLEXITY_API_KEY", payload["summary"]["missing_required"])
+        self.assertIn("OPENAI_API_KEY", payload["summary"]["missing_required"])
+        self.assertEqual(payload["summary"]["next_command"], "make au-p0a-env")
+        self.assertFalse(payload["summary"]["raw_secret_values_allowed"])
+        self.assertEqual(
+            payload["credential_update_contract"]["version"],
+            "au_p0a_credential_update_contract_v1",
+        )
+        self.assertFalse(payload["credential_update_contract"]["raw_values_allowed_in_artifacts"])
+        self.assertIn("gitignored_env_file", payload["credential_update_contract"]["allowed_update_surface_ids"])
+        self.assertIn("process_environment", payload["credential_update_contract"]["allowed_update_surface_ids"])
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0a_credential_update_receipt"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
+        self.assertIn("make verify-au-p0a-credential-update-receipt", payload["strict_gate_commands"])
+        self.assertTrue(any("--require-complete" in command for command in payload["strict_gate_commands"]))
+        self.assertEqual(payload["source_artifacts"]["credential_request"]["hash_field"], "p0a_credential_request_packet_hash")
+        self.assertEqual(payload["source_artifacts"]["env_report"]["hash_field"], "environment_report_hash")
+        self.assertEqual(payload["source_artifacts"]["credential_fulfillment"]["hash_field"], "p0a_credential_fulfillment_hash")
+        self.assertEqual(payload["source_artifacts"]["credential_clearance"]["hash_field"], "p0a_credential_clearance_hash")
+        self.assertEqual(payload["verifiers"]["credential_request"]["status"], "pass")
+        self.assertEqual(payload["verifiers"]["credential_fulfillment"]["status"], "pass")
+        self.assertEqual(payload["verifiers"]["credential_clearance"]["status"], "pass")
+        self.assertEqual(
+            payload["p0a_credential_update_receipt_hash"],
+            compute_p0a_credential_update_receipt_hash(payload),
+        )
+        self.assertTrue(payload["required_credential_records"])
+        for record in payload["required_credential_records"]:
+            self.assertTrue(record["secret_redacted"])
+            self.assertFalse(record["raw_value_recorded"])
+            self.assertNotIn("raw_value", record)
+            if record["present"]:
+                self.assertGreater(record["value_length"], 0)
+                self.assertEqual(len(record["sha256_prefix"]), 12)
 
     def test_au_external_dependency_handoff_endpoint_returns_current_dependency_boundary(self) -> None:
         helper = AuHandoffDossierTest()

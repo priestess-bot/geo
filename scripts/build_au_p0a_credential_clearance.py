@@ -275,6 +275,8 @@ def _post_update_validation_sequence(
         "make verify-au-p0a-env",
         "make au-p0a-credential-fulfillment",
         "make verify-au-p0a-credential-fulfillment",
+        "make au-p0a-credential-update-receipt",
+        "make verify-au-p0a-credential-update-receipt",
         str(_as_dict(credential_fulfillment.get("summary")).get("strict_gate_command") or ""),
     ]
     commands.extend(_strings(credential_request.get("verification_commands")))
@@ -364,10 +366,12 @@ def _credential_update_contract(
         "completion_requirements": {
             "credentials_fulfilled": True,
             "credential_clearance_ready": True,
+            "credential_update_receipt_complete": True,
             "missing_required_count": 0,
             "required_verifiers": [
                 "make verify-au-p0a-env",
                 "make verify-au-p0a-credential-fulfillment",
+                "make verify-au-p0a-credential-update-receipt",
                 strict_gate_command,
                 strict_commands[-1],
             ],
@@ -565,6 +569,7 @@ def build_au_p0a_credential_clearance(
             "p0a_credential_clearance": "GET /v1/p0a-credential-clearance/au",
             "p0a_credential_request": "GET /v1/p0a-credential-request/au",
             "p0a_credential_fulfillment": "GET /v1/p0a-credential-fulfillment/au",
+            "p0a_credential_update_receipt": "GET /v1/p0a-credential-update-receipt/au",
             "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
             "delivery_progress": "GET /v1/delivery-progress/au",
         },
@@ -576,6 +581,8 @@ def build_au_p0a_credential_clearance(
                 "make verify-au-p0a-credential-request",
                 "make au-p0a-credential-fulfillment",
                 "make verify-au-p0a-credential-fulfillment",
+                "make au-p0a-credential-update-receipt",
+                "make verify-au-p0a-credential-update-receipt",
                 strict_gate_command,
                 "PYTHONPATH=packages/geno_core:apps/api python3 "
                 "scripts/verify_au_p0a_credential_clearance.py "

@@ -120,6 +120,8 @@ class AuP0aCredentialClearanceTest(unittest.TestCase):
         )
         self.assertIn("make verify-au-p0a-env-template", [step["command"] for step in packet["operator_steps"]])
         self.assertIn("make au-p0a-env", packet["post_update_validation_sequence"])
+        self.assertIn("make au-p0a-credential-update-receipt", packet["post_update_validation_sequence"])
+        self.assertIn("make verify-au-p0a-credential-update-receipt", packet["post_update_validation_sequence"])
         self.assertTrue(any("--require-fulfilled" in command for command in packet["post_update_validation_sequence"]))
         update_contract = packet["credential_update_contract"]
         self.assertTrue(update_contract["ready"])
@@ -134,13 +136,23 @@ class AuP0aCredentialClearanceTest(unittest.TestCase):
         self.assertIn("sha256_prefix", update_contract["redacted_record_fields"])
         self.assertIn("make verify-au-p0a-env-template", update_contract["pre_update_commands"])
         self.assertEqual(update_contract["post_update_commands"], packet["post_update_validation_sequence"])
+        self.assertTrue(update_contract["completion_requirements"]["credential_update_receipt_complete"])
+        self.assertIn(
+            "make verify-au-p0a-credential-update-receipt",
+            update_contract["completion_requirements"]["required_verifiers"],
+        )
         self.assertTrue(any("--require-cleared" in command for command in update_contract["strict_gate_commands"]))
         self.assertTrue(update_contract["current_state"]["ready_to_update"])
         self.assertEqual(
             packet["runtime_endpoints"]["p0a_credential_clearance"],
             "GET /v1/p0a-credential-clearance/au",
         )
+        self.assertEqual(
+            packet["runtime_endpoints"]["p0a_credential_update_receipt"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
         self.assertIn("make verify-au-p0a-credential-clearance", packet["hard_gate_commands"])
+        self.assertIn("make verify-au-p0a-credential-update-receipt", packet["hard_gate_commands"])
         self.assertTrue(any("--require-cleared" in command for command in packet["hard_gate_commands"]))
         self.assertEqual(
             packet["p0a_credential_clearance_hash"],
