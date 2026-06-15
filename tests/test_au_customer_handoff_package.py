@@ -32,7 +32,7 @@ class AuCustomerHandoffPackageTest(unittest.TestCase):
         self.assertEqual(package["customer_handoff_package_hash"], compute_customer_handoff_package_hash(package))
         self.assertEqual(verification["status"], "pass")
         self.assertTrue(verification["hash_valid"])
-        self.assertEqual(package["summary"]["source_artifact_count"], 15)
+        self.assertEqual(package["summary"]["source_artifact_count"], 16)
         self.assertEqual(package["summary"]["blocked_source_artifact_count"], 0)
         self.assertEqual(package["summary"]["engineering_progress_percent"], 46.2)
         self.assertEqual(package["summary"]["customer_report_handoff_readiness_percent"], 10.0)
@@ -40,6 +40,7 @@ class AuCustomerHandoffPackageTest(unittest.TestCase):
         self.assertEqual(package["summary"]["missing_required_count"], 9)
         self.assertEqual(package["summary"]["next_command"], "make au-p0a-env")
         self.assertIn("customer_handoff_clearance", package["source_artifacts"])
+        self.assertIn("p0a_credential_update_receipt", package["source_artifacts"])
         self.assertIn("p0c_report_package", package["source_artifacts"])
         self.assertIn("handoff_dossier_markdown", package["source_artifacts"])
         self.assertEqual(
@@ -51,8 +52,22 @@ class AuCustomerHandoffPackageTest(unittest.TestCase):
             package["summary"]["p0c_report_package_hash"],
         )
         self.assertEqual(
+            package["source_artifacts"]["p0a_credential_update_receipt"]["hash_field"],
+            "p0a_credential_update_receipt_hash",
+        )
+        self.assertEqual(
+            package["source_artifacts"]["p0a_credential_update_receipt"]["hash"],
+            package["summary"]["p0a_credential_update_receipt_hash"],
+        )
+        self.assertTrue(package["source_artifacts"]["p0a_credential_update_receipt"]["hash_valid"])
+        self.assertEqual(package["verifiers"]["p0a_credential_update_receipt"]["status"], "pass")
+        self.assertEqual(
             package["runtime_endpoints"]["customer_handoff_package"],
             "GET /v1/customer-handoff-package/au",
+        )
+        self.assertEqual(
+            package["runtime_endpoints"]["p0a_credential_update_receipt"],
+            "GET /v1/p0a-credential-update-receipt/au",
         )
         self.assertIn("make verify-au-customer-handoff-package", package["hard_gate_commands"])
         self.assertFalse(package["redaction_policy"]["source_payloads_embedded"])

@@ -2097,7 +2097,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertFalse(payload["customer_handoff_package_ready"])
         self.assertFalse(payload["ready_for_report_export_handoff"])
         self.assertFalse(payload["ready_for_customer_delivery"])
-        self.assertEqual(payload["summary"]["source_artifact_count"], 15)
+        self.assertEqual(payload["summary"]["source_artifact_count"], 16)
         self.assertEqual(payload["summary"]["blocked_source_artifact_count"], 0)
         self.assertEqual(payload["summary"]["engineering_progress_percent"], 46.2)
         self.assertEqual(payload["summary"]["customer_report_handoff_readiness_percent"], 10.0)
@@ -2105,17 +2105,32 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["missing_required_count"], 9)
         self.assertEqual(payload["summary"]["next_command"], "make au-p0a-env")
         self.assertIn("customer_handoff_clearance", payload["source_artifacts"])
+        self.assertIn("p0a_credential_update_receipt", payload["source_artifacts"])
         self.assertIn("p0c_report_package", payload["source_artifacts"])
         self.assertEqual(
             payload["source_artifacts"]["customer_handoff_clearance"]["hash_field"],
             "customer_handoff_clearance_hash",
         )
         self.assertTrue(payload["source_artifacts"]["customer_handoff_clearance"]["hash_valid"])
+        self.assertEqual(
+            payload["source_artifacts"]["p0a_credential_update_receipt"]["hash_field"],
+            "p0a_credential_update_receipt_hash",
+        )
+        self.assertTrue(payload["source_artifacts"]["p0a_credential_update_receipt"]["hash_valid"])
+        self.assertEqual(payload["verifiers"]["p0a_credential_update_receipt"]["status"], "pass")
+        self.assertEqual(
+            payload["summary"]["p0a_credential_update_receipt_hash"],
+            payload["source_artifacts"]["p0a_credential_update_receipt"]["hash"],
+        )
         self.assertEqual(payload["source_artifacts"]["p0c_report_package"]["hash_field"], "package_payload_hash")
         self.assertTrue(payload["source_artifacts"]["p0c_report_package"]["hash_valid"])
         self.assertEqual(
             payload["runtime_endpoints"]["customer_handoff_package"],
             "GET /v1/customer-handoff-package/au",
+        )
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0a_credential_update_receipt"],
+            "GET /v1/p0a-credential-update-receipt/au",
         )
         self.assertIn("make verify-au-customer-handoff-package", payload["hard_gate_commands"])
         self.assertFalse(payload["redaction_policy"]["source_payloads_embedded"])

@@ -3227,6 +3227,12 @@ def au_customer_handoff_package() -> dict[str, object]:
                 DEFAULT_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH,
             )
         ),
+        p0a_credential_update_receipt_path=Path(
+            os.getenv(
+                "GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH",
+                DEFAULT_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH,
+            )
+        ),
         p0a_real_batch_clearance_path=Path(
             os.getenv(
                 "GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH",

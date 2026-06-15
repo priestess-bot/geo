@@ -27,6 +27,9 @@ from scripts.build_au_handoff_dossier import DEFAULT_OUTPUT_PATH as DEFAULT_HAND
 from scripts.build_au_p0a_credential_clearance import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_P0A_CREDENTIAL_CLEARANCE_PATH,
 )
+from scripts.build_au_p0a_credential_update_receipt import (  # noqa: E402
+    DEFAULT_OUTPUT_PATH as DEFAULT_P0A_CREDENTIAL_UPDATE_RECEIPT_PATH,
+)
 from scripts.build_au_p0a_evidence_package import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_P0A_EVIDENCE_PACKAGE_PATH,
 )
@@ -56,6 +59,7 @@ from scripts.verify_au_external_dependency_clearance import verify_au_external_d
 from scripts.verify_au_external_dependency_handoff import verify_au_external_dependency_handoff  # noqa: E402
 from scripts.verify_au_handoff_dossier import verify_au_handoff_dossier  # noqa: E402
 from scripts.verify_au_p0a_credential_clearance import verify_au_p0a_credential_clearance  # noqa: E402
+from scripts.verify_au_p0a_credential_update_receipt import verify_au_p0a_credential_update_receipt  # noqa: E402
 from scripts.verify_au_p0a_evidence_package import verify_au_p0a_evidence_package  # noqa: E402
 from scripts.verify_au_p0a_real_batch_clearance import verify_au_p0a_real_batch_clearance  # noqa: E402
 from scripts.verify_au_p0b_google_environment_clearance import (  # noqa: E402
@@ -143,6 +147,16 @@ JSON_SOURCE_SPECS: tuple[dict[str, Any], ...] = (
         "default_path": DEFAULT_P0A_CREDENTIAL_CLEARANCE_PATH,
         "hash_field": "p0a_credential_clearance_hash",
         "verifier": verify_au_p0a_credential_clearance,
+        "required_for_customer_handoff": True,
+        "customer_visible": False,
+    },
+    {
+        "name": "p0a_credential_update_receipt",
+        "stage": "p0a",
+        "path_attr": "p0a_credential_update_receipt_path",
+        "default_path": DEFAULT_P0A_CREDENTIAL_UPDATE_RECEIPT_PATH,
+        "hash_field": "p0a_credential_update_receipt_hash",
+        "verifier": verify_au_p0a_credential_update_receipt,
         "required_for_customer_handoff": True,
         "customer_visible": False,
     },
@@ -387,6 +401,7 @@ def _ready_fields_for(name: str) -> tuple[str, ...]:
         "external_dependency_handoff": ("external_dependency_handoff_ready",),
         "external_dependency_clearance": ("handoff_ready",),
         "p0a_credential_clearance": ("credential_clearance_ready", "credentials_fulfilled"),
+        "p0a_credential_update_receipt": ("credential_update_receipt_ready", "credential_update_receipt_complete"),
         "p0a_real_batch_clearance": ("real_batch_clearance_ready", "real_batches_fulfilled"),
         "p0b_google_environment_clearance": ("environment_clearance_ready", "environment_fulfilled"),
         "p0b_google_manual_backfill_clearance": ("manual_backfill_clearance_ready", "manual_backfill_fulfilled"),
@@ -485,6 +500,7 @@ def _summary(
         "external_dependency_handoff_hash": source_artifacts["external_dependency_handoff"]["hash"],
         "clearance_execution_hash": source_artifacts["external_dependency_clearance"]["hash"],
         "p0a_credential_clearance_hash": source_artifacts["p0a_credential_clearance"]["hash"],
+        "p0a_credential_update_receipt_hash": source_artifacts["p0a_credential_update_receipt"]["hash"],
         "p0a_real_batch_clearance_hash": source_artifacts["p0a_real_batch_clearance"]["hash"],
         "p0b_google_environment_clearance_hash": source_artifacts["p0b_google_environment_clearance"]["hash"],
         "p0b_google_manual_backfill_clearance_hash": source_artifacts[
@@ -590,6 +606,7 @@ def build_au_customer_handoff_package(
     external_dependency_handoff_path: Path = Path(DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH),
     external_dependency_clearance_path: Path = Path(DEFAULT_EXTERNAL_DEPENDENCY_CLEARANCE_PATH),
     p0a_credential_clearance_path: Path = Path(DEFAULT_P0A_CREDENTIAL_CLEARANCE_PATH),
+    p0a_credential_update_receipt_path: Path = Path(DEFAULT_P0A_CREDENTIAL_UPDATE_RECEIPT_PATH),
     p0a_real_batch_clearance_path: Path = Path(DEFAULT_P0A_REAL_BATCH_CLEARANCE_PATH),
     p0b_google_environment_clearance_path: Path = Path(DEFAULT_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_PATH),
     p0b_google_manual_backfill_clearance_path: Path = Path(DEFAULT_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_PATH),
@@ -609,6 +626,7 @@ def build_au_customer_handoff_package(
         "external_dependency_handoff_path": external_dependency_handoff_path,
         "external_dependency_clearance_path": external_dependency_clearance_path,
         "p0a_credential_clearance_path": p0a_credential_clearance_path,
+        "p0a_credential_update_receipt_path": p0a_credential_update_receipt_path,
         "p0a_real_batch_clearance_path": p0a_real_batch_clearance_path,
         "p0b_google_environment_clearance_path": p0b_google_environment_clearance_path,
         "p0b_google_manual_backfill_clearance_path": p0b_google_manual_backfill_clearance_path,
@@ -680,6 +698,7 @@ def build_au_customer_handoff_package(
             "external_dependency_handoff": "GET /v1/external-dependency-handoff/au",
             "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
             "p0a_credential_clearance": "GET /v1/p0a-credential-clearance/au",
+            "p0a_credential_update_receipt": "GET /v1/p0a-credential-update-receipt/au",
             "p0a_real_batch_clearance": "GET /v1/p0a-real-batch-clearance/au",
             "p0b_google_environment_clearance": "GET /v1/p0b-google-environment-clearance/au",
             "p0b_google_manual_backfill_clearance": "GET /v1/p0b-google-manual-backfill-clearance/au",
@@ -755,6 +774,14 @@ def parse_args() -> argparse.Namespace:
         help="Path to the AU P0a credential clearance JSON.",
     )
     parser.add_argument(
+        "--p0a-credential-update-receipt-path",
+        default=os.environ.get(
+            "GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH",
+            DEFAULT_P0A_CREDENTIAL_UPDATE_RECEIPT_PATH,
+        ),
+        help="Path to the AU P0a credential update receipt JSON.",
+    )
+    parser.add_argument(
         "--p0a-real-batch-clearance-path",
         default=os.environ.get("GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH", DEFAULT_P0A_REAL_BATCH_CLEARANCE_PATH),
         help="Path to the AU P0a real batch clearance JSON.",
@@ -818,6 +845,7 @@ def main() -> None:
         external_dependency_handoff_path=Path(args.external_dependency_handoff_path),
         external_dependency_clearance_path=Path(args.external_dependency_clearance_path),
         p0a_credential_clearance_path=Path(args.p0a_credential_clearance_path),
+        p0a_credential_update_receipt_path=Path(args.p0a_credential_update_receipt_path),
         p0a_real_batch_clearance_path=Path(args.p0a_real_batch_clearance_path),
         p0b_google_environment_clearance_path=Path(args.p0b_google_environment_clearance_path),
         p0b_google_manual_backfill_clearance_path=Path(args.p0b_google_manual_backfill_clearance_path),
