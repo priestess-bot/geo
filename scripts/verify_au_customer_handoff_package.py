@@ -393,6 +393,7 @@ def verify_au_customer_handoff_package(
 
     required_operator_step_ids = {
         "refresh_customer_handoff_sources",
+        "refresh_p0a_credential_update_receipt",
         "refresh_p0_evidence_packages",
         "build_customer_handoff_package",
         "verify_customer_handoff_package",
@@ -415,6 +416,8 @@ def verify_au_customer_handoff_package(
         "make verify-au-customer-handoff-clearance",
         "make au-delivery-progress",
         "make verify-au-delivery-progress",
+        "make au-p0a-credential-update-receipt",
+        "make verify-au-p0a-credential-update-receipt",
         "make au-p0c-report-package",
         "make verify-au-p0c-report-package",
     )
@@ -423,7 +426,7 @@ def verify_au_customer_handoff_package(
             errors.append(f"post_update_validation_command_missing:{command}")
         if command not in hard_gate_commands:
             errors.append(f"hard_gate_missing:{command}")
-    for marker in ("--require-cleared", "--require-ready"):
+    for marker in ("--require-cleared", "--require-complete", "--require-ready"):
         if not any(marker in command for command in validation_sequence):
             errors.append(f"post_update_validation_missing:{marker}")
         if not any(marker in command for command in hard_gate_commands):

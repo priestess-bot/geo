@@ -2132,6 +2132,11 @@ class ApiContractsTest(unittest.TestCase):
             payload["runtime_endpoints"]["p0a_credential_update_receipt"],
             "GET /v1/p0a-credential-update-receipt/au",
         )
+        self.assertIn("make au-p0a-credential-update-receipt", payload["post_update_validation_sequence"])
+        self.assertIn("make verify-au-p0a-credential-update-receipt", payload["post_update_validation_sequence"])
+        self.assertIn("make au-p0a-credential-update-receipt", payload["hard_gate_commands"])
+        self.assertIn("make verify-au-p0a-credential-update-receipt", payload["hard_gate_commands"])
+        self.assertTrue(any("--require-complete" in command for command in payload["hard_gate_commands"]))
         self.assertIn("make verify-au-customer-handoff-package", payload["hard_gate_commands"])
         self.assertFalse(payload["redaction_policy"]["source_payloads_embedded"])
         self.assertTrue(payload["customer_handoff_package_hash"])

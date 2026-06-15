@@ -69,6 +69,14 @@ class AuCustomerHandoffPackageTest(unittest.TestCase):
             package["runtime_endpoints"]["p0a_credential_update_receipt"],
             "GET /v1/p0a-credential-update-receipt/au",
         )
+        self.assertIn("make au-p0a-credential-update-receipt", package["post_update_validation_sequence"])
+        self.assertIn("make verify-au-p0a-credential-update-receipt", package["post_update_validation_sequence"])
+        self.assertIn("make au-p0a-credential-update-receipt", package["hard_gate_commands"])
+        self.assertIn("make verify-au-p0a-credential-update-receipt", package["hard_gate_commands"])
+        self.assertTrue(any("--require-complete" in command for command in package["hard_gate_commands"]))
+        self.assertTrue(
+            any(step["id"] == "refresh_p0a_credential_update_receipt" for step in package["operator_steps"])
+        )
         self.assertIn("make verify-au-customer-handoff-package", package["hard_gate_commands"])
         self.assertFalse(package["redaction_policy"]["source_payloads_embedded"])
         self.assertTrue(package["redaction_policy"]["hash_path_status_only"])

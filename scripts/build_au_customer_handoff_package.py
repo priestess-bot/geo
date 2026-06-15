@@ -535,27 +535,34 @@ def _operator_steps() -> list[dict[str, Any]]:
         },
         {
             "order": 2,
+            "id": "refresh_p0a_credential_update_receipt",
+            "command": "make au-p0a-credential-update-receipt verify-au-p0a-credential-update-receipt",
+            "purpose": "refresh_p0a_credential_receipt_before_customer_handoff_index",
+            "external_call_risk": "none",
+        },
+        {
+            "order": 3,
             "id": "refresh_p0_evidence_packages",
             "command": "make au-p0a-package au-p0b-google-package au-p0c-report-package",
             "purpose": "refresh_package_hashes_before_customer_handoff_index",
             "external_call_risk": "fixture_or_local_only_unless_provider_env_is_enabled",
         },
         {
-            "order": 3,
+            "order": 4,
             "id": "build_customer_handoff_package",
             "command": "make au-customer-handoff-package",
             "purpose": "write_hash_index_over_customer_handoff_sources",
             "external_call_risk": "none",
         },
         {
-            "order": 4,
+            "order": 5,
             "id": "verify_customer_handoff_package",
             "command": "make verify-au-customer-handoff-package",
             "purpose": "prove_manifest_hashes_and_source_files_are_current",
             "external_call_risk": "none",
         },
         {
-            "order": 5,
+            "order": 6,
             "id": "run_customer_ready_strict_gate",
             "command": (
                 "PYTHONPATH=packages/geno_core:apps/api python3 "
@@ -579,6 +586,8 @@ def _post_update_validation_sequence() -> list[str]:
         "make verify-au-delivery-progress",
         "make au-customer-handoff-clearance",
         "make verify-au-customer-handoff-clearance",
+        "make au-p0a-credential-update-receipt",
+        "make verify-au-p0a-credential-update-receipt",
         "make au-p0a-package",
         "make verify-au-p0a-package",
         "make au-p0b-google-package",
@@ -590,6 +599,9 @@ def _post_update_validation_sequence() -> list[str]:
         "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_clearance.py "
         "${GENO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-clearance-latest.json} "
         "--require-cleared",
+        "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_update_receipt.py "
+        "${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
+        "--require-complete",
         "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_package.py "
         "${GENO_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-package-latest.json} "
         "--require-ready",
