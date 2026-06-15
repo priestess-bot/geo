@@ -31,6 +31,7 @@ from scripts.verify_au_p0a_credential_request_packet import verify_au_p0a_creden
 
 
 CLEARANCE_VERSION = "au_p0a_credential_clearance_v1"
+UPDATE_CONTRACT_VERSION = "au_p0a_credential_update_contract_v1"
 DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-p0a-credential-clearance-latest.json"
 STEP_ID = "p0a_provider_credentials"
 
@@ -281,6 +282,107 @@ def _post_update_validation_sequence(
     return _unique_strings(commands)
 
 
+def _credential_update_contract(
+    *,
+    credential_request: dict[str, Any],
+    credential_fulfillment: dict[str, Any],
+    missing_items: list[dict[str, Any]],
+    validation_sequence: list[str],
+    strict_gate_command: str,
+    credentials_fulfilled: bool,
+    credential_clearance_ready: bool,
+    packet_ready: bool,
+) -> dict[str, Any]:
+    request_summary = _as_dict(credential_request.get("summary"))
+    fulfillment_summary = _as_dict(credential_fulfillment.get("summary"))
+    target_env_file = str(request_summary.get("target_env_file") or ".env.au-p0a")
+    missing_names = sorted(str(item.get("name") or "") for item in missing_items if str(item.get("name") or ""))
+    allowed_methods = sorted(
+        {
+            method
+            for item in missing_items
+            for method in _strings(item.get("accepted_injection_methods"))
+            if method
+        }
+    )
+    required_key_items = [
+        {
+            "name": str(item.get("name") or ""),
+            "env_file_key": str(item.get("env_file_key") or item.get("name") or ""),
+            "owner_hint": str(item.get("owner_hint") or "unknown"),
+            "target_env_file": str(item.get("target_env_file") or target_env_file),
+            "currently_present": item.get("environment_present") is True,
+            "accepted_injection_methods": _strings(item.get("accepted_injection_methods")),
+            "post_update_checks": _strings(item.get("post_update_checks")),
+            "raw_value_allowed_in_artifact": False,
+        }
+        for item in missing_items
+    ]
+    strict_commands = _unique_strings(
+        [
+            strict_gate_command,
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_p0a_credential_clearance.py "
+            "${GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-clearance-latest.json} "
+            "--require-cleared",
+        ]
+    )
+    return {
+        "version": UPDATE_CONTRACT_VERSION,
+        "ready": packet_ready,
+        "target_env_file": target_env_file,
+        "required_missing_key_count": len(missing_names),
+        "required_missing_keys": missing_names,
+        "required_key_items": required_key_items,
+        "allowed_update_surfaces": [
+            {
+                "id": "gitignored_env_file",
+                "path": target_env_file,
+                "bootstrap_command": "make au-p0a-env-bootstrap",
+                "file_mode_required": "0600",
+                "commit_allowed": False,
+            },
+            {
+                "id": "process_environment",
+                "path": "",
+                "bootstrap_command": "",
+                "file_mode_required": "",
+                "commit_allowed": False,
+            },
+        ],
+        "allowed_injection_methods": allowed_methods,
+        "forbidden_artifact_fields": ["value", "raw_value", "database_url", "secret", "token"],
+        "redacted_record_fields": ["present", "source", "value_length", "sha256_prefix", "secret_redacted"],
+        "raw_values_allowed_in_artifacts": False,
+        "pre_update_commands": [
+            "make verify-au-p0a-env-template",
+            "make au-p0a-env-bootstrap",
+            "make verify-au-p0a-env-bootstrap",
+        ],
+        "post_update_commands": validation_sequence,
+        "strict_gate_commands": strict_commands,
+        "completion_requirements": {
+            "credentials_fulfilled": True,
+            "credential_clearance_ready": True,
+            "missing_required_count": 0,
+            "required_verifiers": [
+                "make verify-au-p0a-env",
+                "make verify-au-p0a-credential-fulfillment",
+                strict_gate_command,
+                strict_commands[-1],
+            ],
+        },
+        "current_state": {
+            "credentials_fulfilled": credentials_fulfilled,
+            "credential_clearance_ready": credential_clearance_ready,
+            "environment_ready": fulfillment_summary.get("environment_ready") is True,
+            "missing_required_count": len(missing_names),
+            "missing_required": missing_names,
+            "ready_to_update": packet_ready and bool(missing_names),
+        },
+    }
+
+
 def build_au_p0a_credential_clearance(
     *,
     credential_request_path: Path = Path(DEFAULT_CREDENTIAL_REQUEST_PATH),
@@ -370,14 +472,25 @@ def build_au_p0a_credential_clearance(
         external_dependency_clearance,
     )
     strict_gate_command = str(fulfillment_summary.get("strict_gate_command") or "")
+    credential_clearance_ready = credentials_fulfilled and clearance_step_matches
+    update_contract = _credential_update_contract(
+        credential_request=credential_request,
+        credential_fulfillment=credential_fulfillment,
+        missing_items=missing_items,
+        validation_sequence=validation_sequence,
+        strict_gate_command=strict_gate_command,
+        credentials_fulfilled=credentials_fulfilled,
+        credential_clearance_ready=credential_clearance_ready,
+        packet_ready=packet_ready,
+    )
     payload: dict[str, Any] = {
         "p0a_credential_clearance_version": CLEARANCE_VERSION,
         "generated_at": generated_at or _utc_now_iso(),
         "status": "pass" if packet_ready else "fail",
         "credential_clearance_packet_ready": packet_ready,
         "credentials_fulfilled": credentials_fulfilled,
-        "credential_clearance_ready": credentials_fulfilled and clearance_step_matches,
-        "ready_for_next_clearance_step": credentials_fulfilled and clearance_step_matches,
+        "credential_clearance_ready": credential_clearance_ready,
+        "ready_for_next_clearance_step": credential_clearance_ready,
         "output_path": str(output_path) if output_path else "",
         "clearance_step": {
             "id": STEP_ID,
@@ -435,11 +548,17 @@ def build_au_p0a_credential_clearance(
             ),
             "next_command": "make au-p0a-env" if missing_required else "make au-external-dependency-clearance",
             "strict_gate_command": strict_gate_command,
+            "credential_update_contract_version": UPDATE_CONTRACT_VERSION,
+            "credential_update_contract_ready": update_contract["ready"],
+            "credential_update_contract_required_missing_key_count": update_contract[
+                "required_missing_key_count"
+            ],
             "operator_step_count": len(operator_steps),
             "post_update_validation_command_count": len(validation_sequence),
             "raw_secret_values_allowed": False,
         },
         "missing_credential_items": missing_items,
+        "credential_update_contract": update_contract,
         "operator_steps": operator_steps,
         "post_update_validation_sequence": validation_sequence,
         "runtime_endpoints": {

@@ -16,6 +16,7 @@ from scripts.build_au_p0a_credential_clearance import (  # noqa: E402
     CLEARANCE_VERSION,
     DEFAULT_OUTPUT_PATH,
     STEP_ID,
+    UPDATE_CONTRACT_VERSION,
     compute_p0a_credential_clearance_hash,
 )
 
@@ -35,6 +36,7 @@ REQUIRED_FIELDS = (
     "p0a_credential_fulfillment_verifier",
     "summary",
     "missing_credential_items",
+    "credential_update_contract",
     "operator_steps",
     "post_update_validation_sequence",
     "runtime_endpoints",
@@ -174,6 +176,7 @@ def verify_au_p0a_credential_clearance(
     summary = _as_dict(payload.get("summary"))
     clearance_step = _as_dict(payload.get("clearance_step"))
     missing_items = [_as_dict(item) for item in _as_list(payload.get("missing_credential_items"))]
+    update_contract = _as_dict(payload.get("credential_update_contract"))
     operator_steps = [_as_dict(item) for item in _as_list(payload.get("operator_steps"))]
     validation_sequence = _strings(payload.get("post_update_validation_sequence"))
     endpoints = _as_dict(payload.get("runtime_endpoints"))
@@ -260,6 +263,115 @@ def verify_au_p0a_credential_clearance(
         summary.get("strict_gate_command") or ""
     ):
         errors.append("summary_strict_gate_command_invalid")
+    if summary.get("credential_update_contract_version") != UPDATE_CONTRACT_VERSION:
+        errors.append("summary_credential_update_contract_version_invalid")
+    if summary.get("credential_update_contract_ready") is not update_contract.get("ready"):
+        errors.append("summary_credential_update_contract_ready_mismatch")
+    if summary.get("credential_update_contract_required_missing_key_count") != update_contract.get(
+        "required_missing_key_count"
+    ):
+        errors.append("summary_credential_update_contract_missing_count_mismatch")
+
+    if update_contract.get("version") != UPDATE_CONTRACT_VERSION:
+        errors.append("credential_update_contract_version_invalid")
+    if update_contract.get("ready") is not expected_packet_ready:
+        errors.append("credential_update_contract_ready_mismatch")
+    if update_contract.get("target_env_file") != summary.get("target_env_file"):
+        errors.append("credential_update_contract_target_env_file_mismatch")
+    if update_contract.get("required_missing_key_count") != len(missing_names):
+        errors.append("credential_update_contract_missing_count_mismatch")
+    if sorted(_strings(update_contract.get("required_missing_keys"))) != missing_names:
+        errors.append("credential_update_contract_missing_keys_mismatch")
+    if update_contract.get("raw_values_allowed_in_artifacts") is not False:
+        errors.append("credential_update_contract_raw_secret_policy_invalid")
+    forbidden_fields = set(_strings(update_contract.get("forbidden_artifact_fields")))
+    for field in ("value", "raw_value", "database_url", "secret", "token"):
+        if field not in forbidden_fields:
+            errors.append(f"credential_update_contract_forbidden_field_missing:{field}")
+    recorded_fields = set(_strings(update_contract.get("redacted_record_fields")))
+    for field in ("present", "source", "value_length", "sha256_prefix", "secret_redacted"):
+        if field not in recorded_fields:
+            errors.append(f"credential_update_contract_recorded_field_missing:{field}")
+    required_key_items = [_as_dict(item) for item in _as_list(update_contract.get("required_key_items"))]
+    if sorted(str(item.get("name") or "") for item in required_key_items) != missing_names:
+        errors.append("credential_update_contract_required_key_items_mismatch")
+    for item in required_key_items:
+        name = str(item.get("name") or "")
+        for field in (
+            "env_file_key",
+            "owner_hint",
+            "target_env_file",
+            "currently_present",
+            "accepted_injection_methods",
+            "post_update_checks",
+            "raw_value_allowed_in_artifact",
+        ):
+            if field not in item:
+                errors.append(f"credential_update_contract_required_key_item_field_missing:{name}:{field}")
+        if item.get("raw_value_allowed_in_artifact") is not False:
+            errors.append(f"credential_update_contract_required_key_item_raw_value_policy_invalid:{name}")
+    allowed_update_surfaces = [_as_dict(item) for item in _as_list(update_contract.get("allowed_update_surfaces"))]
+    surfaces_by_id = {str(item.get("id") or ""): item for item in allowed_update_surfaces}
+    gitignored_surface = surfaces_by_id.get("gitignored_env_file", {})
+    if gitignored_surface.get("path") != summary.get("target_env_file"):
+        errors.append("credential_update_contract_gitignored_env_file_path_mismatch")
+    if gitignored_surface.get("file_mode_required") != "0600":
+        errors.append("credential_update_contract_gitignored_env_file_mode_invalid")
+    if gitignored_surface.get("commit_allowed") is not False:
+        errors.append("credential_update_contract_gitignored_env_file_commit_policy_invalid")
+    process_surface = surfaces_by_id.get("process_environment", {})
+    if process_surface.get("commit_allowed") is not False:
+        errors.append("credential_update_contract_process_environment_commit_policy_invalid")
+    allowed_methods = set(_strings(update_contract.get("allowed_injection_methods")))
+    expected_methods = {
+        method
+        for item in missing_items
+        for method in _strings(item.get("accepted_injection_methods"))
+        if method
+    }
+    if allowed_methods != expected_methods:
+        errors.append("credential_update_contract_allowed_methods_mismatch")
+    current_state = _as_dict(update_contract.get("current_state"))
+    if current_state.get("credentials_fulfilled") is not credentials_fulfilled:
+        errors.append("credential_update_contract_current_credentials_fulfilled_mismatch")
+    if current_state.get("credential_clearance_ready") is not expected_cleared:
+        errors.append("credential_update_contract_current_clearance_ready_mismatch")
+    if current_state.get("missing_required_count") != len(missing_names):
+        errors.append("credential_update_contract_current_missing_count_mismatch")
+    if sorted(_strings(current_state.get("missing_required"))) != missing_names:
+        errors.append("credential_update_contract_current_missing_keys_mismatch")
+    if current_state.get("ready_to_update") is not (expected_packet_ready and bool(missing_names)):
+        errors.append("credential_update_contract_ready_to_update_mismatch")
+    pre_update_commands = _strings(update_contract.get("pre_update_commands"))
+    for command in (
+        "make verify-au-p0a-env-template",
+        "make au-p0a-env-bootstrap",
+        "make verify-au-p0a-env-bootstrap",
+    ):
+        if command not in pre_update_commands:
+            errors.append(f"credential_update_contract_pre_command_missing:{command}")
+    if _strings(update_contract.get("post_update_commands")) != validation_sequence:
+        errors.append("credential_update_contract_post_commands_mismatch")
+    strict_gate_commands = _strings(update_contract.get("strict_gate_commands"))
+    if not any("--require-fulfilled" in command for command in strict_gate_commands):
+        errors.append("credential_update_contract_strict_gate_missing:require_fulfilled")
+    if not any("--require-cleared" in command for command in strict_gate_commands):
+        errors.append("credential_update_contract_strict_gate_missing:require_cleared")
+    completion_requirements = _as_dict(update_contract.get("completion_requirements"))
+    if completion_requirements.get("credentials_fulfilled") is not True:
+        errors.append("credential_update_contract_completion_credentials_invalid")
+    if completion_requirements.get("credential_clearance_ready") is not True:
+        errors.append("credential_update_contract_completion_clearance_invalid")
+    if completion_requirements.get("missing_required_count") != 0:
+        errors.append("credential_update_contract_completion_missing_count_invalid")
+    required_verifiers = _strings(completion_requirements.get("required_verifiers"))
+    for command in ("make verify-au-p0a-env", "make verify-au-p0a-credential-fulfillment"):
+        if command not in required_verifiers:
+            errors.append(f"credential_update_contract_completion_verifier_missing:{command}")
+    if not any("--require-fulfilled" in command for command in required_verifiers):
+        errors.append("credential_update_contract_completion_verifier_missing:require_fulfilled")
+    if not any("--require-cleared" in command for command in required_verifiers):
+        errors.append("credential_update_contract_completion_verifier_missing:require_cleared")
 
     required_step_ids = {
         "verify_p0a_env_template",

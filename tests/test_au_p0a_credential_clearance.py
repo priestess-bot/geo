@@ -114,9 +114,28 @@ class AuP0aCredentialClearanceTest(unittest.TestCase):
         self.assertEqual(packet["summary"]["current_clearance_step_id"], "p0a_provider_credentials")
         self.assertEqual(packet["summary"]["next_action"], "populate_required_p0a_credentials")
         self.assertEqual(packet["summary"]["next_command"], "make au-p0a-env")
+        self.assertEqual(
+            packet["summary"]["credential_update_contract_version"],
+            "au_p0a_credential_update_contract_v1",
+        )
         self.assertIn("make verify-au-p0a-env-template", [step["command"] for step in packet["operator_steps"]])
         self.assertIn("make au-p0a-env", packet["post_update_validation_sequence"])
         self.assertTrue(any("--require-fulfilled" in command for command in packet["post_update_validation_sequence"]))
+        update_contract = packet["credential_update_contract"]
+        self.assertTrue(update_contract["ready"])
+        self.assertEqual(update_contract["target_env_file"], packet["summary"]["target_env_file"])
+        self.assertEqual(update_contract["required_missing_key_count"], 3)
+        self.assertEqual(
+            update_contract["required_missing_keys"],
+            ["DATABASE_URL", "OPENAI_API_KEY", "PERPLEXITY_API_KEY"],
+        )
+        self.assertFalse(update_contract["raw_values_allowed_in_artifacts"])
+        self.assertIn("value", update_contract["forbidden_artifact_fields"])
+        self.assertIn("sha256_prefix", update_contract["redacted_record_fields"])
+        self.assertIn("make verify-au-p0a-env-template", update_contract["pre_update_commands"])
+        self.assertEqual(update_contract["post_update_commands"], packet["post_update_validation_sequence"])
+        self.assertTrue(any("--require-cleared" in command for command in update_contract["strict_gate_commands"]))
+        self.assertTrue(update_contract["current_state"]["ready_to_update"])
         self.assertEqual(
             packet["runtime_endpoints"]["p0a_credential_clearance"],
             "GET /v1/p0a-credential-clearance/au",
@@ -179,6 +198,31 @@ class AuP0aCredentialClearanceTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_missing_required_count_mismatch", verification["errors"])
+
+    def test_verifier_rejects_tampered_update_contract_even_when_hash_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            request_path, env_path, fulfillment_path, clearance_path, request, fulfillment, external_clearance = (
+                self._build_sources(temp_dir, ready=False)
+            )
+            packet = build_au_p0a_credential_clearance(
+                credential_request_path=request_path,
+                env_report_path=env_path,
+                credential_fulfillment_path=fulfillment_path,
+                external_dependency_clearance_path=clearance_path,
+                credential_request=request,
+                credential_fulfillment=fulfillment,
+                external_dependency_clearance=external_clearance,
+                output_path=Path(temp_dir) / "credential-clearance.json",
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            packet["credential_update_contract"]["raw_values_allowed_in_artifacts"] = True
+            packet["credential_update_contract"]["post_update_commands"] = []
+            packet["p0a_credential_clearance_hash"] = compute_p0a_credential_clearance_hash(packet)
+            verification = verify_au_p0a_credential_clearance(packet)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("credential_update_contract_raw_secret_policy_invalid", verification["errors"])
+        self.assertIn("credential_update_contract_post_commands_mismatch", verification["errors"])
 
     def test_path_verifier_detects_stale_fulfillment_source_file(self) -> None:
         with TemporaryDirectory() as temp_dir:
