@@ -587,6 +587,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0a-credential-update-receipt:", makefile)
         self.assertIn("scripts/verify_au_p0a_credential_update_receipt.py", makefile)
+        self.assertIn("--p0a-credential-update-receipt-path", makefile)
         self.assertIn("au-p0b-google-environment-fulfillment:", makefile)
         self.assertIn("scripts/build_au_p0b_google_environment_fulfillment.py", makefile)
         self.assertIn("GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH", makefile)

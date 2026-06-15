@@ -179,6 +179,7 @@ def verify_au_customer_handoff_clearance(
     external_handoff_verifier = _as_dict(verifiers.get("external_dependency_handoff"))
     external_clearance_verifier = _as_dict(verifiers.get("external_dependency_clearance"))
     p0a_credential_clearance_verifier = _as_dict(verifiers.get("p0a_credential_clearance"))
+    p0a_credential_update_receipt_verifier = _as_dict(verifiers.get("p0a_credential_update_receipt"))
     p0a_real_batch_clearance_verifier = _as_dict(verifiers.get("p0a_real_batch_clearance"))
     p0b_google_environment_clearance_verifier = _as_dict(verifiers.get("p0b_google_environment_clearance"))
     p0b_google_manual_backfill_clearance_verifier = _as_dict(verifiers.get("p0b_google_manual_backfill_clearance"))
@@ -202,6 +203,10 @@ def verify_au_customer_handoff_clearance(
         "external_dependency_handoff": ("external_dependency_handoff_hash", external_handoff_verifier),
         "external_dependency_clearance": ("clearance_execution_hash", external_clearance_verifier),
         "p0a_credential_clearance": ("p0a_credential_clearance_hash", p0a_credential_clearance_verifier),
+        "p0a_credential_update_receipt": (
+            "p0a_credential_update_receipt_hash",
+            p0a_credential_update_receipt_verifier,
+        ),
         "p0a_real_batch_clearance": ("p0a_real_batch_clearance_hash", p0a_real_batch_clearance_verifier),
         "p0b_google_environment_clearance": (
             "p0b_google_environment_clearance_hash",
@@ -262,6 +267,7 @@ def verify_au_customer_handoff_clearance(
             external_handoff_verifier,
             external_clearance_verifier,
             p0a_credential_clearance_verifier,
+            p0a_credential_update_receipt_verifier,
             p0a_real_batch_clearance_verifier,
             p0b_google_environment_clearance_verifier,
             p0b_google_manual_backfill_clearance_verifier,
@@ -362,6 +368,22 @@ def verify_au_customer_handoff_clearance(
         "missing_required_count"
     ):
         errors.append("summary_p0a_credential_missing_required_count_mismatch")
+    if summary.get("p0a_credential_update_receipt_ready") is not (
+        p0a_credential_update_receipt_verifier.get("credential_update_receipt_ready") is True
+    ):
+        errors.append("summary_p0a_credential_update_receipt_ready_mismatch")
+    if summary.get("p0a_credential_update_receipt_complete") is not (
+        p0a_credential_update_receipt_verifier.get("credential_update_receipt_complete") is True
+    ):
+        errors.append("summary_p0a_credential_update_receipt_complete_mismatch")
+    if summary.get("p0a_credential_update_receipt_missing_required_count") != (
+        p0a_credential_update_receipt_verifier.get("missing_required_count")
+    ):
+        errors.append("summary_p0a_credential_update_receipt_missing_required_count_mismatch")
+    if summary.get("p0a_credential_update_env_file_hygiene_ready") is not (
+        p0a_credential_update_receipt_verifier.get("env_file_hygiene_ready") is True
+    ):
+        errors.append("summary_p0a_credential_update_env_file_hygiene_ready_mismatch")
     if summary.get("p0a_real_batch_clearance_ready") is not (
         p0a_real_batch_clearance_verifier.get("real_batch_clearance_ready") is True
     ):
@@ -480,6 +502,8 @@ def verify_au_customer_handoff_clearance(
     required_validation_commands = (
         "make au-p0a-credential-clearance",
         "make verify-au-p0a-credential-clearance",
+        "make au-p0a-credential-update-receipt",
+        "make verify-au-p0a-credential-update-receipt",
         "make au-p0a-real-batch-clearance",
         "make verify-au-p0a-real-batch-clearance",
         "make au-p0b-google-environment-clearance",
@@ -509,8 +533,12 @@ def verify_au_customer_handoff_clearance(
     for marker in ("--require-customer-ready", "--require-ready", "--require-handoff-ready", "--require-cleared"):
         if not any(marker in command for command in validation_sequence):
             errors.append(f"post_update_validation_missing:{marker}")
+    if not any("--require-complete" in command for command in validation_sequence):
+        errors.append("post_update_validation_missing:p0a_credential_update_receipt_require_complete")
     if not any("--require-cleared" in command for command in hard_gate_commands):
         errors.append("hard_gate_missing:require_cleared")
+    if not any("--require-complete" in command for command in hard_gate_commands):
+        errors.append("hard_gate_missing:p0a_credential_update_receipt_require_complete")
 
     expected_endpoints = {
         "customer_handoff_clearance": "GET /v1/customer-handoff-clearance/au",
@@ -520,6 +548,7 @@ def verify_au_customer_handoff_clearance(
         "external_dependency_handoff": "GET /v1/external-dependency-handoff/au",
         "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
         "p0a_credential_clearance": "GET /v1/p0a-credential-clearance/au",
+        "p0a_credential_update_receipt": "GET /v1/p0a-credential-update-receipt/au",
         "p0a_real_batch_clearance": "GET /v1/p0a-real-batch-clearance/au",
         "p0b_google_environment_clearance": "GET /v1/p0b-google-environment-clearance/au",
         "p0b_google_manual_backfill_clearance": "GET /v1/p0b-google-manual-backfill-clearance/au",

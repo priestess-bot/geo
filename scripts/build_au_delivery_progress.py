@@ -37,6 +37,10 @@ from scripts.build_au_p0a_credential_clearance import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_P0A_CREDENTIAL_CLEARANCE_PATH,
     build_au_p0a_credential_clearance,
 )
+from scripts.build_au_p0a_credential_update_receipt import (  # noqa: E402
+    DEFAULT_OUTPUT_PATH as DEFAULT_P0A_CREDENTIAL_UPDATE_RECEIPT_PATH,
+    build_au_p0a_credential_update_receipt,
+)
 from scripts.build_au_p0a_real_batch_clearance import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_P0A_REAL_BATCH_CLEARANCE_PATH,
     build_au_p0a_real_batch_clearance,
@@ -64,6 +68,7 @@ from scripts.verify_au_handoff_dossier import verify_au_handoff_dossier  # noqa:
 from scripts.verify_au_launch_status import verify_au_launch_status  # noqa: E402
 from scripts.verify_au_next_work_item_packet import verify_au_next_work_item_packet  # noqa: E402
 from scripts.verify_au_p0a_credential_clearance import verify_au_p0a_credential_clearance  # noqa: E402
+from scripts.verify_au_p0a_credential_update_receipt import verify_au_p0a_credential_update_receipt  # noqa: E402
 from scripts.verify_au_p0a_real_batch_clearance import verify_au_p0a_real_batch_clearance  # noqa: E402
 from scripts.verify_au_p0b_google_environment_clearance import (  # noqa: E402
     verify_au_p0b_google_environment_clearance,
@@ -202,6 +207,38 @@ def _load_or_build_p0a_credential_clearance(
         generated_at=generated_at,
     )
     return refreshed, {**source, "source": "generated_in_memory", "errors": ["source_clearance_hash_stale"]}
+
+
+def _load_or_build_p0a_credential_update_receipt(
+    path: Path,
+    *,
+    p0a_credential_clearance_path: Path,
+    p0a_credential_clearance: dict[str, Any],
+    generated_at: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    payload, source = _load_or_build(
+        path,
+        lambda generated_at=None: build_au_p0a_credential_update_receipt(
+            credential_clearance_path=p0a_credential_clearance_path,
+            credential_clearance=p0a_credential_clearance,
+            output_path=path,
+            generated_at=generated_at,
+        ),
+        generated_at=generated_at,
+    )
+    payload_clearance_hash = str(
+        _as_dict(_as_dict(payload.get("source_artifacts")).get("credential_clearance")).get("hash") or ""
+    )
+    current_clearance_hash = str(p0a_credential_clearance.get("p0a_credential_clearance_hash") or "")
+    if payload_clearance_hash == current_clearance_hash:
+        return payload, source
+    refreshed = build_au_p0a_credential_update_receipt(
+        credential_clearance_path=p0a_credential_clearance_path,
+        credential_clearance=p0a_credential_clearance,
+        output_path=path,
+        generated_at=generated_at,
+    )
+    return refreshed, {**source, "source": "generated_in_memory", "errors": ["source_credential_clearance_hash_stale"]}
 
 
 def _load_or_build_p0a_real_batch_clearance(
@@ -347,6 +384,7 @@ def build_au_delivery_progress(
     external_dependency_handoff_path: Path = Path(DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH),
     external_dependency_clearance_path: Path = Path(DEFAULT_EXTERNAL_DEPENDENCY_CLEARANCE_PATH),
     p0a_credential_clearance_path: Path = Path(DEFAULT_P0A_CREDENTIAL_CLEARANCE_PATH),
+    p0a_credential_update_receipt_path: Path = Path(DEFAULT_P0A_CREDENTIAL_UPDATE_RECEIPT_PATH),
     p0a_real_batch_clearance_path: Path = Path(DEFAULT_P0A_REAL_BATCH_CLEARANCE_PATH),
     p0b_google_environment_clearance_path: Path = Path(DEFAULT_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_PATH),
     p0b_google_manual_backfill_clearance_path: Path = Path(DEFAULT_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_PATH),
@@ -358,6 +396,7 @@ def build_au_delivery_progress(
     external_dependency_handoff: dict[str, Any] | None = None,
     external_dependency_clearance: dict[str, Any] | None = None,
     p0a_credential_clearance: dict[str, Any] | None = None,
+    p0a_credential_update_receipt: dict[str, Any] | None = None,
     p0a_real_batch_clearance: dict[str, Any] | None = None,
     p0b_google_environment_clearance: dict[str, Any] | None = None,
     p0b_google_manual_backfill_clearance: dict[str, Any] | None = None,
@@ -454,6 +493,21 @@ def build_au_delivery_progress(
             "exists": True,
             "source": "provided_payload",
         }
+    if p0a_credential_update_receipt is None:
+        p0a_credential_update_receipt, p0a_credential_update_receipt_source = (
+            _load_or_build_p0a_credential_update_receipt(
+                p0a_credential_update_receipt_path,
+                p0a_credential_clearance_path=p0a_credential_clearance_path,
+                p0a_credential_clearance=p0a_credential_clearance,
+                generated_at=generated_at,
+            )
+        )
+    else:
+        p0a_credential_update_receipt_source = {
+            "path": str(p0a_credential_update_receipt_path),
+            "exists": True,
+            "source": "provided_payload",
+        }
     if p0a_real_batch_clearance is None:
         p0a_real_batch_clearance, p0a_real_batch_clearance_source = _load_or_build_p0a_real_batch_clearance(
             p0a_real_batch_clearance_path,
@@ -538,6 +592,10 @@ def build_au_delivery_progress(
         p0a_credential_clearance,
         path=_path_for_current_file_check(p0a_credential_clearance_source, p0a_credential_clearance_path),
     )
+    p0a_credential_update_receipt_verifier = verify_au_p0a_credential_update_receipt(
+        p0a_credential_update_receipt,
+        path=_path_for_current_file_check(p0a_credential_update_receipt_source, p0a_credential_update_receipt_path),
+    )
     p0a_real_batch_clearance_verifier = verify_au_p0a_real_batch_clearance(
         p0a_real_batch_clearance,
         path=_path_for_current_file_check(p0a_real_batch_clearance_source, p0a_real_batch_clearance_path),
@@ -600,6 +658,9 @@ def build_au_delivery_progress(
             _append_unique(hard_gate_commands, str(command))
     for command in _as_list(p0a_credential_clearance.get("hard_gate_commands")):
         _append_unique(hard_gate_commands, str(command))
+    _append_unique(hard_gate_commands, "make au-p0a-credential-update-receipt")
+    for command in _as_list(p0a_credential_update_receipt.get("strict_gate_commands")):
+        _append_unique(hard_gate_commands, str(command))
     for command in _as_list(p0a_real_batch_clearance.get("hard_gate_commands")):
         _append_unique(hard_gate_commands, str(command))
     for command in _as_list(p0b_google_environment_clearance.get("hard_gate_commands")):
@@ -629,6 +690,7 @@ def build_au_delivery_progress(
                 dependency_handoff_verifier,
                 clearance_verifier,
                 p0a_credential_clearance_verifier,
+                p0a_credential_update_receipt_verifier,
                 p0a_real_batch_clearance_verifier,
                 p0b_google_environment_clearance_verifier,
                 p0b_google_manual_backfill_clearance_verifier,
@@ -687,6 +749,28 @@ def build_au_delivery_progress(
                 "missing_required",
                 [],
             ),
+            "p0a_credential_update_receipt_hash": p0a_credential_update_receipt.get(
+                "p0a_credential_update_receipt_hash",
+                "",
+            ),
+            "p0a_credential_update_receipt_ready": p0a_credential_update_receipt.get(
+                "credential_update_receipt_ready"
+            )
+            is True,
+            "p0a_credential_update_receipt_complete": p0a_credential_update_receipt.get(
+                "credential_update_receipt_complete"
+            )
+            is True,
+            "p0a_credential_update_receipt_missing_required_count": _as_dict(
+                p0a_credential_update_receipt.get("summary")
+            ).get("missing_required_count", 0),
+            "p0a_credential_update_receipt_missing_required": _as_dict(
+                p0a_credential_update_receipt.get("summary")
+            ).get("missing_required", []),
+            "p0a_credential_update_env_file_hygiene_ready": _as_dict(
+                p0a_credential_update_receipt.get("summary")
+            ).get("env_file_hygiene_ready")
+            is True,
             "p0a_real_batch_clearance_hash": p0a_real_batch_clearance.get("p0a_real_batch_clearance_hash", ""),
             "p0a_real_batch_clearance_ready": p0a_real_batch_clearance.get("real_batch_clearance_ready") is True,
             "p0a_real_batches_fulfilled": p0a_real_batch_clearance.get("real_batches_fulfilled") is True,
@@ -826,6 +910,14 @@ def build_au_delivery_progress(
                 "verifier_status": p0a_credential_clearance_verifier.get("status", ""),
                 "hash_valid": p0a_credential_clearance_verifier.get("hash_valid") is True,
             },
+            "p0a_credential_update_receipt": {
+                "path": str(p0a_credential_update_receipt_path),
+                "source": p0a_credential_update_receipt_source,
+                "hash_field": "p0a_credential_update_receipt_hash",
+                "hash": p0a_credential_update_receipt.get("p0a_credential_update_receipt_hash", ""),
+                "verifier_status": p0a_credential_update_receipt_verifier.get("status", ""),
+                "hash_valid": p0a_credential_update_receipt_verifier.get("hash_valid") is True,
+            },
             "p0a_real_batch_clearance": {
                 "path": str(p0a_real_batch_clearance_path),
                 "source": p0a_real_batch_clearance_source,
@@ -873,6 +965,7 @@ def build_au_delivery_progress(
             "external_dependency_handoff": dependency_handoff_verifier,
             "external_dependency_clearance": clearance_verifier,
             "p0a_credential_clearance": p0a_credential_clearance_verifier,
+            "p0a_credential_update_receipt": p0a_credential_update_receipt_verifier,
             "p0a_real_batch_clearance": p0a_real_batch_clearance_verifier,
             "p0b_google_environment_clearance": p0b_google_environment_clearance_verifier,
             "p0b_google_manual_backfill_clearance": p0b_google_manual_backfill_clearance_verifier,
@@ -887,6 +980,7 @@ def build_au_delivery_progress(
             "external_dependency_handoff": "GET /v1/external-dependency-handoff/au",
             "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
             "p0a_credential_clearance": "GET /v1/p0a-credential-clearance/au",
+            "p0a_credential_update_receipt": "GET /v1/p0a-credential-update-receipt/au",
             "p0a_real_batch_clearance": "GET /v1/p0a-real-batch-clearance/au",
             "p0b_google_environment_clearance": "GET /v1/p0b-google-environment-clearance/au",
             "p0b_google_manual_backfill_clearance": "GET /v1/p0b-google-manual-backfill-clearance/au",
@@ -901,6 +995,7 @@ def build_au_delivery_progress(
             _source_file_entry("external_dependency_handoff", external_dependency_handoff_path),
             _source_file_entry("external_dependency_clearance", external_dependency_clearance_path),
             _source_file_entry("p0a_credential_clearance", p0a_credential_clearance_path),
+            _source_file_entry("p0a_credential_update_receipt", p0a_credential_update_receipt_path),
             _source_file_entry("p0a_real_batch_clearance", p0a_real_batch_clearance_path),
             _source_file_entry("p0b_google_environment_clearance", p0b_google_environment_clearance_path),
             _source_file_entry("p0b_google_manual_backfill_clearance", p0b_google_manual_backfill_clearance_path),
@@ -955,6 +1050,14 @@ def parse_args() -> argparse.Namespace:
         help="Path to the AU P0a credential clearance JSON.",
     )
     parser.add_argument(
+        "--p0a-credential-update-receipt-path",
+        default=os.environ.get(
+            "GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH",
+            DEFAULT_P0A_CREDENTIAL_UPDATE_RECEIPT_PATH,
+        ),
+        help="Path to the AU P0a credential update receipt JSON.",
+    )
+    parser.add_argument(
         "--p0a-real-batch-clearance-path",
         default=os.environ.get("GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH", DEFAULT_P0A_REAL_BATCH_CLEARANCE_PATH),
         help="Path to the AU P0a real batch clearance JSON.",
@@ -1003,6 +1106,7 @@ def main() -> None:
         external_dependency_handoff_path=Path(args.external_dependency_handoff_path),
         external_dependency_clearance_path=Path(args.external_dependency_clearance_path),
         p0a_credential_clearance_path=Path(args.p0a_credential_clearance_path),
+        p0a_credential_update_receipt_path=Path(args.p0a_credential_update_receipt_path),
         p0a_real_batch_clearance_path=Path(args.p0a_real_batch_clearance_path),
         p0b_google_environment_clearance_path=Path(args.p0b_google_environment_clearance_path),
         p0b_google_manual_backfill_clearance_path=Path(args.p0b_google_manual_backfill_clearance_path),

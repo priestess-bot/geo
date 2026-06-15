@@ -2939,6 +2939,12 @@ def au_delivery_progress() -> dict[str, object]:
             DEFAULT_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH,
         )
     )
+    p0a_credential_update_receipt_path = Path(
+        os.getenv(
+            "GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH",
+            DEFAULT_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH,
+        )
+    )
     p0a_real_batch_clearance_path = Path(
         os.getenv(
             "GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH",
@@ -2974,6 +2980,11 @@ def au_delivery_progress() -> dict[str, object]:
     p0a_credential_clearance = _build_au_p0a_credential_clearance_from_env(
         external_dependency_clearance=external_dependency_clearance
     )
+    p0a_credential_update_receipt = build_au_p0a_credential_update_receipt(
+        credential_clearance_path=p0a_credential_clearance_path,
+        credential_clearance=p0a_credential_clearance,
+        output_path=p0a_credential_update_receipt_path,
+    )
     p0a_real_batch_clearance = _build_au_p0a_real_batch_clearance_from_env(
         external_dependency_clearance=external_dependency_clearance
     )
@@ -2994,6 +3005,7 @@ def au_delivery_progress() -> dict[str, object]:
         external_dependency_handoff_path=external_dependency_handoff_path,
         external_dependency_clearance_path=external_dependency_clearance_path,
         p0a_credential_clearance_path=p0a_credential_clearance_path,
+        p0a_credential_update_receipt_path=p0a_credential_update_receipt_path,
         p0a_real_batch_clearance_path=p0a_real_batch_clearance_path,
         p0b_google_environment_clearance_path=p0b_google_environment_clearance_path,
         p0b_google_manual_backfill_clearance_path=p0b_google_manual_backfill_clearance_path,
@@ -3015,6 +3027,7 @@ def au_delivery_progress() -> dict[str, object]:
         external_dependency_handoff=external_dependency_handoff,
         external_dependency_clearance=external_dependency_clearance,
         p0a_credential_clearance=p0a_credential_clearance,
+        p0a_credential_update_receipt=p0a_credential_update_receipt,
         p0a_real_batch_clearance=p0a_real_batch_clearance,
         p0b_google_environment_clearance=p0b_google_environment_clearance,
         p0b_google_manual_backfill_clearance=p0b_google_manual_backfill_clearance,
@@ -3053,6 +3066,12 @@ def au_customer_handoff_clearance() -> dict[str, object]:
         os.getenv(
             "GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH",
             DEFAULT_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    p0a_credential_update_receipt_path = Path(
+        os.getenv(
+            "GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH",
+            DEFAULT_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH,
         )
     )
     p0a_real_batch_clearance_path = Path(
@@ -3094,6 +3113,11 @@ def au_customer_handoff_clearance() -> dict[str, object]:
     p0a_credential_clearance = _build_au_p0a_credential_clearance_from_env(
         external_dependency_clearance=external_dependency_clearance
     )
+    p0a_credential_update_receipt = build_au_p0a_credential_update_receipt(
+        credential_clearance_path=p0a_credential_clearance_path,
+        credential_clearance=p0a_credential_clearance,
+        output_path=p0a_credential_update_receipt_path,
+    )
     p0a_real_batch_clearance = _build_au_p0a_real_batch_clearance_from_env(
         external_dependency_clearance=external_dependency_clearance
     )
@@ -3112,6 +3136,7 @@ def au_customer_handoff_clearance() -> dict[str, object]:
         external_dependency_handoff_path=external_dependency_handoff_path,
         external_dependency_clearance_path=external_dependency_clearance_path,
         p0a_credential_clearance_path=p0a_credential_clearance_path,
+        p0a_credential_update_receipt_path=p0a_credential_update_receipt_path,
         p0a_real_batch_clearance_path=p0a_real_batch_clearance_path,
         p0b_google_environment_clearance_path=p0b_google_environment_clearance_path,
         p0b_google_manual_backfill_clearance_path=p0b_google_manual_backfill_clearance_path,
@@ -3121,6 +3146,7 @@ def au_customer_handoff_clearance() -> dict[str, object]:
         external_dependency_handoff=external_dependency_handoff,
         external_dependency_clearance=external_dependency_clearance,
         p0a_credential_clearance=p0a_credential_clearance,
+        p0a_credential_update_receipt=p0a_credential_update_receipt,
         p0a_real_batch_clearance=p0a_real_batch_clearance,
         p0b_google_environment_clearance=p0b_google_environment_clearance,
         p0b_google_manual_backfill_clearance=p0b_google_manual_backfill_clearance,
@@ -3134,6 +3160,7 @@ def au_customer_handoff_clearance() -> dict[str, object]:
         external_dependency_handoff_path=external_dependency_handoff_path,
         external_dependency_clearance_path=external_dependency_clearance_path,
         p0a_credential_clearance_path=p0a_credential_clearance_path,
+        p0a_credential_update_receipt_path=p0a_credential_update_receipt_path,
         p0a_real_batch_clearance_path=p0a_real_batch_clearance_path,
         p0b_google_environment_clearance_path=p0b_google_environment_clearance_path,
         p0b_google_manual_backfill_clearance_path=p0b_google_manual_backfill_clearance_path,
@@ -3144,6 +3171,7 @@ def au_customer_handoff_clearance() -> dict[str, object]:
         external_dependency_handoff=external_dependency_handoff,
         external_dependency_clearance=external_dependency_clearance,
         p0a_credential_clearance=p0a_credential_clearance,
+        p0a_credential_update_receipt=p0a_credential_update_receipt,
         p0a_real_batch_clearance=p0a_real_batch_clearance,
         p0b_google_environment_clearance=p0b_google_environment_clearance,
         p0b_google_manual_backfill_clearance=p0b_google_manual_backfill_clearance,

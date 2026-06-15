@@ -1860,6 +1860,12 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["next_command"], "make au-p0a-env")
         self.assertFalse(payload["summary"]["p0a_credential_clearance_ready"])
         self.assertFalse(payload["summary"]["p0a_credentials_fulfilled"])
+        self.assertTrue(payload["summary"]["p0a_credential_update_receipt_ready"])
+        self.assertFalse(payload["summary"]["p0a_credential_update_receipt_complete"])
+        self.assertEqual(
+            payload["summary"]["p0a_credential_update_receipt_missing_required_count"],
+            len(payload["summary"]["p0a_credential_update_receipt_missing_required"]),
+        )
         self.assertEqual(
             payload["summary"]["p0a_credential_missing_required_count"],
             len(payload["summary"]["p0a_credential_missing_required"]),
@@ -1884,6 +1890,10 @@ class ApiContractsTest(unittest.TestCase):
             "GET /v1/p0a-credential-clearance/au",
         )
         self.assertEqual(
+            payload["runtime_endpoints"]["p0a_credential_update_receipt"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
+        self.assertEqual(
             payload["runtime_endpoints"]["p0a_real_batch_clearance"],
             "GET /v1/p0a-real-batch-clearance/au",
         )
@@ -1901,6 +1911,9 @@ class ApiContractsTest(unittest.TestCase):
         )
         self.assertIn("make verify-au-delivery-progress", payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-clearance", payload["hard_gate_commands"])
+        self.assertIn("make au-p0a-credential-update-receipt", payload["hard_gate_commands"])
+        self.assertIn("make verify-au-p0a-credential-update-receipt", payload["hard_gate_commands"])
+        self.assertTrue(any("--require-complete" in command for command in payload["hard_gate_commands"]))
         self.assertIn("make verify-au-p0a-real-batch-clearance", payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0b-google-environment-clearance", payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0b-google-manual-backfill-clearance", payload["hard_gate_commands"])
@@ -1914,6 +1927,12 @@ class ApiContractsTest(unittest.TestCase):
         )
         self.assertTrue(payload["source_artifacts"]["p0a_credential_clearance"]["hash_valid"])
         self.assertEqual(payload["verifiers"]["p0a_credential_clearance"]["status"], "pass")
+        self.assertEqual(
+            payload["source_artifacts"]["p0a_credential_update_receipt"]["hash_field"],
+            "p0a_credential_update_receipt_hash",
+        )
+        self.assertTrue(payload["source_artifacts"]["p0a_credential_update_receipt"]["hash_valid"])
+        self.assertEqual(payload["verifiers"]["p0a_credential_update_receipt"]["status"], "pass")
         self.assertEqual(
             payload["source_artifacts"]["p0a_real_batch_clearance"]["hash_field"],
             "p0a_real_batch_clearance_hash",
@@ -1971,6 +1990,9 @@ class ApiContractsTest(unittest.TestCase):
         self.assertFalse(payload["summary"]["p0a_credential_clearance_ready"])
         self.assertFalse(payload["summary"]["p0a_credentials_fulfilled"])
         self.assertGreaterEqual(payload["summary"]["p0a_credential_missing_required_count"], 2)
+        self.assertTrue(payload["summary"]["p0a_credential_update_receipt_ready"])
+        self.assertFalse(payload["summary"]["p0a_credential_update_receipt_complete"])
+        self.assertGreaterEqual(payload["summary"]["p0a_credential_update_receipt_missing_required_count"], 2)
         self.assertFalse(payload["summary"]["p0a_real_batch_clearance_ready"])
         self.assertFalse(payload["summary"]["p0a_real_batches_fulfilled"])
         self.assertGreaterEqual(payload["summary"]["p0a_real_batch_missing_required_count"], 1)
@@ -1995,6 +2017,10 @@ class ApiContractsTest(unittest.TestCase):
             "GET /v1/p0a-credential-clearance/au",
         )
         self.assertEqual(
+            payload["runtime_endpoints"]["p0a_credential_update_receipt"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
+        self.assertEqual(
             payload["runtime_endpoints"]["p0a_real_batch_clearance"],
             "GET /v1/p0a-real-batch-clearance/au",
         )
@@ -2012,6 +2038,9 @@ class ApiContractsTest(unittest.TestCase):
         )
         self.assertIn("make verify-au-customer-handoff-clearance", payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-clearance", payload["hard_gate_commands"])
+        self.assertIn("make au-p0a-credential-update-receipt", payload["hard_gate_commands"])
+        self.assertIn("make verify-au-p0a-credential-update-receipt", payload["hard_gate_commands"])
+        self.assertTrue(any("--require-complete" in command for command in payload["hard_gate_commands"]))
         self.assertIn("make verify-au-p0a-real-batch-clearance", payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0b-google-environment-clearance", payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0b-google-manual-backfill-clearance", payload["hard_gate_commands"])
@@ -2025,6 +2054,12 @@ class ApiContractsTest(unittest.TestCase):
         )
         self.assertTrue(payload["source_artifacts"]["p0a_credential_clearance"]["hash_valid"])
         self.assertEqual(payload["verifiers"]["p0a_credential_clearance"]["status"], "pass")
+        self.assertEqual(
+            payload["source_artifacts"]["p0a_credential_update_receipt"]["hash_field"],
+            "p0a_credential_update_receipt_hash",
+        )
+        self.assertTrue(payload["source_artifacts"]["p0a_credential_update_receipt"]["hash_valid"])
+        self.assertEqual(payload["verifiers"]["p0a_credential_update_receipt"]["status"], "pass")
         self.assertEqual(
             payload["source_artifacts"]["p0a_real_batch_clearance"]["hash_field"],
             "p0a_real_batch_clearance_hash",

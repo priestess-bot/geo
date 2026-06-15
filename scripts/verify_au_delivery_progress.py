@@ -137,6 +137,7 @@ def verify_au_delivery_progress(
         "external_dependency_handoff",
         "external_dependency_clearance",
         "p0a_credential_clearance",
+        "p0a_credential_update_receipt",
         "p0a_real_batch_clearance",
         "p0b_google_environment_clearance",
         "p0b_google_manual_backfill_clearance",
@@ -160,6 +161,7 @@ def verify_au_delivery_progress(
         ("external_dependency_handoff", "external_dependency_handoff_hash"),
         ("external_dependency_clearance", "clearance_execution_hash"),
         ("p0a_credential_clearance", "p0a_credential_clearance_hash"),
+        ("p0a_credential_update_receipt", "p0a_credential_update_receipt_hash"),
         ("p0a_real_batch_clearance", "p0a_real_batch_clearance_hash"),
         ("p0b_google_environment_clearance", "p0b_google_environment_clearance_hash"),
         ("p0b_google_manual_backfill_clearance", "p0b_google_manual_backfill_clearance_hash"),
@@ -211,6 +213,24 @@ def verify_au_delivery_progress(
         "missing_required_count"
     ):
         errors.append("summary_p0a_credential_missing_required_count_mismatch")
+
+    p0a_credential_update_receipt_verifier = _as_dict(verifiers.get("p0a_credential_update_receipt"))
+    if summary.get("p0a_credential_update_receipt_ready") is not (
+        p0a_credential_update_receipt_verifier.get("credential_update_receipt_ready") is True
+    ):
+        errors.append("summary_p0a_credential_update_receipt_ready_mismatch")
+    if summary.get("p0a_credential_update_receipt_complete") is not (
+        p0a_credential_update_receipt_verifier.get("credential_update_receipt_complete") is True
+    ):
+        errors.append("summary_p0a_credential_update_receipt_complete_mismatch")
+    if summary.get("p0a_credential_update_receipt_missing_required_count") != (
+        p0a_credential_update_receipt_verifier.get("missing_required_count")
+    ):
+        errors.append("summary_p0a_credential_update_receipt_missing_required_count_mismatch")
+    if summary.get("p0a_credential_update_env_file_hygiene_ready") is not (
+        p0a_credential_update_receipt_verifier.get("env_file_hygiene_ready") is True
+    ):
+        errors.append("summary_p0a_credential_update_env_file_hygiene_ready_mismatch")
 
     p0a_real_batch_clearance_verifier = _as_dict(verifiers.get("p0a_real_batch_clearance"))
     if summary.get("p0a_real_batch_clearance_ready") is not (
@@ -288,6 +308,7 @@ def verify_au_delivery_progress(
         "external_dependency_handoff": "GET /v1/external-dependency-handoff/au",
         "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
         "p0a_credential_clearance": "GET /v1/p0a-credential-clearance/au",
+        "p0a_credential_update_receipt": "GET /v1/p0a-credential-update-receipt/au",
         "p0a_real_batch_clearance": "GET /v1/p0a-real-batch-clearance/au",
         "p0b_google_environment_clearance": "GET /v1/p0b-google-environment-clearance/au",
         "p0b_google_manual_backfill_clearance": "GET /v1/p0b-google-manual-backfill-clearance/au",
@@ -304,6 +325,8 @@ def verify_au_delivery_progress(
         "make verify-au-customer-handoff-readiness",
         "make verify-au-next-work-item",
         "make verify-au-p0a-credential-clearance",
+        "make au-p0a-credential-update-receipt",
+        "make verify-au-p0a-credential-update-receipt",
         "make verify-au-p0a-real-batch-clearance",
         "make verify-au-p0b-google-environment-clearance",
         "make verify-au-p0b-google-manual-backfill-clearance",
@@ -313,6 +336,8 @@ def verify_au_delivery_progress(
             errors.append(f"hard_gate_missing:{command}")
     if not any(command.endswith("--require-customer-ready") for command in hard_gate_commands):
         errors.append("hard_gate_missing:require_customer_ready")
+    if not any("--require-complete" in command for command in hard_gate_commands):
+        errors.append("hard_gate_missing:p0a_credential_update_receipt_require_complete")
 
     return {
         "status": "pass" if not errors else "fail",
