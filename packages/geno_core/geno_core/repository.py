@@ -1651,6 +1651,55 @@ def _render_runtime_fidelity_checks_csv(page: RuntimeFidelityCheckPage) -> str:
     return output.getvalue()
 
 
+def _render_runtime_prompts_csv(page: RuntimePromptPage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "prompt_question_id",
+            "project_id",
+            "market_code",
+            "industry_code",
+            "prompt_text_hash",
+            "intent_type",
+            "city",
+            "language",
+            "target_brand_hash",
+            "competitor_count",
+            "competitor_name_hashes",
+            "priority",
+            "intent_weight",
+            "prompt_version",
+            "status",
+        ],
+    )
+    writer.writeheader()
+    for prompt in page.records:
+        competitors = prompt.get("competitors")
+        if not isinstance(competitors, (list, tuple)):
+            competitors = ()
+        writer.writerow(
+            {
+                "prompt_question_id": prompt.get("id") or "",
+                "project_id": prompt.get("project_id") or "",
+                "market_code": prompt.get("market_code") or "",
+                "industry_code": prompt.get("industry_code") or "",
+                "prompt_text_hash": _hash_text_field(prompt.get("text")),
+                "intent_type": prompt.get("intent_type") or "",
+                "city": prompt.get("city") or "",
+                "language": prompt.get("language") or "",
+                "target_brand_hash": _hash_text_field(prompt.get("target_brand")),
+                "competitor_count": len(competitors),
+                "competitor_name_hashes": _pipe_join([_hash_text_field(competitor) for competitor in competitors]),
+                "priority": prompt.get("priority") or 0,
+                "intent_weight": prompt.get("intent_weight") or 0,
+                "prompt_version": prompt.get("prompt_version") or "",
+                "status": prompt.get("status") or "",
+            }
+        )
+    return output.getvalue()
+
+
 def _render_runtime_project_lifecycle_events_csv(page: RuntimeProjectLifecycleEventPage) -> str:
     output = StringIO()
     writer = csv.DictWriter(
@@ -7518,6 +7567,52 @@ class PostgresEvidenceRepository:
             )
             records = _rows_dict(cursor.fetchall(), PROMPT_QUESTION_READ_COLUMNS)
         return RuntimePromptPage(total_count=total_count, limit=limit, offset=offset, records=records)
+
+    def export_runtime_prompts_csv(
+        self,
+        *,
+        project_id: str | None = None,
+        market_code: str | None = None,
+        intent_type: str | None = None,
+        city: str | None = None,
+        status: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        normalized_project_id = project_id.strip() if project_id else None
+        normalized_market_code = market_code.strip() if market_code else None
+        normalized_intent_type = intent_type.strip() if intent_type else None
+        normalized_city = city.strip() if city else None
+        normalized_status = status.strip() if status else None
+        page = self.list_runtime_prompts(
+            project_id=normalized_project_id,
+            market_code=normalized_market_code,
+            intent_type=normalized_intent_type,
+            city=normalized_city,
+            status=normalized_status,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_prompts_csv(page)
+        filters = {
+            "project_id": normalized_project_id,
+            "market_code": normalized_market_code,
+            "intent_type": normalized_intent_type,
+            "city": normalized_city,
+            "status": normalized_status,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_prompts_csv",
+            filename="runtime-prompts.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=page.total_count,
+            row_count=len(page.records),
+        )
 
     def get_runtime_prompt(self, prompt_question_id: str) -> dict[str, Any] | None:
         with self.connection.cursor() as cursor:

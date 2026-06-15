@@ -182,6 +182,7 @@ from geno_core.models import (
     RuntimeProjectMemberPage,
     RuntimeProjectActionInput,
     RuntimeProjectUpdateInput,
+    RuntimePromptPage,
     RuntimePromptImportInput,
     RuntimePromptImportHistoryPage,
     RuntimePromptImportResult,
@@ -5366,6 +5367,68 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("FROM prompt_questions WHERE project_id = %s", executed_sql)
         self.assertIn("intent_type = %s", executed_sql)
         self.assertIn("ORDER BY priority ASC, id ASC", executed_sql)
+
+    def test_postgres_repository_exports_runtime_prompts_csv(self) -> None:
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        prompt_id = "5b9615f3-533b-5f18-96fb-5c8cbcb934c1"
+        prompt_text = "Is ExampleBrand good in Australia?"
+        page = RuntimePromptPage(
+            total_count=1,
+            limit=10,
+            offset=0,
+            records=(
+                {
+                    "id": prompt_id,
+                    "project_id": project_id,
+                    "market_code": "AU",
+                    "industry_code": "dtc_ecommerce",
+                    "text": prompt_text,
+                    "intent_type": "brand_awareness",
+                    "city": "Australia",
+                    "language": "en-AU",
+                    "target_brand": "ExampleBrand",
+                    "competitors": ["Emma Sleep", "Sleeping Duck"],
+                    "priority": 1,
+                    "intent_weight": 0.9,
+                    "prompt_version": "au_dtc_ecommerce_v1",
+                    "status": "active",
+                },
+            ),
+        )
+        repository = PostgresEvidenceRepository(RecordingConnection())
+        with patch.object(repository, "list_runtime_prompts", return_value=page):
+            export = repository.export_runtime_prompts_csv(
+                project_id=project_id,
+                market_code="AU",
+                intent_type="brand_awareness",
+                city="Australia",
+                status="active",
+                limit=10,
+                offset=0,
+            )
+
+        self.assertEqual(export.export_type, "runtime_prompts_csv")
+        self.assertEqual(export.filename, "runtime-prompts.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertEqual(export.filters["market_code"], "AU")
+        self.assertEqual(export.filters["intent_type"], "brand_awareness")
+        self.assertIn("prompt_question_id,project_id,market_code,industry_code,prompt_text_hash", export.content)
+        self.assertIn(prompt_id, export.content)
+        self.assertIn("brand_awareness", export.content)
+        self.assertIn("Australia", export.content)
+        self.assertIn("au_dtc_ecommerce_v1", export.content)
+        self.assertIn(_artifact_hash(prompt_text), export.content)
+        self.assertIn(_artifact_hash("ExampleBrand"), export.content)
+        self.assertIn(_artifact_hash("Emma Sleep"), export.content)
+        self.assertIn(_artifact_hash("Sleeping Duck"), export.content)
+        self.assertNotIn(prompt_text, export.content)
+        self.assertNotIn("ExampleBrand,", export.content)
+        self.assertNotIn("Emma Sleep", export.content)
+        self.assertNotIn("Sleeping Duck", export.content)
+        self.assertEqual(export.content_hash, hashlib.sha256(export.content.encode("utf-8")).hexdigest())
 
     def test_postgres_repository_imports_runtime_prompts_csv_with_audit_event(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

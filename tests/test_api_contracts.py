@@ -3996,6 +3996,56 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_prompts_export_endpoint_returns_csv_with_hash_headers(self) -> None:
+        class FakeRepository:
+            def export_runtime_prompts_csv(self, **kwargs: object) -> RuntimeEvidenceExport:
+                self.kwargs = kwargs
+                return RuntimeEvidenceExport(
+                    export_type="runtime_prompts_csv",
+                    filename="runtime-prompts.csv",
+                    media_type="text/csv; charset=utf-8",
+                    content="prompt_question_id,project_id\nprompt-1,project-1\n",
+                    content_hash="hash-prompts-csv",
+                    filters={
+                        "project_id": kwargs["project_id"],
+                        "market_code": kwargs["market_code"],
+                        "intent_type": kwargs["intent_type"],
+                        "city": kwargs["city"],
+                        "status": kwargs["status"],
+                    },
+                    total_count=2,
+                    row_count=1,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/prompts/runtime/export.csv"
+                "?project_id=project-1&market_code=AU&intent_type=brand_awareness&city=Sydney&status=active&limit=5",
+                headers={"X-GENO-Actor-Id": "analyst-1"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("prompt-1", response.text)
+        self.assertEqual(response.headers["x-geno-prompt-export-hash"], "hash-prompts-csv")
+        self.assertEqual(response.headers["x-geno-prompt-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geno-prompt-market-code"], "AU")
+        self.assertEqual(response.headers["x-geno-prompt-intent-type"], "brand_awareness")
+        self.assertEqual(response.headers["x-geno-prompt-city"], "Sydney")
+        self.assertEqual(response.headers["x-geno-prompt-status"], "active")
+        self.assertEqual(response.headers["x-geno-prompt-row-count"], "1")
+        self.assertEqual(response.headers["x-geno-prompt-total-count"], "2")
+        self.assertIn('filename="runtime-prompts.csv"', response.headers["content-disposition"])
+        self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.kwargs["market_code"], "AU")
+        self.assertEqual(fake_repository.kwargs["intent_type"], "brand_awareness")
+        self.assertEqual(fake_repository.kwargs["city"], "Sydney")
+        self.assertEqual(fake_repository.kwargs["status"], "active")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+        self.assertEqual(fake_repository.kwargs["offset"], 0)
+
     def test_runtime_prompts_endpoint_requires_project_id_when_access_control_enabled(self) -> None:
         class FakeRepository:
             def user_can_access_project(self, **kwargs: object) -> bool:
@@ -9680,6 +9730,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/entity-aliases/runtime/confirm", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/confirm-batch", payload["persistence"])
         self.assertIn("/v1/prompts/runtime", payload["persistence"])
+        self.assertIn("/v1/prompts/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/prompts/runtime/imports", payload["persistence"])
         self.assertIn("/v1/prompts/runtime/import.csv", payload["persistence"])
         self.assertIn("/v1/prompts/runtime/import.file", payload["persistence"])

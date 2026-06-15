@@ -4589,6 +4589,52 @@ def runtime_prompts(
         close_repository_connection(repository)
 
 
+@app.get("/v1/prompts/runtime/export.csv")
+def runtime_prompts_export_csv(
+    project_id: str | None = None,
+    market_code: str | None = None,
+    intent_type: str | None = None,
+    city: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        export = repository.export_runtime_prompts_csv(
+            project_id=project_id.strip() if project_id else None,
+            market_code=market_code.strip() if market_code else None,
+            intent_type=intent_type.strip() if intent_type else None,
+            city=city.strip() if city else None,
+            status=status.strip() if status else None,
+            limit=limit,
+            offset=offset,
+        )
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GENO-Prompt-Export-Hash": export.content_hash,
+                "X-GENO-Prompt-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GENO-Prompt-Market-Code": str(export.filters.get("market_code", "")),
+                "X-GENO-Prompt-Intent-Type": str(export.filters.get("intent_type", "")),
+                "X-GENO-Prompt-City": str(export.filters.get("city", "")),
+                "X-GENO-Prompt-Status": str(export.filters.get("status", "")),
+                "X-GENO-Prompt-Row-Count": str(export.row_count),
+                "X-GENO-Prompt-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/prompts/runtime/imports")
 def runtime_prompt_imports(
     project_id: str | None = None,
@@ -8235,6 +8281,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/entity-aliases/runtime/confirm",
             "/v1/entity-aliases/runtime/confirm-batch",
             "/v1/prompts/runtime",
+            "/v1/prompts/runtime/export.csv",
             "/v1/prompts/runtime/imports",
             "/v1/prompts/runtime/import.csv",
             "/v1/prompts/runtime/import.file",

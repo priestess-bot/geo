@@ -924,6 +924,9 @@ class WebConsoleContractsTest(unittest.TestCase):
 
         self.assertIn("Prompt CSV Import", page_source)
         self.assertIn("Prompt File Import", page_source)
+        self.assertIn('promptsExport: "/v1/prompts/runtime/export.csv"', page_source)
+        self.assertIn("Prompt CSV", page_source)
+        self.assertIn("Download prompt CSV", page_source)
         self.assertIn("importRuntimePromptsFile", page_source)
         self.assertIn("/v1/prompts/runtime/import.csv", page_source)
         self.assertIn("/v1/prompts/runtime/import.file", page_source)

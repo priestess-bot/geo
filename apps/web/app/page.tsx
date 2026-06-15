@@ -3550,6 +3550,7 @@ const endpoints = {
   projectMemberInvitationEmail: "/v1/project-member-invitations/runtime/email",
   projectMemberInvitationAccept: "/v1/project-member-invitations/runtime/accept",
   prompts: "/v1/prompts/runtime",
+  promptsExport: "/v1/prompts/runtime/export.csv",
   promptImports: "/v1/prompts/runtime/imports",
   evidence: "/v1/evidence-runs/runtime",
   collectionRuns: "/v1/collection-runs/runtime",
@@ -5371,6 +5372,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       intent_type: filters.intent_type,
       limit: 200
     }),
+    promptsExport: runtimePath(endpoints.promptsExport, {
+      market_code: "AU",
+      intent_type: filters.intent_type,
+      limit: 200
+    }),
     promptImports: runtimePath(endpoints.promptImports, {
       limit: 5
     }),
@@ -5544,6 +5550,12 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       })
     : endpoints.projectMemberInvitationsExport;
   paths.prompts = runtimePath(endpoints.prompts, {
+    ...selectedProjectParams,
+    market_code: "AU",
+    intent_type: filters.intent_type,
+    limit: 200
+  });
+  paths.promptsExport = runtimePath(endpoints.promptsExport, {
     ...selectedProjectParams,
     market_code: "AU",
     intent_type: filters.intent_type,
@@ -6861,6 +6873,7 @@ export default async function Home({
   const auditEventsExportUrl = `${displayUrl}${paths.auditEventsExport}`;
   const projectMembersExportUrl = `${displayUrl}${paths.projectMembersExport}`;
   const projectMemberInvitationsExportUrl = `${displayUrl}${paths.projectMemberInvitationsExport}`;
+  const promptsExportUrl = `${displayUrl}${paths.promptsExport}`;
   const collectionRunsExportUrl = `${displayUrl}${paths.collectionRunsExport}`;
   const fidelityExportUrl = `${displayUrl}${paths.fidelityExport}`;
   const actionPlansExportUrl = `${displayUrl}${paths.actionsExport}`;
@@ -11126,7 +11139,11 @@ export default async function Home({
                 <Fact label="Cities" value={promptCityCount} />
                 <Fact label="Brand" value={latestPrompt?.target_brand || "unknown"} />
                 <Fact label="Language" value={latestPrompt?.language || "unknown"} />
+                <Fact label="Prompt CSV" value={paths.promptsExport} />
               </dl>
+              <div className="linkRow">
+                <a href={promptsExportUrl}>Download prompt CSV</a>
+              </div>
               <ul className="plainList promptList">
                 {data.prompts.records.slice(0, 5).map((prompt) => (
                   <li key={prompt.id}>
