@@ -33,6 +33,10 @@ from scripts.build_au_next_work_item_packet import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_NEXT_WORK_ITEM_PATH,
     build_au_next_work_item_packet,
 )
+from scripts.build_au_p0a_credential_clearance import (  # noqa: E402
+    DEFAULT_OUTPUT_PATH as DEFAULT_P0A_CREDENTIAL_CLEARANCE_PATH,
+    build_au_p0a_credential_clearance,
+)
 from scripts.run_au_external_dependency_clearance import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_EXTERNAL_DEPENDENCY_CLEARANCE_PATH,
     run_au_external_dependency_clearance,
@@ -43,6 +47,7 @@ from scripts.verify_au_external_dependency_handoff import verify_au_external_dep
 from scripts.verify_au_handoff_dossier import verify_au_handoff_dossier  # noqa: E402
 from scripts.verify_au_launch_status import verify_au_launch_status  # noqa: E402
 from scripts.verify_au_next_work_item_packet import verify_au_next_work_item_packet  # noqa: E402
+from scripts.verify_au_p0a_credential_clearance import verify_au_p0a_credential_clearance  # noqa: E402
 
 
 PROGRESS_VERSION = "au_delivery_progress_v1"
@@ -135,6 +140,38 @@ def _load_or_build(path: Path, builder: Any, *, generated_at: str | None) -> tup
     return payload, {"path": str(path), "exists": True, "source": "generated_in_memory", "errors": ["not_json_object"]}
 
 
+def _load_or_build_p0a_credential_clearance(
+    path: Path,
+    *,
+    external_dependency_clearance_path: Path,
+    external_dependency_clearance: dict[str, Any],
+    generated_at: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    payload, source = _load_or_build(
+        path,
+        lambda generated_at=None: build_au_p0a_credential_clearance(
+            external_dependency_clearance_path=external_dependency_clearance_path,
+            external_dependency_clearance=external_dependency_clearance,
+            output_path=path,
+            generated_at=generated_at,
+        ),
+        generated_at=generated_at,
+    )
+    payload_clearance_hash = str(
+        _as_dict(_as_dict(payload.get("source_artifacts")).get("external_dependency_clearance")).get("hash") or ""
+    )
+    current_clearance_hash = str(external_dependency_clearance.get("clearance_execution_hash") or "")
+    if payload_clearance_hash == current_clearance_hash:
+        return payload, source
+    refreshed = build_au_p0a_credential_clearance(
+        external_dependency_clearance_path=external_dependency_clearance_path,
+        external_dependency_clearance=external_dependency_clearance,
+        output_path=path,
+        generated_at=generated_at,
+    )
+    return refreshed, {**source, "source": "generated_in_memory", "errors": ["source_clearance_hash_stale"]}
+
+
 def _percent(ready_count: int, total_count: int) -> float:
     if total_count <= 0:
         return 0.0
@@ -212,12 +249,14 @@ def build_au_delivery_progress(
     next_work_item_path: Path = Path(DEFAULT_NEXT_WORK_ITEM_PATH),
     external_dependency_handoff_path: Path = Path(DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH),
     external_dependency_clearance_path: Path = Path(DEFAULT_EXTERNAL_DEPENDENCY_CLEARANCE_PATH),
+    p0a_credential_clearance_path: Path = Path(DEFAULT_P0A_CREDENTIAL_CLEARANCE_PATH),
     launch_status: dict[str, Any] | None = None,
     handoff_dossier: dict[str, Any] | None = None,
     customer_handoff_readiness: dict[str, Any] | None = None,
     next_work_item: dict[str, Any] | None = None,
     external_dependency_handoff: dict[str, Any] | None = None,
     external_dependency_clearance: dict[str, Any] | None = None,
+    p0a_credential_clearance: dict[str, Any] | None = None,
     output_path: Path | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
@@ -297,6 +336,19 @@ def build_au_delivery_progress(
             "exists": True,
             "source": "provided_payload",
         }
+    if p0a_credential_clearance is None:
+        p0a_credential_clearance, p0a_credential_clearance_source = _load_or_build_p0a_credential_clearance(
+            p0a_credential_clearance_path,
+            external_dependency_clearance_path=external_dependency_clearance_path,
+            external_dependency_clearance=external_dependency_clearance,
+            generated_at=generated_at,
+        )
+    else:
+        p0a_credential_clearance_source = {
+            "path": str(p0a_credential_clearance_path),
+            "exists": True,
+            "source": "provided_payload",
+        }
 
     launch_verifier = verify_au_launch_status(launch_status)
     handoff_verifier = verify_au_handoff_dossier(handoff_dossier, path=handoff_dossier_path)
@@ -309,6 +361,10 @@ def build_au_delivery_progress(
     clearance_verifier = verify_au_external_dependency_clearance(
         external_dependency_clearance,
         path=external_dependency_clearance_path,
+    )
+    p0a_credential_clearance_verifier = verify_au_p0a_credential_clearance(
+        p0a_credential_clearance,
+        path=p0a_credential_clearance_path,
     )
 
     readiness_summary = _as_dict(customer_handoff_readiness.get("summary"))
@@ -345,6 +401,8 @@ def build_au_delivery_progress(
     if isinstance(external_dependency_handoff.get("hard_gate_commands"), list):
         for command in _as_list(external_dependency_handoff.get("hard_gate_commands")):
             _append_unique(hard_gate_commands, str(command))
+    for command in _as_list(p0a_credential_clearance.get("hard_gate_commands")):
+        _append_unique(hard_gate_commands, str(command))
 
     next_command = str(
         external_dependency_clearance.get("next_command")
@@ -365,6 +423,7 @@ def build_au_delivery_progress(
                 next_work_item_verifier,
                 dependency_handoff_verifier,
                 clearance_verifier,
+                p0a_credential_clearance_verifier,
             )
         )
         and launch_verifier.get("hash_valid") is True
@@ -408,6 +467,17 @@ def build_au_delivery_progress(
             "next_work_item_packet_hash": next_work_item.get("next_work_item_packet_hash", ""),
             "external_dependency_handoff_hash": external_dependency_handoff.get("external_dependency_handoff_hash", ""),
             "clearance_execution_hash": external_dependency_clearance.get("clearance_execution_hash", ""),
+            "p0a_credential_clearance_hash": p0a_credential_clearance.get("p0a_credential_clearance_hash", ""),
+            "p0a_credential_clearance_ready": p0a_credential_clearance.get("credential_clearance_ready") is True,
+            "p0a_credentials_fulfilled": p0a_credential_clearance.get("credentials_fulfilled") is True,
+            "p0a_credential_missing_required_count": _as_dict(p0a_credential_clearance.get("summary")).get(
+                "missing_required_count",
+                0,
+            ),
+            "p0a_credential_missing_required": _as_dict(p0a_credential_clearance.get("summary")).get(
+                "missing_required",
+                [],
+            ),
         },
         "progress_gates": progress_gates,
         "source_artifacts": {
@@ -459,6 +529,14 @@ def build_au_delivery_progress(
                 "verifier_status": clearance_verifier.get("status", ""),
                 "hash_valid": clearance_verifier.get("hash_valid") is True,
             },
+            "p0a_credential_clearance": {
+                "path": str(p0a_credential_clearance_path),
+                "source": p0a_credential_clearance_source,
+                "hash_field": "p0a_credential_clearance_hash",
+                "hash": p0a_credential_clearance.get("p0a_credential_clearance_hash", ""),
+                "verifier_status": p0a_credential_clearance_verifier.get("status", ""),
+                "hash_valid": p0a_credential_clearance_verifier.get("hash_valid") is True,
+            },
         },
         "verifiers": {
             "launch_status": launch_verifier,
@@ -467,6 +545,7 @@ def build_au_delivery_progress(
             "next_work_item": next_work_item_verifier,
             "external_dependency_handoff": dependency_handoff_verifier,
             "external_dependency_clearance": clearance_verifier,
+            "p0a_credential_clearance": p0a_credential_clearance_verifier,
         },
         "runtime_endpoints": {
             "delivery_progress": "GET /v1/delivery-progress/au",
@@ -476,6 +555,7 @@ def build_au_delivery_progress(
             "next_work_item": "GET /v1/next-work-item/au",
             "external_dependency_handoff": "GET /v1/external-dependency-handoff/au",
             "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
+            "p0a_credential_clearance": "GET /v1/p0a-credential-clearance/au",
         },
         "hard_gate_commands": hard_gate_commands,
         "evidence_sources": [
@@ -485,6 +565,7 @@ def build_au_delivery_progress(
             _source_file_entry("next_work_item", next_work_item_path),
             _source_file_entry("external_dependency_handoff", external_dependency_handoff_path),
             _source_file_entry("external_dependency_clearance", external_dependency_clearance_path),
+            _source_file_entry("p0a_credential_clearance", p0a_credential_clearance_path),
         ],
     }
     payload["delivery_progress_hash"] = compute_delivery_progress_hash(payload)
@@ -530,6 +611,11 @@ def parse_args() -> argparse.Namespace:
         help="Path to the AU external dependency clearance JSON.",
     )
     parser.add_argument(
+        "--p0a-credential-clearance-path",
+        default=os.environ.get("GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", DEFAULT_P0A_CREDENTIAL_CLEARANCE_PATH),
+        help="Path to the AU P0a credential clearance JSON.",
+    )
+    parser.add_argument(
         "--output-path",
         default=os.environ.get("GENO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU delivery progress JSON.",
@@ -548,6 +634,7 @@ def main() -> None:
         next_work_item_path=Path(args.next_work_item_path),
         external_dependency_handoff_path=Path(args.external_dependency_handoff_path),
         external_dependency_clearance_path=Path(args.external_dependency_clearance_path),
+        p0a_credential_clearance_path=Path(args.p0a_credential_clearance_path),
         output_path=output_path,
         generated_at=args.generated_at,
     )

@@ -113,6 +113,7 @@ def verify_au_delivery_progress(
         "next_work_item",
         "external_dependency_handoff",
         "external_dependency_clearance",
+        "p0a_credential_clearance",
     )
     expected_status_pass = launch_verifier.get("hash_valid") is True and all(
         _as_dict(verifiers.get(key)).get("status") == "pass" for key in required_pass_verifiers
@@ -130,6 +131,7 @@ def verify_au_delivery_progress(
         ("next_work_item", "next_work_item_packet_hash"),
         ("external_dependency_handoff", "external_dependency_handoff_hash"),
         ("external_dependency_clearance", "clearance_execution_hash"),
+        ("p0a_credential_clearance", "p0a_credential_clearance_hash"),
     ):
         artifact = _as_dict(source_artifacts.get(artifact_key))
         if artifact.get("hash_field") != hash_field:
@@ -155,6 +157,7 @@ def verify_au_delivery_progress(
         "next_work_item": "GET /v1/next-work-item/au",
         "external_dependency_handoff": "GET /v1/external-dependency-handoff/au",
         "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
+        "p0a_credential_clearance": "GET /v1/p0a-credential-clearance/au",
     }
     for key, endpoint in expected_endpoints.items():
         if endpoints.get(key) != endpoint:
@@ -166,6 +169,7 @@ def verify_au_delivery_progress(
         "make verify-au-delivery-progress",
         "make verify-au-customer-handoff-readiness",
         "make verify-au-next-work-item",
+        "make verify-au-p0a-credential-clearance",
     ):
         if command not in hard_gate_commands:
             errors.append(f"hard_gate_missing:{command}")

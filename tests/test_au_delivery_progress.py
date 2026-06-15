@@ -16,6 +16,9 @@ from scripts.build_au_delivery_progress import (
 from scripts.build_au_external_dependency_handoff import build_au_external_dependency_handoff
 from scripts.build_au_handoff_dossier import build_au_handoff_dossier
 from scripts.build_au_next_work_item_packet import build_au_next_work_item_packet
+from scripts.build_au_p0a_credential_clearance import build_au_p0a_credential_clearance
+from scripts.build_au_p0a_credential_fulfillment import build_au_p0a_credential_fulfillment
+from scripts.build_au_p0a_credential_request_packet import build_au_p0a_credential_request_packet
 from scripts.run_au_external_dependency_clearance import run_au_external_dependency_clearance
 from scripts.verify_au_delivery_progress import verify_au_delivery_progress
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
@@ -84,6 +87,40 @@ class AuDeliveryProgressTest(unittest.TestCase):
             generated_at="2026-06-12T00:00:00Z",
         )
         clearance_path.write_text(json.dumps(clearance), encoding="utf-8")
+        p0a_execution = json.loads(p0a_execution_path.read_text(encoding="utf-8"))
+        env_report_path = Path(p0a_execution["paths"]["environment_report"])  # type: ignore[index]
+        env_report = json.loads(env_report_path.read_text(encoding="utf-8"))
+        credential_request_path = Path(temp_dir) / "credential-request.json"
+        credential_request = build_au_p0a_credential_request_packet(
+            p0a_execution_checklist_path=p0a_execution_path,
+            p0a_execution_checklist=p0a_execution,
+            output_path=credential_request_path,
+            generated_at="2026-06-12T00:00:00Z",
+        )
+        credential_request_path.write_text(json.dumps(credential_request), encoding="utf-8")
+        credential_fulfillment_path = Path(temp_dir) / "credential-fulfillment.json"
+        credential_fulfillment = build_au_p0a_credential_fulfillment(
+            credential_request_path=credential_request_path,
+            env_report_path=env_report_path,
+            credential_request=credential_request,
+            env_report=env_report,
+            output_path=credential_fulfillment_path,
+            generated_at="2026-06-12T00:00:00Z",
+        )
+        credential_fulfillment_path.write_text(json.dumps(credential_fulfillment), encoding="utf-8")
+        credential_clearance_path = Path(temp_dir) / "credential-clearance.json"
+        credential_clearance = build_au_p0a_credential_clearance(
+            credential_request_path=credential_request_path,
+            env_report_path=env_report_path,
+            credential_fulfillment_path=credential_fulfillment_path,
+            external_dependency_clearance_path=clearance_path,
+            credential_request=credential_request,
+            credential_fulfillment=credential_fulfillment,
+            external_dependency_clearance=clearance,
+            output_path=credential_clearance_path,
+            generated_at="2026-06-12T00:00:00Z",
+        )
+        credential_clearance_path.write_text(json.dumps(credential_clearance), encoding="utf-8")
         return {
             "launch_status_path": launch_status_path,
             "handoff_path": handoff_path,
@@ -91,12 +128,14 @@ class AuDeliveryProgressTest(unittest.TestCase):
             "next_work_item_path": next_work_item_path,
             "dependency_handoff_path": dependency_handoff_path,
             "clearance_path": clearance_path,
+            "credential_clearance_path": credential_clearance_path,
             "launch_status": launch_status,
             "handoff": handoff,
             "readiness": readiness,
             "next_work_item": next_work_item,
             "dependency_handoff": dependency_handoff,
             "clearance": clearance,
+            "credential_clearance": credential_clearance,
         }
 
     def test_progress_records_blocked_customer_handoff_with_machine_readable_percent(self) -> None:
@@ -109,12 +148,14 @@ class AuDeliveryProgressTest(unittest.TestCase):
                 next_work_item_path=sources["next_work_item_path"],  # type: ignore[arg-type]
                 external_dependency_handoff_path=sources["dependency_handoff_path"],  # type: ignore[arg-type]
                 external_dependency_clearance_path=sources["clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
                 launch_status=sources["launch_status"],  # type: ignore[arg-type]
                 handoff_dossier=sources["handoff"],  # type: ignore[arg-type]
                 customer_handoff_readiness=sources["readiness"],  # type: ignore[arg-type]
                 next_work_item=sources["next_work_item"],  # type: ignore[arg-type]
                 external_dependency_handoff=sources["dependency_handoff"],  # type: ignore[arg-type]
                 external_dependency_clearance=sources["clearance"],  # type: ignore[arg-type]
+                p0a_credential_clearance=sources["credential_clearance"],  # type: ignore[arg-type]
                 output_path=Path(temp_dir) / "progress.json",
                 generated_at="2026-06-12T00:00:00Z",
             )
@@ -138,11 +179,25 @@ class AuDeliveryProgressTest(unittest.TestCase):
         self.assertEqual(progress["summary"]["current_clearance_step_id"], "p0a_provider_credentials")
         self.assertEqual(progress["summary"]["would_execute_step_count"], 1)
         self.assertEqual(progress["summary"]["next_command"], "make verify-au-p0a-env-template")
+        self.assertEqual(progress["summary"]["p0a_credential_missing_required_count"], 3)
+        self.assertFalse(progress["summary"]["p0a_credential_clearance_ready"])
+        self.assertFalse(progress["summary"]["p0a_credentials_fulfilled"])
         self.assertEqual(progress["runtime_endpoints"]["delivery_progress"], "GET /v1/delivery-progress/au")
+        self.assertEqual(
+            progress["runtime_endpoints"]["p0a_credential_clearance"],
+            "GET /v1/p0a-credential-clearance/au",
+        )
         self.assertIn("make au-delivery-progress", progress["hard_gate_commands"])
         self.assertIn("make verify-au-delivery-progress", progress["hard_gate_commands"])
+        self.assertIn("make verify-au-p0a-credential-clearance", progress["hard_gate_commands"])
         self.assertTrue(any(command.endswith("--require-customer-ready") for command in progress["hard_gate_commands"]))
         self.assertTrue(progress["source_artifacts"]["next_work_item"]["hash"])
+        self.assertEqual(
+            progress["source_artifacts"]["p0a_credential_clearance"]["hash_field"],
+            "p0a_credential_clearance_hash",
+        )
+        self.assertTrue(progress["source_artifacts"]["p0a_credential_clearance"]["hash_valid"])
+        self.assertEqual(progress["verifiers"]["p0a_credential_clearance"]["status"], "pass")
         self.assertEqual(progress["delivery_progress_hash"], compute_delivery_progress_hash(progress))
         self.assertEqual(verification["status"], "pass")
         self.assertEqual(hard_gate["status"], "fail")
@@ -158,12 +213,14 @@ class AuDeliveryProgressTest(unittest.TestCase):
                 next_work_item_path=sources["next_work_item_path"],  # type: ignore[arg-type]
                 external_dependency_handoff_path=sources["dependency_handoff_path"],  # type: ignore[arg-type]
                 external_dependency_clearance_path=sources["clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
                 launch_status=sources["launch_status"],  # type: ignore[arg-type]
                 handoff_dossier=sources["handoff"],  # type: ignore[arg-type]
                 customer_handoff_readiness=sources["readiness"],  # type: ignore[arg-type]
                 next_work_item=sources["next_work_item"],  # type: ignore[arg-type]
                 external_dependency_handoff=sources["dependency_handoff"],  # type: ignore[arg-type]
                 external_dependency_clearance=sources["clearance"],  # type: ignore[arg-type]
+                p0a_credential_clearance=sources["credential_clearance"],  # type: ignore[arg-type]
                 output_path=Path(temp_dir) / "progress.json",
                 generated_at="2026-06-12T00:00:00Z",
             )
@@ -185,6 +242,7 @@ class AuDeliveryProgressTest(unittest.TestCase):
                 next_work_item_path=sources["next_work_item_path"],  # type: ignore[arg-type]
                 external_dependency_handoff_path=sources["dependency_handoff_path"],  # type: ignore[arg-type]
                 external_dependency_clearance_path=sources["clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
                 output_path=Path(temp_dir) / "progress.json",
                 generated_at="2026-06-12T00:00:00Z",
             )
@@ -215,6 +273,8 @@ class AuDeliveryProgressTest(unittest.TestCase):
                     str(sources["dependency_handoff_path"]),
                     "--external-dependency-clearance-path",
                     str(sources["clearance_path"]),
+                    "--p0a-credential-clearance-path",
+                    str(sources["credential_clearance_path"]),
                     "--output-path",
                     str(output_path),
                     "--generated-at",

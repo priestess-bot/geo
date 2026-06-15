@@ -154,6 +154,7 @@ def verify_au_customer_handoff_clearance(
     progress_verifier = _as_dict(verifiers.get("delivery_progress"))
     external_handoff_verifier = _as_dict(verifiers.get("external_dependency_handoff"))
     external_clearance_verifier = _as_dict(verifiers.get("external_dependency_clearance"))
+    p0a_credential_clearance_verifier = _as_dict(verifiers.get("p0a_credential_clearance"))
     source_artifacts = _as_dict(payload.get("source_artifacts"))
     summary = _as_dict(payload.get("summary"))
     clearance_step = _as_dict(payload.get("clearance_step"))
@@ -171,6 +172,7 @@ def verify_au_customer_handoff_clearance(
         "delivery_progress": ("delivery_progress_hash", progress_verifier),
         "external_dependency_handoff": ("external_dependency_handoff_hash", external_handoff_verifier),
         "external_dependency_clearance": ("clearance_execution_hash", external_clearance_verifier),
+        "p0a_credential_clearance": ("p0a_credential_clearance_hash", p0a_credential_clearance_verifier),
     }
     for key, (hash_field, verifier) in source_to_verifier_hash.items():
         source = _as_dict(source_artifacts.get(key))
@@ -193,6 +195,7 @@ def verify_au_customer_handoff_clearance(
             progress_verifier,
             external_handoff_verifier,
             external_clearance_verifier,
+            p0a_credential_clearance_verifier,
         )
     )
     if payload.get("customer_handoff_clearance_packet_ready") is not expected_packet_ready:
@@ -277,6 +280,18 @@ def verify_au_customer_handoff_clearance(
         errors.append("summary_customer_handoff_clearance_ready_mismatch")
     if summary.get("ready_for_report_export_handoff") is not expected_report_ready:
         errors.append("summary_ready_for_report_export_handoff_mismatch")
+    if summary.get("p0a_credential_clearance_ready") is not (
+        p0a_credential_clearance_verifier.get("credential_clearance_ready") is True
+    ):
+        errors.append("summary_p0a_credential_clearance_ready_mismatch")
+    if summary.get("p0a_credentials_fulfilled") is not (
+        p0a_credential_clearance_verifier.get("credentials_fulfilled") is True
+    ):
+        errors.append("summary_p0a_credentials_fulfilled_mismatch")
+    if summary.get("p0a_credential_missing_required_count") != p0a_credential_clearance_verifier.get(
+        "missing_required_count"
+    ):
+        errors.append("summary_p0a_credential_missing_required_count_mismatch")
 
     if summary.get("required_count") != len(required_items):
         errors.append("summary_required_count_mismatch")
@@ -341,6 +356,8 @@ def verify_au_customer_handoff_clearance(
             errors.append(f"operator_step_command_missing:{step.get('id')}")
 
     required_validation_commands = (
+        "make au-p0a-credential-clearance",
+        "make verify-au-p0a-credential-clearance",
         "make au-customer-handoff-clearance",
         "make verify-au-customer-handoff-clearance",
         "make au-handoff-dossier",
@@ -372,6 +389,7 @@ def verify_au_customer_handoff_clearance(
         "delivery_progress": "GET /v1/delivery-progress/au",
         "external_dependency_handoff": "GET /v1/external-dependency-handoff/au",
         "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
+        "p0a_credential_clearance": "GET /v1/p0a-credential-clearance/au",
     }
     for key, expected in expected_endpoints.items():
         if endpoints.get(key) != expected:
