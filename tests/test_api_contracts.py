@@ -1799,6 +1799,15 @@ class ApiContractsTest(unittest.TestCase):
         self.assertFalse(payload["summary"]["p0a_real_batch_clearance_ready"])
         self.assertFalse(payload["summary"]["p0a_real_batches_fulfilled"])
         self.assertGreaterEqual(payload["summary"]["p0a_real_batch_missing_required_count"], 1)
+        self.assertFalse(payload["summary"]["p0b_google_environment_clearance_ready"])
+        self.assertFalse(payload["summary"]["p0b_google_environment_fulfilled"])
+        self.assertGreaterEqual(payload["summary"]["p0b_google_environment_missing_required_count"], 1)
+        self.assertFalse(payload["summary"]["p0b_google_manual_backfill_clearance_ready"])
+        self.assertFalse(payload["summary"]["p0b_google_manual_backfill_fulfilled"])
+        self.assertGreaterEqual(payload["summary"]["p0b_google_manual_backfill_missing_required_count"], 1)
+        self.assertFalse(payload["summary"]["p0b_google_phase_execution_clearance_ready"])
+        self.assertFalse(payload["summary"]["p0b_google_phase_execution_fulfilled"])
+        self.assertGreaterEqual(payload["summary"]["p0b_google_phase_execution_missing_required_count"], 1)
         self.assertEqual(payload["runtime_endpoints"]["delivery_progress"], "GET /v1/delivery-progress/au")
         self.assertEqual(
             payload["runtime_endpoints"]["p0a_credential_clearance"],
@@ -1808,9 +1817,24 @@ class ApiContractsTest(unittest.TestCase):
             payload["runtime_endpoints"]["p0a_real_batch_clearance"],
             "GET /v1/p0a-real-batch-clearance/au",
         )
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0b_google_environment_clearance"],
+            "GET /v1/p0b-google-environment-clearance/au",
+        )
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0b_google_manual_backfill_clearance"],
+            "GET /v1/p0b-google-manual-backfill-clearance/au",
+        )
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0b_google_phase_execution_clearance"],
+            "GET /v1/p0b-google-phase-execution-clearance/au",
+        )
         self.assertIn("make verify-au-delivery-progress", payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-clearance", payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-real-batch-clearance", payload["hard_gate_commands"])
+        self.assertIn("make verify-au-p0b-google-environment-clearance", payload["hard_gate_commands"])
+        self.assertIn("make verify-au-p0b-google-manual-backfill-clearance", payload["hard_gate_commands"])
+        self.assertIn("make verify-au-p0b-google-phase-execution-clearance", payload["hard_gate_commands"])
         self.assertTrue(any(command.endswith("--require-customer-ready") for command in payload["hard_gate_commands"]))
         self.assertEqual(payload["source_artifacts"]["next_work_item"]["hash_field"], "next_work_item_packet_hash")
         self.assertEqual(payload["verifiers"]["next_work_item"]["status"], "pass")
@@ -1826,6 +1850,24 @@ class ApiContractsTest(unittest.TestCase):
         )
         self.assertTrue(payload["source_artifacts"]["p0a_real_batch_clearance"]["hash_valid"])
         self.assertEqual(payload["verifiers"]["p0a_real_batch_clearance"]["status"], "pass")
+        self.assertEqual(
+            payload["source_artifacts"]["p0b_google_environment_clearance"]["hash_field"],
+            "p0b_google_environment_clearance_hash",
+        )
+        self.assertTrue(payload["source_artifacts"]["p0b_google_environment_clearance"]["hash_valid"])
+        self.assertEqual(payload["verifiers"]["p0b_google_environment_clearance"]["status"], "pass")
+        self.assertEqual(
+            payload["source_artifacts"]["p0b_google_manual_backfill_clearance"]["hash_field"],
+            "p0b_google_manual_backfill_clearance_hash",
+        )
+        self.assertTrue(payload["source_artifacts"]["p0b_google_manual_backfill_clearance"]["hash_valid"])
+        self.assertEqual(payload["verifiers"]["p0b_google_manual_backfill_clearance"]["status"], "pass")
+        self.assertEqual(
+            payload["source_artifacts"]["p0b_google_phase_execution_clearance"]["hash_field"],
+            "p0b_google_phase_execution_clearance_hash",
+        )
+        self.assertTrue(payload["source_artifacts"]["p0b_google_phase_execution_clearance"]["hash_valid"])
+        self.assertEqual(payload["verifiers"]["p0b_google_phase_execution_clearance"]["status"], "pass")
         self.assertTrue(payload["delivery_progress_hash"])
 
     def test_au_customer_handoff_clearance_endpoint_returns_final_handoff_clearance_packet(self) -> None:
@@ -1862,6 +1904,15 @@ class ApiContractsTest(unittest.TestCase):
         self.assertFalse(payload["summary"]["p0a_real_batch_clearance_ready"])
         self.assertFalse(payload["summary"]["p0a_real_batches_fulfilled"])
         self.assertGreaterEqual(payload["summary"]["p0a_real_batch_missing_required_count"], 1)
+        self.assertFalse(payload["summary"]["p0b_google_environment_clearance_ready"])
+        self.assertFalse(payload["summary"]["p0b_google_environment_fulfilled"])
+        self.assertGreaterEqual(payload["summary"]["p0b_google_environment_missing_required_count"], 1)
+        self.assertFalse(payload["summary"]["p0b_google_manual_backfill_clearance_ready"])
+        self.assertFalse(payload["summary"]["p0b_google_manual_backfill_fulfilled"])
+        self.assertGreaterEqual(payload["summary"]["p0b_google_manual_backfill_missing_required_count"], 1)
+        self.assertFalse(payload["summary"]["p0b_google_phase_execution_clearance_ready"])
+        self.assertFalse(payload["summary"]["p0b_google_phase_execution_fulfilled"])
+        self.assertGreaterEqual(payload["summary"]["p0b_google_phase_execution_missing_required_count"], 1)
         self.assertEqual(payload["summary"]["next_action"], "clear_customer_handoff_prerequisites_first")
         self.assertEqual(payload["summary"]["next_command"], "make au-p0a-env")
         self.assertIn("customer_gate:customer_report_handoff_gate", payload["summary"]["missing_required"])
@@ -1877,9 +1928,24 @@ class ApiContractsTest(unittest.TestCase):
             payload["runtime_endpoints"]["p0a_real_batch_clearance"],
             "GET /v1/p0a-real-batch-clearance/au",
         )
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0b_google_environment_clearance"],
+            "GET /v1/p0b-google-environment-clearance/au",
+        )
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0b_google_manual_backfill_clearance"],
+            "GET /v1/p0b-google-manual-backfill-clearance/au",
+        )
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0b_google_phase_execution_clearance"],
+            "GET /v1/p0b-google-phase-execution-clearance/au",
+        )
         self.assertIn("make verify-au-customer-handoff-clearance", payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-clearance", payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-real-batch-clearance", payload["hard_gate_commands"])
+        self.assertIn("make verify-au-p0b-google-environment-clearance", payload["hard_gate_commands"])
+        self.assertIn("make verify-au-p0b-google-manual-backfill-clearance", payload["hard_gate_commands"])
+        self.assertIn("make verify-au-p0b-google-phase-execution-clearance", payload["hard_gate_commands"])
         self.assertTrue(any(command.endswith("--require-cleared") for command in payload["hard_gate_commands"]))
         self.assertEqual(payload["source_artifacts"]["delivery_progress"]["hash_field"], "delivery_progress_hash")
         self.assertTrue(payload["source_artifacts"]["delivery_progress"]["hash_valid"])
@@ -1895,6 +1961,24 @@ class ApiContractsTest(unittest.TestCase):
         )
         self.assertTrue(payload["source_artifacts"]["p0a_real_batch_clearance"]["hash_valid"])
         self.assertEqual(payload["verifiers"]["p0a_real_batch_clearance"]["status"], "pass")
+        self.assertEqual(
+            payload["source_artifacts"]["p0b_google_environment_clearance"]["hash_field"],
+            "p0b_google_environment_clearance_hash",
+        )
+        self.assertTrue(payload["source_artifacts"]["p0b_google_environment_clearance"]["hash_valid"])
+        self.assertEqual(payload["verifiers"]["p0b_google_environment_clearance"]["status"], "pass")
+        self.assertEqual(
+            payload["source_artifacts"]["p0b_google_manual_backfill_clearance"]["hash_field"],
+            "p0b_google_manual_backfill_clearance_hash",
+        )
+        self.assertTrue(payload["source_artifacts"]["p0b_google_manual_backfill_clearance"]["hash_valid"])
+        self.assertEqual(payload["verifiers"]["p0b_google_manual_backfill_clearance"]["status"], "pass")
+        self.assertEqual(
+            payload["source_artifacts"]["p0b_google_phase_execution_clearance"]["hash_field"],
+            "p0b_google_phase_execution_clearance_hash",
+        )
+        self.assertTrue(payload["source_artifacts"]["p0b_google_phase_execution_clearance"]["hash_valid"])
+        self.assertEqual(payload["verifiers"]["p0b_google_phase_execution_clearance"]["status"], "pass")
         self.assertEqual(payload["customer_handoff_clearance_hash"], compute_customer_handoff_clearance_hash(payload))
 
     def test_au_p0a_credential_request_endpoint_returns_current_handoff_packet(self) -> None:

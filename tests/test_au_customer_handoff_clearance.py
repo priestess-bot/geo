@@ -23,6 +23,9 @@ from scripts.build_au_p0a_credential_request_packet import build_au_p0a_credenti
 from scripts.build_au_p0a_real_batch_clearance import build_au_p0a_real_batch_clearance
 from scripts.build_au_p0a_real_batch_fulfillment import build_au_p0a_real_batch_fulfillment
 from scripts.build_au_p0a_real_batch_request_packet import build_au_p0a_real_batch_request_packet
+from scripts.build_au_p0b_google_environment_clearance import build_au_p0b_google_environment_clearance
+from scripts.build_au_p0b_google_manual_backfill_clearance import build_au_p0b_google_manual_backfill_clearance
+from scripts.build_au_p0b_google_phase_execution_clearance import build_au_p0b_google_phase_execution_clearance
 from scripts.run_au_external_dependency_clearance import run_au_external_dependency_clearance
 from scripts.verify_au_customer_handoff_clearance import verify_au_customer_handoff_clearance
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
@@ -157,6 +160,41 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
             generated_at="2026-06-14T00:00:00Z",
         )
         real_batch_clearance_path.write_text(json.dumps(real_batch_clearance), encoding="utf-8")
+        p0b_environment_clearance_path = Path(temp_dir) / "p0b-environment-clearance.json"
+        p0b_environment_clearance = build_au_p0b_google_environment_clearance(
+            environment_request_path=Path(temp_dir) / "p0b-environment-request.json",
+            playwright_env_report_path=Path(temp_dir) / "p0b-playwright-env.json",
+            environment_fulfillment_path=Path(temp_dir) / "p0b-environment-fulfillment.json",
+            external_dependency_clearance_path=external_clearance_path,
+            playwright_env_file_path=Path(temp_dir) / "missing-google.env",
+            external_dependency_clearance=external_clearance,
+            output_path=p0b_environment_clearance_path,
+            generated_at="2026-06-14T00:00:00Z",
+        )
+        p0b_environment_clearance_path.write_text(json.dumps(p0b_environment_clearance), encoding="utf-8")
+        p0b_manual_backfill_clearance_path = Path(temp_dir) / "p0b-manual-backfill-clearance.json"
+        p0b_manual_backfill_clearance = build_au_p0b_google_manual_backfill_clearance(
+            manual_backfill_request_path=Path(temp_dir) / "p0b-manual-backfill-request.json",
+            manual_backfill_verification_path=Path(temp_dir) / "p0b-manual-backfill-verification.json",
+            manual_backfill_fulfillment_path=Path(temp_dir) / "p0b-manual-backfill-fulfillment.json",
+            external_dependency_clearance_path=external_clearance_path,
+            manual_jsonl_path=Path(temp_dir) / "missing-manual-backfill.jsonl",
+            external_dependency_clearance=external_clearance,
+            output_path=p0b_manual_backfill_clearance_path,
+            generated_at="2026-06-14T00:00:00Z",
+        )
+        p0b_manual_backfill_clearance_path.write_text(json.dumps(p0b_manual_backfill_clearance), encoding="utf-8")
+        p0b_phase_execution_clearance_path = Path(temp_dir) / "p0b-phase-execution-clearance.json"
+        p0b_phase_execution_clearance = build_au_p0b_google_phase_execution_clearance(
+            phase_execution_request_path=Path(temp_dir) / "p0b-phase-execution-request.json",
+            p0b_google_execution_checklist_path=p0b_checklist_path,
+            phase_execution_fulfillment_path=Path(temp_dir) / "p0b-phase-execution-fulfillment.json",
+            external_dependency_clearance_path=external_clearance_path,
+            external_dependency_clearance=external_clearance,
+            output_path=p0b_phase_execution_clearance_path,
+            generated_at="2026-06-14T00:00:00Z",
+        )
+        p0b_phase_execution_clearance_path.write_text(json.dumps(p0b_phase_execution_clearance), encoding="utf-8")
         delivery_progress_path = Path(temp_dir) / "delivery-progress.json"
         delivery_progress = build_au_delivery_progress(
             launch_status_path=launch_status_path,
@@ -167,6 +205,9 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
             external_dependency_clearance_path=external_clearance_path,
             p0a_credential_clearance_path=credential_clearance_path,
             p0a_real_batch_clearance_path=real_batch_clearance_path,
+            p0b_google_environment_clearance_path=p0b_environment_clearance_path,
+            p0b_google_manual_backfill_clearance_path=p0b_manual_backfill_clearance_path,
+            p0b_google_phase_execution_clearance_path=p0b_phase_execution_clearance_path,
             launch_status=launch_status,
             handoff_dossier=handoff,
             customer_handoff_readiness=readiness,
@@ -175,6 +216,9 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
             external_dependency_clearance=external_clearance,
             p0a_credential_clearance=credential_clearance,
             p0a_real_batch_clearance=real_batch_clearance,
+            p0b_google_environment_clearance=p0b_environment_clearance,
+            p0b_google_manual_backfill_clearance=p0b_manual_backfill_clearance,
+            p0b_google_phase_execution_clearance=p0b_phase_execution_clearance,
             output_path=delivery_progress_path,
             generated_at="2026-06-14T00:00:00Z",
         )
@@ -187,6 +231,9 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
             "external_clearance_path": external_clearance_path,
             "credential_clearance_path": credential_clearance_path,
             "real_batch_clearance_path": real_batch_clearance_path,
+            "p0b_environment_clearance_path": p0b_environment_clearance_path,
+            "p0b_manual_backfill_clearance_path": p0b_manual_backfill_clearance_path,
+            "p0b_phase_execution_clearance_path": p0b_phase_execution_clearance_path,
             "handoff": handoff,
             "readiness": readiness,
             "delivery_progress": delivery_progress,
@@ -194,6 +241,9 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
             "external_clearance": external_clearance,
             "credential_clearance": credential_clearance,
             "real_batch_clearance": real_batch_clearance,
+            "p0b_environment_clearance": p0b_environment_clearance,
+            "p0b_manual_backfill_clearance": p0b_manual_backfill_clearance,
+            "p0b_phase_execution_clearance": p0b_phase_execution_clearance,
         }
 
     def test_clearance_packet_records_blocked_customer_handoff_without_raw_payload_leak(self) -> None:
@@ -207,6 +257,9 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
                 external_dependency_clearance_path=sources["external_clearance_path"],  # type: ignore[arg-type]
                 p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
                 p0a_real_batch_clearance_path=sources["real_batch_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance_path=sources["p0b_environment_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance_path=sources["p0b_manual_backfill_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance_path=sources["p0b_phase_execution_clearance_path"],  # type: ignore[arg-type]
                 handoff_dossier=sources["handoff"],  # type: ignore[arg-type]
                 customer_handoff_readiness=sources["readiness"],  # type: ignore[arg-type]
                 delivery_progress=sources["delivery_progress"],  # type: ignore[arg-type]
@@ -214,6 +267,9 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
                 external_dependency_clearance=sources["external_clearance"],  # type: ignore[arg-type]
                 p0a_credential_clearance=sources["credential_clearance"],  # type: ignore[arg-type]
                 p0a_real_batch_clearance=sources["real_batch_clearance"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance=sources["p0b_environment_clearance"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance=sources["p0b_manual_backfill_clearance"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance=sources["p0b_phase_execution_clearance"],  # type: ignore[arg-type]
                 output_path=Path(temp_dir) / "customer-clearance.json",
                 generated_at="2026-06-14T00:00:00Z",
             )
@@ -240,6 +296,15 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
         self.assertFalse(packet["summary"]["p0a_real_batches_fulfilled"])
         self.assertTrue(packet["summary"]["p0a_real_batch_blocked_by_prerequisite"])
         self.assertEqual(packet["summary"]["p0a_real_batch_missing_required_count"], 3)
+        self.assertFalse(packet["summary"]["p0b_google_environment_clearance_ready"])
+        self.assertFalse(packet["summary"]["p0b_google_environment_fulfilled"])
+        self.assertGreaterEqual(packet["summary"]["p0b_google_environment_missing_required_count"], 1)
+        self.assertFalse(packet["summary"]["p0b_google_manual_backfill_clearance_ready"])
+        self.assertFalse(packet["summary"]["p0b_google_manual_backfill_fulfilled"])
+        self.assertGreaterEqual(packet["summary"]["p0b_google_manual_backfill_missing_required_count"], 1)
+        self.assertFalse(packet["summary"]["p0b_google_phase_execution_clearance_ready"])
+        self.assertFalse(packet["summary"]["p0b_google_phase_execution_fulfilled"])
+        self.assertGreaterEqual(packet["summary"]["p0b_google_phase_execution_missing_required_count"], 1)
         self.assertEqual(packet["summary"]["next_action"], "clear_customer_handoff_prerequisites_first")
         self.assertEqual(packet["summary"]["next_command"], "make verify-au-p0a-env-template")
         self.assertIn("customer_gate:customer_report_handoff_gate", packet["summary"]["missing_required"])
@@ -258,9 +323,24 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
             packet["runtime_endpoints"]["p0a_real_batch_clearance"],
             "GET /v1/p0a-real-batch-clearance/au",
         )
+        self.assertEqual(
+            packet["runtime_endpoints"]["p0b_google_environment_clearance"],
+            "GET /v1/p0b-google-environment-clearance/au",
+        )
+        self.assertEqual(
+            packet["runtime_endpoints"]["p0b_google_manual_backfill_clearance"],
+            "GET /v1/p0b-google-manual-backfill-clearance/au",
+        )
+        self.assertEqual(
+            packet["runtime_endpoints"]["p0b_google_phase_execution_clearance"],
+            "GET /v1/p0b-google-phase-execution-clearance/au",
+        )
         self.assertIn("make verify-au-customer-handoff-clearance", packet["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-clearance", packet["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-real-batch-clearance", packet["hard_gate_commands"])
+        self.assertIn("make verify-au-p0b-google-environment-clearance", packet["hard_gate_commands"])
+        self.assertIn("make verify-au-p0b-google-manual-backfill-clearance", packet["hard_gate_commands"])
+        self.assertIn("make verify-au-p0b-google-phase-execution-clearance", packet["hard_gate_commands"])
         self.assertTrue(any(command.endswith("--require-cleared") for command in packet["hard_gate_commands"]))
         self.assertEqual(
             packet["source_artifacts"]["p0a_credential_clearance"]["hash_field"],
@@ -274,6 +354,24 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
         )
         self.assertTrue(packet["source_artifacts"]["p0a_real_batch_clearance"]["hash_valid"])
         self.assertEqual(packet["verifiers"]["p0a_real_batch_clearance"]["status"], "pass")
+        self.assertEqual(
+            packet["source_artifacts"]["p0b_google_environment_clearance"]["hash_field"],
+            "p0b_google_environment_clearance_hash",
+        )
+        self.assertTrue(packet["source_artifacts"]["p0b_google_environment_clearance"]["hash_valid"])
+        self.assertEqual(packet["verifiers"]["p0b_google_environment_clearance"]["status"], "pass")
+        self.assertEqual(
+            packet["source_artifacts"]["p0b_google_manual_backfill_clearance"]["hash_field"],
+            "p0b_google_manual_backfill_clearance_hash",
+        )
+        self.assertTrue(packet["source_artifacts"]["p0b_google_manual_backfill_clearance"]["hash_valid"])
+        self.assertEqual(packet["verifiers"]["p0b_google_manual_backfill_clearance"]["status"], "pass")
+        self.assertEqual(
+            packet["source_artifacts"]["p0b_google_phase_execution_clearance"]["hash_field"],
+            "p0b_google_phase_execution_clearance_hash",
+        )
+        self.assertTrue(packet["source_artifacts"]["p0b_google_phase_execution_clearance"]["hash_valid"])
+        self.assertEqual(packet["verifiers"]["p0b_google_phase_execution_clearance"]["status"], "pass")
         self.assertEqual(packet["customer_handoff_clearance_hash"], compute_customer_handoff_clearance_hash(packet))
         self.assertEqual(verification["status"], "pass")
         self.assertEqual(hard_gate["status"], "fail")
@@ -295,6 +393,9 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
                 external_dependency_clearance_path=sources["external_clearance_path"],  # type: ignore[arg-type]
                 p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
                 p0a_real_batch_clearance_path=sources["real_batch_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance_path=sources["p0b_environment_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance_path=sources["p0b_manual_backfill_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance_path=sources["p0b_phase_execution_clearance_path"],  # type: ignore[arg-type]
                 handoff_dossier=sources["handoff"],  # type: ignore[arg-type]
                 customer_handoff_readiness=sources["readiness"],  # type: ignore[arg-type]
                 delivery_progress=sources["delivery_progress"],  # type: ignore[arg-type]
@@ -302,6 +403,9 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
                 external_dependency_clearance=sources["external_clearance"],  # type: ignore[arg-type]
                 p0a_credential_clearance=sources["credential_clearance"],  # type: ignore[arg-type]
                 p0a_real_batch_clearance=sources["real_batch_clearance"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance=sources["p0b_environment_clearance"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance=sources["p0b_manual_backfill_clearance"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance=sources["p0b_phase_execution_clearance"],  # type: ignore[arg-type]
                 output_path=Path(temp_dir) / "customer-clearance.json",
                 generated_at="2026-06-14T00:00:00Z",
             )
@@ -326,6 +430,9 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
                 external_dependency_clearance_path=sources["external_clearance_path"],  # type: ignore[arg-type]
                 p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
                 p0a_real_batch_clearance_path=sources["real_batch_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance_path=sources["p0b_environment_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance_path=sources["p0b_manual_backfill_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance_path=sources["p0b_phase_execution_clearance_path"],  # type: ignore[arg-type]
                 handoff_dossier=sources["handoff"],  # type: ignore[arg-type]
                 customer_handoff_readiness=sources["readiness"],  # type: ignore[arg-type]
                 delivery_progress=sources["delivery_progress"],  # type: ignore[arg-type]
@@ -333,6 +440,9 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
                 external_dependency_clearance=sources["external_clearance"],  # type: ignore[arg-type]
                 p0a_credential_clearance=sources["credential_clearance"],  # type: ignore[arg-type]
                 p0a_real_batch_clearance=sources["real_batch_clearance"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance=sources["p0b_environment_clearance"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance=sources["p0b_manual_backfill_clearance"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance=sources["p0b_phase_execution_clearance"],  # type: ignore[arg-type]
                 generated_at="2026-06-14T00:00:00Z",
             )
             packet["summary"]["fulfilled_required_count"] = 10
@@ -364,6 +474,12 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
                     str(sources["credential_clearance_path"]),
                     "--p0a-real-batch-clearance-path",
                     str(sources["real_batch_clearance_path"]),
+                    "--p0b-google-environment-clearance-path",
+                    str(sources["p0b_environment_clearance_path"]),
+                    "--p0b-google-manual-backfill-clearance-path",
+                    str(sources["p0b_manual_backfill_clearance_path"]),
+                    "--p0b-google-phase-execution-clearance-path",
+                    str(sources["p0b_phase_execution_clearance_path"]),
                     "--output-path",
                     str(output_path),
                     "--generated-at",

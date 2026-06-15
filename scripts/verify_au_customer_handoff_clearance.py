@@ -156,6 +156,9 @@ def verify_au_customer_handoff_clearance(
     external_clearance_verifier = _as_dict(verifiers.get("external_dependency_clearance"))
     p0a_credential_clearance_verifier = _as_dict(verifiers.get("p0a_credential_clearance"))
     p0a_real_batch_clearance_verifier = _as_dict(verifiers.get("p0a_real_batch_clearance"))
+    p0b_google_environment_clearance_verifier = _as_dict(verifiers.get("p0b_google_environment_clearance"))
+    p0b_google_manual_backfill_clearance_verifier = _as_dict(verifiers.get("p0b_google_manual_backfill_clearance"))
+    p0b_google_phase_execution_clearance_verifier = _as_dict(verifiers.get("p0b_google_phase_execution_clearance"))
     source_artifacts = _as_dict(payload.get("source_artifacts"))
     summary = _as_dict(payload.get("summary"))
     clearance_step = _as_dict(payload.get("clearance_step"))
@@ -175,6 +178,18 @@ def verify_au_customer_handoff_clearance(
         "external_dependency_clearance": ("clearance_execution_hash", external_clearance_verifier),
         "p0a_credential_clearance": ("p0a_credential_clearance_hash", p0a_credential_clearance_verifier),
         "p0a_real_batch_clearance": ("p0a_real_batch_clearance_hash", p0a_real_batch_clearance_verifier),
+        "p0b_google_environment_clearance": (
+            "p0b_google_environment_clearance_hash",
+            p0b_google_environment_clearance_verifier,
+        ),
+        "p0b_google_manual_backfill_clearance": (
+            "p0b_google_manual_backfill_clearance_hash",
+            p0b_google_manual_backfill_clearance_verifier,
+        ),
+        "p0b_google_phase_execution_clearance": (
+            "p0b_google_phase_execution_clearance_hash",
+            p0b_google_phase_execution_clearance_verifier,
+        ),
     }
     for key, (hash_field, verifier) in source_to_verifier_hash.items():
         source = _as_dict(source_artifacts.get(key))
@@ -199,6 +214,9 @@ def verify_au_customer_handoff_clearance(
             external_clearance_verifier,
             p0a_credential_clearance_verifier,
             p0a_real_batch_clearance_verifier,
+            p0b_google_environment_clearance_verifier,
+            p0b_google_manual_backfill_clearance_verifier,
+            p0b_google_phase_execution_clearance_verifier,
         )
     )
     if payload.get("customer_handoff_clearance_packet_ready") is not expected_packet_ready:
@@ -311,6 +329,42 @@ def verify_au_customer_handoff_clearance(
         "missing_required_count"
     ):
         errors.append("summary_p0a_real_batch_missing_required_count_mismatch")
+    if summary.get("p0b_google_environment_clearance_ready") is not (
+        p0b_google_environment_clearance_verifier.get("environment_clearance_ready") is True
+    ):
+        errors.append("summary_p0b_google_environment_clearance_ready_mismatch")
+    if summary.get("p0b_google_environment_fulfilled") is not (
+        p0b_google_environment_clearance_verifier.get("environment_fulfilled") is True
+    ):
+        errors.append("summary_p0b_google_environment_fulfilled_mismatch")
+    if summary.get("p0b_google_environment_missing_required_count") != (
+        p0b_google_environment_clearance_verifier.get("missing_required_count")
+    ):
+        errors.append("summary_p0b_google_environment_missing_required_count_mismatch")
+    if summary.get("p0b_google_manual_backfill_clearance_ready") is not (
+        p0b_google_manual_backfill_clearance_verifier.get("manual_backfill_clearance_ready") is True
+    ):
+        errors.append("summary_p0b_google_manual_backfill_clearance_ready_mismatch")
+    if summary.get("p0b_google_manual_backfill_fulfilled") is not (
+        p0b_google_manual_backfill_clearance_verifier.get("manual_backfill_fulfilled") is True
+    ):
+        errors.append("summary_p0b_google_manual_backfill_fulfilled_mismatch")
+    if summary.get("p0b_google_manual_backfill_missing_required_count") != (
+        p0b_google_manual_backfill_clearance_verifier.get("missing_required_count")
+    ):
+        errors.append("summary_p0b_google_manual_backfill_missing_required_count_mismatch")
+    if summary.get("p0b_google_phase_execution_clearance_ready") is not (
+        p0b_google_phase_execution_clearance_verifier.get("phase_execution_clearance_ready") is True
+    ):
+        errors.append("summary_p0b_google_phase_execution_clearance_ready_mismatch")
+    if summary.get("p0b_google_phase_execution_fulfilled") is not (
+        p0b_google_phase_execution_clearance_verifier.get("phase_execution_fulfilled") is True
+    ):
+        errors.append("summary_p0b_google_phase_execution_fulfilled_mismatch")
+    if summary.get("p0b_google_phase_execution_missing_required_count") != (
+        p0b_google_phase_execution_clearance_verifier.get("missing_required_count")
+    ):
+        errors.append("summary_p0b_google_phase_execution_missing_required_count_mismatch")
 
     if summary.get("required_count") != len(required_items):
         errors.append("summary_required_count_mismatch")
@@ -379,6 +433,12 @@ def verify_au_customer_handoff_clearance(
         "make verify-au-p0a-credential-clearance",
         "make au-p0a-real-batch-clearance",
         "make verify-au-p0a-real-batch-clearance",
+        "make au-p0b-google-environment-clearance",
+        "make verify-au-p0b-google-environment-clearance",
+        "make au-p0b-google-manual-backfill-clearance",
+        "make verify-au-p0b-google-manual-backfill-clearance",
+        "make au-p0b-google-phase-execution-clearance",
+        "make verify-au-p0b-google-phase-execution-clearance",
         "make au-customer-handoff-clearance",
         "make verify-au-customer-handoff-clearance",
         "make au-handoff-dossier",
@@ -412,6 +472,9 @@ def verify_au_customer_handoff_clearance(
         "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
         "p0a_credential_clearance": "GET /v1/p0a-credential-clearance/au",
         "p0a_real_batch_clearance": "GET /v1/p0a-real-batch-clearance/au",
+        "p0b_google_environment_clearance": "GET /v1/p0b-google-environment-clearance/au",
+        "p0b_google_manual_backfill_clearance": "GET /v1/p0b-google-manual-backfill-clearance/au",
+        "p0b_google_phase_execution_clearance": "GET /v1/p0b-google-phase-execution-clearance/au",
     }
     for key, expected in expected_endpoints.items():
         if endpoints.get(key) != expected:

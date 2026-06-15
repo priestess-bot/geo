@@ -1265,6 +1265,24 @@ type AuDeliveryProgress = {
     p0a_real_batch_missing_required_count?: number;
     p0a_real_batch_missing_required?: string[];
     p0a_real_batch_next_phase?: string;
+    p0b_google_environment_clearance_hash?: string;
+    p0b_google_environment_clearance_ready?: boolean;
+    p0b_google_environment_fulfilled?: boolean;
+    p0b_google_environment_missing_required_count?: number;
+    p0b_google_environment_missing_required?: string[];
+    p0b_google_manual_backfill_clearance_hash?: string;
+    p0b_google_manual_backfill_clearance_ready?: boolean;
+    p0b_google_manual_backfill_fulfilled?: boolean;
+    p0b_google_manual_backfill_missing_required_count?: number;
+    p0b_google_manual_backfill_missing_required?: string[];
+    p0b_google_manual_backfill_record_count?: number;
+    p0b_google_manual_backfill_expected_record_count?: number;
+    p0b_google_phase_execution_clearance_hash?: string;
+    p0b_google_phase_execution_clearance_ready?: boolean;
+    p0b_google_phase_execution_fulfilled?: boolean;
+    p0b_google_phase_execution_missing_required_count?: number;
+    p0b_google_phase_execution_missing_required?: string[];
+    p0b_google_phase_execution_next_phase?: string;
   };
   progress_gates?: Array<{
     id?: string;
@@ -1286,6 +1304,9 @@ type AuDeliveryProgress = {
     external_dependency_clearance?: string;
     p0a_credential_clearance?: string;
     p0a_real_batch_clearance?: string;
+    p0b_google_environment_clearance?: string;
+    p0b_google_manual_backfill_clearance?: string;
+    p0b_google_phase_execution_clearance?: string;
   };
   hard_gate_commands?: string[];
 };
@@ -1342,6 +1363,21 @@ type AuCustomerHandoffClearance = {
     p0a_real_batch_blocked_by_prerequisite?: boolean;
     p0a_real_batch_missing_required_count?: number;
     p0a_real_batch_next_phase?: string;
+    p0b_google_environment_clearance_hash?: string;
+    p0b_google_environment_clearance_ready?: boolean;
+    p0b_google_environment_fulfilled?: boolean;
+    p0b_google_environment_missing_required_count?: number;
+    p0b_google_manual_backfill_clearance_hash?: string;
+    p0b_google_manual_backfill_clearance_ready?: boolean;
+    p0b_google_manual_backfill_fulfilled?: boolean;
+    p0b_google_manual_backfill_missing_required_count?: number;
+    p0b_google_manual_backfill_record_count?: number;
+    p0b_google_manual_backfill_expected_record_count?: number;
+    p0b_google_phase_execution_clearance_hash?: string;
+    p0b_google_phase_execution_clearance_ready?: boolean;
+    p0b_google_phase_execution_fulfilled?: boolean;
+    p0b_google_phase_execution_missing_required_count?: number;
+    p0b_google_phase_execution_next_phase?: string;
   };
   clearance_step?: {
     id?: string;
@@ -1380,6 +1416,9 @@ type AuCustomerHandoffClearance = {
     external_dependency_clearance?: string;
     p0a_credential_clearance?: string;
     p0a_real_batch_clearance?: string;
+    p0b_google_environment_clearance?: string;
+    p0b_google_manual_backfill_clearance?: string;
+    p0b_google_phase_execution_clearance?: string;
   };
   hard_gate_commands?: string[];
 };
@@ -8682,6 +8721,42 @@ export default async function Home({
               P0a real batch missing {deliveryProgressSummary?.p0a_real_batch_missing_required_count ?? 0}
             </span>
             <span>Next P0a real batch phase {deliveryProgressSummary?.p0a_real_batch_next_phase || "none"}</span>
+            <span>
+              P0b environment{" "}
+              {deliveryProgressSummary?.p0b_google_environment_fulfilled ? "fulfilled" : "blocked"}
+            </span>
+            <span>
+              P0b environment clearance{" "}
+              {deliveryProgressSummary?.p0b_google_environment_clearance_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              P0b environment missing{" "}
+              {deliveryProgressSummary?.p0b_google_environment_missing_required_count ?? 0}
+            </span>
+            <span>
+              P0b manual backfill{" "}
+              {deliveryProgressSummary?.p0b_google_manual_backfill_fulfilled ? "fulfilled" : "blocked"}
+            </span>
+            <span>
+              P0b manual clearance{" "}
+              {deliveryProgressSummary?.p0b_google_manual_backfill_clearance_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              P0b manual rows {deliveryProgressSummary?.p0b_google_manual_backfill_record_count ?? 0}/
+              {deliveryProgressSummary?.p0b_google_manual_backfill_expected_record_count ?? 0}
+            </span>
+            <span>
+              P0b phase execution{" "}
+              {deliveryProgressSummary?.p0b_google_phase_execution_fulfilled ? "fulfilled" : "blocked"}
+            </span>
+            <span>
+              P0b phase clearance{" "}
+              {deliveryProgressSummary?.p0b_google_phase_execution_clearance_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              P0b phase missing {deliveryProgressSummary?.p0b_google_phase_execution_missing_required_count ?? 0}
+            </span>
+            <span>Next P0b phase {deliveryProgressSummary?.p0b_google_phase_execution_next_phase || "none"}</span>
             <span>Would execute {deliveryProgressSummary?.would_execute_step_count || 0}</span>
             <span>Handoff posture {deliveryProgressSummary?.handoff_posture || "unknown"}</span>
             <span>
@@ -8697,6 +8772,15 @@ export default async function Home({
               P0a real batch hash {shortHash(deliveryProgressSummary?.p0a_real_batch_clearance_hash)}
             </span>
             <span>
+              P0b environment hash {shortHash(deliveryProgressSummary?.p0b_google_environment_clearance_hash)}
+            </span>
+            <span>
+              P0b manual hash {shortHash(deliveryProgressSummary?.p0b_google_manual_backfill_clearance_hash)}
+            </span>
+            <span>
+              P0b phase hash {shortHash(deliveryProgressSummary?.p0b_google_phase_execution_clearance_hash)}
+            </span>
+            <span>
               {deliveryProgress?.runtime_endpoints?.delivery_progress || "GET /v1/delivery-progress/au"}
             </span>
             <span>
@@ -8706,6 +8790,18 @@ export default async function Home({
             <span>
               {deliveryProgress?.runtime_endpoints?.p0a_real_batch_clearance ||
                 "GET /v1/p0a-real-batch-clearance/au"}
+            </span>
+            <span>
+              {deliveryProgress?.runtime_endpoints?.p0b_google_environment_clearance ||
+                "GET /v1/p0b-google-environment-clearance/au"}
+            </span>
+            <span>
+              {deliveryProgress?.runtime_endpoints?.p0b_google_manual_backfill_clearance ||
+                "GET /v1/p0b-google-manual-backfill-clearance/au"}
+            </span>
+            <span>
+              {deliveryProgress?.runtime_endpoints?.p0b_google_phase_execution_clearance ||
+                "GET /v1/p0b-google-phase-execution-clearance/au"}
             </span>
             <span>Hard gate: make verify-au-delivery-progress</span>
           </div>
@@ -8787,6 +8883,43 @@ export default async function Home({
             <span>
               P0a real batch missing {customerHandoffClearanceSummary?.p0a_real_batch_missing_required_count ?? 0}
             </span>
+            <span>
+              P0b environment{" "}
+              {customerHandoffClearanceSummary?.p0b_google_environment_fulfilled ? "fulfilled" : "blocked"}
+            </span>
+            <span>
+              P0b environment clearance{" "}
+              {customerHandoffClearanceSummary?.p0b_google_environment_clearance_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              P0b environment missing{" "}
+              {customerHandoffClearanceSummary?.p0b_google_environment_missing_required_count ?? 0}
+            </span>
+            <span>
+              P0b manual backfill{" "}
+              {customerHandoffClearanceSummary?.p0b_google_manual_backfill_fulfilled ? "fulfilled" : "blocked"}
+            </span>
+            <span>
+              P0b manual clearance{" "}
+              {customerHandoffClearanceSummary?.p0b_google_manual_backfill_clearance_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              P0b manual rows {customerHandoffClearanceSummary?.p0b_google_manual_backfill_record_count ?? 0}/
+              {customerHandoffClearanceSummary?.p0b_google_manual_backfill_expected_record_count ?? 0}
+            </span>
+            <span>
+              P0b phase execution{" "}
+              {customerHandoffClearanceSummary?.p0b_google_phase_execution_fulfilled ? "fulfilled" : "blocked"}
+            </span>
+            <span>
+              P0b phase clearance{" "}
+              {customerHandoffClearanceSummary?.p0b_google_phase_execution_clearance_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              P0b phase missing{" "}
+              {customerHandoffClearanceSummary?.p0b_google_phase_execution_missing_required_count ?? 0}
+            </span>
+            <span>Next P0b phase {customerHandoffClearanceSummary?.p0b_google_phase_execution_next_phase || "none"}</span>
             <span>Next action {customerHandoffClearanceSummary?.next_action || "none"}</span>
             <span>Next command {customerHandoffClearanceSummary?.next_command || "none"}</span>
             <span>
@@ -8803,6 +8936,18 @@ export default async function Home({
               P0a real batch hash {shortHash(customerHandoffClearanceSummary?.p0a_real_batch_clearance_hash)}
             </span>
             <span>
+              P0b environment hash{" "}
+              {shortHash(customerHandoffClearanceSummary?.p0b_google_environment_clearance_hash)}
+            </span>
+            <span>
+              P0b manual hash{" "}
+              {shortHash(customerHandoffClearanceSummary?.p0b_google_manual_backfill_clearance_hash)}
+            </span>
+            <span>
+              P0b phase hash{" "}
+              {shortHash(customerHandoffClearanceSummary?.p0b_google_phase_execution_clearance_hash)}
+            </span>
+            <span>
               {customerHandoffClearance?.runtime_endpoints?.customer_handoff_clearance ||
                 "GET /v1/customer-handoff-clearance/au"}
             </span>
@@ -8813,6 +8958,18 @@ export default async function Home({
             <span>
               {customerHandoffClearance?.runtime_endpoints?.p0a_real_batch_clearance ||
                 "GET /v1/p0a-real-batch-clearance/au"}
+            </span>
+            <span>
+              {customerHandoffClearance?.runtime_endpoints?.p0b_google_environment_clearance ||
+                "GET /v1/p0b-google-environment-clearance/au"}
+            </span>
+            <span>
+              {customerHandoffClearance?.runtime_endpoints?.p0b_google_manual_backfill_clearance ||
+                "GET /v1/p0b-google-manual-backfill-clearance/au"}
+            </span>
+            <span>
+              {customerHandoffClearance?.runtime_endpoints?.p0b_google_phase_execution_clearance ||
+                "GET /v1/p0b-google-phase-execution-clearance/au"}
             </span>
             <span>Hard gate: make verify-au-customer-handoff-clearance</span>
             <span>

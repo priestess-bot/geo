@@ -115,6 +115,9 @@ def verify_au_delivery_progress(
         "external_dependency_clearance",
         "p0a_credential_clearance",
         "p0a_real_batch_clearance",
+        "p0b_google_environment_clearance",
+        "p0b_google_manual_backfill_clearance",
+        "p0b_google_phase_execution_clearance",
     )
     expected_status_pass = launch_verifier.get("hash_valid") is True and all(
         _as_dict(verifiers.get(key)).get("status") == "pass" for key in required_pass_verifiers
@@ -134,6 +137,9 @@ def verify_au_delivery_progress(
         ("external_dependency_clearance", "clearance_execution_hash"),
         ("p0a_credential_clearance", "p0a_credential_clearance_hash"),
         ("p0a_real_batch_clearance", "p0a_real_batch_clearance_hash"),
+        ("p0b_google_environment_clearance", "p0b_google_environment_clearance_hash"),
+        ("p0b_google_manual_backfill_clearance", "p0b_google_manual_backfill_clearance_hash"),
+        ("p0b_google_phase_execution_clearance", "p0b_google_phase_execution_clearance_hash"),
     ):
         artifact = _as_dict(source_artifacts.get(artifact_key))
         if artifact.get("hash_field") != hash_field:
@@ -176,6 +182,48 @@ def verify_au_delivery_progress(
     ):
         errors.append("summary_p0a_real_batch_missing_required_count_mismatch")
 
+    p0b_google_environment_clearance_verifier = _as_dict(verifiers.get("p0b_google_environment_clearance"))
+    if summary.get("p0b_google_environment_clearance_ready") is not (
+        p0b_google_environment_clearance_verifier.get("environment_clearance_ready") is True
+    ):
+        errors.append("summary_p0b_google_environment_clearance_ready_mismatch")
+    if summary.get("p0b_google_environment_fulfilled") is not (
+        p0b_google_environment_clearance_verifier.get("environment_fulfilled") is True
+    ):
+        errors.append("summary_p0b_google_environment_fulfilled_mismatch")
+    if summary.get("p0b_google_environment_missing_required_count") != (
+        p0b_google_environment_clearance_verifier.get("missing_required_count")
+    ):
+        errors.append("summary_p0b_google_environment_missing_required_count_mismatch")
+
+    p0b_google_manual_backfill_clearance_verifier = _as_dict(verifiers.get("p0b_google_manual_backfill_clearance"))
+    if summary.get("p0b_google_manual_backfill_clearance_ready") is not (
+        p0b_google_manual_backfill_clearance_verifier.get("manual_backfill_clearance_ready") is True
+    ):
+        errors.append("summary_p0b_google_manual_backfill_clearance_ready_mismatch")
+    if summary.get("p0b_google_manual_backfill_fulfilled") is not (
+        p0b_google_manual_backfill_clearance_verifier.get("manual_backfill_fulfilled") is True
+    ):
+        errors.append("summary_p0b_google_manual_backfill_fulfilled_mismatch")
+    if summary.get("p0b_google_manual_backfill_missing_required_count") != (
+        p0b_google_manual_backfill_clearance_verifier.get("missing_required_count")
+    ):
+        errors.append("summary_p0b_google_manual_backfill_missing_required_count_mismatch")
+
+    p0b_google_phase_execution_clearance_verifier = _as_dict(verifiers.get("p0b_google_phase_execution_clearance"))
+    if summary.get("p0b_google_phase_execution_clearance_ready") is not (
+        p0b_google_phase_execution_clearance_verifier.get("phase_execution_clearance_ready") is True
+    ):
+        errors.append("summary_p0b_google_phase_execution_clearance_ready_mismatch")
+    if summary.get("p0b_google_phase_execution_fulfilled") is not (
+        p0b_google_phase_execution_clearance_verifier.get("phase_execution_fulfilled") is True
+    ):
+        errors.append("summary_p0b_google_phase_execution_fulfilled_mismatch")
+    if summary.get("p0b_google_phase_execution_missing_required_count") != (
+        p0b_google_phase_execution_clearance_verifier.get("missing_required_count")
+    ):
+        errors.append("summary_p0b_google_phase_execution_missing_required_count_mismatch")
+
     if payload.get("ready_for_customer_report_handoff") is not (
         summary.get("customer_report_handoff_readiness_percent") == 100.0
         and gate_lookup.get("customer_report_handoff_ready", {}).get("ready") is True
@@ -193,6 +241,9 @@ def verify_au_delivery_progress(
         "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
         "p0a_credential_clearance": "GET /v1/p0a-credential-clearance/au",
         "p0a_real_batch_clearance": "GET /v1/p0a-real-batch-clearance/au",
+        "p0b_google_environment_clearance": "GET /v1/p0b-google-environment-clearance/au",
+        "p0b_google_manual_backfill_clearance": "GET /v1/p0b-google-manual-backfill-clearance/au",
+        "p0b_google_phase_execution_clearance": "GET /v1/p0b-google-phase-execution-clearance/au",
     }
     for key, endpoint in expected_endpoints.items():
         if endpoints.get(key) != endpoint:
@@ -206,6 +257,9 @@ def verify_au_delivery_progress(
         "make verify-au-next-work-item",
         "make verify-au-p0a-credential-clearance",
         "make verify-au-p0a-real-batch-clearance",
+        "make verify-au-p0b-google-environment-clearance",
+        "make verify-au-p0b-google-manual-backfill-clearance",
+        "make verify-au-p0b-google-phase-execution-clearance",
     ):
         if command not in hard_gate_commands:
             errors.append(f"hard_gate_missing:{command}")
