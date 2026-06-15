@@ -1106,6 +1106,17 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("knowledge_fact_embeddings_indexed", page_source)
         self.assertIn("fixture-knowledge-embedding-v1", page_source)
 
+    def test_runtime_console_surfaces_content_engine_export(self) -> None:
+        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("Content Engine Detail", page_source)
+        self.assertIn('content: "/v1/content-engines/runtime"', page_source)
+        self.assertIn('contentExport: "/v1/content-engines/runtime/export.csv"', page_source)
+        self.assertIn("contentEnginesExportUrl", page_source)
+        self.assertIn("Content query", page_source)
+        self.assertIn("Content CSV", page_source)
+        self.assertIn("Download content CSV", page_source)
+
 
 if __name__ == "__main__":
     unittest.main()

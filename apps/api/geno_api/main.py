@@ -7193,6 +7193,46 @@ def runtime_content_engines(
         close_repository_connection(repository)
 
 
+@app.get("/v1/content-engines/runtime/export.csv")
+def runtime_content_engines_export_csv(
+    project_id: str = Query(min_length=1),
+    review_status: str | None = Query(default=None, min_length=1, max_length=80),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_content_engines_csv(
+                project_id=project_id.strip(),
+                review_status=review_status.strip() if review_status else None,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GENO-Content-Engine-Export-Hash": export.content_hash,
+                "X-GENO-Content-Engine-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GENO-Content-Engine-Review-Status": str(export.filters.get("review_status", "")),
+                "X-GENO-Content-Engine-Row-Count": str(export.row_count),
+                "X-GENO-Content-Engine-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/knowledge-facts/runtime/search")
 def runtime_knowledge_fact_search(
     project_id: str = Query(min_length=1),
@@ -8090,6 +8130,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/runtime-alerts/notifications",
             "/v1/runtime-alerts/{alert_id}/events",
             "/v1/content-engines/runtime",
+            "/v1/content-engines/runtime/export.csv",
             "/v1/knowledge-facts/runtime/search",
             "/v1/traceability/runtime",
             "/ready",

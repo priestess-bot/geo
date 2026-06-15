@@ -9012,6 +9012,47 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("DATABASE_URL", response.json()["detail"])
 
+    def test_runtime_content_engines_export_endpoint_returns_csv_with_hash_headers(self) -> None:
+        class FakeRepository:
+            def export_runtime_content_engines_csv(self, **kwargs: object) -> RuntimeEvidenceExport:
+                self.kwargs = kwargs
+                return RuntimeEvidenceExport(
+                    export_type="runtime_content_engines_csv",
+                    filename="runtime-content-engines.csv",
+                    media_type="text/csv; charset=utf-8",
+                    content="project_id,content_draft_id\nproject-1,draft-1\n",
+                    content_hash="hash-content-engines-csv",
+                    filters={
+                        "project_id": kwargs["project_id"],
+                        "review_status": kwargs["review_status"],
+                    },
+                    total_count=2,
+                    row_count=1,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/content-engines/runtime/export.csv"
+                "?project_id=project-1&review_status=pending_human_review&limit=5",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
+        self.assertEqual(response.headers["x-geno-content-engine-export-hash"], "hash-content-engines-csv")
+        self.assertEqual(response.headers["x-geno-content-engine-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geno-content-engine-review-status"], "pending_human_review")
+        self.assertEqual(response.headers["x-geno-content-engine-row-count"], "1")
+        self.assertEqual(response.headers["x-geno-content-engine-total-count"], "2")
+        self.assertIn("runtime-content-engines.csv", response.headers["content-disposition"])
+        self.assertIn("draft-1", response.text)
+        self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.kwargs["review_status"], "pending_human_review")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+
     def test_runtime_knowledge_fact_search_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get(
             "/v1/knowledge-facts/runtime/search"
@@ -9542,6 +9583,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/runtime-alerts/notifications", payload["persistence"])
         self.assertIn("/v1/runtime-alerts/{alert_id}/events", payload["persistence"])
         self.assertIn("/v1/content-engines/runtime", payload["persistence"])
+        self.assertIn("/v1/content-engines/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/knowledge-facts/runtime/search", payload["persistence"])
         self.assertIn("/v1/traceability/runtime", payload["persistence"])
         self.assertIn("/ready", payload["persistence"])

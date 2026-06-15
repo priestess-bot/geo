@@ -2295,6 +2295,175 @@ def _render_runtime_score_snapshots_csv(page: RuntimeScoreSnapshotPage) -> str:
     return output.getvalue()
 
 
+def _render_runtime_content_engines_csv(page: RuntimeContentEnginePage) -> str:
+    def ordered_unique(values: tuple[object, ...] | list[object]) -> str:
+        seen: set[str] = set()
+        normalized: list[str] = []
+        for value in values:
+            text = str(value or "")
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            normalized.append(text)
+        return "|".join(normalized)
+
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "project_id",
+            "knowledge_fact_count",
+            "knowledge_fact_ids",
+            "knowledge_fact_types",
+            "knowledge_fact_content_hashes",
+            "active_knowledge_fact_count",
+            "connector_count",
+            "connector_providers",
+            "connector_statuses",
+            "project_manual_distribution_count",
+            "content_draft_id",
+            "draft_title_hash",
+            "content_type",
+            "content_template_id",
+            "target_city",
+            "target_platform",
+            "target_source_type",
+            "source_gap_types",
+            "review_status",
+            "created_by_hash",
+            "draft_markdown_hash",
+            "target_question_count",
+            "target_question_ids",
+            "target_question_prompt_versions",
+            "target_question_text_hashes",
+            "used_knowledge_fact_count",
+            "used_knowledge_fact_ids",
+            "evidence_answer_run_count",
+            "evidence_answer_run_ids",
+            "evidence_prompt_text_hashes",
+            "evidence_platforms",
+            "evidence_cities",
+            "source_action_id",
+            "source_action_title_hash",
+            "source_action_description_hash",
+            "source_action_priority",
+            "source_action_status",
+            "manual_distribution_count",
+            "manual_distribution_platforms",
+            "manual_distribution_statuses",
+            "manual_distribution_target_url_hashes",
+            "manual_distribution_notes_hashes",
+            "created_at",
+            "draft_audit_event_count",
+            "latest_draft_audit_event_type",
+            "latest_draft_audit_method_version",
+            "latest_draft_audit_after_hash",
+            "engine_audit_event_count",
+            "latest_engine_audit_event_type",
+            "latest_engine_audit_method_version",
+            "latest_engine_audit_after_hash",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        latest_engine_audit_event = _latest_audit_event(record.audit_events)
+        project_distribution_records = record.manual_distribution_records
+        knowledge_fact_content_hashes = [
+            _artifact_hash(
+                "|".join(
+                    str(fact.get(field) or "")
+                    for field in ("market_code", "fact_type", "subject", "predicate", "object_value", "city")
+                )
+            )
+            for fact in record.knowledge_facts
+        ]
+        base_row = {
+            "project_id": record.project_id,
+            "knowledge_fact_count": len(record.knowledge_facts),
+            "knowledge_fact_ids": ordered_unique([fact.get("id") for fact in record.knowledge_facts]),
+            "knowledge_fact_types": ordered_unique([fact.get("fact_type") for fact in record.knowledge_facts]),
+            "knowledge_fact_content_hashes": ordered_unique(knowledge_fact_content_hashes),
+            "active_knowledge_fact_count": sum(
+                1 for fact in record.knowledge_facts if str(fact.get("status") or "").lower() == "active"
+            ),
+            "connector_count": len(record.integration_connectors),
+            "connector_providers": ordered_unique([connector.get("provider") for connector in record.integration_connectors]),
+            "connector_statuses": ordered_unique(
+                [connector.get("connection_status") for connector in record.integration_connectors]
+            ),
+            "project_manual_distribution_count": len(project_distribution_records),
+            "engine_audit_event_count": len(record.audit_events),
+            "latest_engine_audit_event_type": latest_engine_audit_event.get("event_type") or "",
+            "latest_engine_audit_method_version": latest_engine_audit_event.get("method_version") or "",
+            "latest_engine_audit_after_hash": latest_engine_audit_event.get("after_hash") or "",
+        }
+        content_drafts = record.content_drafts or (None,)
+        for runtime_draft in content_drafts:
+            if runtime_draft is None:
+                writer.writerow(base_row)
+                continue
+            draft = runtime_draft.draft
+            latest_draft_audit_event = _latest_audit_event(runtime_draft.audit_events)
+            action = runtime_draft.action_recommendation or {}
+            writer.writerow(
+                {
+                    **base_row,
+                    "content_draft_id": draft.get("id") or "",
+                    "draft_title_hash": _hash_text_field(draft.get("title")),
+                    "content_type": draft.get("content_type") or "",
+                    "content_template_id": draft.get("content_template_id") or "",
+                    "target_city": draft.get("target_city") or "",
+                    "target_platform": draft.get("target_platform") or "",
+                    "target_source_type": draft.get("target_source_type") or "",
+                    "source_gap_types": _pipe_join(draft.get("source_gap_types")),
+                    "review_status": draft.get("review_status") or "",
+                    "created_by_hash": _hash_text_field(draft.get("created_by")),
+                    "draft_markdown_hash": _hash_text_field(draft.get("draft_markdown")),
+                    "target_question_count": len(runtime_draft.target_questions),
+                    "target_question_ids": ordered_unique([question.get("id") for question in runtime_draft.target_questions]),
+                    "target_question_prompt_versions": ordered_unique(
+                        [question.get("prompt_version") for question in runtime_draft.target_questions]
+                    ),
+                    "target_question_text_hashes": ordered_unique(
+                        [_hash_text_field(question.get("text")) for question in runtime_draft.target_questions]
+                    ),
+                    "used_knowledge_fact_count": len(runtime_draft.knowledge_facts),
+                    "used_knowledge_fact_ids": ordered_unique([fact.get("id") for fact in runtime_draft.knowledge_facts]),
+                    "evidence_answer_run_count": len(runtime_draft.answer_runs),
+                    "evidence_answer_run_ids": ordered_unique([run.get("id") for run in runtime_draft.answer_runs]),
+                    "evidence_prompt_text_hashes": ordered_unique(
+                        [_hash_text_field(run.get("prompt_text")) for run in runtime_draft.answer_runs]
+                    ),
+                    "evidence_platforms": ordered_unique([run.get("platform") for run in runtime_draft.answer_runs]),
+                    "evidence_cities": ordered_unique([run.get("city") for run in runtime_draft.answer_runs]),
+                    "source_action_id": action.get("id") or "",
+                    "source_action_title_hash": _hash_text_field(action.get("title")),
+                    "source_action_description_hash": _hash_text_field(action.get("description")),
+                    "source_action_priority": action.get("priority") or "",
+                    "source_action_status": action.get("status") or "",
+                    "manual_distribution_count": len(runtime_draft.manual_distribution_records),
+                    "manual_distribution_platforms": ordered_unique(
+                        [row.get("platform") for row in runtime_draft.manual_distribution_records]
+                    ),
+                    "manual_distribution_statuses": ordered_unique(
+                        [row.get("status") for row in runtime_draft.manual_distribution_records]
+                    ),
+                    "manual_distribution_target_url_hashes": ordered_unique(
+                        [_hash_text_field(row.get("target_url")) for row in runtime_draft.manual_distribution_records]
+                    ),
+                    "manual_distribution_notes_hashes": ordered_unique(
+                        [_hash_text_field(row.get("notes")) for row in runtime_draft.manual_distribution_records]
+                    ),
+                    "created_at": draft.get("created_at") or "",
+                    "draft_audit_event_count": len(runtime_draft.audit_events),
+                    "latest_draft_audit_event_type": latest_draft_audit_event.get("event_type") or "",
+                    "latest_draft_audit_method_version": latest_draft_audit_event.get("method_version") or "",
+                    "latest_draft_audit_after_hash": latest_draft_audit_event.get("after_hash") or "",
+                }
+            )
+    return output.getvalue()
+
+
 def _render_runtime_action_plans_csv(page: RuntimeActionPlanPage) -> str:
     output = StringIO()
     writer = csv.DictWriter(
@@ -13395,6 +13564,43 @@ class PostgresEvidenceRepository:
             limit=limit,
             offset=offset,
             records=records,
+        )
+
+    def export_runtime_content_engines_csv(
+        self,
+        *,
+        project_id: str,
+        review_status: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        normalized_project_id = project_id.strip()
+        if not normalized_project_id:
+            raise ValueError("project_id is required")
+        normalized_review_status = review_status.strip() if review_status else None
+        page = self.list_runtime_content_engines(
+            project_id=normalized_project_id,
+            review_status=normalized_review_status,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_content_engines_csv(page)
+        row_count = sum(max(1, len(record.content_drafts)) for record in page.records)
+        filters = {
+            "project_id": normalized_project_id,
+            "review_status": normalized_review_status,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_content_engines_csv",
+            filename="runtime-content-engines.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=page.total_count,
+            row_count=row_count,
         )
 
     def search_runtime_knowledge_facts(

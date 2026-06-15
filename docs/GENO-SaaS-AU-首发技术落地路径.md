@@ -1204,6 +1204,8 @@ human_review_record_ids
 
 `review_status` 表示内容草稿自身的默认状态，例如 `pending_human_review`；实际人工判断先追加写入 `human_review_records`，用 `target_type=content_draft`、`target_id=<content_draft_id>` 记录 reviewer、decision、notes 和 `human_review_recorded` 审计事件，再把同项目草稿的 `review_status` 投影为本次复核状态并写入 `content_draft_review_status_updated` 审计事件。该投影只更新状态，不改写草稿正文、知识事实、source gap 或 evidence answer run 绑定。这样内容是否可发布、为何需要修改、由谁审核，能和原始证据、source gap、score snapshot 一起被追溯。`RuntimeHumanReviewQueue` 会把 `pending_human_review` / `needs_changes` 草稿与评分快照放进同一复核列表，已通过的草稿会因 latest review 进入 reviewed 队列，便于一期先做可审计人工复核入口，而不是提前实现复杂审批流。
 
+内容引擎的可审计交付附件先落成只读 CSV，而不是直接进入自动发布。`GET /v1/content-engines/runtime/export.csv?project_id=...&review_status=...` 复用 runtime content engine read model，按 content draft 行导出知识事实数量/id/type/content hash、connector/provider/status、草稿 id/type/template/source gap/review status、草稿标题/正文 hash、目标 prompt hash、证据 answer run ids、source action 文本 hash、manual distribution URL/notes hash，以及最近 content draft / content engine audit 摘要。响应头返回 `X-GENO-Content-Engine-Export-Hash`、row count 和 total count，Runtime Console 的 `Content Engine Detail` 面板提供 `Content CSV` 路径和下载入口。CSV 不输出 raw draft markdown、raw prompt text、raw target URL、raw notes 或 raw action text；一期用它证明草稿来自哪些 AU knowledge facts、哪些 prompt gap/source gap 和哪些 answer run，而不把未审核内容正文当成交付物泄露。
+
 P2 集成优先级：
 
 ```text

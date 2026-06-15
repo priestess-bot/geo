@@ -3608,6 +3608,7 @@ const endpoints = {
   entityAliasAssignmentEscalations: "/v1/entity-aliases/runtime/candidates/assignment-escalations",
   entityAliasAssignmentReassignments: "/v1/entity-aliases/runtime/candidates/assignment-reassignments",
   content: "/v1/content-engines/runtime",
+  contentExport: "/v1/content-engines/runtime/export.csv",
   traceability: "/v1/traceability/runtime"
 } as const;
 
@@ -5464,6 +5465,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     entityAliasAssignmentNotifications: endpoints.entityAliasAssignmentNotifications,
     entityAliasAssignmentEscalations: endpoints.entityAliasAssignmentEscalations,
     content: runtimePath(endpoints.content, { limit: 1 }),
+    contentExport: runtimePath(endpoints.contentExport, { limit: 200 }),
     traceability: endpoints.traceability
   };
   const projects = await fetchRuntimeEndpoint<PageResponse<RuntimeProject>>(
@@ -5754,6 +5756,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.content = runtimePath(endpoints.content, {
     ...selectedProjectParams,
     limit: 1
+  });
+  paths.contentExport = runtimePath(endpoints.contentExport, {
+    ...selectedProjectParams,
+    limit: 200
   });
   paths.traceability = runtimePath(endpoints.traceability, selectedProjectParams);
 
@@ -6834,6 +6840,7 @@ export default async function Home({
   const runtimeAlertsExportUrl = `${displayUrl}${paths.alertsExport}`;
   const humanReviewsExportUrl = `${displayUrl}${paths.humanReviewsExport}`;
   const scoreSnapshotsExportUrl = `${displayUrl}${paths.scoresExport}`;
+  const contentEnginesExportUrl = `${displayUrl}${paths.contentExport}`;
   const evidenceSort = data.evidence.sort || filters.sort || "collected_at_desc";
   const runtimeViewName = activeFilterCount
     ? `${selectedProject?.project.name || "Runtime project"} · ${filterLabel} · ${evidenceSort}`
@@ -12739,6 +12746,13 @@ export default async function Home({
             <div className="contentDetail">
               <section className="contentSection">
                 <h3>Localized Knowledge Facts</h3>
+                <dl className="facts contributionFacts">
+                  <Fact label="Content query" value={paths.content} />
+                  <Fact label="Content CSV" value={paths.contentExport} />
+                </dl>
+                <div className="linkRow">
+                  <a href={contentEnginesExportUrl}>Download content CSV</a>
+                </div>
                 <ul className="plainList">
                   {latestContent.knowledge_facts.slice(0, 8).map((fact) => (
                     <li key={fact.id} id={anchorId("knowledge-fact", fact.id)}>
