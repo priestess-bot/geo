@@ -103,6 +103,7 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
         self.assertEqual(handoff["summary"]["clearance_ready_step_count"], 0)
         self.assertEqual(handoff["summary"]["clearance_blocked_step_count"], 6)
         self.assertEqual(handoff["summary"]["clearance_current_step_id"], "p0a_provider_credentials")
+        self.assertEqual(handoff["summary"]["next_command"], "make verify-au-p0a-env-template")
         self.assertEqual(handoff["summary"]["runnable_now_work_item_count"], 0)
         self.assertEqual(handoff["next_dependency_item_id"], "p0a_environment")
         self.assertEqual(handoff["summary"]["p0a_required_secret_missing_count"], 3)
@@ -148,6 +149,7 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
             ],
         )
         self.assertEqual(handoff["clearance_sequence"]["current_step_id"], "p0a_provider_credentials")
+        self.assertEqual(handoff["clearance_sequence"]["next_command"], handoff["summary"]["next_command"])
         self.assertEqual(handoff["clearance_sequence"]["steps"][0]["can_start"], True)
         self.assertEqual(handoff["clearance_sequence"]["steps"][0]["status"], "requires_external_input")
         self.assertIn("missing_required:DATABASE_URL", handoff["clearance_sequence"]["steps"][0]["blocked_by"])
@@ -306,11 +308,13 @@ class AuExternalDependencyHandoffTest(unittest.TestCase):
             )
         tampered = copy.deepcopy(handoff)
         tampered["summary"]["p0b_google_phase_next_phase"] = "complete"  # type: ignore[index]
+        tampered["summary"]["next_command"] = "make au-p0a-status"  # type: ignore[index]
         tampered["external_dependency_handoff_hash"] = compute_external_dependency_handoff_hash(tampered)
         verification = verify_au_external_dependency_handoff(tampered)
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_p0b_google_phase_next_phase_mismatch", verification["errors"])
+        self.assertIn("summary_next_command_mismatch", verification["errors"])
 
     def test_verifier_detects_dependency_group_execution_field_tampering(self) -> None:
         with TemporaryDirectory() as temp_dir:

@@ -1077,6 +1077,7 @@ def build_au_external_dependency_handoff(
             "runnable_now_work_item_count": len(runnable_now),
             "runnable_now_work_items": runnable_now,
             "next_dependency_item_id": str(next_dependency_item.get("id") or "none"),
+            "next_command": str(clearance_sequence.get("next_command") or ""),
             "p0a_required_secret_missing_count": int(p0a_credentials.get("missing_required_count") or 0),
             "p0a_required_secret_missing": _strings(p0a_credentials.get("missing_required")),
             "p0a_execution_remaining_blocker_count": int(p0a_summary.get("remaining_blocker_count") or 0),

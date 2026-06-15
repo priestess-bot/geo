@@ -595,6 +595,8 @@ def verify_au_external_dependency_handoff(
         errors.append("summary_clearance_blocked_step_count_mismatch")
     if summary.get("clearance_current_step_id") != clearance_sequence.get("current_step_id"):
         errors.append("summary_clearance_current_step_id_mismatch")
+    if summary.get("next_command") != clearance_sequence.get("next_command"):
+        errors.append("summary_next_command_mismatch")
     if clearance_sequence.get("step_count") != len(clearance_steps):
         errors.append("clearance_sequence_step_count_summary_mismatch")
     if summary.get("requires_external_input_work_item_count") != requires_external_input:
