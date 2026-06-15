@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -61,6 +62,22 @@ def _unique_strings(values: list[str]) -> list[str]:
         if value and value not in items:
             items.append(value)
     return items
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _load_json_file(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def verify_au_next_work_item_packet(
@@ -221,7 +238,6 @@ def verify_au_next_work_item_packet(
             "request_packet_id",
             "request_packet_title",
             "artifact_type",
-            "output_path",
             "hash_field",
             "build_command",
             "verify_command",
@@ -257,6 +273,27 @@ def verify_au_next_work_item_packet(
         ):
             if command not in recommended_sequence:
                 errors.append(f"recommended_sequence_missing:{command}")
+        linked_output_path = Path(str(linked_request_packet.get("output_path") or expected_context["output_path"]))
+        linked_file_exists = linked_output_path.is_file()
+        if linked_request_packet.get("exists") is not linked_file_exists:
+            errors.append("linked_request_packet_file_exists_mismatch")
+        if linked_file_exists:
+            current_payload = _load_json_file(linked_output_path)
+            if not current_payload:
+                errors.append("linked_request_packet_current_json_invalid")
+            else:
+                current_hash = str(current_payload.get(expected_context["hash_field"]) or "")
+                if not current_hash:
+                    errors.append("linked_request_packet_current_hash_missing")
+                if linked_request_packet.get("packet_hash") != current_hash:
+                    errors.append("linked_request_packet_current_hash_mismatch")
+                if summary.get("linked_request_packet_hash") != current_hash:
+                    errors.append("summary_linked_request_packet_current_hash_mismatch")
+            current_file_sha256 = _file_sha256(linked_output_path)
+            if linked_request_packet.get("file_sha256") != current_file_sha256:
+                errors.append("linked_request_packet_file_sha256_mismatch")
+        elif linked_request_packet.get("packet_hash"):
+            errors.append("linked_request_packet_hash_present_but_file_missing")
     elif next_work_item_id != "none":
         if linked_request_packet.get("request_packet_available") is True:
             errors.append("unexpected_linked_request_packet_available")

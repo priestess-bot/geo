@@ -301,6 +301,36 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         self.assertIn("recommended_sequence_missing:make au-p0a-credential-request", verification["errors"])
         self.assertIn("execution_context_combined_verification_commands_mismatch", verification["errors"])
 
+    def test_verifier_rejects_stale_linked_request_artifact_file(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            dossier_path, dossier = self._build_handoff_dossier(temp_dir, ready=False)
+            linked_path = Path(temp_dir) / "linked-request.json"
+            linked_payload = {
+                "p0a_credential_request_packet_hash": "current-request-hash",
+                "status": "pass",
+            }
+            linked_path.write_text(json.dumps(linked_payload), encoding="utf-8")
+            original_context = REQUEST_PACKET_CONTEXTS["p0a_environment"].copy()
+            REQUEST_PACKET_CONTEXTS["p0a_environment"]["output_path"] = str(linked_path)
+            try:
+                packet = build_au_next_work_item_packet(
+                    handoff_dossier_path=dossier_path,
+                    handoff_dossier=dossier,
+                    output_path=Path(temp_dir) / "next-work-item.json",
+                    generated_at="2026-06-12T00:00:00Z",
+                )
+                linked_payload["p0a_credential_request_packet_hash"] = "refreshed-request-hash"
+                linked_path.write_text(json.dumps(linked_payload), encoding="utf-8")
+                packet["next_work_item_packet_hash"] = compute_next_work_item_packet_hash(packet)
+                verification = verify_au_next_work_item_packet(packet)
+            finally:
+                REQUEST_PACKET_CONTEXTS["p0a_environment"] = original_context
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("linked_request_packet_current_hash_mismatch", verification["errors"])
+        self.assertIn("summary_linked_request_packet_current_hash_mismatch", verification["errors"])
+        self.assertIn("linked_request_packet_file_sha256_mismatch", verification["errors"])
+
     def test_cli_writes_next_work_item_packet_json(self) -> None:
         with TemporaryDirectory() as temp_dir:
             dossier_path, _ = self._build_handoff_dossier(temp_dir, ready=False)
@@ -322,7 +352,7 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
             )
             payload = json.loads(output_path.read_text(encoding="utf-8"))
 
-        self.assertIn("au_next_work_item_packet_v1", result.stdout)
-        self.assertEqual(payload["status"], "pass")
-        self.assertEqual(payload["summary"]["next_work_item_id"], "p0a_environment")
-        self.assertEqual(verify_au_next_work_item_packet(payload)["status"], "pass")
+            self.assertIn("au_next_work_item_packet_v1", result.stdout)
+            self.assertEqual(payload["status"], "pass")
+            self.assertEqual(payload["summary"]["next_work_item_id"], "p0a_environment")
+            self.assertEqual(verify_au_next_work_item_packet(payload)["status"], "pass")

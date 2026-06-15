@@ -15,7 +15,7 @@ from scripts.build_au_delivery_progress import (
 )
 from scripts.build_au_external_dependency_handoff import build_au_external_dependency_handoff
 from scripts.build_au_handoff_dossier import build_au_handoff_dossier
-from scripts.build_au_next_work_item_packet import build_au_next_work_item_packet
+from scripts.build_au_next_work_item_packet import REQUEST_PACKET_CONTEXTS, build_au_next_work_item_packet
 from scripts.build_au_p0a_credential_clearance import build_au_p0a_credential_clearance
 from scripts.build_au_p0a_credential_fulfillment import build_au_p0a_credential_fulfillment
 from scripts.build_au_p0a_credential_request_packet import build_au_p0a_credential_request_packet
@@ -75,16 +75,6 @@ class AuDeliveryProgressTest(unittest.TestCase):
             generated_at="2026-06-12T00:00:00Z",
         )
         dependency_handoff_path.write_text(json.dumps(dependency_handoff), encoding="utf-8")
-        next_work_item_path = Path(temp_dir) / "next-work-item.json"
-        next_work_item = build_au_next_work_item_packet(
-            handoff_dossier_path=handoff_path,
-            external_dependency_handoff_path=dependency_handoff_path,
-            handoff_dossier=handoff,
-            external_dependency_handoff=dependency_handoff,
-            output_path=next_work_item_path,
-            generated_at="2026-06-12T00:00:00Z",
-        )
-        next_work_item_path.write_text(json.dumps(next_work_item), encoding="utf-8")
         clearance_path = Path(temp_dir) / "external-clearance.json"
         clearance = run_au_external_dependency_clearance(
             handoff_path=dependency_handoff_path,
@@ -104,6 +94,21 @@ class AuDeliveryProgressTest(unittest.TestCase):
             generated_at="2026-06-12T00:00:00Z",
         )
         credential_request_path.write_text(json.dumps(credential_request), encoding="utf-8")
+        next_work_item_path = Path(temp_dir) / "next-work-item.json"
+        original_context = REQUEST_PACKET_CONTEXTS["p0a_environment"].copy()
+        REQUEST_PACKET_CONTEXTS["p0a_environment"]["output_path"] = str(credential_request_path)
+        try:
+            next_work_item = build_au_next_work_item_packet(
+                handoff_dossier_path=handoff_path,
+                external_dependency_handoff_path=dependency_handoff_path,
+                handoff_dossier=handoff,
+                external_dependency_handoff=dependency_handoff,
+                output_path=next_work_item_path,
+                generated_at="2026-06-12T00:00:00Z",
+            )
+        finally:
+            REQUEST_PACKET_CONTEXTS["p0a_environment"] = original_context
+        next_work_item_path.write_text(json.dumps(next_work_item), encoding="utf-8")
         credential_fulfillment_path = Path(temp_dir) / "credential-fulfillment.json"
         credential_fulfillment = build_au_p0a_credential_fulfillment(
             credential_request_path=credential_request_path,
@@ -411,6 +416,36 @@ class AuDeliveryProgressTest(unittest.TestCase):
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_engineering_progress_percent_mismatch", verification["errors"])
 
+    def test_verifier_rejects_stale_next_work_item_source_artifact(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            sources = self._build_sources(temp_dir, ready=False)
+            progress = build_au_delivery_progress(
+                launch_status_path=sources["launch_status_path"],  # type: ignore[arg-type]
+                handoff_dossier_path=sources["handoff_path"],  # type: ignore[arg-type]
+                customer_handoff_readiness_path=sources["readiness_path"],  # type: ignore[arg-type]
+                next_work_item_path=sources["next_work_item_path"],  # type: ignore[arg-type]
+                external_dependency_handoff_path=sources["dependency_handoff_path"],  # type: ignore[arg-type]
+                external_dependency_clearance_path=sources["clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
+                p0a_real_batch_clearance_path=sources["real_batch_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance_path=sources["p0b_environment_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance_path=sources["p0b_manual_backfill_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance_path=sources["p0b_phase_execution_clearance_path"],  # type: ignore[arg-type]
+                output_path=Path(temp_dir) / "progress.json",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            next_work_item_path = sources["next_work_item_path"]  # type: ignore[assignment]
+            next_work_item = json.loads(Path(next_work_item_path).read_text(encoding="utf-8"))
+            next_work_item["next_work_item_packet_hash"] = "refreshed-next-work-item-hash"
+            Path(next_work_item_path).write_text(json.dumps(next_work_item), encoding="utf-8")
+            progress["delivery_progress_hash"] = compute_delivery_progress_hash(progress)
+            verification = verify_au_delivery_progress(progress)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("source_artifact_current_hash_mismatch:next_work_item", verification["errors"])
+        self.assertIn("summary_source_artifact_current_hash_mismatch:next_work_item", verification["errors"])
+        self.assertIn("evidence_source_file_sha256_mismatch:next_work_item", verification["errors"])
+
     def test_cli_writes_progress_json(self) -> None:
         with TemporaryDirectory() as temp_dir:
             sources = self._build_sources(temp_dir, ready=False)
@@ -452,9 +487,9 @@ class AuDeliveryProgressTest(unittest.TestCase):
             )
             payload = json.loads(output_path.read_text(encoding="utf-8"))
 
-        self.assertIn("au_delivery_progress_v1", result.stdout)
-        self.assertEqual(payload["status"], "pass")
-        self.assertEqual(verify_au_delivery_progress(payload)["status"], "pass")
+            self.assertIn("au_delivery_progress_v1", result.stdout)
+            self.assertEqual(payload["status"], "pass")
+            self.assertEqual(verify_au_delivery_progress(payload)["status"], "pass")
 
 
 if __name__ == "__main__":

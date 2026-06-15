@@ -104,6 +104,22 @@ def compute_customer_handoff_clearance_hash(payload: dict[str, Any]) -> str:
     return hashlib.sha256(_stable_bytes(payload_for_hash)).hexdigest()
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _source_file_entry(name: str, path: Path) -> dict[str, Any]:
+    entry: dict[str, Any] = {"name": name, "path": str(path), "exists": path.exists()}
+    if path.is_file():
+        entry["size_bytes"] = path.stat().st_size
+        entry["file_sha256"] = _file_sha256(path)
+    return entry
+
+
 def _as_dict(value: object) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
@@ -1166,6 +1182,18 @@ def build_au_customer_handoff_clearance(
                 *validation_sequence,
             ]
         ),
+        "evidence_sources": [
+            _source_file_entry("handoff_dossier", handoff_dossier_path),
+            _source_file_entry("customer_handoff_readiness", customer_handoff_readiness_path),
+            _source_file_entry("delivery_progress", delivery_progress_path),
+            _source_file_entry("external_dependency_handoff", external_dependency_handoff_path),
+            _source_file_entry("external_dependency_clearance", external_dependency_clearance_path),
+            _source_file_entry("p0a_credential_clearance", p0a_credential_clearance_path),
+            _source_file_entry("p0a_real_batch_clearance", p0a_real_batch_clearance_path),
+            _source_file_entry("p0b_google_environment_clearance", p0b_google_environment_clearance_path),
+            _source_file_entry("p0b_google_manual_backfill_clearance", p0b_google_manual_backfill_clearance_path),
+            _source_file_entry("p0b_google_phase_execution_clearance", p0b_google_phase_execution_clearance_path),
+        ],
         "redaction_policy": {
             "raw_secret_values_allowed": False,
             "raw_answer_values_allowed": False,

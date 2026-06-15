@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -41,6 +42,7 @@ REQUIRED_FIELDS = (
     "post_update_validation_sequence",
     "runtime_endpoints",
     "hard_gate_commands",
+    "evidence_sources",
     "redaction_policy",
     "customer_handoff_clearance_hash",
 )
@@ -71,6 +73,26 @@ def _as_dict(value: object) -> dict[str, Any]:
 
 def _as_list(value: object) -> list[object]:
     return value if isinstance(value, list) else []
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _load_json_file(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _evidence_source_lookup(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {str(item.get("name") or ""): _as_dict(item) for item in _as_list(payload.get("evidence_sources"))}
 
 
 def _strings(value: object) -> list[str]:
@@ -160,6 +182,7 @@ def verify_au_customer_handoff_clearance(
     p0b_google_manual_backfill_clearance_verifier = _as_dict(verifiers.get("p0b_google_manual_backfill_clearance"))
     p0b_google_phase_execution_clearance_verifier = _as_dict(verifiers.get("p0b_google_phase_execution_clearance"))
     source_artifacts = _as_dict(payload.get("source_artifacts"))
+    evidence_sources = _evidence_source_lookup(payload)
     summary = _as_dict(payload.get("summary"))
     clearance_step = _as_dict(payload.get("clearance_step"))
     prerequisite_steps = [_as_dict(item) for item in _as_list(payload.get("prerequisite_steps"))]
@@ -203,6 +226,29 @@ def verify_au_customer_handoff_clearance(
             errors.append(f"source_verifier_status_mismatch:{key}")
         if summary.get(hash_field) != source.get("hash"):
             errors.append(f"summary_source_hash_mismatch:{key}")
+        source_path = Path(str(source.get("path") or ""))
+        source_metadata = _as_dict(source.get("source"))
+        source_declares_existing = source_metadata.get("exists") is True or (
+            source_metadata.get("source") == "existing_file"
+        )
+        if source_path.is_file():
+            current_payload = _load_json_file(source_path)
+            if not current_payload:
+                errors.append(f"source_artifact_current_json_invalid:{key}")
+            else:
+                current_hash = str(current_payload.get(hash_field) or "")
+                if not current_hash:
+                    errors.append(f"source_artifact_current_hash_missing:{key}")
+                if source.get("hash") != current_hash:
+                    errors.append(f"source_artifact_current_hash_mismatch:{key}")
+                if summary.get(hash_field) != current_hash:
+                    errors.append(f"summary_source_artifact_current_hash_mismatch:{key}")
+            evidence_source = _as_dict(evidence_sources.get(key))
+            current_file_sha256 = _file_sha256(source_path)
+            if evidence_source.get("file_sha256") and evidence_source.get("file_sha256") != current_file_sha256:
+                errors.append(f"evidence_source_file_sha256_mismatch:{key}")
+        elif source_declares_existing:
+            errors.append(f"source_artifact_file_missing:{key}")
 
     expected_packet_ready = all(
         verifier.get("status") == "pass" and verifier.get("hash_valid") is True
