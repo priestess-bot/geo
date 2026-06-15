@@ -1729,6 +1729,32 @@ class RuntimeNotificationEmailFeedbackSuppressionInput:
 
 
 @dataclass(frozen=True)
+class RuntimeNotificationEmailSuppression:
+    suppression: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeNotificationEmailSuppressionPage:
+    total_count: int
+    limit: int
+    offset: int
+    records: tuple[RuntimeNotificationEmailSuppression, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeNotificationEmailSuppressionInput:
+    project_id: str
+    recipient_hash: str
+    status: str = "active"
+    source: str = "manual"
+    source_ref: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    updated_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeNotificationEmailPreferenceUnsubscribeInput:
     project_id: str
     delivery_id: str

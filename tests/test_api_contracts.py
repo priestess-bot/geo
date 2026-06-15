@@ -101,6 +101,8 @@ from geno_core.models import (
     RuntimeNotificationDeliveryPage,
     RuntimeNotificationEmailFeedback,
     RuntimeNotificationEmailFeedbackPage,
+    RuntimeNotificationEmailSuppression,
+    RuntimeNotificationEmailSuppressionPage,
     RuntimeNotificationEmailPreferenceStatus,
     RuntimeNotification,
     RuntimeNotificationPage,
@@ -7452,6 +7454,91 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.suppression.feedback_event_id, "feedback-1")
         self.assertEqual(fake_repository.suppression.reason, "apply complaint suppression")
 
+    def test_runtime_notification_email_suppressions_endpoint_returns_page(self) -> None:
+        class FakeRepository:
+            def list_runtime_notification_email_suppressions(self, **kwargs: object) -> RuntimeNotificationEmailSuppressionPage:
+                self.kwargs = kwargs
+                return RuntimeNotificationEmailSuppressionPage(
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(
+                        RuntimeNotificationEmailSuppression(
+                            suppression={
+                                "id": "suppression-1",
+                                "project_id": kwargs["project_id"],
+                                "recipient_hash": "a" * 64,
+                                "status": "active",
+                                "source": "manual",
+                                "source_ref": "ticket-1",
+                                "metadata": {"source": "contract"},
+                                "created_by": "runtime-console",
+                                "updated_by": "runtime-console",
+                            },
+                            audit_events=({"event_type": "runtime_notification_email_suppression_saved"},),
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/runtime-notification-email-suppressions?project_id=project-1&status=active&limit=5"
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_count"], 1)
+        self.assertEqual(payload["records"][0]["suppression"]["recipient_hash"], "a" * 64)
+        self.assertEqual(payload["records"][0]["audit_events"][0]["event_type"], "runtime_notification_email_suppression_saved")
+        self.assertEqual(fake_repository.kwargs["status"], "active")
+
+    def test_runtime_notification_email_suppression_save_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def save_runtime_notification_email_suppression(self, suppression: object) -> RuntimeNotificationEmailSuppression:
+                self.suppression = suppression
+                return RuntimeNotificationEmailSuppression(
+                    suppression={
+                        "id": "suppression-1",
+                        "project_id": suppression.project_id,
+                        "recipient_hash": suppression.recipient_hash,
+                        "status": suppression.status,
+                        "source": suppression.source,
+                        "source_ref": suppression.source_ref,
+                        "metadata": suppression.metadata,
+                        "created_by": suppression.updated_by,
+                        "updated_by": suppression.updated_by,
+                    },
+                    audit_events=({"event_type": "runtime_notification_email_suppression_saved"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/runtime-notification-email-suppressions",
+                json={
+                    "project_id": "project-1",
+                    "recipient_hash": "a" * 64,
+                    "status": "active",
+                    "source": "manual",
+                    "source_ref": "ticket-1",
+                    "metadata": {"source": "api-test"},
+                    "updated_by": "runtime-console",
+                    "reason": "manual project suppression",
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["suppression"]["recipient_hash"], "a" * 64)
+        self.assertEqual(payload["audit_events"][0]["event_type"], "runtime_notification_email_suppression_saved")
+        self.assertEqual(fake_repository.suppression.project_id, "project-1")
+        self.assertEqual(fake_repository.suppression.recipient_hash, "a" * 64)
+        self.assertEqual(fake_repository.suppression.reason, "manual project suppression")
+        self.assertNotIn("ops@example.com", str(fake_repository.suppression))
+
     def test_runtime_notification_email_preference_unsubscribe_endpoint_verifies_token(self) -> None:
         class FakeRepository:
             def apply_runtime_notification_email_preference_unsubscribe(self, unsubscribe: object) -> RuntimeNotificationSubscription:
@@ -8609,6 +8696,10 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimeNotificationEmailFeedbackWebhookRequest", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedbackSuppressionInput", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailFeedbackSuppressionRequest", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailSuppression", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailSuppressionInput", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailSuppressionPage", payload["persistence"])
+        self.assertIn("RuntimeNotificationEmailSuppressionRequest", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailPreferenceStatus", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailPreferenceResubscribeInput", payload["persistence"])
         self.assertIn("RuntimeNotificationEmailPreferenceResubscribeRequest", payload["persistence"])
@@ -8698,6 +8789,7 @@ class ApiContractsTest(unittest.TestCase):
             "/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient",
             payload["persistence"],
         )
+        self.assertIn("/v1/runtime-notification-email-suppressions", payload["persistence"])
         self.assertIn("/v1/runtime-notification-email-preferences/status", payload["persistence"])
         self.assertIn("/v1/runtime-notification-email-preferences/resubscribe", payload["persistence"])
         self.assertIn("/v1/runtime-notification-email-preferences/unsubscribe", payload["persistence"])

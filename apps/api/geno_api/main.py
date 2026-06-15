@@ -96,6 +96,7 @@ from geno_core.models import (
     RuntimeProjectUpdateInput,
     RuntimePromptImportInput,
     RuntimeNotificationEmailFeedbackInput,
+    RuntimeNotificationEmailSuppressionInput,
     RuntimeNotificationEmailPreferenceResubscribeInput,
     RuntimeNotificationEmailPreferenceUnsubscribeInput,
     RuntimeNotificationEmailFeedbackSuppressionInput,
@@ -1945,6 +1946,17 @@ class RuntimeNotificationEmailFeedbackWebhookRequest(BaseModel):
 
 
 class RuntimeNotificationEmailFeedbackSuppressionRequest(BaseModel):
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationEmailSuppressionRequest(BaseModel):
+    project_id: str = Field(min_length=1, max_length=120)
+    recipient_hash: str = Field(min_length=64, max_length=64)
+    status: str = Field(default="active", min_length=1, max_length=40)
+    source: str = Field(default="manual", min_length=1, max_length=80)
+    source_ref: str | None = Field(default=None, max_length=500)
+    metadata: dict[str, object] = Field(default_factory=dict)
     updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     reason: str | None = Field(default=None, max_length=500)
 
@@ -5807,6 +5819,68 @@ def save_runtime_notification_subscription(
         close_repository_connection(repository)
 
 
+@app.get("/v1/runtime-notification-email-suppressions")
+def runtime_notification_email_suppressions(
+    project_id: str,
+    status: str | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_notification_email_suppressions(
+            project_id=project_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-notification-email-suppressions")
+def save_runtime_notification_email_suppression(
+    payload: RuntimeNotificationEmailSuppressionRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        record = repository.save_runtime_notification_email_suppression(
+            RuntimeNotificationEmailSuppressionInput(
+                project_id=payload.project_id,
+                recipient_hash=payload.recipient_hash,
+                status=payload.status,
+                source=payload.source,
+                source_ref=payload.source_ref,
+                metadata=payload.metadata,
+                updated_by=actor_id or payload.updated_by,
+                reason=payload.reason,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/runtime-notification-deliveries")
 def runtime_notification_deliveries(
     project_id: str | None = None,
@@ -7192,6 +7266,10 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeNotificationEmailFeedbackWebhookRequest",
             "RuntimeNotificationEmailFeedbackSuppressionInput",
             "RuntimeNotificationEmailFeedbackSuppressionRequest",
+            "RuntimeNotificationEmailSuppression",
+            "RuntimeNotificationEmailSuppressionInput",
+            "RuntimeNotificationEmailSuppressionPage",
+            "RuntimeNotificationEmailSuppressionRequest",
             "RuntimeNotificationEmailPreferenceStatus",
             "RuntimeNotificationEmailPreferenceResubscribeInput",
             "RuntimeNotificationEmailPreferenceResubscribeRequest",
@@ -7294,6 +7372,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/runtime-notification-email-feedback-events",
             "/v1/runtime-notification-email-feedback-webhooks/geno",
             "/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient",
+            "/v1/runtime-notification-email-suppressions",
             "/v1/runtime-notification-email-preferences/status",
             "/v1/runtime-notification-email-preferences/resubscribe",
             "/v1/runtime-notification-email-preferences/unsubscribe",

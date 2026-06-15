@@ -780,6 +780,7 @@ type RuntimeData = {
   notificationSubscriptions: PageResponse<RuntimeNotificationSubscription>;
   notificationDeliveries: PageResponse<RuntimeNotificationDelivery>;
   notificationEmailFeedback: PageResponse<RuntimeNotificationEmailFeedback>;
+  notificationEmailSuppressions: PageResponse<RuntimeNotificationEmailSuppression>;
   actions: PageResponse<ActionPlan>;
   alerts: PageResponse<RuntimeAlert>;
   content: PageResponse<ContentEngine>;
@@ -3085,6 +3086,23 @@ type RuntimeNotificationEmailFeedback = {
   audit_events: Array<{ event_type?: string; actor_id?: string; method_version?: string | null }>;
 };
 
+type RuntimeNotificationEmailSuppression = {
+  suppression: {
+    id: string;
+    project_id: string;
+    recipient_hash: string;
+    status: string;
+    source: string;
+    source_ref?: string | null;
+    metadata?: Record<string, unknown>;
+    created_by: string;
+    created_at?: string;
+    updated_by: string;
+    updated_at?: string;
+  };
+  audit_events: Array<{ event_type?: string; actor_id?: string; method_version?: string | null }>;
+};
+
 type RuntimeScoreWeightConfig = {
   score_weight_config: {
     id?: string | null;
@@ -3566,6 +3584,7 @@ const endpoints = {
   notificationSubscriptions: "/v1/runtime-notification-subscriptions",
   notificationDeliveries: "/v1/runtime-notification-deliveries",
   notificationEmailFeedback: "/v1/runtime-notification-email-feedback-events",
+  notificationEmailSuppressions: "/v1/runtime-notification-email-suppressions",
   notificationEmailFeedbackWebhook: "/v1/runtime-notification-email-feedback-webhooks/geno",
   notificationEmailPreferenceStatus: "/v1/runtime-notification-email-preferences/status",
   notificationEmailPreferenceResubscribe: "/v1/runtime-notification-email-preferences/resubscribe",
@@ -4305,6 +4324,42 @@ async function applyRuntimeNotificationEmailFeedbackSuppression(formData: FormDa
     throw new Error(
       `/v1/runtime-notification-email-feedback-events/${feedbackEventId}/suppress-recipient returned ${response.status}`
     );
+  }
+  revalidatePath("/");
+}
+
+async function saveRuntimeNotificationEmailSuppression(formData: FormData) {
+  "use server";
+  const baseUrl =
+    process.env.API_INTERNAL_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:8000";
+  const projectId = String(formData.get("project_id") || "").trim();
+  const recipientHash = String(formData.get("recipient_hash") || "").trim().toLowerCase();
+  if (!projectId || !recipientHash) {
+    throw new Error("project_id and recipient_hash are required to save notification email suppression");
+  }
+  const payload = {
+    project_id: projectId,
+    recipient_hash: recipientHash,
+    status: String(formData.get("status") || "active").trim(),
+    source: String(formData.get("source") || "manual").trim(),
+    source_ref: String(formData.get("source_ref") || "").trim() || undefined,
+    metadata: {
+      source: "runtime_console_project_email_suppression",
+      note: String(formData.get("note") || "").trim() || undefined
+    },
+    updated_by: String(formData.get("updated_by") || "runtime-console").trim(),
+    reason: String(formData.get("reason") || "").trim() || undefined
+  };
+  const response = await fetch(`${baseUrl}/v1/runtime-notification-email-suppressions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`/v1/runtime-notification-email-suppressions returned ${response.status}`);
   }
   revalidatePath("/");
 }
@@ -5338,6 +5393,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     notificationSubscriptions: runtimePath(endpoints.notificationSubscriptions, { limit: 5 }),
     notificationDeliveries: runtimePath(endpoints.notificationDeliveries, { limit: 5 }),
     notificationEmailFeedback: runtimePath(endpoints.notificationEmailFeedback, { limit: 5 }),
+    notificationEmailSuppressions: runtimePath(endpoints.notificationEmailSuppressions, { limit: 5 }),
     notificationEmailFeedbackWebhook: endpoints.notificationEmailFeedbackWebhook,
     notificationEmailPreferenceStatus: endpoints.notificationEmailPreferenceStatus,
     notificationEmailPreferenceResubscribe: endpoints.notificationEmailPreferenceResubscribe,
@@ -5570,6 +5626,11 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     ...selectedProjectParams,
     limit: 5
   });
+  paths.notificationEmailSuppressions = runtimePath(endpoints.notificationEmailSuppressions, {
+    ...selectedProjectParams,
+    status: "active",
+    limit: 5
+  });
   paths.actions = runtimePath(endpoints.actions, {
     ...selectedProjectParams,
     limit: 1
@@ -5655,6 +5716,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     notificationSubscriptions,
     notificationDeliveries,
     notificationEmailFeedback,
+    notificationEmailSuppressions,
     actions,
     alerts,
     content,
@@ -5892,6 +5954,13 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       paths.notificationEmailFeedback,
       emptyPage<RuntimeNotificationEmailFeedback>()
     ),
+    selectedProjectId
+      ? fetchRuntimeEndpoint<PageResponse<RuntimeNotificationEmailSuppression>>(
+          baseUrl,
+          paths.notificationEmailSuppressions,
+          emptyPage<RuntimeNotificationEmailSuppression>()
+        )
+      : Promise.resolve({ payload: emptyPage<RuntimeNotificationEmailSuppression>(), error: null }),
     fetchRuntimeEndpoint<PageResponse<ActionPlan>>(baseUrl, paths.actions, emptyPage<ActionPlan>()),
     fetchRuntimeEndpoint<PageResponse<RuntimeAlert>>(baseUrl, paths.alerts, emptyPage<RuntimeAlert>()),
     fetchRuntimeEndpoint<PageResponse<ContentEngine>>(baseUrl, paths.content, emptyPage<ContentEngine>()),
@@ -5964,6 +6033,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     notificationSubscriptions,
     notificationDeliveries,
     notificationEmailFeedback,
+    notificationEmailSuppressions,
     actions,
     alerts,
     content,
@@ -6041,6 +6111,7 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
       notificationSubscriptions: notificationSubscriptions.payload,
       notificationDeliveries: notificationDeliveries.payload,
       notificationEmailFeedback: notificationEmailFeedback.payload,
+      notificationEmailSuppressions: notificationEmailSuppressions.payload,
       actions: actions.payload,
       alerts: alerts.payload,
       content: content.payload,
@@ -11672,7 +11743,7 @@ export default async function Home({
 
         <Panel
           title="Runtime Notifications"
-          subtitle={`${data.notifications.unread_count} unread notifications · ${data.notificationDeliveries.total_count} deliveries`}
+          subtitle={`${data.notifications.unread_count} unread notifications · ${data.notificationDeliveries.total_count} deliveries · ${data.notificationEmailSuppressions.total_count} project suppressions`}
           wide
         >
           <form action={saveRuntimeNotificationSubscription} className="reportManagementForm">
@@ -11763,14 +11834,76 @@ export default async function Home({
             <Fact label="Subscriptions" value={data.notificationSubscriptions.total_count} />
             <Fact label="Deliveries" value={data.notificationDeliveries.total_count} />
             <Fact label="Email feedback" value={data.notificationEmailFeedback.total_count} />
+            <Fact label="Project suppressions" value={data.notificationEmailSuppressions.total_count} />
             <Fact label="Subscription API" value={paths.notificationSubscriptions} />
             <Fact label="Delivery API" value={paths.notificationDeliveries} />
             <Fact label="Feedback API" value={paths.notificationEmailFeedback} />
+            <Fact label="Suppression API" value={paths.notificationEmailSuppressions} />
             <Fact label="Feedback webhook" value={paths.notificationEmailFeedbackWebhook} />
             <Fact label="Preference status API" value={paths.notificationEmailPreferenceStatus} />
             <Fact label="Resubscribe API" value={paths.notificationEmailPreferenceResubscribe} />
             <Fact label="Unsubscribe API" value={paths.notificationEmailPreferenceUnsubscribe} />
           </dl>
+          <form action={saveRuntimeNotificationEmailSuppression} className="reportManagementForm">
+            <input type="hidden" name="project_id" value={selectedProjectId || ""} />
+            <input type="hidden" name="updated_by" value="runtime-console" />
+            <input
+              type="hidden"
+              name="reason"
+              value="Save project email suppression from runtime console"
+            />
+            <label>
+              <span>Project recipient hash</span>
+              <input name="recipient_hash" placeholder="sha256 recipient hash" />
+            </label>
+            <label>
+              <span>Suppression status</span>
+              <select name="status" defaultValue="active">
+                <option value="active">active</option>
+                <option value="inactive">inactive</option>
+              </select>
+            </label>
+            <label>
+              <span>Suppression source</span>
+              <select name="source" defaultValue="manual">
+                <option value="manual">manual</option>
+                <option value="feedback">feedback</option>
+                <option value="preference">preference</option>
+                <option value="provider">provider</option>
+              </select>
+            </label>
+            <label>
+              <span>Source ref</span>
+              <input name="source_ref" placeholder="feedback id, ticket id, provider event hash" />
+            </label>
+            <label>
+              <span>Suppression note</span>
+              <input name="note" placeholder="project-level bounce or complaint review" />
+            </label>
+            <button className="actionButton compactAction" type="submit" disabled={!selectedProjectId}>
+              Save project suppression
+            </button>
+          </form>
+          {data.notificationEmailSuppressions.records.length ? (
+            <ul className="plainList">
+              {data.notificationEmailSuppressions.records.map((record) => (
+                <li key={record.suppression.id}>
+                  <strong>
+                    Project email suppression · {record.suppression.status} · {record.suppression.source}
+                  </strong>
+                  <span>
+                    recipient hash {shortId(record.suppression.recipient_hash)} · source{" "}
+                    {record.suppression.source_ref || "manual"}
+                  </span>
+                  <small>
+                    {record.audit_events[0]?.event_type || "runtime_notification_email_suppression_saved pending"} ·{" "}
+                    {record.audit_events[0]?.method_version || "runtime_notification_email_suppression_v1"} ·{" "}
+                    {dateText(record.suppression.updated_at)}
+                  </small>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {data.notificationSubscriptions.records.length ? (
             <ul className="plainList">
               {data.notificationSubscriptions.records.map((record) => (

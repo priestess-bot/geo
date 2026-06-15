@@ -58,6 +58,7 @@ BEGIN
     'runtime_notification_subscriptions',
     'runtime_notification_deliveries',
     'runtime_notification_email_feedback_events',
+    'runtime_notification_email_suppressions',
     'entity_alias_candidate_reviews',
     'score_contributions',
     'score_snapshot_runs',

@@ -106,6 +106,9 @@ from geno_core.models import (
     RuntimeNotificationEmailFeedback,
     RuntimeNotificationEmailFeedbackInput,
     RuntimeNotificationEmailFeedbackPage,
+    RuntimeNotificationEmailSuppression,
+    RuntimeNotificationEmailSuppressionInput,
+    RuntimeNotificationEmailSuppressionPage,
     RuntimeNotificationEmailPreferenceResubscribeInput,
     RuntimeNotificationEmailPreferenceStatus,
     RuntimeNotificationEmailPreferenceUnsubscribeInput,
@@ -408,6 +411,7 @@ def _runtime_notification_email_payload(
     notification: dict[str, Any],
     subscription: dict[str, Any],
     threshold: str,
+    project_suppression_hashes: tuple[str, ...] = (),
     preference_base_url: str = "",
     preference_token_secret: str = "",
     preference_token_ttl_seconds: int = 2_592_000,
@@ -423,7 +427,9 @@ def _runtime_notification_email_payload(
     original_recipients = tuple(_runtime_notification_email_recipients(str(subscription.get("endpoint_url") or "")))
     suppressed_recipients = _metadata_email_values(subscription_metadata, "email_suppressed_recipients")
     suppressed_lookup = set(suppressed_recipients)
-    configured_suppression_hashes = _runtime_notification_configured_suppression_hashes(subscription_metadata)
+    subscription_suppression_hashes = _runtime_notification_configured_suppression_hashes(subscription_metadata)
+    project_suppression_hashes = tuple(dict.fromkeys(project_suppression_hashes))
+    configured_suppression_hashes = tuple(dict.fromkeys([*subscription_suppression_hashes, *project_suppression_hashes]))
     configured_suppression_hash_lookup = set(configured_suppression_hashes)
     filtered_recipients: list[str] = []
     suppressed_matched_hashes: list[str] = []
@@ -573,6 +579,9 @@ def _runtime_notification_email_payload(
             "email_filtered_recipient_count": len(filtered_recipients),
             "email_suppressed_recipient_hashes": list(dict.fromkeys(suppressed_matched_hashes)),
             "email_configured_suppression_hashes": list(configured_suppression_hashes),
+            "email_subscription_suppression_hash_count": len(subscription_suppression_hashes),
+            "email_project_suppression_hash_count": len(project_suppression_hashes),
+            "email_project_suppression_hashes": list(project_suppression_hashes),
         },
     }
 
@@ -585,6 +594,7 @@ def _runtime_notification_delivery_payload(
     severity: str,
     threshold: str,
     channel: str,
+    project_suppression_hashes: tuple[str, ...] = (),
     email_preference_base_url: str = "",
     email_preference_token_secret: str = "",
     email_preference_token_ttl_seconds: int = 2_592_000,
@@ -626,6 +636,7 @@ def _runtime_notification_delivery_payload(
                 notification=notification,
                 subscription=subscription,
                 threshold=threshold,
+                project_suppression_hashes=project_suppression_hashes,
                 preference_base_url=email_preference_base_url,
                 preference_token_secret=email_preference_token_secret,
                 preference_token_ttl_seconds=email_preference_token_ttl_seconds,
@@ -1907,6 +1918,20 @@ RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_COLUMNS = (
     "created_at",
 )
 RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_RETURNING = ", ".join(RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_COLUMNS)
+RUNTIME_NOTIFICATION_EMAIL_SUPPRESSION_COLUMNS = (
+    "id",
+    "project_id",
+    "recipient_hash",
+    "status",
+    "source",
+    "source_ref",
+    "metadata",
+    "created_by",
+    "created_at",
+    "updated_by",
+    "updated_at",
+)
+RUNTIME_NOTIFICATION_EMAIL_SUPPRESSION_RETURNING = ", ".join(RUNTIME_NOTIFICATION_EMAIL_SUPPRESSION_COLUMNS)
 RUNTIME_NOTIFICATION_SEVERITY_ORDER = {"info": 0, "warning": 1, "critical": 2}
 RUNTIME_NOTIFICATION_SUBSCRIPTION_CHANNELS = {"webhook", "slack", "email"}
 RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_TYPES = {"bounce", "complaint", "unsubscribe", "suppressed"}
@@ -9403,6 +9428,156 @@ class PostgresEvidenceRepository:
         self.connection.commit()
         return record
 
+    def list_runtime_notification_email_suppressions(
+        self,
+        *,
+        project_id: str,
+        status: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> RuntimeNotificationEmailSuppressionPage:
+        project_id = project_id.strip()
+        if not project_id:
+            raise ValueError("project_id is required")
+        status_filter = (status or "").strip().lower()
+        limit = max(1, min(int(limit), 100))
+        offset = max(0, int(offset))
+        clauses = ["project_id = %s"]
+        params: list[object] = [_uuid(project_id)]
+        if status_filter:
+            clauses.append("status = %s")
+            params.append(status_filter)
+        where_clause = "WHERE " + " AND ".join(clauses)
+        with self.connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FROM runtime_notification_email_suppressions {where_clause}", tuple(params))
+            total_count = int(cursor.fetchone()[0])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_NOTIFICATION_EMAIL_SUPPRESSION_COLUMNS)}
+                FROM runtime_notification_email_suppressions
+                {where_clause}
+                ORDER BY updated_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                tuple([*params, limit, offset]),
+            )
+            rows = _rows_dict(cursor.fetchall(), RUNTIME_NOTIFICATION_EMAIL_SUPPRESSION_COLUMNS)
+            records: list[RuntimeNotificationEmailSuppression] = []
+            for row in rows:
+                cursor.execute(
+                    f"""
+                    SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                    FROM audit_events
+                    WHERE project_id = %s AND target_type = %s AND target_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT 5
+                    """,
+                    (_uuid(project_id), "runtime_notification_email_suppression", str(row["id"])),
+                )
+                records.append(
+                    RuntimeNotificationEmailSuppression(
+                        suppression=row,
+                        audit_events=_rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS),
+                    )
+                )
+        return RuntimeNotificationEmailSuppressionPage(
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            records=tuple(records),
+        )
+
+    def save_runtime_notification_email_suppression(
+        self,
+        suppression: RuntimeNotificationEmailSuppressionInput,
+    ) -> RuntimeNotificationEmailSuppression:
+        project_id = suppression.project_id.strip()
+        recipient_hash = _sha256_hex_or_none(suppression.recipient_hash, field_name="recipient_hash")
+        status = suppression.status.strip().lower()
+        source = suppression.source.strip().lower() or "manual"
+        source_ref = suppression.source_ref.strip() if suppression.source_ref else None
+        updated_by = suppression.updated_by.strip() or "runtime-console"
+        reason = suppression.reason.strip() if suppression.reason else None
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not recipient_hash:
+            raise ValueError("recipient_hash is required")
+        if status not in {"active", "inactive"}:
+            raise ValueError("status must be active or inactive")
+        metadata = _json_compatible(suppression.metadata or {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_NOTIFICATION_EMAIL_SUPPRESSION_COLUMNS)}
+                FROM runtime_notification_email_suppressions
+                WHERE project_id = %s AND recipient_hash = %s
+                LIMIT 1
+                FOR UPDATE
+                """,
+                (_uuid(project_id), recipient_hash),
+            )
+            before = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_EMAIL_SUPPRESSION_COLUMNS)
+            cursor.execute(
+                f"""
+                INSERT INTO runtime_notification_email_suppressions (
+                  project_id, recipient_hash, status, source, source_ref, metadata,
+                  created_by, updated_by
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (project_id, recipient_hash) DO UPDATE SET
+                  status = EXCLUDED.status,
+                  source = EXCLUDED.source,
+                  source_ref = EXCLUDED.source_ref,
+                  metadata = EXCLUDED.metadata,
+                  updated_by = EXCLUDED.updated_by,
+                  updated_at = now()
+                RETURNING {RUNTIME_NOTIFICATION_EMAIL_SUPPRESSION_RETURNING}
+                """,
+                (
+                    _uuid(project_id),
+                    recipient_hash,
+                    status,
+                    source,
+                    source_ref,
+                    _json_payload(metadata),
+                    updated_by,
+                    updated_by,
+                ),
+            )
+            after = _row_dict(cursor.fetchone(), RUNTIME_NOTIFICATION_EMAIL_SUPPRESSION_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="runtime_notification_email_suppression_saved",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="runtime_notification_email_suppression",
+                target_id=str(after["id"]),
+                before=before or None,
+                after=after,
+                input_refs={
+                    "recipient_hashes": [recipient_hash],
+                    "status": [status],
+                    "source": [source],
+                    "source_ref": [source_ref] if source_ref else [],
+                },
+                output_refs={
+                    "runtime_notification_email_suppression_ids": [str(after["id"])],
+                    "recipient_hashes": [recipient_hash],
+                    "status": [str(after["status"])],
+                    "source": [str(after["source"])],
+                },
+                method_version="runtime_notification_email_suppression_v1",
+                reason=reason or "save runtime notification email suppression",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+        self.connection.commit()
+        return RuntimeNotificationEmailSuppression(
+            suppression=after,
+            audit_events=(asdict(audit_event),),
+        )
+
     def _load_runtime_notification_email_preference_subscription(
         self,
         *,
@@ -10522,6 +10697,26 @@ class PostgresEvidenceRepository:
             (_uuid(str(notification["project_id"])), "active", list(RUNTIME_NOTIFICATION_SUBSCRIPTION_CHANNELS)),
         )
         subscription_rows = _rows_dict(cursor.fetchall(), RUNTIME_NOTIFICATION_SUBSCRIPTION_COLUMNS)
+        project_email_suppression_hashes: tuple[str, ...] = ()
+        if any(str(subscription.get("channel") or "").strip().lower() == "email" for subscription in subscription_rows):
+            cursor.execute(
+                """
+                SELECT recipient_hash
+                FROM runtime_notification_email_suppressions
+                WHERE project_id = %s AND status = %s
+                ORDER BY updated_at DESC, id DESC
+                """,
+                (_uuid(str(notification["project_id"])), "active"),
+            )
+            project_email_suppression_candidates: list[str] = []
+            for row in cursor.fetchall():
+                if not row:
+                    continue
+                raw_hash = row.get("recipient_hash") if isinstance(row, dict) else row[0]
+                recipient_hash = _sha256_hex_or_none(raw_hash, field_name="recipient_hash")
+                if recipient_hash:
+                    project_email_suppression_candidates.append(recipient_hash)
+            project_email_suppression_hashes = tuple(dict.fromkeys(project_email_suppression_candidates))
         queued_deliveries: list[dict[str, Any]] = []
         delivery_audit_events: list[AuditEvent] = []
         for subscription in subscription_rows:
@@ -10545,6 +10740,7 @@ class PostgresEvidenceRepository:
                 severity=severity,
                 threshold=threshold,
                 channel=channel,
+                project_suppression_hashes=project_email_suppression_hashes if channel == "email" else (),
                 email_preference_base_url=self.email_preference_base_url,
                 email_preference_token_secret=self.email_preference_token_secret,
                 email_preference_token_ttl_seconds=self.email_preference_token_ttl_seconds,
@@ -10678,6 +10874,14 @@ class PostgresEvidenceRepository:
                             if email_metadata.get("email_preference_manage_token_hash")
                             else [],
                             "email_suppressed_recipient_hashes": email_suppressed_recipient_hashes,
+                            "email_project_suppression_hashes": [
+                                str(value)
+                                for value in email_metadata.get("email_project_suppression_hashes", [])
+                                if value
+                            ],
+                            "email_project_suppression_hash_count": [
+                                str(email_metadata.get("email_project_suppression_hash_count") or 0)
+                            ],
                             "email_filtered_recipient_count": [
                                 str(email_metadata.get("email_filtered_recipient_count") or 0)
                             ],

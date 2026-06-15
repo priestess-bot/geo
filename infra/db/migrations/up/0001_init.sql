@@ -615,6 +615,21 @@ CREATE TABLE runtime_notification_email_feedback_events (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE runtime_notification_email_suppressions (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  recipient_hash text NOT NULL,
+  status text NOT NULL DEFAULT 'active',
+  source text NOT NULL DEFAULT 'manual',
+  source_ref text,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_by text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(project_id, recipient_hash)
+);
+
 CREATE TABLE score_contributions (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   score_snapshot_id uuid NOT NULL REFERENCES visibility_score_snapshots(id) ON DELETE CASCADE,
@@ -747,6 +762,8 @@ CREATE INDEX idx_runtime_notification_deliveries_claim ON runtime_notification_d
 CREATE INDEX idx_runtime_notification_deliveries_notification ON runtime_notification_deliveries(notification_id, status, created_at);
 CREATE INDEX idx_runtime_notification_email_feedback_project ON runtime_notification_email_feedback_events(project_id, feedback_type, occurred_at);
 CREATE INDEX idx_runtime_notification_email_feedback_delivery ON runtime_notification_email_feedback_events(delivery_id, occurred_at);
+CREATE INDEX idx_runtime_notification_email_suppressions_project ON runtime_notification_email_suppressions(project_id, status, updated_at);
+CREATE INDEX idx_runtime_notification_email_suppressions_hash ON runtime_notification_email_suppressions(recipient_hash, status);
 CREATE INDEX idx_entity_alias_candidate_reviews_project ON entity_alias_candidate_reviews(project_id, decision, updated_at);
 CREATE INDEX idx_entity_alias_candidate_reviews_entity ON entity_alias_candidate_reviews(entity_kind, entity_id, alias_type, alias);
 CREATE INDEX idx_entity_alias_candidate_reviews_assignment ON entity_alias_candidate_reviews(project_id, assignment_status, assigned_to, due_at, priority);

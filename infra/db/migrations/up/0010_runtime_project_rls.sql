@@ -138,6 +138,7 @@ BEGIN
     'runtime_notification_subscriptions',
     'runtime_notification_deliveries',
     'runtime_notification_email_feedback_events',
+    'runtime_notification_email_suppressions',
     'entity_alias_candidate_reviews',
     'brand_entities',
     'competitor_entities'

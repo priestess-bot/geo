@@ -133,6 +133,9 @@ from geno_core.models import (
     RuntimeNotificationEmailFeedback,
     RuntimeNotificationEmailFeedbackInput,
     RuntimeNotificationEmailFeedbackPage,
+    RuntimeNotificationEmailSuppression,
+    RuntimeNotificationEmailSuppressionInput,
+    RuntimeNotificationEmailSuppressionPage,
     RuntimeNotificationEmailPreferenceResubscribeInput,
     RuntimeNotificationEmailPreferenceStatus,
     RuntimeNotificationEmailPreferenceUnsubscribeInput,
@@ -7688,7 +7691,7 @@ class CoreContractsTest(unittest.TestCase):
             "updated_by": "runtime-worker",
             "updated_at": now,
         }
-        connection = RecordingConnection(result_sets=[[subscription_row], delivery_row])
+        connection = RecordingConnection(result_sets=[[subscription_row], [], delivery_row])
         repository = PostgresEvidenceRepository(
             connection,
             email_preference_base_url="https://app.example.com/notifications/unsubscribe",
@@ -7781,7 +7784,7 @@ class CoreContractsTest(unittest.TestCase):
             "updated_by": "runtime-console",
             "updated_at": now,
         }
-        connection = RecordingConnection(result_sets=[[subscription_row]])
+        connection = RecordingConnection(result_sets=[[subscription_row], []])
         repository = PostgresEvidenceRepository(connection)
 
         with connection.cursor() as cursor:
@@ -7858,7 +7861,7 @@ class CoreContractsTest(unittest.TestCase):
             "updated_by": "runtime-worker",
             "updated_at": now,
         }
-        connection = RecordingConnection(result_sets=[[subscription_row], delivery_row])
+        connection = RecordingConnection(result_sets=[[subscription_row], [], delivery_row])
         repository = PostgresEvidenceRepository(connection)
 
         with connection.cursor() as cursor:
@@ -7877,6 +7880,89 @@ class CoreContractsTest(unittest.TestCase):
         self.assertNotIn('"muted@example.com"', str(delivery_insert_params[8]))
         self.assertIn(muted_hash, str(delivery_insert_params[8]))
         self.assertIn(muted_hash, str(audit_events[0].output_refs))
+
+    def test_postgres_repository_suppresses_email_notification_delivery_by_project_suppression_hash(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
+        subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
+        muted_hash = runtime_email_body_hash("muted@example.com")
+        notification_row = {
+            "id": notification_id,
+            "project_id": project_id,
+            "notification_type": "runtime_alert",
+            "severity": "critical",
+            "title": "Brand absent in Sydney",
+            "message": "Brand was absent from critical AI search prompts.",
+            "target_type": "runtime_alert",
+            "target_id": "brand_absent:project-1",
+            "recipient_role": "project_member",
+            "status": "unread",
+            "payload": {"alert_type": "brand_absent"},
+            "created_by": "runtime-worker",
+            "created_at": now,
+            "read_at": None,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        subscription_row = {
+            "id": subscription_id,
+            "project_id": project_id,
+            "channel": "email",
+            "endpoint_url": "mailto:ops@example.com,muted@example.com",
+            "event_types": ["runtime_alert"],
+            "severity_threshold": "warning",
+            "status": "active",
+            "metadata": {},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        delivery_row = {
+            "id": "118e5c66-7bb4-558e-ab97-e74ef9928b46",
+            "project_id": project_id,
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "channel": "email",
+            "endpoint_url": "mailto:ops@example.com,muted@example.com",
+            "status": "queued",
+            "attempt_count": 0,
+            "max_attempts": 3,
+            "lease_expires_at": None,
+            "next_attempt_at": None,
+            "response_status": None,
+            "response_body_hash": None,
+            "error_message": None,
+            "payload": {"delivery_version": "runtime_notification_delivery_email_v1"},
+            "created_at": now,
+            "updated_by": "runtime-worker",
+            "updated_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[[subscription_row], [{"recipient_hash": muted_hash}], delivery_row]
+        )
+        repository = PostgresEvidenceRepository(connection)
+
+        with connection.cursor() as cursor:
+            deliveries, audit_events = repository._enqueue_runtime_notification_deliveries(
+                cursor=cursor,
+                notification=notification_row,
+                updated_by="runtime-worker",
+            )
+
+        self.assertEqual(deliveries[0]["channel"], "email")
+        delivery_insert_params = next(
+            params for sql, params in connection.calls if "INSERT INTO runtime_notification_deliveries" in sql
+        )
+        self.assertIn("ops@example.com", str(delivery_insert_params[8]))
+        self.assertNotIn('"muted@example.com"', str(delivery_insert_params[8]))
+        self.assertIn("email_project_suppression_hashes", str(delivery_insert_params[8]))
+        self.assertIn(muted_hash, str(delivery_insert_params[8]))
+        self.assertIn(muted_hash, str(audit_events[0].output_refs))
+        self.assertIn("email_project_suppression_hash_count", str(audit_events[0].output_refs))
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FROM runtime_notification_email_suppressions", executed_sql)
 
     def test_postgres_repository_lists_runtime_notification_deliveries_with_context(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)
@@ -8632,6 +8718,105 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn(recipient_hash, str(update_params))
         self.assertIn(feedback_id, str(update_params))
         self.assertNotIn("ops@example.com", str(update_params))
+
+    def test_postgres_repository_saves_runtime_notification_email_suppression_with_hash_only_audit(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        suppression_id = "29b509ef-0c07-4588-a6ed-e0d25d48cfb2"
+        recipient_hash = runtime_email_body_hash("ops@example.com")
+        suppression_row = {
+            "id": suppression_id,
+            "project_id": project_id,
+            "recipient_hash": recipient_hash,
+            "status": "active",
+            "source": "manual",
+            "source_ref": "support-ticket-1",
+            "metadata": {"source": "contract"},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        connection = RecordingConnection(result_sets=[None, suppression_row])
+
+        record = PostgresEvidenceRepository(connection).save_runtime_notification_email_suppression(
+            RuntimeNotificationEmailSuppressionInput(
+                project_id=project_id,
+                recipient_hash=recipient_hash,
+                status="active",
+                source="manual",
+                source_ref="support-ticket-1",
+                metadata={"source": "contract"},
+                updated_by="runtime-console",
+                reason="manual project suppression",
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeNotificationEmailSuppression)
+        self.assertEqual(record.suppression["recipient_hash"], recipient_hash)
+        self.assertEqual(record.audit_events[0]["event_type"], "runtime_notification_email_suppression_saved")
+        self.assertEqual(record.audit_events[0]["method_version"], "runtime_notification_email_suppression_v1")
+        self.assertEqual(record.audit_events[0]["input_refs"]["recipient_hashes"], [recipient_hash])
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO runtime_notification_email_suppressions", executed_sql)
+        self.assertIn("ON CONFLICT (project_id, recipient_hash) DO UPDATE", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+        self.assertNotIn("ops@example.com", str(connection.calls))
+
+    def test_postgres_repository_lists_runtime_notification_email_suppressions_with_audit_events(self) -> None:
+        now = datetime(2026, 6, 12, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        suppression_id = "29b509ef-0c07-4588-a6ed-e0d25d48cfb2"
+        recipient_hash = runtime_email_body_hash("ops@example.com")
+        suppression_row = {
+            "id": suppression_id,
+            "project_id": project_id,
+            "recipient_hash": recipient_hash,
+            "status": "active",
+            "source": "feedback",
+            "source_ref": "feedback-1",
+            "metadata": {"source": "contract"},
+            "created_by": "runtime-console",
+            "created_at": now,
+            "updated_by": "runtime-console",
+            "updated_at": now,
+        }
+        audit_row = {
+            "id": "2ce4310a-1c5f-4272-8a61-6d8b1aa9ea99",
+            "event_type": "runtime_notification_email_suppression_saved",
+            "project_id": project_id,
+            "actor_type": "user",
+            "actor_id": "runtime-console",
+            "target_type": "runtime_notification_email_suppression",
+            "target_id": suppression_id,
+            "before_hash": "before",
+            "after_hash": "after",
+            "input_refs": {"recipient_hashes": [recipient_hash]},
+            "output_refs": {"runtime_notification_email_suppression_ids": [suppression_id]},
+            "method_version": "runtime_notification_email_suppression_v1",
+            "reason": "manual project suppression",
+            "created_at": now,
+        }
+        connection = RecordingConnection(result_sets=[(1,), [suppression_row], [audit_row]])
+
+        page = PostgresEvidenceRepository(connection).list_runtime_notification_email_suppressions(
+            project_id=project_id,
+            status="active",
+            limit=5,
+            offset=0,
+        )
+
+        self.assertIsInstance(page, RuntimeNotificationEmailSuppressionPage)
+        self.assertEqual(page.total_count, 1)
+        self.assertEqual(page.records[0].suppression["recipient_hash"], recipient_hash)
+        self.assertEqual(page.records[0].audit_events[0]["event_type"], "runtime_notification_email_suppression_saved")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn(
+            "FROM runtime_notification_email_suppressions WHERE project_id = %s AND status = %s",
+            executed_sql,
+        )
+        self.assertIn("target_type = %s AND target_id = %s", executed_sql)
 
     def test_postgres_repository_applies_runtime_notification_email_preference_unsubscribe(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)
