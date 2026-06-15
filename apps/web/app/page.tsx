@@ -1783,6 +1783,9 @@ type AuP0aCredentialClearance = {
     strict_gate_command?: string;
     operator_step_count?: number;
     post_update_validation_command_count?: number;
+    credential_update_contract_version?: string;
+    credential_update_contract_ready?: boolean;
+    credential_update_contract_required_missing_key_count?: number;
     raw_secret_values_allowed?: boolean;
   };
   missing_credential_items?: Array<{
@@ -1797,6 +1800,51 @@ type AuP0aCredentialClearance = {
     blocking_reasons?: string[];
     raw_value_required_in_packet?: boolean;
   }>;
+  credential_update_contract?: {
+    version?: string;
+    ready?: boolean;
+    target_env_file?: string;
+    required_missing_key_count?: number;
+    required_missing_keys?: string[];
+    required_key_items?: Array<{
+      name?: string;
+      env_file_key?: string;
+      owner_hint?: string;
+      target_env_file?: string;
+      currently_present?: boolean;
+      accepted_injection_methods?: string[];
+      post_update_checks?: string[];
+      raw_value_allowed_in_artifact?: boolean;
+    }>;
+    allowed_update_surfaces?: Array<{
+      id?: string;
+      path?: string;
+      bootstrap_command?: string;
+      file_mode_required?: string;
+      commit_allowed?: boolean;
+    }>;
+    allowed_injection_methods?: string[];
+    forbidden_artifact_fields?: string[];
+    redacted_record_fields?: string[];
+    raw_values_allowed_in_artifacts?: boolean;
+    pre_update_commands?: string[];
+    post_update_commands?: string[];
+    strict_gate_commands?: string[];
+    completion_requirements?: {
+      credentials_fulfilled?: boolean;
+      credential_clearance_ready?: boolean;
+      missing_required_count?: number;
+      required_verifiers?: string[];
+    };
+    current_state?: {
+      credentials_fulfilled?: boolean;
+      credential_clearance_ready?: boolean;
+      environment_ready?: boolean;
+      missing_required_count?: number;
+      missing_required?: string[];
+      ready_to_update?: boolean;
+    };
+  };
   operator_steps?: Array<{
     order?: number;
     id?: string;
@@ -6723,6 +6771,11 @@ export default async function Home({
   const p0aCredentialClearanceItems = p0aCredentialClearance?.missing_credential_items || [];
   const p0aCredentialClearanceSteps = p0aCredentialClearance?.operator_steps || [];
   const p0aCredentialClearanceValidation = p0aCredentialClearance?.post_update_validation_sequence || [];
+  const p0aCredentialUpdateContract = p0aCredentialClearance?.credential_update_contract;
+  const p0aCredentialUpdateContractCurrent = p0aCredentialUpdateContract?.current_state;
+  const p0aCredentialUpdateContractMissing = p0aCredentialUpdateContract?.required_missing_keys || [];
+  const p0aCredentialUpdateContractSurfaces = p0aCredentialUpdateContract?.allowed_update_surfaces || [];
+  const p0aCredentialUpdateContractStrictGates = p0aCredentialUpdateContract?.strict_gate_commands || [];
   const p0aRealBatchRequest = data.p0aRealBatchRequest;
   const p0aRealBatchRequestSummary = p0aRealBatchRequest?.summary;
   const p0aRealBatchPhases = p0aRealBatchRequest?.phase_requests || [];
@@ -9410,6 +9463,32 @@ export default async function Home({
             <span>Next command {p0aCredentialClearanceSummary?.next_command || "none"}</span>
             <span>Raw secret allowed {p0aCredentialClearanceSummary?.raw_secret_values_allowed ? "yes" : "no"}</span>
             <span>
+              Update contract{" "}
+              {p0aCredentialClearanceSummary?.credential_update_contract_version ||
+                p0aCredentialUpdateContract?.version ||
+                "none"}
+            </span>
+            <span>
+              Contract ready{" "}
+              {p0aCredentialClearanceSummary?.credential_update_contract_ready ||
+              p0aCredentialUpdateContract?.ready
+                ? "yes"
+                : "no"}
+            </span>
+            <span>
+              Ready to update {p0aCredentialUpdateContractCurrent?.ready_to_update ? "yes" : "no"}
+            </span>
+            <span>
+              Contract missing{" "}
+              {p0aCredentialUpdateContractMissing.join(", ") ||
+                p0aCredentialClearanceMissing.join(", ") ||
+                "none"}
+            </span>
+            <span>
+              Contract raw values allowed{" "}
+              {p0aCredentialUpdateContract?.raw_values_allowed_in_artifacts ? "yes" : "no"}
+            </span>
+            <span>
               Request hash {shortHash(p0aCredentialClearance?.source_artifacts?.credential_request?.hash)}
             </span>
             <span>
@@ -9426,6 +9505,80 @@ export default async function Home({
                 "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_clearance.py docs/runtime_preflight/au-p0a-credential-clearance-latest.json --require-cleared"}
             </span>
           </div>
+          {p0aCredentialUpdateContract ? (
+            <div className="dependencyGroupGrid">
+              <div className="dependencyGroup">
+                <strong>Credential update contract</strong>
+                <span>
+                  {p0aCredentialUpdateContract.version || "contract"} ·{" "}
+                  {p0aCredentialUpdateContract.ready ? "ready" : "blocked"}
+                </span>
+                <small>target {p0aCredentialUpdateContract.target_env_file || "none"}</small>
+                <small>
+                  missing{" "}
+                  {p0aCredentialUpdateContractMissing.slice(0, 4).join(" · ") ||
+                    "none"}
+                </small>
+                <small>
+                  forbidden{" "}
+                  {(p0aCredentialUpdateContract.forbidden_artifact_fields || [])
+                    .slice(0, 5)
+                    .join(" · ") || "none"}
+                </small>
+              </div>
+              <div className="dependencyGroup">
+                <strong>Allowed update surfaces</strong>
+                <span>
+                  {p0aCredentialUpdateContractSurfaces
+                    .map((surface) => surface.id || surface.path || "surface")
+                    .slice(0, 3)
+                    .join(" · ") || "none"}
+                </span>
+                <small>
+                  mode{" "}
+                  {p0aCredentialUpdateContractSurfaces
+                    .map((surface) => surface.file_mode_required || "process")
+                    .slice(0, 3)
+                    .join(" · ") || "none"}
+                </small>
+                <small>
+                  commit allowed{" "}
+                  {p0aCredentialUpdateContractSurfaces.some((surface) => surface.commit_allowed)
+                    ? "yes"
+                    : "no"}
+                </small>
+                <small>
+                  methods{" "}
+                  {(p0aCredentialUpdateContract.allowed_injection_methods || [])
+                    .slice(0, 3)
+                    .join(" · ") || "none"}
+                </small>
+              </div>
+              <div className="dependencyGroup">
+                <strong>Contract strict gates</strong>
+                <span>
+                  {p0aCredentialUpdateContractStrictGates.some((command) =>
+                    command.includes("--require-fulfilled")
+                  )
+                    ? "require fulfilled"
+                    : "missing fulfilled gate"}
+                </span>
+                <small>
+                  {p0aCredentialUpdateContractStrictGates.some((command) =>
+                    command.includes("--require-cleared")
+                  )
+                    ? "require cleared"
+                    : "missing cleared gate"}
+                </small>
+                <small>
+                  pre {(p0aCredentialUpdateContract.pre_update_commands || []).slice(0, 3).join(" -> ") || "none"}
+                </small>
+                <small>
+                  post {(p0aCredentialUpdateContract.post_update_commands || []).slice(0, 3).join(" -> ") || "none"}
+                </small>
+              </div>
+            </div>
+          ) : null}
           {p0aCredentialClearanceItems.length ? (
             <div className="dependencyGroupGrid">
               {p0aCredentialClearanceItems.map((item) => (

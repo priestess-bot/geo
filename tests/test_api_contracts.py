@@ -2147,6 +2147,27 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("OPENAI_API_KEY", payload["summary"]["missing_required"])
         self.assertFalse(payload["summary"]["raw_secret_values_allowed"])
         self.assertEqual(
+            payload["summary"]["credential_update_contract_version"],
+            "au_p0a_credential_update_contract_v1",
+        )
+        self.assertTrue(payload["summary"]["credential_update_contract_ready"])
+        update_contract = payload["credential_update_contract"]
+        self.assertEqual(update_contract["version"], "au_p0a_credential_update_contract_v1")
+        self.assertTrue(update_contract["ready"])
+        self.assertEqual(update_contract["target_env_file"], payload["summary"]["target_env_file"])
+        self.assertEqual(
+            sorted(update_contract["required_missing_keys"]),
+            sorted(payload["summary"]["missing_required"]),
+        )
+        self.assertFalse(update_contract["raw_values_allowed_in_artifacts"])
+        self.assertIn("raw_value", update_contract["forbidden_artifact_fields"])
+        self.assertIn("sha256_prefix", update_contract["redacted_record_fields"])
+        self.assertIn("make verify-au-p0a-env-template", update_contract["pre_update_commands"])
+        self.assertEqual(update_contract["post_update_commands"], payload["post_update_validation_sequence"])
+        self.assertTrue(any("--require-fulfilled" in command for command in update_contract["strict_gate_commands"]))
+        self.assertTrue(any("--require-cleared" in command for command in update_contract["strict_gate_commands"]))
+        self.assertTrue(update_contract["current_state"]["ready_to_update"])
+        self.assertEqual(
             payload["runtime_endpoints"]["p0a_credential_clearance"],
             "GET /v1/p0a-credential-clearance/au",
         )
