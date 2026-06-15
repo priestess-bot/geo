@@ -4465,6 +4465,50 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["limit"], 5)
         self.assertEqual(fake_repository.kwargs["offset"], 1)
 
+    def test_runtime_fidelity_checks_export_endpoint_returns_csv_with_hash_headers(self) -> None:
+        class FakeRepository:
+            def export_runtime_fidelity_checks_csv(self, **kwargs: object) -> RuntimeEvidenceExport:
+                self.kwargs = kwargs
+                return RuntimeEvidenceExport(
+                    export_type="runtime_fidelity_checks_csv",
+                    filename="runtime-fidelity-checks.csv",
+                    media_type="text/csv; charset=utf-8",
+                    content="fidelity_check_id,project_id\ncheck-1,project-1\n",
+                    content_hash="hash-fidelity-csv",
+                    filters={
+                        "project_id": kwargs["project_id"],
+                        "report_export_id": kwargs["report_export_id"],
+                        "status": kwargs["status"],
+                    },
+                    total_count=2,
+                    row_count=1,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get(
+                "/v1/fidelity-checks/runtime/export.csv"
+                "?project_id=project-1&report_export_id=report-1&status=sampled&limit=5",
+                headers={"X-GENO-Actor-Id": "analyst-1"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("check-1", response.text)
+        self.assertEqual(response.headers["x-geno-fidelity-check-export-hash"], "hash-fidelity-csv")
+        self.assertEqual(response.headers["x-geno-fidelity-check-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geno-fidelity-check-report-export-id"], "report-1")
+        self.assertEqual(response.headers["x-geno-fidelity-check-status"], "sampled")
+        self.assertEqual(response.headers["x-geno-fidelity-check-row-count"], "1")
+        self.assertEqual(response.headers["x-geno-fidelity-check-total-count"], "2")
+        self.assertIn('filename="runtime-fidelity-checks.csv"', response.headers["content-disposition"])
+        self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.kwargs["report_export_id"], "report-1")
+        self.assertEqual(fake_repository.kwargs["status"], "sampled")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+        self.assertEqual(fake_repository.kwargs["offset"], 0)
+
     def test_runtime_fidelity_trend_endpoint_passes_filters(self) -> None:
         class FakeRepository:
             def get_runtime_fidelity_trend(self, **kwargs: object) -> RuntimeFidelityTrend:
@@ -9643,6 +9687,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/collection-runs/runtime", payload["persistence"])
         self.assertIn("/v1/collection-runs/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/fidelity-checks/runtime", payload["persistence"])
+        self.assertIn("/v1/fidelity-checks/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/fidelity-checks/runtime/trend", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/evidence-runs/runtime/manual-backfill", payload["persistence"])

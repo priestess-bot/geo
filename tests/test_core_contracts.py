@@ -6478,6 +6478,84 @@ class CoreContractsTest(unittest.TestCase):
         )
         self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
 
+    def test_postgres_repository_exports_runtime_fidelity_checks_csv(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        check_id = "9128c59e-54ca-5ceb-9272-3efe226bd07b"
+        official_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        browser_run_id = "4c498fd9-7aac-5f62-b29f-f15450c836d3"
+        page = RuntimeFidelityCheckPage(
+            total_count=1,
+            limit=10,
+            offset=0,
+            records=(
+                RuntimeFidelityCheck(
+                    fidelity_check={
+                        "id": check_id,
+                        "project_id": project_id,
+                        "report_export_id": report_export_id,
+                        "status": "sampled",
+                        "official_api_records": 1,
+                        "browser_records": 1,
+                        "comparable_prompt_city_pairs": 1,
+                        "mismatch_count": 1,
+                        "difference_rate": 1.0,
+                        "payload": {"summary": "official answer text", "mismatches": [{"prompt": "raw prompt"}]},
+                        "payload_hash": "f" * 64,
+                        "answer_run_ids": [official_run_id, browser_run_id],
+                        "checked_by": "runtime-console",
+                        "checked_at": now,
+                    },
+                    audit_events=(
+                        {
+                            "id": "d0ba559d-13f3-4b79-a984-b39cb273b6a4",
+                            "event_type": "api_browser_fidelity_checked",
+                            "project_id": project_id,
+                            "target_type": "api_browser_fidelity_check",
+                            "target_id": check_id,
+                            "after_hash": "after",
+                            "method_version": "api_browser_fidelity_check_v1",
+                            "created_at": now,
+                        },
+                    ),
+                ),
+            ),
+        )
+        repository = PostgresEvidenceRepository(RecordingConnection())
+        with patch.object(repository, "list_runtime_fidelity_checks", return_value=page):
+            export = repository.export_runtime_fidelity_checks_csv(
+                project_id=project_id,
+                report_export_id=report_export_id,
+                status="sampled",
+                limit=10,
+                offset=0,
+            )
+
+        self.assertEqual(export.export_type, "runtime_fidelity_checks_csv")
+        self.assertEqual(export.filename, "runtime-fidelity-checks.csv")
+        self.assertEqual(export.media_type, "text/csv; charset=utf-8")
+        self.assertEqual(export.total_count, 1)
+        self.assertEqual(export.row_count, 1)
+        self.assertEqual(export.filters["project_id"], project_id)
+        self.assertEqual(export.filters["report_export_id"], report_export_id)
+        self.assertEqual(export.filters["status"], "sampled")
+        self.assertIn("fidelity_check_id,project_id,report_export_id,status", export.content)
+        self.assertIn(check_id, export.content)
+        self.assertIn(report_export_id, export.content)
+        self.assertIn("sampled", export.content)
+        self.assertIn("mismatches|summary", export.content)
+        self.assertIn("f" * 64, export.content)
+        self.assertIn(official_run_id, export.content)
+        self.assertIn(browser_run_id, export.content)
+        self.assertIn(_artifact_hash("runtime-console"), export.content)
+        self.assertIn("api_browser_fidelity_checked", export.content)
+        self.assertIn("api_browser_fidelity_check_v1", export.content)
+        self.assertNotIn("official answer text", export.content)
+        self.assertNotIn("raw prompt", export.content)
+        self.assertNotIn("runtime-console,", export.content)
+        self.assertEqual(export.content_hash, hashlib.sha256(export.content.encode("utf-8")).hexdigest())
+
     def test_postgres_repository_builds_runtime_fidelity_trend(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

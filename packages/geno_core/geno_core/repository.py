@@ -1589,6 +1589,68 @@ def _render_runtime_collection_runs_csv(page: RuntimeCollectionRunPage) -> str:
     return output.getvalue()
 
 
+def _render_runtime_fidelity_checks_csv(page: RuntimeFidelityCheckPage) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "fidelity_check_id",
+            "project_id",
+            "report_export_id",
+            "status",
+            "official_api_records",
+            "browser_records",
+            "comparable_prompt_city_pairs",
+            "mismatch_count",
+            "difference_rate",
+            "payload_hash",
+            "payload_key_count",
+            "payload_keys",
+            "answer_run_count",
+            "answer_run_ids",
+            "checked_by_hash",
+            "checked_at",
+            "audit_event_count",
+            "latest_audit_event_type",
+            "latest_audit_method_version",
+            "latest_audit_after_hash",
+        ],
+    )
+    writer.writeheader()
+    for record in page.records:
+        fidelity_check = record.fidelity_check
+        latest_audit_event = _latest_audit_event(record.audit_events)
+        payload = fidelity_check.get("payload") if isinstance(fidelity_check.get("payload"), dict) else {}
+        answer_run_ids = fidelity_check.get("answer_run_ids")
+        if not isinstance(answer_run_ids, (list, tuple)):
+            answer_run_ids = ()
+        writer.writerow(
+            {
+                "fidelity_check_id": fidelity_check.get("id") or "",
+                "project_id": fidelity_check.get("project_id") or "",
+                "report_export_id": fidelity_check.get("report_export_id") or "",
+                "status": fidelity_check.get("status") or "",
+                "official_api_records": fidelity_check.get("official_api_records") or 0,
+                "browser_records": fidelity_check.get("browser_records") or 0,
+                "comparable_prompt_city_pairs": fidelity_check.get("comparable_prompt_city_pairs") or 0,
+                "mismatch_count": fidelity_check.get("mismatch_count") or 0,
+                "difference_rate": fidelity_check.get("difference_rate") if fidelity_check.get("difference_rate") is not None else "",
+                "payload_hash": fidelity_check.get("payload_hash") or "",
+                "payload_key_count": len(payload),
+                "payload_keys": _pipe_join(sorted(str(key) for key in payload)),
+                "answer_run_count": len(answer_run_ids),
+                "answer_run_ids": _pipe_join(answer_run_ids),
+                "checked_by_hash": _hash_text_field(fidelity_check.get("checked_by")),
+                "checked_at": fidelity_check.get("checked_at") or "",
+                "audit_event_count": len(record.audit_events),
+                "latest_audit_event_type": latest_audit_event.get("event_type") or "",
+                "latest_audit_method_version": latest_audit_event.get("method_version") or "",
+                "latest_audit_after_hash": latest_audit_event.get("after_hash") or "",
+            }
+        )
+    return output.getvalue()
+
+
 def _render_runtime_project_lifecycle_events_csv(page: RuntimeProjectLifecycleEventPage) -> str:
     output = StringIO()
     writer = csv.DictWriter(
@@ -9435,6 +9497,44 @@ class PostgresEvidenceRepository:
             checks = _rows_dict(cursor.fetchall(), API_BROWSER_FIDELITY_CHECK_COLUMNS)
             records = tuple(self._load_runtime_fidelity_check(cursor=cursor, fidelity_check=check) for check in checks)
         return RuntimeFidelityCheckPage(total_count=total_count, limit=limit, offset=offset, records=records)
+
+    def export_runtime_fidelity_checks_csv(
+        self,
+        *,
+        project_id: str | None = None,
+        report_export_id: str | None = None,
+        status: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> RuntimeEvidenceExport:
+        normalized_project_id = project_id.strip() if project_id else None
+        normalized_report_export_id = report_export_id.strip() if report_export_id else None
+        normalized_status = status.strip() if status else None
+        page = self.list_runtime_fidelity_checks(
+            project_id=normalized_project_id,
+            report_export_id=normalized_report_export_id,
+            status=normalized_status,
+            limit=limit,
+            offset=offset,
+        )
+        content = _render_runtime_fidelity_checks_csv(page)
+        filters = {
+            "project_id": normalized_project_id,
+            "report_export_id": normalized_report_export_id,
+            "status": normalized_status,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+        return RuntimeEvidenceExport(
+            export_type="runtime_fidelity_checks_csv",
+            filename="runtime-fidelity-checks.csv",
+            media_type="text/csv; charset=utf-8",
+            content=content,
+            content_hash=_artifact_hash(content),
+            filters={key: value for key, value in filters.items() if value is not None},
+            total_count=page.total_count,
+            row_count=len(page.records),
+        )
 
     def get_runtime_fidelity_trend(
         self,

@@ -3555,6 +3555,7 @@ const endpoints = {
   collectionRuns: "/v1/collection-runs/runtime",
   collectionRunsExport: "/v1/collection-runs/runtime/export.csv",
   fidelityChecks: "/v1/fidelity-checks/runtime",
+  fidelityExport: "/v1/fidelity-checks/runtime/export.csv",
   fidelityTrend: "/v1/fidelity-checks/runtime/trend",
   evidenceExport: "/v1/evidence-runs/runtime/export.csv",
   entityAliases: "/v1/entity-aliases/runtime",
@@ -5420,6 +5421,9 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     fidelityChecks: runtimePath(endpoints.fidelityChecks, {
       limit: 5
     }),
+    fidelityExport: runtimePath(endpoints.fidelityExport, {
+      limit: 200
+    }),
     fidelityTrend: runtimePath(endpoints.fidelityTrend, {
       limit: 20
     }),
@@ -5576,6 +5580,10 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.fidelityChecks = runtimePath(endpoints.fidelityChecks, {
     ...selectedProjectParams,
     limit: 5
+  });
+  paths.fidelityExport = runtimePath(endpoints.fidelityExport, {
+    ...selectedProjectParams,
+    limit: 200
   });
   paths.fidelityTrend = runtimePath(endpoints.fidelityTrend, {
     ...selectedProjectParams,
@@ -6854,6 +6862,7 @@ export default async function Home({
   const projectMembersExportUrl = `${displayUrl}${paths.projectMembersExport}`;
   const projectMemberInvitationsExportUrl = `${displayUrl}${paths.projectMemberInvitationsExport}`;
   const collectionRunsExportUrl = `${displayUrl}${paths.collectionRunsExport}`;
+  const fidelityExportUrl = `${displayUrl}${paths.fidelityExport}`;
   const actionPlansExportUrl = `${displayUrl}${paths.actionsExport}`;
   const runtimeAlertsExportUrl = `${displayUrl}${paths.alertsExport}`;
   const humanReviewsExportUrl = `${displayUrl}${paths.humanReviewsExport}`;
@@ -12329,6 +12338,7 @@ export default async function Home({
                   <Fact label="Trend window" value={fidelityTrendWindow} />
                   <Fact label="Fidelity audit" value={reportFidelityAudit} />
                   <Fact label="Fidelity query" value={paths.fidelityChecks} />
+                  <Fact label="Fidelity CSV" value={paths.fidelityExport} />
                   <Fact label="Trend query" value={paths.fidelityTrend} />
                   <Fact label="Payload hash" value={shortId(runtimeFidelity?.payload_hash)} />
                   <Fact label="Access distribution" value={formatCounts(reportFrozenAccessMethodCounts)} />
@@ -12340,6 +12350,9 @@ export default async function Home({
                   Google remains outside the main scoring denominator until a stored Google AIO / AI Mode spike gate passes.
                   API-vs-browser fidelity is frozen as a runtime check and audited with api_browser_fidelity_checked.
                 </small>
+                <div className="linkRow">
+                  <a href={fidelityExportUrl}>Download fidelity CSV</a>
+                </div>
               </section>
 
               <section className="reportSection">
