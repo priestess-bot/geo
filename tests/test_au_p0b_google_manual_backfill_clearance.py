@@ -193,6 +193,39 @@ class AuP0bGoogleManualBackfillClearanceTest(unittest.TestCase):
         self.assertEqual(verification_result["status"], "fail")
         self.assertIn("summary_record_count_mismatch", verification_result["errors"])
 
+    def test_path_verifier_detects_stale_manual_backfill_source_file(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            request_path, verification_path, fulfillment_path, clearance_path, _request, _verification, _fulfillment, _external = (
+                self._build_sources(temp_dir, ready=False)
+            )
+            output_path = Path(temp_dir) / "manual-clearance.json"
+            packet = build_au_p0b_google_manual_backfill_clearance(
+                manual_backfill_request_path=request_path,
+                manual_backfill_verification_path=verification_path,
+                manual_backfill_fulfillment_path=fulfillment_path,
+                external_dependency_clearance_path=clearance_path,
+                manual_jsonl_path=Path(temp_dir) / "missing-manual.jsonl",
+                output_path=output_path,
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            output_path.write_text(json.dumps(packet), encoding="utf-8")
+            stale_verification = json.loads(verification_path.read_text(encoding="utf-8"))
+            stale_verification["verification_hash"] = "0" * 64
+            verification_path.write_text(json.dumps(stale_verification), encoding="utf-8")
+
+            memory_verification = verify_au_p0b_google_manual_backfill_clearance(packet)
+            path_verification = verify_au_p0b_google_manual_backfill_clearance(packet, path=output_path)
+            explicit_verification = verify_au_p0b_google_manual_backfill_clearance(packet, verify_current_files=True)
+
+        self.assertEqual(memory_verification["status"], "pass")
+        self.assertFalse(memory_verification["current_file_check_enabled"])
+        self.assertEqual(path_verification["status"], "fail")
+        self.assertTrue(path_verification["current_file_check_enabled"])
+        self.assertIn("source_manual_backfill_verification_current_hash_mismatch", path_verification["errors"])
+        self.assertIn("source_manual_backfill_verification_file_sha256_mismatch", path_verification["errors"])
+        self.assertEqual(explicit_verification["status"], "fail")
+        self.assertTrue(explicit_verification["current_file_check_enabled"])
+
     def test_cli_writes_and_verifies_clearance_json(self) -> None:
         with TemporaryDirectory() as temp_dir:
             request_path, verification_path, fulfillment_path, clearance_path, _request, _verification, _fulfillment, _external = (

@@ -59,6 +59,14 @@ def compute_p0b_google_environment_clearance_hash(payload: dict[str, Any]) -> st
     return hashlib.sha256(_stable_bytes(payload_for_hash)).hexdigest()
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _as_dict(value: object) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
@@ -103,7 +111,13 @@ def _load_json(path: Path) -> tuple[dict[str, Any] | None, dict[str, Any]]:
         }
     if not isinstance(payload, dict):
         return None, {"path": str(path), "exists": True, "source": "invalid_file", "errors": ["not_json_object"]}
-    return payload, {"path": str(path), "exists": True, "source": "existing_file", "errors": []}
+    return payload, {
+        "path": str(path),
+        "exists": True,
+        "source": "existing_file",
+        "file_sha256": _file_sha256(path),
+        "errors": [],
+    }
 
 
 def _load_or_build_environment_request(

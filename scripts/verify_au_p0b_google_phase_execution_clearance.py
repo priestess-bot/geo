@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -81,6 +82,64 @@ def _strings(value: object) -> list[str]:
     return [str(item) for item in _as_list(value)]
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _load_json_file(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _source_file_sha256(source: dict[str, Any]) -> str:
+    source_meta = _as_dict(source.get("source"))
+    return str(source_meta.get("file_sha256") or source.get("file_sha256") or "")
+
+
+def _source_declares_existing(source: dict[str, Any]) -> bool:
+    source_meta = _as_dict(source.get("source"))
+    return source_meta.get("exists") is True or source_meta.get("source") == "existing_file"
+
+
+def _check_current_source_file(
+    errors: list[str],
+    *,
+    source_key: str,
+    source: dict[str, Any],
+    hash_field: str,
+    expected_hash: str,
+) -> None:
+    source_path_value = str(source.get("path") or "")
+    if not source_path_value:
+        errors.append(f"{source_key}_source_path_missing")
+        return
+
+    source_path = Path(source_path_value)
+    if source_path.is_file():
+        current_payload = _load_json_file(source_path)
+        if not current_payload:
+            errors.append(f"{source_key}_current_json_invalid")
+        else:
+            current_hash = str(current_payload.get(hash_field) or "")
+            if not current_hash:
+                errors.append(f"{source_key}_current_hash_missing")
+            elif expected_hash != current_hash:
+                errors.append(f"{source_key}_current_hash_mismatch")
+
+        expected_file_sha = _source_file_sha256(source)
+        if expected_file_sha and expected_file_sha != _file_sha256(source_path):
+            errors.append(f"{source_key}_file_sha256_mismatch")
+    elif _source_declares_existing(source):
+        errors.append(f"{source_key}_source_file_missing")
+
+
 def _find_forbidden_fields(value: object, *, path: str = "$") -> list[str]:
     findings: list[str] = []
     if isinstance(value, dict):
@@ -127,6 +186,7 @@ def verify_au_p0b_google_phase_execution_clearance(
     *,
     path: Path | None = None,
     require_cleared: bool = False,
+    verify_current_files: bool | None = None,
 ) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {
@@ -135,8 +195,10 @@ def verify_au_p0b_google_phase_execution_clearance(
             "hash_valid": False,
             "phase_execution_clearance_packet_ready": False,
             "phase_execution_clearance_ready": False,
+            "current_file_check_enabled": path is not None if verify_current_files is None else verify_current_files,
         }
 
+    current_file_check_enabled = path is not None if verify_current_files is None else verify_current_files
     errors: list[str] = []
     for field in REQUIRED_FIELDS:
         if field not in payload:
@@ -237,6 +299,35 @@ def verify_au_p0b_google_phase_execution_clearance(
     for key, expected_field in expected_hash_fields.items():
         if _as_dict(source_artifacts.get(key)).get("hash_field") != expected_field:
             errors.append(f"source_hash_field_invalid:{key}")
+    if current_file_check_enabled:
+        _check_current_source_file(
+            errors,
+            source_key="source_phase_execution_request",
+            source=request_source,
+            hash_field="p0b_google_phase_execution_request_packet_hash",
+            expected_hash=str(request_source.get("hash") or ""),
+        )
+        _check_current_source_file(
+            errors,
+            source_key="source_p0b_google_execution_checklist",
+            source=checklist_source,
+            hash_field="google_execution_checklist_hash",
+            expected_hash=str(checklist_source.get("hash") or ""),
+        )
+        _check_current_source_file(
+            errors,
+            source_key="source_phase_execution_fulfillment",
+            source=fulfillment_source,
+            hash_field="p0b_google_phase_execution_fulfillment_hash",
+            expected_hash=str(fulfillment_source.get("hash") or ""),
+        )
+        _check_current_source_file(
+            errors,
+            source_key="source_clearance",
+            source=clearance_source,
+            hash_field="clearance_execution_hash",
+            expected_hash=str(clearance_source.get("hash") or ""),
+        )
 
     blocking_reasons = _blocking_reasons(items)
     if summary.get("required_count") != len(required_items):
@@ -426,6 +517,7 @@ def verify_au_p0b_google_phase_execution_clearance(
         "p0b_google_phase_execution_clearance_hash": expected_hash if isinstance(expected_hash, str) else "",
         "computed_p0b_google_phase_execution_clearance_hash": computed_hash,
         "hash_valid": hash_valid,
+        "current_file_check_enabled": current_file_check_enabled,
         "phase_execution_clearance_packet_ready": expected_packet_ready,
         "phase_execution_clearance_ready": expected_clearance_ready,
         "phase_execution_fulfilled": phase_execution_fulfilled,

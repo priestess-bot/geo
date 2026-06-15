@@ -193,8 +193,30 @@ au-delivery-evidence-refresh:
 	$(MAKE) verify-au-p0a-env; \
 	$(MAKE) au-p0a-credential-fulfillment; \
 	$(MAKE) verify-au-p0a-credential-fulfillment; \
+	$(MAKE) au-external-dependency-handoff; \
+	$(MAKE) verify-au-external-dependency-handoff; \
+	$(MAKE) au-external-dependency-clearance; \
+	$(MAKE) verify-au-external-dependency-clearance; \
 	$(MAKE) au-p0a-credential-clearance; \
 	$(MAKE) verify-au-p0a-credential-clearance; \
+	$(MAKE) au-p0a-real-batch-fulfillment; \
+	$(MAKE) verify-au-p0a-real-batch-fulfillment; \
+	$(MAKE) au-p0a-real-batch-clearance; \
+	$(MAKE) verify-au-p0a-real-batch-clearance; \
+	$(MAKE) au-p0b-google-environment-fulfillment; \
+	$(MAKE) verify-au-p0b-google-environment-fulfillment; \
+	$(MAKE) au-p0b-google-environment-clearance; \
+	$(MAKE) verify-au-p0b-google-environment-clearance; \
+	$(MAKE) au-p0b-google-manual-backfill-fulfillment; \
+	$(MAKE) verify-au-p0b-google-manual-backfill-fulfillment; \
+	$(MAKE) au-p0b-google-manual-backfill-clearance; \
+	$(MAKE) verify-au-p0b-google-manual-backfill-clearance; \
+	$(MAKE) au-p0b-google-phase-execution-fulfillment; \
+	$(MAKE) verify-au-p0b-google-phase-execution-fulfillment; \
+	$(MAKE) au-p0b-google-phase-execution-clearance; \
+	$(MAKE) verify-au-p0b-google-phase-execution-clearance; \
+	$(MAKE) au-next-work-item; \
+	$(MAKE) verify-au-next-work-item; \
 	$(MAKE) au-delivery-progress; \
 	$(MAKE) verify-au-delivery-progress; \
 	$(MAKE) au-customer-handoff-clearance; \

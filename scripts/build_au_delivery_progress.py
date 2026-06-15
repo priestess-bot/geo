@@ -540,19 +540,28 @@ def build_au_delivery_progress(
     )
     p0a_real_batch_clearance_verifier = verify_au_p0a_real_batch_clearance(
         p0a_real_batch_clearance,
-        path=p0a_real_batch_clearance_path,
+        path=_path_for_current_file_check(p0a_real_batch_clearance_source, p0a_real_batch_clearance_path),
     )
     p0b_google_environment_clearance_verifier = verify_au_p0b_google_environment_clearance(
         p0b_google_environment_clearance,
-        path=p0b_google_environment_clearance_path,
+        path=_path_for_current_file_check(
+            p0b_google_environment_clearance_source,
+            p0b_google_environment_clearance_path,
+        ),
     )
     p0b_google_manual_backfill_clearance_verifier = verify_au_p0b_google_manual_backfill_clearance(
         p0b_google_manual_backfill_clearance,
-        path=p0b_google_manual_backfill_clearance_path,
+        path=_path_for_current_file_check(
+            p0b_google_manual_backfill_clearance_source,
+            p0b_google_manual_backfill_clearance_path,
+        ),
     )
     p0b_google_phase_execution_clearance_verifier = verify_au_p0b_google_phase_execution_clearance(
         p0b_google_phase_execution_clearance,
-        path=p0b_google_phase_execution_clearance_path,
+        path=_path_for_current_file_check(
+            p0b_google_phase_execution_clearance_source,
+            p0b_google_phase_execution_clearance_path,
+        ),
     )
 
     readiness_summary = _as_dict(customer_handoff_readiness.get("summary"))

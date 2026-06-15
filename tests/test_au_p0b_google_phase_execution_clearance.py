@@ -196,6 +196,38 @@ class AuP0bGooglePhaseExecutionClearanceTest(unittest.TestCase):
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_ready_phase_count_mismatch", verification["errors"])
 
+    def test_path_verifier_detects_stale_phase_execution_source_file(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            request_path, checklist_path, fulfillment_path, clearance_path, _request, _checklist, _fulfillment, _external = (
+                self._build_sources(temp_dir, ready=False)
+            )
+            output_path = Path(temp_dir) / "phase-clearance.json"
+            packet = build_au_p0b_google_phase_execution_clearance(
+                phase_execution_request_path=request_path,
+                p0b_google_execution_checklist_path=checklist_path,
+                phase_execution_fulfillment_path=fulfillment_path,
+                external_dependency_clearance_path=clearance_path,
+                output_path=output_path,
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            output_path.write_text(json.dumps(packet), encoding="utf-8")
+            stale_request = json.loads(request_path.read_text(encoding="utf-8"))
+            stale_request["p0b_google_phase_execution_request_packet_hash"] = "0" * 64
+            request_path.write_text(json.dumps(stale_request), encoding="utf-8")
+
+            memory_verification = verify_au_p0b_google_phase_execution_clearance(packet)
+            path_verification = verify_au_p0b_google_phase_execution_clearance(packet, path=output_path)
+            explicit_verification = verify_au_p0b_google_phase_execution_clearance(packet, verify_current_files=True)
+
+        self.assertEqual(memory_verification["status"], "pass")
+        self.assertFalse(memory_verification["current_file_check_enabled"])
+        self.assertEqual(path_verification["status"], "fail")
+        self.assertTrue(path_verification["current_file_check_enabled"])
+        self.assertIn("source_phase_execution_request_current_hash_mismatch", path_verification["errors"])
+        self.assertIn("source_phase_execution_request_file_sha256_mismatch", path_verification["errors"])
+        self.assertEqual(explicit_verification["status"], "fail")
+        self.assertTrue(explicit_verification["current_file_check_enabled"])
+
     def test_cli_writes_and_verifies_clearance_json(self) -> None:
         with TemporaryDirectory() as temp_dir:
             request_path, checklist_path, fulfillment_path, clearance_path, _request, _checklist, _fulfillment, _external = (

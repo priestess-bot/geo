@@ -174,6 +174,38 @@ class AuP0aRealBatchClearanceTest(unittest.TestCase):
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_phase_count_mismatch", verification["errors"])
 
+    def test_path_verifier_detects_stale_real_batch_source_file(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            request_path, checklist_path, fulfillment_path, clearance_path, _request, _checklist, _fulfillment, _external = (
+                self._build_sources(temp_dir, ready=False)
+            )
+            output_path = Path(temp_dir) / "real-batch-clearance.json"
+            packet = build_au_p0a_real_batch_clearance(
+                real_batch_request_path=request_path,
+                p0a_execution_checklist_path=checklist_path,
+                real_batch_fulfillment_path=fulfillment_path,
+                external_dependency_clearance_path=clearance_path,
+                output_path=output_path,
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            output_path.write_text(json.dumps(packet), encoding="utf-8")
+            stale_fulfillment = json.loads(fulfillment_path.read_text(encoding="utf-8"))
+            stale_fulfillment["p0a_real_batch_fulfillment_hash"] = "0" * 64
+            fulfillment_path.write_text(json.dumps(stale_fulfillment), encoding="utf-8")
+
+            memory_verification = verify_au_p0a_real_batch_clearance(packet)
+            path_verification = verify_au_p0a_real_batch_clearance(packet, path=output_path)
+            explicit_verification = verify_au_p0a_real_batch_clearance(packet, verify_current_files=True)
+
+        self.assertEqual(memory_verification["status"], "pass")
+        self.assertFalse(memory_verification["current_file_check_enabled"])
+        self.assertEqual(path_verification["status"], "fail")
+        self.assertTrue(path_verification["current_file_check_enabled"])
+        self.assertIn("source_fulfillment_current_hash_mismatch", path_verification["errors"])
+        self.assertIn("source_fulfillment_file_sha256_mismatch", path_verification["errors"])
+        self.assertEqual(explicit_verification["status"], "fail")
+        self.assertTrue(explicit_verification["current_file_check_enabled"])
+
     def test_cli_writes_and_verifies_clearance_json(self) -> None:
         with TemporaryDirectory() as temp_dir:
             request_path, checklist_path, fulfillment_path, clearance_path, _request, _checklist, _fulfillment, _external_clearance = (
