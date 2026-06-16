@@ -197,6 +197,8 @@ au-delivery-evidence-refresh:
 	set -e; \
 	$(MAKE) au-p0a-env; \
 	$(MAKE) verify-au-p0a-env; \
+	$(MAKE) au-p0a-credential-request; \
+	$(MAKE) verify-au-p0a-credential-request; \
 	$(MAKE) au-p0a-credential-fulfillment; \
 	$(MAKE) verify-au-p0a-credential-fulfillment; \
 	$(MAKE) au-p0b-google-manual-backfill-evidence; \

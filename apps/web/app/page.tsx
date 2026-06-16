@@ -1707,6 +1707,33 @@ type AuP0aCredentialRequest = {
     forbidden_exact_secret_fields_redacted?: boolean;
     next_command?: string;
     post_update_verification_command?: string;
+    credential_update_completion_contract_ready?: boolean;
+    credential_update_receipt_required?: boolean;
+    credential_update_receipt_endpoint?: string;
+    credential_update_receipt_strict_gate?: string;
+    post_update_validation_command_count?: number;
+  };
+  credential_update_completion_contract?: {
+    version?: string;
+    ready?: boolean;
+    required_missing_key_count?: number;
+    required_missing_keys?: string[];
+    completion_receipt_required?: boolean;
+    credential_update_receipt_complete_required?: boolean;
+    post_update_validation_command_count?: number;
+    strict_gate_commands?: string[];
+    runtime_endpoints?: {
+      p0a_credential_fulfillment?: string;
+      p0a_credential_clearance?: string;
+      p0a_credential_update_receipt?: string;
+      delivery_progress?: string;
+    };
+    redaction_policy?: {
+      raw_secret_values_allowed?: boolean;
+      raw_database_url_allowed?: boolean;
+      raw_provider_response_allowed?: boolean;
+      secret_redacted?: boolean;
+    };
   };
   requested_credentials?: Array<{
     name: string;
@@ -1723,11 +1750,16 @@ type AuP0aCredentialRequest = {
   }>;
   setup_commands?: string[];
   verification_commands?: string[];
+  post_update_validation_sequence?: string[];
   evidence_outputs?: string[];
   runtime_endpoints?: {
     p0a_credential_request?: string;
     p0a_execution_checklist?: string;
     p0a_environment_checklist?: string;
+    p0a_credential_fulfillment?: string;
+    p0a_credential_clearance?: string;
+    p0a_credential_update_receipt?: string;
+    delivery_progress?: string;
     next_work_item?: string;
     external_dependency_handoff?: string;
   };
@@ -6893,9 +6925,14 @@ export default async function Home({
   const missingP0aCredentials = p0aExecutionSummary?.credential_handoff_missing_required || [];
   const p0aCredentialRequest = data.p0aCredentialRequest;
   const p0aCredentialRequestSummary = p0aCredentialRequest?.summary;
+  const p0aCredentialCompletionContract = p0aCredentialRequest?.credential_update_completion_contract;
   const requestedP0aCredentials = p0aCredentialRequest?.requested_credentials || [];
   const p0aCredentialRequestMissing = p0aCredentialRequestSummary?.missing_required || [];
   const p0aCredentialRequestEvidenceOutputs = p0aCredentialRequest?.evidence_outputs || [];
+  const p0aCredentialCompletionStrictGate =
+    p0aCredentialCompletionContract?.strict_gate_commands?.find((command) => command.includes("--require-complete")) ||
+    p0aCredentialRequestSummary?.credential_update_receipt_strict_gate ||
+    "";
   const p0aCredentialFulfillment = data.p0aCredentialFulfillment;
   const p0aCredentialFulfillmentSummary = p0aCredentialFulfillment?.summary;
   const p0aCredentialFulfillmentItems = p0aCredentialFulfillment?.credential_fulfillment_items || [];
@@ -9545,6 +9582,16 @@ export default async function Home({
             <span>Design partner {p0aCredentialRequest?.ready_for_design_partner ? "ready" : "blocked"}</span>
             <span>Missing required {p0aCredentialRequestSummary?.missing_required_count || 0}</span>
             <span>Requested items {p0aCredentialRequestSummary?.credential_item_count || 0}</span>
+            <span>
+              Completion contract{" "}
+              {p0aCredentialRequestSummary?.credential_update_completion_contract_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              Receipt required {p0aCredentialRequestSummary?.credential_update_receipt_required ? "yes" : "no"}
+            </span>
+            <span>
+              Post-update validations {p0aCredentialRequestSummary?.post_update_validation_command_count || 0}
+            </span>
             <span>Raw secret allowed {p0aCredentialRequestSummary?.raw_secret_values_allowed ? "yes" : "no"}</span>
           </div>
           <div className="handoffBoundary">
@@ -9563,6 +9610,21 @@ export default async function Home({
             </span>
             <span>Next command {p0aCredentialRequestSummary?.next_command || "none"}</span>
             <span>Post-update verifier {p0aCredentialRequestSummary?.post_update_verification_command || "none"}</span>
+            <span>
+              Receipt endpoint{" "}
+              {p0aCredentialRequestSummary?.credential_update_receipt_endpoint ||
+                p0aCredentialRequest?.runtime_endpoints?.p0a_credential_update_receipt ||
+                "GET /v1/p0a-credential-update-receipt/au"}
+            </span>
+            <span>Receipt hard gate {p0aCredentialCompletionStrictGate || "none"}</span>
+            <span>
+              Contract missing{" "}
+              {(p0aCredentialCompletionContract?.required_missing_keys || []).join(", ") || "none"}
+            </span>
+            <span>
+              Completion raw secret allowed{" "}
+              {p0aCredentialCompletionContract?.redaction_policy?.raw_secret_values_allowed ? "yes" : "no"}
+            </span>
             <span>
               Source checklist hash{" "}
               {shortHash(p0aCredentialRequest?.source_p0a_execution_checklist?.p0a_execution_checklist_hash)}

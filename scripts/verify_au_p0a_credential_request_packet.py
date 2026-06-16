@@ -12,10 +12,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.build_au_p0a_credential_request_packet import (  # noqa: E402
+    COMPLETION_CONTRACT_VERSION,
+    COMPLETION_EVIDENCE_OUTPUTS,
+    COMPLETION_STRICT_GATE_COMMANDS,
     DEFAULT_OUTPUT_PATH,
     PACKET_VERSION,
     compute_p0a_credential_request_packet_hash,
 )
+from scripts.build_au_p0a_env_report import POST_UPDATE_VALIDATION_COMMANDS  # noqa: E402
 
 
 REQUIRED_FIELDS = (
@@ -32,6 +36,8 @@ REQUIRED_FIELDS = (
     "requested_credentials",
     "setup_commands",
     "verification_commands",
+    "post_update_validation_sequence",
+    "credential_update_completion_contract",
     "evidence_outputs",
     "redaction_policy",
     "runtime_endpoints",
@@ -118,6 +124,10 @@ def verify_au_p0a_credential_request_packet(
     requested_credentials = [_as_dict(item) for item in _as_list(payload.get("requested_credentials"))]
     setup_commands = _string_list(payload.get("setup_commands"))
     verification_commands = _string_list(payload.get("verification_commands"))
+    post_update_validation_sequence = _string_list(payload.get("post_update_validation_sequence"))
+    completion_contract = _as_dict(payload.get("credential_update_completion_contract"))
+    completion_contract_endpoints = _as_dict(completion_contract.get("runtime_endpoints"))
+    completion_contract_redaction = _as_dict(completion_contract.get("redaction_policy"))
     evidence_outputs = _string_list(payload.get("evidence_outputs"))
     redaction_policy = _as_dict(payload.get("redaction_policy"))
     endpoints = _as_dict(payload.get("runtime_endpoints"))
@@ -167,6 +177,8 @@ def verify_au_p0a_credential_request_packet(
         errors.append("summary_setup_command_count_mismatch")
     if summary.get("verification_command_count") != len(verification_commands):
         errors.append("summary_verification_command_count_mismatch")
+    if summary.get("post_update_validation_command_count") != len(POST_UPDATE_VALIDATION_COMMANDS):
+        errors.append("summary_post_update_validation_command_count_mismatch")
     if summary.get("evidence_output_count") != len(evidence_outputs):
         errors.append("summary_evidence_output_count_mismatch")
     if summary.get("raw_secret_values_allowed") is not False:
@@ -177,6 +189,57 @@ def verify_au_p0a_credential_request_packet(
         errors.append("summary_next_command_mismatch")
     if verification_commands and summary.get("post_update_verification_command") != verification_commands[0]:
         errors.append("summary_post_update_verification_command_mismatch")
+    if summary.get("credential_update_completion_contract_ready") is not expected_ready:
+        errors.append("summary_completion_contract_ready_mismatch")
+    if summary.get("credential_update_receipt_required") is not True:
+        errors.append("summary_credential_update_receipt_required_missing")
+    if summary.get("credential_update_receipt_endpoint") != "GET /v1/p0a-credential-update-receipt/au":
+        errors.append("summary_credential_update_receipt_endpoint_invalid")
+    if summary.get("credential_update_receipt_strict_gate") != COMPLETION_STRICT_GATE_COMMANDS[-1]:
+        errors.append("summary_credential_update_receipt_strict_gate_mismatch")
+
+    if post_update_validation_sequence != list(POST_UPDATE_VALIDATION_COMMANDS):
+        errors.append("post_update_validation_sequence_mismatch")
+    if completion_contract.get("version") != COMPLETION_CONTRACT_VERSION:
+        errors.append("completion_contract_version_invalid")
+    if completion_contract.get("ready") is not expected_ready:
+        errors.append("completion_contract_ready_mismatch")
+    if completion_contract.get("target_env_file") != summary.get("target_env_file"):
+        errors.append("completion_contract_target_env_file_mismatch")
+    if completion_contract.get("required_missing_key_count") != len(missing_required):
+        errors.append("completion_contract_missing_key_count_mismatch")
+    if sorted(_string_list(completion_contract.get("required_missing_keys"))) != missing_required:
+        errors.append("completion_contract_missing_keys_mismatch")
+    if completion_contract.get("completion_receipt_required") is not True:
+        errors.append("completion_contract_receipt_required_missing")
+    if completion_contract.get("credential_update_receipt_ready_required") is not True:
+        errors.append("completion_contract_receipt_ready_required_missing")
+    if completion_contract.get("credential_update_receipt_complete_required") is not True:
+        errors.append("completion_contract_receipt_complete_required_missing")
+    if _string_list(completion_contract.get("post_update_validation_sequence")) != list(POST_UPDATE_VALIDATION_COMMANDS):
+        errors.append("completion_contract_validation_sequence_mismatch")
+    if completion_contract.get("post_update_validation_command_count") != len(POST_UPDATE_VALIDATION_COMMANDS):
+        errors.append("completion_contract_validation_command_count_mismatch")
+    if _string_list(completion_contract.get("strict_gate_commands")) != list(COMPLETION_STRICT_GATE_COMMANDS):
+        errors.append("completion_contract_strict_gate_commands_mismatch")
+    if _string_list(completion_contract.get("evidence_outputs")) != list(COMPLETION_EVIDENCE_OUTPUTS):
+        errors.append("completion_contract_evidence_outputs_mismatch")
+    if completion_contract_endpoints.get("p0a_credential_update_receipt") != "GET /v1/p0a-credential-update-receipt/au":
+        errors.append("completion_contract_endpoint_invalid:p0a_credential_update_receipt")
+    if completion_contract_endpoints.get("p0a_credential_fulfillment") != "GET /v1/p0a-credential-fulfillment/au":
+        errors.append("completion_contract_endpoint_invalid:p0a_credential_fulfillment")
+    if completion_contract_endpoints.get("p0a_credential_clearance") != "GET /v1/p0a-credential-clearance/au":
+        errors.append("completion_contract_endpoint_invalid:p0a_credential_clearance")
+    if completion_contract_endpoints.get("delivery_progress") != "GET /v1/delivery-progress/au":
+        errors.append("completion_contract_endpoint_invalid:delivery_progress")
+    if completion_contract_redaction.get("raw_secret_values_allowed") is not False:
+        errors.append("completion_contract_raw_secret_policy_invalid")
+    if completion_contract_redaction.get("raw_database_url_allowed") is not False:
+        errors.append("completion_contract_raw_database_url_policy_invalid")
+    if completion_contract_redaction.get("raw_provider_response_allowed") is not False:
+        errors.append("completion_contract_raw_provider_response_policy_invalid")
+    if completion_contract_redaction.get("secret_redacted") is not True:
+        errors.append("completion_contract_secret_redaction_missing")
 
     for command in (
         "make verify-au-p0a-env-template",
@@ -238,6 +301,14 @@ def verify_au_p0a_credential_request_packet(
         errors.append("runtime_endpoint_p0a_credential_request_invalid")
     if endpoints.get("p0a_execution_checklist") != "GET /v1/p0a-execution-checklist/au":
         errors.append("runtime_endpoint_p0a_execution_checklist_invalid")
+    if endpoints.get("p0a_credential_fulfillment") != "GET /v1/p0a-credential-fulfillment/au":
+        errors.append("runtime_endpoint_p0a_credential_fulfillment_invalid")
+    if endpoints.get("p0a_credential_clearance") != "GET /v1/p0a-credential-clearance/au":
+        errors.append("runtime_endpoint_p0a_credential_clearance_invalid")
+    if endpoints.get("p0a_credential_update_receipt") != "GET /v1/p0a-credential-update-receipt/au":
+        errors.append("runtime_endpoint_p0a_credential_update_receipt_invalid")
+    if endpoints.get("delivery_progress") != "GET /v1/delivery-progress/au":
+        errors.append("runtime_endpoint_delivery_progress_invalid")
     if endpoints.get("external_dependency_handoff") != "GET /v1/external-dependency-handoff/au":
         errors.append("runtime_endpoint_external_dependency_handoff_invalid")
     for required in (
@@ -245,11 +316,15 @@ def verify_au_p0a_credential_request_packet(
         "make verify-au-p0a-credential-request",
         "make au-p0a-env",
         "make verify-au-p0a-env",
+        "make au-p0a-credential-update-receipt",
+        "make verify-au-p0a-credential-update-receipt",
     ):
         if required not in hard_gate_commands:
             errors.append(f"hard_gate_missing:{required}")
     if not any(command.endswith("--require-ready-environment") for command in hard_gate_commands):
         errors.append("hard_gate_missing:require_ready_environment")
+    if not any("--require-complete" in command for command in hard_gate_commands):
+        errors.append("hard_gate_missing:require_complete_receipt")
     if require_credentials_ready and payload.get("credential_handoff_ready") is not True:
         errors.append("p0a_credentials_not_ready")
 
@@ -266,6 +341,8 @@ def verify_au_p0a_credential_request_packet(
         "missing_required_count": len(missing_required),
         "target_env_file": summary.get("target_env_file", ""),
         "next_command": summary.get("next_command", ""),
+        "post_update_validation_command_count": len(post_update_validation_sequence),
+        "credential_update_completion_contract_ready": completion_contract.get("ready") is True,
     }
 
 

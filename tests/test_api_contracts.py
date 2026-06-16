@@ -2199,13 +2199,52 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("OPENAI_API_KEY", payload["summary"]["missing_required"])
         self.assertEqual(payload["summary"]["next_command"], "make verify-au-p0a-env-template")
         self.assertEqual(payload["summary"]["post_update_verification_command"], "make verify-au-p0a-env-bootstrap")
+        self.assertTrue(payload["summary"]["credential_update_completion_contract_ready"])
+        self.assertTrue(payload["summary"]["credential_update_receipt_required"])
+        self.assertEqual(
+            payload["summary"]["credential_update_receipt_endpoint"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
+        self.assertTrue(payload["summary"]["credential_update_receipt_strict_gate"].endswith("--require-complete"))
+        self.assertEqual(
+            payload["summary"]["post_update_validation_command_count"],
+            len(payload["post_update_validation_sequence"]),
+        )
         self.assertFalse(payload["summary"]["raw_secret_values_allowed"])
         self.assertTrue(payload["summary"]["forbidden_exact_secret_fields_redacted"])
+        self.assertEqual(
+            payload["credential_update_completion_contract"]["version"],
+            "au_p0a_credential_request_completion_contract_v1",
+        )
+        self.assertTrue(payload["credential_update_completion_contract"]["completion_receipt_required"])
+        self.assertEqual(
+            payload["credential_update_completion_contract"]["required_missing_key_count"],
+            len(payload["summary"]["missing_required"]),
+        )
+        self.assertIn(
+            "make au-p0a-credential-update-receipt",
+            payload["credential_update_completion_contract"]["post_update_validation_sequence"],
+        )
+        self.assertTrue(
+            any(
+                "--require-complete" in command
+                for command in payload["credential_update_completion_contract"]["strict_gate_commands"]
+            )
+        )
+        self.assertFalse(
+            payload["credential_update_completion_contract"]["redaction_policy"]["raw_secret_values_allowed"]
+        )
         self.assertIn("make au-p0a-env-bootstrap", payload["setup_commands"])
         self.assertIn("make au-p0a-env", payload["verification_commands"])
+        self.assertIn("make au-delivery-evidence-refresh", payload["post_update_validation_sequence"])
         self.assertIn("docs/runtime_preflight/au-p0a-env-latest.json", payload["evidence_outputs"])
         self.assertEqual(payload["runtime_endpoints"]["p0a_credential_request"], "GET /v1/p0a-credential-request/au")
+        self.assertEqual(
+            payload["runtime_endpoints"]["p0a_credential_update_receipt"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
         self.assertIn("make verify-au-p0a-credential-request", payload["hard_gate_commands"])
+        self.assertTrue(any("--require-complete" in command for command in payload["hard_gate_commands"]))
         self.assertTrue(payload["source_p0a_execution_checklist"]["p0a_execution_checklist_hash"])
         self.assertTrue(payload["p0a_credential_request_packet_hash"])
 

@@ -8,10 +8,13 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from scripts.build_au_p0a_credential_request_packet import (
+    COMPLETION_CONTRACT_VERSION,
+    COMPLETION_STRICT_GATE_COMMANDS,
     PACKET_VERSION,
     build_au_p0a_credential_request_packet,
     compute_p0a_credential_request_packet_hash,
 )
+from scripts.build_au_p0a_env_report import POST_UPDATE_VALIDATION_COMMANDS
 from scripts.verify_au_p0a_credential_request_packet import verify_au_p0a_credential_request_packet
 from tests.test_au_p0a_execution_checklist import AuP0aExecutionChecklistTest
 
@@ -112,13 +115,55 @@ class AuP0aCredentialRequestPacketTest(unittest.TestCase):
         self.assertEqual(packet["summary"]["missing_required_by_owner"]["runtime_database_admin"], ["DATABASE_URL"])
         self.assertEqual(packet["summary"]["next_command"], "make verify-au-p0a-env-template")
         self.assertEqual(packet["summary"]["post_update_verification_command"], "make verify-au-p0a-env-bootstrap")
+        self.assertTrue(packet["summary"]["credential_update_completion_contract_ready"])
+        self.assertTrue(packet["summary"]["credential_update_receipt_required"])
+        self.assertEqual(
+            packet["summary"]["credential_update_receipt_endpoint"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
+        self.assertEqual(packet["summary"]["credential_update_receipt_strict_gate"], COMPLETION_STRICT_GATE_COMMANDS[-1])
+        self.assertEqual(
+            packet["summary"]["post_update_validation_command_count"],
+            len(POST_UPDATE_VALIDATION_COMMANDS),
+        )
         self.assertFalse(packet["summary"]["raw_secret_values_allowed"])
         self.assertTrue(packet["summary"]["forbidden_exact_secret_fields_redacted"])
+        self.assertEqual(packet["post_update_validation_sequence"], list(POST_UPDATE_VALIDATION_COMMANDS))
+        completion_contract = packet["credential_update_completion_contract"]
+        self.assertEqual(completion_contract["version"], COMPLETION_CONTRACT_VERSION)
+        self.assertTrue(completion_contract["ready"])
+        self.assertEqual(completion_contract["target_env_file"], packet["summary"]["target_env_file"])
+        self.assertEqual(completion_contract["required_missing_key_count"], 3)
+        self.assertEqual(
+            completion_contract["required_missing_keys"],
+            ["DATABASE_URL", "OPENAI_API_KEY", "PERPLEXITY_API_KEY"],
+        )
+        self.assertTrue(completion_contract["completion_receipt_required"])
+        self.assertTrue(completion_contract["credential_update_receipt_complete_required"])
+        self.assertEqual(
+            completion_contract["post_update_validation_sequence"],
+            list(POST_UPDATE_VALIDATION_COMMANDS),
+        )
+        self.assertEqual(completion_contract["strict_gate_commands"], list(COMPLETION_STRICT_GATE_COMMANDS))
+        self.assertIn(
+            "docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json",
+            completion_contract["evidence_outputs"],
+        )
+        self.assertEqual(
+            completion_contract["runtime_endpoints"]["p0a_credential_update_receipt"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
+        self.assertFalse(completion_contract["redaction_policy"]["raw_secret_values_allowed"])
         self.assertIn("make au-p0a-env-bootstrap", packet["setup_commands"])
         self.assertIn("make au-p0a-env", packet["verification_commands"])
         self.assertIn("docs/runtime_preflight/au-p0a-env-latest.json", packet["evidence_outputs"])
         self.assertEqual(packet["runtime_endpoints"]["p0a_credential_request"], "GET /v1/p0a-credential-request/au")
+        self.assertEqual(
+            packet["runtime_endpoints"]["p0a_credential_update_receipt"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
         self.assertIn("make verify-au-p0a-credential-request", packet["hard_gate_commands"])
+        self.assertTrue(any("--require-complete" in command for command in packet["hard_gate_commands"]))
         self.assertTrue(any(command.endswith("--require-ready-environment") for command in packet["hard_gate_commands"]))
         self.assertEqual(packet["p0a_credential_request_packet_hash"], compute_p0a_credential_request_packet_hash(packet))
         self.assertEqual(verification["status"], "pass")
@@ -143,6 +188,26 @@ class AuP0aCredentialRequestPacketTest(unittest.TestCase):
         self.assertEqual(packet["summary"]["missing_required_count"], 0)
         self.assertEqual(packet["summary"]["present_required_count"], 3)
         self.assertEqual(hard_gate["status"], "pass")
+
+    def test_verifier_detects_tampered_completion_contract_even_when_hash_is_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            checklist_path, checklist = self._write_execution_checklist(temp_dir, ready=False)
+            packet = build_au_p0a_credential_request_packet(
+                p0a_execution_checklist_path=checklist_path,
+                p0a_execution_checklist=checklist,
+                output_path=Path(temp_dir) / "credential-request.json",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            packet["credential_update_completion_contract"]["post_update_validation_sequence"] = []
+            packet["credential_update_completion_contract"]["redaction_policy"]["raw_secret_values_allowed"] = True
+            packet["summary"]["credential_update_receipt_required"] = False
+            packet["p0a_credential_request_packet_hash"] = compute_p0a_credential_request_packet_hash(packet)
+            verification = verify_au_p0a_credential_request_packet(packet)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("completion_contract_validation_sequence_mismatch", verification["errors"])
+        self.assertIn("completion_contract_raw_secret_policy_invalid", verification["errors"])
+        self.assertIn("summary_credential_update_receipt_required_missing", verification["errors"])
 
     def test_verifier_detects_tampered_missing_required_count_even_when_hash_is_recomputed(self) -> None:
         with TemporaryDirectory() as temp_dir:

@@ -17,11 +17,29 @@ from scripts.build_au_p0a_execution_checklist import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_P0A_EXECUTION_CHECKLIST_PATH,
     build_au_p0a_execution_checklist,
 )
+from scripts.build_au_p0a_env_report import POST_UPDATE_VALIDATION_COMMANDS  # noqa: E402
 from scripts.verify_au_p0a_execution_checklist import verify_au_p0a_execution_checklist  # noqa: E402
 
 
 PACKET_VERSION = "au_p0a_credential_request_packet_v1"
+COMPLETION_CONTRACT_VERSION = "au_p0a_credential_request_completion_contract_v1"
 DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-p0a-credential-request-latest.json"
+COMPLETION_STRICT_GATE_COMMANDS = (
+    "make verify-au-p0a-credential-update-receipt",
+    "PYTHONPATH=packages/geno_core:apps/api python3 "
+    "scripts/verify_au_p0a_credential_update_receipt.py "
+    "${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
+    "--require-complete",
+)
+COMPLETION_EVIDENCE_OUTPUTS = (
+    "docs/runtime_preflight/au-p0a-env-latest.json",
+    "docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json",
+    "docs/runtime_preflight/au-p0a-credential-clearance-latest.json",
+    "docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json",
+    "docs/runtime_preflight/au-delivery-progress-latest.json",
+    "docs/runtime_preflight/au-customer-handoff-clearance-latest.json",
+    "docs/runtime_preflight/au-customer-handoff-package-latest.json",
+)
 
 
 def _utc_now_iso() -> str:
@@ -136,6 +154,41 @@ def _requested_items(credential_items: list[dict[str, Any]]) -> list[dict[str, A
     return requested
 
 
+def _completion_contract(
+    *,
+    target_env_file: str,
+    missing_required: list[str],
+    packet_ready: bool,
+) -> dict[str, Any]:
+    return {
+        "version": COMPLETION_CONTRACT_VERSION,
+        "ready": packet_ready,
+        "target_env_file": target_env_file,
+        "required_missing_key_count": len(missing_required),
+        "required_missing_keys": sorted(missing_required),
+        "completion_receipt_required": True,
+        "credential_update_receipt_ready_required": True,
+        "credential_update_receipt_complete_required": True,
+        "post_update_validation_sequence": list(POST_UPDATE_VALIDATION_COMMANDS),
+        "post_update_validation_command_count": len(POST_UPDATE_VALIDATION_COMMANDS),
+        "strict_gate_commands": list(COMPLETION_STRICT_GATE_COMMANDS),
+        "runtime_endpoints": {
+            "p0a_credential_fulfillment": "GET /v1/p0a-credential-fulfillment/au",
+            "p0a_credential_clearance": "GET /v1/p0a-credential-clearance/au",
+            "p0a_credential_update_receipt": "GET /v1/p0a-credential-update-receipt/au",
+            "delivery_progress": "GET /v1/delivery-progress/au",
+        },
+        "evidence_outputs": list(COMPLETION_EVIDENCE_OUTPUTS),
+        "redaction_policy": {
+            "raw_secret_values_allowed": False,
+            "raw_database_url_allowed": False,
+            "raw_provider_response_allowed": False,
+            "recorded_secret_fields": ["present", "source", "value_length", "sha256_prefix", "secret_redacted"],
+            "secret_redacted": True,
+        },
+    }
+
+
 def build_au_p0a_credential_request_packet(
     *,
     p0a_execution_checklist_path: Path = Path(DEFAULT_P0A_EXECUTION_CHECKLIST_PATH),
@@ -161,6 +214,12 @@ def build_au_p0a_credential_request_packet(
     evidence_outputs = _string_list(credential_handoff.get("evidence_outputs"))
     redaction_policy = _as_dict(credential_handoff.get("redaction_policy"))
     packet_ready = verifier.get("status") == "pass" and verifier.get("hash_valid") is True
+    target_env_file = str(credential_handoff.get("target_env_file") or "")
+    completion_contract = _completion_contract(
+        target_env_file=target_env_file,
+        missing_required=missing_required,
+        packet_ready=packet_ready,
+    )
 
     hard_gate_commands = [
         "make au-p0a-credential-request",
@@ -169,6 +228,8 @@ def build_au_p0a_credential_request_packet(
         "make verify-au-p0a-env",
         "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py "
         "${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment",
+        "make au-p0a-credential-update-receipt",
+        *COMPLETION_STRICT_GATE_COMMANDS,
     ]
 
     payload: dict[str, Any] = {
@@ -195,7 +256,7 @@ def build_au_p0a_credential_request_packet(
             "next_action": str(verifier.get("next_action") or ""),
         },
         "summary": {
-            "target_env_file": str(credential_handoff.get("target_env_file") or ""),
+            "target_env_file": target_env_file,
             "credential_handoff_ready": credential_handoff.get("ready") is True,
             "missing_required_count": len(missing_required),
             "missing_required": missing_required,
@@ -214,10 +275,17 @@ def build_au_p0a_credential_request_packet(
             is True,
             "next_command": setup_commands[0] if setup_commands else "",
             "post_update_verification_command": verification_commands[0] if verification_commands else "",
+            "credential_update_completion_contract_ready": completion_contract["ready"],
+            "credential_update_receipt_required": True,
+            "credential_update_receipt_endpoint": "GET /v1/p0a-credential-update-receipt/au",
+            "credential_update_receipt_strict_gate": COMPLETION_STRICT_GATE_COMMANDS[-1],
+            "post_update_validation_command_count": len(POST_UPDATE_VALIDATION_COMMANDS),
         },
         "requested_credentials": requested_items,
         "setup_commands": setup_commands,
         "verification_commands": verification_commands,
+        "post_update_validation_sequence": list(POST_UPDATE_VALIDATION_COMMANDS),
+        "credential_update_completion_contract": completion_contract,
         "evidence_outputs": evidence_outputs,
         "redaction_policy": {
             "raw_secret_values_allowed": redaction_policy.get("raw_secret_values_allowed") is True,
@@ -230,6 +298,10 @@ def build_au_p0a_credential_request_packet(
             "p0a_credential_request": "GET /v1/p0a-credential-request/au",
             "p0a_execution_checklist": "GET /v1/p0a-execution-checklist/au",
             "p0a_environment_checklist": "GET /v1/p0a-environment-checklist/au",
+            "p0a_credential_fulfillment": "GET /v1/p0a-credential-fulfillment/au",
+            "p0a_credential_clearance": "GET /v1/p0a-credential-clearance/au",
+            "p0a_credential_update_receipt": "GET /v1/p0a-credential-update-receipt/au",
+            "delivery_progress": "GET /v1/delivery-progress/au",
             "next_work_item": "GET /v1/next-work-item/au",
             "external_dependency_handoff": "GET /v1/external-dependency-handoff/au",
         },

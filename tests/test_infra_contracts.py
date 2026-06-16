@@ -664,6 +664,16 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("au-delivery-evidence-refresh:", makefile)
         refresh_block = makefile.split("au-delivery-evidence-refresh:", 1)[1].split("\nau-next-work-item:", 1)[0]
         self.assertIn("$(MAKE) au-p0a-env", makefile)
+        self.assertIn("$(MAKE) au-p0a-credential-request", makefile)
+        self.assertIn("$(MAKE) verify-au-p0a-credential-request", makefile)
+        self.assertLess(
+            refresh_block.index("$(MAKE) verify-au-p0a-env"),
+            refresh_block.index("$(MAKE) au-p0a-credential-request"),
+        )
+        self.assertLess(
+            refresh_block.index("$(MAKE) verify-au-p0a-credential-request"),
+            refresh_block.index("$(MAKE) au-p0a-credential-fulfillment"),
+        )
         self.assertIn("$(MAKE) verify-au-p0a-credential-clearance", makefile)
         self.assertIn("$(MAKE) au-p0a-credential-update-receipt", makefile)
         self.assertIn("$(MAKE) verify-au-p0a-credential-update-receipt", makefile)
