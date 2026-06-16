@@ -341,6 +341,12 @@ class AuDeliveryProgressTest(unittest.TestCase):
         self.assertTrue(progress["summary"]["p0a_credential_update_receipt_ready"])
         self.assertFalse(progress["summary"]["p0a_credential_update_receipt_complete"])
         self.assertEqual(progress["summary"]["p0a_credential_update_receipt_missing_required_count"], 3)
+        self.assertTrue(progress["summary"]["p0a_credential_update_action_plan_ready"])
+        self.assertTrue(progress["summary"]["p0a_credential_update_action_required"])
+        self.assertEqual(progress["summary"]["p0a_credential_update_action_item_count"], 3)
+        self.assertEqual(progress["summary"]["p0a_credential_update_action_owner_counts"]["provider_admin"], 2)
+        self.assertEqual(progress["summary"]["p0a_credential_update_action_owner_counts"]["runtime_database_admin"], 1)
+        self.assertGreaterEqual(progress["summary"]["p0a_credential_update_post_update_validation_command_count"], 1)
         self.assertEqual(progress["summary"]["p0a_real_batch_missing_required_count"], 3)
         self.assertFalse(progress["summary"]["p0a_real_batch_clearance_ready"])
         self.assertFalse(progress["summary"]["p0a_real_batches_fulfilled"])
@@ -449,6 +455,9 @@ class AuDeliveryProgressTest(unittest.TestCase):
         self.assertEqual(progress["delivery_progress_hash"], compute_delivery_progress_hash(progress))
         self.assertEqual(verification["status"], "pass")
         self.assertTrue(verification["current_clearance_completion_contract_ready"])
+        self.assertTrue(verification["p0a_credential_update_action_plan_ready"])
+        self.assertTrue(verification["p0a_credential_update_action_required"])
+        self.assertEqual(verification["p0a_credential_update_action_item_count"], 3)
         self.assertEqual(
             verification["current_clearance_credential_update_receipt_endpoint"],
             P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,

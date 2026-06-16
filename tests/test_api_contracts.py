@@ -1959,6 +1959,14 @@ class ApiContractsTest(unittest.TestCase):
             payload["summary"]["p0a_credential_update_receipt_missing_required_count"],
             len(payload["summary"]["p0a_credential_update_receipt_missing_required"]),
         )
+        self.assertTrue(payload["summary"]["p0a_credential_update_action_plan_ready"])
+        self.assertTrue(payload["summary"]["p0a_credential_update_action_required"])
+        self.assertEqual(
+            payload["summary"]["p0a_credential_update_action_item_count"],
+            payload["summary"]["p0a_credential_update_receipt_missing_required_count"],
+        )
+        self.assertIn("provider_admin", payload["summary"]["p0a_credential_update_action_owner_counts"])
+        self.assertGreaterEqual(payload["summary"]["p0a_credential_update_post_update_validation_command_count"], 1)
         self.assertEqual(
             payload["summary"]["p0a_credential_missing_required_count"],
             len(payload["summary"]["p0a_credential_missing_required"]),
@@ -2503,6 +2511,24 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["missing_required_count"], len(payload["summary"]["missing_required"]))
         self.assertIn("PERPLEXITY_API_KEY", payload["summary"]["missing_required"])
         self.assertIn("OPENAI_API_KEY", payload["summary"]["missing_required"])
+        self.assertTrue(payload["summary"]["credential_update_action_plan_ready"])
+        self.assertTrue(payload["summary"]["credential_update_action_required"])
+        self.assertEqual(
+            payload["summary"]["credential_update_action_item_count"],
+            len(payload["credential_update_action_plan"]["action_items"]),
+        )
+        self.assertIn("provider_admin", payload["summary"]["credential_update_action_owner_counts"])
+        self.assertGreaterEqual(payload["summary"]["credential_update_post_update_validation_command_count"], 1)
+        self.assertEqual(
+            payload["credential_update_action_plan"]["version"],
+            "au_p0a_credential_update_action_plan_v1",
+        )
+        self.assertTrue(payload["credential_update_action_plan"]["action_required"])
+        for item in payload["credential_update_action_plan"]["action_items"]:
+            self.assertIn("gitignored_env_file", item["allowed_update_surface_ids"])
+            self.assertIn("process_environment", item["allowed_update_surface_ids"])
+            self.assertFalse(item["raw_secret_values_allowed"])
+            self.assertTrue(item["secret_redacted"])
         self.assertEqual(payload["summary"]["next_command"], "make au-p0a-env")
         self.assertFalse(payload["summary"]["raw_secret_values_allowed"])
         self.assertEqual(

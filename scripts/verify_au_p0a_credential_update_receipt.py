@@ -33,6 +33,7 @@ REQUIRED_FIELDS = (
     "verifiers",
     "env_file_hygiene",
     "required_credential_records",
+    "credential_update_action_plan",
     "summary",
     "post_update_validation_sequence",
     "strict_gate_commands",
@@ -124,6 +125,14 @@ def _check_current_source_file(
         errors.append(f"{source_key}_source_file_missing")
 
 
+def _owner_counts(items: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        owner = str(item.get("owner_hint") or "unknown")
+        counts[owner] = counts.get(owner, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def verify_au_p0a_credential_update_receipt(
     payload: Any,
     *,
@@ -163,6 +172,7 @@ def verify_au_p0a_credential_update_receipt(
     verifiers = _as_dict(payload.get("verifiers"))
     env_file_hygiene = _as_dict(payload.get("env_file_hygiene"))
     records = [_as_dict(record) for record in _as_list(payload.get("required_credential_records"))]
+    action_plan = _as_dict(payload.get("credential_update_action_plan"))
     validation_sequence = _strings(payload.get("post_update_validation_sequence"))
     strict_gate_commands = _strings(payload.get("strict_gate_commands"))
     endpoints = _as_dict(payload.get("runtime_endpoints"))
@@ -171,6 +181,8 @@ def verify_au_p0a_credential_update_receipt(
     required_records = [record for record in records if record.get("required") is True]
     present_required = [record for record in required_records if record.get("present") is True]
     missing_required = sorted(str(record.get("name") or "") for record in required_records if record.get("present") is not True)
+    missing_records = [record for record in required_records if record.get("present") is not True]
+    action_items = [_as_dict(item) for item in _as_list(action_plan.get("action_items"))]
     for record in records:
         name = str(record.get("name") or "")
         for field in (
@@ -200,6 +212,11 @@ def verify_au_p0a_credential_update_receipt(
             if not isinstance(prefix, str) or len(prefix) != 12:
                 errors.append(f"credential_record_sha256_prefix_invalid:{name}")
 
+    if action_plan.get("version") != "au_p0a_credential_update_action_plan_v1":
+        errors.append("credential_update_action_plan_version_invalid")
+    if action_plan.get("ready") is not True:
+        errors.append("credential_update_action_plan_ready_invalid")
+
     request_verifier = _as_dict(verifiers.get("credential_request"))
     env_verifier = _as_dict(verifiers.get("env_report"))
     fulfillment_verifier = _as_dict(verifiers.get("credential_fulfillment"))
@@ -216,6 +233,57 @@ def verify_au_p0a_credential_update_receipt(
         and credential_clearance_ready
         and env_file_hygiene.get("hygiene_ready") is True
     )
+    if action_plan.get("complete") is not expected_complete:
+        errors.append("credential_update_action_plan_complete_mismatch")
+    if action_plan.get("action_required") is not (not expected_complete):
+        errors.append("credential_update_action_plan_action_required_mismatch")
+    if action_plan.get("action_item_count") != len(missing_records):
+        errors.append("credential_update_action_plan_action_item_count_mismatch")
+    if _as_dict(action_plan.get("owner_counts")) != _owner_counts(action_items):
+        errors.append("credential_update_action_plan_owner_counts_mismatch")
+    if action_plan.get("target_env_file") != contract.get("target_env_file"):
+        errors.append("credential_update_action_plan_target_env_file_mismatch")
+    if action_plan.get("next_command") != (
+        "make au-external-dependency-clearance" if expected_complete else "make au-p0a-env"
+    ):
+        errors.append("credential_update_action_plan_next_command_mismatch")
+    if _strings(action_plan.get("post_update_validation_sequence")) != validation_sequence:
+        errors.append("credential_update_action_plan_validation_sequence_mismatch")
+    if action_plan.get("post_update_validation_command_count") != len(validation_sequence):
+        errors.append("credential_update_action_plan_validation_count_mismatch")
+    if "--require-complete" not in str(action_plan.get("strict_gate_command") or ""):
+        errors.append("credential_update_action_plan_strict_gate_invalid")
+    action_plan_redaction = _as_dict(action_plan.get("redaction_policy"))
+    if action_plan_redaction.get("raw_secret_values_allowed") is not False:
+        errors.append("credential_update_action_plan_raw_secret_policy_invalid")
+    if action_plan_redaction.get("secret_redacted") is not True:
+        errors.append("credential_update_action_plan_secret_redaction_missing")
+    missing_names = [str(record.get("name") or "") for record in missing_records]
+    action_names = [str(item.get("credential_name") or "") for item in action_items]
+    if sorted(action_names) != sorted(missing_names):
+        errors.append("credential_update_action_plan_action_names_mismatch")
+    for index, item in enumerate(action_items, start=1):
+        name = str(item.get("credential_name") or "")
+        if item.get("order") != index:
+            errors.append(f"credential_update_action_item_order_mismatch:{name}")
+        if not name:
+            errors.append("credential_update_action_item_name_missing")
+        if not item.get("owner_hint"):
+            errors.append(f"credential_update_action_item_owner_missing:{name}")
+        if item.get("target_env_file") != contract.get("target_env_file"):
+            errors.append(f"credential_update_action_item_target_env_file_mismatch:{name}")
+        if "gitignored_env_file" not in set(_strings(item.get("allowed_update_surface_ids"))):
+            errors.append(f"credential_update_action_item_surface_missing:{name}:gitignored_env_file")
+        if "process_environment" not in set(_strings(item.get("allowed_update_surface_ids"))):
+            errors.append(f"credential_update_action_item_surface_missing:{name}:process_environment")
+        if item.get("next_command_after_update") != "make au-p0a-env":
+            errors.append(f"credential_update_action_item_next_command_invalid:{name}")
+        if "--require-complete" not in str(item.get("strict_gate_command") or ""):
+            errors.append(f"credential_update_action_item_strict_gate_invalid:{name}")
+        if item.get("raw_secret_values_allowed") is not False:
+            errors.append(f"credential_update_action_item_raw_secret_policy_invalid:{name}")
+        if item.get("secret_redacted") is not True:
+            errors.append(f"credential_update_action_item_secret_redaction_missing:{name}")
     if payload.get("status") != "pass":
         errors.append("status_invalid")
     if payload.get("credential_update_receipt_ready") is not True:
@@ -244,6 +312,16 @@ def verify_au_p0a_credential_update_receipt(
         errors.append("summary_missing_required_count_mismatch")
     if sorted(_strings(summary.get("missing_required"))) != missing_required:
         errors.append("summary_missing_required_mismatch")
+    if summary.get("credential_update_action_plan_ready") is not True:
+        errors.append("summary_credential_update_action_plan_ready_mismatch")
+    if summary.get("credential_update_action_required") is not (not expected_complete):
+        errors.append("summary_credential_update_action_required_mismatch")
+    if summary.get("credential_update_action_item_count") != len(missing_records):
+        errors.append("summary_credential_update_action_item_count_mismatch")
+    if _as_dict(summary.get("credential_update_action_owner_counts")) != _owner_counts(action_items):
+        errors.append("summary_credential_update_action_owner_counts_mismatch")
+    if summary.get("credential_update_post_update_validation_command_count") != len(validation_sequence):
+        errors.append("summary_credential_update_post_update_validation_command_count_mismatch")
     if summary.get("env_file_hygiene_ready") is not (env_file_hygiene.get("hygiene_ready") is True):
         errors.append("summary_env_file_hygiene_ready_mismatch")
     if summary.get("credentials_fulfilled") is not credentials_fulfilled:
@@ -323,6 +401,11 @@ def verify_au_p0a_credential_update_receipt(
         "credential_clearance_ready": credential_clearance_ready,
         "missing_required_count": len(missing_required),
         "missing_required": missing_required,
+        "credential_update_action_plan_ready": action_plan.get("ready") is True,
+        "credential_update_action_required": action_plan.get("action_required") is True,
+        "credential_update_action_item_count": len(action_items),
+        "credential_update_action_owner_counts": _owner_counts(action_items),
+        "credential_update_post_update_validation_command_count": len(validation_sequence),
         "env_file_hygiene_ready": env_file_hygiene.get("hygiene_ready") is True,
         "current_file_check_enabled": current_file_check_enabled,
     }

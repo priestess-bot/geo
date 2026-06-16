@@ -129,7 +129,27 @@ class AuP0aCredentialUpdateReceiptTest(unittest.TestCase):
         self.assertFalse(receipt["credential_update_receipt_complete"])
         self.assertTrue(receipt["summary"]["credential_update_receipt_ready"])
         self.assertEqual(receipt["summary"]["missing_required_count"], 3)
+        self.assertTrue(receipt["summary"]["credential_update_action_plan_ready"])
+        self.assertTrue(receipt["summary"]["credential_update_action_required"])
+        self.assertEqual(receipt["summary"]["credential_update_action_item_count"], 3)
+        self.assertEqual(receipt["summary"]["credential_update_action_owner_counts"]["provider_admin"], 2)
+        self.assertEqual(receipt["summary"]["credential_update_action_owner_counts"]["runtime_database_admin"], 1)
+        self.assertGreaterEqual(receipt["summary"]["credential_update_post_update_validation_command_count"], 1)
         self.assertEqual(receipt["summary"]["next_command"], "make au-p0a-env")
+        self.assertEqual(receipt["credential_update_action_plan"]["version"], "au_p0a_credential_update_action_plan_v1")
+        self.assertTrue(receipt["credential_update_action_plan"]["ready"])
+        self.assertTrue(receipt["credential_update_action_plan"]["action_required"])
+        self.assertEqual(receipt["credential_update_action_plan"]["action_item_count"], 3)
+        self.assertEqual(
+            [item["credential_name"] for item in receipt["credential_update_action_plan"]["action_items"]],
+            ["DATABASE_URL", "OPENAI_API_KEY", "PERPLEXITY_API_KEY"],
+        )
+        for item in receipt["credential_update_action_plan"]["action_items"]:
+            self.assertIn("gitignored_env_file", item["allowed_update_surface_ids"])
+            self.assertIn("process_environment", item["allowed_update_surface_ids"])
+            self.assertFalse(item["raw_secret_values_allowed"])
+            self.assertTrue(item["secret_redacted"])
+            self.assertTrue(item["strict_gate_command"].endswith("--require-complete"))
         self.assertEqual(
             receipt["runtime_endpoints"]["p0a_credential_update_receipt"],
             "GET /v1/p0a-credential-update-receipt/au",
@@ -168,6 +188,9 @@ class AuP0aCredentialUpdateReceiptTest(unittest.TestCase):
         self.assertTrue(receipt["credential_update_receipt_complete"])
         self.assertTrue(receipt["summary"]["credential_update_receipt_ready"])
         self.assertEqual(receipt["summary"]["missing_required_count"], 0)
+        self.assertFalse(receipt["summary"]["credential_update_action_required"])
+        self.assertEqual(receipt["summary"]["credential_update_action_item_count"], 0)
+        self.assertEqual(receipt["credential_update_action_plan"]["action_items"], [])
         self.assertEqual(receipt["summary"]["next_command"], "make au-external-dependency-clearance")
         self.assertEqual(hard_gate["status"], "pass")
 
@@ -221,6 +244,32 @@ class AuP0aCredentialUpdateReceiptTest(unittest.TestCase):
             "credential_record_raw_value_policy_invalid:DATABASE_URL",
             verification["errors"],
         )
+
+    def test_verifier_rejects_tampered_action_plan_even_when_hash_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            request_path, env_path, fulfillment_path, clearance_path, request, env_report, fulfillment, clearance = (
+                self._build_sources(temp_dir, ready=False)
+            )
+            receipt = build_au_p0a_credential_update_receipt(
+                credential_request_path=request_path,
+                env_report_path=env_path,
+                credential_fulfillment_path=fulfillment_path,
+                credential_clearance_path=clearance_path,
+                credential_request=request,
+                env_report=env_report,
+                credential_fulfillment=fulfillment,
+                credential_clearance=clearance,
+                output_path=Path(temp_dir) / "receipt.json",
+                generated_at="2026-06-15T00:00:00Z",
+            )
+            receipt["credential_update_action_plan"]["action_items"][0]["strict_gate_command"] = "tampered"
+            receipt["summary"]["credential_update_action_item_count"] = 99
+            receipt["p0a_credential_update_receipt_hash"] = compute_p0a_credential_update_receipt_hash(receipt)
+            verification = verify_au_p0a_credential_update_receipt(receipt)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("summary_credential_update_action_item_count_mismatch", verification["errors"])
+        self.assertIn("credential_update_action_item_strict_gate_invalid:DATABASE_URL", verification["errors"])
 
     def test_cli_writes_and_verifies_receipt_json(self) -> None:
         with TemporaryDirectory() as temp_dir:

@@ -286,6 +286,26 @@ def verify_au_delivery_progress(
         p0a_credential_update_receipt_verifier.get("missing_required_count")
     ):
         errors.append("summary_p0a_credential_update_receipt_missing_required_count_mismatch")
+    if summary.get("p0a_credential_update_action_plan_ready") is not (
+        p0a_credential_update_receipt_verifier.get("credential_update_action_plan_ready") is True
+    ):
+        errors.append("summary_p0a_credential_update_action_plan_ready_mismatch")
+    if summary.get("p0a_credential_update_action_required") is not (
+        p0a_credential_update_receipt_verifier.get("credential_update_action_required") is True
+    ):
+        errors.append("summary_p0a_credential_update_action_required_mismatch")
+    if summary.get("p0a_credential_update_action_item_count") != (
+        p0a_credential_update_receipt_verifier.get("credential_update_action_item_count")
+    ):
+        errors.append("summary_p0a_credential_update_action_item_count_mismatch")
+    if _as_dict(summary.get("p0a_credential_update_action_owner_counts")) != _as_dict(
+        p0a_credential_update_receipt_verifier.get("credential_update_action_owner_counts")
+    ):
+        errors.append("summary_p0a_credential_update_action_owner_counts_mismatch")
+    if summary.get("p0a_credential_update_post_update_validation_command_count") != (
+        p0a_credential_update_receipt_verifier.get("credential_update_post_update_validation_command_count")
+    ):
+        errors.append("summary_p0a_credential_update_post_update_validation_command_count_mismatch")
     if summary.get("p0a_credential_update_env_file_hygiene_ready") is not (
         p0a_credential_update_receipt_verifier.get("env_file_hygiene_ready") is True
     ):
@@ -491,6 +511,15 @@ def verify_au_delivery_progress(
             "current_clearance_completion_contract_raw_secret_values_allowed"
         )
         is True,
+        "p0a_credential_update_action_plan_ready": summary.get("p0a_credential_update_action_plan_ready") is True,
+        "p0a_credential_update_action_required": summary.get("p0a_credential_update_action_required") is True,
+        "p0a_credential_update_action_item_count": summary.get("p0a_credential_update_action_item_count"),
+        "p0a_credential_update_action_owner_counts": _as_dict(
+            summary.get("p0a_credential_update_action_owner_counts")
+        ),
+        "p0a_credential_update_post_update_validation_command_count": summary.get(
+            "p0a_credential_update_post_update_validation_command_count"
+        ),
         "p0a_real_batch_execution_plan_ready": summary.get("p0a_real_batch_execution_plan_ready") is True,
         "p0a_real_batch_total_planned_runs": summary.get("p0a_real_batch_total_planned_runs"),
         "p0a_real_batch_ready_phase_count": summary.get("p0a_real_batch_ready_phase_count"),

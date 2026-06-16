@@ -805,6 +805,23 @@ def build_au_delivery_progress(
             "p0a_credential_update_receipt_missing_required": _as_dict(
                 p0a_credential_update_receipt.get("summary")
             ).get("missing_required", []),
+            "p0a_credential_update_action_plan_ready": _as_dict(
+                p0a_credential_update_receipt.get("summary")
+            ).get("credential_update_action_plan_ready")
+            is True,
+            "p0a_credential_update_action_required": _as_dict(
+                p0a_credential_update_receipt.get("summary")
+            ).get("credential_update_action_required")
+            is True,
+            "p0a_credential_update_action_item_count": _as_dict(
+                p0a_credential_update_receipt.get("summary")
+            ).get("credential_update_action_item_count", 0),
+            "p0a_credential_update_action_owner_counts": _as_dict(
+                p0a_credential_update_receipt.get("summary")
+            ).get("credential_update_action_owner_counts", {}),
+            "p0a_credential_update_post_update_validation_command_count": _as_dict(
+                p0a_credential_update_receipt.get("summary")
+            ).get("credential_update_post_update_validation_command_count", 0),
             "p0a_credential_update_env_file_hygiene_ready": _as_dict(
                 p0a_credential_update_receipt.get("summary")
             ).get("env_file_hygiene_ready")

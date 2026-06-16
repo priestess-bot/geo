@@ -2051,11 +2051,41 @@ type AuP0aCredentialUpdateReceipt = {
     blocking_reasons?: string[];
     post_update_checks?: string[];
   }>;
+  credential_update_action_plan?: {
+    version?: string;
+    ready?: boolean;
+    complete?: boolean;
+    action_required?: boolean;
+    action_item_count?: number;
+    owner_counts?: Record<string, number>;
+    target_env_file?: string;
+    next_command?: string;
+    post_update_validation_command_count?: number;
+    strict_gate_command?: string;
+    action_items?: Array<{
+      order?: number;
+      credential_name?: string;
+      owner_hint?: string;
+      target_env_file?: string;
+      allowed_update_surface_ids?: string[];
+      accepted_injection_methods?: string[];
+      next_command_after_update?: string;
+      strict_gate_command?: string;
+      blocking_reasons?: string[];
+      raw_secret_values_allowed?: boolean;
+      secret_redacted?: boolean;
+    }>;
+  };
   summary?: {
     required_count?: number;
     present_required_count?: number;
     missing_required_count?: number;
     missing_required?: string[];
+    credential_update_action_plan_ready?: boolean;
+    credential_update_action_required?: boolean;
+    credential_update_action_item_count?: number;
+    credential_update_action_owner_counts?: Record<string, number>;
+    credential_update_post_update_validation_command_count?: number;
     env_file_hygiene_ready?: boolean;
     credentials_fulfilled?: boolean;
     credential_clearance_ready?: boolean;
@@ -10104,6 +10134,25 @@ export default async function Home({
             </span>
             <span>Missing {p0aCredentialUpdateReceiptMissing.join(", ") || "none"}</span>
             <span>
+              Action plan {p0aCredentialUpdateReceiptSummary?.credential_update_action_plan_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              Action required {p0aCredentialUpdateReceiptSummary?.credential_update_action_required ? "yes" : "no"}
+            </span>
+            <span>
+              Action items {p0aCredentialUpdateReceiptSummary?.credential_update_action_item_count ?? 0}
+            </span>
+            <span>
+              Action owners{" "}
+              {Object.entries(p0aCredentialUpdateReceiptSummary?.credential_update_action_owner_counts || {})
+                .map(([owner, count]) => `${owner}:${count}`)
+                .join(", ") || "none"}
+            </span>
+            <span>
+              Post-update validations{" "}
+              {p0aCredentialUpdateReceiptSummary?.credential_update_post_update_validation_command_count ?? 0}
+            </span>
+            <span>
               Env file {p0aCredentialUpdateReceiptHygiene?.path || "none"}
             </span>
             <span>Mode {p0aCredentialUpdateReceiptHygiene?.file_mode || "none"}</span>
@@ -10139,6 +10188,27 @@ export default async function Home({
                   <small>{record.source || "source"} · length {record.value_length || 0}</small>
                   <small>sha256 prefix {record.sha256_prefix || "none"}</small>
                   <small>{(record.blocking_reasons || []).slice(0, 2).join(" · ") || "no blocking reasons"}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {p0aCredentialUpdateReceipt?.credential_update_action_plan?.action_items?.length ? (
+            <div className="dependencyGroupGrid">
+              {p0aCredentialUpdateReceipt.credential_update_action_plan.action_items.map((item) => (
+                <div className="dependencyGroup" key={item.credential_name || item.order}>
+                  <strong>
+                    {item.order || 0}. {item.credential_name || "credential"}
+                  </strong>
+                  <span>
+                    {item.owner_hint || "owner"} · target {item.target_env_file || "none"}
+                  </span>
+                  <small>
+                    surfaces {(item.allowed_update_surface_ids || []).join(" · ") || "none"}
+                  </small>
+                  <small>
+                    methods {(item.accepted_injection_methods || []).join(" · ") || "none"}
+                  </small>
+                  <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "no blocking reasons"}</small>
                 </div>
               ))}
             </div>

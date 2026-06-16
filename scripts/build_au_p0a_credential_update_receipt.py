@@ -70,6 +70,18 @@ def _strings(value: object) -> list[str]:
     return [str(item) for item in _as_list(value)]
 
 
+def _surface_ids(value: object) -> list[str]:
+    ids: list[str] = []
+    for item in _as_list(value):
+        if isinstance(item, dict):
+            surface_id = str(item.get("id") or "").strip()
+        else:
+            surface_id = str(item).strip()
+        if surface_id:
+            ids.append(surface_id)
+    return ids
+
+
 def _load_json(path: Path) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -209,6 +221,80 @@ def _required_records(
     return records
 
 
+def _owner_counts(records: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for record in records:
+        owner = str(record.get("owner_hint") or "unknown")
+        counts[owner] = counts.get(owner, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _credential_update_action_plan(
+    *,
+    records: list[dict[str, Any]],
+    contract: dict[str, Any],
+    post_update_commands: list[str],
+    update_receipt_complete: bool,
+) -> dict[str, Any]:
+    missing_records = [
+        record for record in records if record.get("required") is True and record.get("present") is not True
+    ]
+    action_items: list[dict[str, Any]] = []
+    allowed_surfaces = _surface_ids(contract.get("allowed_update_surfaces"))
+    if not allowed_surfaces:
+        allowed_surfaces = ["gitignored_env_file", "process_environment"]
+    for index, record in enumerate(missing_records, start=1):
+        action_items.append(
+            {
+                "order": index,
+                "credential_name": str(record.get("name") or ""),
+                "owner_hint": str(record.get("owner_hint") or "unknown"),
+                "target_env_file": str(record.get("target_env_file") or contract.get("target_env_file") or ""),
+                "allowed_update_surface_ids": allowed_surfaces,
+                "accepted_injection_methods": [
+                    "process_environment",
+                    "GENO_AU_P0A_ENV_FILE",
+                    str(record.get("target_env_file") or contract.get("target_env_file") or ".env.au-p0a"),
+                ],
+                "next_command_after_update": "make au-p0a-env",
+                "strict_gate_command": (
+                    "PYTHONPATH=packages/geno_core:apps/api python3 "
+                    "scripts/verify_au_p0a_credential_update_receipt.py "
+                    "${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
+                    "--require-complete"
+                ),
+                "blocking_reasons": _strings(record.get("blocking_reasons")),
+                "raw_secret_values_allowed": False,
+                "secret_redacted": True,
+            }
+        )
+    return {
+        "version": "au_p0a_credential_update_action_plan_v1",
+        "ready": True,
+        "complete": update_receipt_complete,
+        "action_required": not update_receipt_complete,
+        "action_item_count": len(action_items),
+        "action_items": action_items,
+        "owner_counts": _owner_counts(action_items),
+        "target_env_file": str(contract.get("target_env_file") or ""),
+        "next_command": "make au-external-dependency-clearance" if update_receipt_complete else "make au-p0a-env",
+        "post_update_validation_sequence": post_update_commands,
+        "post_update_validation_command_count": len(post_update_commands),
+        "strict_gate_command": (
+            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "scripts/verify_au_p0a_credential_update_receipt.py "
+            "${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
+            "--require-complete"
+        ),
+        "redaction_policy": {
+            "raw_secret_values_allowed": False,
+            "secret_redacted": True,
+            "source_payloads_embedded": False,
+            "hash_path_status_only": True,
+        },
+    }
+
+
 def build_au_p0a_credential_update_receipt(
     *,
     credential_request_path: Path = Path(DEFAULT_CREDENTIAL_REQUEST_PATH),
@@ -293,6 +379,12 @@ def build_au_p0a_credential_update_receipt(
     post_update_commands = _strings(contract.get("post_update_commands")) or _strings(
         credential_clearance.get("post_update_validation_sequence")
     )
+    action_plan = _credential_update_action_plan(
+        records=records,
+        contract=contract,
+        post_update_commands=post_update_commands,
+        update_receipt_complete=update_receipt_complete,
+    )
     payload: dict[str, Any] = {
         "p0a_credential_update_receipt_version": RECEIPT_VERSION,
         "generated_at": generated_at or _utc_now_iso(),
@@ -360,12 +452,20 @@ def build_au_p0a_credential_update_receipt(
             "secret_redacted": True,
         },
         "required_credential_records": records,
+        "credential_update_action_plan": action_plan,
         "summary": {
             "credential_update_receipt_ready": True,
             "required_count": len(required_records),
             "present_required_count": len(present_required),
             "missing_required_count": len(missing_required),
             "missing_required": sorted(missing_required),
+            "credential_update_action_plan_ready": action_plan["ready"],
+            "credential_update_action_required": action_plan["action_required"],
+            "credential_update_action_item_count": action_plan["action_item_count"],
+            "credential_update_action_owner_counts": action_plan["owner_counts"],
+            "credential_update_post_update_validation_command_count": action_plan[
+                "post_update_validation_command_count"
+            ],
             "env_file_hygiene_ready": hygiene.get("hygiene_ready") is True,
             "credentials_fulfilled": credential_fulfillment.get("credentials_fulfilled") is True,
             "credential_clearance_ready": credential_clearance.get("credential_clearance_ready") is True,
