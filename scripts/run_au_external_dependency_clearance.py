@@ -483,7 +483,9 @@ def run_au_external_dependency_clearance(
         ),
         would_execute_steps[0] if would_execute_steps else {},
     )
-    current_step_request_context = _as_dict(current_step.get("linked_request_context"))
+    current_step_request_context = (
+        _as_dict(current_step.get("linked_request_context")) if current_step else _empty_request_context("none")
+    )
     hard_gate_commands = _strings(sequence.get("hard_gate_commands"))
     for step in steps:
         request_context = _as_dict(step.get("linked_request_context"))

@@ -1247,6 +1247,16 @@ type AuDeliveryProgress = {
     next_command?: string;
     current_clearance_step_id?: string;
     would_execute_step_count?: number;
+    current_clearance_request_artifact_id?: string;
+    current_clearance_request_artifact_hash?: string;
+    current_clearance_completion_contract_ready?: boolean;
+    current_clearance_completion_contract_version?: string;
+    current_clearance_credential_update_receipt_required?: boolean;
+    current_clearance_credential_update_receipt_endpoint?: string;
+    current_clearance_credential_update_receipt_strict_gate?: string;
+    current_clearance_post_update_validation_command_count?: number;
+    current_clearance_completion_contract_missing_required_count?: number;
+    current_clearance_completion_contract_raw_secret_values_allowed?: boolean;
     external_dependency_handoff_ready?: boolean;
     handoff_posture?: string;
     launch_status_hash?: string;
@@ -9046,6 +9056,38 @@ export default async function Home({
             <span>Next stage {deliveryProgressSummary?.next_work_item_stage || "none"}</span>
             <span>Next command {deliveryProgressSummary?.next_command || "none"}</span>
             <span>Clearance step {deliveryProgressSummary?.current_clearance_step_id || "none"}</span>
+            <span>
+              Clearance request {deliveryProgressSummary?.current_clearance_request_artifact_id || "none"} · hash{" "}
+              {shortHash(deliveryProgressSummary?.current_clearance_request_artifact_hash)}
+            </span>
+            <span>
+              Clearance completion{" "}
+              {deliveryProgressSummary?.current_clearance_completion_contract_ready ? "ready" : "blocked"} ·{" "}
+              {deliveryProgressSummary?.current_clearance_completion_contract_version || "none"}
+            </span>
+            <span>
+              Clearance receipt{" "}
+              {deliveryProgressSummary?.current_clearance_credential_update_receipt_required ? "required" : "optional"}{" "}
+              · {deliveryProgressSummary?.current_clearance_credential_update_receipt_endpoint || "none"}
+            </span>
+            <span>
+              Clearance receipt strict gate{" "}
+              {deliveryProgressSummary?.current_clearance_credential_update_receipt_strict_gate || "none"}
+            </span>
+            <span>
+              Clearance post-update validation{" "}
+              {deliveryProgressSummary?.current_clearance_post_update_validation_command_count ?? 0}
+            </span>
+            <span>
+              Clearance contract missing{" "}
+              {deliveryProgressSummary?.current_clearance_completion_contract_missing_required_count ?? 0}
+            </span>
+            <span>
+              Clearance raw secrets{" "}
+              {deliveryProgressSummary?.current_clearance_completion_contract_raw_secret_values_allowed
+                ? "allowed"
+                : "blocked"}
+            </span>
             <span>
               P0a credentials {deliveryProgressSummary?.p0a_credentials_fulfilled ? "fulfilled" : "blocked"}
             </span>

@@ -625,6 +625,7 @@ def build_au_delivery_progress(
     readiness_summary = _as_dict(customer_handoff_readiness.get("summary"))
     next_work_item_summary = _as_dict(next_work_item.get("summary"))
     dependency_summary = _as_dict(external_dependency_handoff.get("summary"))
+    clearance_request_context = _as_dict(external_dependency_clearance.get("current_step_request_context"))
     customer_gate_lookup = _customer_gate_lookup(customer_handoff_readiness)
     progress_gates = _structural_progress_gates(
         launch_verifier=launch_verifier,
@@ -730,6 +731,43 @@ def build_au_delivery_progress(
             "next_command": next_command,
             "current_clearance_step_id": external_dependency_clearance.get("current_step_id", ""),
             "would_execute_step_count": external_dependency_clearance.get("would_execute_step_count", 0),
+            "current_clearance_request_artifact_id": clearance_request_context.get("request_artifact_id", ""),
+            "current_clearance_request_artifact_hash": clearance_request_context.get("artifact_hash", ""),
+            "current_clearance_completion_contract_ready": external_dependency_clearance.get(
+                "current_request_completion_contract_ready",
+                clearance_request_context.get("credential_update_completion_contract_ready"),
+            )
+            is True,
+            "current_clearance_completion_contract_version": external_dependency_clearance.get(
+                "current_request_completion_contract_version",
+                clearance_request_context.get("credential_update_completion_contract_version", ""),
+            ),
+            "current_clearance_credential_update_receipt_required": external_dependency_clearance.get(
+                "current_request_credential_update_receipt_required",
+                clearance_request_context.get("credential_update_receipt_required"),
+            )
+            is True,
+            "current_clearance_credential_update_receipt_endpoint": external_dependency_clearance.get(
+                "current_request_credential_update_receipt_endpoint",
+                clearance_request_context.get("credential_update_receipt_endpoint", ""),
+            ),
+            "current_clearance_credential_update_receipt_strict_gate": external_dependency_clearance.get(
+                "current_request_credential_update_receipt_strict_gate",
+                clearance_request_context.get("credential_update_receipt_strict_gate", ""),
+            ),
+            "current_clearance_post_update_validation_command_count": external_dependency_clearance.get(
+                "current_request_post_update_validation_command_count",
+                clearance_request_context.get("post_update_validation_command_count", 0),
+            ),
+            "current_clearance_completion_contract_missing_required_count": external_dependency_clearance.get(
+                "current_request_completion_contract_missing_required_count",
+                clearance_request_context.get("completion_contract_required_missing_key_count", 0),
+            ),
+            "current_clearance_completion_contract_raw_secret_values_allowed": external_dependency_clearance.get(
+                "current_request_completion_contract_raw_secret_values_allowed",
+                clearance_request_context.get("completion_contract_raw_secret_values_allowed"),
+            )
+            is True,
             "external_dependency_handoff_ready": external_dependency_handoff.get("external_dependency_handoff_ready") is True,
             "handoff_posture": dependency_summary.get("handoff_posture", ""),
             "launch_status_hash": launch_status.get("launch_status_hash", ""),

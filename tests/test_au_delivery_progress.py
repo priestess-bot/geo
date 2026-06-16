@@ -26,7 +26,13 @@ from scripts.build_au_p0a_real_batch_request_packet import build_au_p0a_real_bat
 from scripts.build_au_p0b_google_environment_clearance import build_au_p0b_google_environment_clearance
 from scripts.build_au_p0b_google_manual_backfill_clearance import build_au_p0b_google_manual_backfill_clearance
 from scripts.build_au_p0b_google_phase_execution_clearance import build_au_p0b_google_phase_execution_clearance
-from scripts.run_au_external_dependency_clearance import run_au_external_dependency_clearance
+from scripts.run_au_external_dependency_clearance import (
+    P0A_COMPLETION_CONTRACT_VERSION,
+    P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+    P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+    P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
+    run_au_external_dependency_clearance,
+)
 from scripts.verify_au_delivery_progress import verify_au_delivery_progress
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
 
@@ -291,6 +297,34 @@ class AuDeliveryProgressTest(unittest.TestCase):
         self.assertEqual(progress["summary"]["next_work_item_id"], "p0a_environment")
         self.assertEqual(progress["summary"]["current_clearance_step_id"], "p0a_provider_credentials")
         self.assertEqual(progress["summary"]["would_execute_step_count"], 1)
+        self.assertEqual(progress["summary"]["current_clearance_request_artifact_id"], "p0a_credential_request")
+        self.assertEqual(
+            progress["summary"]["current_clearance_request_artifact_hash"],
+            sources["clearance"]["current_step_request_context"]["artifact_hash"],
+        )
+        self.assertTrue(progress["summary"]["current_clearance_completion_contract_ready"])
+        self.assertEqual(
+            progress["summary"]["current_clearance_completion_contract_version"],
+            P0A_COMPLETION_CONTRACT_VERSION,
+        )
+        self.assertTrue(progress["summary"]["current_clearance_credential_update_receipt_required"])
+        self.assertEqual(
+            progress["summary"]["current_clearance_credential_update_receipt_endpoint"],
+            P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+        )
+        self.assertEqual(
+            progress["summary"]["current_clearance_credential_update_receipt_strict_gate"],
+            P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+        )
+        self.assertEqual(
+            progress["summary"]["current_clearance_post_update_validation_command_count"],
+            P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
+        )
+        self.assertEqual(
+            progress["summary"]["current_clearance_completion_contract_missing_required_count"],
+            len(sources["clearance"]["current_step_request_context"]["completion_contract_required_missing_keys"]),
+        )
+        self.assertFalse(progress["summary"]["current_clearance_completion_contract_raw_secret_values_allowed"])
         self.assertEqual(progress["summary"]["next_command"], "make verify-au-p0a-env-template")
         self.assertEqual(progress["summary"]["p0a_credential_missing_required_count"], 3)
         self.assertFalse(progress["summary"]["p0a_credential_clearance_ready"])
@@ -359,6 +393,7 @@ class AuDeliveryProgressTest(unittest.TestCase):
         self.assertIn("make verify-au-p0a-credential-clearance", progress["hard_gate_commands"])
         self.assertIn("make au-p0a-credential-update-receipt", progress["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-update-receipt", progress["hard_gate_commands"])
+        self.assertIn(P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE, progress["hard_gate_commands"])
         self.assertTrue(any("--require-complete" in command for command in progress["hard_gate_commands"]))
         self.assertIn("make verify-au-p0a-real-batch-clearance", progress["hard_gate_commands"])
         self.assertIn("make verify-au-p0b-google-environment-clearance", progress["hard_gate_commands"])
@@ -404,6 +439,11 @@ class AuDeliveryProgressTest(unittest.TestCase):
         self.assertEqual(progress["verifiers"]["p0b_google_phase_execution_clearance"]["status"], "pass")
         self.assertEqual(progress["delivery_progress_hash"], compute_delivery_progress_hash(progress))
         self.assertEqual(verification["status"], "pass")
+        self.assertTrue(verification["current_clearance_completion_contract_ready"])
+        self.assertEqual(
+            verification["current_clearance_credential_update_receipt_endpoint"],
+            P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+        )
         self.assertEqual(hard_gate["status"], "fail")
         self.assertIn("customer_handoff_not_ready", hard_gate["errors"])
 
@@ -526,6 +566,41 @@ class AuDeliveryProgressTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_p0a_real_batch_total_planned_runs_mismatch", verification["errors"])
+
+    def test_verifier_rejects_tampered_current_clearance_completion_contract_even_when_hash_is_recomputed(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as temp_dir:
+            sources = self._build_sources(temp_dir, ready=False)
+            progress = build_au_delivery_progress(
+                launch_status_path=sources["launch_status_path"],  # type: ignore[arg-type]
+                handoff_dossier_path=sources["handoff_path"],  # type: ignore[arg-type]
+                customer_handoff_readiness_path=sources["readiness_path"],  # type: ignore[arg-type]
+                next_work_item_path=sources["next_work_item_path"],  # type: ignore[arg-type]
+                external_dependency_handoff_path=sources["dependency_handoff_path"],  # type: ignore[arg-type]
+                external_dependency_clearance_path=sources["clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_update_receipt_path=sources["credential_update_receipt_path"],  # type: ignore[arg-type]
+                p0a_real_batch_clearance_path=sources["real_batch_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance_path=sources["p0b_environment_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance_path=sources["p0b_manual_backfill_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance_path=sources["p0b_phase_execution_clearance_path"],  # type: ignore[arg-type]
+                output_path=Path(temp_dir) / "progress.json",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            progress["summary"]["current_clearance_credential_update_receipt_required"] = False
+            progress["delivery_progress_hash"] = compute_delivery_progress_hash(progress)
+            verification = verify_au_delivery_progress(progress)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn(
+            "summary_current_clearance_credential_update_receipt_required_mismatch",
+            verification["errors"],
+        )
+        self.assertIn(
+            "summary_current_clearance_credential_update_receipt_not_required",
+            verification["errors"],
+        )
 
     def test_verifier_rejects_tampered_manual_backfill_handoff_count_even_when_hash_is_recomputed(self) -> None:
         with TemporaryDirectory() as temp_dir:

@@ -366,6 +366,32 @@ def verify_au_external_dependency_clearance(
         "ready_to_execute": handoff_verification.get("status") == "pass",
         "external_dependency_handoff_ready": expected_handoff_ready,
         "current_step_id": execution.get("current_step_id", ""),
+        "current_request_artifact_id": current_step_request_context.get("request_artifact_id", ""),
+        "current_request_artifact_hash": current_step_request_context.get("artifact_hash", ""),
+        "current_request_completion_contract_ready": execution.get("current_request_completion_contract_ready") is True,
+        "current_request_completion_contract_version": execution.get("current_request_completion_contract_version", ""),
+        "current_request_credential_update_receipt_required": (
+            execution.get("current_request_credential_update_receipt_required") is True
+        ),
+        "current_request_credential_update_receipt_endpoint": execution.get(
+            "current_request_credential_update_receipt_endpoint",
+            "",
+        ),
+        "current_request_credential_update_receipt_strict_gate": execution.get(
+            "current_request_credential_update_receipt_strict_gate",
+            "",
+        ),
+        "current_request_post_update_validation_command_count": execution.get(
+            "current_request_post_update_validation_command_count",
+            0,
+        ),
+        "current_request_completion_contract_missing_required_count": execution.get(
+            "current_request_completion_contract_missing_required_count",
+            0,
+        ),
+        "current_request_completion_contract_raw_secret_values_allowed": (
+            execution.get("current_request_completion_contract_raw_secret_values_allowed") is True
+        ),
         "next_command": execution.get("next_command", ""),
         "planned_step_count": execution.get("planned_step_count", 0),
         "recorded_step_count": len(steps),
