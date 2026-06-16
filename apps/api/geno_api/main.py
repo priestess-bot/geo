@@ -170,6 +170,7 @@ from scripts.build_au_customer_handoff_clearance import (
 )
 from scripts.build_au_customer_handoff_package import (
     DEFAULT_HANDOFF_DOSSIER_MARKDOWN_PATH as DEFAULT_AU_HANDOFF_DOSSIER_MARKDOWN_PATH,
+    DEFAULT_MARKDOWN_OUTPUT_PATH as DEFAULT_AU_CUSTOMER_HANDOFF_PACKAGE_MARKDOWN_OUTPUT_PATH,
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH,
     build_au_customer_handoff_package,
 )
@@ -3270,6 +3271,12 @@ def au_customer_handoff_package() -> dict[str, object]:
             os.getenv(
                 "GENO_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH",
                 DEFAULT_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH,
+            )
+        ),
+        markdown_output_path=Path(
+            os.getenv(
+                "GENO_AU_CUSTOMER_HANDOFF_PACKAGE_MARKDOWN_PATH",
+                DEFAULT_AU_CUSTOMER_HANDOFF_PACKAGE_MARKDOWN_OUTPUT_PATH,
             )
         ),
     )

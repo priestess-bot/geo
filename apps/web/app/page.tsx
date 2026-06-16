@@ -1501,6 +1501,16 @@ type AuCustomerHandoffPackage = {
     p0c_report_package_hash?: string;
     handoff_dossier_markdown_sha256?: string;
   };
+  customer_handoff_package_markdown?: {
+    artifact_type?: string;
+    path?: string;
+    hash_field?: string;
+    hash?: string;
+    file_sha256?: string;
+    size_bytes?: number;
+    exists?: boolean;
+    customer_visible?: boolean;
+  };
   source_artifacts?: Record<
     string,
     {
@@ -9408,6 +9418,17 @@ export default async function Home({
             <span>P0c package hash {shortHash(customerHandoffPackageSummary?.p0c_report_package_hash)}</span>
             <span>
               Markdown sha {shortHash(customerHandoffPackageSummary?.handoff_dossier_markdown_sha256)}
+            </span>
+            <span>
+              Package Markdown{" "}
+              {customerHandoffPackage?.customer_handoff_package_markdown?.exists ? "ready" : "not written"}
+            </span>
+            <span>
+              Package Markdown sha{" "}
+              {shortHash(customerHandoffPackage?.customer_handoff_package_markdown?.file_sha256)}
+            </span>
+            <span>
+              Package Markdown path {customerHandoffPackage?.customer_handoff_package_markdown?.path || "none"}
             </span>
             <span>
               {customerHandoffPackage?.runtime_endpoints?.customer_handoff_package ||

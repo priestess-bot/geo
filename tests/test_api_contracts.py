@@ -2161,6 +2161,12 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("make verify-au-p0a-credential-update-receipt", payload["hard_gate_commands"])
         self.assertTrue(any("--require-complete" in command for command in payload["hard_gate_commands"]))
         self.assertIn("make verify-au-customer-handoff-package", payload["hard_gate_commands"])
+        self.assertEqual(payload["customer_handoff_package_markdown"]["artifact_type"], "markdown")
+        self.assertEqual(
+            payload["customer_handoff_package_markdown"]["path"],
+            "docs/runtime_preflight/au-customer-handoff-package-latest.md",
+        )
+        self.assertTrue(payload["customer_handoff_package_markdown"]["file_sha256"])
         self.assertFalse(payload["redaction_policy"]["source_payloads_embedded"])
         self.assertTrue(payload["customer_handoff_package_hash"])
 

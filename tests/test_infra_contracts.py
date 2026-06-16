@@ -656,6 +656,8 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("--p0b-google-evidence-package-path $${GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", makefile)
         self.assertIn("--p0c-report-package-path $${GENO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", makefile)
         self.assertIn("GENO_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH", makefile)
+        self.assertIn("GENO_AU_CUSTOMER_HANDOFF_PACKAGE_MARKDOWN_PATH", makefile)
+        self.assertIn("--markdown-output-path $${GENO_AU_CUSTOMER_HANDOFF_PACKAGE_MARKDOWN_PATH", makefile)
         self.assertIn("verify-au-customer-handoff-package:", makefile)
         self.assertIn("scripts/verify_au_customer_handoff_package.py", makefile)
         self.assertIn("au-delivery-evidence-refresh:", makefile)

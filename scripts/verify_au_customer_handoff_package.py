@@ -19,6 +19,7 @@ from scripts.build_au_customer_handoff_package import (  # noqa: E402
     MARKDOWN_SOURCE_SPECS,
     PACKAGE_VERSION,
     compute_customer_handoff_package_hash,
+    _render_customer_handoff_manifest_markdown,
 )
 
 
@@ -37,6 +38,7 @@ REQUIRED_FIELDS = (
     "verifiers",
     "summary",
     "handoff_index",
+    "customer_handoff_package_markdown",
     "runtime_endpoints",
     "operator_steps",
     "post_update_validation_sequence",
@@ -201,6 +203,7 @@ def verify_au_customer_handoff_package(
     verifiers = {str(key): _as_dict(value) for key, value in _as_dict(payload.get("verifiers")).items()}
     summary = _as_dict(payload.get("summary"))
     handoff_index = [_as_dict(item) for item in _as_list(payload.get("handoff_index"))]
+    markdown_manifest = _as_dict(payload.get("customer_handoff_package_markdown"))
     endpoints = _as_dict(payload.get("runtime_endpoints"))
     operator_steps = [_as_dict(item) for item in _as_list(payload.get("operator_steps"))]
     validation_sequence = _strings(payload.get("post_update_validation_sequence"))
@@ -351,6 +354,44 @@ def verify_au_customer_handoff_package(
         if summary_hash_key and summary.get(summary_hash_key) != source.get("hash"):
             errors.append(f"summary_source_hash_mismatch:{name}")
 
+    expected_markdown = _render_customer_handoff_manifest_markdown(payload)
+    expected_markdown_hash = hashlib.sha256(expected_markdown.encode("utf-8")).hexdigest()
+    expected_markdown_size = len(expected_markdown.encode("utf-8"))
+    expected_markdown_fields = {
+        "artifact_type": "markdown",
+        "hash_field": "file_sha256",
+        "hash": expected_markdown_hash,
+        "file_sha256": expected_markdown_hash,
+        "size_bytes": expected_markdown_size,
+        "customer_visible": True,
+        "raw_secret_values_allowed": False,
+        "raw_answer_values_allowed": False,
+        "raw_citation_values_allowed": False,
+        "raw_asset_urls_allowed": False,
+        "raw_provider_response_allowed": False,
+        "source_payloads_embedded": False,
+        "hash_path_status_only": True,
+    }
+    for field, expected_value in expected_markdown_fields.items():
+        if markdown_manifest.get(field) != expected_value:
+            errors.append(f"customer_handoff_package_markdown_{field}_mismatch")
+    markdown_manifest_path = str(markdown_manifest.get("path") or "")
+    if not markdown_manifest_path:
+        errors.append("customer_handoff_package_markdown_path_missing")
+    if current_file_check_enabled and markdown_manifest_path:
+        markdown_path = Path(markdown_manifest_path)
+        if markdown_path.is_file():
+            markdown_text = markdown_path.read_text(encoding="utf-8")
+            current_markdown_hash = hashlib.sha256(markdown_text.encode("utf-8")).hexdigest()
+            if current_markdown_hash != expected_markdown_hash:
+                errors.append("customer_handoff_package_markdown_current_hash_mismatch")
+            if markdown_path.stat().st_size != expected_markdown_size:
+                errors.append("customer_handoff_package_markdown_current_size_mismatch")
+            if markdown_manifest.get("exists") is not True:
+                errors.append("customer_handoff_package_markdown_exists_mismatch")
+        elif markdown_manifest.get("exists") is True:
+            errors.append("customer_handoff_package_markdown_current_file_missing")
+
     manifest_ready = expected_summary["customer_handoff_package_manifest_ready"]
     expected_package_ready = expected_summary["customer_handoff_package_ready"]
     if payload.get("customer_handoff_package_manifest_ready") is not manifest_ready:
@@ -463,6 +504,8 @@ def verify_au_customer_handoff_package(
         "customer_handoff_package_ready": expected_package_ready,
         "ready_for_report_export_handoff": summary.get("ready_for_report_export_handoff") is True,
         "ready_for_customer_delivery": expected_package_ready,
+        "customer_handoff_package_markdown_sha256": markdown_manifest.get("file_sha256", ""),
+        "customer_handoff_package_markdown_path": markdown_manifest.get("path", ""),
         "source_artifact_count": len(source_artifacts),
         "blocked_source_artifact_count": len(expected_summary["blocked_source_artifacts"]),
         "blocked_source_artifacts": expected_summary["blocked_source_artifacts"],

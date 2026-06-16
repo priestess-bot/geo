@@ -77,6 +77,7 @@ from scripts.verify_au_p0c_report_package import verify_au_p0c_report_package  #
 
 PACKAGE_VERSION = "au_customer_handoff_package_v1"
 DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-customer-handoff-package-latest.json"
+DEFAULT_MARKDOWN_OUTPUT_PATH = "docs/runtime_preflight/au-customer-handoff-package-latest.md"
 DEFAULT_HANDOFF_DOSSIER_MARKDOWN_PATH = "docs/runtime_preflight/au-handoff-dossier-latest.md"
 
 JSON_SOURCE_SPECS: tuple[dict[str, Any], ...] = (
@@ -258,6 +259,138 @@ def compute_customer_handoff_package_hash(package: dict[str, Any]) -> str:
     payload = dict(package)
     payload.pop("customer_handoff_package_hash", None)
     return hashlib.sha256(_stable_bytes(payload)).hexdigest()
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _short(value: object) -> str:
+    text = str(value or "")
+    return text[:12] if text else "none"
+
+
+def _markdown_cell(value: object) -> str:
+    text = str(value if value is not None else "")
+    return text.replace("|", "\\|").replace("\n", " ")
+
+
+def _render_customer_handoff_manifest_markdown(package: dict[str, Any]) -> str:
+    summary = _as_dict(package.get("summary"))
+    source_artifacts = {
+        str(name): _as_dict(artifact)
+        for name, artifact in _as_dict(package.get("source_artifacts")).items()
+    }
+    customer_visible = [
+        artifact
+        for artifact in source_artifacts.values()
+        if artifact.get("customer_visible") is True
+    ]
+    lines = [
+        "# AU Customer Handoff Package Manifest",
+        "",
+        "This manifest is generated from the hash-only customer handoff package index.",
+        "It records paths, statuses and hashes only; raw answers, citation URLs, assets, secrets and provider payloads are not embedded.",
+        "",
+        "## Status",
+        "",
+        f"- Generated at: `{package.get('generated_at', '')}`",
+        f"- Package manifest: `{'ready' if package.get('customer_handoff_package_manifest_ready') else 'blocked'}`",
+        f"- Customer delivery: `{'ready' if package.get('customer_handoff_package_ready') else 'blocked'}`",
+        f"- Report export handoff: `{'ready' if package.get('ready_for_report_export_handoff') else 'blocked'}`",
+        f"- Engineering progress: `{summary.get('engineering_progress_percent', 0)}%`",
+        f"- Customer readiness: `{summary.get('customer_report_handoff_readiness_percent', 0)}%`",
+        f"- Structural auditability: `{summary.get('structural_auditability_percent', 0)}%`",
+        f"- Missing customer gates: `{summary.get('missing_required_count', 0)}`",
+        f"- Next command: `{summary.get('next_command') or 'none'}`",
+        "",
+        "## Customer-Visible Artifacts",
+        "",
+        "| Name | Path | Status | Hash |",
+        "| --- | --- | --- | --- |",
+    ]
+    for artifact in sorted(customer_visible, key=lambda item: str(item.get("name") or "")):
+        lines.append(
+            "| "
+            f"{_markdown_cell(artifact.get('name'))} | "
+            f"{_markdown_cell(artifact.get('path'))} | "
+            f"{_markdown_cell(artifact.get('verifier_status'))} | "
+            f"{_short(artifact.get('hash'))} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Source Artifact Index",
+            "",
+            "| Name | Stage | Type | Status | Hash Field | Hash | Required | Customer Visible |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for artifact in sorted(source_artifacts.values(), key=lambda item: str(item.get("name") or "")):
+        lines.append(
+            "| "
+            f"{_markdown_cell(artifact.get('name'))} | "
+            f"{_markdown_cell(artifact.get('stage'))} | "
+            f"{_markdown_cell(artifact.get('artifact_type'))} | "
+            f"{_markdown_cell(artifact.get('verifier_status'))} | "
+            f"{_markdown_cell(artifact.get('hash_field'))} | "
+            f"{_short(artifact.get('hash'))} | "
+            f"{'yes' if artifact.get('required_for_customer_handoff') else 'no'} | "
+            f"{'yes' if artifact.get('customer_visible') else 'no'} |"
+        )
+
+    hard_gates = _strings(package.get("hard_gate_commands"))
+    lines.extend(
+        [
+            "",
+            "## Hard Gates",
+            "",
+        ]
+    )
+    for command in hard_gates:
+        lines.append(f"- `{command}`")
+
+    lines.extend(
+        [
+            "",
+            "## Boundary",
+            "",
+            "- This Markdown manifest is a readable index over the JSON package.",
+            "- The JSON package remains the source of truth for machine verification.",
+            "- Strict customer delivery still requires `scripts/verify_au_customer_handoff_package.py --require-ready`.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _markdown_manifest_entry(
+    *,
+    markdown_text: str,
+    markdown_output_path: Path | None,
+    written: bool,
+) -> dict[str, Any]:
+    digest = _sha256_text(markdown_text)
+    encoded = markdown_text.encode("utf-8")
+    current_file_exists = bool(markdown_output_path and markdown_output_path.is_file())
+    return {
+        "artifact_type": "markdown",
+        "path": str(markdown_output_path) if markdown_output_path else "",
+        "exists": written or current_file_exists,
+        "hash_field": "file_sha256",
+        "hash": digest,
+        "file_sha256": digest,
+        "size_bytes": len(encoded),
+        "customer_visible": True,
+        "raw_secret_values_allowed": False,
+        "raw_answer_values_allowed": False,
+        "raw_citation_values_allowed": False,
+        "raw_asset_urls_allowed": False,
+        "raw_provider_response_allowed": False,
+        "source_payloads_embedded": False,
+        "hash_path_status_only": True,
+    }
 
 
 def _file_sha256(path: Path) -> str:
@@ -627,6 +760,7 @@ def build_au_customer_handoff_package(
     p0b_google_evidence_package_path: Path = Path(DEFAULT_P0B_GOOGLE_EVIDENCE_PACKAGE_PATH),
     p0c_report_package_path: Path = Path(DEFAULT_P0C_REPORT_PACKAGE_PATH),
     output_path: Path | None = None,
+    markdown_output_path: Path | None = Path(DEFAULT_MARKDOWN_OUTPUT_PATH),
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     path_values = {
@@ -736,6 +870,12 @@ def build_au_customer_handoff_package(
             "customer_visible_artifacts": list(CUSTOMER_VISIBLE_ARTIFACTS),
         },
     }
+    manifest_markdown = _render_customer_handoff_manifest_markdown(package)
+    package["customer_handoff_package_markdown"] = _markdown_manifest_entry(
+        markdown_text=manifest_markdown,
+        markdown_output_path=markdown_output_path,
+        written=False,
+    )
     package["customer_handoff_package_hash"] = compute_customer_handoff_package_hash(package)
     return package
 
@@ -842,12 +982,18 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("GENO_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU customer handoff package index JSON.",
     )
+    parser.add_argument(
+        "--markdown-output-path",
+        default=os.environ.get("GENO_AU_CUSTOMER_HANDOFF_PACKAGE_MARKDOWN_PATH", DEFAULT_MARKDOWN_OUTPUT_PATH),
+        help="Path to write the human-readable AU customer handoff package Markdown manifest.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     output_path = Path(args.output_path)
+    markdown_output_path = Path(args.markdown_output_path)
     package = build_au_customer_handoff_package(
         handoff_dossier_path=Path(args.handoff_dossier_path),
         handoff_dossier_markdown_path=Path(args.handoff_dossier_markdown_path),
@@ -866,7 +1012,17 @@ def main() -> None:
         p0b_google_evidence_package_path=Path(args.p0b_google_evidence_package_path),
         p0c_report_package_path=Path(args.p0c_report_package_path),
         output_path=output_path,
+        markdown_output_path=markdown_output_path,
     )
+    manifest_markdown = _render_customer_handoff_manifest_markdown(package)
+    package["customer_handoff_package_markdown"] = _markdown_manifest_entry(
+        markdown_text=manifest_markdown,
+        markdown_output_path=markdown_output_path,
+        written=True,
+    )
+    package["customer_handoff_package_hash"] = compute_customer_handoff_package_hash(package)
+    markdown_output_path.parent.mkdir(parents=True, exist_ok=True)
+    markdown_output_path.write_text(manifest_markdown, encoding="utf-8")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(package, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
     print(json.dumps(package, ensure_ascii=False, indent=2, default=str))
