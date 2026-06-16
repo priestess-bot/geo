@@ -3201,6 +3201,9 @@ def au_customer_handoff_package() -> dict[str, object]:
                 DEFAULT_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH,
             )
         ),
+        next_work_item_path=Path(
+            os.getenv("GENO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_AU_NEXT_WORK_ITEM_OUTPUT_PATH)
+        ),
         delivery_progress_path=Path(
             os.getenv("GENO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", DEFAULT_AU_DELIVERY_PROGRESS_OUTPUT_PATH)
         ),

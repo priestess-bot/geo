@@ -2120,7 +2120,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertFalse(payload["customer_handoff_package_ready"])
         self.assertFalse(payload["ready_for_report_export_handoff"])
         self.assertFalse(payload["ready_for_customer_delivery"])
-        self.assertEqual(payload["summary"]["source_artifact_count"], 16)
+        self.assertEqual(payload["summary"]["source_artifact_count"], 17)
         self.assertEqual(payload["summary"]["blocked_source_artifact_count"], 0)
         self.assertEqual(payload["summary"]["engineering_progress_percent"], 46.2)
         self.assertEqual(payload["summary"]["customer_report_handoff_readiness_percent"], 10.0)
@@ -2128,6 +2128,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["missing_required_count"], 9)
         self.assertEqual(payload["summary"]["next_command"], "make au-p0a-env")
         self.assertIn("customer_handoff_clearance", payload["source_artifacts"])
+        self.assertIn("next_work_item", payload["source_artifacts"])
         self.assertIn("p0a_credential_update_receipt", payload["source_artifacts"])
         self.assertIn("p0c_report_package", payload["source_artifacts"])
         self.assertEqual(
@@ -2135,6 +2136,13 @@ class ApiContractsTest(unittest.TestCase):
             "customer_handoff_clearance_hash",
         )
         self.assertTrue(payload["source_artifacts"]["customer_handoff_clearance"]["hash_valid"])
+        self.assertEqual(payload["source_artifacts"]["next_work_item"]["hash_field"], "next_work_item_packet_hash")
+        self.assertTrue(payload["source_artifacts"]["next_work_item"]["hash_valid"])
+        self.assertEqual(payload["verifiers"]["next_work_item"]["status"], "pass")
+        self.assertEqual(
+            payload["summary"]["next_work_item_packet_hash"],
+            payload["source_artifacts"]["next_work_item"]["hash"],
+        )
         self.assertEqual(
             payload["source_artifacts"]["p0a_credential_update_receipt"]["hash_field"],
             "p0a_credential_update_receipt_hash",
@@ -2155,6 +2163,11 @@ class ApiContractsTest(unittest.TestCase):
             payload["runtime_endpoints"]["p0a_credential_update_receipt"],
             "GET /v1/p0a-credential-update-receipt/au",
         )
+        self.assertEqual(payload["runtime_endpoints"]["next_work_item"], "GET /v1/next-work-item/au")
+        self.assertIn("make au-next-work-item", payload["post_update_validation_sequence"])
+        self.assertIn("make verify-au-next-work-item", payload["post_update_validation_sequence"])
+        self.assertIn("make au-next-work-item", payload["hard_gate_commands"])
+        self.assertIn("make verify-au-next-work-item", payload["hard_gate_commands"])
         self.assertIn("make au-p0a-credential-update-receipt", payload["post_update_validation_sequence"])
         self.assertIn("make verify-au-p0a-credential-update-receipt", payload["post_update_validation_sequence"])
         self.assertIn("make au-p0a-credential-update-receipt", payload["hard_gate_commands"])

@@ -38,7 +38,7 @@ class AuCustomerHandoffPackageTest(unittest.TestCase):
         self.assertEqual(package["customer_handoff_package_hash"], compute_customer_handoff_package_hash(package))
         self.assertEqual(verification["status"], "pass")
         self.assertTrue(verification["hash_valid"])
-        self.assertEqual(package["summary"]["source_artifact_count"], 16)
+        self.assertEqual(package["summary"]["source_artifact_count"], 17)
         self.assertEqual(package["summary"]["blocked_source_artifact_count"], 0)
         self.assertEqual(package["summary"]["engineering_progress_percent"], 46.2)
         self.assertEqual(package["summary"]["customer_report_handoff_readiness_percent"], 10.0)
@@ -46,6 +46,7 @@ class AuCustomerHandoffPackageTest(unittest.TestCase):
         self.assertEqual(package["summary"]["missing_required_count"], 9)
         self.assertEqual(package["summary"]["next_command"], "make au-p0a-env")
         self.assertIn("customer_handoff_clearance", package["source_artifacts"])
+        self.assertIn("next_work_item", package["source_artifacts"])
         self.assertIn("p0a_credential_update_receipt", package["source_artifacts"])
         self.assertIn("p0c_report_package", package["source_artifacts"])
         self.assertIn("handoff_dossier_markdown", package["source_artifacts"])
@@ -53,6 +54,16 @@ class AuCustomerHandoffPackageTest(unittest.TestCase):
             package["source_artifacts"]["customer_handoff_clearance"]["hash"],
             package["summary"]["customer_handoff_clearance_hash"],
         )
+        self.assertEqual(
+            package["source_artifacts"]["next_work_item"]["hash_field"],
+            "next_work_item_packet_hash",
+        )
+        self.assertEqual(
+            package["source_artifacts"]["next_work_item"]["hash"],
+            package["summary"]["next_work_item_packet_hash"],
+        )
+        self.assertTrue(package["source_artifacts"]["next_work_item"]["hash_valid"])
+        self.assertEqual(package["verifiers"]["next_work_item"]["status"], "pass")
         self.assertEqual(
             package["source_artifacts"]["p0c_report_package"]["hash"],
             package["summary"]["p0c_report_package_hash"],
@@ -75,11 +86,17 @@ class AuCustomerHandoffPackageTest(unittest.TestCase):
             package["runtime_endpoints"]["p0a_credential_update_receipt"],
             "GET /v1/p0a-credential-update-receipt/au",
         )
+        self.assertEqual(package["runtime_endpoints"]["next_work_item"], "GET /v1/next-work-item/au")
+        self.assertIn("make au-next-work-item", package["post_update_validation_sequence"])
+        self.assertIn("make verify-au-next-work-item", package["post_update_validation_sequence"])
+        self.assertIn("make au-next-work-item", package["hard_gate_commands"])
+        self.assertIn("make verify-au-next-work-item", package["hard_gate_commands"])
         self.assertIn("make au-p0a-credential-update-receipt", package["post_update_validation_sequence"])
         self.assertIn("make verify-au-p0a-credential-update-receipt", package["post_update_validation_sequence"])
         self.assertIn("make au-p0a-credential-update-receipt", package["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-update-receipt", package["hard_gate_commands"])
         self.assertTrue(any("--require-complete" in command for command in package["hard_gate_commands"]))
+        self.assertTrue(any(step["id"] == "refresh_next_work_item" for step in package["operator_steps"]))
         self.assertTrue(
             any(step["id"] == "refresh_p0a_credential_update_receipt" for step in package["operator_steps"])
         )
@@ -132,6 +149,16 @@ class AuCustomerHandoffPackageTest(unittest.TestCase):
         self.assertEqual(verification["status"], "fail")
         self.assertIn("customer_handoff_package_markdown_hash_mismatch", verification["errors"])
         self.assertIn("customer_handoff_package_markdown_file_sha256_mismatch", verification["errors"])
+
+    def test_verifier_detects_next_work_item_summary_hash_tampering(self) -> None:
+        package = build_au_customer_handoff_package(generated_at="2026-06-15T00:00:00Z")
+        package["summary"]["next_work_item_packet_hash"] = "tampered"
+        package["customer_handoff_package_hash"] = compute_customer_handoff_package_hash(package)
+
+        verification = verify_au_customer_handoff_package(package)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("summary_source_hash_mismatch:next_work_item", verification["errors"])
 
     def test_cli_writes_and_verifies_customer_handoff_package(self) -> None:
         with TemporaryDirectory() as tmpdir:

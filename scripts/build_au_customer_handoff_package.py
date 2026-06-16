@@ -24,6 +24,7 @@ from scripts.build_au_external_dependency_handoff import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH,
 )
 from scripts.build_au_handoff_dossier import DEFAULT_OUTPUT_PATH as DEFAULT_HANDOFF_DOSSIER_PATH  # noqa: E402
+from scripts.build_au_next_work_item_packet import DEFAULT_OUTPUT_PATH as DEFAULT_NEXT_WORK_ITEM_PATH  # noqa: E402
 from scripts.build_au_p0a_credential_clearance import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_P0A_CREDENTIAL_CLEARANCE_PATH,
 )
@@ -58,6 +59,7 @@ from scripts.verify_au_delivery_progress import verify_au_delivery_progress  # n
 from scripts.verify_au_external_dependency_clearance import verify_au_external_dependency_clearance  # noqa: E402
 from scripts.verify_au_external_dependency_handoff import verify_au_external_dependency_handoff  # noqa: E402
 from scripts.verify_au_handoff_dossier import verify_au_handoff_dossier  # noqa: E402
+from scripts.verify_au_next_work_item_packet import verify_au_next_work_item_packet  # noqa: E402
 from scripts.verify_au_p0a_credential_clearance import verify_au_p0a_credential_clearance  # noqa: E402
 from scripts.verify_au_p0a_credential_update_receipt import verify_au_p0a_credential_update_receipt  # noqa: E402
 from scripts.verify_au_p0a_evidence_package import verify_au_p0a_evidence_package  # noqa: E402
@@ -98,6 +100,16 @@ JSON_SOURCE_SPECS: tuple[dict[str, Any], ...] = (
         "default_path": DEFAULT_CUSTOMER_HANDOFF_READINESS_PATH,
         "hash_field": "customer_handoff_readiness_hash",
         "verifier": verify_au_customer_handoff_readiness,
+        "required_for_customer_handoff": True,
+        "customer_visible": False,
+    },
+    {
+        "name": "next_work_item",
+        "stage": "handoff",
+        "path_attr": "next_work_item_path",
+        "default_path": DEFAULT_NEXT_WORK_ITEM_PATH,
+        "hash_field": "next_work_item_packet_hash",
+        "verifier": verify_au_next_work_item_packet,
         "required_for_customer_handoff": True,
         "customer_visible": False,
     },
@@ -525,6 +537,7 @@ def _ready_fields_for(name: str) -> tuple[str, ...]:
     return {
         "handoff_dossier": ("handoff_dossier_ready", "ready_for_customer_report_handoff"),
         "customer_handoff_readiness": ("customer_handoff_readiness_ready", "ready_for_customer_report_handoff"),
+        "next_work_item": ("next_work_item_packet_ready",),
         "delivery_progress": ("delivery_progress_ready", "ready_for_customer_report_handoff"),
         "customer_handoff_clearance": (
             "customer_handoff_clearance_packet_ready",
@@ -628,6 +641,7 @@ def _summary(
         "next_command": clearance_summary.get("next_command") or delivery_summary.get("next_command") or "make au-p0a-env",
         "handoff_dossier_hash": source_artifacts["handoff_dossier"]["hash"],
         "customer_handoff_readiness_hash": source_artifacts["customer_handoff_readiness"]["hash"],
+        "next_work_item_packet_hash": source_artifacts["next_work_item"]["hash"],
         "delivery_progress_hash": source_artifacts["delivery_progress"]["hash"],
         "customer_handoff_clearance_hash": source_artifacts["customer_handoff_clearance"]["hash"],
         "external_dependency_handoff_hash": source_artifacts["external_dependency_handoff"]["hash"],
@@ -659,43 +673,57 @@ def _operator_steps() -> list[dict[str, Any]]:
         {
             "order": 1,
             "id": "refresh_customer_handoff_sources",
-            "command": (
-                "make au-handoff-dossier au-customer-handoff-readiness au-delivery-progress "
-                "au-customer-handoff-clearance"
-            ),
-            "purpose": "refresh_customer_handoff_evidence_before_indexing",
+            "command": "make au-handoff-dossier au-customer-handoff-readiness",
+            "purpose": "refresh_base_handoff_evidence_before_next_work_item_indexing",
             "external_call_risk": "none",
         },
         {
             "order": 2,
+            "id": "refresh_next_work_item",
+            "command": "make au-next-work-item verify-au-next-work-item",
+            "purpose": "refresh_next_work_item_packet_before_customer_handoff_index",
+            "external_call_risk": "none",
+        },
+        {
+            "order": 3,
+            "id": "refresh_delivery_progress_and_clearance",
+            "command": (
+                "make au-delivery-progress verify-au-delivery-progress "
+                "au-customer-handoff-clearance verify-au-customer-handoff-clearance"
+            ),
+            "purpose": "refresh_delivery_progress_and_clearance_after_next_work_item",
+            "external_call_risk": "none",
+        },
+        {
+            "order": 4,
             "id": "refresh_p0a_credential_update_receipt",
             "command": "make au-p0a-credential-update-receipt verify-au-p0a-credential-update-receipt",
             "purpose": "refresh_p0a_credential_receipt_before_customer_handoff_index",
             "external_call_risk": "none",
         },
         {
-            "order": 3,
+            "order": 5,
             "id": "refresh_p0_evidence_packages",
             "command": "make au-p0a-package au-p0b-google-package au-p0c-report-package",
             "purpose": "refresh_package_hashes_before_customer_handoff_index",
             "external_call_risk": "fixture_or_local_only_unless_provider_env_is_enabled",
         },
         {
-            "order": 4,
+            "order": 6,
             "id": "build_customer_handoff_package",
             "command": "make au-customer-handoff-package",
             "purpose": "write_hash_index_over_customer_handoff_sources",
             "external_call_risk": "none",
         },
         {
-            "order": 5,
+            "order": 7,
             "id": "verify_customer_handoff_package",
             "command": "make verify-au-customer-handoff-package",
             "purpose": "prove_manifest_hashes_and_source_files_are_current",
             "external_call_risk": "none",
         },
         {
-            "order": 6,
+            "order": 8,
             "id": "run_customer_ready_strict_gate",
             "command": (
                 "PYTHONPATH=packages/geno_core:apps/api python3 "
@@ -715,6 +743,8 @@ def _post_update_validation_sequence() -> list[str]:
         "make verify-au-handoff-dossier",
         "make au-customer-handoff-readiness",
         "make verify-au-customer-handoff-readiness",
+        "make au-next-work-item",
+        "make verify-au-next-work-item",
         "make au-delivery-progress",
         "make verify-au-delivery-progress",
         "make au-customer-handoff-clearance",
@@ -746,6 +776,7 @@ def build_au_customer_handoff_package(
     handoff_dossier_path: Path = Path(DEFAULT_HANDOFF_DOSSIER_PATH),
     handoff_dossier_markdown_path: Path = Path(DEFAULT_HANDOFF_DOSSIER_MARKDOWN_PATH),
     customer_handoff_readiness_path: Path = Path(DEFAULT_CUSTOMER_HANDOFF_READINESS_PATH),
+    next_work_item_path: Path = Path(DEFAULT_NEXT_WORK_ITEM_PATH),
     delivery_progress_path: Path = Path(DEFAULT_DELIVERY_PROGRESS_PATH),
     customer_handoff_clearance_path: Path = Path(DEFAULT_CUSTOMER_HANDOFF_CLEARANCE_PATH),
     external_dependency_handoff_path: Path = Path(DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH),
@@ -767,6 +798,7 @@ def build_au_customer_handoff_package(
         "handoff_dossier_path": handoff_dossier_path,
         "handoff_dossier_markdown_path": handoff_dossier_markdown_path,
         "customer_handoff_readiness_path": customer_handoff_readiness_path,
+        "next_work_item_path": next_work_item_path,
         "delivery_progress_path": delivery_progress_path,
         "customer_handoff_clearance_path": customer_handoff_clearance_path,
         "external_dependency_handoff_path": external_dependency_handoff_path,
@@ -840,6 +872,7 @@ def build_au_customer_handoff_package(
             "customer_handoff_clearance": "GET /v1/customer-handoff-clearance/au",
             "handoff_dossier": "GET /v1/handoff-dossier/au",
             "customer_handoff_readiness": "GET /v1/customer-handoff-readiness/au",
+            "next_work_item": "GET /v1/next-work-item/au",
             "delivery_progress": "GET /v1/delivery-progress/au",
             "external_dependency_handoff": "GET /v1/external-dependency-handoff/au",
             "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
@@ -896,6 +929,11 @@ def parse_args() -> argparse.Namespace:
         "--customer-handoff-readiness-path",
         default=os.environ.get("GENO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH", DEFAULT_CUSTOMER_HANDOFF_READINESS_PATH),
         help="Path to the AU customer handoff readiness JSON.",
+    )
+    parser.add_argument(
+        "--next-work-item-path",
+        default=os.environ.get("GENO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_NEXT_WORK_ITEM_PATH),
+        help="Path to the AU next work item packet JSON.",
     )
     parser.add_argument(
         "--delivery-progress-path",
@@ -998,6 +1036,7 @@ def main() -> None:
         handoff_dossier_path=Path(args.handoff_dossier_path),
         handoff_dossier_markdown_path=Path(args.handoff_dossier_markdown_path),
         customer_handoff_readiness_path=Path(args.customer_handoff_readiness_path),
+        next_work_item_path=Path(args.next_work_item_path),
         delivery_progress_path=Path(args.delivery_progress_path),
         customer_handoff_clearance_path=Path(args.customer_handoff_clearance_path),
         external_dependency_handoff_path=Path(args.external_dependency_handoff_path),

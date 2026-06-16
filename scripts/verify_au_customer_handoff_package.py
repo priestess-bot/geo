@@ -336,6 +336,7 @@ def verify_au_customer_handoff_package(
         summary_hash_key = {
             "handoff_dossier": "handoff_dossier_hash",
             "customer_handoff_readiness": "customer_handoff_readiness_hash",
+            "next_work_item": "next_work_item_packet_hash",
             "delivery_progress": "delivery_progress_hash",
             "customer_handoff_clearance": "customer_handoff_clearance_hash",
             "external_dependency_handoff": "external_dependency_handoff_hash",
@@ -418,6 +419,7 @@ def verify_au_customer_handoff_package(
         "customer_handoff_clearance": "GET /v1/customer-handoff-clearance/au",
         "handoff_dossier": "GET /v1/handoff-dossier/au",
         "customer_handoff_readiness": "GET /v1/customer-handoff-readiness/au",
+        "next_work_item": "GET /v1/next-work-item/au",
         "delivery_progress": "GET /v1/delivery-progress/au",
         "external_dependency_handoff": "GET /v1/external-dependency-handoff/au",
         "external_dependency_clearance": "GET /v1/external-dependency-clearance/au",
@@ -434,6 +436,8 @@ def verify_au_customer_handoff_package(
 
     required_operator_step_ids = {
         "refresh_customer_handoff_sources",
+        "refresh_next_work_item",
+        "refresh_delivery_progress_and_clearance",
         "refresh_p0a_credential_update_receipt",
         "refresh_p0_evidence_packages",
         "build_customer_handoff_package",
@@ -455,6 +459,8 @@ def verify_au_customer_handoff_package(
         "make verify-au-customer-handoff-package",
         "make au-customer-handoff-clearance",
         "make verify-au-customer-handoff-clearance",
+        "make au-next-work-item",
+        "make verify-au-next-work-item",
         "make au-delivery-progress",
         "make verify-au-delivery-progress",
         "make au-p0a-credential-update-receipt",

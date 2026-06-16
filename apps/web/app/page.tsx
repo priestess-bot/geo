@@ -1493,6 +1493,7 @@ type AuCustomerHandoffPackage = {
     next_command?: string;
     handoff_dossier_hash?: string;
     customer_handoff_readiness_hash?: string;
+    next_work_item_packet_hash?: string;
     delivery_progress_hash?: string;
     customer_handoff_clearance_hash?: string;
     p0a_credential_update_receipt_hash?: string;
@@ -1541,6 +1542,7 @@ type AuCustomerHandoffPackage = {
     customer_handoff_package?: string;
     customer_handoff_clearance?: string;
     handoff_dossier?: string;
+    next_work_item?: string;
     delivery_progress?: string;
     p0a_credential_update_receipt?: string;
   };
@@ -9403,6 +9405,9 @@ export default async function Home({
             <span>Next action {customerHandoffPackageSummary?.next_action || "none"}</span>
             <span>Next command {customerHandoffPackageSummary?.next_command || "none"}</span>
             <span>Handoff hash {shortHash(customerHandoffPackageSummary?.handoff_dossier_hash)}</span>
+            <span>
+              Next work item hash {shortHash(customerHandoffPackageSummary?.next_work_item_packet_hash)}
+            </span>
             <span>Progress hash {shortHash(customerHandoffPackageSummary?.delivery_progress_hash)}</span>
             <span>
               Clearance hash {shortHash(customerHandoffPackageSummary?.customer_handoff_clearance_hash)}
@@ -9437,6 +9442,9 @@ export default async function Home({
             <span>
               {customerHandoffPackage?.runtime_endpoints?.customer_handoff_clearance ||
                 "GET /v1/customer-handoff-clearance/au"}
+            </span>
+            <span>
+              {customerHandoffPackage?.runtime_endpoints?.next_work_item || "GET /v1/next-work-item/au"}
             </span>
             <span>
               {customerHandoffPackage?.runtime_endpoints?.p0a_credential_update_receipt ||
