@@ -22,6 +22,14 @@ from scripts.build_au_customer_handoff_package import (  # noqa: E402
     compute_customer_handoff_package_hash,
     _render_customer_handoff_manifest_markdown,
 )
+from scripts.au_trial_handoff import (  # noqa: E402
+    TRIAL_FULL_BATCH_STATUS,
+    TRIAL_GATE_ORDER,
+    TRIAL_GOOGLE_COVERAGE_MODE,
+    TRIAL_HANDOFF_VERSION,
+    TRIAL_SUMMARY_FIELDS,
+    compact_trial_handoff_summary,
+)
 from scripts.run_au_external_dependency_clearance import (  # noqa: E402
     P0A_COMPLETION_CONTRACT_VERSION,
     P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
@@ -38,12 +46,14 @@ REQUIRED_FIELDS = (
     "customer_handoff_package_ready",
     "ready_for_report_export_handoff",
     "ready_for_customer_delivery",
+    "ready_for_trial_customer_handoff",
     "next_action",
     "remaining_blockers",
     "output_path",
     "source_artifacts",
     "verifiers",
     "summary",
+    "trial_handoff_audit",
     "handoff_index",
     "customer_handoff_package_markdown",
     "runtime_endpoints",
@@ -216,6 +226,7 @@ def verify_au_customer_handoff_package(
     source_artifacts = {str(key): _as_dict(value) for key, value in _as_dict(payload.get("source_artifacts")).items()}
     verifiers = {str(key): _as_dict(value) for key, value in _as_dict(payload.get("verifiers")).items()}
     summary = _as_dict(payload.get("summary"))
+    trial_audit = _as_dict(payload.get("trial_handoff_audit"))
     handoff_index = [_as_dict(item) for item in _as_list(payload.get("handoff_index"))]
     markdown_manifest = _as_dict(payload.get("customer_handoff_package_markdown"))
     endpoints = _as_dict(payload.get("runtime_endpoints"))
@@ -346,6 +357,39 @@ def verify_au_customer_handoff_package(
     for key, expected_value in expected_summary.items():
         if summary.get(key) != expected_value:
             errors.append(f"summary_{key}_mismatch")
+    trial_summary = compact_trial_handoff_summary(trial_audit)
+    if trial_audit.get("trial_handoff_version") != TRIAL_HANDOFF_VERSION:
+        errors.append("trial_handoff_version_invalid")
+    trial_gates = [_as_dict(gate) for gate in _as_list(trial_audit.get("trial_gates"))]
+    if [str(gate.get("id") or "") for gate in trial_gates] != list(TRIAL_GATE_ORDER):
+        errors.append("trial_gate_order_mismatch")
+    ready_trial_gate_count = len([gate for gate in trial_gates if gate.get("ready") is True])
+    blocked_trial_gate_ids = [str(gate.get("id") or "") for gate in trial_gates if gate.get("ready") is not True]
+    if trial_audit.get("trial_ready_gate_count") != ready_trial_gate_count:
+        errors.append("trial_ready_gate_count_mismatch")
+    if trial_audit.get("trial_total_gate_count") != len(trial_gates):
+        errors.append("trial_total_gate_count_mismatch")
+    if trial_audit.get("trial_blocked_gate_count") != len(blocked_trial_gate_ids):
+        errors.append("trial_blocked_gate_count_mismatch")
+    if trial_audit.get("trial_blocked_gate_ids") != blocked_trial_gate_ids:
+        errors.append("trial_blocked_gate_ids_mismatch")
+    if trial_audit.get("trial_customer_handoff_readiness_percent") != (
+        round((ready_trial_gate_count / len(trial_gates)) * 100, 1) if trial_gates else 0.0
+    ):
+        errors.append("trial_customer_handoff_readiness_percent_mismatch")
+    if trial_audit.get("ready_for_trial_customer_handoff") is not (ready_trial_gate_count == len(trial_gates)):
+        errors.append("ready_for_trial_customer_handoff_audit_mismatch")
+    if payload.get("ready_for_trial_customer_handoff") is not trial_summary["ready_for_trial_customer_handoff"]:
+        errors.append("ready_for_trial_customer_handoff_mismatch")
+    for field, expected in trial_summary.items():
+        if summary.get(field) != expected:
+            errors.append(f"summary_{field}_mismatch")
+    if summary.get("trial_google_coverage_mode") != TRIAL_GOOGLE_COVERAGE_MODE:
+        errors.append("summary_trial_google_coverage_mode_invalid")
+    if summary.get("trial_full_batch_required") is not False:
+        errors.append("summary_trial_full_batch_required_invalid")
+    if summary.get("trial_full_batch_status") != TRIAL_FULL_BATCH_STATUS:
+        errors.append("summary_trial_full_batch_status_invalid")
     for name, source in source_artifacts.items():
         summary_hash_key = {
             "handoff_dossier": "handoff_dossier_hash",
@@ -573,6 +617,16 @@ def verify_au_customer_handoff_package(
         "customer_handoff_package_ready": expected_package_ready,
         "ready_for_report_export_handoff": summary.get("ready_for_report_export_handoff") is True,
         "ready_for_customer_delivery": expected_package_ready,
+        "ready_for_trial_customer_handoff": payload.get("ready_for_trial_customer_handoff") is True,
+        **{
+            field: (
+                _as_list(summary.get(field))
+                if field == "trial_blocked_gate_ids"
+                else summary.get(field)
+            )
+            for field in TRIAL_SUMMARY_FIELDS
+        },
+        "trial_full_batch_required": summary.get("trial_full_batch_required") is True,
         "customer_handoff_package_markdown_sha256": markdown_manifest.get("file_sha256", ""),
         "customer_handoff_package_markdown_path": markdown_manifest.get("path", ""),
         "source_artifact_count": len(source_artifacts),

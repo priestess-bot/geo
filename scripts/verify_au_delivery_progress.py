@@ -24,6 +24,14 @@ from scripts.run_au_external_dependency_clearance import (  # noqa: E402
     P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
     P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
 )
+from scripts.au_trial_handoff import (  # noqa: E402
+    TRIAL_FULL_BATCH_STATUS,
+    TRIAL_GOOGLE_COVERAGE_MODE,
+    TRIAL_HANDOFF_VERSION,
+    TRIAL_GATE_ORDER,
+    TRIAL_SUMMARY_FIELDS,
+    compact_trial_handoff_summary,
+)
 
 
 REQUIRED_FIELDS = (
@@ -32,8 +40,10 @@ REQUIRED_FIELDS = (
     "status",
     "delivery_progress_ready",
     "ready_for_customer_report_handoff",
+    "ready_for_trial_customer_handoff",
     "output_path",
     "summary",
+    "trial_handoff_audit",
     "progress_gates",
     "source_artifacts",
     "verifiers",
@@ -140,6 +150,42 @@ def verify_au_delivery_progress(
         errors.append("summary_engineering_progress_percent_mismatch")
     if require_customer_ready and payload.get("ready_for_customer_report_handoff") is not True:
         errors.append("customer_handoff_not_ready")
+
+    trial_audit = _as_dict(payload.get("trial_handoff_audit"))
+    trial_summary = compact_trial_handoff_summary(trial_audit)
+    if trial_audit.get("trial_handoff_version") != TRIAL_HANDOFF_VERSION:
+        errors.append("trial_handoff_version_invalid")
+    trial_gates = [_as_dict(gate) for gate in _as_list(trial_audit.get("trial_gates"))]
+    if [str(gate.get("id") or "") for gate in trial_gates] != list(TRIAL_GATE_ORDER):
+        errors.append("trial_gate_order_mismatch")
+    ready_trial_gate_count = len([gate for gate in trial_gates if gate.get("ready") is True])
+    blocked_trial_gate_ids = [str(gate.get("id") or "") for gate in trial_gates if gate.get("ready") is not True]
+    if trial_audit.get("trial_ready_gate_count") != ready_trial_gate_count:
+        errors.append("trial_ready_gate_count_mismatch")
+    if trial_audit.get("trial_total_gate_count") != len(trial_gates):
+        errors.append("trial_total_gate_count_mismatch")
+    if trial_audit.get("trial_blocked_gate_count") != len(blocked_trial_gate_ids):
+        errors.append("trial_blocked_gate_count_mismatch")
+    if trial_audit.get("trial_blocked_gate_ids") != blocked_trial_gate_ids:
+        errors.append("trial_blocked_gate_ids_mismatch")
+    if trial_audit.get("trial_customer_handoff_readiness_percent") != _percent(
+        ready_trial_gate_count,
+        len(trial_gates),
+    ):
+        errors.append("trial_customer_handoff_readiness_percent_mismatch")
+    if trial_audit.get("ready_for_trial_customer_handoff") is not (ready_trial_gate_count == len(trial_gates)):
+        errors.append("ready_for_trial_customer_handoff_audit_mismatch")
+    if payload.get("ready_for_trial_customer_handoff") is not trial_summary["ready_for_trial_customer_handoff"]:
+        errors.append("ready_for_trial_customer_handoff_mismatch")
+    for field, expected in trial_summary.items():
+        if summary.get(field) != expected:
+            errors.append(f"summary_{field}_mismatch")
+    if summary.get("trial_google_coverage_mode") != TRIAL_GOOGLE_COVERAGE_MODE:
+        errors.append("summary_trial_google_coverage_mode_invalid")
+    if summary.get("trial_full_batch_required") is not False:
+        errors.append("summary_trial_full_batch_required_invalid")
+    if summary.get("trial_full_batch_status") != TRIAL_FULL_BATCH_STATUS:
+        errors.append("summary_trial_full_batch_status_invalid")
 
     verifiers = _as_dict(payload.get("verifiers"))
     launch_verifier = _as_dict(verifiers.get("launch_status"))
@@ -356,6 +402,28 @@ def verify_au_delivery_progress(
         p0b_google_environment_clearance_verifier.get("missing_required_count")
     ):
         errors.append("summary_p0b_google_environment_missing_required_count_mismatch")
+    if summary.get("p0b_google_environment_action_plan_ready") is not (
+        p0b_google_environment_clearance_verifier.get("google_environment_action_plan_ready") is True
+    ):
+        errors.append("summary_p0b_google_environment_action_plan_ready_mismatch")
+    if summary.get("p0b_google_environment_action_required") is not (
+        p0b_google_environment_clearance_verifier.get("google_environment_action_required") is True
+    ):
+        errors.append("summary_p0b_google_environment_action_required_mismatch")
+    if summary.get("p0b_google_environment_action_item_count") != (
+        p0b_google_environment_clearance_verifier.get("google_environment_action_item_count")
+    ):
+        errors.append("summary_p0b_google_environment_action_item_count_mismatch")
+    if _as_dict(summary.get("p0b_google_environment_action_owner_counts")) != _as_dict(
+        p0b_google_environment_clearance_verifier.get("google_environment_action_owner_counts")
+    ):
+        errors.append("summary_p0b_google_environment_action_owner_counts_mismatch")
+    if summary.get("p0b_google_environment_post_update_validation_command_count") != (
+        p0b_google_environment_clearance_verifier.get(
+            "google_environment_post_update_validation_command_count"
+        )
+    ):
+        errors.append("summary_p0b_google_environment_post_update_validation_command_count_mismatch")
 
     p0b_google_manual_backfill_clearance_verifier = _as_dict(verifiers.get("p0b_google_manual_backfill_clearance"))
     if summary.get("p0b_google_manual_backfill_clearance_ready") is not (
@@ -477,9 +545,19 @@ def verify_au_delivery_progress(
         "hash_valid": hash_valid,
         "delivery_progress_ready": payload.get("delivery_progress_ready") is True,
         "ready_for_customer_report_handoff": payload.get("ready_for_customer_report_handoff") is True,
+        "ready_for_trial_customer_handoff": payload.get("ready_for_trial_customer_handoff") is True,
         "engineering_progress_percent": summary.get("engineering_progress_percent", 0.0),
         "customer_report_handoff_readiness_percent": summary.get("customer_report_handoff_readiness_percent", 0.0),
         "structural_auditability_percent": summary.get("structural_auditability_percent", 0.0),
+        **{
+            field: (
+                _as_list(summary.get(field))
+                if field == "trial_blocked_gate_ids"
+                else summary.get(field)
+            )
+            for field in TRIAL_SUMMARY_FIELDS
+        },
+        "trial_full_batch_required": summary.get("trial_full_batch_required") is True,
         "blocked_progress_gate_count": len(blocked_gates),
         "blocked_progress_gate_ids": blocked_gate_ids,
         "next_work_item_id": str(summary.get("next_work_item_id") or ""),
@@ -526,6 +604,19 @@ def verify_au_delivery_progress(
         "p0a_real_batch_blocked_phase_count": summary.get("p0a_real_batch_blocked_phase_count"),
         "p0a_real_batch_phase_command_count": summary.get("p0a_real_batch_phase_command_count"),
         "p0a_real_batch_evidence_output_count": summary.get("p0a_real_batch_evidence_output_count"),
+        "p0b_google_environment_action_plan_ready": summary.get(
+            "p0b_google_environment_action_plan_ready"
+        )
+        is True,
+        "p0b_google_environment_action_required": summary.get("p0b_google_environment_action_required")
+        is True,
+        "p0b_google_environment_action_item_count": summary.get("p0b_google_environment_action_item_count"),
+        "p0b_google_environment_action_owner_counts": _as_dict(
+            summary.get("p0b_google_environment_action_owner_counts")
+        ),
+        "p0b_google_environment_post_update_validation_command_count": summary.get(
+            "p0b_google_environment_post_update_validation_command_count"
+        ),
         "p0b_google_manual_backfill_ready": summary.get("p0b_google_manual_backfill_ready") is True,
         "p0b_google_manual_backfill_coverage_complete": summary.get(
             "p0b_google_manual_backfill_coverage_complete"

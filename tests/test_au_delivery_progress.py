@@ -288,6 +288,15 @@ class AuDeliveryProgressTest(unittest.TestCase):
         self.assertEqual(progress["summary"]["engineering_progress_percent"], 46.2)
         self.assertEqual(progress["summary"]["customer_report_handoff_readiness_percent"], 10.0)
         self.assertEqual(progress["summary"]["structural_auditability_percent"], 100.0)
+        self.assertFalse(progress["ready_for_trial_customer_handoff"])
+        self.assertEqual(progress["summary"]["trial_handoff_version"], "au_trial_customer_handoff_v1")
+        self.assertEqual(progress["summary"]["trial_total_gate_count"], 8)
+        self.assertGreater(progress["summary"]["trial_ready_gate_count"], 0)
+        self.assertIn("trial_p0a_credentials_ready", progress["summary"]["trial_blocked_gate_ids"])
+        self.assertFalse(progress["summary"]["trial_full_batch_required"])
+        self.assertEqual(progress["summary"]["trial_full_batch_status"], "deferred_to_formal_launch")
+        self.assertEqual(progress["summary"]["trial_google_coverage_mode"], "limited_coverage_appendix_allowed")
+        self.assertEqual(len(progress["trial_handoff_audit"]["trial_gates"]), 8)
         self.assertEqual(progress["summary"]["ready_progress_gate_count"], 6)
         self.assertEqual(progress["summary"]["total_progress_gate_count"], 13)
         self.assertEqual(progress["summary"]["blocked_progress_gate_count"], 7)
@@ -455,6 +464,9 @@ class AuDeliveryProgressTest(unittest.TestCase):
         self.assertEqual(progress["delivery_progress_hash"], compute_delivery_progress_hash(progress))
         self.assertEqual(verification["status"], "pass")
         self.assertTrue(verification["current_clearance_completion_contract_ready"])
+        self.assertFalse(verification["ready_for_trial_customer_handoff"])
+        self.assertEqual(verification["trial_total_gate_count"], 8)
+        self.assertEqual(verification["trial_full_batch_status"], "deferred_to_formal_launch")
         self.assertTrue(verification["p0a_credential_update_action_plan_ready"])
         self.assertTrue(verification["p0a_credential_update_action_required"])
         self.assertEqual(verification["p0a_credential_update_action_item_count"], 3)
@@ -502,6 +514,8 @@ class AuDeliveryProgressTest(unittest.TestCase):
         self.assertEqual(progress["summary"]["customer_report_handoff_readiness_percent"], 100.0)
         self.assertEqual(progress["summary"]["blocked_customer_gate_count"], 0)
         self.assertEqual(progress["summary"]["engineering_progress_percent"], 100.0)
+        self.assertTrue(progress["ready_for_trial_customer_handoff"])
+        self.assertEqual(progress["summary"]["trial_customer_handoff_readiness_percent"], 100.0)
         self.assertEqual(hard_gate["status"], "pass")
 
     def test_verifier_rejects_tampered_progress_percent_even_when_hash_is_recomputed(self) -> None:
@@ -529,6 +543,34 @@ class AuDeliveryProgressTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_engineering_progress_percent_mismatch", verification["errors"])
+
+    def test_verifier_rejects_tampered_trial_readiness_even_when_hash_is_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            sources = self._build_sources(temp_dir, ready=False)
+            progress = build_au_delivery_progress(
+                launch_status_path=sources["launch_status_path"],  # type: ignore[arg-type]
+                handoff_dossier_path=sources["handoff_path"],  # type: ignore[arg-type]
+                customer_handoff_readiness_path=sources["readiness_path"],  # type: ignore[arg-type]
+                next_work_item_path=sources["next_work_item_path"],  # type: ignore[arg-type]
+                external_dependency_handoff_path=sources["dependency_handoff_path"],  # type: ignore[arg-type]
+                external_dependency_clearance_path=sources["clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_update_receipt_path=sources["credential_update_receipt_path"],  # type: ignore[arg-type]
+                p0a_real_batch_clearance_path=sources["real_batch_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance_path=sources["p0b_environment_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance_path=sources["p0b_manual_backfill_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance_path=sources["p0b_phase_execution_clearance_path"],  # type: ignore[arg-type]
+                output_path=Path(temp_dir) / "progress.json",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            progress["summary"]["trial_customer_handoff_readiness_percent"] = 100.0
+            progress["ready_for_trial_customer_handoff"] = True
+            progress["delivery_progress_hash"] = compute_delivery_progress_hash(progress)
+            verification = verify_au_delivery_progress(progress)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("summary_trial_customer_handoff_readiness_percent_mismatch", verification["errors"])
+        self.assertIn("ready_for_trial_customer_handoff_mismatch", verification["errors"])
 
     def test_verifier_rejects_tampered_manual_backfill_content_count_even_when_hash_is_recomputed(self) -> None:
         with TemporaryDirectory() as temp_dir:

@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.build_au_p0b_google_environment_fulfillment import (  # noqa: E402
+    ACTION_PLAN_VERSION,
     DEFAULT_OUTPUT_PATH,
     FULFILLMENT_VERSION,
     compute_p0b_google_environment_fulfillment_hash,
@@ -33,6 +34,7 @@ REQUIRED_FIELDS = (
     "p0b_google_environment_request_verifier",
     "p0b_google_playwright_env_report_verifier",
     "summary",
+    "google_environment_action_plan",
     "environment_fulfillment_items",
     "verification_commands",
     "hard_gate_commands",
@@ -95,6 +97,18 @@ def _missing_by_owner(items: list[dict[str, Any]]) -> dict[str, list[str]]:
     return {owner: sorted(names) for owner, names in sorted(owners.items())}
 
 
+def _required_missing_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [item for item in items if item.get("required") is True and item.get("fulfilled") is not True]
+
+
+def _action_owner_counts(action_items: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in action_items:
+        owner = str(item.get("owner_hint") or "unknown")
+        counts[owner] = counts.get(owner, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def verify_au_p0b_google_environment_fulfillment(
     payload: Any,
     *,
@@ -130,6 +144,8 @@ def verify_au_p0b_google_environment_fulfillment(
     source_request = _as_dict(payload.get("source_p0b_google_environment_request"))
     source_env = _as_dict(payload.get("source_p0b_google_playwright_env_report"))
     summary = _as_dict(payload.get("summary"))
+    action_plan = _as_dict(payload.get("google_environment_action_plan"))
+    action_items = [_as_dict(item) for item in _as_list(action_plan.get("action_items"))]
     items = [_as_dict(item) for item in _as_list(payload.get("environment_fulfillment_items"))]
     verification_commands = _strings(payload.get("verification_commands"))
     hard_gate_commands = _strings(payload.get("hard_gate_commands"))
@@ -167,6 +183,8 @@ def verify_au_p0b_google_environment_fulfillment(
     required_items = [item for item in items if item.get("required") is True]
     fulfilled_required = [item for item in required_items if item.get("fulfilled") is True]
     missing_required = sorted(str(item.get("key") or "") for item in required_items if item.get("fulfilled") is not True)
+    missing_items = _required_missing_items(items)
+    missing_item_lookup = {str(item.get("key") or ""): item for item in missing_items}
     mismatches = sorted(str(item.get("key") or "") for item in items if item.get("presence_mismatch") is True)
     environment_fulfilled = bool(required_items) and len(fulfilled_required) == len(required_items) and not mismatches
     if payload.get("environment_fulfilled") is not environment_fulfilled:
@@ -205,6 +223,18 @@ def verify_au_p0b_google_environment_fulfillment(
         errors.append("summary_owner_counts_mismatch")
     if summary.get("missing_required_by_owner") != _missing_by_owner(items):
         errors.append("summary_missing_required_by_owner_mismatch")
+    if summary.get("google_environment_action_plan_ready") is not True:
+        errors.append("summary_google_environment_action_plan_ready_mismatch")
+    if summary.get("google_environment_action_required") is not (not environment_fulfilled):
+        errors.append("summary_google_environment_action_required_mismatch")
+    if summary.get("google_environment_action_item_count") != len(missing_items):
+        errors.append("summary_google_environment_action_item_count_mismatch")
+    if summary.get("google_environment_action_owner_counts") != _action_owner_counts(action_items):
+        errors.append("summary_google_environment_action_owner_counts_mismatch")
+    if summary.get("google_environment_post_update_validation_command_count") != len(
+        _strings(action_plan.get("post_update_validation_sequence"))
+    ):
+        errors.append("summary_google_environment_post_update_validation_command_count_mismatch")
     if summary.get("raw_secret_values_allowed") is not False:
         errors.append("summary_raw_secret_policy_invalid")
     if not isinstance(summary.get("strict_gate_command"), str) or "--require-fulfilled" not in summary.get(
@@ -256,6 +286,87 @@ def verify_au_p0b_google_environment_fulfillment(
         if item.get("fulfilled") is True and _as_list(item.get("blocking_reasons")):
             errors.append(f"environment_fulfillment_item_blocking_reasons_on_fulfilled:{key}")
 
+    if action_plan.get("version") != ACTION_PLAN_VERSION:
+        errors.append("google_environment_action_plan_version_invalid")
+    if action_plan.get("ready") is not True:
+        errors.append("google_environment_action_plan_ready_mismatch")
+    if action_plan.get("complete") is not environment_fulfilled:
+        errors.append("google_environment_action_plan_complete_mismatch")
+    if action_plan.get("action_required") is not (not environment_fulfilled):
+        errors.append("google_environment_action_required_mismatch")
+    if action_plan.get("action_item_count") != len(missing_items):
+        errors.append("google_environment_action_item_count_mismatch")
+    if sorted(str(item.get("key") or "") for item in action_items) != missing_required:
+        errors.append("google_environment_action_item_keys_mismatch")
+    if action_plan.get("owner_counts") != _action_owner_counts(action_items):
+        errors.append("google_environment_action_owner_counts_mismatch")
+    if not str(action_plan.get("target_env_file") or ""):
+        errors.append("google_environment_action_target_env_file_missing")
+    if action_plan.get("next_command") not in {
+        "make au-p0b-google-playwright-env",
+        "make verify-au-p0b-google-environment-fulfillment",
+    }:
+        errors.append("google_environment_action_next_command_invalid")
+    action_validation_sequence = _strings(action_plan.get("post_update_validation_sequence"))
+    if action_plan.get("post_update_validation_command_count") != len(action_validation_sequence):
+        errors.append("google_environment_action_validation_count_mismatch")
+    if not any("--require-fulfilled" in command for command in action_validation_sequence):
+        errors.append("google_environment_action_validation_missing_require_fulfilled")
+    if not any("--require-ready-smoke" in command for command in action_validation_sequence):
+        errors.append("google_environment_action_validation_missing_require_ready_smoke")
+    if "--require-fulfilled" not in str(action_plan.get("strict_gate_command") or ""):
+        errors.append("google_environment_action_strict_gate_invalid")
+    if "--require-ready-smoke" not in str(action_plan.get("ready_smoke_strict_gate_command") or ""):
+        errors.append("google_environment_action_ready_smoke_gate_invalid")
+    action_redaction_policy = _as_dict(action_plan.get("redaction_policy"))
+    for field in ("raw_secret_values_allowed", "selector_values_allowed", "database_urls_allowed"):
+        if action_redaction_policy.get(field) is not False:
+            errors.append(f"google_environment_action_redaction_policy_invalid:{field}")
+    if action_redaction_policy.get("source_payloads_embedded") is not False:
+        errors.append("google_environment_action_redaction_policy_source_payload_invalid")
+    if action_redaction_policy.get("hash_path_status_only") is not True:
+        errors.append("google_environment_action_redaction_policy_hash_path_invalid")
+    for index, action_item in enumerate(action_items, start=1):
+        key = str(action_item.get("key") or "")
+        source_item = missing_item_lookup.get(key, {})
+        if action_item.get("order") != index:
+            errors.append(f"google_environment_action_item_order_invalid:{key}")
+        for field in (
+            "item_type",
+            "name",
+            "owner_hint",
+            "target_env_file",
+            "env_file_key",
+            "accepted_injection_methods",
+            "next_command_after_update",
+            "strict_gate_command",
+            "ready_smoke_strict_gate_command",
+            "blocking_reasons",
+        ):
+            if field not in action_item:
+                errors.append(f"google_environment_action_item_field_missing:{key}:{field}")
+        if action_item.get("item_type") != source_item.get("item_type"):
+            errors.append(f"google_environment_action_item_type_mismatch:{key}")
+        if action_item.get("owner_hint") != source_item.get("owner_hint"):
+            errors.append(f"google_environment_action_item_owner_mismatch:{key}")
+        if _strings(action_item.get("accepted_injection_methods")) != _strings(
+            source_item.get("accepted_injection_methods")
+        ):
+            errors.append(f"google_environment_action_item_injection_methods_mismatch:{key}")
+        if action_item.get("next_command_after_update") != "make au-p0b-google-playwright-env":
+            errors.append(f"google_environment_action_item_next_command_invalid:{key}")
+        if "--require-fulfilled" not in str(action_item.get("strict_gate_command") or ""):
+            errors.append(f"google_environment_action_item_strict_gate_invalid:{key}")
+        if "--require-ready-smoke" not in str(action_item.get("ready_smoke_strict_gate_command") or ""):
+            errors.append(f"google_environment_action_item_ready_smoke_gate_invalid:{key}")
+        if _strings(action_item.get("blocking_reasons")) != _strings(source_item.get("blocking_reasons")):
+            errors.append(f"google_environment_action_item_blocking_reasons_mismatch:{key}")
+        for field in ("raw_secret_values_allowed", "selector_values_allowed", "database_urls_allowed"):
+            if action_item.get(field) is not False:
+                errors.append(f"google_environment_action_item_policy_invalid:{key}:{field}")
+        if action_item.get("secret_redacted") is not True:
+            errors.append(f"google_environment_action_item_secret_redaction_missing:{key}")
+
     for command in (
         "make au-p0b-google-environment-request",
         "make verify-au-p0b-google-environment-request",
@@ -299,6 +410,13 @@ def verify_au_p0b_google_environment_fulfillment(
         "ready_for_full_google_run": payload.get("ready_for_full_google_run") is True,
         "missing_required_count": len(missing_required),
         "missing_required": missing_required,
+        "google_environment_action_plan_ready": summary.get("google_environment_action_plan_ready") is True,
+        "google_environment_action_required": summary.get("google_environment_action_required") is True,
+        "google_environment_action_item_count": summary.get("google_environment_action_item_count"),
+        "google_environment_action_owner_counts": _as_dict(summary.get("google_environment_action_owner_counts")),
+        "google_environment_post_update_validation_command_count": summary.get(
+            "google_environment_post_update_validation_command_count"
+        ),
         "next_action": summary.get("next_action", ""),
     }
 

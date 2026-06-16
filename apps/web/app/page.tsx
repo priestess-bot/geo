@@ -793,6 +793,9 @@ type RuntimePaths = Record<keyof typeof endpoints, string> & {
   questionEvidence: string;
 };
 
+const TRIAL_GOOGLE_COVERAGE_MODE = "limited_coverage_appendix_allowed";
+const TRIAL_FULL_BATCH_STATUS = "deferred_to_formal_launch";
+
 type AuLaunchStatus = {
   launch_status_version: string;
   generated_at: string;
@@ -1164,14 +1167,40 @@ type AuHandoffDossier = {
   };
 };
 
+type AuTrialHandoffSummary = {
+  trial_handoff_version?: string;
+  ready_for_trial_customer_handoff?: boolean;
+  trial_customer_handoff_readiness_percent?: number;
+  trial_ready_gate_count?: number;
+  trial_total_gate_count?: number;
+  trial_blocked_gate_count?: number;
+  trial_blocked_gate_ids?: string[];
+  trial_google_coverage_mode?: string;
+  trial_full_batch_required?: boolean;
+  trial_full_batch_status?: string;
+};
+
+type AuTrialHandoffAudit = AuTrialHandoffSummary & {
+  trial_gates?: Array<{
+    id?: string;
+    label?: string;
+    stage?: string;
+    ready?: boolean;
+    status?: string;
+    required_for_trial_handoff?: boolean;
+    evidence_ref?: string;
+  }>;
+};
+
 type AuCustomerHandoffReadiness = {
   customer_handoff_readiness_version: string;
   generated_at: string;
   status: string;
   readiness_audit_ready: boolean;
   ready_for_customer_report_handoff: boolean;
+  ready_for_trial_customer_handoff?: boolean;
   customer_handoff_readiness_hash: string;
-  summary?: {
+  summary?: AuTrialHandoffSummary & {
     customer_report_handoff_readiness_percent?: number;
     structural_auditability_percent?: number;
     customer_ready_gate_count?: number;
@@ -1186,6 +1215,7 @@ type AuCustomerHandoffReadiness = {
     external_dependency_blocker_count?: number;
     readiness_statement?: string;
   };
+  trial_handoff_audit?: AuTrialHandoffAudit;
   source_handoff_dossier?: {
     handoff_dossier_hash?: string;
     handoff_dossier_ready?: boolean;
@@ -1227,8 +1257,9 @@ type AuDeliveryProgress = {
   status: string;
   delivery_progress_ready: boolean;
   ready_for_customer_report_handoff: boolean;
+  ready_for_trial_customer_handoff?: boolean;
   delivery_progress_hash: string;
-  summary?: {
+  summary?: AuTrialHandoffSummary & {
     engineering_progress_percent?: number;
     customer_report_handoff_readiness_percent?: number;
     structural_auditability_percent?: number;
@@ -1288,6 +1319,11 @@ type AuDeliveryProgress = {
     p0b_google_environment_fulfilled?: boolean;
     p0b_google_environment_missing_required_count?: number;
     p0b_google_environment_missing_required?: string[];
+    p0b_google_environment_action_plan_ready?: boolean;
+    p0b_google_environment_action_required?: boolean;
+    p0b_google_environment_action_item_count?: number;
+    p0b_google_environment_action_owner_counts?: Record<string, number>;
+    p0b_google_environment_post_update_validation_command_count?: number;
     p0b_google_manual_backfill_clearance_hash?: string;
     p0b_google_manual_backfill_clearance_ready?: boolean;
     p0b_google_manual_backfill_fulfilled?: boolean;
@@ -1314,6 +1350,7 @@ type AuDeliveryProgress = {
     p0b_google_phase_execution_missing_required?: string[];
     p0b_google_phase_execution_next_phase?: string;
   };
+  trial_handoff_audit?: AuTrialHandoffAudit;
   progress_gates?: Array<{
     id?: string;
     label?: string;
@@ -1349,9 +1386,10 @@ type AuCustomerHandoffClearance = {
   customer_handoff_ready: boolean;
   customer_handoff_clearance_ready: boolean;
   ready_for_report_export_handoff: boolean;
+  ready_for_trial_customer_handoff?: boolean;
   blocked_by_prerequisite_step: boolean;
   customer_handoff_clearance_hash: string;
-  summary?: {
+  summary?: AuTrialHandoffSummary & {
     required_count?: number;
     fulfilled_required_count?: number;
     missing_required_count?: number;
@@ -1413,6 +1451,11 @@ type AuCustomerHandoffClearance = {
     p0b_google_environment_clearance_ready?: boolean;
     p0b_google_environment_fulfilled?: boolean;
     p0b_google_environment_missing_required_count?: number;
+    p0b_google_environment_action_plan_ready?: boolean;
+    p0b_google_environment_action_required?: boolean;
+    p0b_google_environment_action_item_count?: number;
+    p0b_google_environment_action_owner_counts?: Record<string, number>;
+    p0b_google_environment_post_update_validation_command_count?: number;
     p0b_google_manual_backfill_clearance_hash?: string;
     p0b_google_manual_backfill_clearance_ready?: boolean;
     p0b_google_manual_backfill_fulfilled?: boolean;
@@ -1489,9 +1532,10 @@ type AuCustomerHandoffPackage = {
   customer_handoff_package_ready: boolean;
   ready_for_report_export_handoff: boolean;
   ready_for_customer_delivery: boolean;
+  ready_for_trial_customer_handoff?: boolean;
   next_action: string;
   customer_handoff_package_hash: string;
-  summary?: {
+  summary?: AuTrialHandoffSummary & {
     source_artifact_count?: number;
     required_source_artifact_count?: number;
     ready_source_artifact_count?: number;
@@ -1532,6 +1576,7 @@ type AuCustomerHandoffPackage = {
     p0c_report_package_hash?: string;
     handoff_dossier_markdown_sha256?: string;
   };
+  trial_handoff_audit?: AuTrialHandoffAudit;
   customer_handoff_package_markdown?: {
     artifact_type?: string;
     path?: string;
@@ -2529,6 +2574,11 @@ type AuP0bGoogleEnvironmentFulfillment = {
     missing_required_by_owner?: Record<string, string[]>;
     cross_stage_reuse_hint_count?: number;
     database_url_reuse_available?: boolean;
+    google_environment_action_plan_ready?: boolean;
+    google_environment_action_required?: boolean;
+    google_environment_action_item_count?: number;
+    google_environment_action_owner_counts?: Record<string, number>;
+    google_environment_post_update_validation_command_count?: number;
     next_action?: string;
     next_command?: string;
     strict_gate_command?: string;
@@ -2596,6 +2646,11 @@ type AuP0bGoogleEnvironmentClearance = {
     google_main_scoring_allowed?: boolean;
     environment_handoff_ready?: boolean;
     database_url_reuse_available?: boolean;
+    google_environment_action_plan_ready?: boolean;
+    google_environment_action_required?: boolean;
+    google_environment_action_item_count?: number;
+    google_environment_action_owner_counts?: Record<string, number>;
+    google_environment_post_update_validation_command_count?: number;
     blocked_by_prerequisite_step?: boolean;
     prerequisite_step_id?: string;
     prerequisite_step_ready?: boolean;
@@ -7091,6 +7146,8 @@ export default async function Home({
     p0bGoogleEnvironmentFulfillmentSummary?.presence_mismatches || [];
   const p0bGoogleEnvironmentFulfillmentItems =
     p0bGoogleEnvironmentFulfillment?.environment_fulfillment_items || [];
+  const p0bGoogleEnvironmentFulfillmentActionOwners =
+    p0bGoogleEnvironmentFulfillmentSummary?.google_environment_action_owner_counts || {};
   const p0bGoogleEnvironmentClearance = data.p0bGoogleEnvironmentClearance;
   const p0bGoogleEnvironmentClearanceSummary = p0bGoogleEnvironmentClearance?.summary;
   const p0bGoogleEnvironmentClearanceMissing =
@@ -7099,6 +7156,8 @@ export default async function Home({
     p0bGoogleEnvironmentClearanceSummary?.presence_mismatches || [];
   const p0bGoogleEnvironmentClearanceItems =
     p0bGoogleEnvironmentClearance?.environment_clearance_items || [];
+  const p0bGoogleEnvironmentClearanceActionOwners =
+    p0bGoogleEnvironmentClearanceSummary?.google_environment_action_owner_counts || {};
   const p0bGoogleEnvironmentClearanceSteps = p0bGoogleEnvironmentClearance?.operator_steps || [];
   const p0bGoogleEnvironmentClearanceValidation =
     p0bGoogleEnvironmentClearance?.post_update_validation_sequence || [];
@@ -7184,8 +7243,12 @@ export default async function Home({
   const customerHandoffReadinessSummary = customerHandoffReadiness?.summary;
   const customerHandoffReadinessBlockedGateIds =
     customerHandoffReadinessSummary?.blocked_customer_gate_ids || [];
+  const customerHandoffReadinessTrialBlockedGateIds =
+    customerHandoffReadinessSummary?.trial_blocked_gate_ids || [];
   const customerHandoffClearance = data.customerHandoffClearance;
   const customerHandoffClearanceSummary = customerHandoffClearance?.summary;
+  const customerHandoffClearanceTrialBlockedGateIds =
+    customerHandoffClearanceSummary?.trial_blocked_gate_ids || [];
   const customerHandoffClearanceItems = customerHandoffClearance?.customer_handoff_clearance_items || [];
   const topCustomerHandoffClearanceItems = customerHandoffClearanceItems.slice(0, 8);
   const customerHandoffClearanceSteps = customerHandoffClearance?.operator_steps || [];
@@ -7194,6 +7257,7 @@ export default async function Home({
     customerHandoffClearance?.post_update_validation_sequence || [];
   const customerHandoffPackage = data.customerHandoffPackage;
   const customerHandoffPackageSummary = customerHandoffPackage?.summary;
+  const customerHandoffPackageTrialBlockedGateIds = customerHandoffPackageSummary?.trial_blocked_gate_ids || [];
   const customerHandoffPackageIndex = customerHandoffPackage?.handoff_index || [];
   const topCustomerHandoffPackageIndex = customerHandoffPackageIndex.slice(0, 9);
   const nextWorkItemPacket = data.nextWorkItemPacket;
@@ -7209,6 +7273,7 @@ export default async function Home({
   const deliveryProgressSummary = deliveryProgress?.summary;
   const deliveryProgressGates = deliveryProgress?.progress_gates || [];
   const blockedDeliveryProgressGateIds = deliveryProgressSummary?.blocked_progress_gate_ids || [];
+  const deliveryProgressTrialBlockedGateIds = deliveryProgressSummary?.trial_blocked_gate_ids || [];
   const topDeliveryProgressGates = deliveryProgressGates.slice(0, 8);
   const scoreWeightConfig = data.scoreWeights?.score_weight_config || null;
   const savedScoreWeightConfig = scoreWeightConfig?.id ? scoreWeightConfig : null;
@@ -8131,10 +8196,30 @@ export default async function Home({
               DB reuse{" "}
               {p0bGoogleEnvironmentFulfillmentSummary?.database_url_reuse_available ? "available" : "not available"}
             </span>
+            <span>
+              Action plan {p0bGoogleEnvironmentFulfillmentSummary?.google_environment_action_plan_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              Action required{" "}
+              {p0bGoogleEnvironmentFulfillmentSummary?.google_environment_action_required ? "yes" : "no"}
+            </span>
+            <span>
+              Action items {p0bGoogleEnvironmentFulfillmentSummary?.google_environment_action_item_count ?? 0}
+            </span>
           </div>
           <div className="handoffBoundary">
             <span>Missing {p0bGoogleEnvironmentFulfillmentMissing.slice(0, 6).join(", ") || "none"}</span>
             <span>Mismatches {p0bGoogleEnvironmentFulfillmentMismatches.join(", ") || "none"}</span>
+            <span>
+              Action owners{" "}
+              {Object.entries(p0bGoogleEnvironmentFulfillmentActionOwners)
+                .map(([owner, count]) => `${owner}:${count}`)
+                .join(", ") || "none"}
+            </span>
+            <span>
+              Action validation{" "}
+              {p0bGoogleEnvironmentFulfillmentSummary?.google_environment_post_update_validation_command_count ?? 0} commands
+            </span>
             <span>Next action {p0bGoogleEnvironmentFulfillmentSummary?.next_action || "none"}</span>
             <span>Next command {p0bGoogleEnvironmentFulfillmentSummary?.next_command || "none"}</span>
             <span>
@@ -8214,6 +8299,13 @@ export default async function Home({
             </span>
             <span>Missing required {p0bGoogleEnvironmentClearanceSummary?.missing_required_count || 0}</span>
             <span>Presence mismatches {p0bGoogleEnvironmentClearanceSummary?.presence_mismatch_count || 0}</span>
+            <span>
+              Action plan {p0bGoogleEnvironmentClearanceSummary?.google_environment_action_plan_ready ? "ready" : "blocked"}
+            </span>
+            <span>
+              Action required {p0bGoogleEnvironmentClearanceSummary?.google_environment_action_required ? "yes" : "no"}
+            </span>
+            <span>Action items {p0bGoogleEnvironmentClearanceSummary?.google_environment_action_item_count ?? 0}</span>
           </div>
           <div className="handoffBoundary">
             <span>
@@ -8225,6 +8317,16 @@ export default async function Home({
             <span>Next command {p0bGoogleEnvironmentClearanceSummary?.next_command || "none"}</span>
             <span>Missing {p0bGoogleEnvironmentClearanceMissing.slice(0, 6).join(", ") || "none"}</span>
             <span>Mismatches {p0bGoogleEnvironmentClearanceMismatches.join(", ") || "none"}</span>
+            <span>
+              Action owners{" "}
+              {Object.entries(p0bGoogleEnvironmentClearanceActionOwners)
+                .map(([owner, count]) => `${owner}:${count}`)
+                .join(", ") || "none"}
+            </span>
+            <span>
+              Action validation{" "}
+              {p0bGoogleEnvironmentClearanceSummary?.google_environment_post_update_validation_command_count ?? 0} commands
+            </span>
             <span>
               Raw secret allowed {p0bGoogleEnvironmentClearanceSummary?.raw_secret_values_allowed ? "yes" : "no"}
             </span>
@@ -9089,6 +9191,7 @@ export default async function Home({
             <span>
               Customer report {deliveryProgress?.ready_for_customer_report_handoff ? "ready" : "blocked"}
             </span>
+            <span>Trial handoff {deliveryProgress?.ready_for_trial_customer_handoff ? "ready" : "blocked"}</span>
             <span>Status {deliveryProgress?.status || "unknown"}</span>
           </div>
           <div className="handoffBoundary">
@@ -9099,6 +9202,22 @@ export default async function Home({
             </span>
             <span>
               Customer gates blocked {deliveryProgressSummary?.blocked_customer_gate_count || 0}
+            </span>
+            <span>
+              Trial readiness {deliveryProgressSummary?.trial_customer_handoff_readiness_percent ?? 0}%
+            </span>
+            <span>
+              Trial gates {deliveryProgressSummary?.trial_ready_gate_count ?? 0}/
+              {deliveryProgressSummary?.trial_total_gate_count ?? 0} · blocked{" "}
+              {deliveryProgressSummary?.trial_blocked_gate_count ?? 0}
+            </span>
+            <span>
+              Trial Google coverage {deliveryProgressSummary?.trial_google_coverage_mode || TRIAL_GOOGLE_COVERAGE_MODE}
+            </span>
+            <span>
+              Trial full batch{" "}
+              {deliveryProgressSummary?.trial_full_batch_required ? "required" : "not required"} ·{" "}
+              {deliveryProgressSummary?.trial_full_batch_status || TRIAL_FULL_BATCH_STATUS}
             </span>
             <span>Remaining blockers {deliveryProgressSummary?.remaining_blocker_count || 0}</span>
             <span>External blockers {deliveryProgressSummary?.external_dependency_blocker_count || 0}</span>
@@ -9193,6 +9312,19 @@ export default async function Home({
               {deliveryProgressSummary?.p0b_google_environment_missing_required_count ?? 0}
             </span>
             <span>
+              P0b environment action plan{" "}
+              {deliveryProgressSummary?.p0b_google_environment_action_plan_ready ? "ready" : "blocked"} ·{" "}
+              {deliveryProgressSummary?.p0b_google_environment_action_item_count ?? 0} items
+            </span>
+            <span>
+              P0b environment action required{" "}
+              {deliveryProgressSummary?.p0b_google_environment_action_required ? "yes" : "no"}
+            </span>
+            <span>
+              P0b environment action validation{" "}
+              {deliveryProgressSummary?.p0b_google_environment_post_update_validation_command_count ?? 0} commands
+            </span>
+            <span>
               P0b manual backfill{" "}
               {deliveryProgressSummary?.p0b_google_manual_backfill_fulfilled ? "fulfilled" : "blocked"}
             </span>
@@ -9243,6 +9375,9 @@ export default async function Home({
             <span>Handoff posture {deliveryProgressSummary?.handoff_posture || "unknown"}</span>
             <span>
               Blocked progress gates {blockedDeliveryProgressGateIds.slice(0, 6).join(", ") || "none"}
+            </span>
+            <span>
+              Trial blocked gates {deliveryProgressTrialBlockedGateIds.slice(0, 6).join(", ") || "none"}
             </span>
             <span>Launch hash {shortHash(deliveryProgressSummary?.launch_status_hash)}</span>
             <span>Readiness hash {shortHash(deliveryProgressSummary?.customer_handoff_readiness_hash)}</span>
@@ -9326,6 +9461,9 @@ export default async function Home({
               Report export handoff {customerHandoffClearance?.ready_for_report_export_handoff ? "ready" : "blocked"}
             </span>
             <span>
+              Trial handoff {customerHandoffClearance?.ready_for_trial_customer_handoff ? "ready" : "blocked"}
+            </span>
+            <span>
               Prerequisites {customerHandoffClearanceSummary?.prerequisite_steps_ready ? "ready" : "blocked"}
             </span>
             <span>Status {customerHandoffClearance?.status || "unknown"}</span>
@@ -9340,6 +9478,23 @@ export default async function Home({
             <span>
               Customer readiness{" "}
               {customerHandoffClearanceSummary?.customer_report_handoff_readiness_percent ?? 0}%
+            </span>
+            <span>
+              Trial readiness {customerHandoffClearanceSummary?.trial_customer_handoff_readiness_percent ?? 0}%
+            </span>
+            <span>
+              Trial gates {customerHandoffClearanceSummary?.trial_ready_gate_count ?? 0}/
+              {customerHandoffClearanceSummary?.trial_total_gate_count ?? 0} · blocked{" "}
+              {customerHandoffClearanceSummary?.trial_blocked_gate_count ?? 0}
+            </span>
+            <span>
+              Trial Google coverage{" "}
+              {customerHandoffClearanceSummary?.trial_google_coverage_mode || TRIAL_GOOGLE_COVERAGE_MODE}
+            </span>
+            <span>
+              Trial full batch{" "}
+              {customerHandoffClearanceSummary?.trial_full_batch_required ? "required" : "not required"} ·{" "}
+              {customerHandoffClearanceSummary?.trial_full_batch_status || TRIAL_FULL_BATCH_STATUS}
             </span>
             <span>Clearance step {customerHandoffClearanceSummary?.target_clearance_step_id || "none"}</span>
             <span>Current global step {customerHandoffClearanceSummary?.current_global_clearance_step_id || "none"}</span>
@@ -9427,6 +9582,15 @@ export default async function Home({
               {customerHandoffClearanceSummary?.p0b_google_environment_missing_required_count ?? 0}
             </span>
             <span>
+              P0b environment action plan{" "}
+              {customerHandoffClearanceSummary?.p0b_google_environment_action_plan_ready ? "ready" : "blocked"} ·{" "}
+              {customerHandoffClearanceSummary?.p0b_google_environment_action_item_count ?? 0} items
+            </span>
+            <span>
+              P0b environment action required{" "}
+              {customerHandoffClearanceSummary?.p0b_google_environment_action_required ? "yes" : "no"}
+            </span>
+            <span>
               P0b manual backfill{" "}
               {customerHandoffClearanceSummary?.p0b_google_manual_backfill_fulfilled ? "fulfilled" : "blocked"}
             </span>
@@ -9476,6 +9640,9 @@ export default async function Home({
             <span>Next command {customerHandoffClearanceSummary?.next_command || "none"}</span>
             <span>
               Missing gates {customerHandoffClearanceSummary?.missing_required?.slice(0, 5).join(", ") || "none"}
+            </span>
+            <span>
+              Trial blocked gates {customerHandoffClearanceTrialBlockedGateIds.slice(0, 6).join(", ") || "none"}
             </span>
             <span>Handoff hash {shortHash(customerHandoffClearanceSummary?.handoff_dossier_hash)}</span>
             <span>Readiness hash {shortHash(customerHandoffClearanceSummary?.customer_handoff_readiness_hash)}</span>
@@ -9580,6 +9747,9 @@ export default async function Home({
               {customerHandoffPackage?.ready_for_report_export_handoff ? "ready" : "blocked"}
             </span>
             <span>
+              Trial handoff {customerHandoffPackage?.ready_for_trial_customer_handoff ? "ready" : "blocked"}
+            </span>
+            <span>
               P0c report{" "}
               {customerHandoffPackageSummary?.p0c_report_contract_ready ? "ready" : "blocked"}
             </span>
@@ -9595,8 +9765,27 @@ export default async function Home({
             <span>
               Customer readiness {customerHandoffPackageSummary?.customer_report_handoff_readiness_percent ?? 0}%
             </span>
+            <span>
+              Trial readiness {customerHandoffPackageSummary?.trial_customer_handoff_readiness_percent ?? 0}%
+            </span>
+            <span>
+              Trial gates {customerHandoffPackageSummary?.trial_ready_gate_count ?? 0}/
+              {customerHandoffPackageSummary?.trial_total_gate_count ?? 0} · blocked{" "}
+              {customerHandoffPackageSummary?.trial_blocked_gate_count ?? 0}
+            </span>
+            <span>
+              Trial Google coverage {customerHandoffPackageSummary?.trial_google_coverage_mode || TRIAL_GOOGLE_COVERAGE_MODE}
+            </span>
+            <span>
+              Trial full batch{" "}
+              {customerHandoffPackageSummary?.trial_full_batch_required ? "required" : "not required"} ·{" "}
+              {customerHandoffPackageSummary?.trial_full_batch_status || TRIAL_FULL_BATCH_STATUS}
+            </span>
             <span>Auditability {customerHandoffPackageSummary?.structural_auditability_percent ?? 0}%</span>
             <span>Missing customer gates {customerHandoffPackageSummary?.missing_required_count ?? 0}</span>
+            <span>
+              Trial blocked gates {customerHandoffPackageTrialBlockedGateIds.slice(0, 6).join(", ") || "none"}
+            </span>
             <span>Next action {customerHandoffPackageSummary?.next_action || "none"}</span>
             <span>Next command {customerHandoffPackageSummary?.next_command || "none"}</span>
             <span>
@@ -9716,6 +9905,9 @@ export default async function Home({
             <span>
               Customer report {customerHandoffReadiness?.ready_for_customer_report_handoff ? "ready" : "blocked"}
             </span>
+            <span>
+              Trial handoff {customerHandoffReadiness?.ready_for_trial_customer_handoff ? "ready" : "blocked"}
+            </span>
           </div>
           <div className="handoffBoundary">
             <span>
@@ -9729,6 +9921,26 @@ export default async function Home({
             </span>
             <span>
               Blocked gate ids {customerHandoffReadinessBlockedGateIds.slice(0, 5).join(", ") || "none"}
+            </span>
+            <span>
+              Trial readiness {customerHandoffReadinessSummary?.trial_customer_handoff_readiness_percent ?? 0}%
+            </span>
+            <span>
+              Trial gates {customerHandoffReadinessSummary?.trial_ready_gate_count ?? 0}/
+              {customerHandoffReadinessSummary?.trial_total_gate_count ?? 0} · blocked{" "}
+              {customerHandoffReadinessSummary?.trial_blocked_gate_count ?? 0}
+            </span>
+            <span>
+              Trial Google coverage{" "}
+              {customerHandoffReadinessSummary?.trial_google_coverage_mode || TRIAL_GOOGLE_COVERAGE_MODE}
+            </span>
+            <span>
+              Trial full batch{" "}
+              {customerHandoffReadinessSummary?.trial_full_batch_required ? "required" : "not required"} ·{" "}
+              {customerHandoffReadinessSummary?.trial_full_batch_status || TRIAL_FULL_BATCH_STATUS}
+            </span>
+            <span>
+              Trial blocked gates {customerHandoffReadinessTrialBlockedGateIds.slice(0, 6).join(", ") || "none"}
             </span>
             <span>Next work item {customerHandoffReadinessSummary?.next_work_item_id || "none"}</span>
             <span>

@@ -57,8 +57,16 @@ class AuCustomerHandoffReadinessTest(unittest.TestCase):
         self.assertEqual(readiness["status"], "pass")
         self.assertTrue(readiness["readiness_audit_ready"])
         self.assertFalse(readiness["ready_for_customer_report_handoff"])
+        self.assertFalse(readiness["ready_for_trial_customer_handoff"])
         self.assertEqual(readiness["summary"]["customer_report_handoff_readiness_percent"], 10.0)
         self.assertEqual(readiness["summary"]["structural_auditability_percent"], 100.0)
+        self.assertEqual(readiness["summary"]["trial_handoff_version"], "au_trial_customer_handoff_v1")
+        self.assertEqual(readiness["summary"]["trial_total_gate_count"], 8)
+        self.assertIn("trial_p0a_credentials_ready", readiness["summary"]["trial_blocked_gate_ids"])
+        self.assertFalse(readiness["summary"]["trial_full_batch_required"])
+        self.assertEqual(readiness["summary"]["trial_full_batch_status"], "deferred_to_formal_launch")
+        self.assertEqual(readiness["summary"]["trial_google_coverage_mode"], "limited_coverage_appendix_allowed")
+        self.assertEqual(len(readiness["trial_handoff_audit"]["trial_gates"]), 8)
         self.assertEqual(readiness["summary"]["customer_ready_gate_count"], 1)
         self.assertEqual(readiness["summary"]["customer_total_gate_count"], 10)
         self.assertEqual(readiness["summary"]["blocked_customer_gate_count"], 9)
@@ -83,6 +91,8 @@ class AuCustomerHandoffReadinessTest(unittest.TestCase):
         self.assertTrue(any(command.endswith("--require-customer-ready") for command in readiness["hard_gate_commands"]))
         self.assertEqual(readiness["customer_handoff_readiness_hash"], compute_customer_handoff_readiness_hash(readiness))
         self.assertEqual(verification["status"], "pass")
+        self.assertFalse(verification["ready_for_trial_customer_handoff"])
+        self.assertEqual(verification["trial_total_gate_count"], 8)
         self.assertEqual(hard_gate["status"], "fail")
         self.assertIn("customer_handoff_not_ready", hard_gate["errors"])
 
@@ -117,6 +127,24 @@ class AuCustomerHandoffReadinessTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_customer_readiness_percent_mismatch", verification["errors"])
+
+    def test_verifier_rejects_tampered_trial_summary_even_when_hash_is_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            dossier_path, dossier = self._build_handoff_dossier(temp_dir, ready=False)
+            readiness = build_au_customer_handoff_readiness(
+                handoff_dossier_path=dossier_path,
+                handoff_dossier=dossier,
+                output_path=Path(temp_dir) / "readiness.json",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            readiness["summary"]["trial_ready_gate_count"] = 8
+            readiness["ready_for_trial_customer_handoff"] = True
+            readiness["customer_handoff_readiness_hash"] = compute_customer_handoff_readiness_hash(readiness)
+            verification = verify_au_customer_handoff_readiness(readiness)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("summary_trial_ready_gate_count_mismatch", verification["errors"])
+        self.assertIn("ready_for_trial_customer_handoff_mismatch", verification["errors"])
 
     def test_cli_writes_readiness_json(self) -> None:
         with TemporaryDirectory() as temp_dir:

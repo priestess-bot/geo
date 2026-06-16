@@ -75,6 +75,11 @@ from scripts.verify_au_p0b_google_phase_execution_clearance import (  # noqa: E4
     verify_au_p0b_google_phase_execution_clearance,
 )
 from scripts.verify_au_p0c_report_package import verify_au_p0c_report_package  # noqa: E402
+from scripts.au_trial_handoff import (  # noqa: E402
+    TRIAL_SUMMARY_FIELDS,
+    build_trial_handoff_audit,
+    compact_trial_handoff_summary,
+)
 
 
 PACKAGE_VERSION = "au_customer_handoff_package_v1"
@@ -324,6 +329,10 @@ def _render_customer_handoff_manifest_markdown(package: dict[str, Any]) -> str:
         f"- Report export handoff: `{'ready' if package.get('ready_for_report_export_handoff') else 'blocked'}`",
         f"- Engineering progress: `{summary.get('engineering_progress_percent', 0)}%`",
         f"- Customer readiness: `{summary.get('customer_report_handoff_readiness_percent', 0)}%`",
+        f"- Trial customer handoff: `{'ready' if package.get('ready_for_trial_customer_handoff') else 'blocked'}`",
+        f"- Trial readiness: `{summary.get('trial_customer_handoff_readiness_percent', 0)}%`",
+        f"- Trial Google coverage: `{summary.get('trial_google_coverage_mode') or 'none'}`",
+        f"- Trial full batch: `{summary.get('trial_full_batch_status') or 'none'}`",
         f"- Structural auditability: `{summary.get('structural_auditability_percent', 0)}%`",
         f"- Missing customer gates: `{summary.get('missing_required_count', 0)}`",
         f"- Next command: `{summary.get('next_command') or 'none'}`",
@@ -483,6 +492,9 @@ def _verifier_summary(
     for field in CURRENT_CLEARANCE_SUMMARY_FIELDS:
         if field in verifier:
             result[field] = verifier.get(field)
+    for field in TRIAL_SUMMARY_FIELDS:
+        if field in verifier:
+            result[field] = verifier.get(field)
     return result
 
 
@@ -580,13 +592,44 @@ def _ready_fields_for(name: str) -> tuple[str, ...]:
     }.get(name, ())
 
 
+def _customer_package_manifest_ready(source_artifacts: dict[str, dict[str, Any]]) -> bool:
+    return all(
+        artifact.get("exists") is True
+        and artifact.get("hash_valid") is True
+        and artifact.get("verifier_status") == "pass"
+        for artifact in source_artifacts.values()
+        if artifact.get("required_for_customer_handoff") is True
+    )
+
+
+def _trial_handoff_audit_from_sources(
+    *,
+    source_artifacts: dict[str, dict[str, Any]],
+    source_payloads: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    handoff_dossier = _as_dict(source_payloads.get("handoff_dossier"))
+    return build_trial_handoff_audit(
+        launch_status=_as_dict(handoff_dossier.get("launch_status")),
+        p0a_credential_update_receipt=_as_dict(source_payloads.get("p0a_credential_update_receipt")),
+        p0a_credential_clearance=_as_dict(source_payloads.get("p0a_credential_clearance")),
+        p0a_real_batch_clearance=_as_dict(source_payloads.get("p0a_real_batch_clearance")),
+        p0b_google_environment_clearance=_as_dict(source_payloads.get("p0b_google_environment_clearance")),
+        p0b_google_manual_backfill_clearance=_as_dict(source_payloads.get("p0b_google_manual_backfill_clearance")),
+        p0b_google_phase_execution_clearance=_as_dict(source_payloads.get("p0b_google_phase_execution_clearance")),
+        p0c_report_package=_as_dict(source_payloads.get("p0c_report_package")),
+        handoff_dossier=handoff_dossier,
+        customer_handoff_package_manifest_ready=_customer_package_manifest_ready(source_artifacts),
+    )
+
+
 def _summary(
     *,
     source_artifacts: dict[str, dict[str, Any]],
-    customer_handoff_clearance: dict[str, Any],
-    delivery_progress: dict[str, Any],
-    p0c_report_package: dict[str, Any],
+    source_payloads: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
+    customer_handoff_clearance = _as_dict(source_payloads.get("customer_handoff_clearance"))
+    delivery_progress = _as_dict(source_payloads.get("delivery_progress"))
+    p0c_report_package = _as_dict(source_payloads.get("p0c_report_package"))
     clearance_summary = _as_dict(customer_handoff_clearance.get("summary"))
     delivery_summary = _as_dict(delivery_progress.get("summary"))
     blocked_sources = sorted(
@@ -624,6 +667,11 @@ def _summary(
     manifest_ready = len(blocked_sources) == 0
     ready_for_report_export_handoff = customer_handoff_clearance.get("ready_for_report_export_handoff") is True
     p0c_report_contract_ready = p0c_report_package.get("p0c_report_contract_ready") is True
+    trial_handoff_audit = _trial_handoff_audit_from_sources(
+        source_artifacts=source_artifacts,
+        source_payloads=source_payloads,
+    )
+    trial_summary = compact_trial_handoff_summary(trial_handoff_audit)
     return {
         "source_artifact_count": len(source_artifacts),
         "required_source_artifact_count": required_source_count,
@@ -651,6 +699,7 @@ def _summary(
             "structural_auditability_percent",
             clearance_summary.get("structural_auditability_percent", 0.0),
         ),
+        **trial_summary,
         "missing_required_count": clearance_summary.get("missing_required_count", 0),
         "missing_required": clearance_summary.get("missing_required", []),
         "blocked_customer_gate_ids": clearance_summary.get("blocked_customer_gate_ids", []),
@@ -912,9 +961,11 @@ def build_au_customer_handoff_package(
 
     summary = _summary(
         source_artifacts=source_artifacts,
-        customer_handoff_clearance=source_payloads.get("customer_handoff_clearance", {}),
-        delivery_progress=source_payloads.get("delivery_progress", {}),
-        p0c_report_package=source_payloads.get("p0c_report_package", {}),
+        source_payloads=source_payloads,
+    )
+    trial_handoff_audit = _trial_handoff_audit_from_sources(
+        source_artifacts=source_artifacts,
+        source_payloads=source_payloads,
     )
     package_ready = summary["customer_handoff_package_ready"] is True
     validation_sequence = _post_update_validation_sequence()
@@ -926,12 +977,14 @@ def build_au_customer_handoff_package(
         "customer_handoff_package_ready": package_ready,
         "ready_for_report_export_handoff": summary["ready_for_report_export_handoff"],
         "ready_for_customer_delivery": package_ready,
+        "ready_for_trial_customer_handoff": summary["ready_for_trial_customer_handoff"],
         "next_action": summary["next_action"],
         "remaining_blockers": summary["blocking_reasons"] if not summary["customer_handoff_package_manifest_ready"] else [],
         "output_path": str(output_path) if output_path else "",
         "source_artifacts": source_artifacts,
         "verifiers": verifiers,
         "summary": summary,
+        "trial_handoff_audit": trial_handoff_audit,
         "handoff_index": [
             {
                 "name": artifact["name"],

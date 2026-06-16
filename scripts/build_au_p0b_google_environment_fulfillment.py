@@ -30,6 +30,7 @@ from scripts.verify_au_p0b_google_playwright_env_report import verify_google_pla
 
 FULFILLMENT_VERSION = "au_p0b_google_environment_fulfillment_v1"
 DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json"
+ACTION_PLAN_VERSION = "au_p0b_google_environment_action_plan_v1"
 
 
 def _utc_now_iso() -> str:
@@ -271,6 +272,10 @@ def _owner_counts(items: list[dict[str, Any]]) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
+def _required_missing_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [item for item in items if item.get("required") is True and item.get("fulfilled") is not True]
+
+
 def _missing_by_owner(items: list[dict[str, Any]]) -> dict[str, list[str]]:
     owners: dict[str, list[str]] = {}
     for item in items:
@@ -278,6 +283,100 @@ def _missing_by_owner(items: list[dict[str, Any]]) -> dict[str, list[str]]:
             owner = str(item.get("owner_hint") or "unknown")
             owners.setdefault(owner, []).append(str(item.get("key") or ""))
     return {owner: sorted(names) for owner, names in sorted(owners.items())}
+
+
+def _target_env_file(environment_request: dict[str, Any]) -> str:
+    return str(_as_dict(environment_request.get("summary")).get("target_env_file") or DEFAULT_PLAYWRIGHT_ENV_FILE)
+
+
+def _google_environment_action_plan(
+    *,
+    environment_request: dict[str, Any],
+    items: list[dict[str, Any]],
+    environment_fulfilled: bool,
+) -> dict[str, Any]:
+    missing_items = _required_missing_items(items)
+    target_env_file = _target_env_file(environment_request)
+    strict_gate_command = (
+        "PYTHONPATH=packages/geno_core:apps/api python3 "
+        "scripts/verify_au_p0b_google_environment_fulfillment.py "
+        "${GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json} "
+        "--require-fulfilled"
+    )
+    ready_smoke_gate_command = (
+        "PYTHONPATH=packages/geno_core:apps/api python3 "
+        "scripts/verify_au_p0b_google_playwright_env_report.py "
+        "${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} "
+        "--require-ready-smoke"
+    )
+    validation_sequence = [
+        "make au-p0b-google-playwright-env",
+        "make verify-au-p0b-google-playwright-env",
+        ready_smoke_gate_command,
+        "make au-p0b-google-environment-request",
+        "make verify-au-p0b-google-environment-request",
+        "make au-p0b-google-environment-fulfillment",
+        "make verify-au-p0b-google-environment-fulfillment",
+        strict_gate_command,
+        "make au-p0b-google-environment-clearance",
+        "make verify-au-p0b-google-environment-clearance",
+        "make au-delivery-evidence-refresh",
+    ]
+    reuse_hint_ids = [
+        str(hint.get("id") or "")
+        for hint in _as_list(environment_request.get("cross_stage_reuse_hints"))
+        if _as_dict(hint).get("reuse_available") is True
+    ]
+    action_items: list[dict[str, Any]] = []
+    for index, item in enumerate(missing_items, start=1):
+        key = str(item.get("key") or "")
+        action_items.append(
+            {
+                "order": index,
+                "key": key,
+                "item_type": str(item.get("item_type") or ""),
+                "name": str(item.get("name") or key),
+                "owner_hint": str(item.get("owner_hint") or "runtime_operator"),
+                "target_env_file": target_env_file,
+                "env_file_key": str(item.get("env_file_key") or item.get("name") or key),
+                "expected_type": str(item.get("expected_type") or ""),
+                "accepted_injection_methods": _strings(item.get("accepted_injection_methods")),
+                "next_command_after_update": "make au-p0b-google-playwright-env",
+                "strict_gate_command": strict_gate_command,
+                "ready_smoke_strict_gate_command": ready_smoke_gate_command,
+                "blocking_reasons": _strings(item.get("blocking_reasons")),
+                "cross_stage_reuse_hint_ids": reuse_hint_ids if key == "environment:DATABASE_URL" else [],
+                "raw_secret_values_allowed": False,
+                "selector_values_allowed": False,
+                "database_urls_allowed": False,
+                "secret_redacted": item.get("secret_redacted") is True,
+            }
+        )
+    return {
+        "version": ACTION_PLAN_VERSION,
+        "ready": True,
+        "complete": environment_fulfilled,
+        "action_required": not environment_fulfilled,
+        "action_item_count": len(action_items),
+        "action_items": action_items,
+        "owner_counts": _owner_counts(action_items),
+        "target_env_file": target_env_file,
+        "next_command": "make au-p0b-google-playwright-env"
+        if action_items
+        else "make verify-au-p0b-google-environment-fulfillment",
+        "post_update_validation_sequence": validation_sequence,
+        "post_update_validation_command_count": len(validation_sequence),
+        "strict_gate_command": strict_gate_command,
+        "ready_smoke_strict_gate_command": ready_smoke_gate_command,
+        "cross_stage_reuse_hint_count": len(reuse_hint_ids),
+        "redaction_policy": {
+            "raw_secret_values_allowed": False,
+            "selector_values_allowed": False,
+            "database_urls_allowed": False,
+            "source_payloads_embedded": False,
+            "hash_path_status_only": True,
+        },
+    }
 
 
 def _next_action(*, env_ready: bool, missing: list[str], mismatched: list[str]) -> str:
@@ -329,6 +428,11 @@ def build_au_p0b_google_environment_fulfillment(
     fulfillment_ready = request_ready and env_ready
     ready_for_smoke = env_verifier.get("ready_for_playwright_smoke") is True
     ready_for_full_run = env_verifier.get("ready_for_full_google_run") is True
+    action_plan = _google_environment_action_plan(
+        environment_request=environment_request,
+        items=items,
+        environment_fulfilled=environment_fulfilled,
+    )
     summary = {
         "environment_fulfilled": environment_fulfilled,
         "environment_handoff_ready": environment_request.get("environment_handoff_ready") is True,
@@ -345,6 +449,14 @@ def build_au_p0b_google_environment_fulfillment(
         "cross_stage_reuse_hint_count": len(_as_list(environment_request.get("cross_stage_reuse_hints"))),
         "database_url_reuse_available": _as_dict(environment_request.get("summary")).get("database_url_reuse_available")
         is True,
+        "google_environment_action_plan_ready": action_plan.get("ready") is True,
+        "google_environment_action_required": action_plan.get("action_required") is True,
+        "google_environment_action_item_count": action_plan.get("action_item_count", 0),
+        "google_environment_action_owner_counts": action_plan.get("owner_counts", {}),
+        "google_environment_post_update_validation_command_count": action_plan.get(
+            "post_update_validation_command_count",
+            0,
+        ),
         "next_action": _next_action(env_ready=ready_for_smoke, missing=missing_required, mismatched=mismatched),
         "next_command": "make au-p0b-google-playwright-env"
         if missing_required
@@ -428,6 +540,7 @@ def build_au_p0b_google_environment_fulfillment(
             "errors": _strings(env_verifier.get("errors")),
         },
         "summary": summary,
+        "google_environment_action_plan": action_plan,
         "environment_fulfillment_items": items,
         "verification_commands": [
             "make au-p0b-google-environment-request",

@@ -57,6 +57,7 @@ from scripts.build_au_p0b_google_phase_execution_clearance import (  # noqa: E40
     DEFAULT_OUTPUT_PATH as DEFAULT_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_PATH,
     build_au_p0b_google_phase_execution_clearance,
 )
+from scripts.au_trial_handoff import build_trial_handoff_audit, compact_trial_handoff_summary  # noqa: E402
 from scripts.run_au_external_dependency_clearance import (  # noqa: E402
     DEFAULT_OUTPUT_PATH as DEFAULT_EXTERNAL_DEPENDENCY_CLEARANCE_PATH,
     run_au_external_dependency_clearance,
@@ -638,6 +639,22 @@ def build_au_delivery_progress(
     )
     ready_progress_gate_count = len([gate for gate in progress_gates if gate["ready"] is True])
     blocked_progress_gates = [gate for gate in progress_gates if gate["ready"] is not True]
+    structural_status_pass = all(
+        verifier.get("status") == "pass"
+        for verifier in (
+            handoff_verifier,
+            readiness_verifier,
+            next_work_item_verifier,
+            dependency_handoff_verifier,
+            clearance_verifier,
+            p0a_credential_clearance_verifier,
+            p0a_credential_update_receipt_verifier,
+            p0a_real_batch_clearance_verifier,
+            p0b_google_environment_clearance_verifier,
+            p0b_google_manual_backfill_clearance_verifier,
+            p0b_google_phase_execution_clearance_verifier,
+        )
+    ) and launch_verifier.get("hash_valid") is True
     hard_gate_commands = [
         "make au-delivery-progress",
         "make verify-au-delivery-progress",
@@ -678,30 +695,25 @@ def build_au_delivery_progress(
         or launch_status.get("next_action")
         or ""
     )
+    trial_handoff_audit = build_trial_handoff_audit(
+        launch_status=launch_status,
+        p0a_credential_update_receipt=p0a_credential_update_receipt,
+        p0a_credential_clearance=p0a_credential_clearance,
+        p0a_real_batch_clearance=p0a_real_batch_clearance,
+        p0b_google_environment_clearance=p0b_google_environment_clearance,
+        p0b_google_manual_backfill_clearance=p0b_google_manual_backfill_clearance,
+        p0b_google_phase_execution_clearance=p0b_google_phase_execution_clearance,
+        handoff_dossier=handoff_dossier,
+        customer_handoff_package_manifest_ready=structural_status_pass,
+    )
+    trial_summary = compact_trial_handoff_summary(trial_handoff_audit)
     payload: dict[str, Any] = {
         "delivery_progress_version": PROGRESS_VERSION,
         "generated_at": generated_at or _utc_now_iso(),
-        "status": "pass"
-        if all(
-            verifier.get("status") == "pass"
-            for verifier in (
-                handoff_verifier,
-                readiness_verifier,
-                next_work_item_verifier,
-                dependency_handoff_verifier,
-                clearance_verifier,
-                p0a_credential_clearance_verifier,
-                p0a_credential_update_receipt_verifier,
-                p0a_real_batch_clearance_verifier,
-                p0b_google_environment_clearance_verifier,
-                p0b_google_manual_backfill_clearance_verifier,
-                p0b_google_phase_execution_clearance_verifier,
-            )
-        )
-        and launch_verifier.get("hash_valid") is True
-        else "fail",
+        "status": "pass" if structural_status_pass else "fail",
         "delivery_progress_ready": True,
         "ready_for_customer_report_handoff": customer_handoff_readiness.get("ready_for_customer_report_handoff") is True,
+        "ready_for_trial_customer_handoff": trial_summary["ready_for_trial_customer_handoff"],
         "output_path": str(output_path) if output_path else "",
         "summary": {
             "engineering_progress_percent": _percent(ready_progress_gate_count, len(progress_gates)),
@@ -710,6 +722,7 @@ def build_au_delivery_progress(
                 0.0,
             ),
             "structural_auditability_percent": readiness_summary.get("structural_auditability_percent", 0.0),
+            **trial_summary,
             "ready_progress_gate_count": ready_progress_gate_count,
             "total_progress_gate_count": len(progress_gates),
             "blocked_progress_gate_count": len(blocked_progress_gates),
@@ -879,6 +892,23 @@ def build_au_delivery_progress(
             "p0b_google_environment_missing_required": _as_dict(
                 p0b_google_environment_clearance.get("summary")
             ).get("missing_required", []),
+            "p0b_google_environment_action_plan_ready": _as_dict(
+                p0b_google_environment_clearance.get("summary")
+            ).get("google_environment_action_plan_ready")
+            is True,
+            "p0b_google_environment_action_required": _as_dict(
+                p0b_google_environment_clearance.get("summary")
+            ).get("google_environment_action_required")
+            is True,
+            "p0b_google_environment_action_item_count": _as_dict(
+                p0b_google_environment_clearance.get("summary")
+            ).get("google_environment_action_item_count", 0),
+            "p0b_google_environment_action_owner_counts": _as_dict(
+                p0b_google_environment_clearance.get("summary")
+            ).get("google_environment_action_owner_counts", {}),
+            "p0b_google_environment_post_update_validation_command_count": _as_dict(
+                p0b_google_environment_clearance.get("summary")
+            ).get("google_environment_post_update_validation_command_count", 0),
             "p0b_google_manual_backfill_clearance_hash": p0b_google_manual_backfill_clearance.get(
                 "p0b_google_manual_backfill_clearance_hash",
                 "",
@@ -974,6 +1004,7 @@ def build_au_delivery_progress(
                 p0b_google_phase_execution_clearance.get("summary")
             ).get("next_phase", ""),
         },
+        "trial_handoff_audit": trial_handoff_audit,
         "progress_gates": progress_gates,
         "source_artifacts": {
             "launch_status": {

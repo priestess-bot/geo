@@ -314,6 +314,7 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
         self.assertFalse(packet["customer_handoff_ready"])
         self.assertFalse(packet["customer_handoff_clearance_ready"])
         self.assertFalse(packet["ready_for_report_export_handoff"])
+        self.assertFalse(packet["ready_for_trial_customer_handoff"])
         self.assertTrue(packet["blocked_by_prerequisite_step"])
         self.assertEqual(packet["clearance_step"]["id"], "customer_report_handoff_gate")
         self.assertEqual(packet["summary"]["required_count"], 10)
@@ -321,6 +322,12 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
         self.assertEqual(packet["summary"]["missing_required_count"], 9)
         self.assertEqual(packet["summary"]["engineering_progress_percent"], 46.2)
         self.assertEqual(packet["summary"]["customer_report_handoff_readiness_percent"], 10.0)
+        self.assertEqual(packet["summary"]["trial_handoff_version"], "au_trial_customer_handoff_v1")
+        self.assertEqual(packet["summary"]["trial_total_gate_count"], 8)
+        self.assertIn("trial_p0a_credentials_ready", packet["summary"]["trial_blocked_gate_ids"])
+        self.assertFalse(packet["summary"]["trial_full_batch_required"])
+        self.assertEqual(packet["summary"]["trial_full_batch_status"], "deferred_to_formal_launch")
+        self.assertEqual(packet["summary"]["trial_google_coverage_mode"], "limited_coverage_appendix_allowed")
         self.assertFalse(packet["summary"]["p0a_credential_clearance_ready"])
         self.assertFalse(packet["summary"]["p0a_credentials_fulfilled"])
         self.assertEqual(packet["summary"]["p0a_credential_missing_required_count"], 3)
@@ -479,6 +486,9 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
             P0A_COMPLETION_CONTRACT_VERSION,
         )
         self.assertFalse(verification["current_clearance_completion_contract_raw_secret_values_allowed"])
+        self.assertFalse(verification["ready_for_trial_customer_handoff"])
+        self.assertEqual(verification["trial_total_gate_count"], 8)
+        self.assertEqual(verification["trial_full_batch_status"], "deferred_to_formal_launch")
         self.assertEqual(hard_gate["status"], "fail")
         self.assertIn("customer_handoff_not_cleared", hard_gate["errors"])
         serialized = json.dumps(packet)
@@ -521,6 +531,7 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
         self.assertTrue(packet["customer_handoff_ready"])
         self.assertTrue(packet["customer_handoff_clearance_ready"])
         self.assertTrue(packet["ready_for_report_export_handoff"])
+        self.assertTrue(packet["ready_for_trial_customer_handoff"])
         self.assertFalse(packet["blocked_by_prerequisite_step"])
         self.assertEqual(packet["summary"]["missing_required_count"], 0)
         self.assertEqual(packet["summary"]["fulfilled_required_count"], 10)
@@ -560,6 +571,42 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
 
         self.assertEqual(verification["status"], "fail")
         self.assertIn("summary_fulfilled_required_count_mismatch", verification["errors"])
+
+    def test_verifier_rejects_tampered_trial_summary_even_when_hash_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            sources = self._build_sources(temp_dir, ready=False)
+            packet = build_au_customer_handoff_clearance(
+                handoff_dossier_path=sources["handoff_path"],  # type: ignore[arg-type]
+                customer_handoff_readiness_path=sources["readiness_path"],  # type: ignore[arg-type]
+                delivery_progress_path=sources["delivery_progress_path"],  # type: ignore[arg-type]
+                external_dependency_handoff_path=sources["external_handoff_path"],  # type: ignore[arg-type]
+                external_dependency_clearance_path=sources["external_clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_update_receipt_path=sources["credential_update_receipt_path"],  # type: ignore[arg-type]
+                p0a_real_batch_clearance_path=sources["real_batch_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance_path=sources["p0b_environment_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance_path=sources["p0b_manual_backfill_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance_path=sources["p0b_phase_execution_clearance_path"],  # type: ignore[arg-type]
+                handoff_dossier=sources["handoff"],  # type: ignore[arg-type]
+                customer_handoff_readiness=sources["readiness"],  # type: ignore[arg-type]
+                delivery_progress=sources["delivery_progress"],  # type: ignore[arg-type]
+                external_dependency_handoff=sources["external_handoff"],  # type: ignore[arg-type]
+                external_dependency_clearance=sources["external_clearance"],  # type: ignore[arg-type]
+                p0a_credential_clearance=sources["credential_clearance"],  # type: ignore[arg-type]
+                p0a_credential_update_receipt=sources["credential_update_receipt"],  # type: ignore[arg-type]
+                p0a_real_batch_clearance=sources["real_batch_clearance"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance=sources["p0b_environment_clearance"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance=sources["p0b_manual_backfill_clearance"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance=sources["p0b_phase_execution_clearance"],  # type: ignore[arg-type]
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            packet["summary"]["trial_full_batch_required"] = True
+            packet["customer_handoff_clearance_hash"] = compute_customer_handoff_clearance_hash(packet)
+            verification = verify_au_customer_handoff_clearance(packet)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("summary_progress_trial_full_batch_required_mismatch", verification["errors"])
+        self.assertIn("summary_readiness_trial_full_batch_required_mismatch", verification["errors"])
 
     def test_verifier_rejects_tampered_manual_backfill_count_even_when_hash_recomputed(self) -> None:
         with TemporaryDirectory() as temp_dir:

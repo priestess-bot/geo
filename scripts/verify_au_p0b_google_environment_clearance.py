@@ -357,6 +357,26 @@ def verify_au_p0b_google_environment_clearance(
         errors.append("summary_database_url_policy_invalid")
     if summary.get("provider_response_values_allowed") is not False:
         errors.append("summary_provider_response_policy_invalid")
+    if summary.get("google_environment_action_plan_ready") is not (
+        fulfillment_verifier.get("google_environment_action_plan_ready") is True
+    ):
+        errors.append("summary_google_environment_action_plan_ready_mismatch")
+    if summary.get("google_environment_action_required") is not (
+        fulfillment_verifier.get("google_environment_action_required") is True
+    ):
+        errors.append("summary_google_environment_action_required_mismatch")
+    if summary.get("google_environment_action_item_count") != fulfillment_verifier.get(
+        "google_environment_action_item_count"
+    ):
+        errors.append("summary_google_environment_action_item_count_mismatch")
+    if summary.get("google_environment_action_owner_counts") != _as_dict(
+        fulfillment_verifier.get("google_environment_action_owner_counts")
+    ):
+        errors.append("summary_google_environment_action_owner_counts_mismatch")
+    if summary.get("google_environment_post_update_validation_command_count") != fulfillment_verifier.get(
+        "google_environment_post_update_validation_command_count"
+    ):
+        errors.append("summary_google_environment_post_update_validation_command_count_mismatch")
 
     required_step_ids = {
         "clear_p0a_real_batches",
@@ -475,6 +495,13 @@ def verify_au_p0b_google_environment_clearance(
         "blocked_by_prerequisite_step": blocked_by_prerequisite,
         "missing_required_count": len(missing_required),
         "missing_required": missing_required,
+        "google_environment_action_plan_ready": summary.get("google_environment_action_plan_ready") is True,
+        "google_environment_action_required": summary.get("google_environment_action_required") is True,
+        "google_environment_action_item_count": summary.get("google_environment_action_item_count"),
+        "google_environment_action_owner_counts": _as_dict(summary.get("google_environment_action_owner_counts")),
+        "google_environment_post_update_validation_command_count": summary.get(
+            "google_environment_post_update_validation_command_count"
+        ),
         "next_action": summary.get("next_action", ""),
         "next_command": summary.get("next_command", ""),
     }

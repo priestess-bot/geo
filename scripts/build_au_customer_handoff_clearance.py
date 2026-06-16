@@ -988,6 +988,21 @@ def build_au_customer_handoff_clearance(
     )
     progress_summary = _as_dict(delivery_progress.get("summary"))
     readiness_summary = _as_dict(customer_handoff_readiness.get("summary"))
+    trial_summary = {
+        "trial_handoff_version": progress_summary.get("trial_handoff_version", ""),
+        "ready_for_trial_customer_handoff": progress_summary.get("ready_for_trial_customer_handoff") is True,
+        "trial_customer_handoff_readiness_percent": progress_summary.get(
+            "trial_customer_handoff_readiness_percent",
+            0.0,
+        ),
+        "trial_ready_gate_count": progress_summary.get("trial_ready_gate_count", 0),
+        "trial_total_gate_count": progress_summary.get("trial_total_gate_count", 0),
+        "trial_blocked_gate_count": progress_summary.get("trial_blocked_gate_count", 0),
+        "trial_blocked_gate_ids": progress_summary.get("trial_blocked_gate_ids", []),
+        "trial_google_coverage_mode": progress_summary.get("trial_google_coverage_mode", ""),
+        "trial_full_batch_required": progress_summary.get("trial_full_batch_required") is True,
+        "trial_full_batch_status": progress_summary.get("trial_full_batch_status", ""),
+    }
     payload: dict[str, Any] = {
         "customer_handoff_clearance_version": CLEARANCE_VERSION,
         "generated_at": generated_at or _utc_now_iso(),
@@ -996,6 +1011,7 @@ def build_au_customer_handoff_clearance(
         "customer_handoff_ready": customer_ready,
         "customer_handoff_clearance_ready": customer_handoff_clearance_ready,
         "ready_for_report_export_handoff": ready_for_report_export_handoff,
+        "ready_for_trial_customer_handoff": trial_summary["ready_for_trial_customer_handoff"],
         "blocked_by_prerequisite_step": blocked_by_prerequisite,
         "output_path": str(output_path) if output_path else "",
         "clearance_step": {
@@ -1144,6 +1160,7 @@ def build_au_customer_handoff_clearance(
             ),
             "engineering_progress_percent": progress_summary.get("engineering_progress_percent", 0.0),
             "structural_auditability_percent": readiness_summary.get("structural_auditability_percent", 0.0),
+            **trial_summary,
             "customer_gate_count": len(items),
             "ready_customer_gate_count": len(fulfilled_required),
             "blocked_customer_gate_count": len(required_items) - len(fulfilled_required),
@@ -1271,6 +1288,26 @@ def build_au_customer_handoff_clearance(
             "p0b_google_environment_missing_required_count": _as_dict(
                 p0b_google_environment_clearance.get("summary")
             ).get("missing_required_count", 0),
+            "p0b_google_environment_action_plan_ready": progress_summary.get(
+                "p0b_google_environment_action_plan_ready"
+            )
+            is True,
+            "p0b_google_environment_action_required": progress_summary.get(
+                "p0b_google_environment_action_required"
+            )
+            is True,
+            "p0b_google_environment_action_item_count": progress_summary.get(
+                "p0b_google_environment_action_item_count",
+                0,
+            ),
+            "p0b_google_environment_action_owner_counts": progress_summary.get(
+                "p0b_google_environment_action_owner_counts",
+                {},
+            ),
+            "p0b_google_environment_post_update_validation_command_count": progress_summary.get(
+                "p0b_google_environment_post_update_validation_command_count",
+                0,
+            ),
             "p0b_google_manual_backfill_clearance_hash": p0b_google_manual_backfill_clearance.get(
                 "p0b_google_manual_backfill_clearance_hash",
                 "",

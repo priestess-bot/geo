@@ -546,6 +546,15 @@ def build_au_p0b_google_environment_clearance(
             "google_main_scoring_allowed": environment_fulfillment.get("google_main_scoring_allowed") is True,
             "environment_handoff_ready": fulfillment_summary.get("environment_handoff_ready") is True,
             "database_url_reuse_available": fulfillment_summary.get("database_url_reuse_available") is True,
+            "google_environment_action_plan_ready": fulfillment_summary.get("google_environment_action_plan_ready")
+            is True,
+            "google_environment_action_required": fulfillment_summary.get("google_environment_action_required") is True,
+            "google_environment_action_item_count": fulfillment_summary.get("google_environment_action_item_count", 0),
+            "google_environment_action_owner_counts": fulfillment_summary.get("google_environment_action_owner_counts", {}),
+            "google_environment_post_update_validation_command_count": fulfillment_summary.get(
+                "google_environment_post_update_validation_command_count",
+                0,
+            ),
             "blocked_by_prerequisite_step": blocked_by_prerequisite,
             "prerequisite_step_id": PREREQUISITE_STEP_ID,
             "prerequisite_step_ready": prerequisite_step.get("ready") is True,

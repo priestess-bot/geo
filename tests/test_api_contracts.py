@@ -60,6 +60,12 @@ from scripts.build_au_p0b_google_phase_execution_clearance import (
     compute_p0b_google_phase_execution_clearance_hash,
 )
 from scripts.build_au_customer_handoff_clearance import compute_customer_handoff_clearance_hash
+from scripts.au_trial_handoff import (
+    TRIAL_FULL_BATCH_STATUS,
+    TRIAL_GATE_ORDER,
+    TRIAL_GOOGLE_COVERAGE_MODE,
+    TRIAL_HANDOFF_VERSION,
+)
 from scripts.run_au_external_dependency_clearance import (
     P0A_COMPLETION_CONTRACT_VERSION,
     P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
@@ -761,7 +767,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["next_command"], "make verify-au-p0b-google-env-template")
         self.assertEqual(payload["summary"]["post_update_verification_command"], "make au-p0b-google-playwright-env")
         self.assertEqual(payload["summary"]["cross_stage_reuse_hint_count"], 1)
-        self.assertTrue(payload["summary"]["database_url_reuse_available"])
+        self.assertIsInstance(payload["summary"]["database_url_reuse_available"], bool)
         self.assertEqual(payload["cross_stage_reuse_hints"][0]["id"], "reuse_p0a_database_url_for_p0b_google")
         self.assertEqual(payload["cross_stage_reuse_hints"][0]["target_missing_id"], "full_run_env:DATABASE_URL")
         self.assertFalse(payload["cross_stage_reuse_hints"][0]["copy_raw_value_required"])
@@ -831,7 +837,12 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["missing_required_count"], 6)
         self.assertIn("environment:DATABASE_URL", payload["summary"]["missing_required"])
         self.assertIn("selector:google_aio_prompt_selector", payload["summary"]["missing_required"])
-        self.assertTrue(payload["summary"]["database_url_reuse_available"])
+        self.assertIsInstance(payload["summary"]["database_url_reuse_available"], bool)
+        self.assertTrue(payload["summary"]["google_environment_action_plan_ready"])
+        self.assertTrue(payload["summary"]["google_environment_action_required"])
+        self.assertGreaterEqual(payload["summary"]["google_environment_action_item_count"], 1)
+        self.assertIn("browser_automation_operator", payload["summary"]["google_environment_action_owner_counts"])
+        self.assertGreaterEqual(payload["summary"]["google_environment_post_update_validation_command_count"], 1)
         self.assertEqual(
             payload["runtime_endpoints"]["p0b_google_environment_fulfillment"],
             "GET /v1/p0b-google-environment-fulfillment/au",
@@ -902,7 +913,12 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["missing_required_count"], 6)
         self.assertIn("environment:DATABASE_URL", payload["summary"]["missing_required"])
         self.assertIn("selector:google_aio_prompt_selector", payload["summary"]["missing_required"])
-        self.assertTrue(payload["summary"]["database_url_reuse_available"])
+        self.assertIsInstance(payload["summary"]["database_url_reuse_available"], bool)
+        self.assertTrue(payload["summary"]["google_environment_action_plan_ready"])
+        self.assertTrue(payload["summary"]["google_environment_action_required"])
+        self.assertGreaterEqual(payload["summary"]["google_environment_action_item_count"], 1)
+        self.assertIn("browser_automation_operator", payload["summary"]["google_environment_action_owner_counts"])
+        self.assertGreaterEqual(payload["summary"]["google_environment_post_update_validation_command_count"], 1)
         self.assertEqual(payload["summary"]["next_action"], "clear_p0a_real_batches_first")
         self.assertEqual(payload["summary"]["next_command"], "make au-p0a-real-batch-clearance")
         self.assertEqual(
@@ -1735,6 +1751,16 @@ class ApiContractsTest(unittest.TestCase):
         self.assertFalse(payload["ready_for_customer_report_handoff"])
         self.assertEqual(payload["summary"]["customer_report_handoff_readiness_percent"], 10.0)
         self.assertEqual(payload["summary"]["structural_auditability_percent"], 100.0)
+        self.assertFalse(payload["ready_for_trial_customer_handoff"])
+        self.assertEqual(payload["summary"]["trial_handoff_version"], TRIAL_HANDOFF_VERSION)
+        self.assertEqual(payload["summary"]["trial_total_gate_count"], len(TRIAL_GATE_ORDER))
+        self.assertEqual(
+            payload["summary"]["trial_blocked_gate_count"],
+            len(payload["summary"]["trial_blocked_gate_ids"]),
+        )
+        self.assertEqual(payload["summary"]["trial_google_coverage_mode"], TRIAL_GOOGLE_COVERAGE_MODE)
+        self.assertFalse(payload["summary"]["trial_full_batch_required"])
+        self.assertEqual(payload["summary"]["trial_full_batch_status"], TRIAL_FULL_BATCH_STATUS)
         self.assertEqual(payload["summary"]["blocked_customer_gate_count"], 9)
         self.assertEqual(payload["summary"]["next_work_item_id"], "p0a_environment")
         self.assertGreater(payload["summary"]["remaining_blocker_count"], 0)
@@ -1924,6 +1950,18 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["total_progress_gate_count"], 13)
         self.assertEqual(payload["summary"]["blocked_progress_gate_count"], 7)
         self.assertIn("p0a_credentials_fulfilled", payload["summary"]["blocked_progress_gate_ids"])
+        self.assertFalse(payload["ready_for_trial_customer_handoff"])
+        self.assertFalse(payload["summary"]["ready_for_trial_customer_handoff"])
+        self.assertEqual(payload["summary"]["trial_handoff_version"], TRIAL_HANDOFF_VERSION)
+        self.assertEqual(payload["summary"]["trial_total_gate_count"], len(TRIAL_GATE_ORDER))
+        self.assertEqual(
+            payload["summary"]["trial_blocked_gate_count"],
+            len(payload["summary"]["trial_blocked_gate_ids"]),
+        )
+        self.assertIn("trial_p0a_credentials_ready", payload["summary"]["trial_blocked_gate_ids"])
+        self.assertEqual(payload["summary"]["trial_google_coverage_mode"], TRIAL_GOOGLE_COVERAGE_MODE)
+        self.assertFalse(payload["summary"]["trial_full_batch_required"])
+        self.assertEqual(payload["summary"]["trial_full_batch_status"], TRIAL_FULL_BATCH_STATUS)
         self.assertEqual(payload["summary"]["next_work_item_id"], "p0a_environment")
         self.assertEqual(payload["summary"]["current_clearance_step_id"], "p0a_provider_credentials")
         self.assertEqual(payload["summary"]["current_clearance_request_artifact_id"], "p0a_credential_request")
@@ -1979,6 +2017,14 @@ class ApiContractsTest(unittest.TestCase):
         self.assertFalse(payload["summary"]["p0b_google_environment_clearance_ready"])
         self.assertFalse(payload["summary"]["p0b_google_environment_fulfilled"])
         self.assertGreaterEqual(payload["summary"]["p0b_google_environment_missing_required_count"], 1)
+        self.assertTrue(payload["summary"]["p0b_google_environment_action_plan_ready"])
+        self.assertTrue(payload["summary"]["p0b_google_environment_action_required"])
+        self.assertGreaterEqual(payload["summary"]["p0b_google_environment_action_item_count"], 1)
+        self.assertIn("browser_automation_operator", payload["summary"]["p0b_google_environment_action_owner_counts"])
+        self.assertGreaterEqual(
+            payload["summary"]["p0b_google_environment_post_update_validation_command_count"],
+            1,
+        )
         self.assertFalse(payload["summary"]["p0b_google_manual_backfill_clearance_ready"])
         self.assertFalse(payload["summary"]["p0b_google_manual_backfill_fulfilled"])
         self.assertGreaterEqual(payload["summary"]["p0b_google_manual_backfill_missing_required_count"], 1)
@@ -2089,6 +2135,17 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["missing_required_count"], 9)
         self.assertEqual(payload["summary"]["engineering_progress_percent"], 46.2)
         self.assertEqual(payload["summary"]["customer_report_handoff_readiness_percent"], 10.0)
+        self.assertFalse(payload["ready_for_trial_customer_handoff"])
+        self.assertFalse(payload["summary"]["ready_for_trial_customer_handoff"])
+        self.assertEqual(payload["summary"]["trial_handoff_version"], TRIAL_HANDOFF_VERSION)
+        self.assertEqual(payload["summary"]["trial_total_gate_count"], len(TRIAL_GATE_ORDER))
+        self.assertEqual(
+            payload["summary"]["trial_blocked_gate_count"],
+            len(payload["summary"]["trial_blocked_gate_ids"]),
+        )
+        self.assertEqual(payload["summary"]["trial_google_coverage_mode"], TRIAL_GOOGLE_COVERAGE_MODE)
+        self.assertFalse(payload["summary"]["trial_full_batch_required"])
+        self.assertEqual(payload["summary"]["trial_full_batch_status"], TRIAL_FULL_BATCH_STATUS)
         self.assertFalse(payload["summary"]["p0a_credential_clearance_ready"])
         self.assertFalse(payload["summary"]["p0a_credentials_fulfilled"])
         self.assertGreaterEqual(payload["summary"]["p0a_credential_missing_required_count"], 2)
@@ -2101,6 +2158,14 @@ class ApiContractsTest(unittest.TestCase):
         self.assertFalse(payload["summary"]["p0b_google_environment_clearance_ready"])
         self.assertFalse(payload["summary"]["p0b_google_environment_fulfilled"])
         self.assertGreaterEqual(payload["summary"]["p0b_google_environment_missing_required_count"], 1)
+        self.assertTrue(payload["summary"]["p0b_google_environment_action_plan_ready"])
+        self.assertTrue(payload["summary"]["p0b_google_environment_action_required"])
+        self.assertGreaterEqual(payload["summary"]["p0b_google_environment_action_item_count"], 1)
+        self.assertIn("browser_automation_operator", payload["summary"]["p0b_google_environment_action_owner_counts"])
+        self.assertGreaterEqual(
+            payload["summary"]["p0b_google_environment_post_update_validation_command_count"],
+            1,
+        )
         self.assertFalse(payload["summary"]["p0b_google_manual_backfill_clearance_ready"])
         self.assertFalse(payload["summary"]["p0b_google_manual_backfill_fulfilled"])
         self.assertGreaterEqual(payload["summary"]["p0b_google_manual_backfill_missing_required_count"], 1)
@@ -2228,6 +2293,17 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["customer_report_handoff_readiness_percent"], 10.0)
         self.assertEqual(payload["summary"]["structural_auditability_percent"], 100.0)
         self.assertEqual(payload["summary"]["missing_required_count"], 9)
+        self.assertFalse(payload["ready_for_trial_customer_handoff"])
+        self.assertFalse(payload["summary"]["ready_for_trial_customer_handoff"])
+        self.assertEqual(payload["summary"]["trial_handoff_version"], TRIAL_HANDOFF_VERSION)
+        self.assertEqual(payload["summary"]["trial_total_gate_count"], len(TRIAL_GATE_ORDER))
+        self.assertEqual(
+            payload["summary"]["trial_blocked_gate_count"],
+            len(payload["summary"]["trial_blocked_gate_ids"]),
+        )
+        self.assertEqual(payload["summary"]["trial_google_coverage_mode"], TRIAL_GOOGLE_COVERAGE_MODE)
+        self.assertFalse(payload["summary"]["trial_full_batch_required"])
+        self.assertEqual(payload["summary"]["trial_full_batch_status"], TRIAL_FULL_BATCH_STATUS)
         self.assertEqual(payload["summary"]["next_command"], "make au-p0a-env")
         self.assertEqual(payload["summary"]["current_clearance_request_artifact_id"], "p0a_credential_request")
         self.assertTrue(payload["summary"]["current_clearance_request_artifact_hash"])

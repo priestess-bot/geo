@@ -36,6 +36,7 @@ REQUIRED_FIELDS = (
     "customer_handoff_ready",
     "customer_handoff_clearance_ready",
     "ready_for_report_export_handoff",
+    "ready_for_trial_customer_handoff",
     "blocked_by_prerequisite_step",
     "output_path",
     "clearance_step",
@@ -348,6 +349,10 @@ def verify_au_customer_handoff_clearance(
         errors.append("customer_handoff_clearance_ready_mismatch")
     if payload.get("ready_for_report_export_handoff") is not expected_report_ready:
         errors.append("ready_for_report_export_handoff_mismatch")
+    if payload.get("ready_for_trial_customer_handoff") is not (
+        progress_verifier.get("ready_for_trial_customer_handoff") is True
+    ):
+        errors.append("ready_for_trial_customer_handoff_mismatch")
     if require_cleared and not expected_clearance_ready:
         errors.append("customer_handoff_not_cleared")
 
@@ -369,6 +374,29 @@ def verify_au_customer_handoff_clearance(
         errors.append("summary_customer_handoff_clearance_ready_mismatch")
     if summary.get("ready_for_report_export_handoff") is not expected_report_ready:
         errors.append("summary_ready_for_report_export_handoff_mismatch")
+    trial_summary_fields = (
+        "trial_handoff_version",
+        "ready_for_trial_customer_handoff",
+        "trial_customer_handoff_readiness_percent",
+        "trial_ready_gate_count",
+        "trial_total_gate_count",
+        "trial_blocked_gate_count",
+        "trial_blocked_gate_ids",
+        "trial_google_coverage_mode",
+        "trial_full_batch_required",
+        "trial_full_batch_status",
+    )
+    for field in trial_summary_fields:
+        if summary.get(field) != progress_verifier.get(field):
+            errors.append(f"summary_progress_{field}_mismatch")
+        if field in {
+            "trial_handoff_version",
+            "trial_total_gate_count",
+            "trial_google_coverage_mode",
+            "trial_full_batch_required",
+            "trial_full_batch_status",
+        } and summary.get(field) != readiness_verifier.get(field):
+            errors.append(f"summary_readiness_{field}_mismatch")
     current_clearance_summary_field_map = {
         "current_clearance_request_artifact_id": "current_clearance_request_artifact_id",
         "current_clearance_request_artifact_hash": "current_clearance_request_artifact_hash",
@@ -491,6 +519,24 @@ def verify_au_customer_handoff_clearance(
         p0b_google_environment_clearance_verifier.get("missing_required_count")
     ):
         errors.append("summary_p0b_google_environment_missing_required_count_mismatch")
+    p0b_google_environment_action_field_map = {
+        "p0b_google_environment_action_plan_ready": "google_environment_action_plan_ready",
+        "p0b_google_environment_action_required": "google_environment_action_required",
+        "p0b_google_environment_action_item_count": "google_environment_action_item_count",
+        "p0b_google_environment_action_owner_counts": "google_environment_action_owner_counts",
+        "p0b_google_environment_post_update_validation_command_count": (
+            "google_environment_post_update_validation_command_count"
+        ),
+    }
+    for summary_field, verifier_field in p0b_google_environment_action_field_map.items():
+        summary_value = _as_dict(summary.get(summary_field)) if summary_field.endswith("_owner_counts") else summary.get(summary_field)
+        verifier_value = (
+            _as_dict(p0b_google_environment_clearance_verifier.get(verifier_field))
+            if summary_field.endswith("_owner_counts")
+            else p0b_google_environment_clearance_verifier.get(verifier_field)
+        )
+        if summary_value != verifier_value:
+            errors.append(f"summary_{summary_field}_mismatch")
     if summary.get("p0b_google_manual_backfill_clearance_ready") is not (
         p0b_google_manual_backfill_clearance_verifier.get("manual_backfill_clearance_ready") is True
     ):
@@ -703,6 +749,16 @@ def verify_au_customer_handoff_clearance(
         "customer_handoff_clearance_ready": expected_clearance_ready,
         "customer_handoff_ready": customer_handoff_ready,
         "ready_for_report_export_handoff": expected_report_ready,
+        "ready_for_trial_customer_handoff": payload.get("ready_for_trial_customer_handoff") is True,
+        "trial_handoff_version": str(summary.get("trial_handoff_version") or ""),
+        "trial_customer_handoff_readiness_percent": summary.get("trial_customer_handoff_readiness_percent", 0.0),
+        "trial_ready_gate_count": summary.get("trial_ready_gate_count"),
+        "trial_total_gate_count": summary.get("trial_total_gate_count"),
+        "trial_blocked_gate_count": summary.get("trial_blocked_gate_count"),
+        "trial_blocked_gate_ids": _as_list(summary.get("trial_blocked_gate_ids")),
+        "trial_google_coverage_mode": str(summary.get("trial_google_coverage_mode") or ""),
+        "trial_full_batch_required": summary.get("trial_full_batch_required") is True,
+        "trial_full_batch_status": str(summary.get("trial_full_batch_status") or ""),
         "blocked_by_prerequisite_step": blocked_by_prerequisite,
         "missing_required_count": len(missing_required),
         "missing_required": missing_required,
@@ -735,6 +791,16 @@ def verify_au_customer_handoff_clearance(
             "current_clearance_completion_contract_raw_secret_values_allowed"
         )
         is True,
+        "p0b_google_environment_action_plan_ready": summary.get("p0b_google_environment_action_plan_ready")
+        is True,
+        "p0b_google_environment_action_required": summary.get("p0b_google_environment_action_required") is True,
+        "p0b_google_environment_action_item_count": summary.get("p0b_google_environment_action_item_count"),
+        "p0b_google_environment_action_owner_counts": _as_dict(
+            summary.get("p0b_google_environment_action_owner_counts")
+        ),
+        "p0b_google_environment_post_update_validation_command_count": summary.get(
+            "p0b_google_environment_post_update_validation_command_count"
+        ),
     }
 
 

@@ -19,6 +19,7 @@ from scripts.build_au_handoff_dossier import (  # noqa: E402
     CUSTOMER_HANDOFF_READINESS_AUDIT_VERSION,
     build_au_handoff_dossier,
 )
+from scripts.au_trial_handoff import build_trial_handoff_audit, compact_trial_handoff_summary  # noqa: E402
 from scripts.verify_au_handoff_dossier import verify_au_handoff_dossier  # noqa: E402
 
 
@@ -125,6 +126,12 @@ def build_au_customer_handoff_readiness(
         and verifier.get("hash_valid") is True
         and audit.get("audit_version") == CUSTOMER_HANDOFF_READINESS_AUDIT_VERSION
     )
+    trial_handoff_audit = build_trial_handoff_audit(
+        launch_status=_as_dict(handoff_dossier.get("launch_status")),
+        handoff_dossier=handoff_dossier,
+        customer_handoff_package_manifest_ready=False,
+    )
+    trial_summary = compact_trial_handoff_summary(trial_handoff_audit)
     blocked_gate_ids = [str(value) for value in _as_list(audit.get("blocked_customer_gate_ids"))]
     hard_gate_commands = [str(value) for value in _as_list(audit.get("hard_gate_commands"))]
     _append_unique(hard_gate_commands, "make au-customer-handoff-readiness")
@@ -141,6 +148,7 @@ def build_au_customer_handoff_readiness(
         "status": "pass" if readiness_audit_ready else "fail",
         "readiness_audit_ready": readiness_audit_ready,
         "ready_for_customer_report_handoff": ready_for_customer,
+        "ready_for_trial_customer_handoff": trial_summary["ready_for_trial_customer_handoff"],
         "output_path": str(output_path) if output_path else "",
         "source_handoff_dossier": {
             "path": str(handoff_dossier_path),
@@ -166,6 +174,7 @@ def build_au_customer_handoff_readiness(
                 0.0,
             ),
             "structural_auditability_percent": audit.get("structural_auditability_percent", 0.0),
+            **trial_summary,
             "customer_ready_gate_count": audit.get("customer_ready_gate_count", 0),
             "customer_total_gate_count": audit.get("customer_total_gate_count", 0),
             "blocked_customer_gate_count": audit.get("blocked_customer_gate_count", 0),
@@ -179,6 +188,7 @@ def build_au_customer_handoff_readiness(
             "readiness_statement": audit.get("readiness_statement", ""),
         },
         "readiness_audit": audit,
+        "trial_handoff_audit": trial_handoff_audit,
         "runtime_endpoints": {
             "customer_handoff_readiness": "GET /v1/customer-handoff-readiness/au",
             "handoff_dossier": "GET /v1/handoff-dossier/au",
