@@ -1157,6 +1157,41 @@ def build_au_customer_handoff_clearance(
             "prerequisite_step_ids": list(PREREQUISITE_STEP_IDS),
             "prerequisite_steps_ready": prerequisite_steps_ready,
             "current_global_clearance_step_id": str(external_dependency_clearance.get("current_step_id") or ""),
+            "current_clearance_request_artifact_id": str(
+                progress_summary.get("current_clearance_request_artifact_id") or ""
+            ),
+            "current_clearance_request_artifact_hash": str(
+                progress_summary.get("current_clearance_request_artifact_hash") or ""
+            ),
+            "current_clearance_completion_contract_ready": progress_summary.get(
+                "current_clearance_completion_contract_ready"
+            )
+            is True,
+            "current_clearance_completion_contract_version": str(
+                progress_summary.get("current_clearance_completion_contract_version") or ""
+            ),
+            "current_clearance_credential_update_receipt_required": progress_summary.get(
+                "current_clearance_credential_update_receipt_required"
+            )
+            is True,
+            "current_clearance_credential_update_receipt_endpoint": str(
+                progress_summary.get("current_clearance_credential_update_receipt_endpoint") or ""
+            ),
+            "current_clearance_credential_update_receipt_strict_gate": str(
+                progress_summary.get("current_clearance_credential_update_receipt_strict_gate") or ""
+            ),
+            "current_clearance_post_update_validation_command_count": progress_summary.get(
+                "current_clearance_post_update_validation_command_count",
+                0,
+            ),
+            "current_clearance_completion_contract_missing_required_count": progress_summary.get(
+                "current_clearance_completion_contract_missing_required_count",
+                0,
+            ),
+            "current_clearance_completion_contract_raw_secret_values_allowed": progress_summary.get(
+                "current_clearance_completion_contract_raw_secret_values_allowed"
+            )
+            is True,
             "target_clearance_step_id": STEP_ID,
             "target_clearance_step_can_start": target_step_can_start,
             "target_clearance_step_ready": target_step_ready,

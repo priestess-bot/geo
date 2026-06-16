@@ -20,6 +20,12 @@ from scripts.build_au_customer_handoff_clearance import (  # noqa: E402
     STEP_ID,
     compute_customer_handoff_clearance_hash,
 )
+from scripts.run_au_external_dependency_clearance import (  # noqa: E402
+    P0A_COMPLETION_CONTRACT_VERSION,
+    P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+    P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+    P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
+)
 
 
 REQUIRED_FIELDS = (
@@ -363,6 +369,52 @@ def verify_au_customer_handoff_clearance(
         errors.append("summary_customer_handoff_clearance_ready_mismatch")
     if summary.get("ready_for_report_export_handoff") is not expected_report_ready:
         errors.append("summary_ready_for_report_export_handoff_mismatch")
+    current_clearance_summary_field_map = {
+        "current_clearance_request_artifact_id": "current_clearance_request_artifact_id",
+        "current_clearance_request_artifact_hash": "current_clearance_request_artifact_hash",
+        "current_clearance_completion_contract_ready": "current_clearance_completion_contract_ready",
+        "current_clearance_completion_contract_version": "current_clearance_completion_contract_version",
+        "current_clearance_credential_update_receipt_required": (
+            "current_clearance_credential_update_receipt_required"
+        ),
+        "current_clearance_credential_update_receipt_endpoint": (
+            "current_clearance_credential_update_receipt_endpoint"
+        ),
+        "current_clearance_credential_update_receipt_strict_gate": (
+            "current_clearance_credential_update_receipt_strict_gate"
+        ),
+        "current_clearance_post_update_validation_command_count": (
+            "current_clearance_post_update_validation_command_count"
+        ),
+        "current_clearance_completion_contract_missing_required_count": (
+            "current_clearance_completion_contract_missing_required_count"
+        ),
+        "current_clearance_completion_contract_raw_secret_values_allowed": (
+            "current_clearance_completion_contract_raw_secret_values_allowed"
+        ),
+    }
+    for summary_field, verifier_field in current_clearance_summary_field_map.items():
+        if summary.get(summary_field) != progress_verifier.get(verifier_field):
+            errors.append(f"summary_{summary_field}_mismatch")
+    if summary.get("current_clearance_request_artifact_id") == "p0a_credential_request":
+        if summary.get("current_clearance_completion_contract_ready") is not True:
+            errors.append("summary_current_clearance_completion_contract_not_ready")
+        if summary.get("current_clearance_completion_contract_version") != P0A_COMPLETION_CONTRACT_VERSION:
+            errors.append("summary_current_clearance_completion_contract_version_invalid")
+        if summary.get("current_clearance_credential_update_receipt_required") is not True:
+            errors.append("summary_current_clearance_credential_update_receipt_not_required")
+        if summary.get("current_clearance_credential_update_receipt_endpoint") != P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT:
+            errors.append("summary_current_clearance_credential_update_receipt_endpoint_invalid")
+        if summary.get("current_clearance_credential_update_receipt_strict_gate") != P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE:
+            errors.append("summary_current_clearance_credential_update_receipt_strict_gate_invalid")
+        if summary.get(
+            "current_clearance_post_update_validation_command_count"
+        ) != P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT:
+            errors.append("summary_current_clearance_post_update_validation_command_count_invalid")
+        if _int(summary.get("current_clearance_completion_contract_missing_required_count")) < 0:
+            errors.append("summary_current_clearance_completion_contract_missing_required_count_invalid")
+        if summary.get("current_clearance_completion_contract_raw_secret_values_allowed") is not False:
+            errors.append("summary_current_clearance_completion_contract_raw_secret_values_allowed")
     if summary.get("p0a_credential_clearance_ready") is not (
         p0a_credential_clearance_verifier.get("credential_clearance_ready") is True
     ):
@@ -603,6 +655,11 @@ def verify_au_customer_handoff_clearance(
         errors.append("hard_gate_missing:require_cleared")
     if not any("--require-complete" in command for command in hard_gate_commands):
         errors.append("hard_gate_missing:p0a_credential_update_receipt_require_complete")
+    current_clearance_receipt_strict_gate = str(
+        summary.get("current_clearance_credential_update_receipt_strict_gate") or ""
+    )
+    if current_clearance_receipt_strict_gate and current_clearance_receipt_strict_gate not in hard_gate_commands:
+        errors.append("hard_gate_missing:current_clearance_credential_update_receipt_strict_gate")
 
     expected_endpoints = {
         "customer_handoff_clearance": "GET /v1/customer-handoff-clearance/au",
@@ -651,6 +708,33 @@ def verify_au_customer_handoff_clearance(
         "missing_required": missing_required,
         "next_action": summary.get("next_action", ""),
         "next_command": summary.get("next_command", ""),
+        "current_clearance_request_artifact_id": str(summary.get("current_clearance_request_artifact_id") or ""),
+        "current_clearance_request_artifact_hash": str(summary.get("current_clearance_request_artifact_hash") or ""),
+        "current_clearance_completion_contract_ready": summary.get("current_clearance_completion_contract_ready")
+        is True,
+        "current_clearance_completion_contract_version": str(
+            summary.get("current_clearance_completion_contract_version") or ""
+        ),
+        "current_clearance_credential_update_receipt_required": summary.get(
+            "current_clearance_credential_update_receipt_required"
+        )
+        is True,
+        "current_clearance_credential_update_receipt_endpoint": str(
+            summary.get("current_clearance_credential_update_receipt_endpoint") or ""
+        ),
+        "current_clearance_credential_update_receipt_strict_gate": str(
+            summary.get("current_clearance_credential_update_receipt_strict_gate") or ""
+        ),
+        "current_clearance_post_update_validation_command_count": summary.get(
+            "current_clearance_post_update_validation_command_count"
+        ),
+        "current_clearance_completion_contract_missing_required_count": summary.get(
+            "current_clearance_completion_contract_missing_required_count"
+        ),
+        "current_clearance_completion_contract_raw_secret_values_allowed": summary.get(
+            "current_clearance_completion_contract_raw_secret_values_allowed"
+        )
+        is True,
     }
 
 

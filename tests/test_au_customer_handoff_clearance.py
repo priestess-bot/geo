@@ -27,7 +27,13 @@ from scripts.build_au_p0a_real_batch_request_packet import build_au_p0a_real_bat
 from scripts.build_au_p0b_google_environment_clearance import build_au_p0b_google_environment_clearance
 from scripts.build_au_p0b_google_manual_backfill_clearance import build_au_p0b_google_manual_backfill_clearance
 from scripts.build_au_p0b_google_phase_execution_clearance import build_au_p0b_google_phase_execution_clearance
-from scripts.run_au_external_dependency_clearance import run_au_external_dependency_clearance
+from scripts.run_au_external_dependency_clearance import (
+    P0A_COMPLETION_CONTRACT_VERSION,
+    P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+    P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+    P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
+    run_au_external_dependency_clearance,
+)
 from scripts.verify_au_customer_handoff_clearance import verify_au_customer_handoff_clearance
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
 
@@ -354,6 +360,35 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
         self.assertGreaterEqual(packet["summary"]["p0b_google_phase_execution_missing_required_count"], 1)
         self.assertEqual(packet["summary"]["next_action"], "clear_customer_handoff_prerequisites_first")
         self.assertEqual(packet["summary"]["next_command"], "make verify-au-p0a-env-template")
+        delivery_summary = sources["delivery_progress"]["summary"]  # type: ignore[index]
+        self.assertEqual(packet["summary"]["current_clearance_request_artifact_id"], "p0a_credential_request")
+        self.assertEqual(
+            packet["summary"]["current_clearance_request_artifact_hash"],
+            delivery_summary["current_clearance_request_artifact_hash"],
+        )
+        self.assertTrue(packet["summary"]["current_clearance_completion_contract_ready"])
+        self.assertEqual(
+            packet["summary"]["current_clearance_completion_contract_version"],
+            P0A_COMPLETION_CONTRACT_VERSION,
+        )
+        self.assertTrue(packet["summary"]["current_clearance_credential_update_receipt_required"])
+        self.assertEqual(
+            packet["summary"]["current_clearance_credential_update_receipt_endpoint"],
+            P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+        )
+        self.assertEqual(
+            packet["summary"]["current_clearance_credential_update_receipt_strict_gate"],
+            P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+        )
+        self.assertEqual(
+            packet["summary"]["current_clearance_post_update_validation_command_count"],
+            P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
+        )
+        self.assertEqual(
+            packet["summary"]["current_clearance_completion_contract_missing_required_count"],
+            delivery_summary["current_clearance_completion_contract_missing_required_count"],
+        )
+        self.assertFalse(packet["summary"]["current_clearance_completion_contract_raw_secret_values_allowed"])
         self.assertIn("customer_gate:customer_report_handoff_gate", packet["summary"]["missing_required"])
         self.assertIn("make verify-au-customer-handoff-clearance", packet["post_update_validation_sequence"])
         self.assertTrue(any("--require-cleared" in command for command in packet["post_update_validation_sequence"]))
@@ -391,6 +426,7 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
         self.assertIn("make au-p0a-credential-update-receipt", packet["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-update-receipt", packet["hard_gate_commands"])
         self.assertTrue(any("--require-complete" in command for command in packet["hard_gate_commands"]))
+        self.assertIn(P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE, packet["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-real-batch-clearance", packet["hard_gate_commands"])
         self.assertIn("make verify-au-p0b-google-environment-clearance", packet["hard_gate_commands"])
         self.assertIn("make verify-au-p0b-google-manual-backfill-clearance", packet["hard_gate_commands"])
@@ -434,6 +470,15 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
         self.assertEqual(packet["verifiers"]["p0b_google_phase_execution_clearance"]["status"], "pass")
         self.assertEqual(packet["customer_handoff_clearance_hash"], compute_customer_handoff_clearance_hash(packet))
         self.assertEqual(verification["status"], "pass")
+        self.assertEqual(
+            verification["current_clearance_request_artifact_hash"],
+            packet["summary"]["current_clearance_request_artifact_hash"],
+        )
+        self.assertEqual(
+            verification["current_clearance_completion_contract_version"],
+            P0A_COMPLETION_CONTRACT_VERSION,
+        )
+        self.assertFalse(verification["current_clearance_completion_contract_raw_secret_values_allowed"])
         self.assertEqual(hard_gate["status"], "fail")
         self.assertIn("customer_handoff_not_cleared", hard_gate["errors"])
         serialized = json.dumps(packet)
@@ -624,6 +669,48 @@ class AuCustomerHandoffClearanceTest(unittest.TestCase):
         self.assertEqual(verification["status"], "fail")
         self.assertIn(
             "summary_p0b_google_manual_backfill_missing_total_content_cell_count_mismatch",
+            verification["errors"],
+        )
+
+    def test_verifier_rejects_tampered_current_clearance_contract_even_when_hash_recomputed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            sources = self._build_sources(temp_dir, ready=False)
+            packet = build_au_customer_handoff_clearance(
+                handoff_dossier_path=sources["handoff_path"],  # type: ignore[arg-type]
+                customer_handoff_readiness_path=sources["readiness_path"],  # type: ignore[arg-type]
+                delivery_progress_path=sources["delivery_progress_path"],  # type: ignore[arg-type]
+                external_dependency_handoff_path=sources["external_handoff_path"],  # type: ignore[arg-type]
+                external_dependency_clearance_path=sources["external_clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_clearance_path=sources["credential_clearance_path"],  # type: ignore[arg-type]
+                p0a_credential_update_receipt_path=sources["credential_update_receipt_path"],  # type: ignore[arg-type]
+                p0a_real_batch_clearance_path=sources["real_batch_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance_path=sources["p0b_environment_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance_path=sources["p0b_manual_backfill_clearance_path"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance_path=sources["p0b_phase_execution_clearance_path"],  # type: ignore[arg-type]
+                handoff_dossier=sources["handoff"],  # type: ignore[arg-type]
+                customer_handoff_readiness=sources["readiness"],  # type: ignore[arg-type]
+                delivery_progress=sources["delivery_progress"],  # type: ignore[arg-type]
+                external_dependency_handoff=sources["external_handoff"],  # type: ignore[arg-type]
+                external_dependency_clearance=sources["external_clearance"],  # type: ignore[arg-type]
+                p0a_credential_clearance=sources["credential_clearance"],  # type: ignore[arg-type]
+                p0a_credential_update_receipt=sources["credential_update_receipt"],  # type: ignore[arg-type]
+                p0a_real_batch_clearance=sources["real_batch_clearance"],  # type: ignore[arg-type]
+                p0b_google_environment_clearance=sources["p0b_environment_clearance"],  # type: ignore[arg-type]
+                p0b_google_manual_backfill_clearance=sources["p0b_manual_backfill_clearance"],  # type: ignore[arg-type]
+                p0b_google_phase_execution_clearance=sources["p0b_phase_execution_clearance"],  # type: ignore[arg-type]
+                generated_at="2026-06-14T00:00:00Z",
+            )
+            packet["summary"]["current_clearance_credential_update_receipt_strict_gate"] = "tampered"
+            packet["customer_handoff_clearance_hash"] = compute_customer_handoff_clearance_hash(packet)
+            verification = verify_au_customer_handoff_clearance(packet)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn(
+            "summary_current_clearance_credential_update_receipt_strict_gate_mismatch",
+            verification["errors"],
+        )
+        self.assertIn(
+            "summary_current_clearance_credential_update_receipt_strict_gate_invalid",
             verification["errors"],
         )
 

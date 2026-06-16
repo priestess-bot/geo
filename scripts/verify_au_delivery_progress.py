@@ -465,8 +465,12 @@ def verify_au_delivery_progress(
         "next_work_item_id": str(summary.get("next_work_item_id") or ""),
         "next_command": str(summary.get("next_command") or ""),
         "current_clearance_request_artifact_id": str(summary.get("current_clearance_request_artifact_id") or ""),
+        "current_clearance_request_artifact_hash": str(summary.get("current_clearance_request_artifact_hash") or ""),
         "current_clearance_completion_contract_ready": summary.get("current_clearance_completion_contract_ready")
         is True,
+        "current_clearance_completion_contract_version": str(
+            summary.get("current_clearance_completion_contract_version") or ""
+        ),
         "current_clearance_credential_update_receipt_required": summary.get(
             "current_clearance_credential_update_receipt_required"
         )
@@ -483,6 +487,10 @@ def verify_au_delivery_progress(
         "current_clearance_completion_contract_missing_required_count": summary.get(
             "current_clearance_completion_contract_missing_required_count"
         ),
+        "current_clearance_completion_contract_raw_secret_values_allowed": summary.get(
+            "current_clearance_completion_contract_raw_secret_values_allowed"
+        )
+        is True,
         "p0a_real_batch_execution_plan_ready": summary.get("p0a_real_batch_execution_plan_ready") is True,
         "p0a_real_batch_total_planned_runs": summary.get("p0a_real_batch_total_planned_runs"),
         "p0a_real_batch_ready_phase_count": summary.get("p0a_real_batch_ready_phase_count"),

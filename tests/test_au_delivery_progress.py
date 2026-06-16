@@ -325,6 +325,15 @@ class AuDeliveryProgressTest(unittest.TestCase):
             len(sources["clearance"]["current_step_request_context"]["completion_contract_required_missing_keys"]),
         )
         self.assertFalse(progress["summary"]["current_clearance_completion_contract_raw_secret_values_allowed"])
+        self.assertEqual(
+            verification["current_clearance_request_artifact_hash"],
+            progress["summary"]["current_clearance_request_artifact_hash"],
+        )
+        self.assertEqual(
+            verification["current_clearance_completion_contract_version"],
+            P0A_COMPLETION_CONTRACT_VERSION,
+        )
+        self.assertFalse(verification["current_clearance_completion_contract_raw_secret_values_allowed"])
         self.assertEqual(progress["summary"]["next_command"], "make verify-au-p0a-env-template")
         self.assertEqual(progress["summary"]["p0a_credential_missing_required_count"], 3)
         self.assertFalse(progress["summary"]["p0a_credential_clearance_ready"])

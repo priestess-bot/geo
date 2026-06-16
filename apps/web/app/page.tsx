@@ -1369,6 +1369,16 @@ type AuCustomerHandoffClearance = {
     prerequisite_step_ids?: string[];
     prerequisite_steps_ready?: boolean;
     current_global_clearance_step_id?: string;
+    current_clearance_request_artifact_id?: string;
+    current_clearance_request_artifact_hash?: string;
+    current_clearance_completion_contract_ready?: boolean;
+    current_clearance_completion_contract_version?: string;
+    current_clearance_credential_update_receipt_required?: boolean;
+    current_clearance_credential_update_receipt_endpoint?: string;
+    current_clearance_credential_update_receipt_strict_gate?: string;
+    current_clearance_post_update_validation_command_count?: number;
+    current_clearance_completion_contract_missing_required_count?: number;
+    current_clearance_completion_contract_raw_secret_values_allowed?: boolean;
     target_clearance_step_id?: string;
     target_clearance_step_can_start?: boolean;
     target_clearance_step_ready?: boolean;
@@ -1501,6 +1511,16 @@ type AuCustomerHandoffPackage = {
     blocked_progress_gate_ids?: string[];
     next_action?: string;
     next_command?: string;
+    current_clearance_request_artifact_id?: string;
+    current_clearance_request_artifact_hash?: string;
+    current_clearance_completion_contract_ready?: boolean;
+    current_clearance_completion_contract_version?: string;
+    current_clearance_credential_update_receipt_required?: boolean;
+    current_clearance_credential_update_receipt_endpoint?: string;
+    current_clearance_credential_update_receipt_strict_gate?: string;
+    current_clearance_post_update_validation_command_count?: number;
+    current_clearance_completion_contract_missing_required_count?: number;
+    current_clearance_completion_contract_raw_secret_values_allowed?: boolean;
     handoff_dossier_hash?: string;
     customer_handoff_readiness_hash?: string;
     next_work_item_packet_hash?: string;
@@ -9294,6 +9314,38 @@ export default async function Home({
             <span>Clearance step {customerHandoffClearanceSummary?.target_clearance_step_id || "none"}</span>
             <span>Current global step {customerHandoffClearanceSummary?.current_global_clearance_step_id || "none"}</span>
             <span>
+              Customer clearance request {customerHandoffClearanceSummary?.current_clearance_request_artifact_id || "none"}{" "}
+              · hash {shortHash(customerHandoffClearanceSummary?.current_clearance_request_artifact_hash)}
+            </span>
+            <span>
+              Customer clearance completion{" "}
+              {customerHandoffClearanceSummary?.current_clearance_completion_contract_ready ? "ready" : "blocked"} ·{" "}
+              {customerHandoffClearanceSummary?.current_clearance_completion_contract_version || "none"}
+            </span>
+            <span>
+              Customer clearance receipt{" "}
+              {customerHandoffClearanceSummary?.current_clearance_credential_update_receipt_required
+                ? "required"
+                : "optional"}{" "}
+              · {customerHandoffClearanceSummary?.current_clearance_credential_update_receipt_endpoint || "none"}
+            </span>
+            <span>
+              Customer clearance receipt gate{" "}
+              {customerHandoffClearanceSummary?.current_clearance_credential_update_receipt_strict_gate || "none"}
+            </span>
+            <span>
+              Customer clearance validation{" "}
+              {customerHandoffClearanceSummary?.current_clearance_post_update_validation_command_count ?? 0} commands ·
+              missing{" "}
+              {customerHandoffClearanceSummary?.current_clearance_completion_contract_missing_required_count ?? 0}
+            </span>
+            <span>
+              Customer clearance raw secrets{" "}
+              {customerHandoffClearanceSummary?.current_clearance_completion_contract_raw_secret_values_allowed
+                ? "allowed"
+                : "blocked"}
+            </span>
+            <span>
               P0a credentials{" "}
               {customerHandoffClearanceSummary?.p0a_credentials_fulfilled ? "fulfilled" : "blocked"}
             </span>
@@ -9517,6 +9569,30 @@ export default async function Home({
             <span>Missing customer gates {customerHandoffPackageSummary?.missing_required_count ?? 0}</span>
             <span>Next action {customerHandoffPackageSummary?.next_action || "none"}</span>
             <span>Next command {customerHandoffPackageSummary?.next_command || "none"}</span>
+            <span>
+              Package clearance request {customerHandoffPackageSummary?.current_clearance_request_artifact_id || "none"}{" "}
+              · hash {shortHash(customerHandoffPackageSummary?.current_clearance_request_artifact_hash)}
+            </span>
+            <span>
+              Package clearance completion{" "}
+              {customerHandoffPackageSummary?.current_clearance_completion_contract_ready ? "ready" : "blocked"} ·{" "}
+              {customerHandoffPackageSummary?.current_clearance_completion_contract_version || "none"}
+            </span>
+            <span>
+              Package receipt gate{" "}
+              {customerHandoffPackageSummary?.current_clearance_credential_update_receipt_strict_gate || "none"}
+            </span>
+            <span>
+              Package clearance validation{" "}
+              {customerHandoffPackageSummary?.current_clearance_post_update_validation_command_count ?? 0} commands ·
+              missing {customerHandoffPackageSummary?.current_clearance_completion_contract_missing_required_count ?? 0}
+            </span>
+            <span>
+              Package raw secrets{" "}
+              {customerHandoffPackageSummary?.current_clearance_completion_contract_raw_secret_values_allowed
+                ? "allowed"
+                : "blocked"}
+            </span>
             <span>Handoff hash {shortHash(customerHandoffPackageSummary?.handoff_dossier_hash)}</span>
             <span>
               Next work item hash {shortHash(customerHandoffPackageSummary?.next_work_item_packet_hash)}

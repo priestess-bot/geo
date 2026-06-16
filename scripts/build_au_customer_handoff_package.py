@@ -80,6 +80,18 @@ from scripts.verify_au_p0c_report_package import verify_au_p0c_report_package  #
 PACKAGE_VERSION = "au_customer_handoff_package_v1"
 DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-customer-handoff-package-latest.json"
 DEFAULT_MARKDOWN_OUTPUT_PATH = "docs/runtime_preflight/au-customer-handoff-package-latest.md"
+CURRENT_CLEARANCE_SUMMARY_FIELDS = (
+    "current_clearance_request_artifact_id",
+    "current_clearance_request_artifact_hash",
+    "current_clearance_completion_contract_ready",
+    "current_clearance_completion_contract_version",
+    "current_clearance_credential_update_receipt_required",
+    "current_clearance_credential_update_receipt_endpoint",
+    "current_clearance_credential_update_receipt_strict_gate",
+    "current_clearance_post_update_validation_command_count",
+    "current_clearance_completion_contract_missing_required_count",
+    "current_clearance_completion_contract_raw_secret_values_allowed",
+)
 DEFAULT_HANDOFF_DOSSIER_MARKDOWN_PATH = "docs/runtime_preflight/au-handoff-dossier-latest.md"
 
 JSON_SOURCE_SPECS: tuple[dict[str, Any], ...] = (
@@ -315,6 +327,12 @@ def _render_customer_handoff_manifest_markdown(package: dict[str, Any]) -> str:
         f"- Structural auditability: `{summary.get('structural_auditability_percent', 0)}%`",
         f"- Missing customer gates: `{summary.get('missing_required_count', 0)}`",
         f"- Next command: `{summary.get('next_command') or 'none'}`",
+        f"- Current clearance request: `{summary.get('current_clearance_request_artifact_id') or 'none'}`",
+        f"- Current clearance request hash: `{_short(summary.get('current_clearance_request_artifact_hash'))}`",
+        f"- Current completion contract: `{'ready' if summary.get('current_clearance_completion_contract_ready') else 'blocked'}`",
+        f"- Current completion contract version: `{summary.get('current_clearance_completion_contract_version') or 'none'}`",
+        f"- Current credential receipt endpoint: `{summary.get('current_clearance_credential_update_receipt_endpoint') or 'none'}`",
+        f"- Current receipt strict gate: `{summary.get('current_clearance_credential_update_receipt_strict_gate') or 'none'}`",
         "",
         "## Customer-Visible Artifacts",
         "",
@@ -454,7 +472,7 @@ def _verifier_summary(
     ready_fields: tuple[str, ...],
 ) -> dict[str, Any]:
     ready_values = {field: verifier.get(field) for field in ready_fields if field in verifier}
-    return {
+    result = {
         "status": str(verifier.get("status") or ""),
         "hash_valid": verifier.get("hash_valid") is True,
         "hash_field": hash_field,
@@ -462,6 +480,10 @@ def _verifier_summary(
         "errors": _strings(verifier.get("errors")),
         "ready_fields": ready_values,
     }
+    for field in CURRENT_CLEARANCE_SUMMARY_FIELDS:
+        if field in verifier:
+            result[field] = verifier.get(field)
+    return result
 
 
 def _json_artifact_entry(
@@ -639,6 +661,64 @@ def _summary(
             else "clear_customer_handoff_prerequisites_first"
         ),
         "next_command": clearance_summary.get("next_command") or delivery_summary.get("next_command") or "make au-p0a-env",
+        "current_clearance_request_artifact_id": str(
+            clearance_summary.get(
+                "current_clearance_request_artifact_id",
+                delivery_summary.get("current_clearance_request_artifact_id", ""),
+            )
+            or ""
+        ),
+        "current_clearance_request_artifact_hash": str(
+            clearance_summary.get(
+                "current_clearance_request_artifact_hash",
+                delivery_summary.get("current_clearance_request_artifact_hash", ""),
+            )
+            or ""
+        ),
+        "current_clearance_completion_contract_ready": clearance_summary.get(
+            "current_clearance_completion_contract_ready",
+            delivery_summary.get("current_clearance_completion_contract_ready"),
+        )
+        is True,
+        "current_clearance_completion_contract_version": str(
+            clearance_summary.get(
+                "current_clearance_completion_contract_version",
+                delivery_summary.get("current_clearance_completion_contract_version", ""),
+            )
+            or ""
+        ),
+        "current_clearance_credential_update_receipt_required": clearance_summary.get(
+            "current_clearance_credential_update_receipt_required",
+            delivery_summary.get("current_clearance_credential_update_receipt_required"),
+        )
+        is True,
+        "current_clearance_credential_update_receipt_endpoint": str(
+            clearance_summary.get(
+                "current_clearance_credential_update_receipt_endpoint",
+                delivery_summary.get("current_clearance_credential_update_receipt_endpoint", ""),
+            )
+            or ""
+        ),
+        "current_clearance_credential_update_receipt_strict_gate": str(
+            clearance_summary.get(
+                "current_clearance_credential_update_receipt_strict_gate",
+                delivery_summary.get("current_clearance_credential_update_receipt_strict_gate", ""),
+            )
+            or ""
+        ),
+        "current_clearance_post_update_validation_command_count": clearance_summary.get(
+            "current_clearance_post_update_validation_command_count",
+            delivery_summary.get("current_clearance_post_update_validation_command_count", 0),
+        ),
+        "current_clearance_completion_contract_missing_required_count": clearance_summary.get(
+            "current_clearance_completion_contract_missing_required_count",
+            delivery_summary.get("current_clearance_completion_contract_missing_required_count", 0),
+        ),
+        "current_clearance_completion_contract_raw_secret_values_allowed": clearance_summary.get(
+            "current_clearance_completion_contract_raw_secret_values_allowed",
+            delivery_summary.get("current_clearance_completion_contract_raw_secret_values_allowed"),
+        )
+        is True,
         "handoff_dossier_hash": source_artifacts["handoff_dossier"]["hash"],
         "customer_handoff_readiness_hash": source_artifacts["customer_handoff_readiness"]["hash"],
         "next_work_item_packet_hash": source_artifacts["next_work_item"]["hash"],

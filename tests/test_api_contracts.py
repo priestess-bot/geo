@@ -2101,6 +2101,28 @@ class ApiContractsTest(unittest.TestCase):
         self.assertGreaterEqual(payload["summary"]["p0b_google_phase_execution_missing_required_count"], 1)
         self.assertEqual(payload["summary"]["next_action"], "clear_customer_handoff_prerequisites_first")
         self.assertEqual(payload["summary"]["next_command"], "make au-p0a-env")
+        self.assertEqual(payload["summary"]["current_clearance_request_artifact_id"], "p0a_credential_request")
+        self.assertTrue(payload["summary"]["current_clearance_request_artifact_hash"])
+        self.assertTrue(payload["summary"]["current_clearance_completion_contract_ready"])
+        self.assertEqual(
+            payload["summary"]["current_clearance_completion_contract_version"],
+            P0A_COMPLETION_CONTRACT_VERSION,
+        )
+        self.assertTrue(payload["summary"]["current_clearance_credential_update_receipt_required"])
+        self.assertEqual(
+            payload["summary"]["current_clearance_credential_update_receipt_endpoint"],
+            P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+        )
+        self.assertEqual(
+            payload["summary"]["current_clearance_credential_update_receipt_strict_gate"],
+            P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+        )
+        self.assertEqual(
+            payload["summary"]["current_clearance_post_update_validation_command_count"],
+            P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
+        )
+        self.assertGreaterEqual(payload["summary"]["current_clearance_completion_contract_missing_required_count"], 0)
+        self.assertFalse(payload["summary"]["current_clearance_completion_contract_raw_secret_values_allowed"])
         self.assertIn("customer_gate:customer_report_handoff_gate", payload["summary"]["missing_required"])
         self.assertEqual(
             payload["runtime_endpoints"]["customer_handoff_clearance"],
@@ -2135,6 +2157,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("make au-p0a-credential-update-receipt", payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-update-receipt", payload["hard_gate_commands"])
         self.assertTrue(any("--require-complete" in command for command in payload["hard_gate_commands"]))
+        self.assertIn(P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE, payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-real-batch-clearance", payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0b-google-environment-clearance", payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0b-google-manual-backfill-clearance", payload["hard_gate_commands"])
@@ -2198,6 +2221,32 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["structural_auditability_percent"], 100.0)
         self.assertEqual(payload["summary"]["missing_required_count"], 9)
         self.assertEqual(payload["summary"]["next_command"], "make au-p0a-env")
+        self.assertEqual(payload["summary"]["current_clearance_request_artifact_id"], "p0a_credential_request")
+        self.assertTrue(payload["summary"]["current_clearance_request_artifact_hash"])
+        self.assertTrue(payload["summary"]["current_clearance_completion_contract_ready"])
+        self.assertEqual(
+            payload["summary"]["current_clearance_completion_contract_version"],
+            P0A_COMPLETION_CONTRACT_VERSION,
+        )
+        self.assertTrue(payload["summary"]["current_clearance_credential_update_receipt_required"])
+        self.assertEqual(
+            payload["summary"]["current_clearance_credential_update_receipt_endpoint"],
+            P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+        )
+        self.assertEqual(
+            payload["summary"]["current_clearance_credential_update_receipt_strict_gate"],
+            P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+        )
+        self.assertEqual(
+            payload["summary"]["current_clearance_post_update_validation_command_count"],
+            P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
+        )
+        self.assertGreaterEqual(payload["summary"]["current_clearance_completion_contract_missing_required_count"], 0)
+        self.assertFalse(payload["summary"]["current_clearance_completion_contract_raw_secret_values_allowed"])
+        self.assertEqual(
+            payload["summary"]["current_clearance_request_artifact_hash"],
+            payload["verifiers"]["customer_handoff_clearance"]["current_clearance_request_artifact_hash"],
+        )
         self.assertIn("customer_handoff_clearance", payload["source_artifacts"])
         self.assertIn("next_work_item", payload["source_artifacts"])
         self.assertIn("p0a_credential_update_receipt", payload["source_artifacts"])
@@ -2244,6 +2293,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("make au-p0a-credential-update-receipt", payload["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-update-receipt", payload["hard_gate_commands"])
         self.assertTrue(any("--require-complete" in command for command in payload["hard_gate_commands"]))
+        self.assertIn(P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE, payload["hard_gate_commands"])
         self.assertIn("make verify-au-customer-handoff-package", payload["hard_gate_commands"])
         self.assertEqual(payload["customer_handoff_package_markdown"]["artifact_type"], "markdown")
         self.assertEqual(
