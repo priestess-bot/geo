@@ -2588,8 +2588,50 @@ class ApiContractsTest(unittest.TestCase):
             payload["current_step_request_context"]["runtime_endpoint"],
             "GET /v1/p0a-credential-request/au",
         )
+        self.assertTrue(payload["current_step_request_context"]["credential_update_completion_contract_ready"])
+        self.assertEqual(
+            payload["current_step_request_context"]["credential_update_completion_contract_version"],
+            "au_p0a_credential_request_completion_contract_v1",
+        )
+        self.assertTrue(payload["current_step_request_context"]["credential_update_receipt_required"])
+        self.assertEqual(
+            payload["current_step_request_context"]["credential_update_receipt_endpoint"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
+        self.assertTrue(
+            payload["current_step_request_context"]["credential_update_receipt_strict_gate"].endswith(
+                "--require-complete"
+            )
+        )
+        self.assertEqual(payload["current_step_request_context"]["post_update_validation_command_count"], 13)
+        self.assertEqual(
+            payload["current_step_request_context"]["completion_contract_required_missing_key_count"],
+            len(payload["current_step_request_context"]["completion_contract_required_missing_keys"]),
+        )
+        self.assertFalse(payload["current_step_request_context"]["completion_contract_raw_secret_values_allowed"])
+        self.assertTrue(payload["current_request_completion_contract_ready"])
+        self.assertEqual(
+            payload["current_request_completion_contract_version"],
+            "au_p0a_credential_request_completion_contract_v1",
+        )
+        self.assertTrue(payload["current_request_credential_update_receipt_required"])
+        self.assertEqual(
+            payload["current_request_credential_update_receipt_endpoint"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
+        self.assertTrue(payload["current_request_credential_update_receipt_strict_gate"].endswith("--require-complete"))
+        self.assertEqual(payload["current_request_post_update_validation_command_count"], 13)
+        self.assertEqual(
+            payload["current_request_completion_contract_missing_required_count"],
+            len(payload["current_step_request_context"]["completion_contract_required_missing_keys"]),
+        )
+        self.assertFalse(payload["current_request_completion_contract_raw_secret_values_allowed"])
         self.assertIn("make au-p0a-credential-request", payload["current_recommended_sequence"])
         self.assertIn("make verify-au-p0a-credential-request", payload["current_recommended_sequence"])
+        self.assertIn(
+            payload["current_step_request_context"]["credential_update_receipt_strict_gate"],
+            payload["current_recommended_sequence"],
+        )
         self.assertEqual(
             payload["current_recommended_sequence_count"],
             len(payload["current_recommended_sequence"]),
@@ -2599,6 +2641,10 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(payload["steps"][0]["would_execute"])
         self.assertEqual(payload["steps"][0]["linked_request_context"]["request_artifact_id"], "p0a_credential_request")
         self.assertIn("make verify-au-p0a-credential-request", payload["hard_gate_commands"])
+        self.assertIn(
+            payload["current_step_request_context"]["credential_update_receipt_strict_gate"],
+            payload["hard_gate_commands"],
+        )
 
     def test_metrics_endpoint_exports_request_and_pool_metrics(self) -> None:
         self.client.get("/health")

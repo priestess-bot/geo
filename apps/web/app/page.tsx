@@ -3271,6 +3271,19 @@ type ClearanceRequestContext = {
   verify_command?: string;
   strict_gate_command?: string;
   runtime_endpoint?: string;
+  credential_update_completion_contract_ready?: boolean;
+  credential_update_completion_contract_version?: string;
+  credential_update_receipt_required?: boolean;
+  credential_update_receipt_ready_required?: boolean;
+  credential_update_receipt_complete_required?: boolean;
+  credential_update_receipt_endpoint?: string;
+  credential_update_receipt_strict_gate?: string;
+  post_update_validation_command_count?: number;
+  completion_contract_required_missing_key_count?: number;
+  completion_contract_required_missing_keys?: string[];
+  completion_contract_raw_secret_values_allowed?: boolean;
+  completion_contract_raw_database_url_allowed?: boolean;
+  completion_contract_raw_provider_response_allowed?: boolean;
 };
 
 type RuntimeProjectBrandKit = {
@@ -10481,6 +10494,32 @@ export default async function Home({
               <span>Request verifier {externalDependencyCurrentRequest?.verify_command || "none"}</span>
               <span>Request strict gate {externalDependencyCurrentRequest?.strict_gate_command || "none"}</span>
               <span>Request endpoint {externalDependencyCurrentRequest?.runtime_endpoint || "none"}</span>
+              <span>
+                Completion contract{" "}
+                {externalDependencyCurrentRequest?.credential_update_completion_contract_ready ? "ready" : "not ready"} ·{" "}
+                {externalDependencyCurrentRequest?.credential_update_completion_contract_version || "none"}
+              </span>
+              <span>
+                Update receipt{" "}
+                {externalDependencyCurrentRequest?.credential_update_receipt_required ? "required" : "not required"} ·{" "}
+                {externalDependencyCurrentRequest?.credential_update_receipt_endpoint || "none"}
+              </span>
+              <span>
+                Receipt strict gate{" "}
+                {externalDependencyCurrentRequest?.credential_update_receipt_strict_gate || "none"}
+              </span>
+              <span>
+                Post-update validation{" "}
+                {externalDependencyCurrentRequest?.post_update_validation_command_count || 0} commands
+              </span>
+              <span>
+                Contract missing keys{" "}
+                {externalDependencyCurrentRequest?.completion_contract_required_missing_key_count || 0}
+              </span>
+              <span>
+                Raw secrets in artifacts{" "}
+                {externalDependencyCurrentRequest?.completion_contract_raw_secret_values_allowed ? "allowed" : "blocked"}
+              </span>
               <span>
                 Recommended sequence {externalDependencyClearance?.current_recommended_sequence_count || 0} steps
               </span>

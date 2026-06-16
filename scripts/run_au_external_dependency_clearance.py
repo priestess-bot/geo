@@ -20,6 +20,15 @@ from scripts.verify_au_external_dependency_handoff import verify_au_external_dep
 EXECUTION_VERSION = "au_external_dependency_clearance_execution_v1"
 REQUEST_CONTEXT_VERSION = "au_external_dependency_clearance_request_context_v1"
 DEFAULT_OUTPUT_PATH = "docs/runtime_preflight/au-external-dependency-clearance-latest.json"
+P0A_COMPLETION_CONTRACT_VERSION = "au_p0a_credential_request_completion_contract_v1"
+P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT = "GET /v1/p0a-credential-update-receipt/au"
+P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE = (
+    "PYTHONPATH=packages/geno_core:apps/api python3 "
+    "scripts/verify_au_p0a_credential_update_receipt.py "
+    "${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
+    "--require-complete"
+)
+P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT = 13
 
 CLEARANCE_REQUEST_CONTEXTS: dict[str, dict[str, str]] = {
     "p0a_provider_credentials": {
@@ -190,6 +199,80 @@ def _empty_request_context(step_id: str) -> dict[str, Any]:
         "verify_command": "",
         "strict_gate_command": "",
         "runtime_endpoint": "",
+        "credential_update_completion_contract_ready": False,
+        "credential_update_completion_contract_version": "",
+        "credential_update_receipt_required": False,
+        "credential_update_receipt_ready_required": False,
+        "credential_update_receipt_complete_required": False,
+        "credential_update_receipt_endpoint": "",
+        "credential_update_receipt_strict_gate": "",
+        "post_update_validation_command_count": 0,
+        "completion_contract_required_missing_key_count": 0,
+        "completion_contract_required_missing_keys": [],
+        "completion_contract_raw_secret_values_allowed": False,
+        "completion_contract_raw_database_url_allowed": False,
+        "completion_contract_raw_provider_response_allowed": False,
+    }
+
+
+def _p0a_completion_context_from_request_payload(payload: dict[str, Any], *, artifact_exists: bool) -> dict[str, Any]:
+    if not artifact_exists:
+        return {
+            "credential_update_completion_contract_ready": True,
+            "credential_update_completion_contract_version": P0A_COMPLETION_CONTRACT_VERSION,
+            "credential_update_receipt_required": True,
+            "credential_update_receipt_ready_required": True,
+            "credential_update_receipt_complete_required": True,
+            "credential_update_receipt_endpoint": P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+            "credential_update_receipt_strict_gate": P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+            "post_update_validation_command_count": P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
+            "completion_contract_required_missing_key_count": 0,
+            "completion_contract_required_missing_keys": [],
+            "completion_contract_raw_secret_values_allowed": False,
+            "completion_contract_raw_database_url_allowed": False,
+            "completion_contract_raw_provider_response_allowed": False,
+        }
+    summary = _as_dict(payload.get("summary"))
+    completion_contract = _as_dict(payload.get("credential_update_completion_contract"))
+    redaction_policy = _as_dict(completion_contract.get("redaction_policy"))
+    runtime_endpoints = _as_dict(completion_contract.get("runtime_endpoints"))
+    strict_gates = _strings(completion_contract.get("strict_gate_commands"))
+    required_missing_keys = _strings(completion_contract.get("required_missing_keys"))
+    receipt_strict_gate = str(summary.get("credential_update_receipt_strict_gate") or "")
+    if not receipt_strict_gate and strict_gates:
+        receipt_strict_gate = strict_gates[-1]
+    return {
+        "credential_update_completion_contract_ready": summary.get("credential_update_completion_contract_ready")
+        is True,
+        "credential_update_completion_contract_version": str(completion_contract.get("version") or ""),
+        "credential_update_receipt_required": summary.get("credential_update_receipt_required") is True,
+        "credential_update_receipt_ready_required": completion_contract.get("credential_update_receipt_ready_required")
+        is True,
+        "credential_update_receipt_complete_required": completion_contract.get(
+            "credential_update_receipt_complete_required"
+        )
+        is True,
+        "credential_update_receipt_endpoint": str(
+            summary.get("credential_update_receipt_endpoint")
+            or runtime_endpoints.get("p0a_credential_update_receipt")
+            or P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT
+        ),
+        "credential_update_receipt_strict_gate": receipt_strict_gate,
+        "post_update_validation_command_count": int(
+            summary.get("post_update_validation_command_count")
+            or completion_contract.get("post_update_validation_command_count")
+            or 0
+        ),
+        "completion_contract_required_missing_key_count": int(
+            completion_contract.get("required_missing_key_count") or len(required_missing_keys)
+        ),
+        "completion_contract_required_missing_keys": required_missing_keys,
+        "completion_contract_raw_secret_values_allowed": redaction_policy.get("raw_secret_values_allowed") is True,
+        "completion_contract_raw_database_url_allowed": redaction_policy.get("raw_database_url_allowed") is True,
+        "completion_contract_raw_provider_response_allowed": redaction_policy.get(
+            "raw_provider_response_allowed"
+        )
+        is True,
     }
 
 
@@ -198,8 +281,9 @@ def _request_context(step_id: str) -> dict[str, Any]:
     if not context:
         return _empty_request_context(step_id)
     output_path = Path(context["output_path"])
+    artifact_exists = output_path.is_file()
     payload = _load_json_file(output_path)
-    return {
+    request_context = {
         "request_context_version": REQUEST_CONTEXT_VERSION,
         "clearance_step_id": step_id,
         "request_context_available": True,
@@ -207,15 +291,18 @@ def _request_context(step_id: str) -> dict[str, Any]:
         "request_artifact_id": context["request_artifact_id"],
         "request_artifact_title": context["request_artifact_title"],
         "output_path": str(output_path),
-        "exists": output_path.is_file(),
+        "exists": artifact_exists,
         "hash_field": context["hash_field"],
         "artifact_hash": str(payload.get(context["hash_field"]) or ""),
-        "file_sha256": _file_sha256(output_path) if output_path.is_file() else "",
+        "file_sha256": _file_sha256(output_path) if artifact_exists else "",
         "build_command": context["build_command"],
         "verify_command": context["verify_command"],
         "strict_gate_command": context["strict_gate_command"],
         "runtime_endpoint": context["runtime_endpoint"],
     }
+    if context["request_artifact_id"] == "p0a_credential_request":
+        request_context.update(_p0a_completion_context_from_request_payload(payload, artifact_exists=artifact_exists))
+    return request_context
 
 
 def _recommended_sequence(
@@ -231,6 +318,7 @@ def _recommended_sequence(
         *commands,
         *verification_commands,
         str(request_context.get("strict_gate_command") or ""),
+        str(request_context.get("credential_update_receipt_strict_gate") or ""),
     ):
         _append_unique(sequence, command)
     return sequence
@@ -304,6 +392,7 @@ def run_au_external_dependency_clearance(
     if handoff is None:
         handoff, load_errors = _load_handoff(handoff_path)
     if handoff is None:
+        empty_request_context = _empty_request_context("none")
         return _with_hash(
             {
                 "clearance_execution_version": EXECUTION_VERSION,
@@ -332,6 +421,30 @@ def run_au_external_dependency_clearance(
                 "stop_after_step": stop_after_step or "",
                 "stopped_after_step": False,
                 "current_step_request_context": _empty_request_context("none"),
+                "current_request_completion_contract_ready": empty_request_context[
+                    "credential_update_completion_contract_ready"
+                ],
+                "current_request_completion_contract_version": empty_request_context[
+                    "credential_update_completion_contract_version"
+                ],
+                "current_request_credential_update_receipt_required": empty_request_context[
+                    "credential_update_receipt_required"
+                ],
+                "current_request_credential_update_receipt_endpoint": empty_request_context[
+                    "credential_update_receipt_endpoint"
+                ],
+                "current_request_credential_update_receipt_strict_gate": empty_request_context[
+                    "credential_update_receipt_strict_gate"
+                ],
+                "current_request_post_update_validation_command_count": empty_request_context[
+                    "post_update_validation_command_count"
+                ],
+                "current_request_completion_contract_missing_required_count": empty_request_context[
+                    "completion_contract_required_missing_key_count"
+                ],
+                "current_request_completion_contract_raw_secret_values_allowed": empty_request_context[
+                    "completion_contract_raw_secret_values_allowed"
+                ],
                 "current_recommended_sequence": [],
                 "current_recommended_sequence_count": 0,
                 "current_strict_gate_command": "",
@@ -370,11 +483,13 @@ def run_au_external_dependency_clearance(
         ),
         would_execute_steps[0] if would_execute_steps else {},
     )
+    current_step_request_context = _as_dict(current_step.get("linked_request_context"))
     hard_gate_commands = _strings(sequence.get("hard_gate_commands"))
     for step in steps:
         request_context = _as_dict(step.get("linked_request_context"))
         _append_unique(hard_gate_commands, str(request_context.get("verify_command") or ""))
         _append_unique(hard_gate_commands, str(request_context.get("strict_gate_command") or ""))
+        _append_unique(hard_gate_commands, str(request_context.get("credential_update_receipt_strict_gate") or ""))
     result = {
         "clearance_execution_version": EXECUTION_VERSION,
         "generated_at": generated_at or _utc_now_iso(),
@@ -396,7 +511,34 @@ def run_au_external_dependency_clearance(
         "next_command": str(sequence.get("next_command") or ""),
         "stop_after_step": stop_after_step or "",
         "stopped_after_step": stopped_after_step,
-        "current_step_request_context": _as_dict(current_step.get("linked_request_context")),
+        "current_step_request_context": current_step_request_context,
+        "current_request_completion_contract_ready": current_step_request_context.get(
+            "credential_update_completion_contract_ready"
+        )
+        is True,
+        "current_request_completion_contract_version": str(
+            current_step_request_context.get("credential_update_completion_contract_version") or ""
+        ),
+        "current_request_credential_update_receipt_required": current_step_request_context.get(
+            "credential_update_receipt_required"
+        )
+        is True,
+        "current_request_credential_update_receipt_endpoint": str(
+            current_step_request_context.get("credential_update_receipt_endpoint") or ""
+        ),
+        "current_request_credential_update_receipt_strict_gate": str(
+            current_step_request_context.get("credential_update_receipt_strict_gate") or ""
+        ),
+        "current_request_post_update_validation_command_count": int(
+            current_step_request_context.get("post_update_validation_command_count") or 0
+        ),
+        "current_request_completion_contract_missing_required_count": int(
+            current_step_request_context.get("completion_contract_required_missing_key_count") or 0
+        ),
+        "current_request_completion_contract_raw_secret_values_allowed": current_step_request_context.get(
+            "completion_contract_raw_secret_values_allowed"
+        )
+        is True,
         "current_recommended_sequence": _strings(current_step.get("recommended_sequence")),
         "current_recommended_sequence_count": int(current_step.get("recommended_sequence_count") or 0),
         "current_strict_gate_command": str(current_step.get("strict_gate_command") or ""),

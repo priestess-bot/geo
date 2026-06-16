@@ -73,8 +73,52 @@ class AuExternalDependencyClearanceTest(unittest.TestCase):
             execution["current_step_request_context"]["runtime_endpoint"],
             "GET /v1/p0a-credential-request/au",
         )
+        self.assertTrue(execution["current_step_request_context"]["credential_update_completion_contract_ready"])
+        self.assertEqual(
+            execution["current_step_request_context"]["credential_update_completion_contract_version"],
+            "au_p0a_credential_request_completion_contract_v1",
+        )
+        self.assertTrue(execution["current_step_request_context"]["credential_update_receipt_required"])
+        self.assertEqual(
+            execution["current_step_request_context"]["credential_update_receipt_endpoint"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
+        self.assertTrue(
+            execution["current_step_request_context"]["credential_update_receipt_strict_gate"].endswith(
+                "--require-complete"
+            )
+        )
+        self.assertEqual(execution["current_step_request_context"]["post_update_validation_command_count"], 13)
+        self.assertEqual(
+            execution["current_step_request_context"]["completion_contract_required_missing_key_count"],
+            len(execution["current_step_request_context"]["completion_contract_required_missing_keys"]),
+        )
+        self.assertFalse(
+            execution["current_step_request_context"]["completion_contract_raw_secret_values_allowed"]
+        )
+        self.assertTrue(execution["current_request_completion_contract_ready"])
+        self.assertEqual(
+            execution["current_request_completion_contract_version"],
+            "au_p0a_credential_request_completion_contract_v1",
+        )
+        self.assertTrue(execution["current_request_credential_update_receipt_required"])
+        self.assertEqual(
+            execution["current_request_credential_update_receipt_endpoint"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
+        self.assertTrue(execution["current_request_credential_update_receipt_strict_gate"].endswith("--require-complete"))
+        self.assertEqual(execution["current_request_post_update_validation_command_count"], 13)
+        self.assertEqual(
+            execution["current_request_completion_contract_missing_required_count"],
+            len(execution["current_step_request_context"]["completion_contract_required_missing_keys"]),
+        )
+        self.assertFalse(execution["current_request_completion_contract_raw_secret_values_allowed"])
         self.assertIn("make au-p0a-credential-request", execution["current_recommended_sequence"])
         self.assertIn("make verify-au-p0a-credential-request", execution["current_recommended_sequence"])
+        self.assertIn(
+            execution["current_step_request_context"]["credential_update_receipt_strict_gate"],
+            execution["current_recommended_sequence"],
+        )
         self.assertTrue(execution["current_strict_gate_command"].endswith("--require-credentials-ready"))
         self.assertEqual(
             execution["current_recommended_sequence_count"],
@@ -88,7 +132,16 @@ class AuExternalDependencyClearanceTest(unittest.TestCase):
             steps["p0a_provider_credentials"]["linked_request_context"]["request_artifact_id"],
             "p0a_credential_request",
         )
+        self.assertTrue(
+            steps["p0a_provider_credentials"]["linked_request_context"][
+                "credential_update_completion_contract_ready"
+            ]
+        )
         self.assertIn("make au-p0a-credential-request", steps["p0a_provider_credentials"]["recommended_sequence"])
+        self.assertIn(
+            steps["p0a_provider_credentials"]["linked_request_context"]["credential_update_receipt_strict_gate"],
+            steps["p0a_provider_credentials"]["recommended_sequence"],
+        )
         self.assertTrue(
             steps["p0a_provider_credentials"]["strict_gate_command"].endswith("--require-credentials-ready")
         )
@@ -106,6 +159,10 @@ class AuExternalDependencyClearanceTest(unittest.TestCase):
         self.assertTrue(steps["p0a_real_batches"]["strict_gate_command"].endswith("--require-fulfilled"))
         self.assertIn("make verify-au-launch-status", execution["hard_gate_commands"])
         self.assertIn("make verify-au-p0a-credential-request", execution["hard_gate_commands"])
+        self.assertIn(
+            execution["current_step_request_context"]["credential_update_receipt_strict_gate"],
+            execution["hard_gate_commands"],
+        )
         self.assertTrue(any(command.endswith("--require-credentials-ready") for command in execution["hard_gate_commands"]))
         self.assertEqual(verification["status"], "pass")
         self.assertEqual(hard_gate["status"], "fail")
@@ -190,6 +247,40 @@ class AuExternalDependencyClearanceTest(unittest.TestCase):
         )
         self.assertTrue(execution["steps"][-1]["strict_gate_command"].endswith("--require-fulfilled"))
 
+    def test_p0a_completion_contract_context_survives_missing_request_artifact(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            handoff_path = self._write_handoff(temp_dir)
+            output_path = Path("docs/runtime_preflight/au-p0a-credential-request-latest.json")
+            backup = output_path.read_bytes() if output_path.exists() else None
+            if output_path.exists():
+                output_path.unlink()
+            try:
+                execution = run_au_external_dependency_clearance(
+                    handoff_path=handoff_path,
+                    generated_at="2026-06-13T00:00:00Z",
+                )
+                verification = verify_au_external_dependency_clearance(execution)
+            finally:
+                if backup is not None:
+                    output_path.write_bytes(backup)
+
+        context = execution["current_step_request_context"]
+        self.assertFalse(context["exists"])
+        self.assertEqual(context["artifact_hash"], "")
+        self.assertTrue(context["credential_update_completion_contract_ready"])
+        self.assertEqual(
+            context["credential_update_completion_contract_version"],
+            "au_p0a_credential_request_completion_contract_v1",
+        )
+        self.assertTrue(context["credential_update_receipt_required"])
+        self.assertEqual(context["credential_update_receipt_endpoint"], "GET /v1/p0a-credential-update-receipt/au")
+        self.assertTrue(context["credential_update_receipt_strict_gate"].endswith("--require-complete"))
+        self.assertEqual(context["post_update_validation_command_count"], 13)
+        self.assertEqual(context["completion_contract_required_missing_key_count"], 0)
+        self.assertEqual(context["completion_contract_required_missing_keys"], [])
+        self.assertFalse(context["completion_contract_raw_secret_values_allowed"])
+        self.assertEqual(verification["status"], "pass")
+
     def test_verifier_detects_clearance_execution_tampering(self) -> None:
         with TemporaryDirectory() as temp_dir:
             handoff_path = self._write_handoff(temp_dir)
@@ -200,8 +291,12 @@ class AuExternalDependencyClearanceTest(unittest.TestCase):
         tampered = copy.deepcopy(execution)
         tampered["steps"][0]["would_execute"] = False
         tampered["steps"][0]["linked_request_context"]["request_artifact_id"] = "wrong_request"
+        tampered["steps"][0]["linked_request_context"]["credential_update_receipt_required"] = False
+        tampered["steps"][0]["linked_request_context"]["credential_update_receipt_strict_gate"] = "forged"
         tampered["current_recommended_sequence"] = []
         tampered["current_recommended_sequence_count"] = 0
+        tampered["current_request_credential_update_receipt_required"] = False
+        tampered["current_request_credential_update_receipt_strict_gate"] = "forged"
         tampered["clearance_execution_hash"] = compute_clearance_execution_hash(tampered)
         verification = verify_au_external_dependency_clearance(tampered)
 
@@ -209,6 +304,14 @@ class AuExternalDependencyClearanceTest(unittest.TestCase):
         self.assertIn("would_execute_step_count_mismatch", verification["errors"])
         self.assertIn(
             "clearance_step_request_context_request_artifact_id_mismatch:p0a_provider_credentials",
+            verification["errors"],
+        )
+        self.assertIn(
+            "clearance_step_credential_update_receipt_required_mismatch:p0a_provider_credentials",
+            verification["errors"],
+        )
+        self.assertIn(
+            "clearance_step_credential_update_receipt_strict_gate_mismatch:p0a_provider_credentials",
             verification["errors"],
         )
         self.assertIn("current_recommended_sequence_mismatch", verification["errors"])

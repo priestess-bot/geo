@@ -16,6 +16,10 @@ from scripts.run_au_external_dependency_clearance import (  # noqa: E402
     CLEARANCE_REQUEST_CONTEXTS,
     DEFAULT_OUTPUT_PATH,
     EXECUTION_VERSION,
+    P0A_COMPLETION_CONTRACT_VERSION,
+    P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+    P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+    P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
     REQUEST_CONTEXT_VERSION,
     compute_clearance_execution_hash,
 )
@@ -43,6 +47,14 @@ REQUIRED_TOP_LEVEL_FIELDS = (
     "stop_after_step",
     "stopped_after_step",
     "current_step_request_context",
+    "current_request_completion_contract_ready",
+    "current_request_completion_contract_version",
+    "current_request_credential_update_receipt_required",
+    "current_request_credential_update_receipt_endpoint",
+    "current_request_credential_update_receipt_strict_gate",
+    "current_request_post_update_validation_command_count",
+    "current_request_completion_contract_missing_required_count",
+    "current_request_completion_contract_raw_secret_values_allowed",
     "current_recommended_sequence",
     "current_recommended_sequence_count",
     "current_strict_gate_command",
@@ -62,6 +74,40 @@ def _as_list(value: object) -> list[object]:
 
 def _strings(value: object) -> list[str]:
     return [str(item) for item in _as_list(value)]
+
+
+def _completion_contract_fields() -> tuple[str, ...]:
+    return (
+        "credential_update_completion_contract_ready",
+        "credential_update_completion_contract_version",
+        "credential_update_receipt_required",
+        "credential_update_receipt_ready_required",
+        "credential_update_receipt_complete_required",
+        "credential_update_receipt_endpoint",
+        "credential_update_receipt_strict_gate",
+        "post_update_validation_command_count",
+        "completion_contract_required_missing_key_count",
+        "completion_contract_required_missing_keys",
+        "completion_contract_raw_secret_values_allowed",
+        "completion_contract_raw_database_url_allowed",
+        "completion_contract_raw_provider_response_allowed",
+    )
+
+
+def _completion_contract_expected_values() -> dict[str, object]:
+    return {
+        "credential_update_completion_contract_ready": True,
+        "credential_update_completion_contract_version": P0A_COMPLETION_CONTRACT_VERSION,
+        "credential_update_receipt_required": True,
+        "credential_update_receipt_ready_required": True,
+        "credential_update_receipt_complete_required": True,
+        "credential_update_receipt_endpoint": P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+        "credential_update_receipt_strict_gate": P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+        "post_update_validation_command_count": P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
+        "completion_contract_raw_secret_values_allowed": False,
+        "completion_contract_raw_database_url_allowed": False,
+        "completion_contract_raw_provider_response_allowed": False,
+    }
 
 
 def _find_forbidden_raw_fields(value: object, *, path: str = "$") -> list[str]:
@@ -177,6 +223,19 @@ def verify_au_external_dependency_clearance(
     current_step_context = _as_dict(current_step.get("linked_request_context")) if current_step else {}
     if current_step_context and current_step_request_context != current_step_context:
         errors.append("current_step_request_context_mismatch")
+    current_completion_field_map = {
+        "current_request_completion_contract_ready": "credential_update_completion_contract_ready",
+        "current_request_completion_contract_version": "credential_update_completion_contract_version",
+        "current_request_credential_update_receipt_required": "credential_update_receipt_required",
+        "current_request_credential_update_receipt_endpoint": "credential_update_receipt_endpoint",
+        "current_request_credential_update_receipt_strict_gate": "credential_update_receipt_strict_gate",
+        "current_request_post_update_validation_command_count": "post_update_validation_command_count",
+        "current_request_completion_contract_missing_required_count": "completion_contract_required_missing_key_count",
+        "current_request_completion_contract_raw_secret_values_allowed": "completion_contract_raw_secret_values_allowed",
+    }
+    for top_level_field, context_field in current_completion_field_map.items():
+        if execution.get(top_level_field) != current_step_request_context.get(context_field):
+            errors.append(f"{top_level_field}_mismatch")
     if execution.get("current_recommended_sequence_count") != len(current_recommended_sequence):
         errors.append("current_recommended_sequence_count_mismatch")
     if current_step and current_recommended_sequence != _strings(current_step.get("recommended_sequence")):
@@ -251,6 +310,19 @@ def verify_au_external_dependency_clearance(
             ):
                 if command not in recommended_sequence:
                     errors.append(f"clearance_step_recommended_sequence_missing:{step_id}:{command}")
+            if expected_context["request_artifact_id"] == "p0a_credential_request":
+                for field in _completion_contract_fields():
+                    if field not in request_context:
+                        errors.append(f"clearance_step_completion_contract_field_missing:{step_id}:{field}")
+                for field, expected_value in _completion_contract_expected_values().items():
+                    if request_context.get(field) != expected_value:
+                        errors.append(f"clearance_step_{field}_mismatch:{step_id}")
+                required_missing_keys = _strings(request_context.get("completion_contract_required_missing_keys"))
+                if request_context.get("completion_contract_required_missing_key_count") != len(required_missing_keys):
+                    errors.append(f"clearance_step_completion_contract_missing_key_count_mismatch:{step_id}")
+                receipt_strict_gate = str(request_context.get("credential_update_receipt_strict_gate") or "")
+                if receipt_strict_gate and receipt_strict_gate not in recommended_sequence:
+                    errors.append(f"clearance_step_recommended_sequence_missing:{step_id}:credential_update_receipt_strict_gate")
         else:
             if request_context.get("request_context_available") is True:
                 errors.append(f"clearance_step_unexpected_request_context:{step_id}")
@@ -274,6 +346,7 @@ def verify_au_external_dependency_clearance(
         for command in (
             str(request_context.get("verify_command") or ""),
             str(request_context.get("strict_gate_command") or ""),
+            str(request_context.get("credential_update_receipt_strict_gate") or ""),
         ):
             if command and command not in hard_gate_commands:
                 errors.append(f"hard_gate_request_context_command_missing:{step.get('id')}:{command}")
