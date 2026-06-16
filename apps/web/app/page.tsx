@@ -1589,6 +1589,14 @@ type AuNextWorkItemPacket = {
     linked_request_artifact_type?: string;
     linked_request_packet_hash?: string;
     linked_request_packet_exists?: boolean;
+    linked_request_completion_contract_ready?: boolean;
+    linked_request_completion_contract_version?: string;
+    linked_request_credential_update_receipt_required?: boolean;
+    linked_request_credential_update_receipt_endpoint?: string;
+    linked_request_credential_update_receipt_strict_gate?: string;
+    linked_request_post_update_validation_command_count?: number;
+    linked_request_completion_contract_missing_required_count?: number;
+    linked_request_completion_contract_raw_secret_values_allowed?: boolean;
     recommended_sequence_count?: number;
     request_packet_hash_available?: boolean;
   };
@@ -1650,6 +1658,19 @@ type AuNextWorkItemPacket = {
       verify_command?: string;
       strict_gate_command?: string;
       runtime_endpoint?: string;
+      credential_update_completion_contract_ready?: boolean;
+      credential_update_completion_contract_version?: string;
+      credential_update_receipt_required?: boolean;
+      credential_update_receipt_ready_required?: boolean;
+      credential_update_receipt_complete_required?: boolean;
+      credential_update_receipt_endpoint?: string;
+      credential_update_receipt_strict_gate?: string;
+      post_update_validation_command_count?: number;
+      completion_contract_required_missing_key_count?: number;
+      completion_contract_required_missing_keys?: string[];
+      completion_contract_raw_secret_values_allowed?: boolean;
+      completion_contract_raw_database_url_allowed?: boolean;
+      completion_contract_raw_provider_response_allowed?: boolean;
     };
     work_item_commands?: string[];
     work_item_verification_commands?: string[];
@@ -10281,6 +10302,40 @@ export default async function Home({
               {shortHash(nextWorkItemSummary?.linked_request_packet_hash)}
             </span>
             <span>Linked artifact exists {nextWorkItemSummary?.linked_request_packet_exists ? "yes" : "no"}</span>
+            <span>
+              Linked completion contract{" "}
+              {nextWorkItemSummary?.linked_request_completion_contract_ready ? "ready" : "blocked"} ·{" "}
+              {nextWorkItemSummary?.linked_request_completion_contract_version ||
+                nextWorkItemLinkedRequest?.credential_update_completion_contract_version ||
+                "none"}
+            </span>
+            <span>
+              Receipt required{" "}
+              {nextWorkItemSummary?.linked_request_credential_update_receipt_required ? "yes" : "no"} · validations{" "}
+              {nextWorkItemSummary?.linked_request_post_update_validation_command_count ||
+                nextWorkItemLinkedRequest?.post_update_validation_command_count ||
+                0}
+            </span>
+            <span>
+              Completion missing keys{" "}
+              {nextWorkItemSummary?.linked_request_completion_contract_missing_required_count ??
+                nextWorkItemLinkedRequest?.completion_contract_required_missing_key_count ??
+                0}{" "}
+              · raw secrets{" "}
+              {nextWorkItemSummary?.linked_request_completion_contract_raw_secret_values_allowed ? "allowed" : "blocked"}
+            </span>
+            <span>
+              Receipt endpoint{" "}
+              {nextWorkItemSummary?.linked_request_credential_update_receipt_endpoint ||
+                nextWorkItemLinkedRequest?.credential_update_receipt_endpoint ||
+                "none"}
+            </span>
+            <span>
+              Receipt strict gate{" "}
+              {nextWorkItemSummary?.linked_request_credential_update_receipt_strict_gate ||
+                nextWorkItemLinkedRequest?.credential_update_receipt_strict_gate ||
+                "none"}
+            </span>
             <span>Sequence steps {nextWorkItemSummary?.recommended_sequence_count || 0}</span>
             <span>Next command {nextWorkItemCommands[0] || "none"}</span>
             <span>Next verifier {nextWorkItemVerificationCommands[0] || "none"}</span>

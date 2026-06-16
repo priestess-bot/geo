@@ -16,6 +16,12 @@ from scripts.build_au_next_work_item_packet import (
     compute_next_work_item_packet_hash,
 )
 from scripts.verify_au_next_work_item_packet import verify_au_next_work_item_packet
+from scripts.verify_au_next_work_item_packet import (
+    P0A_COMPLETION_CONTRACT_VERSION,
+    P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+    P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+    P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
+)
 from tests.test_au_handoff_dossier import AuHandoffDossierTest
 
 
@@ -128,6 +134,26 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         self.assertEqual(packet["summary"]["linked_request_packet_id"], "p0a_credential_request")
         self.assertEqual(packet["summary"]["linked_request_artifact_type"], "request_packet")
         self.assertTrue(packet["summary"]["linked_request_packet_exists"] in {True, False})
+        self.assertTrue(packet["summary"]["linked_request_completion_contract_ready"])
+        self.assertEqual(
+            packet["summary"]["linked_request_completion_contract_version"],
+            P0A_COMPLETION_CONTRACT_VERSION,
+        )
+        self.assertTrue(packet["summary"]["linked_request_credential_update_receipt_required"])
+        self.assertEqual(
+            packet["summary"]["linked_request_credential_update_receipt_endpoint"],
+            P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+        )
+        self.assertEqual(
+            packet["summary"]["linked_request_credential_update_receipt_strict_gate"],
+            P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+        )
+        self.assertEqual(
+            packet["summary"]["linked_request_post_update_validation_command_count"],
+            P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
+        )
+        self.assertEqual(packet["summary"]["linked_request_completion_contract_missing_required_count"], 2)
+        self.assertFalse(packet["summary"]["linked_request_completion_contract_raw_secret_values_allowed"])
         self.assertEqual(packet["execution_context"]["linked_request_packet"]["artifact_type"], "request_packet")
         self.assertEqual(packet["summary"]["recommended_sequence_count"], len(packet["execution_context"]["recommended_sequence"]))
         self.assertEqual(packet["execution_context"]["execution_context_version"], "au_next_work_item_execution_context_v1")
@@ -173,6 +199,36 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         self.assertEqual(
             packet["execution_context"]["linked_request_packet"]["runtime_endpoint"],
             "GET /v1/p0a-credential-request/au",
+        )
+        self.assertTrue(
+            packet["execution_context"]["linked_request_packet"]["credential_update_completion_contract_ready"]
+        )
+        self.assertEqual(
+            packet["execution_context"]["linked_request_packet"]["credential_update_completion_contract_version"],
+            P0A_COMPLETION_CONTRACT_VERSION,
+        )
+        self.assertTrue(packet["execution_context"]["linked_request_packet"]["credential_update_receipt_required"])
+        self.assertTrue(
+            packet["execution_context"]["linked_request_packet"]["credential_update_receipt_complete_required"]
+        )
+        self.assertEqual(
+            packet["execution_context"]["linked_request_packet"]["credential_update_receipt_endpoint"],
+            P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+        )
+        self.assertEqual(
+            packet["execution_context"]["linked_request_packet"]["credential_update_receipt_strict_gate"],
+            P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+        )
+        self.assertEqual(
+            packet["execution_context"]["linked_request_packet"]["post_update_validation_command_count"],
+            P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
+        )
+        self.assertEqual(
+            packet["execution_context"]["linked_request_packet"]["completion_contract_required_missing_keys"],
+            ["OPENAI_API_KEY", "PERPLEXITY_API_KEY"],
+        )
+        self.assertFalse(
+            packet["execution_context"]["linked_request_packet"]["completion_contract_raw_secret_values_allowed"]
         )
         self.assertIn("make au-p0a-credential-request", packet["execution_context"]["recommended_sequence"])
         self.assertIn("make verify-au-p0a-credential-request", packet["execution_context"]["recommended_sequence"])
@@ -374,6 +430,37 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
         self.assertIn("recommended_sequence_missing:make au-p0a-credential-request", verification["errors"])
         self.assertIn("execution_context_combined_verification_commands_mismatch", verification["errors"])
 
+    def test_verifier_rejects_tampered_p0a_completion_contract_context(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            dossier_path, dossier, external_handoff_path, external_handoff = self._build_handoff_dossier(
+                temp_dir,
+                ready=False,
+            )
+            packet = build_au_next_work_item_packet(
+                handoff_dossier_path=dossier_path,
+                external_dependency_handoff_path=external_handoff_path,
+                handoff_dossier=dossier,
+                external_dependency_handoff=external_handoff,
+                output_path=Path(temp_dir) / "next-work-item.json",
+                generated_at="2026-06-12T00:00:00Z",
+            )
+            packet["execution_context"]["linked_request_packet"]["credential_update_receipt_required"] = False
+            packet["execution_context"]["linked_request_packet"]["credential_update_receipt_strict_gate"] = (
+                "python3 forged-receipt-gate.py --require-complete"
+            )
+            packet["summary"]["linked_request_credential_update_receipt_required"] = False
+            packet["summary"]["linked_request_credential_update_receipt_strict_gate"] = (
+                "python3 forged-receipt-gate.py --require-complete"
+            )
+            packet["next_work_item_packet_hash"] = compute_next_work_item_packet_hash(packet)
+            verification = verify_au_next_work_item_packet(packet)
+
+        self.assertEqual(verification["status"], "fail")
+        self.assertIn("linked_request_packet_credential_update_receipt_required_mismatch", verification["errors"])
+        self.assertIn("linked_request_packet_credential_update_receipt_strict_gate_mismatch", verification["errors"])
+        self.assertIn("recommended_sequence_missing:p0a_credential_update_receipt_strict_gate", verification["errors"])
+        self.assertIn("hard_gate_missing:p0a_credential_update_receipt_strict_gate", verification["errors"])
+
     def test_verifier_rejects_stale_linked_request_artifact_file(self) -> None:
         with TemporaryDirectory() as temp_dir:
             dossier_path, dossier, external_handoff_path, external_handoff = self._build_handoff_dossier(
@@ -384,6 +471,33 @@ class AuNextWorkItemPacketTest(unittest.TestCase):
             linked_payload = {
                 "p0a_credential_request_packet_hash": "current-request-hash",
                 "status": "pass",
+                "summary": {
+                    "credential_update_completion_contract_ready": True,
+                    "credential_update_receipt_required": True,
+                    "credential_update_receipt_endpoint": P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+                    "credential_update_receipt_strict_gate": P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+                    "post_update_validation_command_count": P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
+                },
+                "credential_update_completion_contract": {
+                    "version": P0A_COMPLETION_CONTRACT_VERSION,
+                    "required_missing_key_count": 2,
+                    "required_missing_keys": ["OPENAI_API_KEY", "PERPLEXITY_API_KEY"],
+                    "credential_update_receipt_ready_required": True,
+                    "credential_update_receipt_complete_required": True,
+                    "post_update_validation_command_count": P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
+                    "strict_gate_commands": [
+                        "make verify-au-p0a-credential-update-receipt",
+                        P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+                    ],
+                    "runtime_endpoints": {
+                        "p0a_credential_update_receipt": P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+                    },
+                    "redaction_policy": {
+                        "raw_secret_values_allowed": False,
+                        "raw_database_url_allowed": False,
+                        "raw_provider_response_allowed": False,
+                    },
+                },
             }
             linked_path.write_text(json.dumps(linked_payload), encoding="utf-8")
             original_context = REQUEST_PACKET_CONTEXTS["p0a_environment"].copy()

@@ -1791,6 +1791,22 @@ class ApiContractsTest(unittest.TestCase):
         self.assertGreater(payload["summary"]["linked_dependency_group_blocking_reason_count"], 0)
         self.assertEqual(payload["summary"]["linked_request_packet_id"], "p0a_credential_request")
         self.assertEqual(payload["summary"]["linked_request_artifact_type"], "request_packet")
+        self.assertTrue(payload["summary"]["linked_request_completion_contract_ready"])
+        self.assertEqual(
+            payload["summary"]["linked_request_completion_contract_version"],
+            "au_p0a_credential_request_completion_contract_v1",
+        )
+        self.assertTrue(payload["summary"]["linked_request_credential_update_receipt_required"])
+        self.assertEqual(
+            payload["summary"]["linked_request_credential_update_receipt_endpoint"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
+        self.assertTrue(
+            payload["summary"]["linked_request_credential_update_receipt_strict_gate"].endswith("--require-complete")
+        )
+        self.assertEqual(payload["summary"]["linked_request_post_update_validation_command_count"], 13)
+        self.assertGreaterEqual(payload["summary"]["linked_request_completion_contract_missing_required_count"], 0)
+        self.assertFalse(payload["summary"]["linked_request_completion_contract_raw_secret_values_allowed"])
         self.assertEqual(payload["execution_context"]["execution_context_version"], "au_next_work_item_execution_context_v1")
         self.assertEqual(payload["execution_context"]["linked_dependency_group"]["id"], "p0a_provider_credentials")
         self.assertEqual(payload["execution_context"]["linked_dependency_group"]["source"], "external_dependency_handoff")
@@ -1807,6 +1823,30 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(
             payload["execution_context"]["linked_request_packet"]["runtime_endpoint"],
             "GET /v1/p0a-credential-request/au",
+        )
+        self.assertTrue(
+            payload["execution_context"]["linked_request_packet"]["credential_update_completion_contract_ready"]
+        )
+        self.assertEqual(
+            payload["execution_context"]["linked_request_packet"]["credential_update_completion_contract_version"],
+            "au_p0a_credential_request_completion_contract_v1",
+        )
+        self.assertTrue(payload["execution_context"]["linked_request_packet"]["credential_update_receipt_required"])
+        self.assertEqual(
+            payload["execution_context"]["linked_request_packet"]["credential_update_receipt_endpoint"],
+            "GET /v1/p0a-credential-update-receipt/au",
+        )
+        self.assertTrue(
+            payload["execution_context"]["linked_request_packet"]["credential_update_receipt_strict_gate"].endswith(
+                "--require-complete"
+            )
+        )
+        self.assertEqual(
+            payload["execution_context"]["linked_request_packet"]["post_update_validation_command_count"],
+            13,
+        )
+        self.assertFalse(
+            payload["execution_context"]["linked_request_packet"]["completion_contract_raw_secret_values_allowed"]
         )
         self.assertIn("make au-p0a-credential-request", payload["execution_context"]["recommended_sequence"])
         self.assertIn("make verify-au-p0a-credential-request", payload["execution_context"]["recommended_sequence"])

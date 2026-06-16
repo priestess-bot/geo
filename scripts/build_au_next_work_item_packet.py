@@ -308,7 +308,7 @@ def _request_packet_context(next_work_item_id: str) -> dict[str, Any]:
     output_path = Path(context["output_path"])
     payload = _load_json_file(output_path)
     packet_hash = str(payload.get(context["hash_field"]) or "")
-    return {
+    request_context: dict[str, Any] = {
         "request_packet_available": True,
         "request_packet_id": context["request_packet_id"],
         "request_packet_title": context["request_packet_title"],
@@ -323,6 +323,58 @@ def _request_packet_context(next_work_item_id: str) -> dict[str, Any]:
         "strict_gate_command": context["strict_gate_command"],
         "runtime_endpoint": context["runtime_endpoint"],
     }
+    if context["request_packet_id"] == "p0a_credential_request":
+        summary = _as_dict(payload.get("summary"))
+        completion_contract = _as_dict(payload.get("credential_update_completion_contract"))
+        redaction_policy = _as_dict(completion_contract.get("redaction_policy"))
+        runtime_endpoints = _as_dict(completion_contract.get("runtime_endpoints"))
+        strict_gates = _string_list(completion_contract.get("strict_gate_commands"))
+        required_missing_keys = _string_list(completion_contract.get("required_missing_keys"))
+        receipt_strict_gate = str(summary.get("credential_update_receipt_strict_gate") or "")
+        if not receipt_strict_gate and strict_gates:
+            receipt_strict_gate = strict_gates[-1]
+        request_context.update(
+            {
+                "credential_update_completion_contract_ready": summary.get(
+                    "credential_update_completion_contract_ready"
+                )
+                is True,
+                "credential_update_completion_contract_version": str(completion_contract.get("version") or ""),
+                "credential_update_receipt_required": summary.get("credential_update_receipt_required") is True,
+                "credential_update_receipt_ready_required": completion_contract.get(
+                    "credential_update_receipt_ready_required"
+                )
+                is True,
+                "credential_update_receipt_complete_required": completion_contract.get(
+                    "credential_update_receipt_complete_required"
+                )
+                is True,
+                "credential_update_receipt_endpoint": str(
+                    summary.get("credential_update_receipt_endpoint")
+                    or runtime_endpoints.get("p0a_credential_update_receipt")
+                    or ""
+                ),
+                "credential_update_receipt_strict_gate": receipt_strict_gate,
+                "post_update_validation_command_count": int(
+                    summary.get("post_update_validation_command_count")
+                    or completion_contract.get("post_update_validation_command_count")
+                    or 0
+                ),
+                "completion_contract_required_missing_key_count": int(
+                    completion_contract.get("required_missing_key_count") or 0
+                ),
+                "completion_contract_required_missing_keys": required_missing_keys,
+                "completion_contract_raw_secret_values_allowed": redaction_policy.get("raw_secret_values_allowed")
+                is True,
+                "completion_contract_raw_database_url_allowed": redaction_policy.get("raw_database_url_allowed")
+                is True,
+                "completion_contract_raw_provider_response_allowed": redaction_policy.get(
+                    "raw_provider_response_allowed"
+                )
+                is True,
+            }
+        )
+    return request_context
 
 
 def _execution_context(
@@ -609,6 +661,33 @@ def build_au_next_work_item_packet(
             "linked_request_artifact_type": str(linked_request_packet.get("artifact_type") or ""),
             "linked_request_packet_hash": str(linked_request_packet.get("packet_hash") or ""),
             "linked_request_packet_exists": linked_request_packet.get("exists") is True,
+            "linked_request_completion_contract_ready": linked_request_packet.get(
+                "credential_update_completion_contract_ready"
+            )
+            is True,
+            "linked_request_completion_contract_version": str(
+                linked_request_packet.get("credential_update_completion_contract_version") or ""
+            ),
+            "linked_request_credential_update_receipt_required": linked_request_packet.get(
+                "credential_update_receipt_required"
+            )
+            is True,
+            "linked_request_credential_update_receipt_endpoint": str(
+                linked_request_packet.get("credential_update_receipt_endpoint") or ""
+            ),
+            "linked_request_credential_update_receipt_strict_gate": str(
+                linked_request_packet.get("credential_update_receipt_strict_gate") or ""
+            ),
+            "linked_request_post_update_validation_command_count": int(
+                linked_request_packet.get("post_update_validation_command_count") or 0
+            ),
+            "linked_request_completion_contract_missing_required_count": int(
+                linked_request_packet.get("completion_contract_required_missing_key_count") or 0
+            ),
+            "linked_request_completion_contract_raw_secret_values_allowed": linked_request_packet.get(
+                "completion_contract_raw_secret_values_allowed"
+            )
+            is True,
             "recommended_sequence_count": int(execution_context.get("recommended_sequence_count") or 0),
             "request_packet_hash_available": execution_context.get("request_packet_hash_available") is True,
         },

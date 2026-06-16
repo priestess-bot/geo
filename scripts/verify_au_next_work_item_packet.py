@@ -43,6 +43,16 @@ REQUIRED_FIELDS = (
     "next_work_item_packet_hash",
 )
 
+P0A_COMPLETION_CONTRACT_VERSION = "au_p0a_credential_request_completion_contract_v1"
+P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT = "GET /v1/p0a-credential-update-receipt/au"
+P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE = (
+    "PYTHONPATH=packages/geno_core:apps/api python3 "
+    "scripts/verify_au_p0a_credential_update_receipt.py "
+    "${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
+    "--require-complete"
+)
+P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT = 13
+
 
 def _as_dict(value: object) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
@@ -78,6 +88,50 @@ def _load_json_file(path: Path) -> dict[str, Any]:
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _p0a_completion_context_from_request_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    summary = _as_dict(payload.get("summary"))
+    completion_contract = _as_dict(payload.get("credential_update_completion_contract"))
+    redaction_policy = _as_dict(completion_contract.get("redaction_policy"))
+    runtime_endpoints = _as_dict(completion_contract.get("runtime_endpoints"))
+    strict_gates = _string_list(completion_contract.get("strict_gate_commands"))
+    receipt_strict_gate = str(summary.get("credential_update_receipt_strict_gate") or "")
+    if not receipt_strict_gate and strict_gates:
+        receipt_strict_gate = strict_gates[-1]
+    return {
+        "credential_update_completion_contract_ready": summary.get("credential_update_completion_contract_ready")
+        is True,
+        "credential_update_completion_contract_version": str(completion_contract.get("version") or ""),
+        "credential_update_receipt_required": summary.get("credential_update_receipt_required") is True,
+        "credential_update_receipt_ready_required": completion_contract.get("credential_update_receipt_ready_required")
+        is True,
+        "credential_update_receipt_complete_required": completion_contract.get(
+            "credential_update_receipt_complete_required"
+        )
+        is True,
+        "credential_update_receipt_endpoint": str(
+            summary.get("credential_update_receipt_endpoint")
+            or runtime_endpoints.get("p0a_credential_update_receipt")
+            or ""
+        ),
+        "credential_update_receipt_strict_gate": receipt_strict_gate,
+        "post_update_validation_command_count": int(
+            summary.get("post_update_validation_command_count")
+            or completion_contract.get("post_update_validation_command_count")
+            or 0
+        ),
+        "completion_contract_required_missing_key_count": int(
+            completion_contract.get("required_missing_key_count") or 0
+        ),
+        "completion_contract_required_missing_keys": _string_list(completion_contract.get("required_missing_keys")),
+        "completion_contract_raw_secret_values_allowed": redaction_policy.get("raw_secret_values_allowed") is True,
+        "completion_contract_raw_database_url_allowed": redaction_policy.get("raw_database_url_allowed") is True,
+        "completion_contract_raw_provider_response_allowed": redaction_policy.get(
+            "raw_provider_response_allowed"
+        )
+        is True,
+    }
 
 
 def verify_au_next_work_item_packet(
@@ -137,6 +191,7 @@ def verify_au_next_work_item_packet(
     )
     expected_combined_evidence_outputs = _unique_strings(work_item_evidence_outputs + group_evidence_outputs)
     recommended_sequence = _string_list(execution_context.get("recommended_sequence"))
+    hard_gate_commands = _string_list(payload.get("hard_gate_commands"))
     blocked_customer_gate_ids = _string_list(summary.get("blocked_customer_gate_ids"))
     next_work_item_id = str(summary.get("next_work_item_id") or "")
 
@@ -268,6 +323,65 @@ def verify_au_next_work_item_packet(
             errors.append("summary_linked_request_packet_exists_mismatch")
         if summary.get("request_packet_hash_available") is not bool(linked_request_packet.get("packet_hash")):
             errors.append("summary_request_packet_hash_available_mismatch")
+        if expected_context["request_packet_id"] == "p0a_credential_request":
+            required_completion_fields = (
+                "credential_update_completion_contract_ready",
+                "credential_update_completion_contract_version",
+                "credential_update_receipt_required",
+                "credential_update_receipt_ready_required",
+                "credential_update_receipt_complete_required",
+                "credential_update_receipt_endpoint",
+                "credential_update_receipt_strict_gate",
+                "post_update_validation_command_count",
+                "completion_contract_required_missing_key_count",
+                "completion_contract_required_missing_keys",
+                "completion_contract_raw_secret_values_allowed",
+                "completion_contract_raw_database_url_allowed",
+                "completion_contract_raw_provider_response_allowed",
+            )
+            for field in required_completion_fields:
+                if field not in linked_request_packet:
+                    errors.append(f"linked_request_packet_completion_contract_field_missing:{field}")
+            expected_completion_values = {
+                "credential_update_completion_contract_ready": True,
+                "credential_update_completion_contract_version": P0A_COMPLETION_CONTRACT_VERSION,
+                "credential_update_receipt_required": True,
+                "credential_update_receipt_ready_required": True,
+                "credential_update_receipt_complete_required": True,
+                "credential_update_receipt_endpoint": P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT,
+                "credential_update_receipt_strict_gate": P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE,
+                "post_update_validation_command_count": P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT,
+                "completion_contract_raw_secret_values_allowed": False,
+                "completion_contract_raw_database_url_allowed": False,
+                "completion_contract_raw_provider_response_allowed": False,
+            }
+            for field, expected_value in expected_completion_values.items():
+                if linked_request_packet.get(field) != expected_value:
+                    errors.append(f"linked_request_packet_{field}_mismatch")
+            if linked_request_packet.get("completion_contract_required_missing_key_count") != len(
+                _string_list(linked_request_packet.get("completion_contract_required_missing_keys"))
+            ):
+                errors.append("linked_request_packet_completion_contract_missing_key_count_mismatch")
+            summary_completion_field_map = {
+                "linked_request_completion_contract_ready": "credential_update_completion_contract_ready",
+                "linked_request_completion_contract_version": "credential_update_completion_contract_version",
+                "linked_request_credential_update_receipt_required": "credential_update_receipt_required",
+                "linked_request_credential_update_receipt_endpoint": "credential_update_receipt_endpoint",
+                "linked_request_credential_update_receipt_strict_gate": "credential_update_receipt_strict_gate",
+                "linked_request_post_update_validation_command_count": "post_update_validation_command_count",
+                "linked_request_completion_contract_missing_required_count": "completion_contract_required_missing_key_count",
+                "linked_request_completion_contract_raw_secret_values_allowed": "completion_contract_raw_secret_values_allowed",
+            }
+            for summary_field, linked_field in summary_completion_field_map.items():
+                if summary_field not in summary:
+                    errors.append(f"summary_completion_contract_field_missing:{summary_field}")
+                if summary.get(summary_field) != linked_request_packet.get(linked_field):
+                    errors.append(f"summary_{summary_field}_mismatch")
+            receipt_strict_gate = str(linked_request_packet.get("credential_update_receipt_strict_gate") or "")
+            if receipt_strict_gate and receipt_strict_gate not in recommended_sequence:
+                errors.append("recommended_sequence_missing:p0a_credential_update_receipt_strict_gate")
+            if receipt_strict_gate and receipt_strict_gate not in hard_gate_commands:
+                errors.append("hard_gate_missing:p0a_credential_update_receipt_strict_gate")
         for command in (
             expected_context["build_command"],
             expected_context["verify_command"],
@@ -292,6 +406,40 @@ def verify_au_next_work_item_packet(
                         errors.append("linked_request_packet_current_hash_mismatch")
                     if summary.get("linked_request_packet_hash") != current_hash:
                         errors.append("summary_linked_request_packet_current_hash_mismatch")
+                    if expected_context["request_packet_id"] == "p0a_credential_request":
+                        current_completion_context = _p0a_completion_context_from_request_payload(current_payload)
+                        current_summary_completion_field_map = {
+                            "linked_request_completion_contract_ready": (
+                                "credential_update_completion_contract_ready"
+                            ),
+                            "linked_request_completion_contract_version": (
+                                "credential_update_completion_contract_version"
+                            ),
+                            "linked_request_credential_update_receipt_required": (
+                                "credential_update_receipt_required"
+                            ),
+                            "linked_request_credential_update_receipt_endpoint": (
+                                "credential_update_receipt_endpoint"
+                            ),
+                            "linked_request_credential_update_receipt_strict_gate": (
+                                "credential_update_receipt_strict_gate"
+                            ),
+                            "linked_request_post_update_validation_command_count": (
+                                "post_update_validation_command_count"
+                            ),
+                            "linked_request_completion_contract_missing_required_count": (
+                                "completion_contract_required_missing_key_count"
+                            ),
+                            "linked_request_completion_contract_raw_secret_values_allowed": (
+                                "completion_contract_raw_secret_values_allowed"
+                            ),
+                        }
+                        for field, current_value in current_completion_context.items():
+                            if linked_request_packet.get(field) != current_value:
+                                errors.append(f"linked_request_packet_current_{field}_mismatch")
+                        for summary_field, linked_field in current_summary_completion_field_map.items():
+                            if summary.get(summary_field) != current_completion_context.get(linked_field):
+                                errors.append(f"summary_current_{summary_field}_mismatch")
                 current_file_sha256 = _file_sha256(linked_output_path)
                 if linked_request_packet.get("file_sha256") != current_file_sha256:
                     errors.append("linked_request_packet_file_sha256_mismatch")
@@ -340,7 +488,6 @@ def verify_au_next_work_item_packet(
     if endpoints.get("customer_handoff_readiness") != "GET /v1/customer-handoff-readiness/au":
         errors.append("runtime_endpoint_customer_handoff_readiness_invalid")
 
-    hard_gate_commands = _string_list(payload.get("hard_gate_commands"))
     for required in (
         "make au-next-work-item",
         "make verify-au-next-work-item",
