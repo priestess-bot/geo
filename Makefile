@@ -1,10 +1,77 @@
-.PHONY: install-api-deps install-dev-deps lint-python compile-python web-typecheck quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e ci-local api-preflight verify-api-preflight preflight-manifest au-p0a-runbook verify-au-p0a-runbook verify-au-p0a-env-template au-p0a-env-bootstrap verify-au-p0a-env-bootstrap au-p0a-env verify-au-p0a-env au-p0a-environment-checklist verify-au-p0a-environment-checklist au-p0a-runbook-dry-run verify-au-p0a-runbook-execution au-p0a-readiness au-p0a-package verify-au-p0a-package au-p0a-status verify-au-p0a-status au-p0a-execution-checklist verify-au-p0a-execution-checklist au-p0a-credential-request verify-au-p0a-credential-request au-p0a-credential-fulfillment verify-au-p0a-credential-fulfillment au-p0a-credential-clearance verify-au-p0a-credential-clearance au-p0a-credential-update-receipt verify-au-p0a-credential-update-receipt au-p0a-real-batch-request verify-au-p0a-real-batch-request au-p0a-real-batch-fulfillment verify-au-p0a-real-batch-fulfillment au-p0a-real-batch-clearance verify-au-p0a-real-batch-clearance au-launch-status verify-au-launch-status au-launch-remediation-plan verify-au-launch-remediation-plan au-handoff-dossier verify-au-handoff-dossier au-customer-handoff-readiness verify-au-customer-handoff-readiness au-customer-handoff-clearance verify-au-customer-handoff-clearance au-customer-handoff-package verify-au-customer-handoff-package au-delivery-evidence-refresh au-next-work-item verify-au-next-work-item au-delivery-progress verify-au-delivery-progress au-external-dependency-handoff verify-au-external-dependency-handoff au-external-dependency-clearance verify-au-external-dependency-clearance au-broader-platform-registry verify-au-broader-platform-registry au-retest-scheduler-plan verify-au-retest-scheduler-plan au-retest-execution-status verify-au-retest-execution-status au-p0c-report-package verify-au-p0c-report-package au-p0b-google-runbook verify-au-p0b-google-runbook verify-au-p0b-google-env-template au-p0b-google-env-bootstrap verify-au-p0b-google-env-bootstrap au-p0b-google-runbook-dry-run verify-au-p0b-google-runbook-execution au-p0b-google-status verify-au-p0b-google-status au-p0b-google-package verify-au-p0b-google-package au-p0b-google-execution-checklist verify-au-p0b-google-execution-checklist au-p0b-google-environment-request verify-au-p0b-google-environment-request au-p0b-google-environment-fulfillment verify-au-p0b-google-environment-fulfillment au-p0b-google-environment-clearance verify-au-p0b-google-environment-clearance au-p0b-google-manual-backfill-request verify-au-p0b-google-manual-backfill-request au-p0b-google-manual-backfill-fulfillment verify-au-p0b-google-manual-backfill-fulfillment au-p0b-google-manual-backfill-clearance verify-au-p0b-google-manual-backfill-clearance au-p0b-google-phase-execution-request verify-au-p0b-google-phase-execution-request au-p0b-google-phase-execution-fulfillment verify-au-p0b-google-phase-execution-fulfillment au-p0b-google-phase-execution-clearance verify-au-p0b-google-phase-execution-clearance au-p0b-google-manual-template au-p0b-google-manual-backfill-evidence verify-au-p0b-google-manual-backfill au-p0b-google-playwright-env verify-au-p0b-google-playwright-env au-p0b-google-playwright-smoke verify-au-p0b-google-playwright-smoke au-p0b-google-spike-health au-p0b-google-spike-health-manifest au-p0b-google-spike au-p0b-google-spike-manifest au-p0b-google-serp-health verify-au-p0b-google-serp-health au-p0b-google-serp-health-manifest au-p0b-google-serp-fixture verify-au-p0b-google-serp-fixture au-p0b-google-serp-fixture-manifest au-p0b-google-serp-status verify-au-p0b-google-serp-status browser-fidelity-plan browser-fidelity-scheduler-plan browser-fidelity-scheduler-run api-browser-fidelity-preflight report-export-worker runtime-alert-notification-worker runtime-alert-escalation-worker entity-alias-assignment-notification-worker entity-alias-assignment-escalation-worker entity-alias-assignment-reassignment-worker entity-alias-assignment-dispatch-apply-worker notification-delivery-worker worker-fixture worker-fixture-persist worker-google-fixture
+.PHONY: docker-auto-ports-config docker-up-auto-ports docker-down-auto-ports install-api-deps install-dev-deps lint-python compile-python web-typecheck quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e ci-local api-preflight verify-api-preflight preflight-manifest au-p0a-runbook verify-au-p0a-runbook verify-au-p0a-env-template au-p0a-env-bootstrap verify-au-p0a-env-bootstrap au-p0a-env verify-au-p0a-env au-p0a-environment-checklist verify-au-p0a-environment-checklist au-p0a-runbook-dry-run verify-au-p0a-runbook-execution au-p0a-readiness au-p0a-package verify-au-p0a-package au-p0a-status verify-au-p0a-status au-p0a-execution-checklist verify-au-p0a-execution-checklist au-p0a-credential-request verify-au-p0a-credential-request au-p0a-credential-fulfillment verify-au-p0a-credential-fulfillment au-p0a-credential-clearance verify-au-p0a-credential-clearance au-p0a-credential-update-receipt verify-au-p0a-credential-update-receipt au-p0a-real-batch-request verify-au-p0a-real-batch-request au-p0a-real-batch-fulfillment verify-au-p0a-real-batch-fulfillment au-p0a-real-batch-clearance verify-au-p0a-real-batch-clearance au-launch-status verify-au-launch-status au-launch-remediation-plan verify-au-launch-remediation-plan au-handoff-dossier verify-au-handoff-dossier au-customer-handoff-readiness verify-au-customer-handoff-readiness au-customer-handoff-clearance verify-au-customer-handoff-clearance au-customer-handoff-package verify-au-customer-handoff-package au-delivery-evidence-refresh au-next-work-item verify-au-next-work-item au-delivery-progress verify-au-delivery-progress au-external-dependency-handoff verify-au-external-dependency-handoff au-external-dependency-clearance verify-au-external-dependency-clearance au-broader-platform-registry verify-au-broader-platform-registry au-retest-scheduler-plan verify-au-retest-scheduler-plan au-retest-execution-status verify-au-retest-execution-status au-p0c-report-package verify-au-p0c-report-package au-p0b-google-runbook verify-au-p0b-google-runbook verify-au-p0b-google-env-template au-p0b-google-env-bootstrap verify-au-p0b-google-env-bootstrap au-p0b-google-runbook-dry-run verify-au-p0b-google-runbook-execution au-p0b-google-status verify-au-p0b-google-status au-p0b-google-package verify-au-p0b-google-package au-p0b-google-execution-checklist verify-au-p0b-google-execution-checklist au-p0b-google-environment-request verify-au-p0b-google-environment-request au-p0b-google-environment-fulfillment verify-au-p0b-google-environment-fulfillment au-p0b-google-environment-clearance verify-au-p0b-google-environment-clearance au-p0b-google-manual-backfill-request verify-au-p0b-google-manual-backfill-request au-p0b-google-manual-backfill-fulfillment verify-au-p0b-google-manual-backfill-fulfillment au-p0b-google-manual-backfill-clearance verify-au-p0b-google-manual-backfill-clearance au-p0b-google-phase-execution-request verify-au-p0b-google-phase-execution-request au-p0b-google-phase-execution-fulfillment verify-au-p0b-google-phase-execution-fulfillment au-p0b-google-phase-execution-clearance verify-au-p0b-google-phase-execution-clearance au-p0b-google-manual-template au-p0b-google-manual-backfill-evidence verify-au-p0b-google-manual-backfill au-p0b-google-playwright-env verify-au-p0b-google-playwright-env au-p0b-google-playwright-smoke verify-au-p0b-google-playwright-smoke au-p0b-google-spike-health au-p0b-google-spike-health-manifest au-p0b-google-spike au-p0b-google-spike-manifest au-p0b-google-serp-health verify-au-p0b-google-serp-health au-p0b-google-serp-health-manifest au-p0b-google-serp-fixture verify-au-p0b-google-serp-fixture au-p0b-google-serp-fixture-manifest au-p0b-google-serp-status verify-au-p0b-google-serp-status browser-fidelity-plan browser-fidelity-scheduler-plan browser-fidelity-scheduler-run api-browser-fidelity-preflight report-export-worker runtime-alert-notification-worker runtime-alert-escalation-worker entity-alias-assignment-notification-worker entity-alias-assignment-escalation-worker entity-alias-assignment-reassignment-worker entity-alias-assignment-dispatch-apply-worker notification-delivery-worker worker-fixture worker-fixture-persist worker-google-fixture
+
+define GENO_AUTO_PORTS_PY
+from pathlib import Path
+import socket
+
+PORT_RANGE = range(18000, 18250)
+SERVICES = ("postgres", "minio_api", "minio_console", "api", "web")
+
+def is_free(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind(("", port))
+        except OSError:
+            return False
+        return True
+
+used: set[int] = set()
+ports: dict[str, int] = {}
+for service in SERVICES:
+    for candidate in PORT_RANGE:
+        if candidate in used:
+            continue
+        if is_free(candidate):
+            ports[service] = candidate
+            used.add(candidate)
+            break
+    else:
+        raise SystemExit(f"no free port found in {PORT_RANGE.start}-{PORT_RANGE.stop - 1}")
+
+env_path = Path("tmp/docker-compose.auto-ports.env")
+env_path.parent.mkdir(exist_ok=True)
+env_path.write_text(
+    "\n".join(
+        (
+            f"GENO_POSTGRES_HOST_PORT={ports['postgres']}",
+            f"GENO_MINIO_HOST_PORT={ports['minio_api']}",
+            f"GENO_MINIO_CONSOLE_HOST_PORT={ports['minio_console']}",
+            f"GENO_API_HOST_PORT={ports['api']}",
+            f"GENO_WEB_HOST_PORT={ports['web']}",
+            "",
+        )
+    ),
+    encoding="utf-8",
+)
+print(f"Generated {env_path}")
+print("GENO Docker auto ports")
+print(f"  Web:          http://localhost:{ports['web']}")
+print(f"  API:          http://localhost:{ports['api']}")
+print(f"  API docs:     http://localhost:{ports['api']}/docs")
+print(f"  MinIO API:    http://localhost:{ports['minio_api']}")
+print(f"  MinIO Console:http://localhost:{ports['minio_console']}")
+print(f"  PostgreSQL:   localhost:{ports['postgres']}")
+endef
+export GENO_AUTO_PORTS_PY
 
 install-api-deps:
 	python3 -m pip install -r apps/api/requirements.txt
 
 install-dev-deps:
 	python3 -m pip install -r requirements-dev.txt
+
+docker-auto-ports-config:
+	python3 -c "$$GENO_AUTO_PORTS_PY"
+
+docker-up-auto-ports: docker-auto-ports-config
+	docker compose -p geno-auto --env-file tmp/docker-compose.auto-ports.env -f infra/docker-compose.yml up --build postgres minio api web
+
+docker-down-auto-ports:
+	@if [ -f tmp/docker-compose.auto-ports.env ]; then \
+		docker compose -p geno-auto --env-file tmp/docker-compose.auto-ports.env -f infra/docker-compose.yml down; \
+	else \
+		docker compose -p geno-auto -f infra/docker-compose.yml down; \
+	fi
 
 lint-python:
 	python3 -m ruff check apps/api packages workers scripts tests

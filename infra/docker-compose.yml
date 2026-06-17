@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: geno
       POSTGRES_PASSWORD: geno
     ports:
-      - "5432:5432"
+      - "${GENO_POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/migrations/up:/docker-entrypoint-initdb.d:ro
@@ -23,8 +23,8 @@ services:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: minio123
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${GENO_MINIO_HOST_PORT:-9000}:9000"
+      - "${GENO_MINIO_CONSOLE_HOST_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
 
@@ -41,7 +41,7 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-geno-local}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports:
-      - "4000:4000"
+      - "${GENO_LITELLM_HOST_PORT:-4000}:4000"
     volumes:
       - ./litellm_config.yaml:/app/config.yaml:ro
 
@@ -65,7 +65,7 @@ services:
       GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET:-}
       GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS:-2592000}
     ports:
-      - "8000:8000"
+      - "${GENO_API_HOST_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,7 +81,7 @@ services:
       - --storage.tsdb.path=/prometheus
       - --web.enable-lifecycle
     ports:
-      - "9090:9090"
+      - "${GENO_PROMETHEUS_HOST_PORT:-9090}:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -98,7 +98,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
     ports:
-      - "3001:3000"
+      - "${GENO_GRAFANA_HOST_PORT:-3001}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
@@ -474,9 +474,9 @@ services:
       dockerfile: apps/web/Dockerfile
     environment:
       API_INTERNAL_BASE_URL: http://api:8000
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${GENO_API_HOST_PORT:-8000}
     ports:
-      - "3000:3000"
+      - "${GENO_WEB_HOST_PORT:-3000}:3000"
     depends_on:
       api:
         condition: service_started
