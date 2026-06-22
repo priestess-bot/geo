@@ -11133,10 +11133,10 @@ export default async function Home({
       </>
       ) : null}
 
-      <section className="dashboard">
+      <section className={activeTab === "project" ? "dashboard dashboardProject" : "dashboard"}>
         {activeTab === "project" ? (
         <>
-        <Panel title="项目启动配置" subtitle={latestProject?.project.name || "无运行时项目"}>
+        <Panel title="项目启动配置" subtitle={latestProject?.project.name || "无运行时项目"} wide>
           <div className="stack">
             {latestProject ? (
               <>

@@ -955,8 +955,16 @@ code {
 .dashboard {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 16px;
+}
+
+.dashboardProject {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.dashboardProject > .panel {
+  grid-column: 1 / -1;
 }
 
 .panel {
@@ -2901,6 +2909,10 @@ summary {
 
   .customerSummaryGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboardProject {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .traceSummary {
