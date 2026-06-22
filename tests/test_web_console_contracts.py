@@ -138,6 +138,22 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("const opsTabs", page_source)
         self.assertIn("cleanOpsTab", page_source)
         self.assertIn("opsTabHref", page_source)
+        self.assertIn("fetchRuntimeEndpointIf", page_source)
+        self.assertIn('fetchRuntimeData(filters, activeTab)', page_source)
+        self.assertIn('const shouldFetchOverview = activeTab === "overview";', page_source)
+        self.assertIn('const shouldFetchProject = activeTab === "project";', page_source)
+        self.assertIn('const shouldFetchNotifications = activeTab === "notifications";', page_source)
+        self.assertIn("const shouldFetchLaunchGate = shouldFetchOverview;", page_source)
+        self.assertIn("const shouldFetchProjectData = shouldFetchProject && hasSelectedProject;", page_source)
+        self.assertIn("const shouldFetchNotificationData = shouldFetchNotifications;", page_source)
+        self.assertIn(
+            "fetchRuntimeEndpointIf<AuLaunchStatus | null>(shouldFetchLaunchGate",
+            page_source,
+        )
+        self.assertIn(
+            "fetchRuntimeEndpointIf<PageResponse<RuntimeProjectLifecycleEvent>>(",
+            page_source,
+        )
         self.assertIn('name="tab"', page_source)
         self.assertIn("内部工程控制台", page_source)
         self.assertIn("总览", page_source)

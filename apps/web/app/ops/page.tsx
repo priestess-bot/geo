@@ -5790,6 +5790,20 @@ async function fetchRuntimeEndpoint<T>(
   }
 }
 
+function skippedRuntimeEndpoint<T>(payload: T): Promise<{ payload: T; error: null }> {
+  return Promise.resolve({ payload, error: null });
+}
+
+function fetchRuntimeEndpointIf<T>(
+  shouldFetch: boolean,
+  baseUrl: string,
+  path: string,
+  fallback: T,
+  options: { optionalNotFound?: boolean } = {}
+): Promise<{ payload: T; error: string | null }> {
+  return shouldFetch ? fetchRuntimeEndpoint<T>(baseUrl, path, fallback, options) : skippedRuntimeEndpoint(fallback);
+}
+
 function cleanFilter(value: string | string[] | undefined): string | undefined {
   const raw = Array.isArray(value) ? value[0] : value;
   const trimmed = raw?.trim();
@@ -5854,7 +5868,7 @@ function reportArtifactSignedUrlPath(
   return reportArtifactPath(`${reportArtifactBase}/signed-url`, artifactType, filters, extras);
 }
 
-async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
+async function fetchRuntimeData(filters: RuntimeFilters = {}, activeTab: OpsTabId = "overview"): Promise<{
   data: RuntimeData;
   error: string | null;
   fetchUrl: string;
@@ -6346,6 +6360,35 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
   paths.traceability = runtimePath(endpoints.traceability, selectedProjectParams);
   paths.traceabilityExport = runtimePath(endpoints.traceabilityExport, selectedProjectParams);
 
+  const hasSelectedProject = Boolean(selectedProjectId);
+  const shouldFetchOverview = activeTab === "overview";
+  const shouldFetchProject = activeTab === "project";
+  const shouldFetchEvidence = activeTab === "evidence";
+  const shouldFetchScore = activeTab === "score";
+  const shouldFetchReport = activeTab === "report";
+  const shouldFetchAction = activeTab === "action";
+  const shouldFetchNotifications = activeTab === "notifications";
+  const shouldFetchTraceability = activeTab === "traceability";
+  const shouldFetchLaunchGate = shouldFetchOverview;
+  const shouldFetchRetest = shouldFetchOverview || shouldFetchAction;
+  const shouldFetchProjectData = shouldFetchProject && hasSelectedProject;
+  const shouldFetchPromptData = shouldFetchOverview || shouldFetchEvidence;
+  const shouldFetchEvidenceData =
+    shouldFetchOverview || shouldFetchProject || shouldFetchEvidence || shouldFetchTraceability;
+  const shouldFetchAliasData = shouldFetchProject || shouldFetchEvidence;
+  const shouldFetchAssignmentData = shouldFetchProject && hasSelectedProject;
+  const shouldFetchBrandData = shouldFetchProject && hasSelectedProject;
+  const shouldFetchScoreConfig = shouldFetchProject || shouldFetchScore;
+  const shouldFetchScoreData =
+    shouldFetchOverview || shouldFetchProject || shouldFetchScore || shouldFetchReport || shouldFetchTraceability;
+  const shouldFetchReportData = shouldFetchOverview || shouldFetchProject || shouldFetchReport || shouldFetchTraceability;
+  const shouldFetchReportJobs = shouldFetchReport;
+  const shouldFetchNotificationData = shouldFetchNotifications;
+  const shouldFetchActionData = shouldFetchOverview || shouldFetchAction || shouldFetchTraceability;
+  const shouldFetchAlertData = shouldFetchOverview || shouldFetchAction || shouldFetchNotifications;
+  const shouldFetchContentData = shouldFetchOverview || shouldFetchAction || shouldFetchTraceability;
+  const shouldFetchHumanReviewData = shouldFetchOverview || shouldFetchProject;
+
   const [
     launchStatus,
     launchRemediationPlan,
@@ -6422,251 +6465,430 @@ async function fetchRuntimeData(filters: RuntimeFilters = {}): Promise<{
     content,
     traceability
   ] = await Promise.all([
-    fetchRuntimeEndpoint<AuLaunchStatus | null>(baseUrl, paths.launchStatus, null),
-    fetchRuntimeEndpoint<AuLaunchRemediationPlan | null>(baseUrl, paths.launchRemediationPlan, null),
-    fetchRuntimeEndpoint<AuP0aEnvironmentChecklist | null>(baseUrl, paths.p0aEnvironmentChecklist, null),
-    fetchRuntimeEndpoint<AuP0aExecutionChecklist | null>(baseUrl, paths.p0aExecutionChecklist, null),
-    fetchRuntimeEndpoint<AuP0aCredentialRequest | null>(baseUrl, paths.p0aCredentialRequest, null),
-    fetchRuntimeEndpoint<AuP0aCredentialFulfillment | null>(baseUrl, paths.p0aCredentialFulfillment, null),
-    fetchRuntimeEndpoint<AuP0aCredentialClearance | null>(baseUrl, paths.p0aCredentialClearance, null),
-    fetchRuntimeEndpoint<AuP0aCredentialUpdateReceipt | null>(baseUrl, paths.p0aCredentialUpdateReceipt, null),
-    fetchRuntimeEndpoint<AuP0aRealBatchRequest | null>(baseUrl, paths.p0aRealBatchRequest, null),
-    fetchRuntimeEndpoint<AuP0aRealBatchFulfillment | null>(baseUrl, paths.p0aRealBatchFulfillment, null),
-    fetchRuntimeEndpoint<AuP0aRealBatchClearance | null>(baseUrl, paths.p0aRealBatchClearance, null),
-    fetchRuntimeEndpoint<AuP0bGoogleExecutionChecklist | null>(baseUrl, paths.p0bGoogleExecutionChecklist, null),
-    fetchRuntimeEndpoint<AuP0bGoogleEnvironmentRequest | null>(baseUrl, paths.p0bGoogleEnvironmentRequest, null),
-    fetchRuntimeEndpoint<AuP0bGoogleEnvironmentFulfillment | null>(
+    fetchRuntimeEndpointIf<AuLaunchStatus | null>(shouldFetchLaunchGate, baseUrl, paths.launchStatus, null),
+    fetchRuntimeEndpointIf<AuLaunchRemediationPlan | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.launchRemediationPlan,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuP0aEnvironmentChecklist | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.p0aEnvironmentChecklist,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuP0aExecutionChecklist | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.p0aExecutionChecklist,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuP0aCredentialRequest | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.p0aCredentialRequest,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuP0aCredentialFulfillment | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.p0aCredentialFulfillment,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuP0aCredentialClearance | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.p0aCredentialClearance,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuP0aCredentialUpdateReceipt | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.p0aCredentialUpdateReceipt,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuP0aRealBatchRequest | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.p0aRealBatchRequest,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuP0aRealBatchFulfillment | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.p0aRealBatchFulfillment,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuP0aRealBatchClearance | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.p0aRealBatchClearance,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuP0bGoogleExecutionChecklist | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.p0bGoogleExecutionChecklist,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuP0bGoogleEnvironmentRequest | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.p0bGoogleEnvironmentRequest,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuP0bGoogleEnvironmentFulfillment | null>(
+      shouldFetchLaunchGate,
       baseUrl,
       paths.p0bGoogleEnvironmentFulfillment,
       null
     ),
-    fetchRuntimeEndpoint<AuP0bGoogleEnvironmentClearance | null>(
+    fetchRuntimeEndpointIf<AuP0bGoogleEnvironmentClearance | null>(
+      shouldFetchLaunchGate,
       baseUrl,
       paths.p0bGoogleEnvironmentClearance,
       null
     ),
-    fetchRuntimeEndpoint<AuP0bGoogleManualBackfillRequest | null>(
+    fetchRuntimeEndpointIf<AuP0bGoogleManualBackfillRequest | null>(
+      shouldFetchLaunchGate,
       baseUrl,
       paths.p0bGoogleManualBackfillRequest,
       null
     ),
-    fetchRuntimeEndpoint<AuP0bGoogleManualBackfillFulfillment | null>(
+    fetchRuntimeEndpointIf<AuP0bGoogleManualBackfillFulfillment | null>(
+      shouldFetchLaunchGate,
       baseUrl,
       paths.p0bGoogleManualBackfillFulfillment,
       null
     ),
-    fetchRuntimeEndpoint<AuP0bGoogleManualBackfillClearance | null>(
+    fetchRuntimeEndpointIf<AuP0bGoogleManualBackfillClearance | null>(
+      shouldFetchLaunchGate,
       baseUrl,
       paths.p0bGoogleManualBackfillClearance,
       null
     ),
-    fetchRuntimeEndpoint<AuP0bGooglePhaseExecutionRequest | null>(
+    fetchRuntimeEndpointIf<AuP0bGooglePhaseExecutionRequest | null>(
+      shouldFetchLaunchGate,
       baseUrl,
       paths.p0bGooglePhaseExecutionRequest,
       null
     ),
-    fetchRuntimeEndpoint<AuP0bGooglePhaseExecutionFulfillment | null>(
+    fetchRuntimeEndpointIf<AuP0bGooglePhaseExecutionFulfillment | null>(
+      shouldFetchLaunchGate,
       baseUrl,
       paths.p0bGooglePhaseExecutionFulfillment,
       null
     ),
-    fetchRuntimeEndpoint<AuP0bGooglePhaseExecutionClearance | null>(
+    fetchRuntimeEndpointIf<AuP0bGooglePhaseExecutionClearance | null>(
+      shouldFetchLaunchGate,
       baseUrl,
       paths.p0bGooglePhaseExecutionClearance,
       null
     ),
-    fetchRuntimeEndpoint<AuExternalDependencyHandoff | null>(baseUrl, paths.externalDependencyHandoff, null),
-    fetchRuntimeEndpoint<AuExternalDependencyClearance | null>(baseUrl, paths.externalDependencyClearance, null),
-    fetchRuntimeEndpoint<AuBroaderPlatformRegistry | null>(baseUrl, paths.broaderPlatformRegistry, null),
-    fetchRuntimeEndpoint<AuRetestSchedulerPlan | null>(baseUrl, paths.retestSchedulerPlan, null),
-    fetchRuntimeEndpoint<AuRetestExecutionStatus | null>(baseUrl, paths.retestExecutionStatus, null),
-    fetchRuntimeEndpoint<AuHandoffDossier | null>(baseUrl, paths.handoffDossier, null),
-    fetchRuntimeEndpoint<AuCustomerHandoffReadiness | null>(baseUrl, paths.customerHandoffReadiness, null),
-    fetchRuntimeEndpoint<AuCustomerHandoffClearance | null>(baseUrl, paths.customerHandoffClearance, null),
-    fetchRuntimeEndpoint<AuCustomerHandoffPackage | null>(baseUrl, paths.customerHandoffPackage, null),
-    fetchRuntimeEndpoint<AuNextWorkItemPacket | null>(baseUrl, paths.nextWorkItem, null),
-    fetchRuntimeEndpoint<AuDeliveryProgress | null>(baseUrl, paths.deliveryProgress, null),
-    fetchRuntimeEndpoint<PageResponse<RuntimePrompt>>(baseUrl, paths.prompts, emptyPage<RuntimePrompt>()),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectLifecycleEvent>>(
-          baseUrl,
-          paths.projectLifecycleEvents,
-          emptyPage<RuntimeProjectLifecycleEvent>()
-        )
-      : Promise.resolve({ payload: emptyPage<RuntimeProjectLifecycleEvent>(), error: null }),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<PageResponse<RuntimeAuditEvent>>(
-          baseUrl,
-          paths.auditEvents,
-          emptyPage<RuntimeAuditEvent>()
-        )
-      : Promise.resolve({ payload: emptyPage<RuntimeAuditEvent>(), error: null }),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectMember>>(
-          baseUrl,
-          paths.projectMembers,
-          emptyPage<RuntimeProjectMember>()
-        )
-      : Promise.resolve({ payload: emptyPage<RuntimeProjectMember>(), error: null }),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectMemberInvitation>>(
-          baseUrl,
-          paths.projectMemberInvitations,
-          emptyPage<RuntimeProjectMemberInvitation>()
-        )
-      : Promise.resolve({ payload: emptyPage<RuntimeProjectMemberInvitation>(), error: null }),
-    fetchRuntimeEndpoint<PageResponse<RuntimePromptImportHistoryItem>>(
+    fetchRuntimeEndpointIf<AuExternalDependencyHandoff | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.externalDependencyHandoff,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuExternalDependencyClearance | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.externalDependencyClearance,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuBroaderPlatformRegistry | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.broaderPlatformRegistry,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuRetestSchedulerPlan | null>(
+      shouldFetchRetest,
+      baseUrl,
+      paths.retestSchedulerPlan,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuRetestExecutionStatus | null>(
+      shouldFetchRetest,
+      baseUrl,
+      paths.retestExecutionStatus,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuHandoffDossier | null>(shouldFetchLaunchGate, baseUrl, paths.handoffDossier, null),
+    fetchRuntimeEndpointIf<AuCustomerHandoffReadiness | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.customerHandoffReadiness,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuCustomerHandoffClearance | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.customerHandoffClearance,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuCustomerHandoffPackage | null>(
+      shouldFetchLaunchGate,
+      baseUrl,
+      paths.customerHandoffPackage,
+      null
+    ),
+    fetchRuntimeEndpointIf<AuNextWorkItemPacket | null>(shouldFetchLaunchGate, baseUrl, paths.nextWorkItem, null),
+    fetchRuntimeEndpointIf<AuDeliveryProgress | null>(shouldFetchLaunchGate, baseUrl, paths.deliveryProgress, null),
+    fetchRuntimeEndpointIf<PageResponse<RuntimePrompt>>(
+      shouldFetchPromptData,
+      baseUrl,
+      paths.prompts,
+      emptyPage<RuntimePrompt>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<RuntimeProjectLifecycleEvent>>(
+      shouldFetchProjectData,
+      baseUrl,
+      paths.projectLifecycleEvents,
+      emptyPage<RuntimeProjectLifecycleEvent>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<RuntimeAuditEvent>>(
+      shouldFetchProjectData,
+      baseUrl,
+      paths.auditEvents,
+      emptyPage<RuntimeAuditEvent>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<RuntimeProjectMember>>(
+      shouldFetchProjectData,
+      baseUrl,
+      paths.projectMembers,
+      emptyPage<RuntimeProjectMember>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<RuntimeProjectMemberInvitation>>(
+      shouldFetchProjectData,
+      baseUrl,
+      paths.projectMemberInvitations,
+      emptyPage<RuntimeProjectMemberInvitation>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<RuntimePromptImportHistoryItem>>(
+      shouldFetchEvidence,
       baseUrl,
       paths.promptImports,
       emptyPage<RuntimePromptImportHistoryItem>()
     ),
-    fetchRuntimeEndpoint<PageResponse<EvidenceRun>>(baseUrl, paths.evidence, emptyPage<EvidenceRun>()),
-    fetchRuntimeEndpoint<PageResponse<EvidenceRun>>(baseUrl, paths.questionEvidence, emptyPage<EvidenceRun>()),
-    fetchRuntimeEndpoint<PageResponse<CollectionRun>>(baseUrl, paths.collectionRuns, emptyPage<CollectionRun>()),
-    fetchRuntimeEndpoint<PageResponse<RuntimeFidelityCheck>>(
+    fetchRuntimeEndpointIf<PageResponse<EvidenceRun>>(
+      shouldFetchEvidenceData,
+      baseUrl,
+      paths.evidence,
+      emptyPage<EvidenceRun>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<EvidenceRun>>(
+      shouldFetchEvidenceData,
+      baseUrl,
+      paths.questionEvidence,
+      emptyPage<EvidenceRun>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<CollectionRun>>(
+      shouldFetchEvidenceData,
+      baseUrl,
+      paths.collectionRuns,
+      emptyPage<CollectionRun>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<RuntimeFidelityCheck>>(
+      shouldFetchEvidence || shouldFetchReport,
       baseUrl,
       paths.fidelityChecks,
       emptyPage<RuntimeFidelityCheck>()
     ),
-    fetchRuntimeEndpoint<RuntimeFidelityTrend | null>(baseUrl, paths.fidelityTrend, null),
-    fetchRuntimeEndpoint<PageResponse<RuntimeEntityAlias>>(
+    fetchRuntimeEndpointIf<RuntimeFidelityTrend | null>(
+      shouldFetchEvidence || shouldFetchReport,
+      baseUrl,
+      paths.fidelityTrend,
+      null
+    ),
+    fetchRuntimeEndpointIf<PageResponse<RuntimeEntityAlias>>(
+      shouldFetchAliasData,
       baseUrl,
       paths.entityAliases,
       emptyPage<RuntimeEntityAlias>()
     ),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<PageResponse<RuntimeEntityAliasCandidate>>(
-          baseUrl,
-          paths.entityAliasCandidates,
-          emptyPage<RuntimeEntityAliasCandidate>()
-        )
-      : Promise.resolve({ payload: emptyPage<RuntimeEntityAliasCandidate>(), error: null }),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<PageResponse<RuntimeEntityAliasCandidateReview>>(
-          baseUrl,
-          paths.entityAliasCandidateReviews,
-          emptyPage<RuntimeEntityAliasCandidateReview>()
-        )
-      : Promise.resolve({ payload: emptyPage<RuntimeEntityAliasCandidateReview>(), error: null }),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<PageResponse<RuntimeEntityAliasCandidateReview>>(
-          baseUrl,
-          paths.entityAliasAssignmentQueue,
-          emptyPage<RuntimeEntityAliasCandidateReview>()
-        )
-      : Promise.resolve({ payload: emptyPage<RuntimeEntityAliasCandidateReview>(), error: null }),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<RuntimeEntityAliasCandidateAssignmentQueueStats>(
-          baseUrl,
-          paths.entityAliasAssignmentStats,
-          emptyAliasAssignmentStats()
-        )
-      : Promise.resolve({ payload: emptyAliasAssignmentStats(), error: null }),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<RuntimeEntityAliasAssignmentWorkbench>(
-          baseUrl,
-          paths.entityAliasAssignmentWorkbench,
-          emptyAliasAssignmentWorkbench()
-        )
-      : Promise.resolve({ payload: emptyAliasAssignmentWorkbench(), error: null }),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<RuntimeEntityAliasAssignmentWorkloadSummary>(
-          baseUrl,
-          paths.entityAliasAssignmentWorkload,
-          emptyAliasAssignmentWorkload()
-        )
-      : Promise.resolve({ payload: emptyAliasAssignmentWorkload(), error: null }),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<RuntimeEntityAliasAssignmentDispatchPlan>(
-          baseUrl,
-          paths.entityAliasAssignmentDispatchPlan,
-          emptyAliasAssignmentDispatchPlan()
-        )
-      : Promise.resolve({ payload: emptyAliasAssignmentDispatchPlan(), error: null }),
+    fetchRuntimeEndpointIf<PageResponse<RuntimeEntityAliasCandidate>>(
+      shouldFetchAssignmentData,
+      baseUrl,
+      paths.entityAliasCandidates,
+      emptyPage<RuntimeEntityAliasCandidate>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<RuntimeEntityAliasCandidateReview>>(
+      shouldFetchAssignmentData,
+      baseUrl,
+      paths.entityAliasCandidateReviews,
+      emptyPage<RuntimeEntityAliasCandidateReview>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<RuntimeEntityAliasCandidateReview>>(
+      shouldFetchAssignmentData,
+      baseUrl,
+      paths.entityAliasAssignmentQueue,
+      emptyPage<RuntimeEntityAliasCandidateReview>()
+    ),
+    fetchRuntimeEndpointIf<RuntimeEntityAliasCandidateAssignmentQueueStats>(
+      shouldFetchAssignmentData,
+      baseUrl,
+      paths.entityAliasAssignmentStats,
+      emptyAliasAssignmentStats()
+    ),
+    fetchRuntimeEndpointIf<RuntimeEntityAliasAssignmentWorkbench>(
+      shouldFetchAssignmentData,
+      baseUrl,
+      paths.entityAliasAssignmentWorkbench,
+      emptyAliasAssignmentWorkbench()
+    ),
+    fetchRuntimeEndpointIf<RuntimeEntityAliasAssignmentWorkloadSummary>(
+      shouldFetchAssignmentData,
+      baseUrl,
+      paths.entityAliasAssignmentWorkload,
+      emptyAliasAssignmentWorkload()
+    ),
+    fetchRuntimeEndpointIf<RuntimeEntityAliasAssignmentDispatchPlan>(
+      shouldFetchAssignmentData,
+      baseUrl,
+      paths.entityAliasAssignmentDispatchPlan,
+      emptyAliasAssignmentDispatchPlan()
+    ),
     fetchRuntimeEndpoint<PageResponse<RuntimeSavedView>>(baseUrl, paths.savedViews, emptyPage<RuntimeSavedView>()),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<RuntimeProjectBrandKit | null>(baseUrl, paths.brandKit, null, { optionalNotFound: true })
-      : Promise.resolve({ payload: null, error: null }),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectBrandAssetVersion>>(
-          baseUrl,
-          paths.brandAssets,
-          emptyPage<RuntimeProjectBrandAssetVersion>()
-        )
-      : Promise.resolve({ payload: emptyPage<RuntimeProjectBrandAssetVersion>(), error: null }),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<PageResponse<RuntimeProjectBrandAsset>>(
-          baseUrl,
-          paths.brandAssetLibrary,
-          emptyPage<RuntimeProjectBrandAsset>()
-        )
-      : Promise.resolve({ payload: emptyPage<RuntimeProjectBrandAsset>(), error: null }),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<RuntimeScoreWeightConfig | null>(baseUrl, paths.scoreWeights, null)
-      : Promise.resolve({ payload: null, error: null }),
-    fetchRuntimeEndpoint<RuntimeScoreFormulaCatalog>(baseUrl, paths.scoreFormulas, { formulas: [] }),
-    fetchRuntimeEndpoint<PageResponse<RuntimeHumanReview>>(
+    fetchRuntimeEndpointIf<RuntimeProjectBrandKit | null>(shouldFetchBrandData, baseUrl, paths.brandKit, null, {
+      optionalNotFound: true
+    }),
+    fetchRuntimeEndpointIf<PageResponse<RuntimeProjectBrandAssetVersion>>(
+      shouldFetchBrandData,
+      baseUrl,
+      paths.brandAssets,
+      emptyPage<RuntimeProjectBrandAssetVersion>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<RuntimeProjectBrandAsset>>(
+      shouldFetchBrandData,
+      baseUrl,
+      paths.brandAssetLibrary,
+      emptyPage<RuntimeProjectBrandAsset>()
+    ),
+    fetchRuntimeEndpointIf<RuntimeScoreWeightConfig | null>(
+      shouldFetchScoreConfig && hasSelectedProject,
+      baseUrl,
+      paths.scoreWeights,
+      null
+    ),
+    fetchRuntimeEndpointIf<RuntimeScoreFormulaCatalog>(shouldFetchScoreConfig, baseUrl, paths.scoreFormulas, {
+      formulas: []
+    }),
+    fetchRuntimeEndpointIf<PageResponse<RuntimeHumanReview>>(
+      shouldFetchHumanReviewData,
       baseUrl,
       paths.humanReviews,
       emptyPage<RuntimeHumanReview>()
     ),
-    fetchRuntimeEndpoint<PageResponse<RuntimeHumanReviewQueueItem>>(
+    fetchRuntimeEndpointIf<PageResponse<RuntimeHumanReviewQueueItem>>(
+      shouldFetchHumanReviewData,
       baseUrl,
       paths.humanReviewQueue,
       emptyPage<RuntimeHumanReviewQueueItem>()
     ),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<RuntimeKnowledgeSearch | null>(baseUrl, paths.knowledgeSearch, null, {
-          optionalNotFound: true
-        })
-      : Promise.resolve({ payload: null, error: null }),
-    fetchRuntimeEndpoint<PageResponse<ScoreSnapshot>>(baseUrl, paths.scores, emptyPage<ScoreSnapshot>()),
-    fetchRuntimeEndpoint<PageResponse<CitationGraph>>(baseUrl, paths.graphs, emptyPage<CitationGraph>()),
-    fetchRuntimeEndpoint<PageResponse<ReportExport>>(baseUrl, paths.reports, emptyPage<ReportExport>()),
-    fetchRuntimeEndpoint<PageResponse<RuntimeReportExportJob>>(
+    fetchRuntimeEndpointIf<RuntimeKnowledgeSearch | null>(
+      shouldFetchAction && hasSelectedProject,
+      baseUrl,
+      paths.knowledgeSearch,
+      null,
+      {
+        optionalNotFound: true
+      }
+    ),
+    fetchRuntimeEndpointIf<PageResponse<ScoreSnapshot>>(
+      shouldFetchScoreData,
+      baseUrl,
+      paths.scores,
+      emptyPage<ScoreSnapshot>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<CitationGraph>>(
+      shouldFetchScoreData,
+      baseUrl,
+      paths.graphs,
+      emptyPage<CitationGraph>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<ReportExport>>(
+      shouldFetchReportData,
+      baseUrl,
+      paths.reports,
+      emptyPage<ReportExport>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<RuntimeReportExportJob>>(
+      shouldFetchReportJobs,
       baseUrl,
       paths.reportJobs,
       emptyPage<RuntimeReportExportJob>()
     ),
-    fetchRuntimeEndpoint<RuntimeReportExportJobQueueStats>(baseUrl, paths.reportJobStats, {
-      total_count: 0,
-      status_counts: {},
-      retryable_count: 0,
-      expired_running_count: 0,
-      max_attempts_reached_count: 0,
-      oldest_queued_at: null
-    }),
-    fetchRuntimeEndpoint<RuntimeNotificationPage>(baseUrl, paths.notifications, {
-      total_count: 0,
-      unread_count: 0,
-      records: []
-    }),
-    fetchRuntimeEndpoint<PageResponse<RuntimeNotificationSubscription>>(
+    fetchRuntimeEndpointIf<RuntimeReportExportJobQueueStats>(
+      shouldFetchReportJobs,
+      baseUrl,
+      paths.reportJobStats,
+      {
+        total_count: 0,
+        status_counts: {},
+        retryable_count: 0,
+        expired_running_count: 0,
+        max_attempts_reached_count: 0,
+        oldest_queued_at: null
+      }
+    ),
+    fetchRuntimeEndpointIf<RuntimeNotificationPage>(
+      shouldFetchNotificationData,
+      baseUrl,
+      paths.notifications,
+      {
+        total_count: 0,
+        unread_count: 0,
+        records: []
+      }
+    ),
+    fetchRuntimeEndpointIf<PageResponse<RuntimeNotificationSubscription>>(
+      shouldFetchNotificationData,
       baseUrl,
       paths.notificationSubscriptions,
       emptyPage<RuntimeNotificationSubscription>()
     ),
-    fetchRuntimeEndpoint<PageResponse<RuntimeNotificationDelivery>>(
+    fetchRuntimeEndpointIf<PageResponse<RuntimeNotificationDelivery>>(
+      shouldFetchNotificationData,
       baseUrl,
       paths.notificationDeliveries,
       emptyPage<RuntimeNotificationDelivery>()
     ),
-    fetchRuntimeEndpoint<PageResponse<RuntimeNotificationEmailFeedback>>(
+    fetchRuntimeEndpointIf<PageResponse<RuntimeNotificationEmailFeedback>>(
+      shouldFetchNotificationData,
       baseUrl,
       paths.notificationEmailFeedback,
       emptyPage<RuntimeNotificationEmailFeedback>()
     ),
-    selectedProjectId
-      ? fetchRuntimeEndpoint<PageResponse<RuntimeNotificationEmailSuppression>>(
-          baseUrl,
-          paths.notificationEmailSuppressions,
-          emptyPage<RuntimeNotificationEmailSuppression>()
-        )
-      : Promise.resolve({ payload: emptyPage<RuntimeNotificationEmailSuppression>(), error: null }),
-    fetchRuntimeEndpoint<PageResponse<ActionPlan>>(baseUrl, paths.actions, emptyPage<ActionPlan>()),
-    fetchRuntimeEndpoint<PageResponse<RuntimeAlert>>(baseUrl, paths.alerts, emptyPage<RuntimeAlert>()),
-    fetchRuntimeEndpoint<PageResponse<ContentEngine>>(baseUrl, paths.content, emptyPage<ContentEngine>()),
-    fetchRuntimeEndpoint<TraceabilityDetail | null>(baseUrl, paths.traceability, null, { optionalNotFound: true })
+    fetchRuntimeEndpointIf<PageResponse<RuntimeNotificationEmailSuppression>>(
+      shouldFetchNotificationData && hasSelectedProject,
+      baseUrl,
+      paths.notificationEmailSuppressions,
+      emptyPage<RuntimeNotificationEmailSuppression>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<ActionPlan>>(
+      shouldFetchActionData,
+      baseUrl,
+      paths.actions,
+      emptyPage<ActionPlan>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<RuntimeAlert>>(
+      shouldFetchAlertData,
+      baseUrl,
+      paths.alerts,
+      emptyPage<RuntimeAlert>()
+    ),
+    fetchRuntimeEndpointIf<PageResponse<ContentEngine>>(
+      shouldFetchContentData,
+      baseUrl,
+      paths.content,
+      emptyPage<ContentEngine>()
+    ),
+    fetchRuntimeEndpointIf<TraceabilityDetail | null>(shouldFetchTraceability, baseUrl, paths.traceability, null, {
+      optionalNotFound: true
+    })
   ]);
   const errors = [
     launchStatus,
@@ -7114,7 +7336,7 @@ export default async function Home({
     intent_type: cleanFilter(resolvedSearchParams.intent_type),
     sort: cleanFilter(resolvedSearchParams.sort)
   };
-  const { data, error, displayUrl, paths } = await fetchRuntimeData(filters);
+  const { data, error, displayUrl, paths } = await fetchRuntimeData(filters, activeTab);
   const selectedProject =
     (filters.project_id && data.projects.records.find((record) => record.project.id === filters.project_id)) ||
     data.projects.records[0];
