@@ -740,6 +740,36 @@ code {
   justify-content: space-between;
 }
 
+.opsCard {
+  padding: 0;
+}
+
+.opsCardSummary {
+  margin: 0;
+  padding: 10px;
+}
+
+.opsCardSummary::-webkit-details-marker {
+  display: none;
+}
+
+.opsCardSummary::before {
+  color: #1f766d;
+  content: "▸";
+  flex: 0 0 auto;
+}
+
+.opsCard[open] > .opsCardSummary::before {
+  content: "▾";
+}
+
+.opsCardBody {
+  border-top: 1px solid #e5edf4;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
 .launchRemediationHeader span,
 .remediationEmpty {
   color: #647382;
@@ -835,6 +865,42 @@ code {
   margin-top: 18px;
 }
 
+.opsTabs {
+  align-items: stretch;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+  margin-top: 14px;
+}
+
+.opsTab {
+  background: #ffffff;
+  border: 1px solid #d5dde6;
+  border-radius: 6px;
+  color: #25313c;
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 10px 12px;
+  text-decoration: none;
+}
+
+.opsTab strong,
+.opsTab span {
+  overflow-wrap: anywhere;
+}
+
+.opsTab span {
+  color: #647382;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.opsTab.active {
+  border-color: #1f766d;
+  box-shadow: inset 0 3px 0 #1f766d;
+}
+
 .metric,
 .panel {
   background: #ffffff;
@@ -867,6 +933,18 @@ code {
   padding: 16px;
 }
 
+.collapsiblePanel {
+  padding: 0;
+}
+
+.collapsiblePanel[open] {
+  min-height: 278px;
+}
+
+.collapsiblePanel:not([open]) {
+  min-height: 0;
+}
+
 .panelWide {
   grid-column: 1 / -1;
   min-height: 0;
@@ -878,14 +956,33 @@ code {
   display: flex;
   gap: 12px;
   justify-content: space-between;
-  margin-bottom: 14px;
-  padding-bottom: 12px;
+  margin: 0;
+  padding: 14px 16px;
+}
+
+.panelHeader::-webkit-details-marker {
+  display: none;
+}
+
+.panelHeader::before {
+  color: #1f766d;
+  content: "▸";
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.collapsiblePanel[open] > .panelHeader::before {
+  content: "▾";
 }
 
 .panelHeader span {
   max-width: 52%;
   overflow-wrap: anywhere;
   text-align: right;
+}
+
+.panelBody {
+  padding: 16px;
 }
 
 .stack {

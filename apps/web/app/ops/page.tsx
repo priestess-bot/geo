@@ -3962,6 +3962,33 @@ type RuntimeFilters = {
   sort?: string;
 };
 
+type OpsTabId =
+  | "overview"
+  | "project"
+  | "evidence"
+  | "score"
+  | "report"
+  | "action"
+  | "notifications"
+  | "traceability";
+
+type OpsTab = {
+  id: OpsTabId;
+  label: string;
+  description: string;
+};
+
+const opsTabs: OpsTab[] = [
+  { id: "overview", label: "总览", description: "交付门禁、环境缺口、总体指标" },
+  { id: "project", label: "项目配置", description: "客户项目、成员、品牌资产、评分权重" },
+  { id: "evidence", label: "问题与证据", description: "Prompt、采集批次、人工补录、证据明细" },
+  { id: "score", label: "评分与信源", description: "评分解释、信源图谱、竞品对标" },
+  { id: "report", label: "报告交付", description: "报告快照、历史、导出队列、方法附录" },
+  { id: "action", label: "行动内容", description: "行动计划、复测、内容引擎" },
+  { id: "notifications", label: "通知告警", description: "通知订阅、投递、告警和邮件反馈" },
+  { id: "traceability", label: "溯源", description: "报告到评分、证据、图谱、行动和审计链路" }
+];
+
 type RuntimeSavedView = {
   saved_view: {
     id: string;
@@ -5769,6 +5796,11 @@ function cleanFilter(value: string | string[] | undefined): string | undefined {
   return trimmed || undefined;
 }
 
+function cleanOpsTab(value: string | string[] | undefined): OpsTabId {
+  const raw = cleanFilter(value);
+  return opsTabs.some((tab) => tab.id === raw) ? (raw as OpsTabId) : "overview";
+}
+
 function buildQuery(params: Record<string, string | number | undefined>): string {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -5782,6 +5814,17 @@ function buildQuery(params: Record<string, string | number | undefined>): string
 
 function runtimePath(path: string, params: Record<string, string | number | undefined>): string {
   return `${path}${buildQuery(params)}`;
+}
+
+function opsTabHref(tab: OpsTabId, filters: RuntimeFilters): string {
+  return runtimePath("/ops", {
+    tab,
+    project_id: filters.project_id,
+    platform: filters.platform,
+    city: filters.city,
+    intent_type: filters.intent_type,
+    sort: filters.sort
+  });
 }
 
 function reportArtifactPath(
@@ -6809,32 +6852,32 @@ function parserMismatchCount(run: ScoreSnapshot["answer_runs"][number]): number 
 
 function parserComparisonText(run: ScoreSnapshot["answer_runs"][number]): string {
   const comparison = run.analysis?.payload?.parser_comparison;
-  if (!comparison) return "No parser comparison";
+  if (!comparison) return "无解析器对照";
   const callLog = comparison.secondary_result?.llm_call_log;
   const llmText = callLog
-    ? ` · LLM call ${callLog.status || "unknown"}/${callLog.model || comparison.secondary_parser_engine_id || "model"} · tokens ${
+    ? ` · LLM 调用 ${callLog.status || "未知"}/${callLog.model || comparison.secondary_parser_engine_id || "模型"} · token ${
         callLog.total_tokens || 0
       }`
     : "";
   return `${comparison.comparison_method_version || "parser_ab_compare_v1"} · ${
     comparison.secondary_parser_engine_id || "judge"
-  } · agreement ${num(
+  } · 一致率 ${num(
     comparison.agreement_rate,
-  )} · mismatches ${parserMismatchCount(run)}${llmText}`;
+  )} · 差异 ${parserMismatchCount(run)}${llmText}`;
 }
 
 function shortId(value: string | undefined): string {
-  return value ? value.slice(0, 8) : "unknown";
+  return value ? value.slice(0, 8) : "未知";
 }
 
 function boolText(value: boolean | undefined): string {
-  if (value === true) return "yes";
-  if (value === false) return "no";
-  return "unknown";
+  if (value === true) return "是";
+  if (value === false) return "否";
+  return "未知";
 }
 
 function dateText(value: string | undefined): string {
-  if (!value) return "unknown";
+  if (!value) return "未知";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toISOString();
@@ -6900,12 +6943,12 @@ function countBy<T>(items: T[], selector: (item: T) => string | undefined): Reco
 
 function formatCounts(counts: Record<string, number>): string {
   const entries = Object.entries(counts);
-  return entries.length ? entries.map(([key, value]) => `${key}:${value}`).join(", ") : "none";
+  return entries.length ? entries.map(([key, value]) => `${key}:${value}`).join(", ") : "无";
 }
 
 function launchStageText(status: AuLaunchStatus | null): string {
-  if (!status) return "not loaded";
-  return status.ready_for_customer_report_handoff ? "ready for customer report handoff" : "not ready";
+  if (!status) return "未加载";
+  return status.ready_for_customer_report_handoff ? "客户报告交付已就绪" : "尚未就绪";
 }
 
 function shortHash(value: string | undefined): string {
@@ -7001,6 +7044,7 @@ export default async function Home({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const resolvedSearchParams = (await searchParams) || {};
+  const activeTab = cleanOpsTab(resolvedSearchParams.tab);
   const filters: RuntimeFilters = {
     project_id: cleanFilter(resolvedSearchParams.project_id),
     platform: cleanFilter(resolvedSearchParams.platform),
@@ -7407,7 +7451,7 @@ export default async function Home({
     : "All runtime evidence";
   const selectedProjectLabel = selectedProject
     ? `${selectedProject.tenant.name} / ${selectedProject.project.name}`
-    : "No runtime project";
+    : "无运行时项目";
   const evidenceExportUrl = `${displayUrl}${paths.evidenceExport}`;
   const projectLifecycleExportUrl = `${displayUrl}${paths.projectLifecycleExport}`;
   const auditEventsExportUrl = `${displayUrl}${paths.auditEventsExport}`;
@@ -7494,16 +7538,18 @@ export default async function Home({
                 label: latestProject.project.name
               }
             : null;
+  const activeTabMeta = opsTabs.find((tab) => tab.id === activeTab) || opsTabs[0];
 
   return (
     <main className="shell">
       <section className="topbar">
         <div>
           <p className="eyebrow">GENO SaaS AU</p>
-          <h1>内部工程控制台 / Runtime Evidence Console</h1>
+          <h1>内部工程控制台</h1>
+          <span>{activeTabMeta.label}：{activeTabMeta.description}</span>
         </div>
         <div className="apiBox">
-          <span>Runtime API</span>
+          <span>运行时 API</span>
           <strong>{displayUrl}</strong>
           <a className="inlineLink" href="/">
             返回客户工作台
@@ -7511,24 +7557,39 @@ export default async function Home({
         </div>
       </section>
 
+      <nav className="opsTabs" aria-label="内部控制台分区">
+        {opsTabs.map((tab) => (
+          <a
+            aria-current={activeTab === tab.id ? "page" : undefined}
+            className={activeTab === tab.id ? "opsTab active" : "opsTab"}
+            href={opsTabHref(tab.id, filters)}
+            key={tab.id}
+          >
+            <strong>{tab.label}</strong>
+            <span>{tab.description}</span>
+          </a>
+        ))}
+      </nav>
+
       {error ? (
         <section className="notice">
-          <strong>Runtime data unavailable.</strong>
+          <strong>运行时数据暂不可用。</strong>
           <span>{error}</span>
           <code>docker compose -f infra/docker-compose.yml --profile worker run --rm collector-worker</code>
         </section>
       ) : null}
 
-      <section className="filterBar" aria-label="runtime filters">
+      <section className="filterBar" aria-label="运行时筛选">
         <div>
-          <h2>Runtime Filters</h2>
+          <h2>运行时筛选</h2>
           <span>
             {selectedProjectLabel} · {filterLabel}
           </span>
         </div>
         <form className="filterForm">
+          <input type="hidden" name="tab" value={activeTab} />
           <label>
-            <span>Project</span>
+            <span>项目</span>
             <select name="project_id" defaultValue={selectedProjectId || ""}>
               {data.projects.records.length ? (
                 data.projects.records.map((record) => (
@@ -7537,14 +7598,14 @@ export default async function Home({
                   </option>
                 ))
               ) : (
-                <option value="">No runtime project</option>
+                <option value="">无运行时项目</option>
               )}
             </select>
           </label>
           <label>
-            <span>Platform</span>
+            <span>平台</span>
             <select name="platform" defaultValue={filters.platform || ""}>
-              <option value="">All platforms</option>
+              <option value="">全部平台</option>
               <option value="chatgpt">chatgpt</option>
               <option value="google">google</option>
               <option value="perplexity">perplexity</option>
@@ -7557,9 +7618,9 @@ export default async function Home({
             </select>
           </label>
           <label>
-            <span>Evidence city</span>
+            <span>证据城市</span>
             <select name="city" defaultValue={filters.city || ""}>
-              <option value="">All cities</option>
+              <option value="">全部城市</option>
               <option value="Australia">Australia</option>
               <option value="Sydney">Sydney</option>
               <option value="Melbourne">Melbourne</option>
@@ -7567,9 +7628,9 @@ export default async function Home({
             </select>
           </label>
           <label>
-            <span>Intent</span>
+            <span>意图</span>
             <select name="intent_type" defaultValue={filters.intent_type || ""}>
-              <option value="">All intents</option>
+              <option value="">全部意图</option>
               <option value="brand_awareness">brand_awareness</option>
               <option value="category_recommendation">category_recommendation</option>
               <option value="city_category_recommendation">city_category_recommendation</option>
@@ -7583,36 +7644,36 @@ export default async function Home({
             </select>
           </label>
           <label>
-            <span>Sort evidence</span>
+            <span>证据排序</span>
             <select name="sort" defaultValue={filters.sort || "collected_at_desc"}>
-              <option value="collected_at_desc">Newest first</option>
-              <option value="collected_at_asc">Oldest first</option>
-              <option value="cost_desc">Highest cost</option>
-              <option value="cost_asc">Lowest cost</option>
-              <option value="citation_count_desc">Most citations</option>
-              <option value="audit_count_desc">Most audit events</option>
+              <option value="collected_at_desc">最新优先</option>
+              <option value="collected_at_asc">最早优先</option>
+              <option value="cost_desc">成本最高</option>
+              <option value="cost_asc">成本最低</option>
+              <option value="citation_count_desc">引用最多</option>
+              <option value="audit_count_desc">审计事件最多</option>
             </select>
           </label>
           <button className="actionButton" type="submit">
-            Apply filters
+            应用筛选
           </button>
           <a className="resetLink" href="/ops">
-            Reset
+            重置
           </a>
           <a className="resetLink" href={evidenceExportUrl}>
-            Export Evidence CSV
+            导出证据 CSV
           </a>
         </form>
         <dl className="facts filterFacts">
-          <Fact label="Project query" value={paths.projects} />
-          <Fact label="Selected project" value={selectedProjectId || "No project selected"} />
-          <Fact label="Prompts query" value={paths.prompts} />
-          <Fact label="Evidence query" value={paths.evidence} />
-          <Fact label="Export query" value={paths.evidenceExport} />
-          <Fact label="Saved views query" value={paths.savedViews} />
-          <Fact label="Brand kit query" value={paths.brandKit} />
-          <Fact label="Report query" value={paths.reports} />
-          <Fact label="Evidence sort" value={evidenceSort} />
+          <Fact label="项目查询" value={paths.projects} />
+          <Fact label="当前项目" value={selectedProjectId || "未选择项目"} />
+          <Fact label="问题查询" value={paths.prompts} />
+          <Fact label="证据查询" value={paths.evidence} />
+          <Fact label="导出查询" value={paths.evidenceExport} />
+          <Fact label="视图查询" value={paths.savedViews} />
+          <Fact label="品牌配置" value={paths.brandKit} />
+          <Fact label="报告查询" value={paths.reports} />
+          <Fact label="证据排序" value={evidenceSort} />
         </dl>
         <div className="savedViews">
           <form action={saveCurrentRuntimeView} className="saveViewForm">
@@ -7624,15 +7685,15 @@ export default async function Home({
             <input type="hidden" name="query_path" value={paths.evidence} />
             <input type="hidden" name="export_path" value={paths.evidenceExport} />
             <label>
-              <span>Saved view name</span>
+              <span>视图名称</span>
               <input name="name" defaultValue={runtimeViewName} />
             </label>
             <button className="actionButton" type="submit" disabled={!latestProject}>
-              Save view
+              保存视图
             </button>
           </form>
           <div className="savedViewList">
-            <h3>Saved Views</h3>
+            <h3>保存的视图</h3>
             {data.savedViews.records.length ? (
               <ul className="plainList">
                 {data.savedViews.records.map((item) => (
@@ -7647,16 +7708,18 @@ export default async function Home({
                 ))}
               </ul>
             ) : (
-              <small>No saved runtime views yet.</small>
+              <small>还没有保存的运行时视图。</small>
             )}
           </div>
         </div>
       </section>
 
+      {activeTab === "overview" ? (
+      <>
       <section className="launchStatusPanel" aria-label="AU launch status gate">
         <div className="launchStatusHeader">
           <div>
-            <p className="eyebrow">AU Launch Gate</p>
+            <p className="eyebrow">AU 上线门禁</p>
             <h2>{launchStageText(launchStatus)}</h2>
             <span>
               {launchStatus?.launch_status_version || "au_launch_status_v1"} · hash{" "}
@@ -7669,11 +7732,11 @@ export default async function Home({
         </div>
         <div className="launchStageGrid">
           <Fact
-            label="P0a design partner"
+            label="P0a 试点伙伴"
             value={launchP0a?.ready_for_design_partner ? "ready" : launchP0a?.status || "not ready"}
           />
           <Fact
-            label="P0b Google scoring"
+            label="P0b Google 评分"
             value={
               launchP0b?.google_main_scoring_allowed
                 ? "allowed"
@@ -7682,8 +7745,8 @@ export default async function Home({
                   : "not ready"
             }
           />
-          <Fact label="P0c report contract" value={launchP0c?.status || "unknown"} />
-          <Fact label="Next action" value={launchStatus?.next_action || "run au-launch-status"} />
+          <Fact label="P0c 报告契约" value={launchP0c?.status || "unknown"} />
+          <Fact label="下一步动作" value={launchStatus?.next_action || "run au-launch-status"} />
         </div>
         <div className="launchEvidenceGrid">
           <span>
@@ -7699,8 +7762,8 @@ export default async function Home({
           </span>
           <span>Generated {dateText(launchStatus?.generated_at)}</span>
         </div>
-        <div className="launchBlockers">
-          <strong>Remaining blockers</strong>
+        <OpsCard title="剩余阻塞项" className="launchBlockers" defaultOpen>
+          <strong>剩余阻塞项</strong>
           {launchBlockers.length ? (
             <ul>
               {launchBlockers.slice(0, 6).map((blocker) => (
@@ -7708,13 +7771,13 @@ export default async function Home({
               ))}
             </ul>
           ) : (
-            <span>No launch blockers recorded.</span>
+            <span>没有记录启动阻塞项。</span>
           )}
-          {launchBlockers.length > 6 ? <span>{launchBlockers.length - 6} more blockers in API payload</span> : null}
-        </div>
-        <div className="launchRemediation">
+          {launchBlockers.length > 6 ? <span>{launchBlockers.length - 6} 个更多阻塞项在 API payload 中</span> : null}
+        </OpsCard>
+        <OpsCard title="修复计划" className="launchRemediation">
           <div className="launchRemediationHeader">
-            <strong>Remediation plan</strong>
+            <strong>修复计划</strong>
             <span>
               {launchRemediationPlan?.remediation_plan_version || "au_launch_remediation_plan_v1"} · hash{" "}
               {shortHash(launchRemediationPlan?.remediation_plan_hash)}
@@ -7752,10 +7815,10 @@ export default async function Home({
             <span className="remediationEmpty">No remediation work items recorded.</span>
           )}
           <code>{paths.launchRemediationPlan}</code>
-        </div>
-        <div className="p0aEnvironmentChecklist">
+        </OpsCard>
+        <OpsCard title="P0a 环境检查清单" className="p0aEnvironmentChecklist">
           <div className="launchRemediationHeader">
-            <strong>P0a environment checklist</strong>
+            <strong>P0a 环境检查清单</strong>
             <span>
               {p0aEnvironmentChecklist?.environment_checklist_version || "au_p0a_environment_checklist_v1"} · hash{" "}
               {shortHash(p0aEnvironmentChecklist?.environment_checklist_hash)}
@@ -7763,7 +7826,7 @@ export default async function Home({
           </div>
           <div className="launchEvidenceGrid">
             <span>Ready {p0aEnvironmentChecklist?.environment_checklist_ready ? "yes" : "no"}</span>
-            <span>Next action {p0aEnvironmentChecklist?.next_action || "run checklist"}</span>
+            <span>下一步动作 {p0aEnvironmentChecklist?.next_action || "run checklist"}</span>
             <span>
               Required {p0aEnvironmentSummary?.required_present_count || 0}/
               {p0aEnvironmentSummary?.required_count || 0}
@@ -7776,7 +7839,7 @@ export default async function Home({
           </div>
           <div className="environmentChecklistGrid">
             <div>
-              <strong>Missing required</strong>
+              <strong>缺少必填项</strong>
               {missingP0aRequired.length ? (
                 <ul className="plainList">
                   {missingP0aRequired.map((name) => (
@@ -7788,7 +7851,7 @@ export default async function Home({
               )}
             </div>
             <div>
-              <strong>Missing recommended</strong>
+              <strong>缺少建议项</strong>
               {missingP0aRecommended.length ? (
                 <ul className="plainList">
                   {missingP0aRecommended.slice(0, 4).map((name) => (
@@ -7813,10 +7876,10 @@ export default async function Home({
             <span>Evidence outputs {p0aEnvironmentChecklist?.evidence_outputs?.length || 0}</span>
           </div>
           <code>{paths.p0aEnvironmentChecklist}</code>
-        </div>
-        <div className="p0aExecutionChecklist">
+        </OpsCard>
+        <OpsCard title="P0a 执行检查清单" className="p0aExecutionChecklist">
           <div className="launchRemediationHeader">
-            <strong>P0a execution checklist</strong>
+            <strong>P0a 执行检查清单</strong>
             <span>
               {p0aExecutionChecklist?.execution_checklist_version || "au_p0a_execution_checklist_v1"} · hash{" "}
               {shortHash(p0aExecutionChecklist?.p0a_execution_checklist_hash)}
@@ -7825,12 +7888,12 @@ export default async function Home({
           <div className="launchEvidenceGrid">
             <span>Ready {p0aExecutionChecklist?.p0a_execution_checklist_ready ? "yes" : "no"}</span>
             <span>Design partner {p0aExecutionChecklist?.ready_for_design_partner ? "ready" : "blocked"}</span>
-            <span>Next action {p0aExecutionChecklist?.next_action || "run checklist"}</span>
+            <span>下一步动作 {p0aExecutionChecklist?.next_action || "run checklist"}</span>
             <span>Full batch runs {p0aExecutionSummary?.full_batch_planned_runs || 0}</span>
           </div>
           <div className="environmentChecklistGrid">
             <div>
-              <strong>Missing artifacts</strong>
+              <strong>缺少产物</strong>
               {missingP0aArtifacts.length ? (
                 <ul className="plainList">
                   {missingP0aArtifacts.slice(0, 5).map((name) => (
@@ -7842,7 +7905,7 @@ export default async function Home({
               )}
             </div>
             <div>
-              <strong>Execution blockers</strong>
+              <strong>执行阻塞项</strong>
               {p0aExecutionBlockers.length ? (
                 <ul className="plainList">
                   {p0aExecutionBlockers.slice(0, 5).map((blocker) => (
@@ -7854,7 +7917,7 @@ export default async function Home({
               )}
             </div>
             <div>
-              <strong>Credential handoff</strong>
+              <strong>凭证交接</strong>
               <small>
                 {p0aExecutionSummary?.credential_handoff_ready ? "ready" : "blocked"} · missing{" "}
                 {p0aExecutionSummary?.credential_handoff_missing_required_count || 0} · redacted{" "}
@@ -7897,10 +7960,10 @@ export default async function Home({
             <span>Evidence outputs {p0aExecutionChecklist?.evidence_outputs?.length || 0}</span>
           </div>
           <code>{paths.p0aExecutionChecklist}</code>
-        </div>
-        <div className="p0bGoogleExecutionChecklist">
+        </OpsCard>
+        <OpsCard title="P0b Google 执行检查清单" className="p0bGoogleExecutionChecklist">
           <div className="launchRemediationHeader">
-            <strong>P0b Google execution checklist</strong>
+            <strong>P0b Google 执行检查清单</strong>
             <span>
               {p0bGoogleExecutionChecklist?.execution_checklist_version ||
                 "au_p0b_google_execution_checklist_v1"} · hash{" "}
@@ -7910,7 +7973,7 @@ export default async function Home({
           <div className="launchEvidenceGrid">
             <span>Ready {p0bGoogleExecutionChecklist?.google_execution_checklist_ready ? "yes" : "no"}</span>
             <span>Google scoring {p0bGoogleExecutionChecklist?.google_main_scoring_allowed ? "allowed" : "blocked"}</span>
-            <span>Next action {p0bGoogleExecutionChecklist?.next_action || "run checklist"}</span>
+            <span>下一步动作 {p0bGoogleExecutionChecklist?.next_action || "run checklist"}</span>
             <span>Planned runs {p0bGoogleExecutionSummary?.planned_runs || 0}</span>
             <span>
               Env-file hygiene {p0bEnvFileHygieneReady ? "ready" : "blocked"} · errors{" "}
@@ -7927,7 +7990,7 @@ export default async function Home({
           </div>
           <div className="environmentChecklistGrid">
             <div>
-              <strong>Missing env</strong>
+              <strong>缺少环境变量</strong>
               {missingP0bSmokeEnv.length || missingP0bFullRunEnv.length ? (
                 <ul className="plainList">
                   {[...missingP0bSmokeEnv, ...missingP0bFullRunEnv].slice(0, 5).map((name) => (
@@ -7939,7 +8002,7 @@ export default async function Home({
               )}
             </div>
             <div>
-              <strong>Missing selectors</strong>
+              <strong>缺少选择器</strong>
               {missingP0bSelectors.length ? (
                 <ul className="plainList">
                   {missingP0bSelectors.slice(0, 4).map((name) => (
@@ -7951,7 +8014,7 @@ export default async function Home({
               )}
             </div>
             <div>
-              <strong>Environment handoff</strong>
+              <strong>环境交接</strong>
               <small>
                 {p0bGoogleExecutionSummary?.environment_handoff_ready ? "ready" : "blocked"} · missing{" "}
                 {p0bGoogleExecutionSummary?.environment_handoff_missing_required_count || 0} · redacted{" "}
@@ -7968,7 +8031,7 @@ export default async function Home({
               )}
             </div>
             <div>
-              <strong>Manual backfill handoff</strong>
+              <strong>人工回填交接</strong>
               <small>
                 {p0bGoogleExecutionSummary?.manual_backfill_handoff_ready ? "ready" : "blocked"} · prompt-city{" "}
                 {p0bGoogleExecutionSummary?.manual_backfill_handoff_covered_prompt_city_count || 0}/
@@ -7988,7 +8051,7 @@ export default async function Home({
           </div>
           <div className="handoffBoundary">
             <span>
-              Remaining blockers {p0bGoogleExecutionSummary?.remaining_blocker_count || 0} · shown{" "}
+              剩余阻塞项 {p0bGoogleExecutionSummary?.remaining_blocker_count || 0} · shown{" "}
               {Math.min(p0bChecklistBlockers.length, 4)}
             </span>
             <span>
@@ -8026,10 +8089,10 @@ export default async function Home({
             </ul>
           ) : null}
           <code>{paths.p0bGoogleExecutionChecklist}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0b Google 环境请求包" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0b Google environment request packet</strong>
+            <strong>P0b Google 环境请求包</strong>
             <span>
               {p0bGoogleEnvironmentRequest?.p0b_google_environment_request_packet_version ||
                 "au_p0b_google_environment_request_packet_v1"} · p0b_google_environment_request_packet_hash{" "}
@@ -8171,10 +8234,10 @@ export default async function Home({
             ))}
           </div>
           <code>{paths.p0bGoogleEnvironmentRequest}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0b Google 环境履约状态" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0b Google environment fulfillment</strong>
+            <strong>P0b Google 环境履约状态</strong>
             <span>
               {p0bGoogleEnvironmentFulfillment?.p0b_google_environment_fulfillment_version ||
                 "au_p0b_google_environment_fulfillment_v1"}{" "}
@@ -8223,7 +8286,7 @@ export default async function Home({
               Action validation{" "}
               {p0bGoogleEnvironmentFulfillmentSummary?.google_environment_post_update_validation_command_count ?? 0} commands
             </span>
-            <span>Next action {p0bGoogleEnvironmentFulfillmentSummary?.next_action || "none"}</span>
+            <span>下一步动作 {p0bGoogleEnvironmentFulfillmentSummary?.next_action || "none"}</span>
             <span>Next command {p0bGoogleEnvironmentFulfillmentSummary?.next_command || "none"}</span>
             <span>
               Request hash{" "}
@@ -8268,10 +8331,10 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.p0bGoogleEnvironmentFulfillment}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0b Google 环境清障包" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0b Google environment clearance</strong>
+            <strong>P0b Google 环境清障包</strong>
             <span>
               {p0bGoogleEnvironmentClearance?.p0b_google_environment_clearance_version ||
                 "au_p0b_google_environment_clearance_v1"}{" "}
@@ -8316,7 +8379,7 @@ export default async function Home({
             </span>
             <span>Target step {p0bGoogleEnvironmentClearanceSummary?.target_clearance_step_id || "none"}</span>
             <span>Prerequisite {p0bGoogleEnvironmentClearanceSummary?.prerequisite_step_id || "none"}</span>
-            <span>Next action {p0bGoogleEnvironmentClearanceSummary?.next_action || "none"}</span>
+            <span>下一步动作 {p0bGoogleEnvironmentClearanceSummary?.next_action || "none"}</span>
             <span>Next command {p0bGoogleEnvironmentClearanceSummary?.next_command || "none"}</span>
             <span>Missing {p0bGoogleEnvironmentClearanceMissing.slice(0, 6).join(", ") || "none"}</span>
             <span>Mismatches {p0bGoogleEnvironmentClearanceMismatches.join(", ") || "none"}</span>
@@ -8400,10 +8463,10 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.p0bGoogleEnvironmentClearance}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0b Google 人工回填请求包" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0b Google manual backfill request packet</strong>
+            <strong>P0b Google 人工回填请求包</strong>
             <span>
               {p0bGoogleManualBackfillRequest?.p0b_google_manual_backfill_request_packet_version ||
                 "au_p0b_google_manual_backfill_request_packet_v1"}{" "}
@@ -8468,25 +8531,25 @@ export default async function Home({
           </div>
           <div className="dependencyGroupGrid">
             <div className="dependencyGroup">
-              <strong>Required fields</strong>
+              <strong>必填字段</strong>
               <span>{p0bGoogleManualBackfillRequestSummary?.required_field_count || 0} fields</span>
               <small>{p0bGoogleManualBackfillRequiredFields.slice(0, 4).join(" · ") || "none"}</small>
               <small>{p0bGoogleManualBackfillRequiredFields.slice(4).join(" · ") || "all listed"}</small>
             </div>
             <div className="dependencyGroup">
-              <strong>Operator requirements</strong>
+              <strong>操作员要求</strong>
               <span>{p0bGoogleManualBackfillRequestSummary?.operator_requirement_count || 0} checks</span>
               <small>{p0bGoogleManualBackfillOperatorRequirements.slice(0, 2).join(" · ") || "none"}</small>
               <small>{p0bGoogleManualBackfillOperatorRequirements.slice(2).join(" · ") || "all listed"}</small>
             </div>
             <div className="dependencyGroup">
-              <strong>Evidence outputs</strong>
+              <strong>证据产物</strong>
               <span>{p0bGoogleManualBackfillRequestSummary?.evidence_output_count || 0} files</span>
               <small>{p0bGoogleManualBackfillEvidenceOutputs.slice(0, 2).join(" · ") || "none"}</small>
               <small>{p0bGoogleManualBackfillEvidenceOutputs.slice(2).join(" · ") || "all listed"}</small>
             </div>
             <div className="dependencyGroup">
-              <strong>Redaction policy</strong>
+              <strong>脱敏策略</strong>
               <span>
                 answer {p0bGoogleManualBackfillRequestSummary?.raw_answer_values_allowed ? "allowed" : "blocked"} ·
                 citations {p0bGoogleManualBackfillRequestSummary?.raw_citation_values_allowed ? "allowed" : "blocked"}
@@ -8499,10 +8562,10 @@ export default async function Home({
             </div>
           </div>
           <code>{paths.p0bGoogleManualBackfillRequest}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0b Google 人工回填履约状态" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0b Google manual backfill fulfillment</strong>
+            <strong>P0b Google 人工回填履约状态</strong>
             <span>
               {p0bGoogleManualBackfillFulfillment?.p0b_google_manual_backfill_fulfillment_version ||
                 "au_p0b_google_manual_backfill_fulfillment_v1"}{" "}
@@ -8540,7 +8603,7 @@ export default async function Home({
           <div className="handoffBoundary">
             <span>Missing {p0bGoogleManualBackfillFulfillmentMissing.slice(0, 6).join(", ") || "none"}</span>
             <span>Verification errors {p0bGoogleManualBackfillFulfillmentErrors.slice(0, 4).join(", ") || "none"}</span>
-            <span>Next action {p0bGoogleManualBackfillFulfillmentSummary?.next_action || "none"}</span>
+            <span>下一步动作 {p0bGoogleManualBackfillFulfillmentSummary?.next_action || "none"}</span>
             <span>Next command {p0bGoogleManualBackfillFulfillmentSummary?.next_command || "none"}</span>
             <span>Target JSONL {p0bGoogleManualBackfillFulfillmentSummary?.target_jsonl_path || "none"}</span>
             <span>Verification {p0bGoogleManualBackfillFulfillmentSummary?.verification_path || "none"}</span>
@@ -8589,10 +8652,10 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.p0bGoogleManualBackfillFulfillment}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0b Google 人工回填清障包" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0b Google manual backfill clearance</strong>
+            <strong>P0b Google 人工回填清障包</strong>
             <span>
               {p0bGoogleManualBackfillClearance?.p0b_google_manual_backfill_clearance_version ||
                 "au_p0b_google_manual_backfill_clearance_v1"}{" "}
@@ -8634,7 +8697,7 @@ export default async function Home({
             </span>
             <span>Target step {p0bGoogleManualBackfillClearanceSummary?.target_clearance_step_id || "none"}</span>
             <span>Prerequisite {p0bGoogleManualBackfillClearanceSummary?.prerequisite_step_id || "none"}</span>
-            <span>Next action {p0bGoogleManualBackfillClearanceSummary?.next_action || "none"}</span>
+            <span>下一步动作 {p0bGoogleManualBackfillClearanceSummary?.next_action || "none"}</span>
             <span>Next command {p0bGoogleManualBackfillClearanceSummary?.next_command || "none"}</span>
             <span>Missing {p0bGoogleManualBackfillClearanceMissing.slice(0, 6).join(", ") || "none"}</span>
             <span>Verification errors {p0bGoogleManualBackfillClearanceErrors.slice(0, 4).join(", ") || "none"}</span>
@@ -8710,10 +8773,10 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.p0bGoogleManualBackfillClearance}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0b Google 阶段执行请求包" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0b Google phase execution request packet</strong>
+            <strong>P0b Google 阶段执行请求包</strong>
             <span>
               {p0bGooglePhaseExecutionRequest?.p0b_google_phase_execution_request_packet_version ||
                 "au_p0b_google_phase_execution_request_packet_v1"}{" "}
@@ -8787,13 +8850,13 @@ export default async function Home({
               </div>
             ))}
             <div className="dependencyGroup">
-              <strong>Evidence outputs</strong>
+              <strong>证据产物</strong>
               <span>{p0bGooglePhaseExecutionRequestSummary?.evidence_output_count || 0} files</span>
               <small>{p0bGooglePhaseExecutionEvidenceOutputs.slice(0, 2).join(" · ") || "none"}</small>
               <small>{p0bGooglePhaseExecutionEvidenceOutputs.slice(2, 5).join(" · ") || "all listed"}</small>
             </div>
             <div className="dependencyGroup">
-              <strong>Redaction policy</strong>
+              <strong>脱敏策略</strong>
               <span>
                 secret {p0bGooglePhaseExecutionRequestSummary?.raw_secret_values_allowed ? "allowed" : "blocked"} ·
                 answer {p0bGooglePhaseExecutionRequestSummary?.raw_answer_values_allowed ? "allowed" : "blocked"}
@@ -8811,10 +8874,10 @@ export default async function Home({
             </div>
           </div>
           <code>{paths.p0bGooglePhaseExecutionRequest}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0b Google 阶段执行履约状态" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0b Google phase execution fulfillment</strong>
+            <strong>P0b Google 阶段执行履约状态</strong>
             <span>
               {p0bGooglePhaseExecutionFulfillment?.p0b_google_phase_execution_fulfillment_version ||
                 "au_p0b_google_phase_execution_fulfillment_v1"}{" "}
@@ -8842,7 +8905,7 @@ export default async function Home({
           </div>
           <div className="handoffBoundary">
             <span>Next phase {p0bGooglePhaseExecutionFulfillmentSummary?.next_phase || "none"}</span>
-            <span>Next action {p0bGooglePhaseExecutionFulfillmentSummary?.next_action || "none"}</span>
+            <span>下一步动作 {p0bGooglePhaseExecutionFulfillmentSummary?.next_action || "none"}</span>
             <span>Next command {p0bGooglePhaseExecutionFulfillmentSummary?.next_command || "none"}</span>
             <span>
               Missing {p0bGooglePhaseExecutionFulfillmentMissing.slice(0, 4).join(", ") || "none"}
@@ -8889,13 +8952,13 @@ export default async function Home({
               </div>
             ))}
             <div className="dependencyGroup">
-              <strong>Fulfillment blockers</strong>
+              <strong>履约阻塞项</strong>
               <span>{p0bGooglePhaseExecutionFulfillmentSummary?.blocking_reason_count || 0} reasons</span>
               <small>{p0bGooglePhaseExecutionFulfillmentBlockers.slice(0, 2).join(" · ") || "none"}</small>
               <small>{p0bGooglePhaseExecutionFulfillmentBlockers.slice(2, 5).join(" · ") || "all listed"}</small>
             </div>
             <div className="dependencyGroup">
-              <strong>Redaction policy</strong>
+              <strong>脱敏策略</strong>
               <span>
                 secret {p0bGooglePhaseExecutionFulfillmentSummary?.raw_secret_values_allowed ? "allowed" : "blocked"} ·
                 answer {p0bGooglePhaseExecutionFulfillmentSummary?.raw_answer_values_allowed ? "allowed" : "blocked"}
@@ -8913,10 +8976,10 @@ export default async function Home({
             </div>
           </div>
           <code>{paths.p0bGooglePhaseExecutionFulfillment}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0b Google 阶段执行清障包" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0b Google phase execution clearance</strong>
+            <strong>P0b Google 阶段执行清障包</strong>
             <span>
               {p0bGooglePhaseExecutionClearance?.p0b_google_phase_execution_clearance_version ||
                 "au_p0b_google_phase_execution_clearance_v1"}{" "}
@@ -8953,7 +9016,7 @@ export default async function Home({
             <span>Target step {p0bGooglePhaseExecutionClearanceSummary?.target_clearance_step_id || "none"}</span>
             <span>Prerequisite {p0bGooglePhaseExecutionClearanceSummary?.prerequisite_step_id || "none"}</span>
             <span>Next phase {p0bGooglePhaseExecutionClearanceSummary?.next_phase || "none"}</span>
-            <span>Next action {p0bGooglePhaseExecutionClearanceSummary?.next_action || "none"}</span>
+            <span>下一步动作 {p0bGooglePhaseExecutionClearanceSummary?.next_action || "none"}</span>
             <span>Next command {p0bGooglePhaseExecutionClearanceSummary?.next_command || "none"}</span>
             <span>
               Missing {p0bGooglePhaseExecutionClearanceMissing.slice(0, 6).join(", ") || "none"}
@@ -9024,10 +9087,10 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.p0bGooglePhaseExecutionClearance}</code>
-        </div>
+        </OpsCard>
         <div className="broaderPlatformRegistry">
           <div className="launchRemediationHeader">
-            <strong>Broader platform registry</strong>
+            <strong>更广平台登记表</strong>
             <span>
               {broaderPlatformRegistry?.registry_version || "au_broader_platform_registry_v1"} · hash{" "}
               {shortHash(broaderPlatformRegistry?.broader_platform_registry_hash)}
@@ -9063,9 +9126,9 @@ export default async function Home({
           </div>
           <code>{paths.broaderPlatformRegistry}</code>
         </div>
-        <div className="handoffDossier">
+        <OpsCard title="交付总包 Handoff Dossier" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>Handoff dossier</strong>
+            <strong>交付总包</strong>
             <span>
               {handoffDossier?.handoff_dossier_version || "au_handoff_dossier_v1"} · hash{" "}
               {shortHash(handoffDossier?.handoff_dossier_hash)}
@@ -9175,10 +9238,10 @@ export default async function Home({
             </span>
           </div>
           <code>{paths.handoffDossier}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="AU 交付进度" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>AU delivery progress</strong>
+            <strong>AU 交付进度</strong>
             <span>
               {deliveryProgress?.delivery_progress_version || "au_delivery_progress_v1"} · delivery_progress_hash{" "}
               {shortHash(deliveryProgress?.delivery_progress_hash)}
@@ -9222,7 +9285,7 @@ export default async function Home({
               {deliveryProgressSummary?.trial_full_batch_required ? "required" : "not required"} ·{" "}
               {deliveryProgressSummary?.trial_full_batch_status || TRIAL_FULL_BATCH_STATUS}
             </span>
-            <span>Remaining blockers {deliveryProgressSummary?.remaining_blocker_count || 0}</span>
+            <span>剩余阻塞项 {deliveryProgressSummary?.remaining_blocker_count || 0}</span>
             <span>External blockers {deliveryProgressSummary?.external_dependency_blocker_count || 0}</span>
             <span>Next work item {deliveryProgressSummary?.next_work_item_id || "none"}</span>
             <span>Next stage {deliveryProgressSummary?.next_work_item_stage || "none"}</span>
@@ -9440,10 +9503,10 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.deliveryProgress}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="客户交付清障包" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>Customer handoff clearance</strong>
+            <strong>客户交付清障包</strong>
             <span>
               {customerHandoffClearance?.customer_handoff_clearance_version ||
                 "au_customer_handoff_clearance_v1"} · customer_handoff_clearance_hash{" "}
@@ -9639,7 +9702,7 @@ export default async function Home({
               {customerHandoffClearanceSummary?.p0b_google_phase_execution_missing_required_count ?? 0}
             </span>
             <span>Next P0b phase {customerHandoffClearanceSummary?.p0b_google_phase_execution_next_phase || "none"}</span>
-            <span>Next action {customerHandoffClearanceSummary?.next_action || "none"}</span>
+            <span>下一步动作 {customerHandoffClearanceSummary?.next_action || "none"}</span>
             <span>Next command {customerHandoffClearanceSummary?.next_command || "none"}</span>
             <span>
               Missing gates {customerHandoffClearanceSummary?.missing_required?.slice(0, 5).join(", ") || "none"}
@@ -9727,10 +9790,10 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.customerHandoffClearance}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="客户交付包" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>Customer handoff package</strong>
+            <strong>客户交付包</strong>
             <span>
               {customerHandoffPackage?.customer_handoff_package_version ||
                 "au_customer_handoff_package_v1"} · customer_handoff_package_hash{" "}
@@ -9789,7 +9852,7 @@ export default async function Home({
             <span>
               Trial blocked gates {customerHandoffPackageTrialBlockedGateIds.slice(0, 6).join(", ") || "none"}
             </span>
-            <span>Next action {customerHandoffPackageSummary?.next_action || "none"}</span>
+            <span>下一步动作 {customerHandoffPackageSummary?.next_action || "none"}</span>
             <span>Next command {customerHandoffPackageSummary?.next_command || "none"}</span>
             <span>
               Package clearance request {customerHandoffPackageSummary?.current_clearance_request_artifact_id || "none"}{" "}
@@ -9883,10 +9946,10 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.customerHandoffPackage}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="客户交付就绪度" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>Customer handoff readiness</strong>
+            <strong>客户交付就绪度</strong>
             <span>
               {customerHandoffReadiness?.customer_handoff_readiness_version ||
                 "au_customer_handoff_readiness_v1"} · customer_handoff_readiness_hash{" "}
@@ -9963,10 +10026,10 @@ export default async function Home({
             </span>
           </div>
           <code>{paths.customerHandoffReadiness}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0a 凭证请求包" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0a credential request packet</strong>
+            <strong>P0a 凭证请求包</strong>
             <span>
               {p0aCredentialRequest?.p0a_credential_request_packet_version ||
                 "au_p0a_credential_request_packet_v1"} · p0a_credential_request_packet_hash{" "}
@@ -10066,10 +10129,10 @@ export default async function Home({
             </ul>
           ) : null}
           <code>{paths.p0aCredentialRequest}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0a 凭证履约状态" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0a credential fulfillment</strong>
+            <strong>P0a 凭证履约状态</strong>
             <span>
               {p0aCredentialFulfillment?.p0a_credential_fulfillment_version ||
                 "au_p0a_credential_fulfillment_v1"}{" "}
@@ -10091,7 +10154,7 @@ export default async function Home({
           <div className="handoffBoundary">
             <span>Missing {p0aCredentialFulfillmentMissing.join(", ") || "none"}</span>
             <span>Mismatches {p0aCredentialFulfillmentMismatches.join(", ") || "none"}</span>
-            <span>Next action {p0aCredentialFulfillmentSummary?.next_action || "none"}</span>
+            <span>下一步动作 {p0aCredentialFulfillmentSummary?.next_action || "none"}</span>
             <span>Next command {p0aCredentialFulfillmentSummary?.next_command || "none"}</span>
             <span>
               Request hash{" "}
@@ -10130,10 +10193,10 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.p0aCredentialFulfillment}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0a 凭证清障包" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0a credential clearance</strong>
+            <strong>P0a 凭证清障包</strong>
             <span>
               {p0aCredentialClearance?.p0a_credential_clearance_version ||
                 "au_p0a_credential_clearance_v1"}{" "}
@@ -10162,7 +10225,7 @@ export default async function Home({
               {(p0aCredentialClearanceSummary?.runtime_database_missing_required || []).join(", ") || "none"}
             </span>
             <span>Current clearance step {p0aCredentialClearanceSummary?.current_clearance_step_id || "none"}</span>
-            <span>Next action {p0aCredentialClearanceSummary?.next_action || "none"}</span>
+            <span>下一步动作 {p0aCredentialClearanceSummary?.next_action || "none"}</span>
             <span>Next command {p0aCredentialClearanceSummary?.next_command || "none"}</span>
             <span>Raw secret allowed {p0aCredentialClearanceSummary?.raw_secret_values_allowed ? "yes" : "no"}</span>
             <span>
@@ -10211,7 +10274,7 @@ export default async function Home({
           {p0aCredentialUpdateContract ? (
             <div className="dependencyGroupGrid">
               <div className="dependencyGroup">
-                <strong>Credential update contract</strong>
+                <strong>凭证更新契约</strong>
                 <span>
                   {p0aCredentialUpdateContract.version || "contract"} ·{" "}
                   {p0aCredentialUpdateContract.ready ? "ready" : "blocked"}
@@ -10230,7 +10293,7 @@ export default async function Home({
                 </small>
               </div>
               <div className="dependencyGroup">
-                <strong>Allowed update surfaces</strong>
+                <strong>允许更新的界面</strong>
                 <span>
                   {p0aCredentialUpdateContractSurfaces
                     .map((surface) => surface.id || surface.path || "surface")
@@ -10258,7 +10321,7 @@ export default async function Home({
                 </small>
               </div>
               <div className="dependencyGroup">
-                <strong>Contract strict gates</strong>
+                <strong>契约硬门禁</strong>
                 <span>
                   {p0aCredentialUpdateContractStrictGates.some((command) =>
                     command.includes("--require-fulfilled")
@@ -10317,10 +10380,10 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.p0aCredentialClearance}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0a 凭证更新回执" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0a credential update receipt</strong>
+            <strong>P0a 凭证更新回执</strong>
             <span>
               {p0aCredentialUpdateReceipt?.p0a_credential_update_receipt_version ||
                 "au_p0a_credential_update_receipt_v1"}{" "}
@@ -10429,10 +10492,10 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.p0aCredentialUpdateReceipt}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0a 真实批次请求包" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0a real batch request packet</strong>
+            <strong>P0a 真实批次请求包</strong>
             <span>
               {p0aRealBatchRequest?.p0a_real_batch_request_packet_version ||
                 "au_p0a_real_batch_request_packet_v1"}{" "}
@@ -10499,10 +10562,10 @@ export default async function Home({
             </ul>
           ) : null}
           <code>{paths.p0aRealBatchRequest}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0a 真实批次履约状态" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0a real batch fulfillment</strong>
+            <strong>P0a 真实批次履约状态</strong>
             <span>
               {p0aRealBatchFulfillment?.p0a_real_batch_fulfillment_version ||
                 "au_p0a_real_batch_fulfillment_v1"}{" "}
@@ -10531,7 +10594,7 @@ export default async function Home({
             </span>
           </div>
           <div className="handoffBoundary">
-            <span>Next action {p0aRealBatchFulfillmentSummary?.next_action || "none"}</span>
+            <span>下一步动作 {p0aRealBatchFulfillmentSummary?.next_action || "none"}</span>
             <span>Next command {p0aRealBatchFulfillmentSummary?.next_command || "none"}</span>
             <span>Missing {p0aRealBatchFulfillmentMissing.slice(0, 4).join(", ") || "none"}</span>
             <span>Blocking {p0aRealBatchFulfillmentBlockers.slice(0, 4).join(", ") || "none"}</span>
@@ -10572,10 +10635,10 @@ export default async function Home({
             ))}
           </div>
           <code>{paths.p0aRealBatchFulfillment}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="P0a 真实批次清障包" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>P0a real batch clearance</strong>
+            <strong>P0a 真实批次清障包</strong>
             <span>
               {p0aRealBatchClearance?.p0a_real_batch_clearance_version ||
                 "au_p0a_real_batch_clearance_v1"}{" "}
@@ -10609,7 +10672,7 @@ export default async function Home({
             <span>Target step {p0aRealBatchClearanceSummary?.target_clearance_step_id || "none"}</span>
             <span>Prerequisite {p0aRealBatchClearanceSummary?.prerequisite_step_id || "none"}</span>
             <span>Next phase {p0aRealBatchClearanceSummary?.next_phase || "none"}</span>
-            <span>Next action {p0aRealBatchClearanceSummary?.next_action || "none"}</span>
+            <span>下一步动作 {p0aRealBatchClearanceSummary?.next_action || "none"}</span>
             <span>Next command {p0aRealBatchClearanceSummary?.next_command || "none"}</span>
             <span>Missing {p0aRealBatchClearanceMissing.slice(0, 4).join(", ") || "none"}</span>
             <span>Raw secret allowed {p0aRealBatchClearanceSummary?.raw_secret_values_allowed ? "yes" : "no"}</span>
@@ -10665,10 +10728,10 @@ export default async function Home({
             </div>
           ) : null}
           <code>{paths.p0aRealBatchClearance}</code>
-        </div>
-        <div className="handoffDossier">
+        </OpsCard>
+        <OpsCard title="下一工作项包" className="handoffDossier">
           <div className="launchRemediationHeader">
-            <strong>Next work item packet</strong>
+            <strong>下一工作项包</strong>
             <span>
               {nextWorkItemPacket?.next_work_item_packet_version || "au_next_work_item_packet_v1"} · next_work_item_packet_hash{" "}
               {shortHash(nextWorkItemPacket?.next_work_item_packet_hash)}
@@ -10810,10 +10873,10 @@ export default async function Home({
             </ul>
           ) : null}
           <code>{paths.nextWorkItem}</code>
-        </div>
-        <div className="externalDependencyHandoff">
+        </OpsCard>
+        <OpsCard title="外部依赖交接" className="externalDependencyHandoff">
           <div className="launchRemediationHeader">
-            <strong>External dependency handoff</strong>
+            <strong>外部依赖交接</strong>
             <span>
               {externalDependencyHandoff?.external_dependency_handoff_version ||
                 "au_external_dependency_handoff_v1"} · hash{" "}
@@ -10860,7 +10923,7 @@ export default async function Home({
           </div>
           <div className="clearanceDryRun">
             <div className="launchRemediationHeader">
-              <strong>Clearance dry-run</strong>
+              <strong>清障试运行</strong>
               <span>
                 {externalDependencyClearance?.clearance_execution_version ||
                   "au_external_dependency_clearance_execution_v1"} · hash{" "}
@@ -10989,26 +11052,30 @@ export default async function Home({
             ))}
           </div>
           <code>{paths.externalDependencyHandoff}</code>
-        </div>
+        </OpsCard>
         <code>{paths.launchStatus}</code>
       </section>
 
       <section className="metrics" aria-label="runtime metrics">
-        <Metric label="Projects" value={data.projects.total_count} />
-        <Metric label="Prompts" value={data.prompts.total_count} />
-        <Metric label="Evidence runs" value={data.evidence.total_count} />
-        <Metric label="Question coverage" value={pct(questionCoverageRate)} />
-        <Metric label="Final score" value={num(latestScore?.snapshot.final_score)} />
-        <Metric label="Source gaps" value={latestGraph?.source_gaps.length || 0} />
-        <Metric label="Open actions" value={latestAction?.action_recommendations.length || 0} />
-        <Metric label="Content drafts" value={latestContent?.content_drafts.length || 0} />
-        <Metric label="Human reviews" value={data.humanReviews.total_count} />
-        <Metric label="Audit events" value={totalAuditEvents} />
-        <Metric label="Trace links" value={traceability?.evidence_links.length || 0} />
+        <Metric label="项目" value={data.projects.total_count} />
+        <Metric label="问题" value={data.prompts.total_count} />
+        <Metric label="证据运行" value={data.evidence.total_count} />
+        <Metric label="问题覆盖率" value={pct(questionCoverageRate)} />
+        <Metric label="最终分数" value={num(latestScore?.snapshot.final_score)} />
+        <Metric label="信源缺口" value={latestGraph?.source_gaps.length || 0} />
+        <Metric label="待办行动" value={latestAction?.action_recommendations.length || 0} />
+        <Metric label="内容草稿" value={latestContent?.content_drafts.length || 0} />
+        <Metric label="人工复核" value={data.humanReviews.total_count} />
+        <Metric label="审计事件" value={totalAuditEvents} />
+        <Metric label="溯源链接" value={traceability?.evidence_links.length || 0} />
       </section>
+      </>
+      ) : null}
 
       <section className="dashboard">
-        <Panel title="Project Bootstrap" subtitle={latestProject?.project.name || "No runtime project"}>
+        {activeTab === "project" ? (
+        <>
+        <Panel title="项目启动配置" subtitle={latestProject?.project.name || "无运行时项目"}>
           <div className="stack">
             {latestProject ? (
               <>
@@ -11037,7 +11104,7 @@ export default async function Home({
                 </small>
                 <form action={updateRuntimeProject} className="projectUpdateForm">
                   <div className="formHeader">
-                    <h3>Project Metadata</h3>
+                    <h3>项目元数据</h3>
                     <small>PATCH /v1/projects/runtime · project_updated</small>
                   </div>
                   <input type="hidden" name="project_id" value={latestProject.project.id} />
@@ -11067,12 +11134,12 @@ export default async function Home({
                   </label>
                   <input type="hidden" name="updated_by" value="runtime-console" />
                   <button className="actionButton" type="submit">
-                    Save project
+                    保存项目
                   </button>
                 </form>
                 <div className="projectLifecycleActions">
                   <div className="formHeader">
-                    <h3>Project Actions</h3>
+                    <h3>项目操作</h3>
                     <small>
                       POST /v1/projects/runtime/action · project_archived · project_restored · evidence preserved
                     </small>
@@ -11095,20 +11162,20 @@ export default async function Home({
                       }
                     />
                     <button className="textButton" type="submit">
-                      {latestProject.project.status === "archived" ? "Restore project" : "Archive project"}
+                      {latestProject.project.status === "archived" ? "恢复项目" : "归档项目"}
                     </button>
                   </form>
                 </div>
                 <div className="projectLifecycleHistory">
                   <div className="formHeader">
-                    <h3>Project Lifecycle</h3>
+                    <h3>项目生命周期</h3>
                     <small>
                       GET /v1/projects/runtime/lifecycle-events · project_bootstrap_created · project_updated ·
                       project_archived · project_restored
                     </small>
                   </div>
                   <div className="downloadRow">
-                    <a href={projectLifecycleExportUrl}>Download lifecycle CSV</a>
+                    <a href={projectLifecycleExportUrl}>下载生命周期 CSV</a>
                   </div>
                   <Fact label="Lifecycle export" value={paths.projectLifecycleExport} />
                   {data.projectLifecycleEvents.records.length ? (
@@ -11131,16 +11198,16 @@ export default async function Home({
                       ))}
                     </ul>
                   ) : (
-                    <small>No project lifecycle events found.</small>
+                    <small>未找到项目生命周期事件。</small>
                   )}
                 </div>
                 <div className="projectLifecycleHistory projectAuditTrail">
                   <div className="formHeader">
-                    <h3>Project Audit Trail</h3>
+                    <h3>项目审计轨迹</h3>
                     <small>GET /v1/audit-events/runtime · append-only AuditEvent query</small>
                   </div>
                   <div className="downloadRow">
-                    <a href={auditEventsExportUrl}>Download audit CSV</a>
+                    <a href={auditEventsExportUrl}>下载审计 CSV</a>
                   </div>
                   <Fact label="Audit query" value={paths.auditEvents} />
                   <Fact label="Audit export" value={paths.auditEventsExport} />
@@ -11162,20 +11229,20 @@ export default async function Home({
                       ))}
                     </ul>
                   ) : (
-                    <small>No project audit events found.</small>
+                    <small>未找到项目审计事件。</small>
                   )}
                 </div>
                 <div className="projectMembers">
                   <div className="formHeader">
-                    <h3>Project Members</h3>
+                    <h3>项目成员</h3>
                     <small>
                       {data.projectMembers.total_count} members · project_members gate · project_member_saved ·
                       project_member_deleted · {data.projectMemberInvitations.total_count} pending invites
                     </small>
                   </div>
                   <div className="downloadRow">
-                    <a href={projectMembersExportUrl}>Download members CSV</a>
-                    <a href={projectMemberInvitationsExportUrl}>Download invitations CSV</a>
+                    <a href={projectMembersExportUrl}>下载成员 CSV</a>
+                    <a href={projectMemberInvitationsExportUrl}>下载邀请 CSV</a>
                   </div>
                   <dl className="facts">
                     <Fact label="Members CSV" value={paths.projectMembersExport} />
@@ -11205,7 +11272,7 @@ export default async function Home({
                       ))}
                     </ul>
                   ) : (
-                    <small>No runtime project members found.</small>
+                    <small>无运行时项目 members found.</small>
                   )}
                   <form action={saveRuntimeProjectMember} className="projectMemberForm">
                     <input type="hidden" name="project_id" value={latestProject.project.id} />
@@ -11232,7 +11299,7 @@ export default async function Home({
                     </button>
                   </form>
                   <div className="formHeader">
-                    <h3>Member Invitations</h3>
+                    <h3>成员邀请</h3>
                     <small>
                       project_member_invitation_created · project_member_invitation_revoked ·
                       project_member_invitation_email_sent · project_member_invitation_accepted ·
@@ -11279,7 +11346,7 @@ export default async function Home({
                                   value="Email runtime project invitation with one-time token"
                                 />
                                 <button className="textButton" type="submit">
-                                  Email invite
+                                  发送邀请邮件
                                 </button>
                               </form>
                               <form action={acceptRuntimeProjectMemberInvitation} className="inlineForm">
@@ -11296,7 +11363,7 @@ export default async function Home({
                                   value="Accept runtime project invitation from one-time token"
                                 />
                                 <button className="textButton" type="submit">
-                                  Accept invite
+                                  接受邀请
                                 </button>
                               </form>
                             </>
@@ -11314,7 +11381,7 @@ export default async function Home({
                                   value="Revoke pending runtime project invitation"
                                 />
                                 <button className="textButton" type="submit">
-                                  Revoke invite
+                                  撤销邀请
                                 </button>
                               </form>
                               <form action={actionRuntimeProjectMemberInvitation}>
@@ -11328,7 +11395,7 @@ export default async function Home({
                                   value="Expire pending runtime project invitation"
                                 />
                                 <button className="textButton" type="submit">
-                                  Expire invite
+                                  过期邀请
                                 </button>
                               </form>
                             </div>
@@ -11374,7 +11441,7 @@ export default async function Home({
                 </div>
                 <form action={confirmEntityAlias} className="entityAliasForm">
                   <div className="formHeader">
-                    <h3>Entity Alias</h3>
+                    <h3>实体别名</h3>
                     <small>
                       {data.entityAliases.total_count} confirmed · {data.entityAliasCandidates.total_count} candidates
                     </small>
@@ -11418,7 +11485,7 @@ export default async function Home({
                 {visibleAliasCandidates.length ? (
                   <div className="aliasBatchQueue">
                     <div className="formHeader">
-                      <h3>Bulk Alias Review Queue</h3>
+                      <h3>批量别名复核队列</h3>
                       <small>
                         {visibleAliasCandidates.length} visible candidates · entity_alias_confirm_batch_v1 ·
                         entity_alias_candidate_review_batch_v1
@@ -11604,14 +11671,14 @@ export default async function Home({
 	                ) : null}
 	                <div className="aliasBatchQueue">
 	                  <div className="formHeader">
-	                    <h3>Alias Reviewer Workbench</h3>
+	                    <h3>别名复核工作台</h3>
 	                    <small>
 	                      reviewer {data.entityAliasAssignmentWorkbench.reviewer_id || "all"} ·{" "}
 	                      {data.entityAliasAssignmentWorkbench.total_count} active reviews ·{" "}
 	                      {paths.entityAliasAssignmentWorkbench}
 	                    </small>
 	                  </div>
-	                  <div className="facts aliasAssignmentStats" aria-label="Alias Reviewer Workbench Stats">
+	                  <div className="facts aliasAssignmentStats" aria-label="别名复核工作台 Stats">
 	                    <div>
 	                      <span>Active</span>
 	                      <strong>{data.entityAliasAssignmentWorkbench.active_count}</strong>
@@ -11701,14 +11768,14 @@ export default async function Home({
 	                </div>
 	                <div className="aliasBatchQueue">
 	                  <div className="formHeader">
-	                    <h3>Alias Reviewer Workload</h3>
+	                    <h3>别名复核负载</h3>
 	                    <small>
 	                      {data.entityAliasAssignmentWorkload.total_active_count} active reviews ·{" "}
 	                      {data.entityAliasAssignmentWorkload.reviewer_count} reviewers ·{" "}
 	                      {paths.entityAliasAssignmentWorkload}
 	                    </small>
 	                  </div>
-	                  <div className="facts aliasAssignmentStats" aria-label="Alias Reviewer Workload Stats">
+	                  <div className="facts aliasAssignmentStats" aria-label="别名复核负载 Stats">
 	                    <div>
 	                      <span>Unassigned</span>
 	                      <strong>{data.entityAliasAssignmentWorkload.unassigned_count}</strong>
@@ -11760,14 +11827,14 @@ export default async function Home({
 	                </div>
 	                <div className="aliasBatchQueue">
 	                  <div className="formHeader">
-	                    <h3>Alias Assignment Dispatch Plan</h3>
+	                    <h3>别名分配派单计划</h3>
 	                    <small>
 	                      {data.entityAliasAssignmentDispatchPlan.planned_assignment_count} planned ·{" "}
 	                      {data.entityAliasAssignmentDispatchPlan.skipped_count} skipped ·{" "}
 	                      {paths.entityAliasAssignmentDispatchPlan}
 	                    </small>
 	                  </div>
-	                  <div className="facts aliasAssignmentStats" aria-label="Alias Assignment Dispatch Plan Stats">
+	                  <div className="facts aliasAssignmentStats" aria-label="别名分配派单计划 Stats">
 	                    <div>
 	                      <span>Candidates</span>
 	                      <strong>{data.entityAliasAssignmentDispatchPlan.candidate_count}</strong>
@@ -11876,7 +11943,7 @@ export default async function Home({
 	                {visibleAliasAssignmentQueue.length ? (
 	                  <div className="aliasBatchQueue">
                     <div className="formHeader">
-                      <h3>Alias Candidate Assignment Queue</h3>
+                      <h3>别名候选分配队列</h3>
                       <small>
                         {data.entityAliasAssignmentQueue.total_count} assigned reviews · assigned_to /
                         assignment_status / priority / due_before filters · {paths.entityAliasAssignmentQueue}
@@ -12061,7 +12128,7 @@ export default async function Home({
                 {visibleAliasCandidateReviews.length ? (
                   <div className="aliasBatchQueue">
                     <div className="formHeader">
-                      <h3>Alias Candidate Review History</h3>
+                      <h3>别名候选复核历史</h3>
                       <small>
                         {data.entityAliasCandidateReviews.total_count} stored reviews ·{" "}
                         /v1/entity-aliases/runtime/candidates/reviews
@@ -12226,7 +12293,7 @@ export default async function Home({
             )}
             <form action={createAuRuntimeProject} className="projectCreateForm">
               <div className="formHeader">
-                <h3>Client Project</h3>
+                <h3>客户项目</h3>
                 <small>AU / DTC ecommerce / 100 prompts</small>
               </div>
               <label>
@@ -12268,7 +12335,7 @@ export default async function Home({
             </form>
             <form action={saveProjectBrandKit} className="brandKitForm">
               <div className="formHeader">
-                <h3>Brand Kit</h3>
+                <h3>品牌配置</h3>
                 <small>
                   {projectBrandKit
                     ? `${projectBrandKit.updated_by} · ${brandKitAudit?.event_type || "saved"}`
@@ -12318,7 +12385,7 @@ export default async function Home({
             </form>
             <section className="themeEditorPreview" aria-label="advanced white-label theme editor">
               <div className="formHeader">
-                <h3>Theme Editor</h3>
+                <h3>主题编辑器</h3>
                 <small>
                   {brandKitAudit?.method_version || "project_brand_kit_v1"} ·{" "}
                   {brandKitAudit?.after_hash ? `hash ${clipText(brandKitAudit.after_hash, 18)}` : "not saved"}
@@ -12335,7 +12402,7 @@ export default async function Home({
                   </div>
                 </div>
                 <div className="themePreviewBody">
-                  <h3>AU GEO Visibility Report</h3>
+                  <h3>AU GEO 可见度报告</h3>
                   <p>{filterLabel} · {evidenceSort}</p>
                   <div className="themeMetricStrip">
                     <span style={{ borderColor: whiteLabelPrimaryColor }}>
@@ -12362,7 +12429,7 @@ export default async function Home({
             </section>
             <form action={uploadProjectBrandLogo} className="brandKitForm">
               <div className="formHeader">
-                <h3>Logo Upload</h3>
+                <h3>Logo 上传</h3>
                 <small>{projectBrandKit?.logo_url || "archive to object storage"}</small>
               </div>
               <input type="hidden" name="project_id" value={selectedProjectId || ""} />
@@ -12377,12 +12444,12 @@ export default async function Home({
               <p className="formHint">
                 {data.brandKit?.audit_events[0]?.event_type === "project_brand_logo_uploaded"
                   ? `Last upload · ${data.brandKit.audit_events[0]?.method_version || "project_brand_logo_upload_v1"}`
-                  : "Uploaded logo URI becomes the Brand Kit default for white-label PDF artifacts."}
+                  : "Uploaded logo URI becomes the 品牌配置 default for white-label PDF artifacts."}
               </p>
             </form>
             <section className="brandAssetLibrary" aria-label="white-label brand asset versions">
               <div className="formHeader">
-                <h3>Brand Assets</h3>
+                <h3>品牌资产</h3>
                 <small>{data.brandAssets.total_count} versions · {paths.brandAssets}</small>
               </div>
               {data.brandAssets.records.length ? (
@@ -12415,7 +12482,7 @@ export default async function Home({
             </section>
             <form action={saveProjectBrandAsset} className="brandAssetForm">
               <div className="formHeader">
-                <h3>Asset Register</h3>
+                <h3>素材登记</h3>
                 <small>project_brand_asset_library_v1 · {paths.brandAssetLibrary}</small>
               </div>
               <input type="hidden" name="project_id" value={selectedProjectId || ""} />
@@ -12476,7 +12543,7 @@ export default async function Home({
             </form>
             <section className="brandAssetLibrary" aria-label="project brand asset library">
               <div className="formHeader">
-                <h3>Asset Library</h3>
+                <h3>素材库</h3>
                 <small>
                   {data.brandAssetLibrary.total_count} assets · table project_brand_assets ·
                   project_brand_asset_scan_recorded
@@ -12495,7 +12562,7 @@ export default async function Home({
                         <span>{record.asset.asset_url}</span>
                         {record.asset.preview_url ? (
                           <a className="inlineLink" href={record.asset.preview_url} target="_blank" rel="noreferrer">
-                            Preview asset
+                            预览素材
                           </a>
                         ) : null}
                         <small>
@@ -12546,7 +12613,7 @@ export default async function Home({
             </section>
             <form action={saveScoreWeightConfig} className="brandKitForm">
               <div className="formHeader">
-                <h3>Score Weights</h3>
+                <h3>评分权重</h3>
                 <small>
                   {scoreWeightConfig?.updated_by || "system-default"} · {scoreWeightAuditEvent} ·{" "}
                   {selectedFormulaVersion} · total {num(scoreWeightTotal)}
@@ -12598,8 +12665,12 @@ export default async function Home({
             </form>
           </div>
         </Panel>
+        </>
+        ) : null}
 
-        <Panel title="Prompt Pack" subtitle={latestPrompt?.prompt_version || "No runtime prompts"}>
+        {activeTab === "evidence" ? (
+        <>
+        <Panel title="问题集" subtitle={latestPrompt?.prompt_version || "无运行时问题"}>
           {data.prompts.records.length ? (
             <div className="stack">
               <dl className="facts">
@@ -12612,7 +12683,7 @@ export default async function Home({
                 <Fact label="Prompt CSV" value={paths.promptsExport} />
               </dl>
               <div className="linkRow">
-                <a href={promptsExportUrl}>Download prompt CSV</a>
+                <a href={promptsExportUrl}>下载问题 CSV</a>
               </div>
               <ul className="plainList promptList">
                 {data.prompts.records.slice(0, 5).map((prompt) => (
@@ -12630,11 +12701,11 @@ export default async function Home({
               <form action={importRuntimePromptsCsv} className="promptImportForm">
                 <input type="hidden" name="project_id" value={selectedProjectId || ""} />
                 <div className="formHeader">
-                  <h3>Prompt CSV Import</h3>
+                  <h3>问题 CSV 导入</h3>
                   <small>text,intent_type,city,priority,intent_weight</small>
                 </div>
                 <label className="wideField">
-                  <span>CSV rows</span>
+                  <span>CSV 行</span>
                   <textarea
                     name="csv_content"
                     defaultValue={
@@ -12646,13 +12717,13 @@ export default async function Home({
                   />
                 </label>
                 <button className="actionButton" type="submit" disabled={!selectedProjectId}>
-                  Import prompts
+                  导入问题
                 </button>
               </form>
               <form action={importRuntimePromptsFile} className="promptImportForm">
                 <input type="hidden" name="project_id" value={selectedProjectId || ""} />
                 <div className="formHeader">
-                  <h3>Prompt File Import</h3>
+                  <h3>问题文件导入</h3>
                   <small>.csv or .xlsx · first worksheet</small>
                 </div>
                 <label>
@@ -12664,13 +12735,13 @@ export default async function Home({
                   />
                 </label>
                 <button className="actionButton" type="submit" disabled={!selectedProjectId}>
-                  Import file
+                  导入文件
                 </button>
               </form>
               <div className="detailBlock">
                 <div className="sectionHeader">
-                  <h3>Prompt Import History</h3>
-                  <small>Import query {paths.promptImports}</small>
+                  <h3>问题导入历史</h3>
+                  <small>导入查询 {paths.promptImports}</small>
                 </div>
                 {data.promptImports.records.length ? (
                   <ul className="plainList">
@@ -12696,13 +12767,13 @@ export default async function Home({
                     })}
                   </ul>
                 ) : (
-                  <p className="mutedText">No prompt imports recorded for this project.</p>
+                  <p className="mutedText">该项目还没有问题导入记录。</p>
                 )}
               </div>
               <form action={submitManualBackfill} className="manualBackfillForm">
                 <input type="hidden" name="prompt_question_id" value={latestPrompt?.id || ""} />
                 <div className="formHeader">
-                  <h3>Manual Backfill</h3>
+                  <h3>人工回填</h3>
                   <small>{latestPrompt ? shortId(latestPrompt.id) : "no prompt"}</small>
                 </div>
                 <label>
@@ -12764,18 +12835,18 @@ export default async function Home({
                 </label>
                 <input type="hidden" name="submitted_by" value="runtime-console" />
                 <button className="actionButton" type="submit" disabled={!latestPrompt}>
-                  Save backfill
+                  保存回填
                 </button>
               </form>
               <form action={importManualBackfillCsv} className="manualBackfillForm">
                 <input type="hidden" name="project_id" value={selectedProjectId || ""} />
                 <input type="hidden" name="submitted_by" value="runtime-console" />
                 <div className="formHeader">
-                  <h3>Manual Backfill CSV</h3>
+                  <h3>人工回填 CSV</h3>
                   <small>manual_backfill_csv_import_v1</small>
                 </div>
                 <label className="wideField">
-                  <span>CSV rows</span>
+                  <span>CSV 行</span>
                   <textarea
                     name="csv_content"
                     defaultValue={
@@ -12791,15 +12862,15 @@ export default async function Home({
                   />
                 </label>
                 <label>
-                  <span>Max rows</span>
+                  <span>最大行数</span>
                   <input name="max_rows" defaultValue="120" />
                 </label>
                 <label>
-                  <span>Import note</span>
+                  <span>导入说明</span>
                   <input name="notes" defaultValue="Batch manual backfill import for auditable Google spike coverage" />
                 </label>
                 <button className="actionButton" type="submit" disabled={!selectedProjectId || !latestPrompt}>
-                  Import backfill CSV
+                  导入回填 CSV
                 </button>
               </form>
             </div>
@@ -12809,7 +12880,7 @@ export default async function Home({
         </Panel>
 
         <Panel
-          title="Question Detail"
+          title="问题覆盖详情"
           subtitle={`${coveredQuestionCount}/${questionDetailRows.length} covered · evidence window ${data.questionEvidence.records.length}/${data.questionEvidence.total_count}`}
           wide
         >
@@ -12865,7 +12936,7 @@ export default async function Home({
                         <Fact label="Run status mix" value={formatCounts(row.statusCounts)} />
                         <Fact label="Cost" value={num(row.totalCost)} />
                         <Fact label="Avg duration" value={`${row.averageDurationMs} ms`} />
-                        <Fact label="Audit events" value={row.auditCount} />
+                        <Fact label="审计事件" value={row.auditCount} />
                       </dl>
                       {row.evidenceRuns.length ? (
                         <ul className="plainList questionEvidenceList">
@@ -12898,7 +12969,7 @@ export default async function Home({
           )}
         </Panel>
 
-        <Panel title="Latest Evidence" subtitle={latestEvidence?.answer_run.platform || "No runtime evidence"}>
+        <Panel title="最新证据" subtitle={latestEvidence?.answer_run.platform || "无运行时证据"}>
           {latestEvidence ? (
             <div className="stack">
               <p className="prompt">{latestEvidence.answer_run.prompt_text}</p>
@@ -12906,7 +12977,7 @@ export default async function Home({
                 <Fact label="Surface" value={latestEvidence.answer_run.surface} />
                 <Fact label="City" value={latestEvidence.answer_run.city} />
                 <Fact label="Intent" value={latestEvidence.answer_run.prompt_intent_type || "unknown"} />
-                <Fact label="Citations" value={latestEvidence.citations.length} />
+                <Fact label="引用" value={latestEvidence.citations.length} />
                 <Fact label="Assets" value={latestEvidence.evidence_assets.length} />
               </dl>
             </div>
@@ -12916,14 +12987,14 @@ export default async function Home({
         </Panel>
 
         <Panel
-          title="Human Review Trail"
+          title="人工复核轨迹"
           subtitle={`${data.humanReviewQueue.total_count} queue items · ${data.humanReviews.total_count} review records`}
           wide
         >
           <div className="humanReviewGrid">
             <form action={submitHumanReview} className="humanReviewForm">
               <div className="formHeader">
-                <h3>Record Review</h3>
+                <h3>记录复核</h3>
                 <small>{reviewTarget ? `${reviewTarget.targetType} · ${shortId(reviewTarget.targetId)}` : "No target"}</small>
               </div>
               <input type="hidden" name="project_id" value={selectedProjectId || ""} />
@@ -12969,11 +13040,11 @@ export default async function Home({
                 />
               </label>
               <button className="actionButton" type="submit" disabled={!selectedProjectId || !reviewTarget}>
-                Record review
+                记录复核
               </button>
             </form>
             <div className="humanReviewList">
-              <h3>Review Queue</h3>
+              <h3>复核队列</h3>
               {data.humanReviewQueue.records.length ? (
                 <ul className="plainList">
                   {data.humanReviewQueue.records.map((item) => (
@@ -12992,9 +13063,9 @@ export default async function Home({
                   ))}
                 </ul>
               ) : (
-                <small>No human review queue items.</small>
+                <small>没有人工复核队列项。</small>
               )}
-              <h3>Recent Reviews</h3>
+              <h3>最近复核</h3>
               {data.humanReviews.records.length ? (
                 <ul className="plainList">
                   {data.humanReviews.records.map((item) => (
@@ -13014,7 +13085,7 @@ export default async function Home({
                   ))}
                 </ul>
               ) : (
-                <small>No human review records yet.</small>
+                <small>还没有人工复核记录。</small>
               )}
               <dl className="facts">
                 <Fact label="Review query" value={paths.humanReviews} />
@@ -13024,12 +13095,12 @@ export default async function Home({
                 <Fact label="Audit event" value="human_review_recorded" />
                 <Fact label="Draft projection" value="content_draft_review_status_updated" />
               </dl>
-              <a href={humanReviewsExportUrl}>Download review CSV</a>
+              <a href={humanReviewsExportUrl}>下载复核 CSV</a>
             </div>
           </div>
         </Panel>
 
-        <Panel title="Collection Run Quality" subtitle={latestCollectionRun?.collection_run.run_type || "No collection run"}>
+        <Panel title="采集批次质量" subtitle={latestCollectionRun?.collection_run.run_type || "无采集批次"}>
           {latestCollectionRun ? (
             <div className="stack">
               <dl className="facts contributionFacts">
@@ -13037,7 +13108,7 @@ export default async function Home({
                 <Fact label="Collection CSV" value={paths.collectionRunsExport} />
               </dl>
               <div className="linkRow">
-                <a href={collectionRunsExportUrl}>Download collection CSV</a>
+                <a href={collectionRunsExportUrl}>下载采集批次 CSV</a>
               </div>
               <dl className="facts">
                 <Fact label="Planned" value={latestCollectionRun.collection_run.planned_runs || 0} />
@@ -13073,8 +13144,12 @@ export default async function Home({
             <EmptyState />
           )}
         </Panel>
+        </>
+        ) : null}
 
-        <Panel title="Score Explanation" subtitle={latestScore?.snapshot.formula_version || "No score"}>
+        {activeTab === "score" ? (
+        <>
+        <Panel title="评分解释" subtitle={latestScore?.snapshot.formula_version || "无评分"}>
           {latestScore ? (
             <div className="stack">
               <div className="scoreRow">
@@ -13097,7 +13172,7 @@ export default async function Home({
           )}
         </Panel>
 
-        <Panel title="Citation Graph" subtitle={`${latestGraph?.nodes.length || 0} nodes`}>
+        <Panel title="信源图谱" subtitle={`${latestGraph?.nodes.length || 0} nodes`}>
           {latestGraph ? (
             <div className="stack">
               <dl className="facts">
@@ -13117,8 +13192,12 @@ export default async function Home({
             <EmptyState />
           )}
         </Panel>
+        </>
+        ) : null}
 
-        <Panel title="Report Snapshot" subtitle={latestReport?.report_export.report_version || "No report"}>
+        {activeTab === "report" ? (
+        <>
+        <Panel title="报告快照" subtitle={latestReport?.report_export.report_version || "无报告"}>
           {latestReport ? (
             <div className="stack" id={anchorId("report-export", latestReport.report_export.id)}>
               <dl className="facts">
@@ -13130,12 +13209,12 @@ export default async function Home({
                 <Fact label="Frozen CSV URL" value={latestReport.report_export.csv_url || "pending object store"} />
               </dl>
               <div className="downloadRow">
-                {reportMarkdownUrl ? <a href={reportMarkdownUrl}>Download Markdown</a> : null}
-                {reportCsvUrl ? <a href={reportCsvUrl}>Download CSV</a> : null}
-                {reportPdfUrl ? <a href={reportPdfUrl}>Download PDF</a> : null}
-                {reportWhiteLabelPdfUrl ? <a href={reportWhiteLabelPdfUrl}>White-label PDF</a> : null}
-                {reportSignedPdfUrl ? <a href={reportSignedPdfUrl}>Signed PDF URL</a> : null}
-                {reportSignedWhiteLabelPdfUrl ? <a href={reportSignedWhiteLabelPdfUrl}>Signed white-label URL</a> : null}
+                {reportMarkdownUrl ? <a href={reportMarkdownUrl}>下载 Markdown</a> : null}
+                {reportCsvUrl ? <a href={reportCsvUrl}>下载 CSV</a> : null}
+                {reportPdfUrl ? <a href={reportPdfUrl}>下载 PDF</a> : null}
+                {reportWhiteLabelPdfUrl ? <a href={reportWhiteLabelPdfUrl}>白标 PDF</a> : null}
+                {reportSignedPdfUrl ? <a href={reportSignedPdfUrl}>签名 PDF URL</a> : null}
+                {reportSignedWhiteLabelPdfUrl ? <a href={reportSignedWhiteLabelPdfUrl}>签名白标 URL</a> : null}
               </div>
               <div className="traceLinkRow" aria-label="report trace links">
                 <NodeLink label="Trace bundle" kind="traceability-map" value="runtime" />
@@ -13148,7 +13227,7 @@ export default async function Home({
                 ) : null}
               </div>
               <dl className="facts">
-                <Fact label="Artifact filters" value={reportCsvUrl?.replace(displayUrl, "") || "No report artifact"} />
+                <Fact label="Artifact filters" value={reportCsvUrl?.replace(displayUrl, "") || "无报告 artifact"} />
                 <Fact
                   label="White-label template"
                   value={reportWhiteLabelPdfUrl?.replace(displayUrl, "") || "No white-label artifact"}
@@ -13183,7 +13262,7 @@ export default async function Home({
                   </select>
                 </label>
                 <button className="actionButton compactAction" type="submit" disabled={!selectedProjectId}>
-                  Queue export
+                  加入导出队列
                 </button>
               </form>
             </div>
@@ -13192,14 +13271,14 @@ export default async function Home({
           )}
         </Panel>
 
-        <Panel title="Report History" subtitle={`${data.reports.total_count} stored exports`} wide>
+        <Panel title="报告历史" subtitle={`${data.reports.total_count} stored exports`} wide>
           {data.reports.records.length ? (
             <div className="reportHistory">
               <dl className="facts contributionFacts">
                 <Fact label="Report management CSV" value={paths.reportManagementEventsExport} />
               </dl>
               <div className="downloadRow">
-                <a href={paths.reportManagementEventsExport}>Download report management CSV</a>
+                <a href={paths.reportManagementEventsExport}>下载报告管理 CSV</a>
               </div>
               {data.reports.records.map((report) => {
                 const artifactBase = `${displayUrl}/v1/reports/runtime/${report.report_export.id}/artifact`;
@@ -13236,17 +13315,17 @@ export default async function Home({
                       <Fact label="Sample size" value={report.report_export.sample_size} />
                       <Fact label="Evidence links" value={report.answer_runs.length} />
                       <Fact label="Score snapshots" value={report.score_snapshots.length} />
-                      <Fact label="Audit events" value={report.audit_events.length} />
-                      <Fact label="Final score" value={num(scoreSnapshot?.final_score)} />
+                      <Fact label="审计事件" value={report.audit_events.length} />
+                      <Fact label="最终分数" value={num(scoreSnapshot?.final_score)} />
                       <Fact label="Method hash" value={shortId(report.report_export.methodology_hash)} />
                     </dl>
                     <div className="downloadRow reportHistoryDownloads">
                       {markdownUrl ? <a href={markdownUrl}>Markdown</a> : null}
                       {csvUrl ? <a href={csvUrl}>CSV</a> : null}
                       {pdfUrl ? <a href={pdfUrl}>PDF</a> : null}
-                      {whiteLabelPdfUrl ? <a href={whiteLabelPdfUrl}>White-label PDF</a> : null}
-                      {signedPdfUrl ? <a href={signedPdfUrl}>Signed PDF URL</a> : null}
-                      {signedWhiteLabelPdfUrl ? <a href={signedWhiteLabelPdfUrl}>Signed white-label URL</a> : null}
+                      {whiteLabelPdfUrl ? <a href={whiteLabelPdfUrl}>白标 PDF</a> : null}
+                      {signedPdfUrl ? <a href={signedPdfUrl}>签名 PDF URL</a> : null}
+                      {signedWhiteLabelPdfUrl ? <a href={signedWhiteLabelPdfUrl}>签名白标 URL</a> : null}
                     </div>
                     <form action={recordRuntimeReportManagementEvent} className="reportManagementForm">
                       <input type="hidden" name="report_export_id" value={report.report_export.id} />
@@ -13264,13 +13343,13 @@ export default async function Home({
                         <input name="note" defaultValue="Report history management update" />
                       </label>
                       <button className="actionButton compactAction" type="submit">
-                        Record status
+                        记录状态
                       </button>
                     </form>
                     <ul className="plainList">
                       <li>
                         <strong>{managementEvent?.event_type || "management status pending"}</strong>
-                        <span>{managementEvent?.reason || "No report management event recorded"}</span>
+                        <span>{managementEvent?.reason || "无报告 management event recorded"}</span>
                         <small>{managementEvent?.actor_id || "runtime-console"} · {managementEvent?.method_version || "report_export_management_v1"}</small>
                       </li>
                       <li>
@@ -13313,7 +13392,7 @@ export default async function Home({
           )}
         </Panel>
 
-        <Panel title="Report Export Queue" subtitle={`${data.reportJobStats.total_count} tracked jobs`} wide>
+        <Panel title="报告导出队列" subtitle={`${data.reportJobStats.total_count} tracked jobs`} wide>
           <div className="metricGrid queueStatsGrid">
             <Metric label="Queued" value={String(data.reportJobStats.status_counts.queued || 0)} />
             <Metric label="Running" value={String(data.reportJobStats.status_counts.running || 0)} />
@@ -13328,7 +13407,7 @@ export default async function Home({
             <Fact label="Queue Stats API" value={paths.reportJobStats} />
           </dl>
           <div className="downloadRow">
-            <a href={paths.reportJobsExport}>Download report jobs CSV</a>
+            <a href={paths.reportJobsExport}>下载报告任务 CSV</a>
           </div>
           {data.reportJobs.records.length ? (
             <div className="reportHistory">
@@ -13378,7 +13457,7 @@ export default async function Home({
                         <input name="reason" defaultValue="Update queued report export job" />
                       </label>
                       <button className="actionButton compactAction" type="submit">
-                        Update job
+                        更新任务
                       </button>
                     </form>
                     <ul className="plainList">
@@ -13409,9 +13488,13 @@ export default async function Home({
             <EmptyState />
           )}
         </Panel>
+        </>
+        ) : null}
 
+        {activeTab === "notifications" ? (
+        <>
         <Panel
-          title="Runtime Notifications"
+          title="运行时通知"
           subtitle={`${data.notifications.unread_count} unread notifications · ${data.notificationDeliveries.total_count} deliveries · ${data.notificationEmailSuppressions.total_count} project suppressions`}
           wide
         >
@@ -13496,7 +13579,7 @@ export default async function Home({
               </select>
             </label>
             <button className="actionButton compactAction" type="submit" disabled={!selectedProjectId}>
-              Save subscription
+              保存订阅
             </button>
           </form>
           <dl className="facts contributionFacts">
@@ -13518,10 +13601,10 @@ export default async function Home({
             <Fact label="Unsubscribe API" value={paths.notificationEmailPreferenceUnsubscribe} />
           </dl>
           <div className="downloadRow">
-            <a href={paths.notificationsExport}>Download notification CSV</a>
-            <a href={paths.notificationSubscriptionsExport}>Download subscription CSV</a>
-            <a href={paths.notificationDeliveriesExport}>Download delivery CSV</a>
-            <a href={paths.notificationEmailSuppressionsExport}>Download suppression CSV</a>
+            <a href={paths.notificationsExport}>下载通知 CSV</a>
+            <a href={paths.notificationSubscriptionsExport}>下载订阅 CSV</a>
+            <a href={paths.notificationDeliveriesExport}>下载投递 CSV</a>
+            <a href={paths.notificationEmailSuppressionsExport}>下载抑制 CSV</a>
           </div>
           <form action={saveRuntimeNotificationEmailSuppression} className="reportManagementForm">
             <input type="hidden" name="project_id" value={selectedProjectId || ""} />
@@ -13529,7 +13612,7 @@ export default async function Home({
             <input
               type="hidden"
               name="reason"
-              value="Save project email suppression from runtime console"
+              value="保存项目 email suppression from runtime console"
             />
             <label>
               <span>Project recipient hash</span>
@@ -13560,7 +13643,7 @@ export default async function Home({
               <input name="note" placeholder="project-level bounce or complaint review" />
             </label>
             <button className="actionButton compactAction" type="submit" disabled={!selectedProjectId}>
-              Save project suppression
+              保存项目抑制项
             </button>
           </form>
           {data.notificationEmailSuppressions.records.length ? (
@@ -13568,7 +13651,7 @@ export default async function Home({
               {data.notificationEmailSuppressions.records.map((record) => (
                 <li key={record.suppression.id}>
                   <strong>
-                    Project email suppression · {record.suppression.status} · {record.suppression.source}
+                    项目邮件抑制 · {record.suppression.status} · {record.suppression.source}
                   </strong>
                   <span>
                     recipient hash {shortId(record.suppression.recipient_hash)} · source{" "}
@@ -13672,7 +13755,7 @@ export default async function Home({
                         value="Record runtime notification email feedback from console"
                       />
                       <label>
-                        <span>Email feedback</span>
+                        <span>邮件反馈</span>
                         <select name="feedback_type" defaultValue="bounce">
                           <option value="bounce">bounce</option>
                           <option value="complaint">complaint</option>
@@ -13705,7 +13788,7 @@ export default async function Home({
                         <input name="note" placeholder="manual bounce review" />
                       </label>
                       <button className="actionButton compactAction" type="submit">
-                        Record feedback
+                        记录反馈
                       </button>
                       <small>
                         /v1/runtime-notification-deliveries/{record.delivery.id}/email-feedback ·{" "}
@@ -13722,7 +13805,7 @@ export default async function Home({
               {data.notificationEmailFeedback.records.map((record) => (
                 <li key={record.feedback_event.id}>
                   <strong>
-                    Email feedback · {record.feedback_event.feedback_type} ·{" "}
+                    邮件反馈 · {record.feedback_event.feedback_type} ·{" "}
                     {record.feedback_event.provider || "provider unknown"}
                   </strong>
                   <span>
@@ -13746,7 +13829,7 @@ export default async function Home({
                           value={`apply ${record.feedback_event.feedback_type} feedback suppression`}
                         />
                         <button className="actionButton compactAction" type="submit">
-                          Apply suppression
+                          应用抑制
                         </button>
                         <small>
                           /v1/runtime-notification-email-feedback-events/{record.feedback_event.id}/suppress-recipient ·{" "}
@@ -13762,7 +13845,7 @@ export default async function Home({
                           value={`apply ${record.feedback_event.feedback_type} feedback project suppression`}
                         />
                         <button className="actionButton compactAction" type="submit">
-                          Apply project suppression
+                          应用项目抑制
                         </button>
                         <small>
                           /v1/runtime-notification-email-feedback-events/{record.feedback_event.id}/project-suppression ·{" "}
@@ -13776,16 +13859,20 @@ export default async function Home({
             </ul>
           ) : null}
         </Panel>
+        </>
+        ) : null}
 
+        {activeTab === "report" ? (
+        <>
         <Panel
-          title="Report Method & Evidence Appendix"
-          subtitle={latestReport?.report_export.methodology_hash || "No frozen methodology"}
+          title="报告方法与证据附录"
+          subtitle={latestReport?.report_export.methodology_hash || "无冻结方法说明"}
           wide
         >
           {latestReport ? (
             <div className="reportDetail">
               <section className="reportSection reportMethod">
-                <h3>Frozen Methodology</h3>
+                <h3>冻结方法说明</h3>
                 <dl className="facts">
                   <Fact label="Report type" value={latestReport.report_export.report_type || "unknown"} />
                   <Fact label="Market" value={latestReport.report_export.market_code || "unknown"} />
@@ -13801,7 +13888,7 @@ export default async function Home({
               </section>
 
               <section className="reportSection">
-                <h3>Method Disclosure</h3>
+                <h3>方法披露</h3>
                 <dl className="facts">
                   <Fact label="Google coverage" value={reportGoogleCoverage} />
                   <Fact label="Google gate" value={reportGoogleGateStatus} />
@@ -13838,21 +13925,21 @@ export default async function Home({
                   API-vs-browser fidelity is frozen as a runtime check and audited with api_browser_fidelity_checked.
                 </small>
                 <div className="linkRow">
-                  <a href={fidelityExportUrl}>Download fidelity CSV</a>
+                  <a href={fidelityExportUrl}>下载一致性检查 CSV</a>
                 </div>
               </section>
 
               <section className="reportSection">
-                <h3>Score Snapshot</h3>
+                <h3>评分快照</h3>
                 <dl className="facts">
-                  <Fact label="Final score" value={num(latestReportScore?.final_score)} />
+                  <Fact label="最终分数" value={num(latestReportScore?.final_score)} />
                   <Fact label="Trigger rate" value={pct(latestReportScore?.trigger_rate)} />
                   <Fact label="Mention rate" value={pct(latestReportScore?.mention_rate)} />
                   <Fact label="Recommendation" value={pct(latestReportScore?.recommendation_rate)} />
                   <Fact label="Dispersion" value={num(latestReportScore?.dispersion)} />
                   <Fact label="Snapshot formula" value={latestReportScore?.formula_version || "unknown"} />
                 </dl>
-                <h3>Platform Weights</h3>
+                <h3>平台权重</h3>
                 <ul className="plainList">
                   {Object.entries(reportPlatformWeights).map(([platform, weight]) => (
                     <li key={platform}>
@@ -13864,7 +13951,7 @@ export default async function Home({
               </section>
 
               <section className="reportSection">
-                <h3>Evidence Appendix</h3>
+                <h3>证据附录</h3>
                 <ul className="plainList">
                   {latestReport.answer_runs.slice(0, 8).map((run) => (
                     <li key={run.id}>
@@ -13883,13 +13970,13 @@ export default async function Home({
               </section>
 
               <section className="reportSection">
-                <h3>Citation & Audit Summary</h3>
+                <h3>引用与审计摘要</h3>
                 <dl className="facts">
                   <Fact label="Graph nodes" value={latestReportGraph?.nodes.length || 0} />
                   <Fact label="Graph links" value={latestReportGraph?.evidence_links.length || 0} />
-                  <Fact label="Source gaps" value={latestReportGraph?.source_gaps.length || 0} />
+                  <Fact label="信源缺口" value={latestReportGraph?.source_gaps.length || 0} />
                   <Fact label="Benchmarks" value={latestReportGraph?.competitor_benchmarks.length || 0} />
-                  <Fact label="Audit events" value={latestReport.audit_events.length} />
+                  <Fact label="审计事件" value={latestReport.audit_events.length} />
                 </dl>
                 <ul className="plainList">
                   {latestReport.audit_events.slice(0, 5).map((event, index) => (
@@ -13905,14 +13992,18 @@ export default async function Home({
             <EmptyState />
           )}
         </Panel>
+        </>
+        ) : null}
 
-        <Panel title="Action & Retest" subtitle={latestAction?.retest_comparisons[0]?.trend || "No action plan"}>
+        {activeTab === "action" ? (
+        <>
+        <Panel title="行动与复测" subtitle={latestAction?.retest_comparisons[0]?.trend || "无行动计划"}>
           {latestAction ? (
             <div className="stack">
               <dl className="facts">
                 <Fact label="Retest days" value={latestAction.retest_schedule.offsets_days.join("/")} />
                 <Fact label="Score delta" value={num(latestAction.retest_comparisons[0]?.score_delta)} />
-                <Fact label="Open actions" value={latestAction.action_recommendations.length} />
+                <Fact label="待办行动" value={latestAction.action_recommendations.length} />
                 <Fact label="Evidence runs" value={latestAction.answer_runs.length} />
               </dl>
               <ul className="plainList">
@@ -13930,7 +14021,7 @@ export default async function Home({
         </Panel>
 
         <Panel
-          title="Runtime Alerts"
+          title="运行时告警"
           subtitle={`${data.alerts.total_count} active evidence-derived alerts`}
           wide
         >
@@ -13956,7 +14047,7 @@ export default async function Home({
               <span>Include resolved or snoozed</span>
             </label>
             <button className="actionButton compactAction" type="submit" disabled={!selectedProjectId}>
-              Queue alert notifications
+              加入告警通知队列
             </button>
           </form>
           {data.alerts.records.length ? (
@@ -14028,7 +14119,7 @@ export default async function Home({
                     </select>
                     <input name="updated_by" defaultValue="runtime-console" />
                     <input name="note" placeholder="Note" />
-                    <button type="submit">Record alert event</button>
+                    <button type="submit">记录告警事件</button>
                   </form>
                   <small>
                     {item.audit_events[0]?.event_type || "derived alert"} ·{" "}
@@ -14044,22 +14135,26 @@ export default async function Home({
                 <Fact label="Method" value="runtime_alerts_v1" />
                 <Fact label="Evidence refs" value="score/source_gap/benchmark/action" />
               </dl>
-              <a href={runtimeAlertsExportUrl}>Download alert CSV</a>
+              <a href={runtimeAlertsExportUrl}>下载告警 CSV</a>
             </div>
           ) : (
             <EmptyState />
           )}
         </Panel>
+        </>
+        ) : null}
 
+        {activeTab === "action" ? (
+        <>
         <Panel
-          title="Action Plan & Retest Detail"
-          subtitle={latestAction?.retest_schedule.prompt_version || "No retest schedule"}
+          title="行动计划与复测详情"
+          subtitle={latestAction?.retest_schedule.prompt_version || "无复测计划"}
           wide
         >
           {latestAction ? (
             <div className="actionDetail">
               <section className="actionSection actionSchedule">
-                <h3>Retest Schedule</h3>
+                <h3>复测计划</h3>
                 <dl className="facts">
                   <Fact label="Schedule ID" value={shortId(latestAction.retest_schedule.id)} />
                   <Fact label="Prompt version" value={latestAction.retest_schedule.prompt_version} />
@@ -14079,7 +14174,7 @@ export default async function Home({
               </section>
 
               <section className="actionSection">
-                <h3>Action Recommendations</h3>
+                <h3>行动建议</h3>
                 <div className="actionCards">
                   {latestAction.action_recommendations.map((action) => (
                     <article
@@ -14110,7 +14205,7 @@ export default async function Home({
               </section>
 
               <section className="actionSection">
-                <h3>Retest Comparison</h3>
+                <h3>复测对比</h3>
                 <dl className="facts">
                   <Fact label="Trend" value={latestRetestComparison?.trend || "unknown"} />
                   <Fact label="Baseline score" value={num(latestRetestComparison?.baseline_score)} />
@@ -14121,11 +14216,11 @@ export default async function Home({
                   <Fact label="Compared at" value={dateText(latestRetestComparison?.created_at)} />
                   <Fact label="Action Plan CSV" value={paths.actionsExport} />
                 </dl>
-                <a href={actionPlansExportUrl}>Download action plan CSV</a>
+                <a href={actionPlansExportUrl}>下载行动计划 CSV</a>
               </section>
 
               <section className="actionSection retestSchedulerPlan">
-                <h3>AU Retest Scheduler Plan</h3>
+                <h3>AU 复测调度计划</h3>
                 <dl className="facts contributionFacts">
                   <Fact label="Plan status" value={retestSchedulerPlan?.status || "unknown"} />
                   <Fact label="Ready" value={boolText(retestSchedulerPlan?.retest_scheduler_plan_ready)} />
@@ -14210,7 +14305,7 @@ export default async function Home({
               </section>
 
               <section className="actionSection">
-                <h3>Evidence Runs & Audit</h3>
+                <h3>证据运行与审计</h3>
                 <ul className="plainList">
                   {latestAction.answer_runs.slice(0, 6).map((run) => (
                     <li key={run.id}>
@@ -14226,7 +14321,7 @@ export default async function Home({
                     </li>
                   ))}
                 </ul>
-                <h3>Audit Trail</h3>
+                <h3>审计轨迹</h3>
                 <ul className="plainList">
                   {latestAction.audit_events.map((event, index) => (
                     <li key={`${event.event_type}-${index}`}>
@@ -14242,7 +14337,7 @@ export default async function Home({
           )}
         </Panel>
 
-        <Panel title="Content Engine" subtitle={`${latestContent?.integration_connectors.length || 0} connectors`}>
+        <Panel title="内容引擎" subtitle={`${latestContent?.integration_connectors.length || 0} connectors`}>
           {latestContent ? (
             <div className="stack">
               <dl className="facts">
@@ -14265,20 +14360,20 @@ export default async function Home({
         </Panel>
 
         <Panel
-          title="Content Engine Detail"
+          title="内容引擎详情"
           subtitle={`${latestContent?.content_drafts.length || 0} evidence-backed drafts`}
           wide
         >
           {latestContent ? (
             <div className="contentDetail">
               <section className="contentSection">
-                <h3>Localized Knowledge Facts</h3>
+                <h3>本地化知识事实</h3>
                 <dl className="facts contributionFacts">
                   <Fact label="Content query" value={paths.content} />
                   <Fact label="Content CSV" value={paths.contentExport} />
                 </dl>
                 <div className="linkRow">
-                  <a href={contentEnginesExportUrl}>Download content CSV</a>
+                  <a href={contentEnginesExportUrl}>下载内容 CSV</a>
                 </div>
                 <ul className="plainList">
                   {latestContent.knowledge_facts.slice(0, 8).map((fact) => (
@@ -14299,7 +14394,7 @@ export default async function Home({
               </section>
 
               <section className="contentSection">
-                <h3>pgvector Knowledge Search</h3>
+                <h3>pgvector 知识检索</h3>
                 {data.knowledgeSearch ? (
                   <div className="knowledgeSearch">
                     <dl className="facts contributionFacts">
@@ -14342,7 +14437,7 @@ export default async function Home({
               </section>
 
               <section className="contentSection">
-                <h3>Integration Connectors</h3>
+                <h3>集成连接器</h3>
                 <div className="connectorGrid">
                   {latestContent.integration_connectors.map((connector) => (
                     <article className="connectorItem" key={connector.provider}>
@@ -14360,7 +14455,7 @@ export default async function Home({
               </section>
 
               <section className="contentSection contentDrafts">
-                <h3>Content Drafts</h3>
+                <h3>内容草稿</h3>
                 <div className="contentDraftGrid">
                   {latestContent.content_drafts.map((item) => (
                     <article
@@ -14382,13 +14477,13 @@ export default async function Home({
                         <Fact label="City" value={item.draft.target_city || "unknown"} />
                         <Fact label="Platform" value={item.draft.target_platform || "unknown"} />
                         <Fact label="Source type" value={item.draft.target_source_type || "unknown"} />
-                        <Fact label="Source gaps" value={(item.draft.source_gap_types || []).join(", ") || "none"} />
+                        <Fact label="信源缺口" value={(item.draft.source_gap_types || []).join(", ") || "none"} />
                         <Fact label="Facts used" value={item.knowledge_facts.length} />
                         <Fact label="Evidence runs" value={item.answer_runs.length} />
                         <Fact label="Manual records" value={item.manual_distribution_records.length} />
                       </dl>
                       <div className="contentBinding">
-                        <h3>Target Questions</h3>
+                        <h3>目标问题</h3>
                         <ul className="plainList">
                           {item.target_questions.slice(0, 3).map((question, index) => (
                             <li key={`${item.draft.id}-question-${index}`}>
@@ -14398,7 +14493,7 @@ export default async function Home({
                             </li>
                           ))}
                         </ul>
-                        <h3>Evidence Runs</h3>
+                        <h3>证据运行</h3>
                         <ul className="plainList">
                           {item.answer_runs.slice(0, 3).map((run) => (
                             <li key={run.id}>
@@ -14425,7 +14520,7 @@ export default async function Home({
                       ) : null}
                       {item.audit_events.length ? (
                         <small className="auditLine">
-                          Draft audit: {item.audit_events[0].event_type || "audit_event"} ·{" "}
+                          草稿审计：{item.audit_events[0].event_type || "audit_event"} ·{" "}
                           {item.audit_events[0].method_version || "no method version"} ·{" "}
                           {dateText(item.audit_events[0].created_at || undefined)}
                         </small>
@@ -14436,7 +14531,7 @@ export default async function Home({
               </section>
 
               <section className="contentSection">
-                <h3>Manual Distribution & Audit</h3>
+                <h3>人工分发与审计</h3>
                 <ul className="plainList">
                   {latestContent.manual_distribution_records.map((record, index) => (
                     <li key={`${record.platform}-${index}`}>
@@ -14448,7 +14543,7 @@ export default async function Home({
                     </li>
                   ))}
                 </ul>
-                <h3>Audit Trail</h3>
+                <h3>审计轨迹</h3>
                 <ul className="plainList">
                   {latestContent.audit_events.map((event, index) => (
                     <li key={`${event.event_type}-${index}`}>
@@ -14463,8 +14558,12 @@ export default async function Home({
             <EmptyState />
           )}
         </Panel>
+        </>
+        ) : null}
 
-        <Panel title="Evidence Runs" subtitle={`${data.evidence.total_count} stored runs · ${evidenceSort}`} wide>
+        {activeTab === "evidence" ? (
+        <>
+        <Panel title="证据运行" subtitle={`${data.evidence.total_count} stored runs · ${evidenceSort}`} wide>
           {data.evidence.records.length ? (
             <div className="evidenceGrid">
               {data.evidence.records.map((run) => (
@@ -14500,14 +14599,14 @@ export default async function Home({
                       <Fact label="Version" value={run.answer_run.collector_version || "unknown"} />
                       <Fact label="Cost" value={num(run.collection_cost?.total_cost)} />
                       <Fact label="Duration" value={`${run.collection_cost?.duration_ms || 0} ms`} />
-                      <Fact label="Citations" value={run.citations.length} />
+                      <Fact label="引用" value={run.citations.length} />
                       <Fact label="Assets" value={run.evidence_assets.length} />
                       <Fact label="Raw hash" value={run.raw_answer?.raw_payload_hash || "missing"} />
                       <Fact label="Audit" value={run.audit_events.length} />
                     </dl>
                     <div className="evidenceColumns">
                       <div>
-                        <h3>Citations</h3>
+                        <h3>引用</h3>
                         <ul className="plainList">
                           {run.citations.slice(0, 3).map((citation, index) => (
                             <li key={`${run.answer_run.id}-citation-${index}`}>
@@ -14519,7 +14618,7 @@ export default async function Home({
                         </ul>
                       </div>
                       <div>
-                        <h3>Assets & Audit</h3>
+                        <h3>素材与审计</h3>
                         <ul className="plainList">
                           {run.evidence_assets.slice(0, 2).map((asset, index) => (
                             <li key={`${run.answer_run.id}-asset-${index}`}>
@@ -14553,17 +14652,21 @@ export default async function Home({
             <EmptyState />
           )}
         </Panel>
+        </>
+        ) : null}
 
+        {activeTab === "score" ? (
+        <>
         <Panel
-          title="Score Contributions"
-          subtitle={latestScore?.snapshot.formula_version || "No score contribution package"}
+          title="评分贡献"
+          subtitle={latestScore?.snapshot.formula_version || "无评分 contribution package"}
           wide
         >
           {latestScore ? (
             <div className="scoreDetail" id={anchorId("score-snapshot", latestScore.snapshot.id || "latest")}>
               <div className="scoreSummary">
                 <div className="scoreTotal">
-                  <span>Final score</span>
+                  <span>最终分数</span>
                   <strong>{num(latestScore.snapshot.final_score)}</strong>
                 </div>
                 <dl className="facts">
@@ -14576,13 +14679,13 @@ export default async function Home({
                   <Fact label="Weight snapshot" value={latestScore.snapshot.component_weights_snapshot ? num(latestScoreWeightTotal) : "legacy"} />
                   <Fact label="Answer runs" value={latestScore.answer_runs.length} />
                   <Fact label="Parser agreement" value={parserAgreement(latestScore.answer_runs[0])} />
-                  <Fact label="Audit events" value={latestScore.audit_events.length} />
+                  <Fact label="审计事件" value={latestScore.audit_events.length} />
                   <Fact label="Score query" value={paths.scores} />
                   <Fact label="Score CSV" value={paths.scoresExport} />
                 </dl>
               </div>
               <div className="linkRow">
-                <a href={scoreSnapshotsExportUrl}>Download score CSV</a>
+                <a href={scoreSnapshotsExportUrl}>下载评分 CSV</a>
               </div>
               <div className="contributionGrid">
                 {latestScore.contributions.map((item) => (
@@ -14621,7 +14724,7 @@ export default async function Home({
                 ))}
               </div>
               <div className="scoreRuns">
-                <h3>Linked Answer Runs</h3>
+                <h3>关联回答运行</h3>
                 <ul className="plainList">
                   {latestScore.answer_runs.slice(0, 6).map((run) => (
                     <li key={run.answer_run.id}>
@@ -14649,7 +14752,7 @@ export default async function Home({
         </Panel>
 
         <Panel
-          title="Citation Graph & Competitors"
+          title="信源图谱与竞品"
           subtitle={`${latestGraph?.nodes.length || 0} sources · ${latestGraph?.competitor_benchmarks.length || 0} competitors`}
           wide
         >
@@ -14660,12 +14763,12 @@ export default async function Home({
                 <Fact label="Graph CSV" value={paths.graphsExport} />
               </dl>
               <div className="linkRow">
-                <a href={citationGraphsExportUrl}>Download graph CSV</a>
+                <a href={citationGraphsExportUrl}>下载图谱 CSV</a>
               </div>
               <CitationGraphMap graph={latestGraph} />
               <div className="graphColumns">
                 <section className="graphSection">
-                  <h3>Source Nodes</h3>
+                  <h3>信源节点</h3>
                   <ul className="plainList">
                     {latestGraph.nodes.slice(0, 8).map((item) => (
                       <li id={anchorId("source-node", item.node.id)} key={item.node.id}>
@@ -14689,7 +14792,7 @@ export default async function Home({
                   </ul>
                 </section>
                 <section className="graphSection">
-                  <h3>Source Gaps</h3>
+                  <h3>信源缺口</h3>
                   <ul className="plainList">
                     {latestGraph.source_gaps.map((gap) => (
                       <li key={`${gap.source_type}-${gap.gap_type}`}>
@@ -14707,7 +14810,7 @@ export default async function Home({
               </div>
               <div className="graphColumns">
                 <section className="graphSection">
-                  <h3>Competitor Benchmarks</h3>
+                  <h3>竞品对标</h3>
                   <div className="benchmarkGrid">
                     {latestGraph.competitor_benchmarks.map((benchmark) => (
                       <article className="benchmarkItem" key={benchmark.competitor_name}>
@@ -14728,7 +14831,7 @@ export default async function Home({
                   </div>
                 </section>
                 <section className="graphSection">
-                  <h3>Graph Evidence Links</h3>
+                  <h3>图谱证据链接</h3>
                   <ul className="plainList">
                     {latestGraph.evidence_links.slice(0, 8).map((link, index) => (
                       <li key={`${link.source_graph_id}-${link.answer_run_id}-${index}`}>
@@ -14748,10 +14851,14 @@ export default async function Home({
             <EmptyState />
           )}
         </Panel>
+        </>
+        ) : null}
 
+        {activeTab === "traceability" ? (
+        <>
         <Panel
-          title="Traceability Detail"
-          subtitle={traceability?.report_exports[0]?.report_version || "No traceability bundle"}
+          title="溯源详情"
+          subtitle={traceability?.report_exports[0]?.report_version || "无溯源包"}
           wide
         >
           {traceability ? (
@@ -14760,9 +14867,9 @@ export default async function Home({
                 <p className="prompt">{traceability.traceability_bundle.explanation_summary}</p>
                 <div className="downloadRow">
                   <a href={`/traceability${selectedProjectId ? `?project_id=${encodeURIComponent(selectedProjectId)}` : ""}`}>
-                    Open traceability detail
+                    打开溯源详情
                   </a>
-                  <a href={traceabilityExportUrl}>Download traceability CSV</a>
+                  <a href={traceabilityExportUrl}>下载溯源 CSV</a>
                 </div>
                 <dl className="facts contributionFacts">
                   <Fact label="Traceability query" value={paths.traceability} />
@@ -14774,7 +14881,7 @@ export default async function Home({
                   <Fact label="Score parts" value={traceability.traceability_bundle.score_contribution_ids.length} />
                   <Fact label="Answer runs" value={traceability.traceability_bundle.answer_run_ids.length} />
                   <Fact label="Raw answers" value={traceability.traceability_bundle.raw_answer_ids.length} />
-                  <Fact label="Citations" value={traceability.traceability_bundle.answer_citation_ids.length} />
+                  <Fact label="引用" value={traceability.traceability_bundle.answer_citation_ids.length} />
                   <Fact label="Assets" value={traceability.traceability_bundle.evidence_asset_ids.length} />
                   <Fact label="Graph nodes" value={traceability.traceability_bundle.source_graph_ids.length} />
                   <Fact label="Actions" value={traceability.traceability_bundle.action_recommendation_ids.length} />
@@ -14788,7 +14895,7 @@ export default async function Home({
                 traceability={traceability}
               />
               <div className="traceColumn">
-                <h3>Evidence Links</h3>
+                <h3>证据链接</h3>
                 <ul className="plainList">
                   {traceability.evidence_links.slice(0, 5).map((link, index) => (
                     <li key={`${link.relation_type}-${index}`}>
@@ -14806,7 +14913,7 @@ export default async function Home({
                 </ul>
               </div>
               <div className="traceColumn">
-                <h3>Audit Trail</h3>
+                <h3>审计轨迹</h3>
                 <ul className="plainList">
                   {traceability.audit_events.slice(0, 5).map((event, index) => (
                     <li key={`${event.event_type}-${index}`}>
@@ -14819,7 +14926,7 @@ export default async function Home({
                 </ul>
               </div>
               <div className="traceDrilldown">
-                <h3>Node Drilldown</h3>
+                <h3>节点钻取</h3>
                 <div className="detailGrid">
                   <details open>
                     <summary>Score Components</summary>
@@ -14880,7 +14987,7 @@ export default async function Home({
                     </ul>
                   </details>
                   <details>
-                    <summary>Actions & Content Drafts</summary>
+                    <summary>Actions & 内容草稿</summary>
                     <ul className="nodeList">
                       {traceability.action_recommendations.slice(0, 4).map((action) => (
                         <li id={anchorId("action", action.id || action.title)} key={action.id || action.title}>
@@ -14921,6 +15028,8 @@ export default async function Home({
             <EmptyState />
           )}
         </Panel>
+        </>
+        ) : null}
       </section>
     </main>
   );
@@ -14939,21 +15048,47 @@ function Panel({
   title,
   subtitle,
   children,
-  wide = false
+  wide = false,
+  defaultOpen = true
 }: {
   title: string;
   subtitle: string;
   children: ReactNode;
   wide?: boolean;
+  defaultOpen?: boolean;
 }) {
   return (
-    <article className={wide ? "panel panelWide" : "panel"}>
-      <header className="panelHeader">
+    <details className={wide ? "panel panelWide collapsiblePanel" : "panel collapsiblePanel"} open={defaultOpen}>
+      <summary className="panelHeader">
         <h2>{title}</h2>
         <span>{subtitle}</span>
-      </header>
-      {children}
-    </article>
+      </summary>
+      <div className="panelBody">{children}</div>
+    </details>
+  );
+}
+
+function OpsCard({
+  title,
+  subtitle,
+  children,
+  className = "handoffDossier",
+  defaultOpen = false
+}: {
+  title: string;
+  subtitle?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <details className={`${className} opsCard`} open={defaultOpen}>
+      <summary className="launchRemediationHeader opsCardSummary">
+        <strong>{title}</strong>
+        {subtitle ? <span>{subtitle}</span> : null}
+      </summary>
+      <div className="opsCardBody">{children}</div>
+    </details>
   );
 }
 
@@ -14988,7 +15123,7 @@ function CitationGraphMap({ graph }: { graph: CitationGraph }) {
   return (
     <section className="graphSection graphMapPanel" aria-label="citation graph map">
       <div className="sectionHeader">
-        <h3>Citation Graph Map</h3>
+        <h3>信源图谱 Map</h3>
         <span>
           {nodes.length} sources · {runIds.length} runs · {graph.evidence_links.length} links
         </span>
@@ -15083,7 +15218,7 @@ function TraceabilityMap({
   return (
     <section className="traceMap" id={anchorId("traceability-map", "runtime")}>
       <div className="sectionHeader">
-        <h3>Traceability Map</h3>
+        <h3>溯源图谱</h3>
         <span>report to score to evidence to source</span>
       </div>
       <div className="traceMapCanvas">
@@ -15116,10 +15251,230 @@ function TraceabilityMap({
   );
 }
 
+const factLabelTranslations: Record<string, string> = {
+  "API/browser fidelity": "API/浏览器一致性",
+  "Access": "访问方式",
+  "Access distribution": "访问方式分布",
+  "Access methods": "访问方式",
+  "Action Plan CSV": "行动计划 CSV",
+  "Actions": "行动项",
+  "Alert CSV": "告警 CSV",
+  "Alert notification API": "告警通知 API",
+  "Alert query": "告警查询",
+  "Answer": "有回答",
+  "Answer rate": "回答率",
+  "Answer runs": "回答运行",
+  "Assets": "素材",
+  "Audit": "审计",
+  "Audit event": "审计事件",
+  "Audit export": "审计导出",
+  "Audit query": "审计查询",
+  "Auth": "认证",
+  "Avg cost/run": "平均单次成本",
+  "Avg duration": "平均耗时",
+  "Baseline runs": "基线运行",
+  "Baseline score": "基线分数",
+  "Benchmarks": "基准对标",
+  "Brand": "品牌",
+  "Capabilities": "能力",
+  "Category": "品类",
+  "Cities": "城市",
+  "Cities observed": "已观测城市",
+  "City": "城市",
+  "Collection CSV": "采集批次 CSV",
+  "Collection query": "采集查询",
+  "Collector": "采集器",
+  "Comparable pairs": "可比配对",
+  "Compared at": "对比时间",
+  "Comparison allowed": "允许对比",
+  "Competitors": "竞品",
+  "Completed": "已完成",
+  "Content CSV": "内容 CSV",
+  "Content query": "内容查询",
+  "Cost": "成本",
+  "Coverage": "覆盖率",
+  "Covered": "已覆盖",
+  "Created": "创建时间",
+  "Created at": "创建时间",
+  "Created by": "创建人",
+  "Deliveries": "投递",
+  "Delivery API": "投递 API",
+  "Delivery CSV": "投递 CSV",
+  "Denominator": "分母",
+  "Device": "设备",
+  "Difference rate": "差异率",
+  "Dispersion": "离散度",
+  "Drafts": "草稿",
+  "Duration": "耗时",
+  "Email feedback": "邮件反馈",
+  "Evidence refs": "证据引用",
+  "Evidence runs": "证据运行",
+  "Evidence trigger rate": "证据触发率",
+  "Evidence window": "证据窗口",
+  "Execution API": "执行 API",
+  "Execution ready": "执行就绪",
+  "Execution status": "执行状态",
+  "Facts": "事实",
+  "Facts used": "使用事实数",
+  "Failure": "失败",
+  "Feedback API": "反馈 API",
+  "Fidelity CSV": "一致性检查 CSV",
+  "Fidelity query": "一致性检查查询",
+  "Formula": "公式",
+  "Formula catalog": "公式目录",
+  "Formula note": "公式说明",
+  "Formula status": "公式状态",
+  "Formula version": "公式版本",
+  "Gaps": "缺口",
+  "Google coverage": "Google 覆盖",
+  "Google gate": "Google 门禁",
+  "Graph CSV": "图谱 CSV",
+  "Graph links": "图谱链接",
+  "Graph nodes": "图谱节点",
+  "Graph query": "图谱查询",
+  "HTML records": "HTML 记录",
+  "Industry": "行业",
+  "Intent": "意图",
+  "Intent types": "意图类型",
+  "Invitations CSV": "邀请 CSV",
+  "Job ID": "任务 ID",
+  "Language": "语言",
+  "Lifecycle export": "生命周期导出",
+  "Loaded": "已加载",
+  "Local avg": "本地平均值",
+  "Logo source": "Logo 来源",
+  "Manual records": "人工记录",
+  "Market": "市场",
+  "Matches": "匹配数",
+  "Members CSV": "成员 CSV",
+  "Mention": "提及",
+  "Mention rate": "提及率",
+  "Mentions": "提及数",
+  "Method": "方法",
+  "Method hash": "方法哈希",
+  "Metric": "指标",
+  "Mismatch count": "不一致数量",
+  "Missing": "缺失",
+  "Missing artifacts": "缺少产物",
+  "Missing platforms": "缺失平台",
+  "Mode": "模式",
+  "Model": "模型",
+  "Next check": "下次检查",
+  "Next execution": "下次执行",
+  "Notification CSV": "通知 CSV",
+  "Offset": "偏移",
+  "Offsets": "偏移天数",
+  "Open gaps": "未解决缺口",
+  "Outputs": "产物",
+  "Overlap": "重叠",
+  "Owner": "负责人",
+  "Parser agreement": "解析器一致率",
+  "Payload": "载荷",
+  "Payload hash": "载荷哈希",
+  "Plan hash": "计划哈希",
+  "Plan status": "计划状态",
+  "Planned": "计划数",
+  "Platform": "平台",
+  "Platform distribution": "平台分布",
+  "Platforms": "平台",
+  "Preference status API": "偏好状态 API",
+  "Primary color": "主色",
+  "Priority": "优先级",
+  "Project ID": "项目 ID",
+  "Project suppressions": "项目抑制项",
+  "Prompt CSV": "问题 CSV",
+  "Prompt ID": "问题 ID",
+  "Prompt count": "问题数量",
+  "Prompt version": "问题版本",
+  "Prompts": "问题",
+  "Question evidence query": "问题证据查询",
+  "Queue query": "队列查询",
+  "Raw answers": "原始回答",
+  "Raw hash": "原始哈希",
+  "Raw score": "原始分",
+  "Ready": "就绪",
+  "Ready windows": "就绪窗口",
+  "Recipient": "收件人",
+  "Recommend": "推荐",
+  "Recommendation": "推荐",
+  "Recs": "推荐数",
+  "Report ID": "报告 ID",
+  "Report Jobs CSV": "报告任务 CSV",
+  "Report management CSV": "报告管理 CSV",
+  "Report type": "报告类型",
+  "Reports": "报告",
+  "Requested by": "请求人",
+  "Resubscribe API": "重新订阅 API",
+  "Retest days": "复测天数",
+  "Retest runs": "复测运行",
+  "Retest score": "复测分数",
+  "Review CSV": "复核 CSV",
+  "Review query": "复核查询",
+  "Rule": "规则",
+  "Run status mix": "运行状态分布",
+  "Runs": "运行数",
+  "Runs/window": "每窗口运行数",
+  "Sample size": "样本量",
+  "Schedule ID": "计划 ID",
+  "Scope": "范围",
+  "Score CSV": "评分 CSV",
+  "Score delta": "分数变化",
+  "Score parts": "评分组件",
+  "Score query": "评分查询",
+  "Score snapshots": "评分快照",
+  "Search API": "检索 API",
+  "Secondary color": "辅色",
+  "Selected formula": "当前公式",
+  "Snapshot formula": "快照公式",
+  "Source": "来源",
+  "Source gap": "信源缺口",
+  "Source type": "信源类型",
+  "Source types": "信源类型",
+  "Status": "状态",
+  "Status hash": "状态哈希",
+  "Status mix": "状态分布",
+  "Subscription API": "订阅 API",
+  "Subscription CSV": "订阅 CSV",
+  "Subscriptions": "订阅",
+  "Success": "成功",
+  "Success rate": "成功率",
+  "Supersedes": "替代版本",
+  "Suppression API": "抑制 API",
+  "Suppression CSV": "抑制 CSV",
+  "Surface": "搜索界面",
+  "Surface mix": "界面分布",
+  "Target": "目标",
+  "Target brand": "目标品牌",
+  "Template": "模板",
+  "Template payload": "模板参数",
+  "Tenant": "租户",
+  "Threshold": "阈值",
+  "Total cost": "总成本",
+  "Total planned": "总计划数",
+  "Total prompts": "问题总数",
+  "Traceability CSV": "溯源 CSV",
+  "Traceability query": "溯源查询",
+  "Trend": "趋势",
+  "Trend query": "趋势查询",
+  "Trigger": "触发",
+  "Trigger rate": "触发率",
+  "Triggered": "已触发",
+  "Type": "类型",
+  "Unsubscribe API": "退订 API",
+  "Updated by": "更新人",
+  "Value": "数值",
+  "Version": "版本",
+  "Weight": "权重",
+  "Weight snapshot": "权重快照",
+  "Window end": "窗口结束",
+  "Window start": "窗口开始"
+};
+
 function Fact({ label, value }: { label: string; value: string | number }) {
+  const displayLabel = factLabelTranslations[label] || label;
   return (
     <>
-      <dt>{label}</dt>
+      <dt>{displayLabel}</dt>
       <dd>{value}</dd>
     </>
   );

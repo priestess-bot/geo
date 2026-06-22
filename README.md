@@ -12,7 +12,7 @@
 make docker-up-auto-ports
 ```
 
-该命令会在 `18000-18249` 范围内自动寻找空闲端口，生成 gitignored 的 `tmp/docker-compose.auto-ports.env`，再通过 Docker Compose 启动 `postgres`、`minio`、`api` 和 `web`。终端会打印本次实际访问地址：`/` 是中文客户工作台，`/ops` 是内部工程控制台，另有 API、API docs、MinIO Console 和 PostgreSQL 映射端口。关闭同一组自动端口容器：
+该命令会在 `18000-18249` 范围内自动寻找空闲端口，生成 gitignored 的 `tmp/docker-compose.auto-ports.env`，再通过 Docker Compose 启动 `postgres`、`minio`、`api` 和 `web`。终端会打印本次实际访问地址：`/` 是中文客户工作台，`/ops` 是内部工程控制台，另有 API、API docs、MinIO Console 和 PostgreSQL 映射端口。`/ops` 已按“总览 / 项目配置 / 问题与证据 / 评分与信源 / 报告交付 / 行动内容 / 通知告警 / 溯源”拆分为选项卡，并支持主面板与 AU Launch Gate 内部卡片折叠；接口路径、审计事件名、hash、命令和枚举值仍保留英文原始标识，便于可审计复盘。关闭同一组自动端口容器：
 
 ```bash
 make docker-down-auto-ports
