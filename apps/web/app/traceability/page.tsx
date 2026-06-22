@@ -635,7 +635,9 @@ async function fetchTraceabilityData(projectId: string | undefined): Promise<{
       projects: projectsPath,
       traceability: traceabilityPath,
       graph: graphPath,
-      console: selectedProjectId ? `/?project_id=${encodeURIComponent(selectedProjectId)}#traceability-map-runtime` : "/#traceability-map-runtime"
+      console: selectedProjectId
+        ? `/ops?project_id=${encodeURIComponent(selectedProjectId)}#traceability-map-runtime`
+        : "/ops#traceability-map-runtime"
     },
     errors
   };
