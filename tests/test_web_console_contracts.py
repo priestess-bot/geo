@@ -5,8 +5,37 @@ import unittest
 
 
 class WebConsoleContractsTest(unittest.TestCase):
-    def test_runtime_console_contains_traceability_links_and_graph_maps(self) -> None:
+    def test_customer_home_is_chinese_read_only_dashboard(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        layout_source = Path("apps/web/app/layout.tsx").read_text(encoding="utf-8")
+        css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
+
+        self.assertIn("GENO 澳大利亚客户工作台", page_source)
+        self.assertIn("AI 可见度", page_source)
+        self.assertIn("试点交付状态", page_source)
+        self.assertIn("报告状态", page_source)
+        self.assertIn("竞品与信源", page_source)
+        self.assertIn("下一步行动", page_source)
+        self.assertIn("后端未连接", page_source)
+        self.assertIn("待采集", page_source)
+        self.assertIn("待生成", page_source)
+        self.assertIn("内部控制台", page_source)
+        self.assertIn('href={opsHref}', page_source)
+        self.assertIn("查看溯源图谱", page_source)
+        self.assertIn("fetchCustomerHomeData", page_source)
+        self.assertIn('deliveryProgress: "/v1/delivery-progress/au"', page_source)
+        self.assertIn('customerHandoffPackage: "/v1/customer-handoff-package/au"', page_source)
+        self.assertIn('<html lang="zh-CN">', layout_source)
+        self.assertIn("GENO 澳大利亚客户工作台", layout_source)
+        self.assertIn(".customerDashboard", css_source)
+        self.assertIn(".customerStatusPill", css_source)
+        self.assertNotIn("P0a environment checklist", page_source)
+        self.assertNotIn("Hard gate", page_source)
+        self.assertNotIn("PERPLEXITY_API_KEY", page_source)
+        self.assertNotIn("OPENAI_API_KEY", page_source)
+
+    def test_runtime_console_contains_traceability_links_and_graph_maps(self) -> None:
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
         traceability_source = Path("apps/web/app/traceability/page.tsx").read_text(encoding="utf-8")
         interactive_map_source = Path("apps/web/app/traceability/InteractiveTraceabilityMap.tsx").read_text(encoding="utf-8")
 
@@ -57,6 +86,8 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn('id={anchorId("content-draft", item.draft.id || item.draft.title)}', traceability_source)
         self.assertIn('href={anchorHref(node.kind, node.value)}', traceability_source)
         self.assertIn("Back to console", traceability_source)
+        self.assertIn("/ops#traceability-map-runtime", traceability_source)
+        self.assertIn("/ops?project_id=", traceability_source)
         self.assertIn('"use client"', interactive_map_source)
         self.assertIn("InteractiveTraceabilityNode", interactive_map_source)
         self.assertIn("InteractiveTraceabilityEdge", interactive_map_source)
@@ -100,7 +131,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(":target", css_source)
 
     def test_runtime_console_discloses_report_method_boundaries(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
 
         self.assertIn("Method Disclosure", page_source)
         self.assertIn("Google coverage", page_source)
@@ -117,7 +148,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Google remains outside the main scoring denominator", page_source)
 
     def test_runtime_console_surfaces_api_browser_fidelity_checks(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
 
         self.assertIn('fidelityChecks: "/v1/fidelity-checks/runtime"', page_source)
         self.assertIn('fidelityExport: "/v1/fidelity-checks/runtime/export.csv"', page_source)
@@ -135,7 +166,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Payload hash", page_source)
 
     def test_runtime_console_surfaces_au_launch_status_gate(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
 
         self.assertIn('launchStatus: "/v1/launch-status/au"', page_source)
@@ -694,7 +725,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".remediationItem", css_source)
 
     def test_runtime_console_surfaces_collection_run_quality(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
 
         self.assertIn('collectionRuns: "/v1/collection-runs/runtime"', page_source)
         self.assertIn('collectionRunsExport: "/v1/collection-runs/runtime/export.csv"', page_source)
@@ -717,7 +748,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("failure_summary", page_source)
 
     def test_runtime_console_surfaces_parser_comparison(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
 
         self.assertIn("Parser agreement", page_source)
         self.assertIn("parser_comparison", page_source)
@@ -728,7 +759,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("LLM call", page_source)
 
     def test_runtime_console_surfaces_score_weight_configuration(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
 
         self.assertIn("Score Weights", page_source)
         self.assertIn("saveScoreWeightConfig", page_source)
@@ -744,7 +775,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Weight snapshot", page_source)
 
     def test_runtime_console_surfaces_brand_logo_upload(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
 
         self.assertIn("Logo Upload", page_source)
@@ -790,7 +821,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".inlineLink", css_source)
 
     def test_runtime_console_surfaces_report_history_management(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
 
         self.assertIn("Report History", page_source)
@@ -937,7 +968,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".queueStatsGrid", css_source)
 
     def test_runtime_console_surfaces_project_member_management(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
 
         self.assertIn("Project Members", page_source)
@@ -1049,7 +1080,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".preferenceAuditList", css_source)
 
     def test_runtime_console_surfaces_runtime_alerts(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
 
         self.assertIn("Runtime Alerts", page_source)
@@ -1081,7 +1112,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".inlineForm", css_source)
 
     def test_runtime_console_surfaces_prompt_file_import(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
 
         self.assertIn("Prompt CSV Import", page_source)
         self.assertIn("Prompt File Import", page_source)
@@ -1099,7 +1130,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn('name="prompt_file"', page_source)
 
     def test_runtime_console_surfaces_question_detail_matrix(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
 
         self.assertIn("Question Detail", page_source)
@@ -1114,7 +1145,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".coverage-platform_gap", css_source)
 
     def test_runtime_console_surfaces_human_review_trail(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
 
         self.assertIn("Human Review Trail", page_source)
@@ -1137,7 +1168,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".humanReviewForm", css_source)
 
     def test_runtime_console_surfaces_score_contribution_export(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
 
         self.assertIn("Score Contributions", page_source)
         self.assertIn('scores: "/v1/visibility-scores/runtime"', page_source)
@@ -1148,7 +1179,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Download score CSV", page_source)
 
     def test_runtime_console_surfaces_citation_graph_export(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
 
         self.assertIn("Citation Graph & Competitors", page_source)
         self.assertIn('graphs: "/v1/citation-graphs/runtime"', page_source)
@@ -1159,7 +1190,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Download graph CSV", page_source)
 
     def test_runtime_console_surfaces_entity_alias_batch_review_queue(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
 
         self.assertIn("Bulk Alias Review Queue", page_source)
@@ -1269,7 +1300,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".aliasBatchQueue", css_source)
 
     def test_runtime_console_surfaces_manual_backfill_csv_import(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
 
         self.assertIn("Manual Backfill CSV", page_source)
@@ -1282,7 +1313,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn(".manualBackfillForm", css_source)
 
     def test_runtime_console_surfaces_pgvector_knowledge_search(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
 
         self.assertIn("pgvector Knowledge Search", page_source)
         self.assertIn("/v1/knowledge-facts/runtime/search", page_source)
@@ -1291,7 +1322,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("fixture-knowledge-embedding-v1", page_source)
 
     def test_runtime_console_surfaces_content_engine_export(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
 
         self.assertIn("Content Engine Detail", page_source)
         self.assertIn('content: "/v1/content-engines/runtime"', page_source)
@@ -1302,7 +1333,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("Download content CSV", page_source)
 
     def test_runtime_console_surfaces_traceability_export(self) -> None:
-        page_source = Path("apps/web/app/page.tsx").read_text(encoding="utf-8")
+        page_source = Path("apps/web/app/ops/page.tsx").read_text(encoding="utf-8")
 
         self.assertIn("Traceability Detail", page_source)
         self.assertIn('traceability: "/v1/traceability/runtime"', page_source)
