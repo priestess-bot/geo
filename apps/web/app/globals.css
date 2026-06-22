@@ -1015,6 +1015,261 @@ code {
   padding: 10px 12px;
 }
 
+.actionButton,
+.resetLink {
+  text-decoration: none;
+}
+
+.customerShell {
+  background: #f4f6f8;
+}
+
+.customerTopbar {
+  align-items: center;
+}
+
+.customerLead {
+  color: #4f6171;
+  font-size: 14px;
+  line-height: 1.55;
+  margin-top: 8px;
+  max-width: 760px;
+}
+
+.customerUtilityBox {
+  gap: 6px;
+}
+
+.customerNotice span {
+  color: #5f4b16;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.customerProjectBar {
+  align-items: end;
+  background: #ffffff;
+  border: 1px solid #d5dde6;
+  border-radius: 6px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 18px;
+  padding: 14px;
+}
+
+.customerProjectBar > div span {
+  color: #647382;
+  display: block;
+  font-size: 13px;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
+.customerProjectForm {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(220px, 1fr) auto;
+}
+
+.customerProjectForm label {
+  display: grid;
+  gap: 5px;
+}
+
+.customerProjectForm label span {
+  color: #667585;
+  font-size: 12px;
+}
+
+.customerProjectForm select {
+  appearance: none;
+  background: #f7fafc;
+  border: 1px solid #cfd7e1;
+  border-radius: 4px;
+  color: #202a36;
+  font: inherit;
+  font-size: 13px;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.customerEmptyState {
+  background: #ffffff;
+  border: 1px dashed #cbd5df;
+  border-radius: 6px;
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 20px;
+}
+
+.customerEmptyState p {
+  color: #4f6171;
+  line-height: 1.55;
+}
+
+.customerEmptyState .actionButton {
+  justify-self: start;
+}
+
+.customerSummaryGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.customerFact {
+  background: #ffffff;
+  border: 1px solid #d5dde6;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.customerFact span {
+  color: #647382;
+  font-size: 12px;
+}
+
+.customerFact strong {
+  color: #202a36;
+  font-size: 18px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.customerDashboard {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.customerPanel {
+  min-height: 300px;
+}
+
+.customerScoreValue {
+  color: #1f4f54;
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 1;
+  margin: 8px 0 16px;
+}
+
+.customerFactsGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.customerFactsGrid .customerFact {
+  background: #f7fafc;
+}
+
+.customerFactsGrid .customerFact strong {
+  font-size: 14px;
+}
+
+.customerStatusPill {
+  border: 1px solid #cfd7e1;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 7px 9px;
+  white-space: nowrap;
+}
+
+.customerStatusPill.ready {
+  background: #e8f5ef;
+  border-color: #9bceb8;
+  color: #245b43;
+}
+
+.customerStatusPill.blocked {
+  background: #fff1e8;
+  border-color: #e4b18f;
+  color: #7a3f18;
+}
+
+.customerStatusPill.pending {
+  background: #eef3f7;
+  color: #526575;
+}
+
+.customerPanelNote {
+  background: #f7fafc;
+  border-left: 3px solid #2f6f73;
+  color: #334453;
+  font-size: 13px;
+  line-height: 1.45;
+  margin-top: 12px;
+  padding: 10px;
+}
+
+.customerLinkRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.customerLinkRow a,
+.customerLinkRow span {
+  border: 1px solid #cfd7e1;
+  border-radius: 4px;
+  color: #245d61;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 10px;
+  text-decoration: none;
+}
+
+.customerPlainList,
+.customerActionList {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.customerPlainList li,
+.customerActionList li {
+  background: #f7fafc;
+  border: 1px solid #dfe7ef;
+  border-radius: 4px;
+  color: #334453;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 9px 10px;
+}
+
+.customerActionList li {
+  display: grid;
+  gap: 5px;
+}
+
+.customerActionList span {
+  color: #647382;
+}
+
+.customerFooterActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
 .compactAction {
   justify-self: start;
   padding: 8px 10px;
@@ -2480,6 +2735,7 @@ summary {
   }
 
   .dashboard,
+  .customerDashboard,
   .filterForm,
   .launchStageGrid,
   .launchEvidenceGrid,
@@ -2512,6 +2768,10 @@ summary {
   .contentDraftGrid,
   .reportManagementForm,
   .traceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .customerSummaryGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2553,6 +2813,11 @@ summary {
 
   .metrics,
   .dashboard,
+  .customerDashboard,
+  .customerSummaryGrid,
+  .customerProjectBar,
+  .customerProjectForm,
+  .customerFactsGrid,
   .filterForm,
   .launchStageGrid,
   .launchEvidenceGrid,
