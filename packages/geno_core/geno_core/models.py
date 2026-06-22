@@ -1394,6 +1394,86 @@ class RuntimeProjectMemberInvitationEmailInput:
 
 
 @dataclass(frozen=True)
+class RuntimeCustomerPortalToken:
+    portal_token: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+    raw_token: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeCustomerPortalTokenInput:
+    project_id: str
+    member_user_id: str
+    invitation_id: str | None = None
+    issued_by: str = "runtime-console"
+    metadata: dict[str, Any] = field(default_factory=dict)
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeCustomerPortalTokenActionInput:
+    token_id: str
+    project_id: str
+    revoked_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeProjectLaunchConfig:
+    launch_config: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeProjectLaunchConfigInput:
+    project_id: str
+    customer_email: str
+    primary_domain: str
+    competitor_domains: tuple[str, ...] = ()
+    locale: str = "en-AU"
+    country_code: str = "AU"
+    timezone: str = "Australia/Sydney"
+    collection_mode: str = "fixture"
+    schedule: dict[str, Any] = field(default_factory=dict)
+    external_connectors: dict[str, Any] = field(default_factory=dict)
+    scoring_profile: str = "au_visibility_v1"
+    status: str = "draft"
+    metadata: dict[str, Any] = field(default_factory=dict)
+    created_by: str = "runtime-console"
+    updated_by: str = "runtime-console"
+    config_version: str = "au_launch_config_v1"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeHttpAccessLogInput:
+    request_id: str
+    method: str
+    path: str
+    route: str
+    status_code: int
+    duration_ms: float
+    project_id: str | None = None
+    actor_id: str | None = None
+    query_hash: str | None = None
+    request_headers_hash: str | None = None
+    request_body_hash: str | None = None
+    request_body_size: int = 0
+    request_body_uri: str | None = None
+    request_headers_uri: str | None = None
+    response_headers_hash: str | None = None
+    response_body_hash: str | None = None
+    response_body_size: int = 0
+    response_body_uri: str | None = None
+    response_headers_uri: str | None = None
+    client_host_hash: str | None = None
+    user_agent_hash: str | None = None
+    error_type: str | None = None
+    capture_status: str = "metadata_only"
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class RuntimeProjectBrandKit:
     brand_kit: dict[str, Any]
     audit_events: tuple[dict[str, Any], ...]

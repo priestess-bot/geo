@@ -83,6 +83,7 @@ from tests.test_au_external_dependency_clearance import AuExternalDependencyClea
 from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTest
 from tests.test_au_p0a_execution_checklist import AuP0aExecutionChecklistTest
 from tests.test_au_p0b_google_execution_checklist import AuP0bGoogleExecutionChecklistTest
+from tests.test_au_p0b_google_environment_request_packet import AuP0bGoogleEnvironmentRequestPacketTest
 from geno_core.models import (
     RuntimeEntityAlias,
     RuntimeEntityAliasAssignmentEscalationResult,
@@ -189,88 +190,7 @@ def _find_forbidden_exact_fields(value: object, *, path: str = "$") -> list[str]
 
 
 def _write_p0a_env_report_with_database(temp_dir: str) -> Path:
-    report: dict[str, object] = {
-        "environment_report_version": "au_p0a_environment_report_v1",
-        "generated_at": "2026-06-12T00:00:00Z",
-        "status": "fail",
-        "ready_for_real_batch": False,
-        "next_action": "populate_required_environment",
-        "runbook_path": "runbook.json",
-        "runbook": {"status": "pass", "hash_valid": True},
-        "env_file": {
-            "exists": True,
-            "loaded": True,
-            "entry_count": 3,
-            "errors": [],
-            "hygiene": {
-                "exists": True,
-                "hygiene_ready": True,
-                "hygiene_required": True,
-                "errors": [],
-                "warnings": [],
-                "secret_redacted": True,
-            },
-        },
-        "required": [
-            {
-                "name": "PERPLEXITY_API_KEY",
-                "present": False,
-                "source": "missing",
-                "value_length": 0,
-                "sha256_prefix": "",
-                "secret_redacted": True,
-            },
-            {
-                "name": "OPENAI_API_KEY",
-                "present": False,
-                "source": "missing",
-                "value_length": 0,
-                "sha256_prefix": "",
-                "secret_redacted": True,
-            },
-            {
-                "name": "DATABASE_URL",
-                "present": True,
-                "source": "env_file",
-                "value_length": 66,
-                "sha256_prefix": "237b9d13d4e5",
-                "secret_redacted": True,
-            },
-        ],
-        "recommended": [],
-        "missing_required": ["OPENAI_API_KEY", "PERPLEXITY_API_KEY"],
-        "missing_recommended": [],
-        "summary": {
-            "required_count": 3,
-            "present_required_count": 1,
-            "missing_required_count": 2,
-            "missing_required": ["OPENAI_API_KEY", "PERPLEXITY_API_KEY"],
-            "recommended_count": 0,
-            "present_recommended_count": 0,
-            "missing_recommended_count": 0,
-            "missing_recommended": [],
-            "runbook_status": "pass",
-            "runbook_hash_valid": True,
-            "env_file_exists": True,
-            "env_file_loaded": True,
-            "env_file_entry_count": 3,
-            "env_file_hygiene_ready": True,
-            "env_file_hygiene_error_count": 0,
-            "env_file_hygiene_warning_count": 0,
-            "ready_for_real_batch": False,
-            "next_action": "populate_required_environment",
-            "raw_secret_values_allowed": False,
-        },
-        "warnings": [],
-        "errors": [
-            "required_env_missing:PERPLEXITY_API_KEY",
-            "required_env_missing:OPENAI_API_KEY",
-        ],
-        "secrets_redacted": True,
-    }
-    report["environment_report_hash"] = compute_env_report_hash(report)
-    path = Path(temp_dir) / "p0a-env.json"
-    path.write_text(json.dumps(report), encoding="utf-8")
+    path, _report = AuP0bGoogleEnvironmentRequestPacketTest()._write_p0a_env_report_with_database(temp_dir)
     return path
 
 
@@ -2832,7 +2752,7 @@ class ApiContractsTest(unittest.TestCase):
     def test_metrics_endpoint_exports_request_and_pool_metrics(self) -> None:
         self.client.get("/health")
         with patch(
-            "geno_api.main.runtime_postgres_pool_snapshot",
+            "geno_api.runtime_metrics.runtime_postgres_pool_snapshot",
             return_value={
                 "enabled": True,
                 "max_size": 10,

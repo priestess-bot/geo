@@ -5,7 +5,7 @@ from pathlib import Path
 import socket
 
 PORT_RANGE = range(18000, 18250)
-SERVICES = ("postgres", "minio_api", "minio_console", "api", "web")
+SERVICES = ("postgres", "minio_api", "minio_console", "api", "customer_web", "admin_web")
 
 def is_free(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -38,8 +38,10 @@ env_path.write_text(
             f"GENO_MINIO_CONSOLE_HOST_PORT={ports['minio_console']}",
             f"GENO_API_HOST_PORT={ports['api']}",
             f"GENO_API_CONTAINER_PORT={ports['api']}",
-            f"GENO_WEB_HOST_PORT={ports['web']}",
-            f"GENO_WEB_CONTAINER_PORT={ports['web']}",
+            f"GENO_CUSTOMER_WEB_HOST_PORT={ports['customer_web']}",
+            f"GENO_CUSTOMER_WEB_CONTAINER_PORT={ports['customer_web']}",
+            f"GENO_ADMIN_WEB_HOST_PORT={ports['admin_web']}",
+            f"GENO_ADMIN_WEB_CONTAINER_PORT={ports['admin_web']}",
             "",
         )
     ),
@@ -47,7 +49,8 @@ env_path.write_text(
 )
 print(f"Generated {env_path}")
 print("GENO Docker auto ports")
-print(f"  Web:          http://localhost:{ports['web']}")
+print(f"  Customer Web: http://localhost:{ports['customer_web']}")
+print(f"  Admin Web:    http://localhost:{ports['admin_web']}")
 print(f"  API:          http://localhost:{ports['api']}")
 print(f"  API docs:     http://localhost:{ports['api']}/docs")
 print(f"  MinIO API:    http://localhost:{ports['minio_api']}")
@@ -66,7 +69,7 @@ docker-auto-ports-config:
 	python3 -c "$$GENO_AUTO_PORTS_PY"
 
 docker-up-auto-ports: docker-auto-ports-config
-	docker compose -p geno-auto --env-file tmp/docker-compose.auto-ports.env -f infra/docker-compose.yml up --build postgres minio api web
+	docker compose -p geno-auto --env-file tmp/docker-compose.auto-ports.env -f infra/docker-compose.yml up --build postgres minio api customer-web admin-web
 
 docker-down-auto-ports:
 	@if [ -f tmp/docker-compose.auto-ports.env ]; then \
@@ -82,7 +85,8 @@ compile-python:
 	python3 -m compileall apps/api/geno_api packages/geno_core/geno_core workers scripts tests
 
 web-typecheck:
-	npm --prefix apps/web run typecheck
+	npm --prefix apps/customer-web run typecheck
+	npm --prefix apps/admin-web run typecheck
 
 quality: lint-python compile-python web-typecheck
 
@@ -90,7 +94,8 @@ test:
 	PYTHONPATH=packages/geno_core:apps/api python3 -m unittest discover -s tests
 
 web-build:
-	npm --prefix apps/web run build
+	npm --prefix apps/customer-web run build
+	npm --prefix apps/admin-web run build
 
 docker-config:
 	docker compose -f infra/docker-compose.yml config

@@ -182,6 +182,7 @@ from geno_core.report import (
     render_audit_summary_lines,
     render_methodology_disclosure_lines,
 )
+from geno_core.runtime_project_access_repository import RuntimeProjectAccessRepositoryMixin
 from geno_core.fidelity import build_runtime_fidelity_check
 from geno_core.scoring import get_score_formula, normalize_score_weights
 from geno_core.knowledge import (
@@ -3759,7 +3760,7 @@ HUMAN_REVIEW_COLUMNS = (
 )
 
 
-class PostgresEvidenceRepository:
+class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
     """DB-API style repository for the GENO runtime evidence chain."""
 
     def __init__(
@@ -3822,6 +3823,31 @@ class PostgresEvidenceRepository:
                     "",
                     "geno.runtime_invitation_token_hash",
                     invite_token_hash,
+                ),
+            )
+
+    def set_runtime_project_portal_token_context(self, *, portal_token_hash: str) -> None:
+        portal_token_hash = portal_token_hash.strip()
+        if not portal_token_hash:
+            raise ValueError("portal_token_hash is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false)
+                """,
+                (
+                    "geno.runtime_project_access_control",
+                    "1",
+                    "geno.runtime_actor_id",
+                    "",
+                    "geno.runtime_project_id",
+                    "",
+                    "geno.runtime_portal_token_hash",
+                    portal_token_hash,
                 ),
             )
 

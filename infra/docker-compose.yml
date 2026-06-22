@@ -475,14 +475,14 @@ services:
       postgres:
         condition: service_healthy
 
-  web:
+  customer-web:
     build:
       context: ..
-      dockerfile: apps/web/Dockerfile
+      dockerfile: apps/customer-web/Dockerfile
     environment:
       API_INTERNAL_BASE_URL: http://api:${GENO_API_CONTAINER_PORT:-8000}
       NEXT_PUBLIC_API_BASE_URL: http://localhost:${GENO_API_HOST_PORT:-8000}
-      PORT: ${GENO_WEB_CONTAINER_PORT:-3000}
+      PORT: ${GENO_CUSTOMER_WEB_CONTAINER_PORT:-3000}
     command:
       - npm
       - run
@@ -491,9 +491,33 @@ services:
       - -H
       - 0.0.0.0
       - -p
-      - "${GENO_WEB_CONTAINER_PORT:-3000}"
+      - "${GENO_CUSTOMER_WEB_CONTAINER_PORT:-3000}"
     ports:
-      - "${GENO_WEB_HOST_PORT:-3000}:${GENO_WEB_CONTAINER_PORT:-3000}"
+      - "${GENO_CUSTOMER_WEB_HOST_PORT:-3000}:${GENO_CUSTOMER_WEB_CONTAINER_PORT:-3000}"
+    depends_on:
+      api:
+        condition: service_started
+
+  admin-web:
+    build:
+      context: ..
+      dockerfile: apps/admin-web/Dockerfile
+    environment:
+      API_INTERNAL_BASE_URL: http://api:${GENO_API_CONTAINER_PORT:-8000}
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${GENO_API_HOST_PORT:-8000}
+      GENO_ADMIN_ACTOR_ID: ${GENO_ADMIN_ACTOR_ID:-runtime-console}
+      PORT: ${GENO_ADMIN_WEB_CONTAINER_PORT:-3000}
+    command:
+      - npm
+      - run
+      - dev
+      - --
+      - -H
+      - 0.0.0.0
+      - -p
+      - "${GENO_ADMIN_WEB_CONTAINER_PORT:-3000}"
+    ports:
+      - "${GENO_ADMIN_WEB_HOST_PORT:-3001}:${GENO_ADMIN_WEB_CONTAINER_PORT:-3000}"
     depends_on:
       api:
         condition: service_started

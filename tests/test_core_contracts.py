@@ -3681,7 +3681,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(first_llm_call_insert[3], "parser_judge")
 
     def test_postgres_repository_searches_runtime_knowledge_facts_with_pgvector(self) -> None:
-        now = datetime(2026, 6, 10, tzinfo=UTC)
+        now = datetime.now(UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         fact_id = "06975d61-853b-5a25-ae0e-b62bbfe82c15"
         fact_row = {
@@ -3809,7 +3809,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(connection.commit_count, 1)
 
     def test_postgres_repository_reads_runtime_project_page(self) -> None:
-        now = datetime(2026, 6, 10, tzinfo=UTC)
+        now = datetime.now(UTC)
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
         tenant_id = "8330ea73-6914-5278-90cb-147f8369fed6"
         connection = RecordingConnection(
@@ -3953,7 +3953,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(connection.calls[1][1], ("AU", "archived", 10, 0))
 
     def test_postgres_repository_updates_runtime_project_with_audit_event(self) -> None:
-        now = datetime(2026, 6, 10, tzinfo=UTC)
+        now = datetime.now(UTC)
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
         tenant_id = "8330ea73-6914-5278-90cb-147f8369fed6"
         before_project = {
@@ -4045,7 +4045,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(connection.commit_count, 1)
 
     def test_postgres_repository_archives_runtime_project_with_audit_event(self) -> None:
-        now = datetime(2026, 6, 10, tzinfo=UTC)
+        now = datetime.now(UTC)
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
         tenant_id = "8330ea73-6914-5278-90cb-147f8369fed6"
         before_project = {
@@ -5086,7 +5086,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertNotIn("UPDATE project_member_invitations SET status", executed_sql)
 
     def test_postgres_repository_accepts_runtime_project_member_invitation_with_audit_events(self) -> None:
-        now = datetime(2026, 6, 10, tzinfo=UTC)
+        now = datetime.now(UTC)
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
         invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
         invite_token = "geno-invite-token"
@@ -5149,7 +5149,7 @@ class CoreContractsTest(unittest.TestCase):
     def test_postgres_repository_sends_runtime_project_member_invitation_email_without_auditing_raw_token(
         self,
     ) -> None:
-        now = datetime(2026, 6, 10, tzinfo=UTC)
+        now = datetime.now(UTC)
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
         invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
         invite_token = "geno-invite-token"

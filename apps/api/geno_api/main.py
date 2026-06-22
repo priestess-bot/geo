@@ -12,11 +12,10 @@ import re
 import threading
 import time
 import uuid
-from collections import defaultdict
+from collections.abc import Mapping
 from contextvars import ContextVar
 from dataclasses import asdict, replace
 from datetime import datetime
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode, urlparse
@@ -29,6 +28,9 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import hashes
 
+from geno_api.access_logging import persist_runtime_http_access_log
+from geno_api.runtime_access_routes import register_runtime_access_routes
+from geno_api.runtime_metrics import METRICS_CONTENT_TYPE, observe_api_request, render_runtime_metrics, reset_runtime_metrics
 from geno_core.action_plan import (
     build_action_plan_audit_event,
     build_action_recommendations,
@@ -93,6 +95,7 @@ from geno_core.models import (
     RuntimeProjectMemberInvitationEmailInput,
     RuntimeProjectMemberInvitationInput,
     RuntimeProjectActionInput,
+    RuntimeProjectLaunchConfigInput,
     RuntimeProjectUpdateInput,
     RuntimePromptImportInput,
     RuntimeNotificationEmailFeedbackInput,
@@ -120,7 +123,6 @@ from geno_core.runtime import (
     close_repository_connection,
     close_runtime_postgres_pool,
     runtime_database_diagnostic,
-    runtime_postgres_pool_snapshot,
 )
 from geno_core.scoring import get_score_formula, list_score_formulas, normalize_score_weights
 from geno_core.traceability import build_traceability_bundle
@@ -349,15 +351,8 @@ RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV = "GENO_NOTIFICATION_EMAI
 PROJECT_MANAGE_ROLES = ("owner", "admin")
 PROJECT_ANALYZE_ROLES = ("owner", "admin", "analyst")
 _RUNTIME_JWT_ACTOR_ID: ContextVar[str | None] = ContextVar("geno_runtime_jwt_actor_id", default=None)
-METRICS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
 REQUEST_ID_HEADER = "X-GENO-Request-Id"
-REQUEST_DURATION_BUCKETS_SECONDS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
 RUNTIME_ACCESS_LOGGER = logging.getLogger("geno_api.access")
-_METRICS_LOCK = threading.Lock()
-_REQUEST_TOTAL: defaultdict[tuple[str, str, str], int] = defaultdict(int)
-_REQUEST_DURATION_BUCKET_TOTAL: defaultdict[tuple[str, str, str, str], int] = defaultdict(int)
-_REQUEST_DURATION_SUM: defaultdict[tuple[str, str, str], float] = defaultdict(float)
-_REQUEST_DURATION_COUNT: defaultdict[tuple[str, str, str], int] = defaultdict(int)
 _RUNTIME_JWKS_CACHE_LOCK = threading.Lock()
 _RUNTIME_JWKS_CACHE_URL: str | None = None
 _RUNTIME_JWKS_CACHE: dict[str, Any] | None = None
@@ -1103,18 +1098,6 @@ def _route_template_for_metrics(request: Request) -> str:
     return "__unmatched__"
 
 
-def _observe_api_request(*, method: str, path: str, status_code: int, duration_seconds: float) -> None:
-    label_key = (method.upper(), path, str(status_code))
-    with _METRICS_LOCK:
-        _REQUEST_TOTAL[label_key] += 1
-        _REQUEST_DURATION_SUM[label_key] += duration_seconds
-        _REQUEST_DURATION_COUNT[label_key] += 1
-        for bucket in REQUEST_DURATION_BUCKETS_SECONDS:
-            if duration_seconds <= bucket:
-                _REQUEST_DURATION_BUCKET_TOTAL[(*label_key, _format_bucket_label(bucket))] += 1
-        _REQUEST_DURATION_BUCKET_TOTAL[(*label_key, "+Inf")] += 1
-
-
 def _request_id_from_headers(request: Request) -> str:
     raw_request_id = request.headers.get(REQUEST_ID_HEADER) or request.headers.get("X-Request-Id") or ""
     request_id = raw_request_id.strip()
@@ -1151,111 +1134,6 @@ def _emit_runtime_access_log(
     RUNTIME_ACCESS_LOGGER.info(json.dumps(payload, sort_keys=True, separators=(",", ":")))
 
 
-def reset_runtime_metrics() -> None:
-    with _METRICS_LOCK:
-        _REQUEST_TOTAL.clear()
-        _REQUEST_DURATION_BUCKET_TOTAL.clear()
-        _REQUEST_DURATION_SUM.clear()
-        _REQUEST_DURATION_COUNT.clear()
-
-
-def _format_bucket_label(bucket: float) -> str:
-    return f"{bucket:g}"
-
-
-def _format_metric_number(value: object) -> str:
-    if isinstance(value, bool):
-        return "1" if value else "0"
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, float):
-        return f"{value:.12g}"
-    return "0"
-
-
-def _escape_metric_label(value: object) -> str:
-    return str(value).replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
-
-
-def _metric_labels(labels: Mapping[str, object]) -> str:
-    return ",".join(f'{key}="{_escape_metric_label(value)}"' for key, value in labels.items())
-
-
-def render_runtime_metrics() -> str:
-    with _METRICS_LOCK:
-        request_total = dict(_REQUEST_TOTAL)
-        duration_buckets = dict(_REQUEST_DURATION_BUCKET_TOTAL)
-        duration_sum = dict(_REQUEST_DURATION_SUM)
-        duration_count = dict(_REQUEST_DURATION_COUNT)
-
-    lines = [
-        "# HELP geno_api_requests_total Total HTTP requests handled by the GENO API.",
-        "# TYPE geno_api_requests_total counter",
-    ]
-    for (method, path, status), count in sorted(request_total.items()):
-        lines.append(
-            f'geno_api_requests_total{{{_metric_labels({"method": method, "path": path, "status": status})}}} {count}'
-        )
-
-    lines.extend(
-        [
-            "# HELP geno_api_request_duration_seconds HTTP request duration in seconds.",
-            "# TYPE geno_api_request_duration_seconds histogram",
-        ]
-    )
-    for (method, path, status, le), count in sorted(duration_buckets.items()):
-        lines.append(
-            "geno_api_request_duration_seconds_bucket"
-            f'{{{_metric_labels({"method": method, "path": path, "status": status, "le": le})}}} {count}'
-        )
-    for (method, path, status), total_seconds in sorted(duration_sum.items()):
-        lines.append(
-            "geno_api_request_duration_seconds_sum"
-            f'{{{_metric_labels({"method": method, "path": path, "status": status})}}} '
-            f"{_format_metric_number(total_seconds)}"
-        )
-    for (method, path, status), count in sorted(duration_count.items()):
-        lines.append(
-            "geno_api_request_duration_seconds_count"
-            f'{{{_metric_labels({"method": method, "path": path, "status": status})}}} {count}'
-        )
-
-    lines.extend(
-        [
-            "# HELP geno_runtime_postgres_pool_snapshot_ok Whether the runtime PostgreSQL pool snapshot could be read.",
-            "# TYPE geno_runtime_postgres_pool_snapshot_ok gauge",
-        ]
-    )
-    try:
-        pool_snapshot = runtime_postgres_pool_snapshot()
-    except RuntimePersistenceError:
-        lines.append("geno_runtime_postgres_pool_snapshot_ok 0")
-        pool_snapshot = {}
-    else:
-        lines.append("geno_runtime_postgres_pool_snapshot_ok 1")
-
-    lines.extend(
-        [
-            "# HELP geno_runtime_postgres_pool_enabled Whether runtime PostgreSQL connection pooling is enabled.",
-            "# TYPE geno_runtime_postgres_pool_enabled gauge",
-            f"geno_runtime_postgres_pool_enabled {_format_metric_number(pool_snapshot.get('enabled', False))}",
-            "# HELP geno_runtime_postgres_pool_max_size Configured runtime PostgreSQL pool maximum size.",
-            "# TYPE geno_runtime_postgres_pool_max_size gauge",
-            f"geno_runtime_postgres_pool_max_size {_format_metric_number(pool_snapshot.get('max_size', 0))}",
-            "# HELP geno_runtime_postgres_pool_timeout_seconds Configured runtime PostgreSQL pool acquire timeout.",
-            "# TYPE geno_runtime_postgres_pool_timeout_seconds gauge",
-            f"geno_runtime_postgres_pool_timeout_seconds {_format_metric_number(pool_snapshot.get('timeout_seconds', 0.0))}",
-            "# HELP geno_runtime_postgres_pool_connections_created Process-local PostgreSQL pool connections created.",
-            "# TYPE geno_runtime_postgres_pool_connections_created gauge",
-            f"geno_runtime_postgres_pool_connections_created {_format_metric_number(pool_snapshot.get('created', 0))}",
-            "# HELP geno_runtime_postgres_pool_connections_available Process-local PostgreSQL pool connections available.",
-            "# TYPE geno_runtime_postgres_pool_connections_available gauge",
-            f"geno_runtime_postgres_pool_connections_available {_format_metric_number(pool_snapshot.get('available', 0))}",
-        ]
-    )
-    return "\n".join(lines) + "\n"
-
-
 @app.middleware("http")
 async def runtime_metrics_middleware(request: Request, call_next):
     if request.url.path == "/metrics":
@@ -1264,9 +1142,32 @@ async def runtime_metrics_middleware(request: Request, call_next):
     start_time = time.perf_counter()
     status_code = 500
     error_type: str | None = None
+    request_body = b""
+    response_body = b""
+    response_headers: Mapping[str, str] = {}
+    response_media_type: str | None = None
     try:
+        request_body = await request.body()
+
+        async def receive() -> dict[str, object]:
+            return {"type": "http.request", "body": request_body, "more_body": False}
+
+        request._receive = receive  # type: ignore[attr-defined]
         response = await call_next(request)
         status_code = response.status_code
+        response_headers = dict(response.headers)
+        response_media_type = response.media_type
+        chunks: list[bytes] = []
+        async for chunk in response.body_iterator:
+            chunk_bytes = chunk if isinstance(chunk, bytes) else str(chunk).encode("utf-8")
+            chunks.append(chunk_bytes)
+        response_body = b"".join(chunks)
+        response = Response(
+            content=response_body,
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            media_type=response_media_type,
+        )
         response.headers[REQUEST_ID_HEADER] = request_id
         return response
     except Exception as exc:
@@ -1275,7 +1176,7 @@ async def runtime_metrics_middleware(request: Request, call_next):
     finally:
         duration_seconds = max(0.0, time.perf_counter() - start_time)
         route_path = _route_template_for_metrics(request)
-        _observe_api_request(
+        observe_api_request(
             method=request.method,
             path=route_path,
             status_code=status_code,
@@ -1291,6 +1192,34 @@ async def runtime_metrics_middleware(request: Request, call_next):
             client_host=request.client.host if request.client else None,
             error_type=error_type,
         )
+        try:
+            persist_runtime_http_access_log(
+                request=request,
+                request_id=request_id,
+                route_path=route_path,
+                status_code=status_code,
+                duration_seconds=duration_seconds,
+                request_body=request_body,
+                response_body=response_body,
+                response_headers=response_headers,
+                response_media_type=response_media_type,
+                actor_header=RUNTIME_ACTOR_HEADER,
+                jwt_actor_id=_RUNTIME_JWT_ACTOR_ID.get(),
+                error_type=error_type,
+            )
+        except Exception as exc:
+            RUNTIME_ACCESS_LOGGER.warning(
+                json.dumps(
+                    {
+                        "event_type": "runtime_http_access_log_persist_failed",
+                        "request_id": request_id,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
 
 
 def require_runtime_actor_id(x_geno_actor_id: str | None = None) -> str | None:
@@ -1392,6 +1321,16 @@ def assert_runtime_project_access(
         actor_id=actor_id,
         project_id=normalized_project_id,
     )
+
+
+register_runtime_access_routes(
+    app,
+    runtime_actor_header=RUNTIME_ACTOR_HEADER,
+    project_manage_roles=PROJECT_MANAGE_ROLES,
+    require_runtime_actor_id=require_runtime_actor_id,
+    assert_runtime_project_access=assert_runtime_project_access,
+    runtime_project_access_control_enabled=runtime_project_access_control_enabled,
+)
 
 
 class RuntimeSavedViewRequest(BaseModel):
@@ -1851,6 +1790,13 @@ class RuntimeProjectCreateRequest(BaseModel):
     brand_parent_company: str | None = Field(default=None, max_length=160)
     brand_product_lines: list[str] = Field(default_factory=list, max_length=10)
     owner_user_id: str = Field(default="runtime-console", min_length=1, max_length=120)
+    customer_email: str | None = Field(default=None, max_length=320)
+    competitor_domains: list[str] = Field(default_factory=list, max_length=5)
+    collection_mode: str = Field(default="fixture", min_length=1, max_length=40)
+    launch_status: str = Field(default="draft", min_length=1, max_length=40)
+    schedule: dict[str, object] = Field(default_factory=dict)
+    external_connectors: dict[str, object] = Field(default_factory=dict)
+    create_customer_invitation: bool = True
 
 
 class RuntimeProjectUpdateRequest(BaseModel):
@@ -3415,7 +3361,13 @@ def create_runtime_au_dtc_project(
     if not competitors:
         competitors = DEFAULT_AU_COMPETITORS
     brand_official_domains = tuple(item.strip() for item in request.brand_official_domains if item.strip())
+    primary_domain = brand_official_domains[0] if brand_official_domains else "example.com"
+    customer_email = request.customer_email.strip().lower() if request.customer_email else "customer@example.com"
+    customer_email_supplied = bool(request.customer_email and request.customer_email.strip())
+    if customer_email_supplied and "@" not in customer_email:
+        raise HTTPException(status_code=400, detail="customer_email must be a valid email address")
     brand_product_lines = tuple(item.strip() for item in request.brand_product_lines if item.strip())
+    competitor_domains = tuple(item.strip().lower() for item in request.competitor_domains if item.strip())
     try:
         bootstrap = build_au_project_bootstrap(
             tenant_name=request.tenant_name.strip(),
@@ -3441,6 +3393,61 @@ def create_runtime_au_dtc_project(
             project_id=bootstrap.project.id,
         )
         repository.save_project_bootstrap(bootstrap)
+        launch_config = None
+        if hasattr(repository, "save_project_launch_config"):
+            launch_config = repository.save_project_launch_config(
+                RuntimeProjectLaunchConfigInput(
+                    project_id=bootstrap.project.id,
+                    customer_email=customer_email,
+                    primary_domain=primary_domain,
+                    competitor_domains=competitor_domains,
+                    collection_mode=request.collection_mode.strip(),
+                    schedule=request.schedule,
+                    external_connectors=request.external_connectors,
+                    status=request.launch_status.strip().lower(),
+                    created_by=owner_user_id,
+                    updated_by=owner_user_id,
+                    metadata={"created_from": "runtime_project_create"},
+                    reason="runtime_project_create_launch_config",
+                )
+            )
+        brand_kit = None
+        if hasattr(repository, "save_project_brand_kit"):
+            brand_kit = repository.save_project_brand_kit(
+                RuntimeProjectBrandKitInput(
+                    project_id=bootstrap.project.id,
+                    client_name=request.target_brand.strip(),
+                    prepared_by=owner_user_id,
+                    footer_text=f"{request.target_brand.strip()} AU GEO visibility report",
+                    updated_by=owner_user_id,
+                )
+            )
+        score_weight_config = None
+        if hasattr(repository, "save_score_weight_config"):
+            score_weight_config = repository.save_score_weight_config(
+                RuntimeScoreWeightConfigInput(
+                    project_id=bootstrap.project.id,
+                    formula_version="au_visibility_v1",
+                    weights=dict(get_score_formula("au_visibility_v1").weights),
+                    updated_by=owner_user_id,
+                    notes="Default AU launch scoring profile",
+                )
+            )
+        customer_invitation: dict[str, object] | None = None
+        if request.create_customer_invitation and customer_email_supplied and hasattr(
+            repository, "create_runtime_project_member_invitation"
+        ):
+            invitation = repository.create_runtime_project_member_invitation(
+                RuntimeProjectMemberInvitationInput(
+                    project_id=bootstrap.project.id,
+                    email=customer_email,
+                    role="viewer",
+                    invited_by=owner_user_id,
+                    metadata={"created_from": "runtime_project_create"},
+                    reason="runtime_project_create_customer_invitation",
+                )
+            )
+            customer_invitation = asdict(invitation)
         return {
             "tenant_id": bootstrap.tenant.id,
             "project_id": bootstrap.project.id,
@@ -3450,6 +3457,10 @@ def create_runtime_au_dtc_project(
             "competitor_count": len(bootstrap.competitors),
             "audit_event_ids": [event.id for event in bootstrap.audit_events],
             "bootstrap": asdict(bootstrap),
+            "launch_config": asdict(launch_config) if launch_config is not None else None,
+            "brand_kit": asdict(brand_kit) if brand_kit is not None else None,
+            "score_weight_config": asdict(score_weight_config) if score_weight_config is not None else None,
+            "customer_invitation": customer_invitation,
         }
     finally:
         close_repository_connection(repository)

@@ -17,7 +17,7 @@ from scripts.verify_au_p0b_google_environment_request_packet import (
     verify_au_p0b_google_environment_request_packet,
 )
 from tests.test_au_p0b_google_execution_checklist import AuP0bGoogleExecutionChecklistTest
-from scripts.build_au_p0a_env_report import compute_env_report_hash
+from scripts.build_au_p0a_env_report import DEFAULT_ENV_FILE, POST_UPDATE_VALIDATION_COMMANDS, compute_env_report_hash
 
 
 def _find_forbidden_exact_fields(value: object, *, path: str = "$") -> list[str]:
@@ -67,6 +67,7 @@ class AuP0bGoogleEnvironmentRequestPacketTest(unittest.TestCase):
             "status": "fail",
             "ready_for_real_batch": False,
             "next_action": "populate_required_environment",
+            "next_command": "make au-p0a-env",
             "runbook_path": "runbook.json",
             "runbook": {"status": "pass", "hash_valid": True},
             "env_file": {
@@ -112,6 +113,50 @@ class AuP0bGoogleEnvironmentRequestPacketTest(unittest.TestCase):
             "recommended": [],
             "missing_required": ["OPENAI_API_KEY", "PERPLEXITY_API_KEY"],
             "missing_recommended": [],
+            "credential_update_handoff": {
+                "credential_update_handoff_version": "au_p0a_env_credential_update_handoff_v1",
+                "ready_to_update_credentials": True,
+                "target_env_file": DEFAULT_ENV_FILE,
+                "required_missing_keys": ["OPENAI_API_KEY", "PERPLEXITY_API_KEY"],
+                "allowed_update_surfaces": [
+                    "process_environment",
+                    "GENO_AU_P0A_ENV_FILE",
+                    DEFAULT_ENV_FILE,
+                ],
+                "next_action": "populate_required_environment",
+                "next_command": "make au-p0a-env",
+                "post_update_validation_commands": list(POST_UPDATE_VALIDATION_COMMANDS),
+                "post_update_validation_command_count": len(POST_UPDATE_VALIDATION_COMMANDS),
+                "completion_requirements": [
+                    "OPENAI_API_KEY present in redacted env report",
+                    "PERPLEXITY_API_KEY present in redacted env report",
+                    "verify_au_p0a_env_report.py --require-ready-environment passes",
+                    "verify_au_p0a_credential_fulfillment.py --require-fulfilled passes",
+                    "verify_au_p0a_credential_clearance.py --require-cleared passes",
+                    "verify_au_p0a_credential_update_receipt.py --require-complete passes",
+                ],
+                "redaction_policy": {
+                    "raw_secret_values_allowed": False,
+                    "secret_redacted": True,
+                    "recorded_fields": [
+                        "name",
+                        "present",
+                        "source",
+                        "value_length",
+                        "sha256_prefix",
+                        "secret_redacted",
+                    ],
+                    "forbidden_artifact_fields": [
+                        "value",
+                        "raw_value",
+                        "secret",
+                        "token",
+                        "api_key",
+                        "database_url",
+                    ],
+                },
+            },
+            "post_update_validation_commands": list(POST_UPDATE_VALIDATION_COMMANDS),
             "summary": {
                 "required_count": 3,
                 "present_required_count": 1,
@@ -131,6 +176,9 @@ class AuP0bGoogleEnvironmentRequestPacketTest(unittest.TestCase):
                 "env_file_hygiene_warning_count": 0,
                 "ready_for_real_batch": False,
                 "next_action": "populate_required_environment",
+                "next_command": "make au-p0a-env",
+                "credential_update_handoff_ready": True,
+                "post_update_validation_command_count": len(POST_UPDATE_VALIDATION_COMMANDS),
                 "raw_secret_values_allowed": False,
             },
             "warnings": [],
