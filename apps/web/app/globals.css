@@ -593,7 +593,7 @@ code {
   display: grid;
   gap: 12px;
   margin-top: 18px;
-  padding: 14px;
+  padding: 0;
 }
 
 .launchStatusHeader {
@@ -601,6 +601,37 @@ code {
   display: flex;
   gap: 12px;
   justify-content: space-between;
+}
+
+.launchStatusSummary {
+  cursor: pointer;
+  list-style: none;
+  padding: 14px;
+}
+
+.launchStatusSummary::-webkit-details-marker {
+  display: none;
+}
+
+.launchStatusSummary::before {
+  color: #1f766d;
+  content: "▸";
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.launchStatusPanel[open] > .launchStatusSummary {
+  border-bottom: 1px solid #e1e6ed;
+}
+
+.launchStatusPanel[open] > .launchStatusSummary::before {
+  content: "▾";
+}
+
+.launchStatusBody {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
 }
 
 .launchStatusHeader span {

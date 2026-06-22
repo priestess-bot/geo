@@ -6876,6 +6876,68 @@ function boolText(value: boolean | undefined): string {
   return "未知";
 }
 
+const uiValueTranslations: Record<string, string> = {
+  allowed: "允许",
+  available: "可用",
+  blocked: "阻塞",
+  "coverage unknown": "覆盖未知",
+  dependency: "依赖",
+  fulfilled: "已履约",
+  invalid: "无效",
+  missing: "缺失",
+  "not available": "不可用",
+  "not ready": "未就绪",
+  ready: "就绪",
+  status: "状态",
+  unknown: "未知",
+  valid: "有效",
+  yes: "是",
+  no: "否",
+  none: "无",
+  owner: "负责人",
+  source: "来源",
+  target: "目标",
+  stage: "阶段",
+  present: "存在",
+  "gate clear": "门禁已清除",
+  "run checklist": "运行检查清单",
+  "run au-launch-status": "运行 AU 上线状态检查",
+  "run remediation plan": "运行修复计划"
+};
+
+function uiText(value: string | undefined | null, fallback = "未知"): string {
+  const raw = value || fallback;
+  return uiValueTranslations[raw] || raw;
+}
+
+function yesNoText(value: boolean | undefined | null): string {
+  if (value === true) return "是";
+  if (value === false) return "否";
+  return "未知";
+}
+
+function readyBlockedText(value: boolean | undefined | null): string {
+  if (value === true) return "就绪";
+  if (value === false) return "阻塞";
+  return "未知";
+}
+
+function presentMissingText(value: boolean | undefined | null): string {
+  if (value === true) return "存在";
+  if (value === false) return "缺失";
+  return "未知";
+}
+
+function allowedBlockedText(value: boolean | undefined | null): string {
+  if (value === true) return "允许";
+  if (value === false) return "阻塞";
+  return "未知";
+}
+
+function listText(values: string[], empty = "无"): string {
+  return values.length ? values.join(", ") : empty;
+}
+
 function dateText(value: string | undefined): string {
   if (!value) return "未知";
   const parsed = new Date(value);
@@ -7716,8 +7778,8 @@ export default async function Home({
 
       {activeTab === "overview" ? (
       <>
-      <section className="launchStatusPanel" aria-label="AU launch status gate">
-        <div className="launchStatusHeader">
+      <details className="launchStatusPanel collapsiblePanel" aria-label="AU 上线门禁" open>
+        <summary className="launchStatusHeader launchStatusSummary">
           <div>
             <p className="eyebrow">AU 上线门禁</p>
             <h2>{launchStageText(launchStatus)}</h2>
@@ -7727,42 +7789,43 @@ export default async function Home({
             </span>
           </div>
           <div className={`launchBadge ${launchStatus?.ready_for_customer_report_handoff ? "ready" : "blocked"}`}>
-            {launchStatus?.status || "unknown"}
+            {uiText(launchStatus?.status)}
           </div>
-        </div>
+        </summary>
+        <div className="launchStatusBody">
         <div className="launchStageGrid">
           <Fact
             label="P0a 试点伙伴"
-            value={launchP0a?.ready_for_design_partner ? "ready" : launchP0a?.status || "not ready"}
+            value={launchP0a?.ready_for_design_partner ? "就绪" : uiText(launchP0a?.status, "not ready")}
           />
           <Fact
             label="P0b Google 评分"
             value={
               launchP0b?.google_main_scoring_allowed
-                ? "allowed"
+                ? "允许"
                 : launchP0b?.limited_coverage
-                  ? "limited coverage"
-                  : "not ready"
+                  ? "有限覆盖"
+                  : "未就绪"
             }
           />
-          <Fact label="P0c 报告契约" value={launchP0c?.status || "unknown"} />
-          <Fact label="下一步动作" value={launchStatus?.next_action || "run au-launch-status"} />
+          <Fact label="P0c 报告契约" value={uiText(launchP0c?.status)} />
+          <Fact label="下一步动作" value={uiText(launchStatus?.next_action, "run au-launch-status")} />
         </div>
         <div className="launchEvidenceGrid">
           <span>
-            P0a completion {pct((launchP0a?.completion?.completion_percent || 0) / 100)} · design-ready{" "}
+            P0a 完成度 {pct((launchP0a?.completion?.completion_percent || 0) / 100)} · 试点就绪{" "}
             {pct((launchP0a?.completion?.design_ready_artifact_percent || 0) / 100)}
           </span>
           <span>
-            P0b package artifacts {launchP0b?.package_summary?.artifact_count || 0} · failed{" "}
+            P0b 证据包产物 {launchP0b?.package_summary?.artifact_count || 0} · 失败{" "}
             {launchP0b?.package_summary?.failed_artifacts?.length || 0}
           </span>
           <span>
-            P0c audit events {launchP0c?.audit_event_count || 0} · {launchP0c?.google_coverage || "coverage unknown"}
+            P0c 审计事件 {launchP0c?.audit_event_count || 0} · {uiText(launchP0c?.google_coverage, "coverage unknown")}
           </span>
-          <span>Generated {dateText(launchStatus?.generated_at)}</span>
+          <span>生成时间 {dateText(launchStatus?.generated_at)}</span>
         </div>
-        <OpsCard title="剩余阻塞项" className="launchBlockers" defaultOpen>
+        <OpsCard title="剩余阻塞项" className="launchBlockers">
           <strong>剩余阻塞项</strong>
           {launchBlockers.length ? (
             <ul>
@@ -7773,7 +7836,7 @@ export default async function Home({
           ) : (
             <span>没有记录启动阻塞项。</span>
           )}
-          {launchBlockers.length > 6 ? <span>{launchBlockers.length - 6} 个更多阻塞项在 API payload 中</span> : null}
+          {launchBlockers.length > 6 ? <span>API payload 中还有 {launchBlockers.length - 6} 个阻塞项</span> : null}
         </OpsCard>
         <OpsCard title="修复计划" className="launchRemediation">
           <div className="launchRemediationHeader">
@@ -7784,13 +7847,13 @@ export default async function Home({
             </span>
           </div>
           <div className="launchEvidenceGrid">
-            <span>Next work item {launchRemediationPlan?.next_work_item_id || "run remediation plan"}</span>
+            <span>下一工作项 {uiText(launchRemediationPlan?.next_work_item_id, "run remediation plan")}</span>
             <span>
-              Covered blockers {remediationSummary?.covered_blocker_count || 0}/
+              已覆盖阻塞项 {remediationSummary?.covered_blocker_count || 0}/
               {remediationSummary?.blocker_count || 0}
             </span>
-            <span>Work items {remediationSummary?.work_item_count || 0}</span>
-            <span>Unmapped blockers {remediationSummary?.unmapped_blocker_count || 0}</span>
+            <span>工作项 {remediationSummary?.work_item_count || 0}</span>
+            <span>未映射阻塞项 {remediationSummary?.unmapped_blocker_count || 0}</span>
           </div>
           {topRemediationItems.length ? (
             <div className="remediationList">
@@ -7799,20 +7862,20 @@ export default async function Home({
                   <div>
                     <strong>{item.id}</strong>
                     <span>
-                      {item.stage || "stage"} · {item.status || "status"} · {item.dependency_class || "dependency"}
+                      {uiText(item.stage, "stage")} · {uiText(item.status, "status")} · {uiText(item.dependency_class, "dependency")}
                     </span>
                   </div>
-                  <p>{item.title || item.acceptance || "No title"}</p>
-                  <code>{item.commands?.[0]?.shell || "no command"}</code>
+                  <p>{item.title || item.acceptance || "无标题"}</p>
+                  <code>{item.commands?.[0]?.shell || "无命令"}</code>
                   <small>
-                    verifies {item.verification_commands?.[0]?.shell || "no verifier"} · clears{" "}
+                    验证 {item.verification_commands?.[0]?.shell || "无验证命令"} · 清除{" "}
                     {item.blocker_count || item.clears_blockers?.length || 0}
                   </small>
                 </div>
               ))}
             </div>
           ) : (
-            <span className="remediationEmpty">No remediation work items recorded.</span>
+            <span className="remediationEmpty">没有记录修复工作项。</span>
           )}
           <code>{paths.launchRemediationPlan}</code>
         </OpsCard>
@@ -7825,16 +7888,16 @@ export default async function Home({
             </span>
           </div>
           <div className="launchEvidenceGrid">
-            <span>Ready {p0aEnvironmentChecklist?.environment_checklist_ready ? "yes" : "no"}</span>
-            <span>下一步动作 {p0aEnvironmentChecklist?.next_action || "run checklist"}</span>
+            <span>是否就绪 {yesNoText(p0aEnvironmentChecklist?.environment_checklist_ready)}</span>
+            <span>下一步动作 {uiText(p0aEnvironmentChecklist?.next_action, "run checklist")}</span>
             <span>
-              Required {p0aEnvironmentSummary?.required_present_count || 0}/
+              必填项 {p0aEnvironmentSummary?.required_present_count || 0}/
               {p0aEnvironmentSummary?.required_count || 0}
             </span>
-            <span>Recommended missing {p0aEnvironmentSummary?.missing_recommended_count || 0}</span>
+            <span>缺少建议项 {p0aEnvironmentSummary?.missing_recommended_count || 0}</span>
             <span>
-              Env-file hygiene {p0aEnvFileHygieneReady ? "ready" : "blocked"} · errors{" "}
-              {p0aEnvFileHygieneErrorCount} · warnings {p0aEnvFileHygieneWarningCount}
+              环境文件检查 {readyBlockedText(p0aEnvFileHygieneReady)} · 错误{" "}
+              {p0aEnvFileHygieneErrorCount} · 警告 {p0aEnvFileHygieneWarningCount}
             </span>
           </div>
           <div className="environmentChecklistGrid">
@@ -7847,7 +7910,7 @@ export default async function Home({
                   ))}
                 </ul>
               ) : (
-                <small>All required variables are present.</small>
+                <small>所有必填变量都已存在。</small>
               )}
             </div>
             <div>
@@ -7859,21 +7922,21 @@ export default async function Home({
                   ))}
                 </ul>
               ) : (
-                <small>Recommended object store variables are present.</small>
+                <small>建议的对象存储变量都已存在。</small>
               )}
             </div>
           </div>
           <div className="handoffBoundary">
             <span>
-              Hard gate{" "}
+              硬门禁{" "}
               {p0aEnvironmentChecklist?.verification_commands?.find((command) => command.id === "hard_env_gate")
                 ?.shell || "python3 scripts/verify_au_p0a_env_report.py --require-ready-environment"}
             </span>
             <span>
-              Verifiers: runbook {p0aEnvironmentSummary?.runbook_verifier_status || "unknown"} · environment{" "}
-              {p0aEnvironmentSummary?.environment_verifier_status || "unknown"}
+              验证器：runbook {uiText(p0aEnvironmentSummary?.runbook_verifier_status)} · 环境{" "}
+              {uiText(p0aEnvironmentSummary?.environment_verifier_status)}
             </span>
-            <span>Evidence outputs {p0aEnvironmentChecklist?.evidence_outputs?.length || 0}</span>
+            <span>证据产物 {p0aEnvironmentChecklist?.evidence_outputs?.length || 0}</span>
           </div>
           <code>{paths.p0aEnvironmentChecklist}</code>
         </OpsCard>
@@ -7886,10 +7949,10 @@ export default async function Home({
             </span>
           </div>
           <div className="launchEvidenceGrid">
-            <span>Ready {p0aExecutionChecklist?.p0a_execution_checklist_ready ? "yes" : "no"}</span>
-            <span>Design partner {p0aExecutionChecklist?.ready_for_design_partner ? "ready" : "blocked"}</span>
-            <span>下一步动作 {p0aExecutionChecklist?.next_action || "run checklist"}</span>
-            <span>Full batch runs {p0aExecutionSummary?.full_batch_planned_runs || 0}</span>
+            <span>是否就绪 {yesNoText(p0aExecutionChecklist?.p0a_execution_checklist_ready)}</span>
+            <span>试点伙伴 {readyBlockedText(p0aExecutionChecklist?.ready_for_design_partner)}</span>
+            <span>下一步动作 {uiText(p0aExecutionChecklist?.next_action, "run checklist")}</span>
+            <span>完整批次运行数 {p0aExecutionSummary?.full_batch_planned_runs || 0}</span>
           </div>
           <div className="environmentChecklistGrid">
             <div>
@@ -7901,7 +7964,7 @@ export default async function Home({
                   ))}
                 </ul>
               ) : (
-                <small>All P0a execution artifacts are present.</small>
+                <small>所有 P0a 执行产物都已存在。</small>
               )}
             </div>
             <div>
@@ -7913,15 +7976,15 @@ export default async function Home({
                   ))}
                 </ul>
               ) : (
-                <small>No P0a execution blockers recorded.</small>
+                <small>没有记录 P0a 执行阻塞项。</small>
               )}
             </div>
             <div>
               <strong>凭证交接</strong>
               <small>
-                {p0aExecutionSummary?.credential_handoff_ready ? "ready" : "blocked"} · missing{" "}
-                {p0aExecutionSummary?.credential_handoff_missing_required_count || 0} · redacted{" "}
-                {p0aExecutionSummary?.credential_handoff_secret_redacted ? "yes" : "no"}
+                {readyBlockedText(p0aExecutionSummary?.credential_handoff_ready)} · 缺失{" "}
+                {p0aExecutionSummary?.credential_handoff_missing_required_count || 0} · 已脱敏{" "}
+                {yesNoText(p0aExecutionSummary?.credential_handoff_secret_redacted)}
               </small>
               {missingP0aCredentials.length ? (
                 <ul className="plainList">
@@ -7930,34 +7993,34 @@ export default async function Home({
                   ))}
                 </ul>
               ) : (
-                <small>All required P0a credentials are recorded as present.</small>
+                <small>所有必需 P0a 凭证都已记录为存在。</small>
               )}
             </div>
           </div>
           <div className="handoffBoundary">
             <span>
-              Completion {p0aExecutionSummary?.completion_percent || 0}% · design-ready{" "}
+              完成度 {p0aExecutionSummary?.completion_percent || 0}% · 试点就绪{" "}
               {p0aExecutionSummary?.design_ready_artifact_percent || 0}%
             </span>
-            <span>Credential target env file {p0aExecutionSummary?.credential_handoff_target_env_file || "none"}</span>
+            <span>凭证目标环境文件 {uiText(p0aExecutionSummary?.credential_handoff_target_env_file, "none")}</span>
             <span>
-              Real batch phase handoff{" "}
-              {p0aExecutionSummary?.real_batch_phase_handoff_ready ? "ready" : "blocked"} · next{" "}
-              {p0aExecutionSummary?.real_batch_phase_handoff_next_phase || "none"} · blocked phases{" "}
+              真实批次阶段交接{" "}
+              {readyBlockedText(p0aExecutionSummary?.real_batch_phase_handoff_ready)} · 下一阶段{" "}
+              {uiText(p0aExecutionSummary?.real_batch_phase_handoff_next_phase, "none")} · 阻塞阶段{" "}
               {p0aExecutionSummary?.real_batch_phase_handoff_blocked_phase_count || 0}
             </span>
-            <span>Real batch planned runs {p0aExecutionSummary?.real_batch_phase_handoff_total_planned_runs || 0}</span>
+            <span>真实批次计划运行 {p0aExecutionSummary?.real_batch_phase_handoff_total_planned_runs || 0}</span>
             <span>
-              Verifiers: execution {p0aExecutionSummary?.runbook_execution_verifier_status || "unknown"} · package{" "}
-              {p0aExecutionSummary?.package_verifier_status || "unknown"} · status{" "}
-              {p0aExecutionSummary?.status_verifier_status || "unknown"}
+              验证器：执行 {uiText(p0aExecutionSummary?.runbook_execution_verifier_status)} · 证据包{" "}
+              {uiText(p0aExecutionSummary?.package_verifier_status)} · 状态{" "}
+              {uiText(p0aExecutionSummary?.status_verifier_status)}
             </span>
             <span>
-              Hard gate{" "}
+              硬门禁{" "}
               {p0aExecutionChecklist?.verification_commands?.find((command) => command.id === "hard_status_gate")
                 ?.shell || "python3 scripts/verify_au_p0a_status_report.py --require-design-partner-ready"}
             </span>
-            <span>Evidence outputs {p0aExecutionChecklist?.evidence_outputs?.length || 0}</span>
+            <span>证据产物 {p0aExecutionChecklist?.evidence_outputs?.length || 0}</span>
           </div>
           <code>{paths.p0aExecutionChecklist}</code>
         </OpsCard>
@@ -7971,20 +8034,20 @@ export default async function Home({
             </span>
           </div>
           <div className="launchEvidenceGrid">
-            <span>Ready {p0bGoogleExecutionChecklist?.google_execution_checklist_ready ? "yes" : "no"}</span>
-            <span>Google scoring {p0bGoogleExecutionChecklist?.google_main_scoring_allowed ? "allowed" : "blocked"}</span>
-            <span>下一步动作 {p0bGoogleExecutionChecklist?.next_action || "run checklist"}</span>
-            <span>Planned runs {p0bGoogleExecutionSummary?.planned_runs || 0}</span>
+            <span>是否就绪 {yesNoText(p0bGoogleExecutionChecklist?.google_execution_checklist_ready)}</span>
+            <span>Google 评分 {allowedBlockedText(p0bGoogleExecutionChecklist?.google_main_scoring_allowed)}</span>
+            <span>下一步动作 {uiText(p0bGoogleExecutionChecklist?.next_action, "run checklist")}</span>
+            <span>计划运行 {p0bGoogleExecutionSummary?.planned_runs || 0}</span>
             <span>
-              Env-file hygiene {p0bEnvFileHygieneReady ? "ready" : "blocked"} · errors{" "}
-              {p0bEnvFileHygieneErrorCount} · warnings {p0bEnvFileHygieneWarningCount}
+              环境文件检查 {readyBlockedText(p0bEnvFileHygieneReady)} · 错误{" "}
+              {p0bEnvFileHygieneErrorCount} · 警告 {p0bEnvFileHygieneWarningCount}
             </span>
             <span>
-              Manual backfill rows {p0bGoogleExecutionSummary?.manual_backfill_handoff_record_count || 0}/
+              人工回填记录 {p0bGoogleExecutionSummary?.manual_backfill_handoff_record_count || 0}/
               {p0bGoogleExecutionSummary?.manual_backfill_handoff_expected_record_count || 0}
             </span>
             <span>
-              Google phase next {p0bGoogleExecutionSummary?.google_spike_phase_handoff_next_phase || "none"} · blocked{" "}
+              Google 下一阶段 {uiText(p0bGoogleExecutionSummary?.google_spike_phase_handoff_next_phase, "none")} · 阻塞{" "}
               {p0bGoogleExecutionSummary?.google_spike_phase_handoff_blocked_phase_count || 0}
             </span>
           </div>
@@ -7998,7 +8061,7 @@ export default async function Home({
                   ))}
                 </ul>
               ) : (
-                <small>Required Google env is present.</small>
+                <small>必需 Google 环境变量都已存在。</small>
               )}
             </div>
             <div>
@@ -8010,15 +8073,15 @@ export default async function Home({
                   ))}
                 </ul>
               ) : (
-                <small>Selector groups are present.</small>
+                <small>选择器组都已存在。</small>
               )}
             </div>
             <div>
               <strong>环境交接</strong>
               <small>
-                {p0bGoogleExecutionSummary?.environment_handoff_ready ? "ready" : "blocked"} · missing{" "}
-                {p0bGoogleExecutionSummary?.environment_handoff_missing_required_count || 0} · redacted{" "}
-                {p0bGoogleExecutionSummary?.environment_handoff_secret_redacted ? "yes" : "no"}
+                {readyBlockedText(p0bGoogleExecutionSummary?.environment_handoff_ready)} · 缺失{" "}
+                {p0bGoogleExecutionSummary?.environment_handoff_missing_required_count || 0} · 已脱敏{" "}
+                {yesNoText(p0bGoogleExecutionSummary?.environment_handoff_secret_redacted)}
               </small>
               {missingP0bEnvironmentHandoff.length ? (
                 <ul className="plainList">
@@ -8027,15 +8090,15 @@ export default async function Home({
                   ))}
                 </ul>
               ) : (
-                <small>Google smoke/full-run handoff inputs are recorded as present.</small>
+                <small>Google smoke/full-run 交接输入都已记录为存在。</small>
               )}
             </div>
             <div>
               <strong>人工回填交接</strong>
               <small>
-                {p0bGoogleExecutionSummary?.manual_backfill_handoff_ready ? "ready" : "blocked"} · prompt-city{" "}
+                {readyBlockedText(p0bGoogleExecutionSummary?.manual_backfill_handoff_ready)} · prompt-city{" "}
                 {p0bGoogleExecutionSummary?.manual_backfill_handoff_covered_prompt_city_count || 0}/
-                {p0bGoogleExecutionSummary?.manual_backfill_handoff_expected_prompt_city_count || 0} · missing{" "}
+                {p0bGoogleExecutionSummary?.manual_backfill_handoff_expected_prompt_city_count || 0} · 缺失{" "}
                 {p0bGoogleExecutionSummary?.manual_backfill_handoff_missing_reason_count || 0}
               </small>
               {missingP0bManualBackfill.length ? (
@@ -8045,41 +8108,41 @@ export default async function Home({
                   ))}
                 </ul>
               ) : (
-                <small>Manual JSONL verification is ready.</small>
+                <small>人工 JSONL 验证已就绪。</small>
               )}
             </div>
           </div>
           <div className="handoffBoundary">
             <span>
-              剩余阻塞项 {p0bGoogleExecutionSummary?.remaining_blocker_count || 0} · shown{" "}
+              剩余阻塞项 {p0bGoogleExecutionSummary?.remaining_blocker_count || 0} · 当前展示{" "}
               {Math.min(p0bChecklistBlockers.length, 4)}
             </span>
             <span>
-              Environment target env file {p0bGoogleExecutionSummary?.environment_handoff_target_env_file || "none"}
+              环境目标文件 {uiText(p0bGoogleExecutionSummary?.environment_handoff_target_env_file, "none")}
             </span>
             <span>
-              Manual backfill redacted {p0bGoogleExecutionSummary?.manual_backfill_handoff_content_redacted ? "yes" : "no"} · template{" "}
-              {p0bGoogleExecutionSummary?.manual_backfill_handoff_template_path || "none"}
+              人工回填已脱敏 {yesNoText(p0bGoogleExecutionSummary?.manual_backfill_handoff_content_redacted)} · 模板{" "}
+              {uiText(p0bGoogleExecutionSummary?.manual_backfill_handoff_template_path, "none")}
             </span>
             <span>
-              Manual verification {p0bGoogleExecutionSummary?.manual_backfill_handoff_verification_path || "none"}
+              人工验证 {uiText(p0bGoogleExecutionSummary?.manual_backfill_handoff_verification_path, "none")}
             </span>
             <span>
-              Google phase handoff {p0bGoogleExecutionSummary?.google_spike_phase_handoff_ready ? "ready" : "blocked"} · full spike runs{" "}
+              Google 阶段交接 {readyBlockedText(p0bGoogleExecutionSummary?.google_spike_phase_handoff_ready)} · 完整 spike 运行{" "}
               {p0bGoogleExecutionSummary?.google_spike_phase_handoff_full_spike_planned_runs || 0}
             </span>
-            <span>Google phase order {(p0bGoogleExecutionSummary?.google_spike_phase_order || []).join(" / ") || "none"}</span>
+            <span>Google 阶段顺序 {(p0bGoogleExecutionSummary?.google_spike_phase_order || []).join(" / ") || "无"}</span>
             <span>
-              Verifiers: env {p0bGoogleExecutionSummary?.playwright_env_verifier_status || "unknown"} · status{" "}
-              {p0bGoogleExecutionSummary?.status_verifier_status || "unknown"} · package{" "}
-              {p0bGoogleExecutionSummary?.package_verifier_status || "unknown"}
+              验证器：环境 {uiText(p0bGoogleExecutionSummary?.playwright_env_verifier_status)} · 状态{" "}
+              {uiText(p0bGoogleExecutionSummary?.status_verifier_status)} · 证据包{" "}
+              {uiText(p0bGoogleExecutionSummary?.package_verifier_status)}
             </span>
             <span>
-              Hard gate{" "}
+              硬门禁{" "}
               {p0bGoogleExecutionChecklist?.verification_commands?.find((command) => command.id === "hard_package_gate")
                 ?.shell || "python3 scripts/verify_au_p0b_google_evidence_package.py --require-google-main-scoring-allowed"}
             </span>
-            <span>Evidence outputs {p0bGoogleExecutionChecklist?.evidence_outputs?.length || 0}</span>
+            <span>证据产物 {p0bGoogleExecutionChecklist?.evidence_outputs?.length || 0}</span>
           </div>
           {p0bChecklistBlockers.length ? (
             <ul className="plainList compactList">
@@ -8101,67 +8164,65 @@ export default async function Home({
           </div>
           <div className="launchEvidenceGrid">
             <span>
-              Packet ready {p0bGoogleEnvironmentRequest?.google_environment_request_packet_ready ? "yes" : "no"}
+              请求包就绪 {yesNoText(p0bGoogleEnvironmentRequest?.google_environment_request_packet_ready)}
             </span>
             <span>
-              Environment handoff {p0bGoogleEnvironmentRequest?.environment_handoff_ready ? "ready" : "blocked"}
+              环境交接 {readyBlockedText(p0bGoogleEnvironmentRequest?.environment_handoff_ready)}
             </span>
             <span>
-              Google scoring {p0bGoogleEnvironmentRequest?.google_main_scoring_allowed ? "allowed" : "blocked"}
+              Google 评分 {allowedBlockedText(p0bGoogleEnvironmentRequest?.google_main_scoring_allowed)}
             </span>
-            <span>Missing required {p0bGoogleEnvironmentRequestSummary?.missing_required_count || 0}</span>
-            <span>Env items {p0bGoogleEnvironmentRequestSummary?.environment_item_count || 0}</span>
-            <span>Selector groups {p0bGoogleEnvironmentRequestSummary?.selector_item_count || 0}</span>
-            <span>File gates {p0bGoogleEnvironmentRequestSummary?.file_item_count || 0}</span>
-            <span>Reuse hints {p0bGoogleEnvironmentRequestSummary?.cross_stage_reuse_hint_count || 0}</span>
+            <span>缺少必填项 {p0bGoogleEnvironmentRequestSummary?.missing_required_count || 0}</span>
+            <span>环境项 {p0bGoogleEnvironmentRequestSummary?.environment_item_count || 0}</span>
+            <span>选择器组 {p0bGoogleEnvironmentRequestSummary?.selector_item_count || 0}</span>
+            <span>文件门禁 {p0bGoogleEnvironmentRequestSummary?.file_item_count || 0}</span>
+            <span>复用提示 {p0bGoogleEnvironmentRequestSummary?.cross_stage_reuse_hint_count || 0}</span>
             <span>
-              DB reuse {p0bGoogleEnvironmentRequestSummary?.database_url_reuse_available ? "available" : "not available"}
+              DB 复用 {p0bGoogleEnvironmentRequestSummary?.database_url_reuse_available ? "可用" : "不可用"}
             </span>
-            <span>Raw secret allowed {p0bGoogleEnvironmentRequestSummary?.raw_secret_values_allowed ? "yes" : "no"}</span>
+            <span>允许原始密钥 {yesNoText(p0bGoogleEnvironmentRequestSummary?.raw_secret_values_allowed)}</span>
           </div>
           <div className="handoffBoundary">
-            <span>Target env file {p0bGoogleEnvironmentRequestSummary?.target_env_file || "none"}</span>
+            <span>目标环境文件 {uiText(p0bGoogleEnvironmentRequestSummary?.target_env_file, "none")}</span>
             <span>
-              Missing {p0bGoogleEnvironmentRequestMissing.slice(0, 5).join(", ") || "none"}
+              缺失项 {listText(p0bGoogleEnvironmentRequestMissing.slice(0, 5))}
             </span>
             <span>
-              Browser owner missing{" "}
-              {(p0bGoogleEnvironmentRequestSummary?.missing_required_by_owner?.browser_automation_operator || [])
-                .slice(0, 4)
-                .join(", ") || "none"}
+              浏览器自动化负责人缺失{" "}
+              {listText((p0bGoogleEnvironmentRequestSummary?.missing_required_by_owner?.browser_automation_operator || [])
+                .slice(0, 4))}
             </span>
             <span>
-              Manual owner missing{" "}
-              {(p0bGoogleEnvironmentRequestSummary?.missing_required_by_owner?.google_manual_backfill_operator || [])
-                .slice(0, 3)
-                .join(", ") || "none"}
+              人工回填负责人缺失{" "}
+              {listText((p0bGoogleEnvironmentRequestSummary?.missing_required_by_owner?.google_manual_backfill_operator || [])
+                .slice(0, 3))}
             </span>
-            <span>Next command {p0bGoogleEnvironmentRequestSummary?.next_command || "none"}</span>
+            <span>下一命令 {uiText(p0bGoogleEnvironmentRequestSummary?.next_command, "none")}</span>
             <span>
-              Post-update verifier {p0bGoogleEnvironmentRequestSummary?.post_update_verification_command || "none"}
+              更新后验证 {uiText(p0bGoogleEnvironmentRequestSummary?.post_update_verification_command, "none")}
             </span>
-            <span>Google next action {p0bGoogleEnvironmentRequestSummary?.google_next_action || "none"}</span>
+            <span>Google 下一动作 {uiText(p0bGoogleEnvironmentRequestSummary?.google_next_action, "none")}</span>
             <span>
-              Source checklist hash{" "}
+              来源检查清单 hash{" "}
               {shortHash(
                 p0bGoogleEnvironmentRequest?.source_p0b_google_execution_checklist?.google_execution_checklist_hash
               )}
             </span>
             <span>
-              P0a env hash{" "}
+              P0a 环境 hash{" "}
               {shortHash(p0bGoogleEnvironmentRequest?.source_p0a_env_report?.environment_report_hash)}
             </span>
             <span>
-              P0a env verifier {p0bGoogleEnvironmentRequest?.p0a_env_report_verifier?.status || "unknown"} · hash{" "}
-              {p0bGoogleEnvironmentRequest?.p0a_env_report_verifier?.hash_valid ? "valid" : "invalid"}
+              P0a 环境验证器 {uiText(p0bGoogleEnvironmentRequest?.p0a_env_report_verifier?.status)} · hash{" "}
+              {p0bGoogleEnvironmentRequest?.p0a_env_report_verifier?.hash_valid ? "有效" : "无效"}
             </span>
             <span>
               {p0bGoogleEnvironmentRequest?.runtime_endpoints?.p0b_google_environment_request ||
                 "GET /v1/p0b-google-environment-request/au"}
             </span>
-            <span>Hard gate: make verify-au-p0b-google-environment-request</span>
+            <span>硬门禁：make verify-au-p0b-google-environment-request</span>
             <span>
-              Ready smoke hard gate:{" "}
+              Smoke 就绪硬门禁：{" "}
               {p0bGoogleEnvironmentRequest?.hard_gate_commands?.find((command) =>
                 command.endsWith("--require-ready-smoke")
               ) ||
@@ -8174,16 +8235,16 @@ export default async function Home({
                 <div className="dependencyGroup" key={hint.id || `${hint.source_key}-${hint.target_key}`}>
                   <strong>{hint.operator_action || hint.id}</strong>
                   <span>
-                    {hint.source_stage || "source"} to {hint.target_stage || "target"} ·{" "}
-                    {hint.reuse_available ? "available" : "blocked"}
+                    {uiText(hint.source_stage, "source")} 到 {uiText(hint.target_stage, "target")} ·{" "}
+                    {hint.reuse_available ? "可用" : "阻塞"}
                   </span>
                   <small>
-                    {hint.source_key || "source"} to {hint.target_key || "target"} · missing{" "}
-                    {hint.target_missing_id || "none"}
+                    {hint.source_key || "来源"} 到 {hint.target_key || "目标"} · 缺失{" "}
+                    {uiText(hint.target_missing_id, "none")}
                   </small>
                   <small>
-                    len {hint.value_length || 0} · sha {shortHash(hint.sha256_prefix)} · raw copy{" "}
-                    {hint.copy_raw_value_required ? "required" : "not stored"}
+                    长度 {hint.value_length || 0} · sha {shortHash(hint.sha256_prefix)} · 原始复制{" "}
+                    {hint.copy_raw_value_required ? "必需" : "不存储"}
                   </small>
                 </div>
               ))}
@@ -8194,42 +8255,42 @@ export default async function Home({
               <div className="dependencyGroup" key={`env-${item.name}`}>
                 <strong>{item.name}</strong>
                 <span>
-                  {item.owner_hint || "owner"} · {item.present && item.truthy !== false ? "present" : "missing"}
+                  {uiText(item.owner_hint, "owner")} · {presentMissingText(item.present && item.truthy !== false)}
                 </span>
                 <small>
-                  {item.gate || "gate"} · source {item.source || "missing"}
+                  {item.gate || "门禁"} · 来源 {uiText(item.source, "missing")}
                 </small>
-                <small>{item.env_file_key || item.name} · redacted {item.secret_redacted ? "yes" : "no"}</small>
+                <small>{item.env_file_key || item.name} · 已脱敏 {yesNoText(item.secret_redacted)}</small>
               </div>
             ))}
             {p0bGoogleSelectorItems.slice(0, 2).map((item) => (
               <div className="dependencyGroup" key={`selector-${item.group}`}>
                 <strong>{item.group}</strong>
                 <span>
-                  {item.owner_hint || "owner"} · {item.present ? "present" : "missing"}
+                  {uiText(item.owner_hint, "owner")} · {presentMissingText(item.present)}
                 </span>
-                <small>{(item.candidate_names || []).slice(0, 2).join(" · ") || "selector"}</small>
-                <small>redacted {item.secret_redacted ? "yes" : "no"}</small>
+                <small>{(item.candidate_names || []).slice(0, 2).join(" · ") || "选择器"}</small>
+                <small>已脱敏 {yesNoText(item.secret_redacted)}</small>
               </div>
             ))}
             {p0bGoogleFileItems.slice(0, 3).map((item) => (
               <div className="dependencyGroup" key={`file-${item.name}`}>
                 <strong>{item.name}</strong>
                 <span>
-                  {item.owner_hint || "owner"} · {item.present && (item.is_file || item.is_dir) ? "present" : "missing"}
+                  {uiText(item.owner_hint, "owner")} · {presentMissingText(item.present && (item.is_file || item.is_dir))}
                 </span>
-                <small>{item.expected_type || "path"} · source {item.source || "missing"}</small>
-                <small>redacted {item.secret_redacted ? "yes" : "no"}</small>
+                <small>{item.expected_type || "路径"} · 来源 {uiText(item.source, "missing")}</small>
+                <small>已脱敏 {yesNoText(item.secret_redacted)}</small>
               </div>
             ))}
             {p0bGoogleDependencyItems.slice(0, 2).map((item) => (
               <div className="dependencyGroup" key={`dependency-${item.name}`}>
                 <strong>{item.name}</strong>
                 <span>
-                  {item.owner_hint || "owner"} · {item.present ? "present" : "missing"}
+                  {uiText(item.owner_hint, "owner")} · {presentMissingText(item.present)}
                 </span>
-                <small>source {item.source || "unknown"}</small>
-                <small>redacted {item.secret_redacted ? "yes" : "no"}</small>
+                <small>来源 {uiText(item.source)}</small>
+                <small>已脱敏 {yesNoText(item.secret_redacted)}</small>
               </div>
             ))}
           </div>
@@ -8247,65 +8308,65 @@ export default async function Home({
           </div>
           <div className="launchEvidenceGrid">
             <span>
-              Fulfillment ready {p0bGoogleEnvironmentFulfillment?.environment_fulfillment_ready ? "yes" : "no"}
+              履约就绪 {yesNoText(p0bGoogleEnvironmentFulfillment?.environment_fulfillment_ready)}
             </span>
-            <span>Environment fulfilled {p0bGoogleEnvironmentFulfillment?.environment_fulfilled ? "yes" : "no"}</span>
-            <span>Smoke ready {p0bGoogleEnvironmentFulfillment?.ready_for_playwright_smoke ? "yes" : "no"}</span>
-            <span>Full run ready {p0bGoogleEnvironmentFulfillment?.ready_for_full_google_run ? "yes" : "no"}</span>
+            <span>环境已履约 {yesNoText(p0bGoogleEnvironmentFulfillment?.environment_fulfilled)}</span>
+            <span>Smoke 就绪 {yesNoText(p0bGoogleEnvironmentFulfillment?.ready_for_playwright_smoke)}</span>
+            <span>完整运行就绪 {yesNoText(p0bGoogleEnvironmentFulfillment?.ready_for_full_google_run)}</span>
             <span>
-              Fulfilled required {p0bGoogleEnvironmentFulfillmentSummary?.fulfilled_required_count || 0}/
+              已履约必填项 {p0bGoogleEnvironmentFulfillmentSummary?.fulfilled_required_count || 0}/
               {p0bGoogleEnvironmentFulfillmentSummary?.required_count || 0}
             </span>
-            <span>Missing required {p0bGoogleEnvironmentFulfillmentSummary?.missing_required_count || 0}</span>
-            <span>Presence mismatches {p0bGoogleEnvironmentFulfillmentSummary?.presence_mismatch_count || 0}</span>
+            <span>缺少必填项 {p0bGoogleEnvironmentFulfillmentSummary?.missing_required_count || 0}</span>
+            <span>存在性不一致 {p0bGoogleEnvironmentFulfillmentSummary?.presence_mismatch_count || 0}</span>
             <span>
               DB reuse{" "}
-              {p0bGoogleEnvironmentFulfillmentSummary?.database_url_reuse_available ? "available" : "not available"}
+              {p0bGoogleEnvironmentFulfillmentSummary?.database_url_reuse_available ? "可用" : "不可用"}
             </span>
             <span>
-              Action plan {p0bGoogleEnvironmentFulfillmentSummary?.google_environment_action_plan_ready ? "ready" : "blocked"}
+              行动计划 {readyBlockedText(p0bGoogleEnvironmentFulfillmentSummary?.google_environment_action_plan_ready)}
             </span>
             <span>
-              Action required{" "}
-              {p0bGoogleEnvironmentFulfillmentSummary?.google_environment_action_required ? "yes" : "no"}
+              需要行动{" "}
+              {yesNoText(p0bGoogleEnvironmentFulfillmentSummary?.google_environment_action_required)}
             </span>
             <span>
-              Action items {p0bGoogleEnvironmentFulfillmentSummary?.google_environment_action_item_count ?? 0}
+              行动项 {p0bGoogleEnvironmentFulfillmentSummary?.google_environment_action_item_count ?? 0}
             </span>
           </div>
           <div className="handoffBoundary">
-            <span>Missing {p0bGoogleEnvironmentFulfillmentMissing.slice(0, 6).join(", ") || "none"}</span>
-            <span>Mismatches {p0bGoogleEnvironmentFulfillmentMismatches.join(", ") || "none"}</span>
+            <span>缺失项 {listText(p0bGoogleEnvironmentFulfillmentMissing.slice(0, 6))}</span>
+            <span>不一致项 {listText(p0bGoogleEnvironmentFulfillmentMismatches)}</span>
             <span>
-              Action owners{" "}
+              行动负责人{" "}
               {Object.entries(p0bGoogleEnvironmentFulfillmentActionOwners)
                 .map(([owner, count]) => `${owner}:${count}`)
-                .join(", ") || "none"}
+                .join(", ") || "无"}
             </span>
             <span>
-              Action validation{" "}
-              {p0bGoogleEnvironmentFulfillmentSummary?.google_environment_post_update_validation_command_count ?? 0} commands
+              行动验证{" "}
+              {p0bGoogleEnvironmentFulfillmentSummary?.google_environment_post_update_validation_command_count ?? 0} 条命令
             </span>
-            <span>下一步动作 {p0bGoogleEnvironmentFulfillmentSummary?.next_action || "none"}</span>
-            <span>Next command {p0bGoogleEnvironmentFulfillmentSummary?.next_command || "none"}</span>
+            <span>下一步动作 {uiText(p0bGoogleEnvironmentFulfillmentSummary?.next_action, "none")}</span>
+            <span>下一命令 {uiText(p0bGoogleEnvironmentFulfillmentSummary?.next_command, "none")}</span>
             <span>
-              Request hash{" "}
+              请求包 hash{" "}
               {shortHash(
                 p0bGoogleEnvironmentFulfillment?.source_p0b_google_environment_request
                   ?.p0b_google_environment_request_packet_hash
               )}
             </span>
             <span>
-              Env report hash{" "}
+              环境报告 hash{" "}
               {shortHash(p0bGoogleEnvironmentFulfillment?.source_p0b_google_playwright_env_report?.environment_report_hash)}
             </span>
             <span>
               {p0bGoogleEnvironmentFulfillment?.runtime_endpoints?.p0b_google_environment_fulfillment ||
                 "GET /v1/p0b-google-environment-fulfillment/au"}
             </span>
-            <span>Hard gate: make verify-au-p0b-google-environment-fulfillment</span>
+            <span>硬门禁：make verify-au-p0b-google-environment-fulfillment</span>
             <span>
-              Strict gate:{" "}
+              严格门禁：{" "}
               {p0bGoogleEnvironmentFulfillmentSummary?.strict_gate_command ||
                 "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_environment_fulfillment.py docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json --require-fulfilled"}
             </span>
@@ -8316,16 +8377,16 @@ export default async function Home({
                 <div className="dependencyGroup" key={item.key || item.name}>
                   <strong>{item.key || item.name}</strong>
                   <span>
-                    {item.owner_hint || "owner"} · {item.fulfilled ? "fulfilled" : "missing"}
+                    {uiText(item.owner_hint, "owner")} · {item.fulfilled ? "已履约" : "缺失"}
                   </span>
                   <small>
-                    request {item.requested_present ? "present" : "missing"} · env{" "}
-                    {item.environment_present ? "present" : "missing"}
+                    请求 {presentMissingText(item.requested_present)} · 环境{" "}
+                    {presentMissingText(item.environment_present)}
                   </small>
                   <small>
-                    source {item.environment_source || "missing"} · hash {shortHash(item.sha256_prefix)}
+                    来源 {uiText(item.environment_source, "missing")} · hash {shortHash(item.sha256_prefix)}
                   </small>
-                  <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "gate clear"}</small>
+                  <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "门禁已清除"}</small>
                 </div>
               ))}
             </div>
@@ -8344,81 +8405,81 @@ export default async function Home({
           </div>
           <div className="launchEvidenceGrid">
             <span>
-              Clearance packet{" "}
-              {p0bGoogleEnvironmentClearance?.environment_clearance_packet_ready ? "ready" : "blocked"}
+              清障包{" "}
+              {readyBlockedText(p0bGoogleEnvironmentClearance?.environment_clearance_packet_ready)}
             </span>
             <span>
-              Environment {p0bGoogleEnvironmentClearance?.environment_fulfilled ? "fulfilled" : "blocked"}
+              环境 {p0bGoogleEnvironmentClearance?.environment_fulfilled ? "已履约" : "阻塞"}
             </span>
             <span>
-              Clearance ready {p0bGoogleEnvironmentClearance?.environment_clearance_ready ? "yes" : "no"}
+              清障就绪 {yesNoText(p0bGoogleEnvironmentClearance?.environment_clearance_ready)}
             </span>
             <span>
-              Next clearance {p0bGoogleEnvironmentClearance?.ready_for_next_clearance_step ? "ready" : "blocked"}
+              下一清障步骤 {readyBlockedText(p0bGoogleEnvironmentClearance?.ready_for_next_clearance_step)}
             </span>
             <span>
-              Prerequisite blocked {p0bGoogleEnvironmentClearance?.blocked_by_prerequisite_step ? "yes" : "no"}
+              被前置步骤阻塞 {yesNoText(p0bGoogleEnvironmentClearance?.blocked_by_prerequisite_step)}
             </span>
             <span>
-              Fulfilled required {p0bGoogleEnvironmentClearanceSummary?.fulfilled_required_count || 0}/
+              已履约必填项 {p0bGoogleEnvironmentClearanceSummary?.fulfilled_required_count || 0}/
               {p0bGoogleEnvironmentClearanceSummary?.required_count || 0}
             </span>
-            <span>Missing required {p0bGoogleEnvironmentClearanceSummary?.missing_required_count || 0}</span>
-            <span>Presence mismatches {p0bGoogleEnvironmentClearanceSummary?.presence_mismatch_count || 0}</span>
+            <span>缺少必填项 {p0bGoogleEnvironmentClearanceSummary?.missing_required_count || 0}</span>
+            <span>存在性不一致 {p0bGoogleEnvironmentClearanceSummary?.presence_mismatch_count || 0}</span>
             <span>
-              Action plan {p0bGoogleEnvironmentClearanceSummary?.google_environment_action_plan_ready ? "ready" : "blocked"}
+              行动计划 {readyBlockedText(p0bGoogleEnvironmentClearanceSummary?.google_environment_action_plan_ready)}
             </span>
             <span>
-              Action required {p0bGoogleEnvironmentClearanceSummary?.google_environment_action_required ? "yes" : "no"}
+              需要行动 {yesNoText(p0bGoogleEnvironmentClearanceSummary?.google_environment_action_required)}
             </span>
-            <span>Action items {p0bGoogleEnvironmentClearanceSummary?.google_environment_action_item_count ?? 0}</span>
+            <span>行动项 {p0bGoogleEnvironmentClearanceSummary?.google_environment_action_item_count ?? 0}</span>
           </div>
           <div className="handoffBoundary">
             <span>
-              Current global step {p0bGoogleEnvironmentClearanceSummary?.current_global_clearance_step_id || "none"}
+              当前全局步骤 {uiText(p0bGoogleEnvironmentClearanceSummary?.current_global_clearance_step_id, "none")}
             </span>
-            <span>Target step {p0bGoogleEnvironmentClearanceSummary?.target_clearance_step_id || "none"}</span>
-            <span>Prerequisite {p0bGoogleEnvironmentClearanceSummary?.prerequisite_step_id || "none"}</span>
-            <span>下一步动作 {p0bGoogleEnvironmentClearanceSummary?.next_action || "none"}</span>
-            <span>Next command {p0bGoogleEnvironmentClearanceSummary?.next_command || "none"}</span>
-            <span>Missing {p0bGoogleEnvironmentClearanceMissing.slice(0, 6).join(", ") || "none"}</span>
-            <span>Mismatches {p0bGoogleEnvironmentClearanceMismatches.join(", ") || "none"}</span>
+            <span>目标步骤 {uiText(p0bGoogleEnvironmentClearanceSummary?.target_clearance_step_id, "none")}</span>
+            <span>前置步骤 {uiText(p0bGoogleEnvironmentClearanceSummary?.prerequisite_step_id, "none")}</span>
+            <span>下一步动作 {uiText(p0bGoogleEnvironmentClearanceSummary?.next_action, "none")}</span>
+            <span>下一命令 {uiText(p0bGoogleEnvironmentClearanceSummary?.next_command, "none")}</span>
+            <span>缺失项 {listText(p0bGoogleEnvironmentClearanceMissing.slice(0, 6))}</span>
+            <span>不一致项 {listText(p0bGoogleEnvironmentClearanceMismatches)}</span>
             <span>
-              Action owners{" "}
+              行动负责人{" "}
               {Object.entries(p0bGoogleEnvironmentClearanceActionOwners)
                 .map(([owner, count]) => `${owner}:${count}`)
-                .join(", ") || "none"}
+                .join(", ") || "无"}
             </span>
             <span>
-              Action validation{" "}
-              {p0bGoogleEnvironmentClearanceSummary?.google_environment_post_update_validation_command_count ?? 0} commands
+              行动验证{" "}
+              {p0bGoogleEnvironmentClearanceSummary?.google_environment_post_update_validation_command_count ?? 0} 条命令
             </span>
             <span>
-              Raw secret allowed {p0bGoogleEnvironmentClearanceSummary?.raw_secret_values_allowed ? "yes" : "no"}
+              允许原始密钥 {yesNoText(p0bGoogleEnvironmentClearanceSummary?.raw_secret_values_allowed)}
             </span>
             <span>
-              Selector allowed {p0bGoogleEnvironmentClearanceSummary?.selector_values_allowed ? "yes" : "no"}
+              允许选择器值 {yesNoText(p0bGoogleEnvironmentClearanceSummary?.selector_values_allowed)}
             </span>
             <span>
-              DB URL allowed {p0bGoogleEnvironmentClearanceSummary?.database_urls_allowed ? "yes" : "no"}
+              允许 DB URL {yesNoText(p0bGoogleEnvironmentClearanceSummary?.database_urls_allowed)}
             </span>
             <span>
-              Request hash {shortHash(p0bGoogleEnvironmentClearance?.source_artifacts?.environment_request?.hash)}
+              请求包 hash {shortHash(p0bGoogleEnvironmentClearance?.source_artifacts?.environment_request?.hash)}
             </span>
             <span>
-              Env hash {shortHash(p0bGoogleEnvironmentClearance?.source_artifacts?.playwright_env_report?.hash)}
+              环境报告 hash {shortHash(p0bGoogleEnvironmentClearance?.source_artifacts?.playwright_env_report?.hash)}
             </span>
             <span>
-              Fulfillment hash{" "}
+              履约 hash{" "}
               {shortHash(p0bGoogleEnvironmentClearance?.source_artifacts?.environment_fulfillment?.hash)}
             </span>
             <span>
               {p0bGoogleEnvironmentClearance?.runtime_endpoints?.p0b_google_environment_clearance ||
                 "GET /v1/p0b-google-environment-clearance/au"}
             </span>
-            <span>Hard gate: make verify-au-p0b-google-environment-clearance</span>
+            <span>硬门禁：make verify-au-p0b-google-environment-clearance</span>
             <span>
-              Strict gate:{" "}
+              严格门禁：{" "}
               {p0bGoogleEnvironmentClearance?.hard_gate_commands?.find((command) =>
                 command.endsWith("--require-cleared")
               ) ||
@@ -8431,16 +8492,16 @@ export default async function Home({
                 <div className="dependencyGroup" key={item.key || item.name}>
                   <strong>{item.key || item.name}</strong>
                   <span>
-                    {item.owner_hint || "owner"} · {item.fulfilled ? "fulfilled" : "missing"}
+                    {uiText(item.owner_hint, "owner")} · {item.fulfilled ? "已履约" : "缺失"}
                   </span>
                   <small>
-                    request {item.requested_present ? "present" : "missing"} · env{" "}
-                    {item.environment_present ? "present" : "missing"}
+                    请求 {presentMissingText(item.requested_present)} · 环境{" "}
+                    {presentMissingText(item.environment_present)}
                   </small>
                   <small>
-                    source {item.environment_source || "missing"} · hash {shortHash(item.sha256_prefix)}
+                    来源 {uiText(item.environment_source, "missing")} · hash {shortHash(item.sha256_prefix)}
                   </small>
-                  <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "gate clear"}</small>
+                  <small>{(item.blocking_reasons || []).slice(0, 2).join(" · ") || "门禁已清除"}</small>
                 </div>
               ))}
             </div>
@@ -8449,7 +8510,7 @@ export default async function Home({
             <div className="handoffBoundary">
               {p0bGoogleEnvironmentClearanceSteps.slice(0, 6).map((step) => (
                 <span key={step.id || step.order}>
-                  {step.order}. {step.id}: {step.command || "none"}
+                  {step.order}. {step.id}: {uiText(step.command, "none")}
                 </span>
               ))}
             </div>
@@ -8457,8 +8518,8 @@ export default async function Home({
           {p0bGoogleEnvironmentClearanceValidation.length ? (
             <div className="handoffBoundary">
               <span>
-                Validation sequence{" "}
-                {p0bGoogleEnvironmentClearanceValidation.slice(0, 5).join(" -> ") || "none"}
+                验证顺序{" "}
+                {p0bGoogleEnvironmentClearanceValidation.slice(0, 5).join(" -> ") || "无"}
               </span>
             </div>
           ) : null}
@@ -9088,19 +9149,18 @@ export default async function Home({
           ) : null}
           <code>{paths.p0bGooglePhaseExecutionClearance}</code>
         </OpsCard>
-        <div className="broaderPlatformRegistry">
-          <div className="launchRemediationHeader">
-            <strong>更广平台登记表</strong>
-            <span>
-              {broaderPlatformRegistry?.registry_version || "au_broader_platform_registry_v1"} · hash{" "}
-              {shortHash(broaderPlatformRegistry?.broader_platform_registry_hash)}
-            </span>
-          </div>
+        <OpsCard
+          title="更广平台登记表"
+          subtitle={`${broaderPlatformRegistry?.registry_version || "au_broader_platform_registry_v1"} · hash ${shortHash(
+            broaderPlatformRegistry?.broader_platform_registry_hash
+          )}`}
+          className="broaderPlatformRegistry"
+        >
           <div className="launchEvidenceGrid">
-            <span>Ready {broaderPlatformRegistry?.broader_platform_registry_ready ? "yes" : "no"}</span>
-            <span>Candidates {broaderPlatformSummary?.candidate_count || 0}</span>
-            <span>Registered {broaderPlatformSummary?.registered_candidate_count || 0}</span>
-            <span>Enabled {broaderPlatformSummary?.enabled_candidate_count || 0}</span>
+            <span>是否就绪 {yesNoText(broaderPlatformRegistry?.broader_platform_registry_ready)}</span>
+            <span>候选平台 {broaderPlatformSummary?.candidate_count || 0}</span>
+            <span>已登记 {broaderPlatformSummary?.registered_candidate_count || 0}</span>
+            <span>已启用 {broaderPlatformSummary?.enabled_candidate_count || 0}</span>
           </div>
           <div className="platformRegistryGrid">
             {broaderPlatformCandidates.slice(0, 6).map((candidate) => (
@@ -9112,7 +9172,7 @@ export default async function Home({
                   </span>
                 </div>
                 <small>
-                  {candidate.adapter_status || "status"} · {candidate.enabled ? "enabled" : "disabled"} · weight{" "}
+                  {uiText(candidate.adapter_status, "status")} · {candidate.enabled ? "启用" : "禁用"} · 权重{" "}
                   {num(candidate.default_weight || 0)}
                 </small>
                 <code>{candidate.next_work_item || candidate.id}</code>
@@ -9120,12 +9180,12 @@ export default async function Home({
             ))}
           </div>
           <div className="handoffBoundary">
-            <span>P0a enabled {broaderPlatformSummary?.p0a_enabled_platform_surfaces?.join(", ") || "none"}</span>
-            <span>P0b isolated {broaderPlatformSummary?.p0b_platform_surfaces?.join(", ") || "none"}</span>
-            <span>Sequence {broaderPlatformSequence.slice(0, 3).join(" -> ") || "not planned"}</span>
+            <span>P0a 已启用 {broaderPlatformSummary?.p0a_enabled_platform_surfaces?.join(", ") || "无"}</span>
+            <span>P0b 隔离平台 {broaderPlatformSummary?.p0b_platform_surfaces?.join(", ") || "无"}</span>
+            <span>执行顺序 {broaderPlatformSequence.slice(0, 3).join(" -> ") || "未规划"}</span>
           </div>
           <code>{paths.broaderPlatformRegistry}</code>
-        </div>
+        </OpsCard>
         <OpsCard title="交付总包 Handoff Dossier" className="handoffDossier">
           <div className="launchRemediationHeader">
             <strong>交付总包</strong>
@@ -11054,7 +11114,8 @@ export default async function Home({
           <code>{paths.externalDependencyHandoff}</code>
         </OpsCard>
         <code>{paths.launchStatus}</code>
-      </section>
+        </div>
+      </details>
 
       <section className="metrics" aria-label="runtime metrics">
         <Metric label="项目" value={data.projects.total_count} />
