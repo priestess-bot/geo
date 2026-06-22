@@ -37,7 +37,9 @@ env_path.write_text(
             f"GENO_MINIO_HOST_PORT={ports['minio_api']}",
             f"GENO_MINIO_CONSOLE_HOST_PORT={ports['minio_console']}",
             f"GENO_API_HOST_PORT={ports['api']}",
+            f"GENO_API_CONTAINER_PORT={ports['api']}",
             f"GENO_WEB_HOST_PORT={ports['web']}",
+            f"GENO_WEB_CONTAINER_PORT={ports['web']}",
             "",
         )
     ),
