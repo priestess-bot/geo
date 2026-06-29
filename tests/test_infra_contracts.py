@@ -472,10 +472,14 @@ class InfraContractsTest(unittest.TestCase):
             makefile,
         )
         self.assertIn("web-typecheck:", makefile)
-        self.assertIn("npm --prefix apps/web run typecheck", makefile)
+        self.assertIn("npm --prefix apps/customer-web run typecheck", makefile)
+        self.assertIn("npm --prefix apps/admin-web run typecheck", makefile)
+        self.assertIn("npm --prefix apps/dashboard-web run typecheck", makefile)
         self.assertIn("quality: lint-python compile-python web-typecheck", makefile)
         self.assertIn("web-build:", makefile)
-        self.assertIn("npm --prefix apps/web run build", makefile)
+        self.assertIn("npm --prefix apps/customer-web run build", makefile)
+        self.assertIn("npm --prefix apps/admin-web run build", makefile)
+        self.assertIn("npm --prefix apps/dashboard-web run build", makefile)
         self.assertIn("docs/runtime_preflight/*.md", gitignore)
         self.assertIn("ci-local:", makefile)
         self.assertIn("runtime-e2e", makefile)
@@ -900,7 +904,10 @@ class InfraContractsTest(unittest.TestCase):
         run_steps = [step["run"] for step in job["steps"] if "run" in step]
 
         self.assertIn("python -m pip install -r requirements-dev.txt", run_steps)
-        self.assertIn("npm --prefix apps/web ci", run_steps)
+        install_web_dependencies = "\n".join(run_steps)
+        self.assertIn("npm --prefix apps/customer-web ci", install_web_dependencies)
+        self.assertIn("npm --prefix apps/admin-web ci", install_web_dependencies)
+        self.assertIn("npm --prefix apps/dashboard-web ci", install_web_dependencies)
         self.assertIn("make quality", run_steps)
         self.assertIn("make test", run_steps)
         self.assertIn("make web-build", run_steps)

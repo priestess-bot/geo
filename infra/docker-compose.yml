@@ -522,6 +522,24 @@ services:
       api:
         condition: service_started
 
+  dashboard-web:
+    build:
+      context: ..
+      dockerfile: apps/dashboard-web/Dockerfile
+    environment:
+      PORT: ${GENO_DASHBOARD_WEB_CONTAINER_PORT:-3000}
+    command:
+      - npm
+      - run
+      - dev
+      - --
+      - -H
+      - 0.0.0.0
+      - -p
+      - "${GENO_DASHBOARD_WEB_CONTAINER_PORT:-3000}"
+    ports:
+      - "${GENO_DASHBOARD_WEB_HOST_PORT:-3002}:${GENO_DASHBOARD_WEB_CONTAINER_PORT:-3000}"
+
 volumes:
   postgres_data:
   minio_data:

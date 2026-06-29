@@ -5,7 +5,7 @@ from pathlib import Path
 import socket
 
 PORT_RANGE = range(18000, 18250)
-SERVICES = ("postgres", "minio_api", "minio_console", "api", "customer_web", "admin_web")
+SERVICES = ("postgres", "minio_api", "minio_console", "api", "customer_web", "admin_web", "dashboard_web")
 
 def is_free(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -42,6 +42,8 @@ env_path.write_text(
             f"GENO_CUSTOMER_WEB_CONTAINER_PORT={ports['customer_web']}",
             f"GENO_ADMIN_WEB_HOST_PORT={ports['admin_web']}",
             f"GENO_ADMIN_WEB_CONTAINER_PORT={ports['admin_web']}",
+            f"GENO_DASHBOARD_WEB_HOST_PORT={ports['dashboard_web']}",
+            f"GENO_DASHBOARD_WEB_CONTAINER_PORT={ports['dashboard_web']}",
             "",
         )
     ),
@@ -51,6 +53,7 @@ print(f"Generated {env_path}")
 print("GENO Docker auto ports")
 print(f"  Customer Web: http://localhost:{ports['customer_web']}")
 print(f"  Admin Web:    http://localhost:{ports['admin_web']}")
+print(f"  Dashboard Web:http://localhost:{ports['dashboard_web']}")
 print(f"  API:          http://localhost:{ports['api']}")
 print(f"  API docs:     http://localhost:{ports['api']}/docs")
 print(f"  MinIO API:    http://localhost:{ports['minio_api']}")
@@ -69,7 +72,7 @@ docker-auto-ports-config:
 	python3 -c "$$GENO_AUTO_PORTS_PY"
 
 docker-up-auto-ports: docker-auto-ports-config
-	docker compose -p geno-auto --env-file tmp/docker-compose.auto-ports.env -f infra/docker-compose.yml up --build postgres minio api customer-web admin-web
+	docker compose -p geno-auto --env-file tmp/docker-compose.auto-ports.env -f infra/docker-compose.yml up --build postgres minio api customer-web admin-web dashboard-web
 
 docker-down-auto-ports:
 	@if [ -f tmp/docker-compose.auto-ports.env ]; then \
@@ -87,6 +90,7 @@ compile-python:
 web-typecheck:
 	npm --prefix apps/customer-web run typecheck
 	npm --prefix apps/admin-web run typecheck
+	npm --prefix apps/dashboard-web run typecheck
 
 quality: lint-python compile-python web-typecheck
 
@@ -96,6 +100,7 @@ test:
 web-build:
 	npm --prefix apps/customer-web run build
 	npm --prefix apps/admin-web run build
+	npm --prefix apps/dashboard-web run build
 
 docker-config:
 	docker compose -f infra/docker-compose.yml config

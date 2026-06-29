@@ -16,11 +16,18 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
-          cache-dependency-path: apps/web/package-lock.json
+          cache-dependency-path: |
+            apps/web/package-lock.json
+            apps/customer-web/package-lock.json
+            apps/admin-web/package-lock.json
+            apps/dashboard-web/package-lock.json
       - name: Install Python dev dependencies
         run: python -m pip install -r requirements-dev.txt
       - name: Install web dependencies
-        run: npm --prefix apps/web ci
+        run: |
+          npm --prefix apps/customer-web ci
+          npm --prefix apps/admin-web ci
+          npm --prefix apps/dashboard-web ci
       - name: Run static quality gates
         run: make quality
       - name: Run Python contract tests
