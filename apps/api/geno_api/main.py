@@ -30,7 +30,12 @@ from cryptography.hazmat.primitives import hashes
 
 from geno_api.access_logging import persist_runtime_http_access_log
 from geno_api.runtime_access_routes import register_runtime_access_routes
-from geno_api.runtime_metrics import METRICS_CONTENT_TYPE, observe_api_request, render_runtime_metrics, reset_runtime_metrics
+from geno_api.runtime_metrics import (
+    METRICS_CONTENT_TYPE,
+    observe_api_request,
+    render_runtime_metrics,
+    reset_runtime_metrics,  # noqa: F401 - re-exported for API contract tests and runtime reset helpers.
+)
 from geno_core.action_plan import (
     build_action_plan_audit_event,
     build_action_recommendations,

@@ -1,21 +1,4 @@
-type PortalBundle = {
-  access?: { project_id?: string; member_user_id?: string };
-  project?: {
-    project?: { id?: string; name?: string; target_brand?: string; status?: string };
-    tenant?: { name?: string };
-    competitors?: Array<{ canonical_name?: string }>;
-    prompt_count?: number;
-  };
-  launch_config?: { launch_config?: { customer_email?: string; primary_domain?: string; status?: string } } | null;
-  score_weight_config?: { score_weight_config?: { formula_version?: string } } | null;
-  lifecycle_events?: { total_count?: number };
-  audit_events?: { total_count?: number };
-};
-
-type PortalAccessResponse = {
-  portal_token?: string | null;
-  bundle?: PortalBundle;
-};
+import { latestScore, loadPortal, loadPortalRuntimeData, pct } from "./runtime";
 
 const modules = [
   ["visibility", "AI 可见度", "查看总分、触发率、提及率和建议率。"],
@@ -27,37 +10,6 @@ const modules = [
   ["traceability", "可解释性", "查看审计事件、方法版本和证据映射。"]
 ];
 
-function apiBase(): string {
-  return process.env.API_INTERNAL_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://api:8000";
-}
-
-async function loadPortal(token: string | undefined): Promise<PortalAccessResponse | null> {
-  if (!token) {
-    return null;
-  }
-  try {
-    const response = await fetch(`${apiBase()}/v1/customer-portal/access`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ portal_token: token }),
-      cache: "no-store"
-    });
-    if (!response.ok) {
-      return null;
-    }
-    return (await response.json()) as PortalAccessResponse;
-  } catch {
-    return null;
-  }
-}
-
-function pct(value: number | undefined): string {
-  if (typeof value !== "number" || Number.isNaN(value)) {
-    return "待采集";
-  }
-  return `${Math.round(value * 100)}%`;
-}
-
 export default async function CustomerHome({
   searchParams
 }: {
@@ -65,13 +17,20 @@ export default async function CustomerHome({
 }) {
   const params = (await searchParams) || {};
   const token = Array.isArray(params.portal_token) ? params.portal_token[0] : params.portal_token;
-  const data = await loadPortal(token);
+  const invitationId = Array.isArray(params.invitation_id) ? params.invitation_id[0] : params.invitation_id;
+  const inviteToken = Array.isArray(params.invite_token) ? params.invite_token[0] : params.invite_token;
+  const acceptedBy = Array.isArray(params.accepted_by) ? params.accepted_by[0] : params.accepted_by;
+  const data = await loadPortal({ portalToken: token, invitationId, inviteToken, acceptedBy });
   const bundle = data?.bundle;
   const project = bundle?.project?.project;
   const tenant = bundle?.project?.tenant;
   const launch = bundle?.launch_config?.launch_config;
   const projectId = project?.id || bundle?.access?.project_id || "";
-  const score = undefined;
+  const actorId = bundle?.access?.member_user_id;
+  const runtime = projectId ? await loadPortalRuntimeData(projectId, actorId) : null;
+  const score = runtime ? latestScore(runtime.scores) : undefined;
+  const progressWidth = typeof score === "number" ? `${Math.max(3, Math.round(score * 100))}%` : "0%";
+  const continuationToken = token || data?.portal_token || "";
 
   return (
     <main className="shell">
@@ -86,7 +45,7 @@ export default async function CustomerHome({
         <form className="tokenForm" action="/" method="get">
           <label>
             <span>门户 token</span>
-            <input name="portal_token" defaultValue={token || ""} placeholder="geno-portal-..." />
+            <input name="portal_token" defaultValue={continuationToken || ""} placeholder="geno-portal-..." />
           </label>
           <button type="submit">打开项目</button>
         </form>
@@ -95,10 +54,17 @@ export default async function CustomerHome({
       {!bundle ? (
         <section className="emptyState">
           <h2>等待连接客户项目</h2>
-          <p>请输入后台生成的门户 token。此页面只展示绑定项目，不提供项目列表和内部排障信息。</p>
+          <p>请输入后台生成的门户 token，或使用邀请链接首次进入。此页面只展示绑定项目，不提供项目列表和内部排障信息。</p>
         </section>
       ) : (
         <>
+          {data?.portal_token ? (
+            <section className="panel" style={{ marginTop: 18 }}>
+              <h2>门户 token 已生成</h2>
+              <p className="muted" style={{ marginTop: 8 }}>此 token 只显示一次，后续可用它直接打开客户门户。</p>
+              <p style={{ marginTop: 10 }}><code>{data.portal_token}</code></p>
+            </section>
+          ) : null}
           <section className="heroGrid">
             <div className="panel">
               <div className="scoreBand">
@@ -112,7 +78,7 @@ export default async function CustomerHome({
                     主域名 {launch?.primary_domain || "待配置"}，项目状态 {project?.status || "待确认"}。
                   </p>
                   <div className="progressTrack" style={{ marginTop: 14 }}>
-                    <div className="progressFill" style={{ width: "36%" }} />
+                    <div className="progressFill" style={{ width: progressWidth }} />
                   </div>
                 </div>
               </div>
@@ -130,8 +96,8 @@ export default async function CustomerHome({
                   <strong>{bundle.audit_events?.total_count ?? 0}</strong>
                 </div>
                 <div className="metric">
-                  <span className="muted">启动配置</span>
-                  <strong>{launch?.status || "待确认"}</strong>
+                  <span className="muted">报告</span>
+                  <strong>{runtime?.reports.total_count ?? 0}</strong>
                 </div>
               </div>
             </div>
@@ -158,8 +124,8 @@ export default async function CustomerHome({
             <h2>工作台模块</h2>
             <div className="moduleGrid">
               {modules.map(([id, title, description]) => (
-                <a className="moduleTile" href={`/portal/${id}?portal_token=${encodeURIComponent(token || "")}`} key={id}>
-                  <span className="statusPill">查看详情</span>
+                <a className="moduleTile" href={`/portal/${id}?portal_token=${encodeURIComponent(continuationToken || "")}`} key={id}>
+                  <span className="statusPill">{moduleCount(id, runtime)} 条</span>
                   <h3>{title}</h3>
                   <p className="muted">{description}</p>
                 </a>
@@ -170,4 +136,17 @@ export default async function CustomerHome({
       )}
     </main>
   );
+}
+
+function moduleCount(id: string, runtime: Awaited<ReturnType<typeof loadPortalRuntimeData>> | null): number {
+  if (!runtime) {
+    return 0;
+  }
+  if (id === "visibility") return runtime.scores.total_count;
+  if (id === "sources") return runtime.graphs.total_count;
+  if (id === "evidence") return runtime.evidence.total_count;
+  if (id === "reports" || id === "handoff") return runtime.reports.total_count;
+  if (id === "actions") return runtime.actions.total_count;
+  if (id === "traceability") return runtime.traceability ? 1 : 0;
+  return 0;
 }

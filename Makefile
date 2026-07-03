@@ -72,7 +72,7 @@ docker-auto-ports-config:
 	python3 -c "$$GENO_AUTO_PORTS_PY"
 
 docker-up-auto-ports: docker-auto-ports-config
-	docker compose -p geno-auto --env-file tmp/docker-compose.auto-ports.env -f infra/docker-compose.yml up --build postgres minio api customer-web admin-web dashboard-web
+	docker compose -p geno-auto --env-file tmp/docker-compose.auto-ports.env -f infra/docker-compose.yml up --build postgres db-migrate minio api customer-web admin-web dashboard-web
 
 docker-down-auto-ports:
 	@if [ -f tmp/docker-compose.auto-ports.env ]; then \

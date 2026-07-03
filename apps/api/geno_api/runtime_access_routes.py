@@ -3,8 +3,6 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable
 from dataclasses import asdict
-from typing import Any
-
 from fastapi import APIRouter, FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -168,6 +166,37 @@ def register_runtime_access_routes(
             message = str(exc)
             status_code = 404 if message in {"project not found", "project member not found"} else 400
             raise HTTPException(status_code=status_code, detail=message) from exc
+        finally:
+            close_repository_connection(repository)
+
+    @router.get("/v1/customer-portal/tokens/runtime")
+    def runtime_customer_portal_tokens(
+        project_id: str = Query(min_length=1),
+        limit: int = Query(default=50, ge=1, le=200),
+        offset: int = Query(default=0, ge=0),
+        x_geno_actor_id: str | None = Header(default=None, alias=runtime_actor_header),
+    ) -> dict[str, object]:
+        actor_id = require_runtime_actor_id(x_geno_actor_id)
+        try:
+            repository = build_repository_from_env()
+        except RuntimePersistenceError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        try:
+            assert_runtime_project_access(
+                repository,
+                project_id=project_id,
+                actor_id=actor_id,
+                allowed_roles=project_manage_roles,
+            )
+            list_tokens = getattr(repository, "list_customer_portal_tokens", None)
+            if not callable(list_tokens):
+                raise HTTPException(status_code=503, detail="runtime customer portal token listing is unavailable")
+            page = dict(list_tokens(project_id=project_id, limit=limit, offset=offset))
+            page["records"] = [
+                {key: value for key, value in dict(record).items() if key not in {"token_hash", "raw_token"}}
+                for record in page.get("records", [])
+            ]
+            return page
         finally:
             close_repository_connection(repository)
 

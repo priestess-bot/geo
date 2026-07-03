@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, is_dataclass
-from datetime import datetime
 from typing import Any
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
@@ -377,6 +376,50 @@ class RuntimeProjectAccessRepositoryMixin:
             raw_token=raw_token,
         )
 
+    def list_customer_portal_tokens(
+        self,
+        *,
+        project_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        project_id = project_id.strip()
+        if not project_id:
+            raise ValueError("project_id is required")
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT count(*)
+                FROM customer_portal_tokens
+                WHERE project_id = %s
+                """,
+                (_uuid(project_id),),
+            )
+            total_row = cursor.fetchone()
+            total_count = int(total_row[0] if not isinstance(total_row, dict) else total_row["count"])
+            cursor.execute(
+                f"""
+                SELECT {", ".join(CUSTOMER_PORTAL_TOKEN_COLUMNS)}
+                FROM customer_portal_tokens
+                WHERE project_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (_uuid(project_id), limit, offset),
+            )
+            records = []
+            for row in cursor.fetchall():
+                token = _row_dict(row, CUSTOMER_PORTAL_TOKEN_COLUMNS)
+                records.append({key: value for key, value in token.items() if key != "token_hash"})
+        return {
+            "total_count": total_count,
+            "limit": limit,
+            "offset": offset,
+            "records": tuple(records),
+        }
+
     def validate_customer_portal_token(self, raw_token: str) -> RuntimeCustomerPortalToken:
         raw_token = raw_token.strip()
         if not raw_token:
@@ -493,6 +536,12 @@ class RuntimeProjectAccessRepositoryMixin:
         metadata = _json_compatible(log_input.metadata or {})
         if not isinstance(metadata, dict):
             raise ValueError("metadata must be an object")
+        project_id = None
+        if log_input.project_id:
+            try:
+                project_id = _uuid(log_input.project_id)
+            except ValueError:
+                project_id = None
         with self.connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -509,7 +558,7 @@ class RuntimeProjectAccessRepositoryMixin:
                 (
                     _uuid(log_id),
                     request_id,
-                    _uuid(log_input.project_id) if log_input.project_id else None,
+                    project_id,
                     log_input.actor_id.strip() if log_input.actor_id else None,
                     method,
                     path,

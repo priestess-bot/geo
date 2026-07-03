@@ -1,19 +1,4 @@
-type PortalBundle = {
-  access?: { project_id?: string; member_user_id?: string };
-  project?: {
-    project?: { id?: string; name?: string; target_brand?: string; status?: string };
-    competitors?: Array<{ canonical_name?: string; official_domains?: string[] }>;
-    prompt_count?: number;
-  };
-  launch_config?: { launch_config?: Record<string, unknown> } | null;
-  score_weight_config?: { score_weight_config?: Record<string, unknown> } | null;
-  lifecycle_events?: { total_count?: number; records?: unknown[] };
-  audit_events?: { total_count?: number; records?: unknown[] };
-};
-
-type PortalAccessResponse = {
-  bundle?: PortalBundle;
-};
+import { latestScore, loadPortal, loadPortalRuntimeData, pct, type PortalBundle, type PortalRuntimeData } from "../../runtime";
 
 const moduleMeta: Record<string, { title: string; intro: string }> = {
   visibility: { title: "AI 可见度", intro: "汇总项目当前在 AI 搜索和搜索增强结果中的出现、提及和推荐表现。" },
@@ -25,44 +10,57 @@ const moduleMeta: Record<string, { title: string; intro: string }> = {
   traceability: { title: "可解释性", intro: "查看方法版本、审计事件和证据映射摘要。" }
 };
 
-function apiBase(): string {
-  return process.env.API_INTERNAL_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://api:8000";
-}
-
-async function loadPortal(token: string | undefined): Promise<PortalAccessResponse | null> {
-  if (!token) {
-    return null;
-  }
-  try {
-    const response = await fetch(`${apiBase()}/v1/customer-portal/access`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ portal_token: token }),
-      cache: "no-store"
-    });
-    if (!response.ok) {
-      return null;
-    }
-    return (await response.json()) as PortalAccessResponse;
-  } catch {
-    return null;
-  }
-}
-
-function panelFor(moduleId: string, bundle: PortalBundle) {
+function panelFor(moduleId: string, bundle: PortalBundle, runtime: PortalRuntimeData | null, portalToken?: string) {
   const project = bundle.project?.project;
   const competitors = bundle.project?.competitors || [];
+  if (moduleId === "visibility") {
+    const score = runtime ? latestScore(runtime.scores) : undefined;
+    return (
+      <div className="twoCol">
+        <div className="detailPanel">
+          <h2>AI 可见度</h2>
+          <div className="scoreValue">{pct(score)}</div>
+          <p className="muted" style={{ marginTop: 8 }}>共读取 {runtime?.scores.total_count ?? 0} 个评分快照。</p>
+        </div>
+        <div className="detailPanel">
+          <h2>评分解释</h2>
+          <pre>{JSON.stringify(runtime?.scores.records?.[0] || {}, null, 2)}</pre>
+        </div>
+      </div>
+    );
+  }
   if (moduleId === "sources") {
     return (
-      <div className="detailPanel">
-        <h2>竞品与信源范围</h2>
-        <div className="list">
-          {competitors.map((competitor, index) => (
-            <div className="listItem" key={`${competitor.canonical_name}-${index}`}>
-              <strong>{competitor.canonical_name || "未命名竞品"}</strong>
-              <p className="muted">{(competitor.official_domains || []).join(", ") || "官方域名待补充"}</p>
-            </div>
-          ))}
+      <div className="twoCol">
+        <div className="detailPanel">
+          <h2>竞品范围</h2>
+          <div className="list">
+            {competitors.map((competitor, index) => (
+              <div className="listItem" key={`${competitor.canonical_name}-${index}`}>
+                <strong>{competitor.canonical_name || "未命名竞品"}</strong>
+                <p className="muted">{(competitor.official_domains || []).join(", ") || "官方域名待补充"}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="detailPanel">
+          <h2>信源图谱</h2>
+          <pre>{JSON.stringify(runtime?.graphs.records?.[0] || {}, null, 2)}</pre>
+        </div>
+      </div>
+    );
+  }
+  if (moduleId === "evidence") {
+    return (
+      <div className="twoCol">
+        <div className="detailPanel">
+          <h2>证据样本</h2>
+          <p className="muted" style={{ marginTop: 8 }}>当前返回 {runtime?.evidence.total_count ?? 0} 条证据。</p>
+          <pre>{JSON.stringify(runtime?.evidence.records?.slice(0, 5) || [], null, 2)}</pre>
+        </div>
+        <div className="detailPanel">
+          <h2>采集批次</h2>
+          <pre>{JSON.stringify(runtime?.collectionRuns.records?.slice(0, 5) || [], null, 2)}</pre>
         </div>
       </div>
     );
@@ -71,26 +69,57 @@ function panelFor(moduleId: string, bundle: PortalBundle) {
     return (
       <div className="twoCol">
         <div className="detailPanel">
-          <h2>审计事件</h2>
-          <p className="muted" style={{ marginTop: 8 }}>当前返回 {bundle.audit_events?.total_count ?? 0} 条审计事件摘要。</p>
-          <pre>{JSON.stringify(bundle.audit_events?.records?.slice(0, 5) || [], null, 2)}</pre>
+          <h2>Traceability Bundle</h2>
+          <pre>{JSON.stringify(runtime?.traceability || {}, null, 2)}</pre>
         </div>
         <div className="detailPanel">
-          <h2>生命周期</h2>
-          <p className="muted" style={{ marginTop: 8 }}>当前返回 {bundle.lifecycle_events?.total_count ?? 0} 条项目生命周期事件。</p>
-          <pre>{JSON.stringify(bundle.lifecycle_events?.records?.slice(0, 5) || [], null, 2)}</pre>
+          <h2>审计摘要</h2>
+          <pre>{JSON.stringify(bundle.audit_events?.records?.slice(0, 5) || [], null, 2)}</pre>
         </div>
       </div>
     );
   }
   if (moduleId === "reports" || moduleId === "handoff") {
+    const reports = runtime?.reports.records || [];
+    return (
+      <div className="twoCol">
+        <div className="detailPanel">
+          <h2>报告交付</h2>
+          <p className="muted" style={{ marginTop: 8 }}>当前返回 {runtime?.reports.total_count ?? 0} 份报告。</p>
+          <div className="list">
+            {reports.slice(0, 5).map((item, index) => {
+              const report = (item as { report_export?: { id?: string; report_version?: string; report_type?: string } }).report_export || {};
+              const reportId = report.id || "";
+              return (
+                <div className="listItem" key={`${reportId}-${index}`}>
+                  <strong>{report.report_version || report.report_type || reportId || "未命名报告"}</strong>
+                  <p className="muted">{reportId || "报告 id 待确认"}</p>
+                  {reportId ? (
+                    <div className="actionRow">
+                      <a className="button secondary" href={artifactHref(reportId, "markdown", portalToken)}>Markdown</a>
+                      <a className="button secondary" href={artifactHref(reportId, "csv", portalToken)}>CSV</a>
+                      <a className="button secondary" href={artifactHref(reportId, "pdf", portalToken)}>PDF</a>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+            {reports.length === 0 ? <p className="muted">报告尚未生成。</p> : null}
+          </div>
+        </div>
+        <div className="detailPanel">
+          <h2>报告任务</h2>
+          <pre>{JSON.stringify(runtime?.reportJobs.records?.slice(0, 5) || [], null, 2)}</pre>
+        </div>
+      </div>
+    );
+  }
+  if (moduleId === "actions") {
     return (
       <div className="detailPanel">
-        <h2>交付状态</h2>
-        <p className="muted" style={{ marginTop: 8 }}>
-          当前阶段优先展示项目、启动配置和可解释性链路；报告 artifact 与交付包详情接入后会在此页呈现客户可见下载入口。
-        </p>
-        <pre>{JSON.stringify(bundle.launch_config?.launch_config || {}, null, 2)}</pre>
+        <h2>下一步行动</h2>
+        <p className="muted" style={{ marginTop: 8 }}>当前返回 {runtime?.actions.total_count ?? 0} 个行动计划。</p>
+        <pre>{JSON.stringify(runtime?.actions.records?.slice(0, 5) || [], null, 2)}</pre>
       </div>
     );
   }
@@ -121,6 +150,14 @@ function panelFor(moduleId: string, bundle: PortalBundle) {
   );
 }
 
+function artifactHref(reportId: string, type: string, portalToken?: string): string {
+  const params = new URLSearchParams({ report_export_id: reportId, type });
+  if (portalToken) {
+    params.set("portal_token", portalToken);
+  }
+  return `/api/report-artifact?${params.toString()}`;
+}
+
 export default async function PortalModule({
   params,
   searchParams
@@ -131,8 +168,11 @@ export default async function PortalModule({
   const { module } = await params;
   const query = (await searchParams) || {};
   const token = Array.isArray(query.portal_token) ? query.portal_token[0] : query.portal_token;
-  const data = await loadPortal(token);
+  const data = await loadPortal({ portalToken: token });
   const meta = moduleMeta[module] || { title: "项目详情", intro: "查看项目详情。" };
+  const projectId = data?.bundle?.project?.project?.id || data?.bundle?.access?.project_id || "";
+  const actorId = data?.bundle?.access?.member_user_id;
+  const runtime = projectId ? await loadPortalRuntimeData(projectId, actorId) : null;
 
   return (
     <main className="shell">
@@ -150,7 +190,7 @@ export default async function PortalModule({
           <p>请确认门户 token 是否有效，或由后台重新生成客户门户 token。</p>
         </section>
       ) : (
-        panelFor(module, data.bundle)
+        panelFor(module, data.bundle, runtime, token)
       )}
     </main>
   );

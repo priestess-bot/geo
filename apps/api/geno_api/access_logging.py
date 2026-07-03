@@ -6,6 +6,7 @@ import re
 from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from fastapi import Request
 
@@ -27,13 +28,23 @@ def sha256_bytes(value: bytes | None) -> str | None:
 
 def extract_project_id_from_request(request: Request) -> str | None:
     query_project_id = request.query_params.get("project_id")
-    if query_project_id:
-        return query_project_id.strip()
+    normalized_query_project_id = _normalized_uuid(query_project_id)
+    if normalized_query_project_id:
+        return normalized_query_project_id
     path = request.url.path
     match = re.search(r"/projects/runtime/([^/?]+)", path)
     if match:
-        return match.group(1)
+        return _normalized_uuid(match.group(1))
     return None
+
+
+def _normalized_uuid(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        return str(UUID(value.strip()))
+    except ValueError:
+        return None
 
 
 def actor_id_from_request(

@@ -87,6 +87,23 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("postgres", verifier["depends_on"])
         self.assertNotIn("minio", verifier["depends_on"])
 
+    def test_default_stack_runs_incremental_db_migrations_before_api(self) -> None:
+        config = self._compose_config()
+        services = config["services"]
+        migrator = services["db-migrate"]
+        api = services["api"]
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+        migration_command = "\n".join(migrator["command"])
+
+        self.assertEqual(migrator["image"], "pgvector/pgvector:pg16")
+        self.assertEqual(migrator["environment"]["PGPASSWORD"], "geno")
+        self.assertTrue(any(volume["target"] == "/migrations/up" and volume["read_only"] for volume in migrator["volumes"]))
+        self.assertIn("0015_customer_portal_launch_access_logs.sql", migration_command)
+        self.assertIn("to_regprocedure('geno_runtime_can_access_project(uuid)')", migration_command)
+        self.assertIn("postgres", migrator["depends_on"])
+        self.assertEqual(api["depends_on"]["db-migrate"]["condition"], "service_completed_successfully")
+        self.assertIn("postgres db-migrate minio api customer-web admin-web dashboard-web", makefile)
+
     def test_scheduler_profile_wires_browser_fidelity_scheduler(self) -> None:
         config = self._compose_config("scheduler")
         services = config["services"]

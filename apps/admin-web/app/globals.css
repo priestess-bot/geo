@@ -53,6 +53,67 @@ button {
   padding: 9px 12px;
 }
 
+.button:disabled,
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.actionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.notice {
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.notice.error {
+  background: #fff3f0;
+  border: 1px solid #f1c1b8;
+  color: #8b2d1d;
+}
+
+.notice.success {
+  background: #eff8f3;
+  border: 1px solid #b9dfc9;
+  color: #1f5c39;
+}
+
+.inlineForm {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  margin-top: 12px;
+}
+
+.actionResult {
+  background: #f2f6f9;
+  border: 1px solid #d8e0e8;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / -1;
+  padding: 10px;
+}
+
+.errorText {
+  color: #9b2f20;
+  grid-column: 1 / -1;
+}
+
+code {
+  background: #eaf0f5;
+  border-radius: 4px;
+  color: #14384f;
+  padding: 2px 5px;
+}
+
 .button.secondary {
   background: #eaf0f5;
   color: #1a3548;
@@ -224,6 +285,10 @@ textarea {
   margin-top: 16px;
 }
 
+.twoCol.compact {
+  align-items: start;
+}
+
 .statusPill {
   border: 1px solid #c6d3dd;
   border-radius: 999px;
@@ -248,6 +313,7 @@ pre {
   .grid,
   .stats,
   .formGrid,
+  .inlineForm,
   .twoCol {
     display: grid;
     grid-template-columns: 1fr;

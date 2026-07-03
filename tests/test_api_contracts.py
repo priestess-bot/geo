@@ -34,7 +34,6 @@ from geno_core.webhook_signing import (
     runtime_notification_webhook_payload_hash,
     sign_runtime_notification_webhook,
 )
-from scripts.build_au_p0a_env_report import compute_env_report_hash
 from scripts.build_au_launch_status import compute_launch_status_hash
 from scripts.build_au_external_dependency_handoff import compute_external_dependency_handoff_hash
 from scripts.build_au_p0b_google_environment_request_packet import (
@@ -2941,6 +2940,40 @@ class ApiContractsTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("3-5 competitors", response.json()["detail"])
+
+    def test_runtime_customer_portal_tokens_endpoint_lists_metadata_without_hashes(self) -> None:
+        class FakeRepository:
+            def list_customer_portal_tokens(self, **kwargs: object) -> dict[str, object]:
+                self.kwargs = kwargs
+                return {
+                    "total_count": 1,
+                    "limit": kwargs["limit"],
+                    "offset": kwargs["offset"],
+                    "records": (
+                        {
+                            "id": "token-1",
+                            "project_id": kwargs["project_id"],
+                            "member_user_id": "customer@example.com",
+                            "status": "active",
+                            "token_hash": "must-not-leak",
+                        },
+                    ),
+                }
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.runtime_access_routes.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.runtime_access_routes.close_repository_connection"
+        ):
+            response = self.client.get("/v1/customer-portal/tokens/runtime?project_id=project-1&limit=5&offset=2")
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.kwargs["limit"], 5)
+        self.assertEqual(fake_repository.kwargs["offset"], 2)
+        self.assertEqual(payload["records"][0]["id"], "token-1")
+        self.assertNotIn("raw_token", payload["records"][0])
+        self.assertNotIn("token_hash", payload["records"][0])
 
     def test_runtime_projects_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/projects/runtime")

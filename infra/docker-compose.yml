@@ -16,6 +16,33 @@ services:
       timeout: 5s
       retries: 12
 
+  db-migrate:
+    image: pgvector/pgvector:pg16
+    environment:
+      PGPASSWORD: geno
+    volumes:
+      - ./db/migrations/up:/migrations/up:ro
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        if [ "$(psql -h postgres -U geno -d geno -tAc "SELECT to_regprocedure('geno_runtime_can_access_project(uuid)') IS NOT NULL")" != "t" ]; then
+          psql -h postgres -U geno -d geno -v ON_ERROR_STOP=1 -f /migrations/up/0010_runtime_project_rls.sql
+        fi
+        for file in \
+          /migrations/up/0011_entity_alias_candidate_reviews.sql \
+          /migrations/up/0012_entity_alias_candidate_review_assignments.sql \
+          /migrations/up/0013_project_member_invitations.sql \
+          /migrations/up/0014_project_member_invitation_acceptance.sql \
+          /migrations/up/0015_customer_portal_launch_access_logs.sql
+        do
+          psql -h postgres -U geno -d geno -v ON_ERROR_STOP=1 -f "$$file"
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   minio:
     image: minio/minio:RELEASE.2025-01-20T14-49-07Z
     command: server /data --console-address ":9001"
@@ -74,6 +101,8 @@ services:
     ports:
       - "${GENO_API_HOST_PORT:-8000}:${GENO_API_CONTAINER_PORT:-8000}"
     depends_on:
+      db-migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       minio:
@@ -505,6 +534,7 @@ services:
     environment:
       API_INTERNAL_BASE_URL: http://api:${GENO_API_CONTAINER_PORT:-8000}
       NEXT_PUBLIC_API_BASE_URL: http://localhost:${GENO_API_HOST_PORT:-8000}
+      NEXT_PUBLIC_CUSTOMER_WEB_BASE_URL: http://localhost:${GENO_CUSTOMER_WEB_HOST_PORT:-3000}
       GENO_ADMIN_ACTOR_ID: ${GENO_ADMIN_ACTOR_ID:-runtime-console}
       PORT: ${GENO_ADMIN_WEB_CONTAINER_PORT:-3000}
     command:

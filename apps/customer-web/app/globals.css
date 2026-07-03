@@ -99,6 +99,13 @@ h3 {
   padding: 10px 12px;
 }
 
+code {
+  background: #e9f0f6;
+  border-radius: 4px;
+  color: #14384f;
+  padding: 2px 5px;
+}
+
 button,
 .button {
   background: #174c72;
@@ -238,6 +245,13 @@ button,
   gap: 14px;
   justify-content: space-between;
   margin-bottom: 18px;
+}
+
+.actionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .twoCol {
