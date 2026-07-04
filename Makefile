@@ -1,4 +1,4 @@
-.PHONY: docker-auto-ports-config docker-auto-ports-status docker-up-auto-ports docker-down-auto-ports install-api-deps install-dev-deps lint-python compile-python web-typecheck quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e ci-local api-preflight verify-api-preflight preflight-manifest au-p0a-runbook verify-au-p0a-runbook verify-au-p0a-env-template au-p0a-env-bootstrap verify-au-p0a-env-bootstrap au-p0a-env verify-au-p0a-env au-p0a-environment-checklist verify-au-p0a-environment-checklist au-p0a-runbook-dry-run verify-au-p0a-runbook-execution au-p0a-readiness au-p0a-package verify-au-p0a-package au-p0a-status verify-au-p0a-status au-p0a-execution-checklist verify-au-p0a-execution-checklist au-p0a-credential-request verify-au-p0a-credential-request au-p0a-credential-fulfillment verify-au-p0a-credential-fulfillment au-p0a-credential-clearance verify-au-p0a-credential-clearance au-p0a-credential-update-receipt verify-au-p0a-credential-update-receipt au-p0a-real-batch-request verify-au-p0a-real-batch-request au-p0a-real-batch-fulfillment verify-au-p0a-real-batch-fulfillment au-p0a-real-batch-clearance verify-au-p0a-real-batch-clearance au-launch-status verify-au-launch-status au-launch-remediation-plan verify-au-launch-remediation-plan au-handoff-dossier verify-au-handoff-dossier au-customer-handoff-readiness verify-au-customer-handoff-readiness au-customer-handoff-clearance verify-au-customer-handoff-clearance au-customer-handoff-package verify-au-customer-handoff-package au-delivery-evidence-refresh au-next-work-item verify-au-next-work-item au-delivery-progress verify-au-delivery-progress au-external-dependency-handoff verify-au-external-dependency-handoff au-external-dependency-clearance verify-au-external-dependency-clearance au-broader-platform-registry verify-au-broader-platform-registry au-retest-scheduler-plan verify-au-retest-scheduler-plan au-retest-execution-status verify-au-retest-execution-status au-p0c-report-package verify-au-p0c-report-package au-p0b-google-runbook verify-au-p0b-google-runbook verify-au-p0b-google-env-template au-p0b-google-env-bootstrap verify-au-p0b-google-env-bootstrap au-p0b-google-runbook-dry-run verify-au-p0b-google-runbook-execution au-p0b-google-status verify-au-p0b-google-status au-p0b-google-package verify-au-p0b-google-package au-p0b-google-execution-checklist verify-au-p0b-google-execution-checklist au-p0b-google-environment-request verify-au-p0b-google-environment-request au-p0b-google-environment-fulfillment verify-au-p0b-google-environment-fulfillment au-p0b-google-environment-clearance verify-au-p0b-google-environment-clearance au-p0b-google-manual-backfill-request verify-au-p0b-google-manual-backfill-request au-p0b-google-manual-backfill-fulfillment verify-au-p0b-google-manual-backfill-fulfillment au-p0b-google-manual-backfill-clearance verify-au-p0b-google-manual-backfill-clearance au-p0b-google-phase-execution-request verify-au-p0b-google-phase-execution-request au-p0b-google-phase-execution-fulfillment verify-au-p0b-google-phase-execution-fulfillment au-p0b-google-phase-execution-clearance verify-au-p0b-google-phase-execution-clearance au-p0b-google-manual-template au-p0b-google-manual-backfill-evidence verify-au-p0b-google-manual-backfill au-p0b-google-playwright-env verify-au-p0b-google-playwright-env au-p0b-google-playwright-smoke verify-au-p0b-google-playwright-smoke au-p0b-google-spike-health au-p0b-google-spike-health-manifest au-p0b-google-spike au-p0b-google-spike-manifest au-p0b-google-serp-health verify-au-p0b-google-serp-health au-p0b-google-serp-health-manifest au-p0b-google-serp-fixture verify-au-p0b-google-serp-fixture au-p0b-google-serp-fixture-manifest au-p0b-google-serp-status verify-au-p0b-google-serp-status browser-fidelity-plan browser-fidelity-scheduler-plan browser-fidelity-scheduler-run api-browser-fidelity-preflight report-export-worker runtime-alert-notification-worker runtime-alert-escalation-worker entity-alias-assignment-notification-worker entity-alias-assignment-escalation-worker entity-alias-assignment-reassignment-worker entity-alias-assignment-dispatch-apply-worker notification-delivery-worker worker-fixture worker-fixture-persist worker-google-fixture
+.PHONY: docker-auto-ports-config docker-auto-ports-status docker-up-auto-ports docker-down-auto-ports install-api-deps install-dev-deps lint lint-python typecheck compile-python web-typecheck quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke rls-smoke runtime-e2e security-smoke production-v1-e2e enablement-v1-e2e no-fixture-production-smoke no-secret-leak-smoke report-traceability-smoke customer-access-negative-smoke connector-real-smoke ops-smoke backup-smoke production-v1-progress production-v1-final-gate ci-local api-preflight verify-api-preflight preflight-manifest au-p0a-runbook verify-au-p0a-runbook verify-au-p0a-env-template au-p0a-env-bootstrap verify-au-p0a-env-bootstrap au-p0a-env verify-au-p0a-env au-p0a-environment-checklist verify-au-p0a-environment-checklist au-p0a-runbook-dry-run verify-au-p0a-runbook-execution au-p0a-readiness au-p0a-package verify-au-p0a-package au-p0a-status verify-au-p0a-status au-p0a-execution-checklist verify-au-p0a-execution-checklist au-p0a-credential-request verify-au-p0a-credential-request au-p0a-credential-fulfillment verify-au-p0a-credential-fulfillment au-p0a-credential-clearance verify-au-p0a-credential-clearance au-p0a-credential-update-receipt verify-au-p0a-credential-update-receipt au-p0a-real-batch-request verify-au-p0a-real-batch-request au-p0a-real-batch-fulfillment verify-au-p0a-real-batch-fulfillment au-p0a-real-batch-clearance verify-au-p0a-real-batch-clearance au-launch-status verify-au-launch-status au-launch-remediation-plan verify-au-launch-remediation-plan au-handoff-dossier verify-au-handoff-dossier au-customer-handoff-readiness verify-au-customer-handoff-readiness au-customer-handoff-clearance verify-au-customer-handoff-clearance au-customer-handoff-package verify-au-customer-handoff-package au-delivery-evidence-refresh au-next-work-item verify-au-next-work-item au-delivery-progress verify-au-delivery-progress au-external-dependency-handoff verify-au-external-dependency-handoff au-external-dependency-clearance verify-au-external-dependency-clearance au-broader-platform-registry verify-au-broader-platform-registry au-retest-scheduler-plan verify-au-retest-scheduler-plan au-retest-execution-status verify-au-retest-execution-status au-p0c-report-package verify-au-p0c-report-package au-p0b-google-runbook verify-au-p0b-google-runbook verify-au-p0b-google-env-template au-p0b-google-env-bootstrap verify-au-p0b-google-env-bootstrap au-p0b-google-runbook-dry-run verify-au-p0b-google-runbook-execution au-p0b-google-status verify-au-p0b-google-status au-p0b-google-package verify-au-p0b-google-package au-p0b-google-execution-checklist verify-au-p0b-google-execution-checklist au-p0b-google-environment-request verify-au-p0b-google-environment-request au-p0b-google-environment-fulfillment verify-au-p0b-google-environment-fulfillment au-p0b-google-environment-clearance verify-au-p0b-google-environment-clearance au-p0b-google-manual-backfill-request verify-au-p0b-google-manual-backfill-request au-p0b-google-manual-backfill-fulfillment verify-au-p0b-google-manual-backfill-fulfillment au-p0b-google-manual-backfill-clearance verify-au-p0b-google-manual-backfill-clearance au-p0b-google-phase-execution-request verify-au-p0b-google-phase-execution-request au-p0b-google-phase-execution-fulfillment verify-au-p0b-google-phase-execution-fulfillment au-p0b-google-phase-execution-clearance verify-au-p0b-google-phase-execution-clearance au-p0b-google-manual-template au-p0b-google-manual-backfill-evidence verify-au-p0b-google-manual-backfill au-p0b-google-playwright-env verify-au-p0b-google-playwright-env au-p0b-google-playwright-smoke verify-au-p0b-google-playwright-smoke au-p0b-google-spike-health au-p0b-google-spike-health-manifest au-p0b-google-spike au-p0b-google-spike-manifest au-p0b-google-serp-health verify-au-p0b-google-serp-health au-p0b-google-serp-health-manifest au-p0b-google-serp-fixture verify-au-p0b-google-serp-fixture au-p0b-google-serp-fixture-manifest au-p0b-google-serp-status verify-au-p0b-google-serp-status browser-fidelity-plan browser-fidelity-scheduler-plan browser-fidelity-scheduler-run api-browser-fidelity-preflight report-export-worker runtime-alert-notification-worker runtime-alert-escalation-worker entity-alias-assignment-notification-worker entity-alias-assignment-escalation-worker entity-alias-assignment-reassignment-worker entity-alias-assignment-dispatch-apply-worker notification-delivery-worker worker-fixture worker-fixture-persist worker-google-fixture
 
 define GENO_AUTO_PORTS_PY
 from pathlib import Path
@@ -195,6 +195,8 @@ docker-down-auto-ports:
 lint-python:
 	python3 -m ruff check apps/api packages workers scripts tests
 
+lint: lint-python
+
 compile-python:
 	python3 -m compileall apps/api/geno_api packages/geno_core/geno_core workers scripts tests
 
@@ -202,6 +204,8 @@ web-typecheck:
 	npm --prefix apps/customer-web run typecheck
 	npm --prefix apps/admin-web run typecheck
 	npm --prefix apps/dashboard-web run typecheck
+
+typecheck: web-typecheck
 
 quality: lint-python compile-python web-typecheck
 
@@ -239,6 +243,47 @@ runtime-e2e:
 	trap 'docker compose -p geno-runtime-e2e -f infra/docker-compose.yml --profile e2e down -v' EXIT; \
 	docker compose -p geno-runtime-e2e -f infra/docker-compose.yml --profile e2e build runtime-e2e; \
 	docker compose -p geno-runtime-e2e -f infra/docker-compose.yml --profile e2e run --rm runtime-e2e
+
+rls-smoke:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py rls-smoke
+
+security-smoke:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py security-smoke
+
+production-v1-e2e:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py production-v1-e2e
+
+enablement-v1-e2e:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py enablement-v1-e2e
+
+no-fixture-production-smoke:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py no-fixture-production-smoke
+
+no-secret-leak-smoke:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py no-secret-leak-smoke
+
+report-traceability-smoke:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py report-traceability-smoke
+
+customer-access-negative-smoke:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py customer-access-negative-smoke
+
+connector-real-smoke:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py connector-real-smoke
+
+ops-smoke:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py ops-smoke
+
+backup-smoke:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py backup-smoke
+
+production-v1-progress:
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py checklist --allow-pending
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py production-v1-e2e --allow-pending
+	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py enablement-v1-e2e --allow-pending
+
+production-v1-final-gate: lint typecheck test db-smoke rls-smoke runtime-e2e security-smoke production-v1-e2e enablement-v1-e2e no-fixture-production-smoke no-secret-leak-smoke report-traceability-smoke customer-access-negative-smoke connector-real-smoke ops-smoke backup-smoke docker-config docker-config-observability
+	git diff --check
 
 ci-local: quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e
 
