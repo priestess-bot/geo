@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, is_dataclass
+from datetime import UTC, datetime
 from typing import Any
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
@@ -14,6 +15,9 @@ from geno_core.models import (
     RuntimeHttpAccessLogInput,
     RuntimeProjectLaunchConfig,
     RuntimeProjectLaunchConfigInput,
+    RuntimeSession,
+    RuntimeSessionInput,
+    RuntimeSessionRevokeInput,
 )
 
 
@@ -83,6 +87,28 @@ RUNTIME_HTTP_ACCESS_LOG_COLUMNS = (
     "metadata",
     "created_at",
 )
+RUNTIME_SESSION_COLUMNS = (
+    "id",
+    "session_token_hash",
+    "actor_id",
+    "actor_type",
+    "tenant_id",
+    "project_ids",
+    "roles",
+    "permissions",
+    "auth_method",
+    "status",
+    "issued_by",
+    "issued_at",
+    "expires_at",
+    "last_used_at",
+    "revoked_at",
+    "revoked_by",
+    "revoke_reason",
+    "metadata",
+    "created_at",
+    "updated_at",
+)
 
 
 def _json_compatible(value: object) -> object:
@@ -122,6 +148,27 @@ def _row_dict(row: Any, columns: tuple[str, ...]) -> dict[str, Any]:
 
 def _stable_id(kind: str, *parts: object) -> str:
     return str(uuid5(NAMESPACE_URL, "::".join([kind, *(str(part) for part in parts)])))
+
+
+def _sha256_token_hash(raw_token: str, *, field_name: str) -> str:
+    raw_token = raw_token.strip()
+    if not raw_token:
+        raise ValueError(f"{field_name} is required")
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def _is_past_datetime(value: object) -> bool:
+    if isinstance(value, datetime):
+        normalized = value if value.tzinfo else value.replace(tzinfo=UTC)
+        return normalized <= datetime.now(UTC)
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        normalized = parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+        return normalized <= datetime.now(UTC)
+    return False
 
 
 class RuntimeProjectAccessRepositoryMixin:
@@ -164,7 +211,7 @@ class RuntimeProjectAccessRepositoryMixin:
             "locale": config.locale.strip() or "en-AU",
             "country_code": config.country_code.strip().upper() or "AU",
             "timezone": config.timezone.strip() or "Australia/Sydney",
-            "collection_mode": config.collection_mode.strip().lower() or "fixture",
+            "collection_mode": config.collection_mode.strip().lower() or "api",
             "scoring_profile": config.scoring_profile.strip() or "au_visibility_v1",
         }
         with self.connection.cursor() as cursor:
@@ -287,6 +334,194 @@ class RuntimeProjectAccessRepositoryMixin:
             launch_config=_row_dict(row, PROJECT_LAUNCH_CONFIG_COLUMNS),
             audit_events=(),
         )
+
+    def create_runtime_session(self, session_input: RuntimeSessionInput) -> RuntimeSession:
+        actor_id = session_input.actor_id.strip()
+        actor_type = session_input.actor_type.strip().lower() or "user"
+        issued_by = session_input.issued_by.strip() or "runtime-auth"
+        ttl_seconds = max(60, min(int(session_input.ttl_seconds), 60 * 60 * 24 * 30))
+        if not actor_id:
+            raise ValueError("actor_id is required")
+        if actor_type not in {"user", "system", "service"}:
+            raise ValueError("actor_type must be user, system, or service")
+        project_ids = tuple(dict.fromkeys(item.strip() for item in session_input.project_ids if item.strip()))
+        roles = tuple(dict.fromkeys(item.strip() for item in session_input.roles if item.strip()))
+        permissions = tuple(dict.fromkeys(item.strip() for item in session_input.permissions if item.strip()))
+        metadata = _json_compatible(session_input.metadata or {})
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be an object")
+        raw_session_token = f"geno-session-{uuid4().hex}"
+        session_token_hash = _sha256_token_hash(raw_session_token, field_name="session_token")
+        session_id = str(uuid4())
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO runtime_sessions (
+                  id, session_token_hash, actor_id, actor_type, tenant_id,
+                  project_ids, roles, permissions, auth_method, status,
+                  issued_by, expires_at, metadata
+                )
+                VALUES (
+                  %s, %s, %s, %s, %s,
+                  %s, %s, %s, 'session', 'active',
+                  %s, now() + (%s * interval '1 second'), %s
+                )
+                """,
+                (
+                    _uuid(session_id),
+                    session_token_hash,
+                    actor_id,
+                    actor_type,
+                    _uuid(session_input.tenant_id) if session_input.tenant_id else None,
+                    _json_payload(list(project_ids)),
+                    _json_payload(list(roles)),
+                    _json_payload(list(permissions)),
+                    issued_by,
+                    ttl_seconds,
+                    _json_payload(metadata),
+                ),
+            )
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_SESSION_COLUMNS)}
+                FROM runtime_sessions
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(session_id),),
+            )
+            after = _row_dict(cursor.fetchone(), RUNTIME_SESSION_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="runtime_session_created",
+                project_id=project_ids[0] if project_ids else "",
+                actor_type=actor_type,
+                actor_id=actor_id,
+                target_type="runtime_session",
+                target_id=session_id,
+                before=None,
+                after={**after, "session_token_hash": session_token_hash},
+                input_refs={
+                    "actor_ids": [actor_id],
+                    "tenant_ids": [session_input.tenant_id] if session_input.tenant_id else [],
+                    "project_ids": list(project_ids),
+                },
+                output_refs={"runtime_session_ids": [session_id], "session_token_hashes": [session_token_hash]},
+                method_version="runtime_session_v1",
+                reason=session_input.reason.strip() if session_input.reason else "runtime_session_create",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+        self.connection.commit()
+        public_after = {key: value for key, value in after.items() if key != "session_token_hash"}
+        return RuntimeSession(
+            session=public_after,
+            audit_events=(asdict(audit_event),),
+            raw_session_token=raw_session_token,
+        )
+
+    def validate_runtime_session(self, raw_session_token: str) -> RuntimeSession:
+        session_token_hash = _sha256_token_hash(raw_session_token, field_name="session_token")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_SESSION_COLUMNS)}
+                FROM runtime_sessions
+                WHERE session_token_hash = %s AND status = 'active'
+                LIMIT 1
+                """,
+                (session_token_hash,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise ValueError("runtime session not found")
+            session = _row_dict(row, RUNTIME_SESSION_COLUMNS)
+            if _is_past_datetime(session.get("expires_at")):
+                cursor.execute(
+                    """
+                    UPDATE runtime_sessions
+                    SET status = 'expired',
+                        updated_at = now()
+                    WHERE id = %s
+                    """,
+                    (_uuid(str(session["id"])),),
+                )
+                self.connection.commit()
+                raise ValueError("runtime session expired")
+            cursor.execute(
+                """
+                UPDATE runtime_sessions
+                SET last_used_at = now(),
+                    updated_at = now()
+                WHERE id = %s
+                """,
+                (_uuid(str(session["id"])),),
+            )
+        self.connection.commit()
+        public_session = {key: value for key, value in session.items() if key != "session_token_hash"}
+        return RuntimeSession(session=public_session, audit_events=(), raw_session_token=None)
+
+    def revoke_runtime_session(self, revoke_input: RuntimeSessionRevokeInput) -> RuntimeSession:
+        session_id = revoke_input.session_id.strip()
+        revoked_by = revoke_input.revoked_by.strip() or "runtime-auth"
+        if not session_id:
+            raise ValueError("session_id is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_SESSION_COLUMNS)}
+                FROM runtime_sessions
+                WHERE id = %s
+                FOR UPDATE
+                """,
+                (_uuid(session_id),),
+            )
+            existing = cursor.fetchone()
+            if not existing:
+                raise ValueError("runtime session not found")
+            before = _row_dict(existing, RUNTIME_SESSION_COLUMNS)
+            cursor.execute(
+                """
+                UPDATE runtime_sessions
+                SET status = 'revoked',
+                    revoked_at = now(),
+                    revoked_by = %s,
+                    revoke_reason = %s,
+                    updated_at = now()
+                WHERE id = %s
+                """,
+                (
+                    revoked_by,
+                    revoke_input.reason.strip() if revoke_input.reason else None,
+                    _uuid(session_id),
+                ),
+            )
+            cursor.execute(
+                f"""
+                SELECT {", ".join(RUNTIME_SESSION_COLUMNS)}
+                FROM runtime_sessions
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(session_id),),
+            )
+            after = _row_dict(cursor.fetchone(), RUNTIME_SESSION_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="runtime_session_revoked",
+                project_id=None,
+                actor_type="user",
+                actor_id=revoked_by,
+                target_type="runtime_session",
+                target_id=session_id,
+                before=before,
+                after=after,
+                input_refs={"runtime_session_ids": [session_id]},
+                output_refs={"runtime_session_ids": [session_id], "status": ["revoked"]},
+                method_version="runtime_session_v1",
+                reason=revoke_input.reason.strip() if revoke_input.reason else "runtime_session_revoke",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+        self.connection.commit()
+        public_after = {key: value for key, value in after.items() if key != "session_token_hash"}
+        return RuntimeSession(session=public_after, audit_events=(asdict(audit_event),), raw_session_token=None)
 
     def create_customer_portal_token(
         self,

@@ -102,6 +102,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(migrator["environment"]["PGPASSWORD"], "geno")
         self.assertTrue(any(volume["target"] == "/migrations/up" and volume["read_only"] for volume in migrator["volumes"]))
         self.assertIn("0015_customer_portal_launch_access_logs.sql", migration_command)
+        self.assertIn("0016_runtime_sessions.sql", migration_command)
         self.assertIn("to_regprocedure('geno_runtime_can_access_project(uuid)')", migration_command)
         self.assertIn("postgres", migrator["depends_on"])
         self.assertEqual(api["depends_on"]["db-migrate"]["condition"], "service_completed_successfully")
@@ -503,6 +504,24 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("DROP FUNCTION IF EXISTS geno_runtime_invitation_token_hash()", rollback)
         self.assertIn('"geno_runtime_invitation_token_hash"', db_smoke_source)
         self.assertIn('"geno_runtime_can_accept_project_invitation"', db_smoke_source)
+
+    def test_runtime_sessions_migration_stores_hashed_tokens_and_rls(self) -> None:
+        migration = (ROOT / "infra/db/migrations/up/0016_runtime_sessions.sql").read_text(encoding="utf-8")
+        rollback = (ROOT / "infra/db/migrations/down/0016_runtime_sessions.down.sql").read_text(encoding="utf-8")
+        db_smoke_source = (ROOT / "scripts/verify_db_smoke.py").read_text(encoding="utf-8")
+
+        self.assertIn("CREATE TABLE IF NOT EXISTS runtime_sessions", migration)
+        self.assertIn("session_token_hash text NOT NULL UNIQUE", migration)
+        self.assertIn("actor_id text NOT NULL", migration)
+        self.assertIn("expires_at timestamptz NOT NULL", migration)
+        self.assertIn("CHECK (status IN ('active', 'expired', 'revoked'))", migration)
+        self.assertIn("ALTER TABLE runtime_sessions FORCE ROW LEVEL SECURITY", migration)
+        self.assertIn("runtime_sessions_runtime_actor_isolation", migration)
+        self.assertIn("current_setting('geno.runtime_actor_id', true)", migration)
+        self.assertIn("DROP TABLE IF EXISTS runtime_sessions", rollback)
+        self.assertIn('"runtime_sessions"', db_smoke_source)
+        self.assertIn('"session_token_hash"', db_smoke_source)
+        self.assertIn('"runtime_sessions_runtime_actor_isolation"', db_smoke_source)
 
     def test_browser_fidelity_plan_make_target_outputs_machine_readable_json(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")

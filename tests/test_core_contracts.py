@@ -210,6 +210,9 @@ from geno_core.models import (
     RuntimeSavedViewPage,
     RuntimeScoreWeightConfig,
     RuntimeScoreWeightConfigInput,
+    RuntimeSession,
+    RuntimeSessionInput,
+    RuntimeSessionRevokeInput,
     RuntimeTraceabilityDetail,
 )
 from geno_core.object_store import (
@@ -4902,6 +4905,151 @@ class CoreContractsTest(unittest.TestCase):
         self.assertNotIn(email, export.content)
         self.assertNotIn(invited_by, export.content)
         self.assertNotIn(token_hash, export.content)
+
+    def test_postgres_repository_creates_runtime_session_without_returning_token_hash(self) -> None:
+        now = datetime.now(UTC)
+        session_row = {
+            "id": "3d96d3a9-65ce-49e1-9fc5-032a19739abf",
+            "session_token_hash": "stored-session-token-hash",
+            "actor_id": "viewer@example.com",
+            "actor_type": "user",
+            "tenant_id": "cf58ebd1-6ba1-4549-a4ff-fc5f47d54a13",
+            "project_ids": ["6624961f-36ae-539b-9d48-51619b42e37e"],
+            "roles": ["viewer"],
+            "permissions": ["report.read"],
+            "auth_method": "session",
+            "status": "active",
+            "issued_by": "runtime-auth",
+            "issued_at": now,
+            "expires_at": now + timedelta(days=7),
+            "last_used_at": None,
+            "revoked_at": None,
+            "revoked_by": None,
+            "revoke_reason": None,
+            "metadata": {"source": "test"},
+            "created_at": now,
+            "updated_at": now,
+        }
+        connection = RecordingConnection(result_sets=[session_row])
+
+        record = PostgresEvidenceRepository(connection).create_runtime_session(
+            RuntimeSessionInput(
+                actor_id="viewer@example.com",
+                tenant_id="cf58ebd1-6ba1-4549-a4ff-fc5f47d54a13",
+                project_ids=("6624961f-36ae-539b-9d48-51619b42e37e",),
+                roles=("viewer",),
+                permissions=("report.read",),
+                ttl_seconds=3600,
+                issued_by="runtime-auth",
+                metadata={"source": "test"},
+                reason="login",
+            )
+        )
+
+        self.assertIsInstance(record, RuntimeSession)
+        self.assertEqual(record.session["actor_id"], "viewer@example.com")
+        self.assertEqual(record.session["status"], "active")
+        self.assertNotIn("session_token_hash", record.session)
+        self.assertTrue(str(record.raw_session_token).startswith("geno-session-"))
+        self.assertNotIn(str(record.raw_session_token), str(record.audit_events))
+        self.assertEqual(record.audit_events[0]["event_type"], "runtime_session_created")
+        self.assertEqual(record.audit_events[0]["method_version"], "runtime_session_v1")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO runtime_sessions", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+        insert_params = next(params for sql, params in connection.calls if "INSERT INTO runtime_sessions" in sql)
+        self.assertEqual(len(str(insert_params[1])), 64)
+        self.assertNotIn(str(record.raw_session_token), str(insert_params))
+
+    def test_postgres_repository_validates_runtime_session_and_updates_last_used(self) -> None:
+        now = datetime.now(UTC)
+        raw_token = "geno-session-test"
+        session_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        session_row = {
+            "id": "3d96d3a9-65ce-49e1-9fc5-032a19739abf",
+            "session_token_hash": session_hash,
+            "actor_id": "viewer@example.com",
+            "actor_type": "user",
+            "tenant_id": None,
+            "project_ids": ["6624961f-36ae-539b-9d48-51619b42e37e"],
+            "roles": ["viewer"],
+            "permissions": ["report.read"],
+            "auth_method": "session",
+            "status": "active",
+            "issued_by": "runtime-auth",
+            "issued_at": now,
+            "expires_at": now + timedelta(days=7),
+            "last_used_at": None,
+            "revoked_at": None,
+            "revoked_by": None,
+            "revoke_reason": None,
+            "metadata": {},
+            "created_at": now,
+            "updated_at": now,
+        }
+        connection = RecordingConnection(result_sets=[session_row])
+
+        record = PostgresEvidenceRepository(connection).validate_runtime_session(raw_token)
+
+        self.assertEqual(record.session["actor_id"], "viewer@example.com")
+        self.assertIsNone(record.raw_session_token)
+        self.assertNotIn("session_token_hash", record.session)
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("WHERE session_token_hash = %s AND status = 'active'", executed_sql)
+        self.assertIn("SET last_used_at = now()", executed_sql)
+        self.assertEqual(connection.calls[0][1], (session_hash,))
+
+    def test_postgres_repository_revokes_runtime_session_with_audit_event(self) -> None:
+        now = datetime.now(UTC)
+        session_id = "3d96d3a9-65ce-49e1-9fc5-032a19739abf"
+        active_session = {
+            "id": session_id,
+            "session_token_hash": "stored-session-token-hash",
+            "actor_id": "viewer@example.com",
+            "actor_type": "user",
+            "tenant_id": None,
+            "project_ids": [],
+            "roles": ["viewer"],
+            "permissions": ["report.read"],
+            "auth_method": "session",
+            "status": "active",
+            "issued_by": "runtime-auth",
+            "issued_at": now,
+            "expires_at": now + timedelta(days=7),
+            "last_used_at": None,
+            "revoked_at": None,
+            "revoked_by": None,
+            "revoke_reason": None,
+            "metadata": {},
+            "created_at": now,
+            "updated_at": now,
+        }
+        revoked_session = {
+            **active_session,
+            "status": "revoked",
+            "revoked_by": "tenant-admin",
+            "revoke_reason": "manual logout",
+            "revoked_at": now,
+            "updated_at": now,
+        }
+        connection = RecordingConnection(result_sets=[active_session, revoked_session])
+
+        record = PostgresEvidenceRepository(connection).revoke_runtime_session(
+            RuntimeSessionRevokeInput(session_id=session_id, revoked_by="tenant-admin", reason="manual logout")
+        )
+
+        self.assertEqual(record.session["status"], "revoked")
+        self.assertNotIn("session_token_hash", record.session)
+        self.assertEqual(record.audit_events[0]["event_type"], "runtime_session_revoked")
+        self.assertEqual(record.audit_events[0]["actor_id"], "tenant-admin")
+        self.assertEqual(record.audit_events[0]["method_version"], "runtime_session_v1")
+        self.assertEqual(connection.commit_count, 1)
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("FOR UPDATE", executed_sql)
+        self.assertIn("UPDATE runtime_sessions", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
 
     def test_postgres_repository_creates_runtime_project_member_invitation_with_audit_event(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

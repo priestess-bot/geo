@@ -176,6 +176,12 @@ def _gate_no_fixture_production() -> list[Check]:
         "apps/api/geno_api/runtime_access_routes.py": (
             'collection_mode: str = Field(default="fixture"',
         ),
+        "packages/geno_core/geno_core/models.py": (
+            'collection_mode: str = "fixture"',
+        ),
+        "packages/geno_core/geno_core/runtime_project_access_repository.py": (
+            '"collection_mode": config.collection_mode.strip().lower() or "fixture"',
+        ),
         "infra/db/migrations/up/0015_customer_portal_launch_access_logs.sql": (
             "collection_mode text NOT NULL DEFAULT 'fixture'",
         ),
@@ -267,8 +273,11 @@ def _gate_security() -> list[Check]:
         _check_contains("auth_context_contract_exists", "apps/api/geno_api/auth_context.py", "class AuthContext"),
         _check_contains("auth_context_has_required_scope_fields", "apps/api/geno_api/auth_context.py", "project_ids: tuple[str, ...]"),
         _check_contains("runtime_auth_context_dependency_exists", "apps/api/geno_api/main.py", "def build_runtime_auth_context"),
+        _check_contains("runtime_sessions_table_exists", "infra/db/migrations/up/0016_runtime_sessions.sql", "CREATE TABLE IF NOT EXISTS runtime_sessions"),
+        _check_contains("runtime_sessions_store_hashed_tokens", "infra/db/migrations/up/0016_runtime_sessions.sql", "session_token_hash text NOT NULL UNIQUE"),
+        _check_contains("runtime_session_repository_exists", "packages/geno_core/geno_core/runtime_project_access_repository.py", "def create_runtime_session"),
         _check_regex("jwt_or_jwks_auth_exists", "apps/api/geno_api/main.py", r"RUNTIME_AUTH_MODE_ENV|jwks|JWT"),
-        _pending("server_side_session_contract", "W2-I01b sessions table/repository not complete"),
+        _pending("session_cookie_api_rollout", "session cookie redemption routes are W2-I01c/W2-I02 scope"),
         _pending("csrf_mutation_contract", "unsafe mutation CSRF enforcement not complete"),
     ]
     return _dedupe(checks)

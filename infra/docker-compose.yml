@@ -35,7 +35,8 @@ services:
           /migrations/up/0012_entity_alias_candidate_review_assignments.sql \
           /migrations/up/0013_project_member_invitations.sql \
           /migrations/up/0014_project_member_invitation_acceptance.sql \
-          /migrations/up/0015_customer_portal_launch_access_logs.sql
+          /migrations/up/0015_customer_portal_launch_access_logs.sql \
+          /migrations/up/0016_runtime_sessions.sql
         do
           psql -h postgres -U geno -d geno -v ON_ERROR_STOP=1 -f "$$file"
         done

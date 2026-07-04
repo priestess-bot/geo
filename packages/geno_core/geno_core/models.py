@@ -1457,6 +1457,34 @@ class RuntimeProjectLaunchConfig:
 
 
 @dataclass(frozen=True)
+class RuntimeSession:
+    session: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+    raw_session_token: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeSessionInput:
+    actor_id: str
+    actor_type: str = "user"
+    tenant_id: str | None = None
+    project_ids: tuple[str, ...] = ()
+    roles: tuple[str, ...] = ()
+    permissions: tuple[str, ...] = ()
+    ttl_seconds: int = 604800
+    issued_by: str = "runtime-auth"
+    metadata: dict[str, Any] = field(default_factory=dict)
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeSessionRevokeInput:
+    session_id: str
+    revoked_by: str = "runtime-auth"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeProjectLaunchConfigInput:
     project_id: str
     customer_email: str
@@ -1465,7 +1493,7 @@ class RuntimeProjectLaunchConfigInput:
     locale: str = "en-AU"
     country_code: str = "AU"
     timezone: str = "Australia/Sydney"
-    collection_mode: str = "fixture"
+    collection_mode: str = "api"
     schedule: dict[str, Any] = field(default_factory=dict)
     external_connectors: dict[str, Any] = field(default_factory=dict)
     scoring_profile: str = "au_visibility_v1"

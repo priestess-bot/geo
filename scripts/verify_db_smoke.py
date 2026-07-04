@@ -64,6 +64,7 @@ EXPECTED_TABLES = (
     "competitor_entities",
     "entity_aliases",
     "entity_alias_candidate_reviews",
+    "runtime_sessions",
 )
 
 CRITICAL_COLUMNS = {
@@ -170,6 +171,16 @@ CRITICAL_COLUMNS = {
         "expires_at",
         "metadata",
     ),
+    "runtime_sessions": (
+        "session_token_hash",
+        "actor_id",
+        "actor_type",
+        "project_ids",
+        "roles",
+        "permissions",
+        "status",
+        "expires_at",
+    ),
 }
 
 EXPECTED_FUNCTIONS = (
@@ -232,6 +243,7 @@ EXPECTED_RLS_TABLES = (
     "report_evidence",
     "entity_aliases",
     "entity_alias_candidate_reviews",
+    "runtime_sessions",
 )
 
 EXPECTED_POLICIES = (
@@ -243,6 +255,7 @@ EXPECTED_POLICIES = (
     "score_contributions_runtime_project_isolation",
     "entity_aliases_runtime_project_isolation",
     "entity_alias_candidate_reviews_runtime_project_isolation",
+    "runtime_sessions_runtime_actor_isolation",
 )
 
 
