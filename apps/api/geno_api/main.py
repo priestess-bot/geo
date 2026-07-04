@@ -29,6 +29,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import hashes
 
 from geno_api.access_logging import persist_runtime_http_access_log
+from geno_api.auth_context import AuthContext, build_anonymous_auth_context, build_user_auth_context
 from geno_api.ops_routes import register_ops_routes
 from geno_api.runtime_access_routes import register_runtime_access_routes
 from geno_api.runtime_metrics import (
@@ -1245,7 +1246,7 @@ async def runtime_metrics_middleware(request: Request, call_next):
             )
 
 
-def require_runtime_actor_id(x_geno_actor_id: str | None = None) -> str | None:
+def build_runtime_auth_context(x_geno_actor_id: str | None = None) -> AuthContext:
     auth_mode = runtime_auth_mode()
     if runtime_project_access_control_enabled() and auth_mode in {RUNTIME_AUTH_MODE_JWT, RUNTIME_AUTH_MODE_JWKS}:
         if auth_mode == RUNTIME_AUTH_MODE_JWT:
@@ -1258,14 +1259,20 @@ def require_runtime_actor_id(x_geno_actor_id: str | None = None) -> str | None:
                 status_code=401,
                 detail=f"Authorization Bearer JWT is required when runtime auth mode is {auth_mode}",
             )
-        return actor_id
+        return build_user_auth_context(actor_id=actor_id, auth_method=auth_mode)
     actor_id = x_geno_actor_id.strip() if x_geno_actor_id else ""
     if runtime_project_access_control_enabled() and not actor_id:
         raise HTTPException(
             status_code=401,
             detail=f"{RUNTIME_ACTOR_HEADER} is required when runtime project access control is enabled",
         )
-    return actor_id or None
+    if actor_id:
+        return build_user_auth_context(actor_id=actor_id, auth_method="header")
+    return build_anonymous_auth_context(auth_method="header")
+
+
+def require_runtime_actor_id(x_geno_actor_id: str | None = None) -> str | None:
+    return build_runtime_auth_context(x_geno_actor_id).actor_id
 
 
 def apply_runtime_project_db_context(

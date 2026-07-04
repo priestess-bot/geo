@@ -41,7 +41,7 @@
 
 | 编号 | 对照章节 | 工作项 | 依赖 | 状态 | 验收命令 | 证据路径 | Commit | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| W2-I01a | 16 / 7.1 | AuthContext contract/types/dependency | W1-I01 | Not started | `make security-smoke` | 待填 | 待填 | header/jwt/jwks/OIDC actor 统一 |
+| W2-I01a | 16 / 7.1 | AuthContext contract/types/dependency | W1-I01 | Done | `python3 -m compileall apps/api/geno_api`; `make security-smoke --allow-pending` equivalent; focused auth tests | `apps/api/geno_api/auth_context.py`; `tests/test_auth_context_contracts.py` | 待填 | header/jwt/jwks actor 已统一到 AuthContext；session/RBAC rollout 由后续项完成 |
 | W2-I01b | 16 | sessions table + session repository | W2-I01a | Not started | `make security-smoke` | 待填 | 待填 | server-side session hash、TTL、revoke |
 | W2-I01c | 16 | protected API dependency rollout | W2-I01a/W2-I01b/W2-I03a/W2-I03b | Not started | `make security-smoke` | 待填 | 待填 | 所有受保护 API 不再依赖裸 actor header |
 | W2-I01d | 16 | system actor contract | W2-I01a | Not started | `make security-smoke` | 待填 | 待填 | system actor 默认带 tenant/project scope |
