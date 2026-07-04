@@ -87,6 +87,7 @@ from geno_core.models import (
     EntityAliasCandidateReviewInput,
     EntityAliasInput,
     RuntimeAlertEventInput,
+    RuntimeConnectorSecretInput,
     RuntimeEntityAliasBatchConfirmResult,
     RuntimeHumanReviewInput,
     ManualBackfillInput,
@@ -2097,6 +2098,16 @@ class RuntimeProjectUpdateRequest(BaseModel):
 class RuntimeProjectActionRequest(BaseModel):
     project_id: str = Field(min_length=1)
     action: str = Field(min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ConnectorSecretRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    provider: str = Field(min_length=1, max_length=80)
+    raw_secret: str = Field(min_length=1, max_length=4000)
+    purpose: str = Field(default="api_key", min_length=1, max_length=80)
+    metadata: dict[str, object] = Field(default_factory=dict)
     updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     reason: str | None = Field(default=None, max_length=500)
 
@@ -4113,6 +4124,78 @@ def runtime_audit_events_export_csv(
         )
     finally:
         close_repository_connection(repository)
+
+
+@app.get("/v1/connectors/runtime/secrets")
+def runtime_connector_secrets(
+    project_id: str = Query(min_length=1),
+    provider: str | None = Query(default=None, min_length=1, max_length=80),
+    include_inactive: bool = False,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        list_secrets = getattr(repository, "list_connector_secrets", None)
+        if not callable(list_secrets):
+            raise HTTPException(status_code=503, detail="connector secret listing is unavailable")
+        records = list_secrets(
+            project_id=project_id.strip(),
+            provider=provider.strip() if provider else None,
+            include_inactive=include_inactive,
+        )
+        return {"records": records, "total_count": len(records)}
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/connectors/runtime/secrets")
+def save_runtime_connector_secret(
+    payload: ConnectorSecretRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            secret_record = repository.save_connector_secret(
+                RuntimeConnectorSecretInput(
+                    project_id=payload.project_id.strip(),
+                    provider=payload.provider.strip(),
+                    purpose=payload.purpose.strip(),
+                    raw_secret=payload.raw_secret,
+                    metadata=payload.metadata,
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(secret_record)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.patch("/v1/connectors/runtime/secrets")
+def rotate_runtime_connector_secret(
+    payload: ConnectorSecretRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    return save_runtime_connector_secret(payload=payload, x_geno_actor_id=x_geno_actor_id)
 
 
 @app.get("/v1/project-members/runtime")

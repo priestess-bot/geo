@@ -55,7 +55,7 @@
 
 | 编号 | 对照章节 | 工作项 | 依赖 | 状态 | 验收命令 | 证据路径 | Commit | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| W3-I00 | 16 / 2.5 | Provider secret storage and redaction baseline | W2-I01a/W2-I03a | Not started | `make no-secret-leak-smoke` | 待填 | 待填 | DB encrypted column + SecretStore adapter |
+| W3-I00 | 16 / 2.5 | Provider secret storage and redaction baseline | W2-I01a/W2-I03a | In progress | `python3 scripts/verify_production_v1_gate.py no-secret-leak-smoke --allow-pending`; focused secret/API tests | `infra/db/migrations/up/0018_connector_secret_refs.sql`; `packages/geno_core/geno_core/security/secrets.py`; `apps/api/geno_api/main.py`; `tests/test_api_contracts.py`; `tests/test_core_contracts.py` | 待填 | DB encrypted column + SecretStore adapter + API masked metadata + access-log body redaction |
 | W3-I01 | 16 / 7.3 | Connector contract + recorded harness | W1-I01/W3-I00 | Not started | `make connector-real-smoke` | 待填 | 待填 | Local/CI 无 key 可跳过真实子集 |
 | W3-I02 | 16 | OpenAI 真实采集闭环 | W3-I01/W4-I01a | Not started | `make connector-real-smoke` | 待填 | 待填 | Responses API + web_search |
 | W3-I03 | 16 | Perplexity 真实采集闭环 | W3-I00/W3-I01/W4-I01a | Not started | `make connector-real-smoke` | 待填 | 待填 | sonar adapter、citation、cost、failure |

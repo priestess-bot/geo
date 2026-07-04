@@ -100,6 +100,13 @@ from geno_core.knowledge import (
 )
 from geno_core.llm_gateway import FixtureLLMGateway, LiteLLMGateway, LLMGatewayRequestError
 from geno_core.market import build_au_market_profile
+from geno_core.security.secrets import (
+    CONNECTOR_SECRET_ENCRYPTION_VERSION,
+    decrypt_connector_secret,
+    encrypt_connector_secret,
+    redact_secret_text,
+    redact_secrets,
+)
 from geno_core.models import (
     AnswerAnalysis,
     CollectionFailureRecord,
@@ -317,6 +324,52 @@ class RecordingConnection:
 
 
 class CoreContractsTest(unittest.TestCase):
+    def test_connector_secret_store_encrypts_masks_and_decrypts(self) -> None:
+        encrypted = encrypt_connector_secret(
+            project_id="9a50797d-a341-55a4-8bdf-cc255c017e5c",
+            provider="openai",
+            purpose="api_key",
+            raw_secret="sk-test-provider-secret",
+            master_key="unit-test-master-key",
+        )
+
+        self.assertEqual(encrypted.encryption_version, CONNECTOR_SECRET_ENCRYPTION_VERSION)
+        self.assertTrue(encrypted.secret_ref.startswith("connector-secret:"))
+        self.assertNotIn("sk-test-provider-secret", encrypted.encrypted_secret)
+        self.assertNotEqual(encrypted.secret_ref, "sk-test-provider-secret")
+        self.assertEqual(encrypted.masked_value, "sk-t...cret")
+        self.assertEqual(
+            decrypt_connector_secret(
+                encrypted_secret=encrypted.encrypted_secret,
+                master_key="unit-test-master-key",
+            ),
+            "sk-test-provider-secret",
+        )
+
+    def test_secret_redaction_recursively_masks_sensitive_fields(self) -> None:
+        payload = {
+            "provider": "openai",
+            "raw_secret": "sk-test-provider-secret",
+            "nested": {"api_key": "pplx-test-provider-secret", "safe": "visible"},
+            "items": [{"session_token": "geno-session-secret"}],
+        }
+
+        redacted = redact_secrets(payload)
+        self.assertEqual(redacted["raw_secret"], "[redacted]")
+        self.assertEqual(redacted["nested"]["api_key"], "[redacted]")
+        self.assertEqual(redacted["nested"]["safe"], "visible")
+        self.assertEqual(redacted["items"][0]["session_token"], "[redacted]")
+
+    def test_secret_text_redaction_masks_json_bodies(self) -> None:
+        redacted = redact_secret_text(
+            b'{"provider":"openai","raw_secret":"sk-test-provider-secret","metadata":{"safe":"visible"}}',
+            content_type="application/json",
+        )
+
+        self.assertIsInstance(redacted, bytes)
+        self.assertNotIn(b"sk-test-provider-secret", redacted)
+        self.assertIn(b'"raw_secret":"[redacted]"', redacted)
+
     def _xlsx_prompt_import_bytes(self) -> bytes:
         buffer = BytesIO()
         with ZipFile(buffer, "w") as workbook:

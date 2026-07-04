@@ -230,6 +230,14 @@ def _gate_no_secret_leak() -> list[Check]:
     checks.append(_check_contains("portal_tokens_are_hashed", "infra/db/migrations/up/0015_customer_portal_launch_access_logs.sql", "token_hash"))
     checks.append(_check_contains("invite_tokens_are_hashed", "infra/db/migrations/up/0013_project_member_invitations.sql", "invite_token_hash"))
     checks.append(_check_contains("frontend_bundle_has_no_provider_env", "tests/test_web_console_contracts.py", "assertNotIn(\"OPENAI_API_KEY\""))
+    checks.append(_check_contains("connector_secret_refs_table_exists", "infra/db/migrations/up/0018_connector_secret_refs.sql", "CREATE TABLE IF NOT EXISTS connector_secret_refs"))
+    checks.append(_check_contains("connector_secret_refs_store_encrypted_secret", "infra/db/migrations/up/0018_connector_secret_refs.sql", "encrypted_secret text NOT NULL"))
+    checks.append(_check_contains("connector_secret_store_adapter_exists", "packages/geno_core/geno_core/security/secrets.py", "def encrypt_connector_secret"))
+    checks.append(_check_contains("connector_secret_api_exists", "apps/api/geno_api/main.py", "/v1/connectors/runtime/secrets"))
+    checks.append(_check_contains("access_log_redacts_secret_body", "apps/api/geno_api/access_logging.py", "redact_secret_text"))
+    checks.append(_check_contains("connector_secret_api_masks_raw_secret_test", "tests/test_api_contracts.py", "test_runtime_connector_secret_endpoint_masks_raw_secret"))
+    checks.append(_check_contains("connector_secret_permission_test", "tests/test_api_contracts.py", "test_runtime_connector_secret_endpoint_requires_manage_role"))
+    checks.append(_check_contains("access_log_secret_body_redaction_test", "tests/test_api_contracts.py", "test_runtime_http_access_log_redacts_secret_request_body_artifacts"))
     return checks
 
 

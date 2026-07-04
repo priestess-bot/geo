@@ -24,6 +24,7 @@ import starlette.routing
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import hashes
 
+from geno_api.access_logging import persist_runtime_http_access_log
 from geno_api.main import app, close_runtime_resources, reset_runtime_auth_caches, reset_runtime_metrics
 from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
 from geno_core.email_preferences import sign_runtime_notification_email_preference_token
@@ -147,6 +148,7 @@ from geno_core.models import (
     RuntimeProjectMemberPage,
     RuntimeProjectActionInput,
     RuntimeProjectUpdateInput,
+    RuntimeConnectorSecret,
     RuntimePromptImportHistoryItem,
     RuntimePromptImportHistoryPage,
     RuntimePromptImportResult,
@@ -2825,6 +2827,57 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(len(response_request_id), 32)
         int(response_request_id, 16)
 
+    def test_runtime_http_access_log_redacts_secret_request_body_artifacts(self) -> None:
+        class FakeUrl:
+            path = "/v1/connectors/runtime/secrets"
+            query = ""
+
+        class FakeRequest:
+            method = "POST"
+            url = FakeUrl()
+            headers = {"content-type": "application/json", "user-agent": "unit-test"}
+            query_params: dict[str, str] = {}
+            client = type("Client", (), {"host": "127.0.0.1"})()
+
+        class FakeObjectStore:
+            def __init__(self) -> None:
+                self.objects: dict[str, bytes | str] = {}
+
+            def put_object(self, *, key: str, content: bytes | str, content_type: str) -> object:
+                self.objects[key] = content
+                return type("Stored", (), {"uri": f"memory://{key}"})()
+
+        class FakeRepository:
+            def save_runtime_http_access_log(self, log_input: object) -> None:
+                self.log_input = log_input
+
+        fake_store = FakeObjectStore()
+        fake_repository = FakeRepository()
+        persist_runtime_http_access_log(
+            request=FakeRequest(),  # type: ignore[arg-type]
+            request_id="request-1",
+            route_path="/v1/connectors/runtime/secrets",
+            status_code=200,
+            duration_seconds=0.01,
+            request_body=b'{"provider":"openai","raw_secret":"sk-test-provider-secret"}',
+            response_body=b'{"connector_secret":{"secret_ref":"connector-secret:abc123"}}',
+            response_headers={"content-type": "application/json"},
+            response_media_type="application/json",
+            actor_header="X-GENO-Actor-Id",
+            repository_builder=lambda: fake_repository,
+            object_store_builder=lambda: fake_store,
+            close_repository=lambda repository: None,
+        )
+
+        archived_request_bodies = [
+            content for key, content in fake_store.objects.items() if key.endswith("request-body.bin")
+        ]
+        self.assertEqual(len(archived_request_bodies), 1)
+        archived_body = archived_request_bodies[0]
+        archived_text = archived_body.decode("utf-8") if isinstance(archived_body, bytes) else archived_body
+        self.assertIn('"raw_secret":"[redacted]"', archived_text)
+        self.assertNotIn("sk-test-provider-secret", archived_text)
+
     def test_shutdown_closes_runtime_postgres_pool(self) -> None:
         with patch("geno_api.main.close_runtime_postgres_pool") as close_pool:
             close_runtime_resources()
@@ -2986,6 +3039,112 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["records"][0]["id"], "token-1")
         self.assertNotIn("raw_token", payload["records"][0])
         self.assertNotIn("token_hash", payload["records"][0])
+
+    def test_runtime_connector_secret_endpoint_masks_raw_secret(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
+                self.member_check = {"project_id": project_id, "actor_id": actor_id}
+                return "owner"
+
+            def save_connector_secret(self, secret_input: object) -> RuntimeConnectorSecret:
+                self.secret_input = secret_input
+                return RuntimeConnectorSecret(
+                    connector_secret={
+                        "id": "secret-id",
+                        "project_id": secret_input.project_id,
+                        "provider": secret_input.provider,
+                        "purpose": secret_input.purpose,
+                        "secret_ref": "connector-secret:abc123",
+                        "masked_value": "sk-t...cret",
+                        "status": "active",
+                    },
+                    audit_events=({"event_type": "connector.secret_created"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+            response = self.client.post(
+                "/v1/connectors/runtime/secrets",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+                json={
+                    "project_id": "project-1",
+                    "provider": "openai",
+                    "raw_secret": "sk-test-provider-secret",
+                    "purpose": "api_key",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(fake_repository.secret_input.raw_secret, "sk-test-provider-secret")
+        payload = response.json()
+        self.assertEqual(payload["connector_secret"]["secret_ref"], "connector-secret:abc123")
+        self.assertEqual(payload["connector_secret"]["masked_value"], "sk-t...cret")
+        self.assertNotIn("sk-test-provider-secret", response.text)
+        self.assertNotIn("encrypted_secret", response.text)
+        self.assertNotIn("secret_hash", response.text)
+
+    def test_runtime_connector_secret_endpoint_requires_manage_role(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
+                return "viewer"
+
+            def save_connector_secret(self, secret_input: object) -> RuntimeConnectorSecret:
+                raise AssertionError("viewer must not be allowed to mutate connector secret")
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+            response = self.client.post(
+                "/v1/connectors/runtime/secrets",
+                headers={"X-GENO-Actor-Id": "viewer@example.com"},
+                json={
+                    "project_id": "project-1",
+                    "provider": "openai",
+                    "raw_secret": "sk-test-provider-secret",
+                },
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn("sk-test-provider-secret", response.text)
+
+    def test_runtime_connector_secret_list_returns_masked_metadata_only(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
+                return "owner"
+
+            def list_connector_secrets(self, **kwargs: object) -> tuple[dict[str, object], ...]:
+                self.kwargs = kwargs
+                return (
+                    {
+                        "id": "secret-id",
+                        "project_id": kwargs["project_id"],
+                        "provider": "openai",
+                        "purpose": "api_key",
+                        "secret_ref": "connector-secret:abc123",
+                        "masked_value": "sk-t...cret",
+                        "status": "active",
+                    },
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+            response = self.client.get(
+                "/v1/connectors/runtime/secrets?project_id=project-1&provider=openai",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_count"], 1)
+        self.assertEqual(payload["records"][0]["secret_ref"], "connector-secret:abc123")
+        self.assertEqual(payload["records"][0]["masked_value"], "sk-t...cret")
+        self.assertEqual(fake_repository.kwargs["provider"], "openai")
+        self.assertNotIn("encrypted_secret", response.text)
+        self.assertNotIn("secret_hash", response.text)
 
     def test_runtime_projects_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/projects/runtime")

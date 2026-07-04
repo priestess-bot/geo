@@ -9,6 +9,8 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from geno_core.audit import build_audit_event
 from geno_core.models import (
+    RuntimeConnectorSecret,
+    RuntimeConnectorSecretInput,
     RuntimeCustomerPortalToken,
     RuntimeCustomerPortalTokenActionInput,
     RuntimeCustomerPortalTokenInput,
@@ -22,6 +24,7 @@ from geno_core.models import (
     RuntimeTenantMemberInput,
 )
 from geno_core.rbac import normalize_role, permissions_for_roles
+from geno_core.security.secrets import encrypt_connector_secret
 
 
 CUSTOMER_PORTAL_TOKEN_COLUMNS = (
@@ -122,6 +125,27 @@ TENANT_MEMBER_COLUMNS = (
     "created_at",
     "updated_at",
 )
+CONNECTOR_SECRET_REF_COLUMNS = (
+    "id",
+    "project_id",
+    "provider",
+    "purpose",
+    "secret_ref",
+    "encrypted_secret",
+    "encryption_version",
+    "key_hint",
+    "secret_hash",
+    "masked_value",
+    "status",
+    "metadata",
+    "created_by",
+    "rotated_by",
+    "deleted_by",
+    "created_at",
+    "rotated_at",
+    "deleted_at",
+    "updated_at",
+)
 
 
 def _json_compatible(value: object) -> object:
@@ -190,6 +214,176 @@ class RuntimeProjectAccessRepositoryMixin:
     connection: Any
 
     def save_audit_events(self, events: object, *, cursor: Any | None = None) -> None: ...
+
+    def _public_connector_secret_ref(self, row: dict[str, Any]) -> dict[str, Any]:
+        return {
+            key: value
+            for key, value in row.items()
+            if key not in {"encrypted_secret", "secret_hash"}
+        }
+
+    def save_connector_secret(self, secret_input: RuntimeConnectorSecretInput) -> RuntimeConnectorSecret:
+        project_id = secret_input.project_id.strip()
+        provider = secret_input.provider.strip().lower()
+        purpose = secret_input.purpose.strip().lower() or "api_key"
+        updated_by = secret_input.updated_by.strip() or "runtime-console"
+        metadata = _json_compatible(secret_input.metadata or {})
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not provider:
+            raise ValueError("provider is required")
+        if not updated_by:
+            raise ValueError("updated_by is required")
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be an object")
+        encrypted = encrypt_connector_secret(
+            project_id=project_id,
+            provider=provider,
+            purpose=purpose,
+            raw_secret=secret_input.raw_secret,
+        )
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM projects WHERE id = %s LIMIT 1", (_uuid(project_id),))
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(CONNECTOR_SECRET_REF_COLUMNS)}
+                FROM connector_secret_refs
+                WHERE project_id = %s AND provider = %s AND purpose = %s AND status = 'active'
+                LIMIT 1
+                """,
+                (_uuid(project_id), provider, purpose),
+            )
+            existing = _row_dict(cursor.fetchone(), CONNECTOR_SECRET_REF_COLUMNS)
+            if existing:
+                cursor.execute(
+                    """
+                    UPDATE connector_secret_refs
+                    SET status = 'rotated',
+                        rotated_by = %s,
+                        rotated_at = now(),
+                        updated_at = now()
+                    WHERE id = %s
+                    """,
+                    (updated_by, _uuid(str(existing["id"]))),
+                )
+            cursor.execute(
+                """
+                INSERT INTO connector_secret_refs (
+                  project_id, provider, purpose, secret_ref, encrypted_secret,
+                  encryption_version, key_hint, secret_hash, masked_value,
+                  status, metadata, created_by, rotated_by, rotated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s, CASE WHEN %s THEN now() ELSE NULL END)
+                RETURNING id
+                """,
+                (
+                    _uuid(project_id),
+                    provider,
+                    purpose,
+                    encrypted.secret_ref,
+                    encrypted.encrypted_secret,
+                    encrypted.encryption_version,
+                    encrypted.key_hint,
+                    encrypted.secret_hash,
+                    encrypted.masked_value,
+                    _json_payload(metadata),
+                    updated_by,
+                    updated_by if existing else None,
+                    bool(existing),
+                ),
+            )
+            inserted = _row_dict(cursor.fetchone(), ("id",))
+            cursor.execute(
+                f"""
+                SELECT {", ".join(CONNECTOR_SECRET_REF_COLUMNS)}
+                FROM connector_secret_refs
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(str(inserted["id"])),),
+            )
+            after = _row_dict(cursor.fetchone(), CONNECTOR_SECRET_REF_COLUMNS)
+            public_after = self._public_connector_secret_ref(after)
+            public_before = self._public_connector_secret_ref(existing) if existing else None
+            event_type = "connector.secret_rotated" if existing else "connector.secret_created"
+            audit_event = build_audit_event(
+                event_type=event_type,
+                project_id=project_id,
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="connector_secret",
+                target_id=str(after["id"]),
+                before=public_before,
+                after=public_after,
+                input_refs={
+                    "project_ids": [project_id],
+                    "providers": [provider],
+                    "purposes": [purpose],
+                    "secret_refs": [str(after["secret_ref"])],
+                },
+                output_refs={"connector_secret_ref_ids": [str(after["id"])]},
+                method_version="connector_secret_storage_v1",
+                reason=secret_input.reason.strip() if secret_input.reason else event_type,
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+        self.connection.commit()
+        return RuntimeConnectorSecret(connector_secret=public_after, audit_events=(asdict(audit_event),))
+
+    def list_connector_secrets(
+        self,
+        *,
+        project_id: str,
+        provider: str | None = None,
+        include_inactive: bool = False,
+    ) -> tuple[dict[str, Any], ...]:
+        project_id = project_id.strip()
+        if not project_id:
+            raise ValueError("project_id is required")
+        filters = ["project_id = %s"]
+        params: list[object] = [_uuid(project_id)]
+        if provider:
+            filters.append("provider = %s")
+            params.append(provider.strip().lower())
+        if not include_inactive:
+            filters.append("status = 'active'")
+        where_clause = " AND ".join(filters)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(CONNECTOR_SECRET_REF_COLUMNS)}
+                FROM connector_secret_refs
+                WHERE {where_clause}
+                ORDER BY updated_at DESC, created_at DESC, id DESC
+                """,
+                tuple(params),
+            )
+            rows = [_row_dict(row, CONNECTOR_SECRET_REF_COLUMNS) for row in (cursor.fetchall() or ())]
+        return tuple(self._public_connector_secret_ref(row) for row in rows)
+
+    def resolve_connector_secret(self, *, secret_ref: str) -> str:
+        from geno_core.security.secrets import decrypt_connector_secret
+
+        normalized_ref = secret_ref.strip()
+        if not normalized_ref:
+            raise ValueError("secret_ref is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT encrypted_secret, status
+                FROM connector_secret_refs
+                WHERE secret_ref = %s
+                LIMIT 1
+                """,
+                (normalized_ref,),
+            )
+            row = _row_dict(cursor.fetchone(), ("encrypted_secret", "status"))
+        if not row:
+            raise ValueError("connector secret not found")
+        if row.get("status") != "active":
+            raise ValueError("connector secret is not active")
+        return decrypt_connector_secret(encrypted_secret=str(row["encrypted_secret"]))
 
     def save_tenant_member(self, member: RuntimeTenantMemberInput) -> dict[str, Any]:
         tenant_id = member.tenant_id.strip()

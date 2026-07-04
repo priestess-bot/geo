@@ -1477,6 +1477,23 @@ class RuntimeProjectLaunchConfig:
 
 
 @dataclass(frozen=True)
+class RuntimeConnectorSecret:
+    connector_secret: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeConnectorSecretInput:
+    project_id: str
+    provider: str
+    raw_secret: str
+    purpose: str = "api_key"
+    metadata: dict[str, Any] = field(default_factory=dict)
+    updated_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeSession:
     session: dict[str, Any]
     audit_events: tuple[dict[str, Any], ...]
