@@ -103,6 +103,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertTrue(any(volume["target"] == "/migrations/up" and volume["read_only"] for volume in migrator["volumes"]))
         self.assertIn("0015_customer_portal_launch_access_logs.sql", migration_command)
         self.assertIn("0016_runtime_sessions.sql", migration_command)
+        self.assertIn("0017_tenant_membership_scope.sql", migration_command)
         self.assertIn("to_regprocedure('geno_runtime_can_access_project(uuid)')", migration_command)
         self.assertIn("postgres", migrator["depends_on"])
         self.assertEqual(api["depends_on"]["db-migrate"]["condition"], "service_completed_successfully")
@@ -522,6 +523,21 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn('"runtime_sessions"', db_smoke_source)
         self.assertIn('"session_token_hash"', db_smoke_source)
         self.assertIn('"runtime_sessions_runtime_actor_isolation"', db_smoke_source)
+
+    def test_tenant_membership_scope_migration_adds_tenant_members_and_rls(self) -> None:
+        migration = (ROOT / "infra/db/migrations/up/0017_tenant_membership_scope.sql").read_text(encoding="utf-8")
+        rollback = (ROOT / "infra/db/migrations/down/0017_tenant_membership_scope.down.sql").read_text(encoding="utf-8")
+        db_smoke_source = (ROOT / "scripts/verify_db_smoke.py").read_text(encoding="utf-8")
+
+        self.assertIn("CREATE TABLE IF NOT EXISTS tenant_members", migration)
+        self.assertIn("REFERENCES tenants(id) ON DELETE CASCADE", migration)
+        self.assertIn("idx_tenant_members_tenant_user", migration)
+        self.assertIn("ALTER TABLE tenant_members FORCE ROW LEVEL SECURITY", migration)
+        self.assertIn("tenant_members_runtime_tenant_isolation", migration)
+        self.assertIn("DROP TABLE IF EXISTS tenant_members", rollback)
+        self.assertIn('"tenant_members"', db_smoke_source)
+        self.assertIn('"tenant_id"', db_smoke_source)
+        self.assertIn('"tenant_members_runtime_tenant_isolation"', db_smoke_source)
 
     def test_browser_fidelity_plan_make_target_outputs_machine_readable_json(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")

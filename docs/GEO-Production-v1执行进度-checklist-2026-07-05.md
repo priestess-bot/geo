@@ -48,7 +48,7 @@
 | W2-I01e | 16 / 7.11 | auth audit events | W2-I01a | Not started | `make security-smoke` | 待填 | 待填 | login/logout/invite/session revoke |
 | W2-I02 | 16 | Invitation token 一次性兑换 | W2-I01a/W2-I01b/W2-I03a/W2-I03b | Not started | `make security-smoke` | 待填 | 待填 | 不再长期依赖 URL query token |
 | W2-I03a | 16 / 7.2 | RBAC matrix contract | W2-I01a | Done | `python3 -m unittest tests.test_rbac_contracts`; `make security-smoke --allow-pending` equivalent | `packages/geno_core/geno_core/rbac.py`; `tests/test_rbac_contracts.py` | 待填 | permission vocabulary 与 role matrix 已成为核心契约；路由全面接入由 W2-I01c 完成 |
-| W2-I03b | 16 | membership schema + scope repository | W2-I01b/W2-I03a | Not started | `make rls-smoke` | 待填 | 待填 | tenant_members/project_members |
+| W2-I03b | 16 | membership schema + scope repository | W2-I01b/W2-I03a | Done | `python3 -m unittest tests.test_membership_scope_contracts`; `make security-smoke --allow-pending` equivalent | `infra/db/migrations/up/0017_tenant_membership_scope.sql`; `packages/geno_core/geno_core/runtime_project_access_repository.py`; `tests/test_membership_scope_contracts.py` | 待填 | `tenant_members` 与 scope repository 完成；RLS `app.*` 升级由 W2-I03c 完成 |
 | W2-I03c | 16 / 8.2 | RLS smoke for core tables | W2-I03b | Not started | `make rls-smoke` | 待填 | 待填 | 需要升级到 `app.*` scope injection |
 
 ## 4. Collection / Evidence

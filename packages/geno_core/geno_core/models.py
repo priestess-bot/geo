@@ -86,6 +86,26 @@ class ProjectMember:
 
 
 @dataclass(frozen=True)
+class RuntimeTenantMemberInput:
+    tenant_id: str
+    user_id: str
+    role: str
+    status: str = "active"
+    updated_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeMembershipScope:
+    actor_id: str
+    tenant_id: str | None
+    tenant_roles: tuple[str, ...]
+    project_ids: tuple[str, ...]
+    project_roles: dict[str, str]
+    permissions: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class BrandEntity:
     id: str
     project_id: str

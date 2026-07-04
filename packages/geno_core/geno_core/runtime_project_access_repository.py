@@ -13,12 +13,15 @@ from geno_core.models import (
     RuntimeCustomerPortalTokenActionInput,
     RuntimeCustomerPortalTokenInput,
     RuntimeHttpAccessLogInput,
+    RuntimeMembershipScope,
     RuntimeProjectLaunchConfig,
     RuntimeProjectLaunchConfigInput,
     RuntimeSession,
     RuntimeSessionInput,
     RuntimeSessionRevokeInput,
+    RuntimeTenantMemberInput,
 )
+from geno_core.rbac import normalize_role, permissions_for_roles
 
 
 CUSTOMER_PORTAL_TOKEN_COLUMNS = (
@@ -109,6 +112,16 @@ RUNTIME_SESSION_COLUMNS = (
     "created_at",
     "updated_at",
 )
+TENANT_MEMBER_COLUMNS = (
+    "id",
+    "tenant_id",
+    "user_id",
+    "role",
+    "status",
+    "invited_by",
+    "created_at",
+    "updated_at",
+)
 
 
 def _json_compatible(value: object) -> object:
@@ -177,6 +190,147 @@ class RuntimeProjectAccessRepositoryMixin:
     connection: Any
 
     def save_audit_events(self, events: object, *, cursor: Any | None = None) -> None: ...
+
+    def save_tenant_member(self, member: RuntimeTenantMemberInput) -> dict[str, Any]:
+        tenant_id = member.tenant_id.strip()
+        user_id = member.user_id.strip().lower()
+        role = normalize_role(member.role)
+        status = member.status.strip().lower() or "active"
+        updated_by = member.updated_by.strip() or "runtime-console"
+        if not tenant_id:
+            raise ValueError("tenant_id is required")
+        if not user_id:
+            raise ValueError("user_id is required")
+        if status not in {"active", "disabled"}:
+            raise ValueError("status must be active or disabled")
+        member_id = _stable_id("tenant-member", tenant_id, user_id)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(TENANT_MEMBER_COLUMNS)}
+                FROM tenant_members
+                WHERE tenant_id = %s AND lower(user_id) = %s
+                LIMIT 1
+                """,
+                (_uuid(tenant_id), user_id),
+            )
+            before = _row_dict(cursor.fetchone(), TENANT_MEMBER_COLUMNS)
+            cursor.execute(
+                """
+                INSERT INTO tenant_members (id, tenant_id, user_id, role, status, invited_by)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, user_id) DO UPDATE SET
+                  role = EXCLUDED.role,
+                  status = EXCLUDED.status,
+                  invited_by = COALESCE(tenant_members.invited_by, EXCLUDED.invited_by),
+                  updated_at = now()
+                """,
+                (_uuid(member_id), _uuid(tenant_id), user_id, role, status, updated_by),
+            )
+            cursor.execute(
+                f"""
+                SELECT {", ".join(TENANT_MEMBER_COLUMNS)}
+                FROM tenant_members
+                WHERE tenant_id = %s AND lower(user_id) = %s
+                LIMIT 1
+                """,
+                (_uuid(tenant_id), user_id),
+            )
+            after = _row_dict(cursor.fetchone(), TENANT_MEMBER_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="membership.created" if not before else "membership.updated",
+                project_id="",
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="tenant_member",
+                target_id=str(after.get("id") or member_id),
+                before=before or None,
+                after=after,
+                input_refs={"tenant_ids": [tenant_id], "user_ids": [user_id], "roles": [role]},
+                output_refs={"tenant_member_ids": [str(after.get("id") or member_id)], "status": [status]},
+                method_version="tenant_membership_scope_v1",
+                reason=member.reason.strip() if member.reason else "tenant_membership_save",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+        self.connection.commit()
+        return {**after, "audit_events": [asdict(audit_event)]}
+
+    def get_runtime_membership_scope(
+        self,
+        *,
+        actor_id: str,
+        tenant_id: str | None = None,
+        project_id: str | None = None,
+    ) -> RuntimeMembershipScope:
+        actor_id = actor_id.strip().lower()
+        tenant_id = tenant_id.strip() if tenant_id else None
+        project_id = project_id.strip() if project_id else None
+        if not actor_id:
+            raise ValueError("actor_id is required")
+        filters = ["lower(tm.user_id) = %s", "tm.status = 'active'"]
+        params: list[object] = [actor_id]
+        if tenant_id:
+            filters.append("tm.tenant_id = %s")
+            params.append(_uuid(tenant_id))
+        tenant_where = " AND ".join(filters)
+        project_filters = ["lower(pm.user_id) = %s"]
+        project_params: list[object] = [actor_id]
+        if tenant_id:
+            project_filters.append("p.tenant_id = %s")
+            project_params.append(_uuid(tenant_id))
+        if project_id:
+            project_filters.append("pm.project_id = %s")
+            project_params.append(_uuid(project_id))
+        project_where = " AND ".join(project_filters)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT tm.tenant_id, tm.role
+                FROM tenant_members tm
+                WHERE {tenant_where}
+                ORDER BY tm.created_at ASC, tm.id ASC
+                """,
+                tuple(params),
+            )
+            tenant_rows = [_row_dict(row, ("tenant_id", "role")) for row in (cursor.fetchall() or ())]
+            cursor.execute(
+                f"""
+                SELECT pm.project_id, pm.role, p.tenant_id
+                FROM project_members pm
+                JOIN projects p ON p.id = pm.project_id
+                WHERE {project_where}
+                ORDER BY pm.created_at ASC, pm.project_id ASC
+                """,
+                tuple(project_params),
+            )
+            project_rows = [_row_dict(row, ("project_id", "role", "tenant_id")) for row in (cursor.fetchall() or ())]
+        if project_id and not project_rows:
+            raise PermissionError("actor does not have access to project")
+        if tenant_id and not tenant_rows and not project_rows:
+            raise PermissionError("actor does not have access to tenant")
+        effective_tenant_id = tenant_id
+        if effective_tenant_id is None:
+            for row in (*tenant_rows, *project_rows):
+                value = row.get("tenant_id")
+                if value:
+                    effective_tenant_id = str(value)
+                    break
+        tenant_roles = tuple(dict.fromkeys(normalize_role(str(row["role"])) for row in tenant_rows if row.get("role")))
+        project_roles = {
+            str(row["project_id"]): normalize_role(str(row["role"]))
+            for row in project_rows
+            if row.get("project_id") and row.get("role")
+        }
+        roles = tuple(dict.fromkeys((*tenant_roles, *project_roles.values())))
+        permissions = tuple(sorted(permissions_for_roles(roles))) if roles else ()
+        return RuntimeMembershipScope(
+            actor_id=actor_id,
+            tenant_id=effective_tenant_id,
+            tenant_roles=tenant_roles,
+            project_ids=tuple(project_roles.keys()),
+            project_roles=project_roles,
+            permissions=permissions,
+        )
 
     def save_project_launch_config(self, config: RuntimeProjectLaunchConfigInput) -> RuntimeProjectLaunchConfig:
         project_id = config.project_id.strip()

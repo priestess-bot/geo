@@ -171,6 +171,15 @@ CRITICAL_COLUMNS = {
         "expires_at",
         "metadata",
     ),
+    "tenant_members": (
+        "tenant_id",
+        "user_id",
+        "role",
+        "status",
+        "invited_by",
+        "created_at",
+        "updated_at",
+    ),
     "runtime_sessions": (
         "session_token_hash",
         "actor_id",
@@ -194,6 +203,7 @@ EXPECTED_FUNCTIONS = (
 
 EXPECTED_RLS_TABLES = (
     "projects",
+    "tenant_members",
     "project_members",
     "project_member_invitations",
     "prompt_questions",
@@ -248,6 +258,7 @@ EXPECTED_RLS_TABLES = (
 
 EXPECTED_POLICIES = (
     "projects_runtime_project_isolation",
+    "tenant_members_runtime_tenant_isolation",
     "project_members_runtime_project_isolation",
     "project_member_invitations_runtime_project_isolation",
     "answer_runs_runtime_project_isolation",
