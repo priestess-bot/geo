@@ -1,0 +1,382 @@
+
+<!doctype html>
+<html lang="zh-cn" >
+<head>
+    <meta charset="utf-8" />
+    <title>重新定义具身智能：智平方 GOVLA 大模型的双系统架构 - IT之家</title>
+    <meta name="description" content="" />
+    <meta name="keywords" content="业界动态" />
+    <meta http-equiv="pragma" content="no-cache">
+    <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+    <meta http-equiv="expires" content="0">
+    <meta name="format-detection" content="telephone=no" />
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge,chrome=1">
+    
+    <link rel="alternate" type="application/rss+xml" title="RSS 2.0" href="https://www.ithome.com/rss/" />
+            <link href="//www.ithome.com/css/site.min.css?v=2.26.23021315" rel="stylesheet" type="text/css" />
+    <link rel="icon" href="//www.ithome.com/favicon.ico" mce_href="//www.ithome.com/favicon.ico" type="image/x-icon" />
+    <link rel="shortcut icon" href="//www.ithome.com/favicon.ico" />
+    <link rel="apple-touch-icon" href="/img/t.png" />
+    
+    <link rel="canonical" href="https://www.ithome.com/0/935/494.htm" />
+        <link href="//img.ithome.com/file/css/card/1.css?v=2.3.25021801" rel="stylesheet" type="text/css" />
+        <link href="//www.ithome.com/css/detail.min.css?v=2.3.202512201503" rel="stylesheet" type="text/css" />
+
+    <link href="//dat.ruanmei.com/lib/login.min.css" type="text/css" rel="stylesheet">
+        <script src="//img.ithome.com/file/js/ua.min.js?v=2.2.25101501" type="text/javascript"></script>
+    <script src="https://s4.zstatic.net/ajax/libs/jquery/3.4.0/jquery.min.js"></script>
+    <script>(window.jQuery || document.write("<script src='https:\/\/img.ruanmei.com\/btd\/cdn\/expire-1-w\/jquery\/3.4.0\/jquery.min.js'><\/script>"));</script>
+
+</head>
+<body class="it ">
+    <div id="top">
+        <div class="bb">
+            <a href="https://www.ithome.com" id="logo"></a>
+            <a href="https://img.ithome.com/app/songs/index.html" id="music" target="_blank"></a>
+            <div class="m-menu"><span></span></div>
+            <div class="fl">
+                <div class="mt sel">
+                    <a href="https://www.ithome.com" class="l">首页</a>
+                </div>
+                <div class="mt"><a href="https://quan.ithome.com" class="l">IT圈</a></div>
+                <div class="mt"><a href="https://www.zuihuimai.com" class="l">最会买</a></div>
+           
+            </div>
+            <div class="fr">
+
+                
+                <div class="mt" id="settings">
+                    <a href="###" class="s">设置</a>
+                    <ul class="mu">
+                        <li>
+                            <span>日夜间</span> <div id="dark-switcher">
+                                <div data-dark="2">随系统</div>
+                                <div data-dark="0">浅色</div>
+                                <div data-dark="1">深色</div>
+                            </div>
+                        </li>
+                        <li>
+                            <span>主题色</span> <div id="nav-color"><div>黑色</div></div>
+                        </li>
+                    </ul>
+                </div>
+                <div class="mt" id="menu-con"><a href="https://dyn.ithome.com/tougao/">投稿</a></div>
+                <div class="mt" id="menu-sub">
+                    <a href="###" class="s">订阅</a>
+                    <ul class="mu">
+                        <li><a href="//www.ithome.com/rss/">RSS订阅</a></li>
+                        <li><a href="#" title="IT之家" rel="sidebar" onclick="addFav();">收藏IT之家</a></li>
+                    </ul>
+                </div>
+                <div class="mt so" id="menu-app">
+                    <a href="https://www.ruanmei.com" class="s">软媒应用</a>
+                    <ul class="mu">
+                        <li><a href="//m.ruanmei.com/" target="_blank">App客户端</a></li>
+                        <li><a href="//yaozhi.ruanmei.com/" target="_blank">要知App</a></li>
+                        <li><a href="//mofang.ruanmei.com/" target="_blank">软媒魔方</a></li>
+                    </ul>
+                </div>
+                <div id="toplogin" class="mt">
+                    <div class="init"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        nightModeHelper.init();
+        var nightMode = nightModeHelper.isNight();
+        var navColor = "";
+        if (document.cookie.indexOf("navColor=red") >= 0) {
+            document.body.className += " red";
+            navColor = "red";
+        }
+    </script>
+
+        <div id="nav" class="bb">
+            <div class="fl">
+                    <div>
+                        <a href="//it.ithome.com" target="_blank">业界</a>
+                        <a href="//mobile.ithome.com/" target="_blank">手机</a>
+                        <a href="//www.ithome.com/pc/" target="_blank">电脑</a>
+                        <a href="//www.ithome.com/labs/" target="_blank">测评</a>
+                        <a href="//www.ithome.com/video/" target="_blank">视频</a>
+                        <a href="//next.ithome.com/" target="_blank">AI</a>
+                        <a href="//www.ithome.com/apple/" target="_blank">苹果</a>
+                        <a href="//iphone.ithome.com/" target="_blank">iPhone</a>
+                        <a href="//hmos.ithome.com/" target="_blank">鸿蒙</a>
+                        <a href="//soft.ithome.com/" target="_blank">软件</a>
+                    </div>
+                    <div>
+                        <a href="//auto.ithome.com" target="_blank">智车</a>
+                        <a href="//digi.ithome.com/" target="_blank">数码</a>
+                        <a href="//www.ithome.com/college/" target="_blank">学院</a>
+                        <a href="//game.ithome.com/" target="_blank">游戏</a>
+                        <a href="//www.ithome.com/live/" target="_blank">直播</a>
+                        <a href="//www.ithome.com/5g/" target="_blank">5G</a>
+                        <a href="//www.ithome.com/microsoft/" target="_blank">微软</a>
+                        <a href="//win10.ithome.com/" target="_blank">Win10</a>
+                        <a href="//win11.ithome.com/" target="_blank">Win11</a>
+                        <a href="//www.ithome.com/zt/" target="_blank">专题</a>
+                    </div>
+            </div>
+            <div class="fr">
+                <div class="search"><input type="search" placeholder="请输入关键词" name="q" autocomplete="off" style="box-sizing: content-box;"><button name="sa">搜索</button></div>
+                <div class="hotkeyword">
+                </div>
+            </div>
+        </div>
+            <div id="tt" class="bb">
+                
+            </div>
+
+
+    
+
+
+
+
+
+<div id="dt" class="bb clearfix">
+    <div class="fl content">
+        <div class="cv">
+            <a href="//www.ithome.com">首页</a> <span class="sub">&gt;</span> <a href="https://it.ithome.com/">IT资讯</a><span class="sub">&gt;</span><a href="https://it.ithome.com/ityejie">业界</a>
+        </div>
+
+        <h1>重新定义具身智能：智平方 GOVLA 大模型的双系统架构</h1>
+
+        <div class="info clearfix">
+            <div class="l">
+
+                    <span id="pubtime_baidu">2026/4/2 20:31:46</span>
+                    <span id="source_baidu">来源：之家网站</span>
+                    <span id="author_baidu">作者：<strong>-</strong></span>
+
+                    <span id="editor_baidu">责编：<strong>-</strong></span>
+            </div>
+
+            <div class="r">
+
+                <span id="hitcount"></span>
+                    <a href="#post_comm" class="pti_comm">评论：<span id="commentcount"></span></a>
+            </div>
+        </div>
+
+
+
+        <div class="post_content special_news" id="paragraph">
+            
+            <p data-vmark="b95f">智平方原创研发的 GOVLA 大模型，是全球首个实现 " 全身控制 + 移动轨迹 " 统一输出的 VLA 模型，其 " 快慢双系统 " 架构打破机器人 " 操控效率 " 与 " 推理能力 " 不可兼得的困局。凭借超大压强投入和最高迭代效率，智平方已成为全球基础模型龙头，持续领跑 VLA 技术发展。本文深度拆解 GOVLA 的技术架构、核心突破与开源成果，揭示其如何让机器人从 " 工具执行者 " 升级为 " 智能协同者 "。</p><p style="text-align: center;" data-vmark="dcaa"><img src="//img.ithome.com/images/v2/t.png" w="600" h="200" data-vmark="fe21" class="lazy" title="重新定义具身智能：智平方 GOVLA 大模型的双系统架构" data-original="https://img.ithome.com/newsuploadfiles/2026/4/26635a71-11e8-4be8-952d-296a18a8e1fe.png?x-bce-process=image/format,f_auto" width="600" height="200"></p><p data-vmark="ebb1"><strong>一、VLA 技术范式的时代拐点</strong></p><p data-vmark="7517">端到端 VLA（Vision-Language-Action）大模型被视为具身智能领域最新的技术范式。它通过融合视觉等多模态感知信号与语言指令直接生成机器人动作，突破单任务训练局限，推动机器人向通用化与场景泛化发展。其核心价值在于能够提供常识、举一反三应对长尾，以及端到端数据驱动持续迭代。</p><p data-vmark="18f5">在这一技术浪潮中，智平方作为国内最早提出并系统性研发端到端 VLA 技术范式的企业，技术优势贯穿整个模型架构、训练体系与场景落地全链条，是具身大模型的提出者、践行者、引领者。作为全球基础模型龙头，智平方以超大压强投入和最高迭代效率，在 VLA 领域持续领跑。</p><p data-vmark="b9cf"><strong>二、GOVLA 的核心突破：首次实现“全身控制 + 移动轨迹”</strong></p><p data-vmark="2d9e">2025 年 4 月 17 日，智平方发布全球首个全栈自研的全域全身 VLA 大模型（GOVLA：Global &amp; Omni-body Vision-Language-Action），即具备从桌面到开放环境，从单臂到全身协同，从简单任务到长程推理能力的视觉-语言-行动大模型。</p><p data-vmark="530a"><strong>关键突破</strong>：常规的 VLA 大模型只是输出机械臂动作，而 GOVLA 大模型首次提出输出全身控制和移动轨迹。这意味着机器人不再局限于 " 手臂操作 "，而是能够实现全身协同，完成 " 从冰箱取食材到送餐上桌 " 的全链条任务。</p><p data-vmark="43b9"><strong>技术意义</strong>：</p><p data-vmark="e0e1">打破了传统 VLA 模型的局限性，实现了真正的全身控制</p><p data-vmark="b79f">提升了机器人的场景适应能力，从单一操作到全链条任务</p><p data-vmark="39a6">为具身智能的通用化发展奠定了技术基础</p><p data-vmark="3ef2"><strong>三、双系统架构：慢推理 + 快执行的完美协同</strong></p><p data-vmark="a41b">GOVLA 大模型由空间交互基础模型、慢系统和快系统三部分组成。其通过解析用户指令（如语音指令）、实时环境信息和机器人状态，双系统分工协作：</p><table><tbody><tr class="firstRow"><td><p data-vmark="a704"><strong>系统</strong></p></td><td><p data-vmark="d14d"><strong>功能</strong></p></td><td><p data-vmark="9cd2"><strong>特点</strong></p></td><td><p data-vmark="2179"><strong>应用场景</strong></p></td></tr><tr><td><p data-vmark="aadb">慢系统（System2）</p></td><td><p data-vmark="aef6">复杂逻辑推理，任务拆解，语言交互</p></td><td><p data-vmark="9689">处理复杂任务，深度理解</p></td><td><p data-vmark="a9f6">长程任务规划，多步骤操作</p></td></tr><tr><td><p data-vmark="f710">快系统（System1）</p></td><td><p data-vmark="d112">全身控制动作，移动轨迹生成</p></td><td><p data-vmark="727a">实时响应，高效执行</p></td><td><p data-vmark="c239">实时避障，精细操作</p></td></tr></tbody></table><p data-vmark="63b9">这一架构兼顾实时响应与复杂决策能力，让机器人在面对动态环境时，既能快速反应，又能保持对长程任务的深度理解。</p><p data-vmark="fdd4"><strong>四、技术里程碑：从 RoboMamba 到 FiS-VLA 的开源之路</strong></p><p data-vmark="86f9"><strong>1. RoboMamba—— 入选 NeurIPS 2024</strong></p><p data-vmark="e53b">2024 年 6 月，智平方与北大等顶尖机构一起，率先将 Mamba 引入 VLA 架构模型，推出了革命性的轻量化模型 RoboMamba。相比之前的 VLA 模型，RoboMamba 不仅复杂度降低，还显著提升了长序列推理能力。它比 PI 的 OpenVLA 更早公开应用，还在未见任务的泛化能力上显著超越当时 SOTA 的 Google RT 系列模型。这一突破性成功入选了人工智能顶级盛会 NeurIPS 2024，也创造了中国具身公司在 VLA 领域国际舞台的首次发声。</p><p data-vmark="b498"><strong>2. FiS-VLA—— 性能超越国际标杆 30%</strong></p><p data-vmark="f02f">2025 年 7 月，智平方携手北大发布的最新模型成果 Fast-in-Slow（FiS-VLA）：" 快系统 " 嵌入 " 慢系统 "，实现机器人操控效率与推理能力双提升；是行业首个 " 异构输入 + 异步频率 " 双系统 VLA 模型。在权威评测中，FiS-VLA 综合性能超越国际标杆 π0 达 30%，使智平方成为全球唯二、国内唯一实现开源的机器人模型创业公司。</p><p data-vmark="dac4"><strong>3. 国际顶级认可</strong></p><p data-vmark="08ce">2025 年 9 月，图灵奖得主杨立昆（Yann LeCun）在社交平台上公开关注了一篇提出 Vision Language World Model（VLWM）的论文，该论文将中国创业公司智平方的大模型 RoboMamba 作为核心基线之一，这一举动被视为国际顶级学者对中国技术实力的高度认可。</p><p data-vmark="8e24"><strong>五、三大核心技术：空间智能 + 操作泛化 + 端侧智能</strong></p><p data-vmark="5316"><strong>1. 空间智能</strong></p><p data-vmark="9cfd">智平方早于 2023 年初布局空间智能，领先李飞飞团队 World Labs 6 个月以上，核心指标领先 SOTA 100% 以上。成功研发国内唯一全栈自研的空间交互基础模型，让机器人真正 " 看懂 " 三维空间：不仅能识别物体，更能精确判断形状、距离和可操作点位。</p><p data-vmark="2359"><strong>2. 操作泛化</strong></p><p data-vmark="2c90">GOVLA 大模型通过海量数据训练，实现了高度的操作泛化能力。机器人能够举一反三，应对从未见过的任务和场景，大大提升了通用性和适应性。</p><p data-vmark="51ab"><strong>3. 端侧智能</strong></p><p data-vmark="b173">智平方在端侧智能方面也取得了显著突破，通过模型压缩和优化，使 GOVLA 大模型能够在边缘设备上高效运行，保证了实时性和响应速度。</p><p data-vmark="4b30"><strong>六、数据飞轮：“正反金字塔”方法论</strong></p><p data-vmark="ce3d">创始人郭彦东博士提出全周期全局的 " 正反金字塔 " 数据观：</p><p data-vmark="15b8"><strong>冷启动阶段（正金字塔）</strong>：互联网数据做基石，仿真数据做增长，真机数据做精细<strong>规模量产阶段（反金字塔）</strong>：真实采集数据成为顶端，价值远超仿真和互联网数据</p><p data-vmark="b610">智平方通过构建工业级数据平台系统，在真实场景中不断采集、训练、迭代模型，实现 " 越服务越聪明 " 的飞轮效应。这一数据策略为 GOVLA 大模型的持续进化提供了源源不断的动力。</p><p data-vmark="1ab9"><strong>七、GOVLA 的商业应用与未来展望</strong></p><p data-vmark="8469"><strong>商业应用</strong></p><p data-vmark="f21d">智平方的 GOVLA 大模型已经在多个高价值工业场景实现了商业化落地：</p><p data-vmark="719f">与惠科股份达成近 5 亿元、超 1000 台战略合作，在半导体显示领域实现规模化应用</p><p data-vmark="98c2">与东风柳汽合作，国产具身大模型首获汽车制造全场景验证</p><p data-vmark="7c93">在生物科技、公共服务等领域也有深入布局</p><p data-vmark="12d3"><strong>未来展望</strong></p><p data-vmark="a18a">随着 GOVLA 大模型的持续迭代和应用拓展，智平方计划：</p><p data-vmark="e6fa">进一步提升模型的通用性和场景适应能力</p><p data-vmark="a549">扩大开源生态，推动行业技术进步</p><p data-vmark="e7a4">实现数万台年出货量，成为具身智能领域的全球领导者</p><p data-vmark="dbcf"><strong>八、结语</strong></p><p data-vmark="b21e">智平方的 GOVLA 大模型，以其全球首个全身控制输出、双系统协同架构、开源模型性能超越国际标杆 30% 的三大核心突破，确立了中国企业在 VLA 领域的全球领先地位。从 RoboMamba 入选 NeurIPS 2024 到 FiS-VLA 获得图灵奖得主关注，智平方用原创技术证明：没有技术自信，中国机器人就没有创新突破。</p><p data-vmark="a8d5">GOVLA 大模型的出现，标志着具身智能进入了一个新的时代。通过 " 双系统 + 全身控制 " 的创新架构，机器人从简单的工具执行者升级为智能协同者，能够更好地理解和适应复杂的真实世界。智平方的技术突破，不仅为中国机器人产业的发展注入了新的动力，也为全球具身智能技术的进步做出了重要贡献。</p><p data-vmark="4a74">未来，随着 GOVLA 大模型的不断进化和应用场景的拓展，具身智能将在更多领域发挥重要作用，为人类社会创造更大的价值。智平方作为行业领导者，将继续以技术创新为驱动，引领具身智能的未来发展。</p><p class="ad-tips">免责声明：本文为本网站出于传播商业信息之目的进行转载发布，不代表本网站的观点及立场。本文所涉文、图、音视频等资料之一切权力和法律责任归材料提供方所有和承担。本网站对此咨询文字、图片等所有信息的真实性不作任何保证或承诺，亦不构成任何购买、投资等建议，据此操作者风险自担。</p><p class="ad-tips">广告声明：文内含有的对外跳转链接（包括不限于超链接、二维码、口令等形式），用于传递更多信息，节省甄选时间，结果仅供参考，IT之家所有文章均包含本声明。</p>
+        </div>
+
+        
+        
+
+        
+
+
+            <div class="newserror">
+                <button class="water" data-nid="935494">投诉水文</button>
+                <button class="error" data-nid="935494">我要纠错</button>
+            </div>
+
+            <div class="newsgrade"></div>
+        <div class="shareto">
+            
+            <div class="bdsharebuttonbox">
+                <a href="https://connect.qq.com/widget/shareqq/index.html?url=https%3a%2f%2fwww.ithome.com%2f0%2f935%2f494.htm&title=%e9%87%8d%e6%96%b0%e5%ae%9a%e4%b9%89%e5%85%b7%e8%ba%ab%e6%99%ba%e8%83%bd%ef%bc%9a%e6%99%ba%e5%b9%b3%e6%96%b9+GOVLA+%e5%a4%a7%e6%a8%a1%e5%9e%8b%e7%9a%84%e5%8f%8c%e7%b3%bb%e7%bb%9f%e6%9e%b6%e6%9e%84&summary=" class="bds_qzone" target="_blank" title="分享到QQ"></a>
+                <a href="#" class="bds_weixin" data-cmd="weixin" title="分享到微信"></a>
+                <a href="https://service.weibo.com/share/share.php?url=https%3a%2f%2fwww.ithome.com%2f0%2f935%2f494.htm&title=%e9%87%8d%e6%96%b0%e5%ae%9a%e4%b9%89%e5%85%b7%e8%ba%ab%e6%99%ba%e8%83%bd%ef%bc%9a%e6%99%ba%e5%b9%b3%e6%96%b9+GOVLA+%e5%a4%a7%e6%a8%a1%e5%9e%8b%e7%9a%84%e5%8f%8c%e7%b3%bb%e7%bb%9f%e6%9e%b6%e6%9e%84" target="_blank" class="bds_tsina" title="分享到新浪微博"></a>
+            </div>
+            <a class="down_app collapse" href="https://m.ithome.com/ithome/download/?popqr" target="_blank">
+                <span class="d-p">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </span>
+                <span class="d-t">下载IT之家APP，签到赚金币兑豪礼</span>
+            </a>
+        </div>
+
+        <!-- 相关文章 -->
+        <div class="related_post"><div class="title"><h2>相关文章</h2><div class="hot_tags"><span>关键词：<a href='/tags/%e4%b8%9a%e7%95%8c%e5%8a%a8%e6%80%81/' target='_blank'>业界动态</a></span></div></div><ul class="list_3"><li><a target="_blank" href="https://www.ithome.com/0/838/365.htm">打造多元化内容矩阵创新玩法推动商业化加速</a></span></li><li><a target="_blank" href="https://www.ithome.com/0/838/364.htm">创新业务规模持续增长斗鱼第二增长曲线渐成</a></span></li><li><a target="_blank" href="https://www.ithome.com/0/838/357.htm">斗鱼转型“提质增效”：创新业务八季连增背后的多元化发展道路</a></span></li><li><a target="_blank" href="https://www.ithome.com/0/760/627.htm">黑竞宗轴 + FSA 球帽：机械师 K600 三模机械键盘 149.5 元半价发车</a></span></li><li><a target="_blank" href="https://www.ithome.com/0/747/874.htm">搭建仅需 3 分钟，和好朋友一起联机玩《幻兽帕鲁》</a></span></li><li><a target="_blank" href="https://www.ithome.com/0/747/427.htm">阿里云大促，云服务器产品低至 61 元 / 年</a></span></li></ul></div>
+
+        <script>
+            if (nightMode) {
+                document.write('<iframe align="middle" src="//www.ithome.com/block/dajia.html?night=1" scrolling="no" marginwidth="0" marginheight="0" frameborder="0" class="dajia"></iframe>');
+            } else {
+                document.write('<iframe align="middle" src="//www.ithome.com/block/dajia.html" scrolling="no" marginwidth="0" marginheight="0" frameborder="0" class="dajia"></iframe>');
+            }
+        </script>
+
+        <!-- 评论 -->
+            <div id="post_comm" data-id="762b6b97ef9c00ed" data-nid="935494"></div>
+    </div>
+    <div class="fr fx no-bottom">
+        <div id="rank" class="tab-list">
+            
+        </div>
+
+        <div class="cat-list" id="cat-hot" style="display:none">
+        </div>
+
+    </div>
+</div>
+
+
+
+    <div id="fls" class="bb">
+
+
+    <p>
+        <strong>软媒旗下网站：</strong>
+        <a href="//www.ithome.com/" target="_blank">IT之家</a>
+        <a href="//www.zuihuimai.com/" target="_blank">最会买 - 返利返现优惠券</a>
+        <a href="https://iphone.ithome.com/" target="_blank">iPhone之家</a>
+        <a href="//www.win7china.com/" target="_blank">Win7之家</a>
+        <a href="//win10.ithome.com/" target="_blank">Win10之家</a>
+        <a href="https://win11.ithome.com/" target="_blank">Win11之家</a>
+    </p>
+
+    <p>
+        <strong>软媒旗下软件：</strong>
+        <a href="//m.ruanmei.com/" target="_blank">软媒手机APP应用</a>
+        <a href="//mofang.ruanmei.com/" target="_blank">魔方</a>
+        <a href="https://www.zuihuimai.com" target="_blank">最会买</a>
+        <a href="https://yaozhi.ruanmei.com/" target="_blank">要知</a>
+    </p>
+
+
+        
+    </div>
+
+
+    <footer>
+        <div id="lns">
+            <a href="//www.ithome.com/about.htm" target="_blank">关于IT之家</a>
+            |<a href="//www.ruanmei.com/#contact" target="_blank">联系我们</a>
+            |<a href="//www.ruanmei.com/joinus/" target="_blank">加入软媒</a>
+            |<a href="//m.ithome.com/" target="_blank">WAP版</a>
+            |<a href="//www.ithome.com/sitemap/" target="_blank">网站地图</a>
+            |<a href="//www.ithome.com/archiver/" target="_blank">Archiver</a>
+        </div>
+        <div id="fi">
+            <p>IT之家，软媒旗下科技门户网站 - 爱科技，爱这里。</p>
+            <p>Copyright &copy; <a href="//www.ruanmei.com" target="_blank">RuanMei.com</a>, All Rights Reserved.</p>
+            <p>
+                <a href="//www.ruanmei.com/" target="_blank">青岛软媒网络科技有限公司</a>版权所有
+                
+        </div>
+    </footer>
+
+    <script src="//dat.ruanmei.com/lib/login.min.js"></script>
+    <script src="https://s4.zstatic.net/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js"></script>
+    <script>(window.jQuery && window.jQuery.fn && window.jQuery.fn.cookie || document.write("\u003Cscript src=\u0022https:\/\/img.ithome.com\/file\/js\/jquery\/jquery.cookie.js\u0022\u003E\u003C\/script\u003E"));</script>
+    <script src="https://s4.zstatic.net/ajax/libs/jquery.lazyload/1.9.1/jquery.lazyload.min.js"></script>
+    <script>(window.jQuery && window.jQuery.fn && window.jQuery.fn.lazyload || document.write("\u003Cscript src=\u0022https:\/\/img.ithome.com\/file\/js\/jquery\/jquery.lazyload.js\u0022\u003E\u003C\/script\u003E"));</script>
+    <script src="//img.ithome.com/file/js/jquery/popwin.js?v=2.22.200813"></script>
+        <script src="//img.ithome.com/file/js/v2.3/common.js?t=20240112"></script>
+    <script src="//api.ithome.com/ovs/ovs.js"></script>
+    
+        <script src="//img.ithome.com/file/js/site.min.js?v=2.25.231124"></script>
+
+    
+    
+    <script type="text/javascript" id="bdshare_js" data="type=tools&uid=192225"></script>
+    <script>
+        var thumb = $('.post_content img').eq(0).attr("src"), title = $("h1").text(), desc = $("meta[name=description]").attr("content");
+        if (desc.length > 85 - title.length) {
+            desc = desc.substring(0, 85 - title.length)
+        }
+        window._bd_share_is_recently_loaded = !1;
+        window._bd_share_main = {
+            version: "2.0",
+            jscfg: {
+                domain: {
+                    staticUrl: "https://img.ithome.com/"
+                }
+            }
+        }
+
+        window._bd_share_config = { "common": { "bdSnsKey": { "tsina": "1369706960", "tqq": "801077952" }, "bdText": "【" + title + "】" + desc + " - 分享自 @IT之家 下载APP立得金币换豪礼！下载：https://m.ithome.com/ithome/download/ 详情：", "bdMini": "2", "bdMiniList": false, "bdPic": thumb, "bdStyle": "1", "bdSize": "32" }, "share": {} };
+        with (document) 0[(getElementsByTagName('head')[0] || body).appendChild(createElement('script')).src = '//img.ithome.com/static/api/js/share.js?v=86835285.js?cdnversion=' + ~(-new Date() / 36e5)];
+    </script>
+
+    
+        <script type="text/javascript" src="//dyn.ithome.com/grade/935494"></script>
+        <script>
+            $(".newsgrade").html(gradestr);
+        </script>
+            <script src="//cmt.ithome.com/api/comment/count?newsid=935494"></script>
+            <script type="text/javascript" src="//dyn.ithome.com/api/hitcount/935494/pc"></script>
+            <script src="//img.ithome.com/file/js/detail.es5.min.js?v=202512201503"></script>
+
+    
+    <script>
+        var commentCssFile = "https://img.ithome.com/file/css/comment/comment.min.css?v=1.1.202505211142";
+        var commentJsFile = "https://img.ithome.com/file/js/comment/comment.es5.min.js?v=1.1.202505211142";
+    </script>
+<script>
+    $(document).ready(function () {
+        var commentDiv = document.getElementById("post_comm");
+        function loadComm() {
+            if (!window._commLoaded && commentDiv) {
+                window._commLoaded = true;
+                commentDiv.innerHTML = '<span class="comm_status" style=" width:100%;text-align:center;display:block;margin-top:20px;font-size:13px; ">评论加载中...</span>';
+                loadFile(commentCssFile, null, true);
+                loadFile(commentJsFile);
+            }
+        }
+        var commentAnchor = document.querySelector(".pti_comm");
+        commentAnchor && commentAnchor.addEventListener("click", function () { window._jumpToComm = true; })
+        var scrollListener = function () { var doc = document.documentElement; var body = document.body; var scrollTop = doc.scrollTop || body.scrollTop; var windowHeight = doc.clientHeight || body.clientHeight; var scrollHeight = doc.scrollHeight || body.scrollHeight; if (scrollHeight - scrollTop - windowHeight <= 150) { loadComm() } };
+        window.addEventListener("scroll", scrollListener);
+        scrollListener();
+    })
+</script>
+    <script>
+        
+        $("#tt").load('https://www.ithome.com/block/tt.html?' + new Date().getTime());
+        
+        $("#rank").load('//www.ithome.com/block/rank.html');
+        
+        $("#cat-hot").load('//www.ithome.com/block/cat/31.html');
+        if ($("#cat-hot").find("*").length > 0) {
+            $("#cat-hot").show();
+        }
+
+        
+        $(function () {
+            if (imageSupportChecker) {
+                imageSupportChecker.ready(function () {
+                    lazyLoad()
+                })
+            } else {
+                lazyLoad()
+            }
+            function lazyLoad() {
+                $("img.lazy").lazyload();
+            }
+        });
+        
+        if ($(".post_content pre").length > 0 && loadFile) {
+            loadFile("//img.ithome.com/file/js/prettify/prettify.js", function () {
+                $("pre").addClass("prettyprint"); prettyPrint();
+            })
+        }
+    </script>
+
+    <div style="display:none">
+        <script>
+            var _hmt = _hmt || [];
+            (function () {
+                var hm = document.createElement("script");
+                hm.src = "https://hm.baidu.com/hm.js?cfebe79b2c367c4b89b285f412bf9867";
+                var s = document.getElementsByTagName("script")[0];
+                s.parentNode.insertBefore(hm, s);
+            })();
+        </script>
+    </div>
+</body>
+</html>

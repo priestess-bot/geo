@@ -1,0 +1,334 @@
+{
+  "p0a_real_batch_request_packet_version": "au_p0a_real_batch_request_packet_v1",
+  "generated_at": "2026-06-15T08:30:50Z",
+  "status": "pass",
+  "real_batch_request_packet_ready": true,
+  "real_batch_phase_handoff_ready": false,
+  "ready_for_design_partner": false,
+  "output_path": "docs/runtime_preflight/au-p0a-real-batch-request-latest.json",
+  "source_p0a_execution_checklist": {
+    "path": "docs/runtime_preflight/au-p0a-execution-checklist-latest.json",
+    "execution_checklist_version": "au_p0a_execution_checklist_v1",
+    "p0a_execution_checklist_hash": "1d6a95bedf013a33e120f51f1376bff9b2535a47997e508d79fbfbc2f30a0820",
+    "p0a_execution_checklist_ready": false,
+    "ready_for_design_partner": false,
+    "source": {
+      "path": "docs/runtime_preflight/au-p0a-execution-checklist-latest.json",
+      "exists": true,
+      "source": "existing_file",
+      "errors": []
+    }
+  },
+  "p0a_execution_checklist_verifier": {
+    "status": "pass",
+    "hash_valid": true,
+    "p0a_execution_checklist_hash": "1d6a95bedf013a33e120f51f1376bff9b2535a47997e508d79fbfbc2f30a0820",
+    "errors": [],
+    "next_action": "configure_required_environment"
+  },
+  "summary": {
+    "source_real_batch_phase_handoff_version": "au_p0a_real_batch_phase_handoff_v1",
+    "real_batch_phase_handoff_ready": false,
+    "phase_count": 3,
+    "ready_phase_count": 0,
+    "blocked_phase_count": 3,
+    "next_phase": "preflight",
+    "total_planned_runs": 2436,
+    "phase_order": [
+      "preflight",
+      "small_batch",
+      "full_batch"
+    ],
+    "phase_request_count": 3,
+    "command_count": 8,
+    "setup_command_count": 6,
+    "verification_command_count": 9,
+    "evidence_output_count": 6,
+    "blocking_reason_count": 20,
+    "blocking_reasons": [
+      "full_batch:credential_handoff_missing_required:OPENAI_API_KEY",
+      "full_batch:credential_handoff_missing_required:PERPLEXITY_API_KEY",
+      "full_batch:full_batch_json:design_partner_not_ready",
+      "full_batch:full_batch_json:preflight_payload_file_missing",
+      "full_batch:full_batch_json:status_not_pass",
+      "full_batch:full_batch_manifest:design_partner_not_ready",
+      "full_batch:full_batch_manifest:preflight_manifest_file_missing",
+      "full_batch:full_batch_manifest:status_not_pass",
+      "preflight:credential_handoff_missing_required:OPENAI_API_KEY",
+      "preflight:credential_handoff_missing_required:PERPLEXITY_API_KEY",
+      "preflight:preflight_json:design_partner_not_ready",
+      "preflight:preflight_manifest:design_partner_not_ready",
+      "small_batch:credential_handoff_missing_required:OPENAI_API_KEY",
+      "small_batch:credential_handoff_missing_required:PERPLEXITY_API_KEY",
+      "small_batch:small_batch_json:design_partner_not_ready",
+      "small_batch:small_batch_json:preflight_payload_file_missing",
+      "small_batch:small_batch_json:status_not_pass",
+      "small_batch:small_batch_manifest:design_partner_not_ready",
+      "small_batch:small_batch_manifest:preflight_manifest_file_missing",
+      "small_batch:small_batch_manifest:status_not_pass"
+    ],
+    "raw_secret_values_allowed": false,
+    "phase_entries_reference_command_ids_and_artifact_paths_only": true,
+    "next_command": "make api-preflight",
+    "post_update_verification_command": "make api-preflight",
+    "p0a_next_action": "configure_required_environment"
+  },
+  "phase_requests": [
+    {
+      "id": "preflight",
+      "title": "Provider preflight and manifest gate",
+      "planned_runs": 6,
+      "ready": false,
+      "can_start": false,
+      "command_ids": [
+        "preflight_collect",
+        "preflight_verify_audit",
+        "preflight_manifest_audit",
+        "preflight_design_partner_gate"
+      ],
+      "commands": [
+        "make api-preflight",
+        "make verify-api-preflight",
+        "make preflight-manifest",
+        "python3 scripts/verify_preflight_payload.py docs/runtime_preflight/api-preflight-latest.json --require-design-partner-ready"
+      ],
+      "artifact_keys": [
+        "preflight_json",
+        "preflight_manifest"
+      ],
+      "artifacts": [
+        {
+          "key": "preflight_json",
+          "path": "docs/runtime_preflight/api-preflight-latest.json",
+          "exists": true,
+          "status": "pass",
+          "ready_for_design_partner": false,
+          "hash_valid": true,
+          "ready": false,
+          "errors": []
+        },
+        {
+          "key": "preflight_manifest",
+          "path": "docs/runtime_preflight/api-preflight-manifest-latest.json",
+          "exists": true,
+          "status": "pass",
+          "ready_for_design_partner": false,
+          "hash_valid": true,
+          "ready": false,
+          "errors": []
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/api-preflight-latest.json",
+        "docs/runtime_preflight/api-preflight-manifest-latest.json"
+      ],
+      "prerequisite_gate_ids": [
+        "hard_environment_gate",
+        "hard_runbook_execution_gate"
+      ],
+      "blocking_reasons": [
+        "credential_handoff_missing_required:OPENAI_API_KEY",
+        "credential_handoff_missing_required:PERPLEXITY_API_KEY",
+        "preflight_json:design_partner_not_ready",
+        "preflight_manifest:design_partner_not_ready"
+      ]
+    },
+    {
+      "id": "small_batch",
+      "title": "Small AU batch and manifest gate",
+      "planned_runs": 30,
+      "ready": false,
+      "can_start": false,
+      "command_ids": [
+        "small_batch_collect",
+        "small_batch_manifest_gate"
+      ],
+      "commands": [
+        "python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 5 --cities Sydney --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --preflight-output-path docs/runtime_preflight/au-p0a-small-batch.json --persist --persist-analysis",
+        "python3 scripts/build_preflight_manifest.py docs/runtime_preflight/au-p0a-small-batch.json --manifest-path docs/runtime_preflight/au-p0a-small-batch-manifest.json --require-design-partner-ready"
+      ],
+      "artifact_keys": [
+        "small_batch_json",
+        "small_batch_manifest"
+      ],
+      "artifacts": [
+        {
+          "key": "small_batch_json",
+          "path": "docs/runtime_preflight/au-p0a-small-batch.json",
+          "exists": false,
+          "status": "fail",
+          "ready_for_design_partner": false,
+          "hash_valid": null,
+          "ready": false,
+          "errors": [
+            "preflight_payload_file_missing"
+          ]
+        },
+        {
+          "key": "small_batch_manifest",
+          "path": "docs/runtime_preflight/au-p0a-small-batch-manifest.json",
+          "exists": false,
+          "status": "fail",
+          "ready_for_design_partner": false,
+          "hash_valid": null,
+          "ready": false,
+          "errors": [
+            "preflight_manifest_file_missing"
+          ]
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-small-batch.json",
+        "docs/runtime_preflight/au-p0a-small-batch-manifest.json"
+      ],
+      "prerequisite_gate_ids": [
+        "hard_preflight_gate"
+      ],
+      "blocking_reasons": [
+        "credential_handoff_missing_required:OPENAI_API_KEY",
+        "credential_handoff_missing_required:PERPLEXITY_API_KEY",
+        "small_batch_json:design_partner_not_ready",
+        "small_batch_json:preflight_payload_file_missing",
+        "small_batch_json:status_not_pass",
+        "small_batch_manifest:design_partner_not_ready",
+        "small_batch_manifest:preflight_manifest_file_missing",
+        "small_batch_manifest:status_not_pass"
+      ]
+    },
+    {
+      "id": "full_batch",
+      "title": "Full AU P0a batch and package/status gate",
+      "planned_runs": 2400,
+      "ready": false,
+      "can_start": false,
+      "command_ids": [
+        "full_batch_collect",
+        "full_batch_manifest_gate"
+      ],
+      "commands": [
+        "python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 100 --cities Australia,Sydney,Melbourne,Brisbane --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --preflight-output-path docs/runtime_preflight/au-p0a-full-batch.json --persist --persist-analysis",
+        "python3 scripts/build_preflight_manifest.py docs/runtime_preflight/au-p0a-full-batch.json --manifest-path docs/runtime_preflight/au-p0a-full-batch-manifest.json --require-design-partner-ready"
+      ],
+      "artifact_keys": [
+        "full_batch_json",
+        "full_batch_manifest"
+      ],
+      "artifacts": [
+        {
+          "key": "full_batch_json",
+          "path": "docs/runtime_preflight/au-p0a-full-batch.json",
+          "exists": false,
+          "status": "fail",
+          "ready_for_design_partner": false,
+          "hash_valid": null,
+          "ready": false,
+          "errors": [
+            "preflight_payload_file_missing"
+          ]
+        },
+        {
+          "key": "full_batch_manifest",
+          "path": "docs/runtime_preflight/au-p0a-full-batch-manifest.json",
+          "exists": false,
+          "status": "fail",
+          "ready_for_design_partner": false,
+          "hash_valid": null,
+          "ready": false,
+          "errors": [
+            "preflight_manifest_file_missing"
+          ]
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-full-batch.json",
+        "docs/runtime_preflight/au-p0a-full-batch-manifest.json"
+      ],
+      "prerequisite_gate_ids": [
+        "hard_package_gate",
+        "hard_status_gate"
+      ],
+      "blocking_reasons": [
+        "credential_handoff_missing_required:OPENAI_API_KEY",
+        "credential_handoff_missing_required:PERPLEXITY_API_KEY",
+        "full_batch_json:design_partner_not_ready",
+        "full_batch_json:preflight_payload_file_missing",
+        "full_batch_json:status_not_pass",
+        "full_batch_manifest:design_partner_not_ready",
+        "full_batch_manifest:preflight_manifest_file_missing",
+        "full_batch_manifest:status_not_pass"
+      ]
+    }
+  ],
+  "setup_commands": [
+    "make au-p0a-credential-request",
+    "make verify-au-p0a-credential-request",
+    "make au-p0a-env",
+    "make verify-au-p0a-env",
+    "make au-p0a-runbook-dry-run",
+    "make verify-au-p0a-runbook-execution"
+  ],
+  "phase_commands": [
+    "make api-preflight",
+    "make verify-api-preflight",
+    "make preflight-manifest",
+    "python3 scripts/verify_preflight_payload.py docs/runtime_preflight/api-preflight-latest.json --require-design-partner-ready",
+    "python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 5 --cities Sydney --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --preflight-output-path docs/runtime_preflight/au-p0a-small-batch.json --persist --persist-analysis",
+    "python3 scripts/build_preflight_manifest.py docs/runtime_preflight/au-p0a-small-batch.json --manifest-path docs/runtime_preflight/au-p0a-small-batch-manifest.json --require-design-partner-ready",
+    "python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 100 --cities Australia,Sydney,Melbourne,Brisbane --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --preflight-output-path docs/runtime_preflight/au-p0a-full-batch.json --persist --persist-analysis",
+    "python3 scripts/build_preflight_manifest.py docs/runtime_preflight/au-p0a-full-batch.json --manifest-path docs/runtime_preflight/au-p0a-full-batch-manifest.json --require-design-partner-ready"
+  ],
+  "verification_commands": [
+    "make api-preflight",
+    "make verify-api-preflight",
+    "make preflight-manifest",
+    "make au-p0a-package",
+    "make verify-au-p0a-package",
+    "make au-p0a-status",
+    "make verify-au-p0a-status",
+    "make au-p0a-execution-checklist",
+    "make verify-au-p0a-execution-checklist"
+  ],
+  "evidence_outputs": [
+    "docs/runtime_preflight/api-preflight-latest.json",
+    "docs/runtime_preflight/api-preflight-manifest-latest.json",
+    "docs/runtime_preflight/au-p0a-full-batch-manifest.json",
+    "docs/runtime_preflight/au-p0a-full-batch.json",
+    "docs/runtime_preflight/au-p0a-small-batch-manifest.json",
+    "docs/runtime_preflight/au-p0a-small-batch.json"
+  ],
+  "redaction_policy": {
+    "raw_secret_values_allowed": false,
+    "phase_entries_reference_command_ids_and_artifact_paths_only": true
+  },
+  "runtime_endpoints": {
+    "p0a_real_batch_request": "GET /v1/p0a-real-batch-request/au",
+    "p0a_credential_request": "GET /v1/p0a-credential-request/au",
+    "p0a_execution_checklist": "GET /v1/p0a-execution-checklist/au",
+    "p0a_environment_checklist": "GET /v1/p0a-environment-checklist/au",
+    "external_dependency_handoff": "GET /v1/external-dependency-handoff/au",
+    "next_work_item": "GET /v1/next-work-item/au"
+  },
+  "hard_gate_commands": [
+    "make au-p0a-real-batch-request",
+    "make verify-au-p0a-real-batch-request",
+    "make api-preflight",
+    "make verify-api-preflight",
+    "make preflight-manifest",
+    "make au-p0a-status",
+    "make verify-au-p0a-status",
+    "make au-p0a-execution-checklist",
+    "make verify-au-p0a-execution-checklist",
+    "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_real_batch_request_packet.py ${GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-request-latest.json} --require-real-batches-ready",
+    "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_execution_checklist.py ${GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-execution-checklist-latest.json} --require-design-partner-ready"
+  ],
+  "evidence_sources": [
+    {
+      "name": "p0a_execution_checklist",
+      "path": "docs/runtime_preflight/au-p0a-execution-checklist-latest.json",
+      "exists": true,
+      "size_bytes": 34753,
+      "file_sha256": "584fca1c5df2b1fe972c54fa655d2df19e2c5b07657c5968d280f9104e447a60"
+    }
+  ],
+  "p0a_real_batch_request_packet_hash": "171c7a33878e96510538987dbc3ff86983388f504fe93e7f259685ceaa485cd2"
+}

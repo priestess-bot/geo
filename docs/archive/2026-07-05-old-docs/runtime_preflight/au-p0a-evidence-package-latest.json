@@ -1,0 +1,187 @@
+{
+  "package_version": "au_p0a_evidence_package_v1",
+  "generated_at": "2026-06-13T18:23:33Z",
+  "status": "fail",
+  "ready_for_design_partner": false,
+  "runbook_path": "docs/runtime_preflight/au-p0a-runbook-latest.json",
+  "output_path": "docs/runtime_preflight/au-p0a-evidence-package-latest.json",
+  "artifact_paths": {
+    "preflight_json": "docs/runtime_preflight/api-preflight-latest.json",
+    "preflight_manifest": "docs/runtime_preflight/api-preflight-manifest-latest.json",
+    "small_batch_json": "docs/runtime_preflight/au-p0a-small-batch.json",
+    "small_batch_manifest": "docs/runtime_preflight/au-p0a-small-batch-manifest.json",
+    "full_batch_json": "docs/runtime_preflight/au-p0a-full-batch.json",
+    "full_batch_manifest": "docs/runtime_preflight/au-p0a-full-batch-manifest.json"
+  },
+  "environment_path": "docs/runtime_preflight/au-p0a-env-latest.json",
+  "runbook_execution_path": "docs/runtime_preflight/au-p0a-runbook-execution-latest.json",
+  "summary": {
+    "artifact_count": 10,
+    "missing_artifacts": [
+      "small_batch_json",
+      "full_batch_json",
+      "small_batch_manifest",
+      "full_batch_manifest"
+    ],
+    "failed_artifacts": [
+      "readiness",
+      "small_batch_json",
+      "full_batch_json",
+      "small_batch_manifest",
+      "full_batch_manifest"
+    ],
+    "ready_artifacts": [],
+    "blocking_reasons": [
+      "readiness:required_env_missing:PERPLEXITY_API_KEY",
+      "readiness:required_env_missing:OPENAI_API_KEY",
+      "small_batch_json:preflight_payload_file_missing",
+      "full_batch_json:preflight_payload_file_missing",
+      "small_batch_manifest:preflight_manifest_file_missing",
+      "full_batch_manifest:preflight_manifest_file_missing"
+    ]
+  },
+  "artifacts": {
+    "runbook": {
+      "path": "docs/runtime_preflight/au-p0a-runbook-latest.json",
+      "exists": true,
+      "size_bytes": 9809,
+      "file_sha256": "dbf21c333ea391802576b564f3c523dd2dc8a28bb46d7fe8bc5f3ffc0bf201e6",
+      "status": "pass",
+      "errors": [],
+      "hash_valid": true,
+      "runbook_version": "au_p0a_real_batch_runbook_v1",
+      "runbook_payload_hash": "5a4c9c7785af3d565d0986c6225511ecf41b3573e6260efff8a096f0ec969fd5",
+      "small_batch_planned_runs": 30,
+      "full_batch_planned_runs": 2400,
+      "step_count": 9
+    },
+    "environment": {
+      "path": "docs/runtime_preflight/au-p0a-env-latest.json",
+      "exists": true,
+      "size_bytes": 3130,
+      "file_sha256": "3ff186483c85597a0b2e836964d9b253c3770a9dcee2354c199bda3e9b3be1e8",
+      "status": "pass",
+      "errors": [],
+      "hash_valid": true,
+      "environment_report_version": "au_p0a_environment_report_v1",
+      "environment_report_hash": "913e66c215ac7ddbbd205f78e12943c099fb44f4800707d9768ec4e7f1d4b862",
+      "ready_for_real_batch": false,
+      "missing_required": [
+        "OPENAI_API_KEY",
+        "PERPLEXITY_API_KEY"
+      ],
+      "missing_recommended": [],
+      "next_action": "populate_required_environment"
+    },
+    "runbook_execution": {
+      "path": "docs/runtime_preflight/au-p0a-runbook-execution-latest.json",
+      "exists": true,
+      "size_bytes": 12373,
+      "file_sha256": "1029a575032957012a210f005f5780b94a94182f1dc184abb875dfaf8990a5e5",
+      "status": "pass",
+      "errors": [],
+      "hash_valid": true,
+      "execution_version": "au_p0a_runbook_execution_v1",
+      "execution_payload_hash": "d3bfb087416217e4f2fb2fdae96d755ffa4983e073619b89ac22c56e5a63e3ce",
+      "mode": "dry_run",
+      "ready_to_execute": false,
+      "planned_step_count": 9,
+      "recorded_step_count": 9,
+      "executed_command_count": 0
+    },
+    "readiness": {
+      "path": "docs/runtime_preflight/au-p0a-readiness-latest.json",
+      "exists": true,
+      "size_bytes": 3865,
+      "file_sha256": "a6b96fc7bc8284112074c85a3ed5351a2e73204db6d47ef1cacebd151f5e9add",
+      "status": "fail",
+      "readiness_version": "au_p0a_readiness_v1",
+      "phase": "preflight",
+      "ready_to_run_phase": false,
+      "recommended_next_action": "configure_required_environment",
+      "errors": [
+        "required_env_missing:PERPLEXITY_API_KEY",
+        "required_env_missing:OPENAI_API_KEY"
+      ],
+      "warnings": []
+    },
+    "preflight_json": {
+      "path": "docs/runtime_preflight/api-preflight-latest.json",
+      "exists": true,
+      "size_bytes": 5067,
+      "file_sha256": "bf59e146b5a689709df70fac702193a7613c4088439cb564a4ca57d94d484224",
+      "status": "pass",
+      "errors": [],
+      "hash_valid": true,
+      "ready_for_design_partner": false,
+      "phase": "collector_health",
+      "recommended_next_action": "configure_missing_provider_credentials_or_collectors",
+      "blocking_reasons": [
+        "perplexity.sonar.api:not_configured",
+        "openai.web_search.api:not_configured",
+        "p0a_readiness_not_run"
+      ],
+      "payload_hash": "3b2eca6122e14c4339f64240cc16b03c3323c2b2050acec35baab0fc7aa67806"
+    },
+    "small_batch_json": {
+      "path": "docs/runtime_preflight/au-p0a-small-batch.json",
+      "exists": false,
+      "status": "fail",
+      "errors": [
+        "preflight_payload_file_missing"
+      ]
+    },
+    "full_batch_json": {
+      "path": "docs/runtime_preflight/au-p0a-full-batch.json",
+      "exists": false,
+      "status": "fail",
+      "errors": [
+        "preflight_payload_file_missing"
+      ]
+    },
+    "preflight_manifest": {
+      "path": "docs/runtime_preflight/api-preflight-manifest-latest.json",
+      "exists": true,
+      "size_bytes": 2749,
+      "file_sha256": "7b70963852280380a3a2032dba713561d7b9e9991438bcc830885cc1d6828f20",
+      "status": "pass",
+      "errors": [],
+      "hash_valid": true,
+      "payload_path_matches_expected": true,
+      "ready_for_design_partner": false,
+      "manifest_version": "provider_preflight_evidence_manifest_v1",
+      "manifest_payload_hash": "74a6c27ec87c932748ab1b30e71800c5955974fa095fb107612518ee1a7fde5c",
+      "computed_manifest_payload_hash": "74a6c27ec87c932748ab1b30e71800c5955974fa095fb107612518ee1a7fde5c",
+      "run_summary": {
+        "phase": "collector_health",
+        "ready_for_design_partner": false,
+        "planned_runs": 6,
+        "record_count": 0,
+        "success_count": 0,
+        "failure_count": 0
+      },
+      "blocking_reasons": [
+        "perplexity.sonar.api:not_configured",
+        "openai.web_search.api:not_configured",
+        "p0a_readiness_not_run"
+      ]
+    },
+    "small_batch_manifest": {
+      "path": "docs/runtime_preflight/au-p0a-small-batch-manifest.json",
+      "exists": false,
+      "status": "fail",
+      "errors": [
+        "preflight_manifest_file_missing"
+      ]
+    },
+    "full_batch_manifest": {
+      "path": "docs/runtime_preflight/au-p0a-full-batch-manifest.json",
+      "exists": false,
+      "status": "fail",
+      "errors": [
+        "preflight_manifest_file_missing"
+      ]
+    }
+  },
+  "package_payload_hash": "c0055a29990e77bd4b6a227c26359f4954a6b86d17ba6e3a555e098a79158a3d"
+}

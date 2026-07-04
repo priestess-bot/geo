@@ -3978,10 +3978,22 @@ class CoreContractsTest(unittest.TestCase):
         connection = RecordingConnection(
             result_sets=[
                 before_project,
-                after_project,
                 {
                     "id": tenant_id,
                     "name": "Design Partner AU",
+                    "slug": "design-partner-au",
+                    "created_at": now,
+                },
+                after_project,
+                {
+                    "id": tenant_id,
+                    "name": "Koala Client Team",
+                    "slug": "design-partner-au",
+                    "created_at": now,
+                },
+                {
+                    "id": tenant_id,
+                    "name": "Koala Client Team",
                     "slug": "design-partner-au",
                     "created_at": now,
                 },
@@ -4020,6 +4032,7 @@ class CoreContractsTest(unittest.TestCase):
         record = PostgresEvidenceRepository(connection).update_runtime_project(
             RuntimeProjectUpdateInput(
                 project_id=project_id,
+                tenant_name="Koala Client Team",
                 name="Koala GEO Pilot",
                 target_brand="Koala",
                 category="mattresses",
@@ -4037,6 +4050,7 @@ class CoreContractsTest(unittest.TestCase):
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("SELECT id, tenant_id, name, market_code, industry_code, target_brand", executed_sql)
         self.assertIn("FOR UPDATE", executed_sql)
+        self.assertIn("UPDATE tenants SET name = %s WHERE id = %s", executed_sql)
         self.assertIn("UPDATE projects SET name = %s, target_brand = %s, category = %s, status = %s", executed_sql)
         self.assertIn("UPDATE brand_entities SET canonical_name = %s WHERE project_id = %s", executed_sql)
         audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)

@@ -632,7 +632,8 @@ def build_runtime_diagnostics(
 
 
 def close_repository_connection(repository: PostgresEvidenceRepository) -> None:
-    close = getattr(repository.connection, "close", None)
+    connection = getattr(repository, "connection", None)
+    close = getattr(connection, "close", None)
     if callable(close):
         close()
 

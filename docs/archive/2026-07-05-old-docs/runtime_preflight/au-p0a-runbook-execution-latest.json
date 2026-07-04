@@ -1,0 +1,364 @@
+{
+  "execution_version": "au_p0a_runbook_execution_v1",
+  "generated_at": "2026-06-13T18:20:11Z",
+  "mode": "dry_run",
+  "status": "pass",
+  "ready_to_execute": false,
+  "execute_requested": false,
+  "runbook_path": "docs/runtime_preflight/au-p0a-runbook-latest.json",
+  "output_path": "docs/runtime_preflight/au-p0a-runbook-execution-latest.json",
+  "stop_after_step": "",
+  "stopped_after_step": false,
+  "failed_step_id": "",
+  "errors": [],
+  "runbook_verification": {
+    "status": "pass",
+    "errors": [],
+    "path": "docs/runtime_preflight/au-p0a-runbook-latest.json",
+    "runbook_version": "au_p0a_real_batch_runbook_v1",
+    "runbook_payload_hash": "5a4c9c7785af3d565d0986c6225511ecf41b3573e6260efff8a096f0ec969fd5",
+    "computed_runbook_payload_hash": "5a4c9c7785af3d565d0986c6225511ecf41b3573e6260efff8a096f0ec969fd5",
+    "hash_valid": true,
+    "small_batch_planned_runs": 30,
+    "full_batch_planned_runs": 2400,
+    "step_count": 9
+  },
+  "environment": {
+    "status": "fail",
+    "env_file": {
+      "path": ".env.au-p0a",
+      "exists": true,
+      "loaded": true,
+      "entry_count": 14,
+      "errors": [],
+      "hygiene": {
+        "path": ".env.au-p0a",
+        "exists": true,
+        "entry_count": 14,
+        "template_file": false,
+        "inside_workspace": true,
+        "relative_path": ".env.au-p0a",
+        "git_ignored": true,
+        "git_tracked": false,
+        "git_safe": true,
+        "file_mode": "0600",
+        "permission_safe": true,
+        "hygiene_required": true,
+        "hygiene_ready": true,
+        "errors": [],
+        "warnings": [],
+        "secret_redacted": true
+      },
+      "secrets_redacted": true
+    },
+    "required": [
+      {
+        "name": "PERPLEXITY_API_KEY",
+        "present": false,
+        "source": "missing",
+        "value_length": 0,
+        "sha256_prefix": "",
+        "secret_redacted": true
+      },
+      {
+        "name": "OPENAI_API_KEY",
+        "present": false,
+        "source": "missing",
+        "value_length": 0,
+        "sha256_prefix": "",
+        "secret_redacted": true
+      },
+      {
+        "name": "DATABASE_URL",
+        "present": true,
+        "source": "env_file",
+        "value_length": 66,
+        "sha256_prefix": "237b9d13d4e5",
+        "secret_redacted": true
+      }
+    ],
+    "recommended": [
+      {
+        "name": "OBJECT_STORE_ENDPOINT",
+        "present": true,
+        "source": "env_file",
+        "value_length": 21,
+        "sha256_prefix": "8127b8faeff4",
+        "secret_redacted": true
+      },
+      {
+        "name": "OBJECT_STORE_BUCKET",
+        "present": true,
+        "source": "env_file",
+        "value_length": 12,
+        "sha256_prefix": "e3cc67798a7a",
+        "secret_redacted": true
+      },
+      {
+        "name": "OBJECT_STORE_ACCESS_KEY",
+        "present": true,
+        "source": "env_file",
+        "value_length": 5,
+        "sha256_prefix": "5791b6226743",
+        "secret_redacted": true
+      },
+      {
+        "name": "OBJECT_STORE_SECRET_KEY",
+        "present": true,
+        "source": "env_file",
+        "value_length": 8,
+        "sha256_prefix": "179c076ac522",
+        "secret_redacted": true
+      }
+    ],
+    "missing_required": [
+      "PERPLEXITY_API_KEY",
+      "OPENAI_API_KEY"
+    ],
+    "missing_recommended": [],
+    "errors": [],
+    "secrets_redacted": true
+  },
+  "planned_step_count": 9,
+  "recorded_step_count": 9,
+  "executed_command_count": 0,
+  "steps": [
+    {
+      "index": 1,
+      "id": "prepare_environment",
+      "title": "Prepare provider keys, database, and optional object storage",
+      "type": "manual",
+      "planned_runs": null,
+      "stop_on_failure": true,
+      "output_paths": [],
+      "external_call_risk": "local_verifier_or_manifest",
+      "status": "manual",
+      "exit_code": null,
+      "command": [],
+      "shell_command": "",
+      "env": {},
+      "notes": [
+        "Do not start real AU batches until provider keys and DATABASE_URL are present.",
+        "Object storage is recommended so API snapshots and report artifacts become durable s3:// evidence assets."
+      ]
+    },
+    {
+      "index": 2,
+      "id": "preflight_collect",
+      "title": "Run 1 prompt x Sydney x k=3 x 2-platform provider preflight",
+      "type": "command",
+      "planned_runs": 6,
+      "stop_on_failure": true,
+      "output_paths": [
+        "docs/runtime_preflight/api-preflight-latest.json"
+      ],
+      "external_call_risk": "provider_api_call",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "make",
+        "api-preflight"
+      ],
+      "shell_command": "GENO_API_PREFLIGHT_OUTPUT_PATH=docs/runtime_preflight/api-preflight-latest.json make api-preflight",
+      "env": {
+        "GENO_API_PREFLIGHT_OUTPUT_PATH": "docs/runtime_preflight/api-preflight-latest.json"
+      }
+    },
+    {
+      "index": 3,
+      "id": "preflight_verify_audit",
+      "title": "Verify preflight payload hash and structure",
+      "type": "command",
+      "planned_runs": null,
+      "stop_on_failure": true,
+      "output_paths": [
+        "docs/runtime_preflight/api-preflight-latest.json"
+      ],
+      "external_call_risk": "local_verifier_or_manifest",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "make",
+        "verify-api-preflight"
+      ],
+      "shell_command": "GENO_API_PREFLIGHT_OUTPUT_PATH=docs/runtime_preflight/api-preflight-latest.json make verify-api-preflight",
+      "env": {
+        "GENO_API_PREFLIGHT_OUTPUT_PATH": "docs/runtime_preflight/api-preflight-latest.json"
+      }
+    },
+    {
+      "index": 4,
+      "id": "preflight_manifest_audit",
+      "title": "Build preflight evidence manifest",
+      "type": "command",
+      "planned_runs": null,
+      "stop_on_failure": true,
+      "output_paths": [
+        "docs/runtime_preflight/api-preflight-manifest-latest.json"
+      ],
+      "external_call_risk": "local_verifier_or_manifest",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "make",
+        "preflight-manifest"
+      ],
+      "shell_command": "GENO_API_PREFLIGHT_OUTPUT_PATH=docs/runtime_preflight/api-preflight-latest.json GENO_API_PREFLIGHT_MANIFEST_PATH=docs/runtime_preflight/api-preflight-manifest-latest.json make preflight-manifest",
+      "env": {
+        "GENO_API_PREFLIGHT_OUTPUT_PATH": "docs/runtime_preflight/api-preflight-latest.json",
+        "GENO_API_PREFLIGHT_MANIFEST_PATH": "docs/runtime_preflight/api-preflight-manifest-latest.json"
+      }
+    },
+    {
+      "index": 5,
+      "id": "preflight_design_partner_gate",
+      "title": "Stop unless preflight is design-partner ready",
+      "type": "command",
+      "planned_runs": null,
+      "stop_on_failure": true,
+      "output_paths": [
+        "docs/runtime_preflight/api-preflight-latest.json"
+      ],
+      "external_call_risk": "local_verifier_or_manifest",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "python3",
+        "scripts/verify_preflight_payload.py",
+        "docs/runtime_preflight/api-preflight-latest.json",
+        "--require-design-partner-ready"
+      ],
+      "shell_command": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_preflight_payload.py docs/runtime_preflight/api-preflight-latest.json --require-design-partner-ready",
+      "env": {
+        "PYTHONPATH": "packages/geno_core:apps/api"
+      }
+    },
+    {
+      "index": 6,
+      "id": "small_batch_collect",
+      "title": "Run small AU smoke batch before full design-partner run",
+      "type": "command",
+      "planned_runs": 30,
+      "stop_on_failure": true,
+      "output_paths": [
+        "docs/runtime_preflight/au-p0a-small-batch.json"
+      ],
+      "external_call_risk": "provider_api_call",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "python3",
+        "workers/collector_worker/run_collection_slice.py",
+        "--mode",
+        "api",
+        "--prompt-limit",
+        "5",
+        "--cities",
+        "Sydney",
+        "--sample-size",
+        "3",
+        "--require-ready-collectors",
+        "--require-p0a-readiness",
+        "--require-no-collection-failures",
+        "--preflight-output-path",
+        "docs/runtime_preflight/au-p0a-small-batch.json",
+        "--persist",
+        "--persist-analysis"
+      ],
+      "shell_command": "PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 5 --cities Sydney --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --preflight-output-path docs/runtime_preflight/au-p0a-small-batch.json --persist --persist-analysis",
+      "env": {
+        "PYTHONPATH": "packages/geno_core:apps/api"
+      }
+    },
+    {
+      "index": 7,
+      "id": "small_batch_manifest_gate",
+      "title": "Verify and manifest the small AU batch",
+      "type": "command",
+      "planned_runs": null,
+      "stop_on_failure": true,
+      "output_paths": [
+        "docs/runtime_preflight/au-p0a-small-batch-manifest.json"
+      ],
+      "external_call_risk": "local_verifier_or_manifest",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "python3",
+        "scripts/build_preflight_manifest.py",
+        "docs/runtime_preflight/au-p0a-small-batch.json",
+        "--manifest-path",
+        "docs/runtime_preflight/au-p0a-small-batch-manifest.json",
+        "--require-design-partner-ready"
+      ],
+      "shell_command": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_preflight_manifest.py docs/runtime_preflight/au-p0a-small-batch.json --manifest-path docs/runtime_preflight/au-p0a-small-batch-manifest.json --require-design-partner-ready",
+      "env": {
+        "PYTHONPATH": "packages/geno_core:apps/api"
+      }
+    },
+    {
+      "index": 8,
+      "id": "full_batch_collect",
+      "title": "Run full AU P0a batch after small batch passes",
+      "type": "command",
+      "planned_runs": 2400,
+      "stop_on_failure": true,
+      "output_paths": [
+        "docs/runtime_preflight/au-p0a-full-batch.json"
+      ],
+      "external_call_risk": "provider_api_call",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "python3",
+        "workers/collector_worker/run_collection_slice.py",
+        "--mode",
+        "api",
+        "--prompt-limit",
+        "100",
+        "--cities",
+        "Australia,Sydney,Melbourne,Brisbane",
+        "--sample-size",
+        "3",
+        "--require-ready-collectors",
+        "--require-p0a-readiness",
+        "--require-no-collection-failures",
+        "--preflight-output-path",
+        "docs/runtime_preflight/au-p0a-full-batch.json",
+        "--persist",
+        "--persist-analysis"
+      ],
+      "shell_command": "PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 100 --cities Australia,Sydney,Melbourne,Brisbane --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --preflight-output-path docs/runtime_preflight/au-p0a-full-batch.json --persist --persist-analysis",
+      "env": {
+        "PYTHONPATH": "packages/geno_core:apps/api"
+      }
+    },
+    {
+      "index": 9,
+      "id": "full_batch_manifest_gate",
+      "title": "Verify and manifest the full AU P0a evidence package",
+      "type": "command",
+      "planned_runs": null,
+      "stop_on_failure": true,
+      "output_paths": [
+        "docs/runtime_preflight/au-p0a-full-batch-manifest.json"
+      ],
+      "external_call_risk": "local_verifier_or_manifest",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "python3",
+        "scripts/build_preflight_manifest.py",
+        "docs/runtime_preflight/au-p0a-full-batch.json",
+        "--manifest-path",
+        "docs/runtime_preflight/au-p0a-full-batch-manifest.json",
+        "--require-design-partner-ready"
+      ],
+      "shell_command": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_preflight_manifest.py docs/runtime_preflight/au-p0a-full-batch.json --manifest-path docs/runtime_preflight/au-p0a-full-batch-manifest.json --require-design-partner-ready",
+      "env": {
+        "PYTHONPATH": "packages/geno_core:apps/api"
+      }
+    }
+  ],
+  "execution_payload_hash": "d3bfb087416217e4f2fb2fdae96d755ffa4983e073619b89ac22c56e5a63e3ce"
+}

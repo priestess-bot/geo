@@ -1,0 +1,320 @@
+{
+  "execution_version": "au_p0b_google_spike_runbook_execution_v1",
+  "generated_at": "2026-06-12T06:09:28Z",
+  "mode": "dry_run",
+  "status": "pass",
+  "ready_to_execute": false,
+  "execute_requested": false,
+  "runbook_path": "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
+  "output_path": "docs/runtime_preflight/au-p0b-google-spike-runbook-execution-latest.json",
+  "stop_after_step": "",
+  "stopped_after_step": false,
+  "failed_step_id": "",
+  "errors": [],
+  "runbook_verification": {
+    "status": "pass",
+    "errors": [],
+    "path": "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
+    "runbook_version": "au_p0b_google_spike_runbook_v1",
+    "runbook_payload_hash": "117bd26244e3f394cc145f2f452a037781dafc6dff9d6ef8a55aee4de45e8ecd",
+    "computed_runbook_payload_hash": "117bd26244e3f394cc145f2f452a037781dafc6dff9d6ef8a55aee4de45e8ecd",
+    "hash_valid": true,
+    "planned_runs": 240,
+    "step_count": 11
+  },
+  "environment": {
+    "status": "fail",
+    "missing_required": [
+      "GOOGLE_PLAYWRIGHT_ENABLED",
+      "MANUAL_BACKFILL_PATH",
+      "DATABASE_URL"
+    ],
+    "missing_recommended": [
+      "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR",
+      "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR",
+      "GOOGLE_PLAYWRIGHT_SUBMIT_SELECTOR",
+      "GOOGLE_PLAYWRIGHT_CITATION_SELECTOR",
+      "GOOGLE_PLAYWRIGHT_STORAGE_STATE",
+      "GOOGLE_AIO_PLAYWRIGHT_START_URL",
+      "GOOGLE_AI_MODE_PLAYWRIGHT_START_URL",
+      "GOOGLE_PLAYWRIGHT_BROWSER_NAME",
+      "GOOGLE_PLAYWRIGHT_TIMEOUT_SECONDS",
+      "GOOGLE_PLAYWRIGHT_VENDOR_COST",
+      "SERP_API_KEY",
+      "SERP_API_ENDPOINT",
+      "SERP_API_ENGINE",
+      "SERP_API_GL",
+      "SERP_API_HL",
+      "SERP_API_LOCATION",
+      "SERP_API_VENDOR_COST",
+      "OBJECT_STORE_ENDPOINT",
+      "OBJECT_STORE_BUCKET",
+      "OBJECT_STORE_ACCESS_KEY",
+      "OBJECT_STORE_SECRET_KEY",
+      "GENO_BROWSER_ARTIFACT_DIR"
+    ],
+    "secrets_redacted": true,
+    "minimum_collection_paths_required": 2
+  },
+  "planned_step_count": 11,
+  "recorded_step_count": 11,
+  "executed_command_count": 0,
+  "steps": [
+    {
+      "index": 1,
+      "id": "prepare_environment",
+      "title": "Prepare Google browser capture, third-party SERP API, manual backfill, database, and optional object storage",
+      "type": "manual",
+      "planned_runs": null,
+      "stop_on_failure": true,
+      "output_paths": [],
+      "external_call_risk": "local_verifier_or_manifest",
+      "status": "manual",
+      "exit_code": null,
+      "command": [],
+      "shell_command": "",
+      "env": {},
+      "notes": [
+        "The first real Google spike path is selector-driven browser capture for google_aio.",
+        "Browser health fails fast with selector_missing, session_state_missing, or playwright_missing before collection.",
+        "The second path is manual backfill for google_ai_mode until AI Mode browser capture is implemented.",
+        "Generate, fill, and verify MANUAL_BACKFILL_PATH with au-p0b-google-manual-template and verify-au-p0b-google-manual-backfill before collection.",
+        "Run au-p0b-google-playwright-env and verify-au-p0b-google-playwright-env before the smoke capture to confirm selectors, Playwright package, and optional storage state are ready without leaking raw values.",
+        "Run au-p0b-google-playwright-smoke and verify-au-p0b-google-playwright-smoke before the 240-run matrix; use --require-success on the verifier before promoting the browser path.",
+        "Run verify-au-p0b-google-manual-backfill after filling MANUAL_BACKFILL_PATH so the strict 120-row manual verification artifact can be read by the status report.",
+        "Third-party SERP JSON capture is implemented as an alternate google_aio backend, but not part of the default 240-run matrix.",
+        "Do not persist secrets in generated JSON artifacts."
+      ]
+    },
+    {
+      "index": 2,
+      "id": "google_playwright_env",
+      "title": "Build redacted Google Playwright environment readiness report",
+      "type": "command",
+      "planned_runs": null,
+      "stop_on_failure": true,
+      "output_paths": [
+        "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json"
+      ],
+      "external_call_risk": "local_environment_readiness_report",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "python3",
+        "scripts/build_au_p0b_google_playwright_env_report.py",
+        "--runbook-path",
+        "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
+        "--env-file",
+        ".env.au-p0b-google",
+        "--output-path",
+        "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json"
+      ],
+      "shell_command": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_p0b_google_playwright_env_report.py --runbook-path docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json --env-file .env.au-p0b-google --output-path docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+      "env": {
+        "PYTHONPATH": "packages/geno_core:apps/api"
+      }
+    },
+    {
+      "index": 3,
+      "id": "google_playwright_env_verify",
+      "title": "Verify Google Playwright environment report and require smoke readiness",
+      "type": "command",
+      "planned_runs": null,
+      "stop_on_failure": true,
+      "output_paths": [],
+      "external_call_risk": "local_environment_readiness_verifier",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "python3",
+        "scripts/verify_au_p0b_google_playwright_env_report.py",
+        "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+        "--require-ready-smoke"
+      ],
+      "shell_command": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py docs/runtime_preflight/au-p0b-google-playwright-env-latest.json --require-ready-smoke",
+      "env": {
+        "PYTHONPATH": "packages/geno_core:apps/api"
+      }
+    },
+    {
+      "index": 4,
+      "id": "google_playwright_smoke",
+      "title": "Run one Google Playwright browser smoke capture before the full matrix",
+      "type": "command",
+      "planned_runs": 1,
+      "stop_on_failure": true,
+      "output_paths": [
+        "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json"
+      ],
+      "external_call_risk": "google_browser_smoke_capture",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "python3",
+        "scripts/run_au_p0b_google_playwright_smoke.py",
+        "--output-path",
+        "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json"
+      ],
+      "shell_command": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/run_au_p0b_google_playwright_smoke.py --output-path docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json",
+      "env": {
+        "PYTHONPATH": "packages/geno_core:apps/api"
+      }
+    },
+    {
+      "index": 5,
+      "id": "google_playwright_smoke_verify",
+      "title": "Verify Google Playwright smoke payload integrity and browser evidence structure",
+      "type": "command",
+      "planned_runs": 1,
+      "stop_on_failure": true,
+      "output_paths": [],
+      "external_call_risk": "local_verifier_or_manifest",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "python3",
+        "scripts/verify_au_p0b_google_playwright_smoke.py",
+        "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json",
+        "--require-success"
+      ],
+      "shell_command": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_smoke.py docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json --require-success",
+      "env": {
+        "PYTHONPATH": "packages/geno_core:apps/api"
+      }
+    },
+    {
+      "index": 6,
+      "id": "google_manual_backfill_verify",
+      "title": "Verify strict Google AI Mode manual backfill coverage before the full matrix",
+      "type": "command",
+      "planned_runs": 120,
+      "stop_on_failure": true,
+      "output_paths": [
+        "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json"
+      ],
+      "external_call_risk": "local_manual_backfill_verifier",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "python3",
+        "scripts/verify_au_p0b_manual_backfill.py",
+        "--output-path",
+        "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json"
+      ],
+      "shell_command": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_manual_backfill.py --output-path docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
+      "env": {
+        "PYTHONPATH": "packages/geno_core:apps/api"
+      }
+    },
+    {
+      "index": 7,
+      "id": "google_spike_health_check",
+      "title": "Check Google spike collector readiness without external collection",
+      "type": "command",
+      "planned_runs": 240,
+      "stop_on_failure": true,
+      "output_paths": [
+        "docs/runtime_preflight/au-p0b-google-spike-health-latest.json"
+      ],
+      "external_call_risk": "collector_health_only",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "make",
+        "au-p0b-google-spike-health"
+      ],
+      "shell_command": "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH=docs/runtime_preflight/au-p0b-google-spike-health-latest.json make au-p0b-google-spike-health",
+      "env": {
+        "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-spike-health-latest.json"
+      }
+    },
+    {
+      "index": 8,
+      "id": "google_spike_health_manifest",
+      "title": "Build audit manifest for the Google spike health check",
+      "type": "command",
+      "planned_runs": null,
+      "stop_on_failure": true,
+      "output_paths": [
+        "docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json"
+      ],
+      "external_call_risk": "local_verifier_or_manifest",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "make",
+        "au-p0b-google-spike-health-manifest"
+      ],
+      "shell_command": "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH=docs/runtime_preflight/au-p0b-google-spike-health-latest.json GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_MANIFEST_PATH=docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json make au-p0b-google-spike-health-manifest",
+      "env": {
+        "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-spike-health-latest.json",
+        "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_MANIFEST_PATH": "docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json"
+      }
+    },
+    {
+      "index": 9,
+      "id": "google_spike_collect",
+      "title": "Run the full Google spike matrix and require both Google gates",
+      "type": "command",
+      "planned_runs": 240,
+      "stop_on_failure": true,
+      "output_paths": [
+        "docs/runtime_preflight/au-p0b-google-spike-latest.json"
+      ],
+      "external_call_risk": "google_browser_or_manual_capture",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "make",
+        "au-p0b-google-spike"
+      ],
+      "shell_command": "GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH=docs/runtime_preflight/au-p0b-google-spike-latest.json make au-p0b-google-spike",
+      "env": {
+        "GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-spike-latest.json"
+      }
+    },
+    {
+      "index": 10,
+      "id": "google_spike_manifest",
+      "title": "Build audit manifest for the Google spike payload",
+      "type": "command",
+      "planned_runs": null,
+      "stop_on_failure": true,
+      "output_paths": [
+        "docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json"
+      ],
+      "external_call_risk": "local_verifier_or_manifest",
+      "status": "dry_run",
+      "exit_code": null,
+      "command": [
+        "make",
+        "au-p0b-google-spike-manifest"
+      ],
+      "shell_command": "GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH=docs/runtime_preflight/au-p0b-google-spike-latest.json GENO_AU_P0B_GOOGLE_SPIKE_MANIFEST_PATH=docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json make au-p0b-google-spike-manifest",
+      "env": {
+        "GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-spike-latest.json",
+        "GENO_AU_P0B_GOOGLE_SPIKE_MANIFEST_PATH": "docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json"
+      }
+    },
+    {
+      "index": 11,
+      "id": "google_spike_decision_handoff",
+      "title": "Record pass/fail conclusion in report method disclosure",
+      "type": "manual",
+      "planned_runs": null,
+      "stop_on_failure": true,
+      "output_paths": [],
+      "external_call_risk": "local_verifier_or_manifest",
+      "status": "manual",
+      "exit_code": null,
+      "command": [],
+      "shell_command": "",
+      "env": {},
+      "notes": [
+        "If google_spike_gate and google_spike_readiness_gate both pass, Google can enter the main scoring denominator.",
+        "If either gate fails, keep Google in limited coverage appendix and record failure reasons."
+      ]
+    }
+  ],
+  "execution_payload_hash": "4d327d71f0b202db26ff4bda7f5646c9b0dadaeb0f9787f2cdb0d9f90d0ed246"
+}

@@ -130,9 +130,12 @@ from geno_core.models import (
     RuntimeProjectBrandAssetVersionPage,
     RuntimeProjectBrandLogoUpload,
     RuntimeProject,
+    RuntimeProjectBrandEntityInput,
     RuntimeProjectLifecycleEvent,
     RuntimeProjectLifecycleEventExport,
     RuntimeProjectLifecycleEventPage,
+    RuntimeProjectCompetitorEntityInput,
+    RuntimeProjectEntity,
     RuntimeProjectMember,
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
@@ -151,6 +154,7 @@ from geno_core.models import (
     RuntimePromptImportInput,
     RuntimePromptImportResult,
     RuntimePromptPage,
+    RuntimePromptUpdateInput,
     RuntimeReportArtifact,
     RuntimeReportExportJob,
     RuntimeReportExportJobInput,
@@ -3921,10 +3925,13 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         updated_by = update.updated_by.strip() or "runtime-console"
         if not project_id:
             raise ValueError("project_id is required")
+        tenant_name = update.tenant_name.strip() if update.tenant_name is not None else None
         name = update.name.strip() if update.name is not None else None
         target_brand = update.target_brand.strip() if update.target_brand is not None else None
         category = update.category.strip() if update.category is not None else None
         status = update.status.strip().lower() if update.status is not None else None
+        if tenant_name is not None and not tenant_name:
+            raise ValueError("tenant_name cannot be empty")
         if name is not None and not name:
             raise ValueError("name cannot be empty")
         if target_brand is not None and not target_brand:
@@ -3947,6 +3954,16 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             if not existing:
                 raise ValueError("project not found")
             before = _row_dict(existing, PROJECT_COLUMNS)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(TENANT_COLUMNS)}
+                FROM tenants
+                WHERE id = %s
+                FOR UPDATE
+                """,
+                (_uuid(before["tenant_id"]),),
+            )
+            tenant_before = _row_dict(cursor.fetchone(), TENANT_COLUMNS)
             after_candidate = dict(before)
             if name is not None:
                 after_candidate["name"] = name
@@ -3956,6 +3973,15 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                 after_candidate["category"] = category
             if status is not None:
                 after_candidate["status"] = status
+            if tenant_name is not None:
+                cursor.execute(
+                    """
+                    UPDATE tenants
+                    SET name = %s
+                    WHERE id = %s
+                    """,
+                    (tenant_name, _uuid(before["tenant_id"])),
+                )
             cursor.execute(
                 """
                 UPDATE projects
@@ -3992,11 +4018,23 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                 (_uuid(project_id),),
             )
             after = _row_dict(cursor.fetchone(), PROJECT_COLUMNS)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(TENANT_COLUMNS)}
+                FROM tenants
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(before["tenant_id"]),),
+            )
+            tenant_after = _row_dict(cursor.fetchone(), TENANT_COLUMNS)
             changed_fields = tuple(
                 field
                 for field in ("name", "target_brand", "category", "status")
                 if before.get(field) != after.get(field)
             )
+            if tenant_before.get("name") != tenant_after.get("name"):
+                changed_fields = (*changed_fields, "tenant_name")
             audit_event = build_audit_event(
                 event_type="project_updated",
                 project_id=project_id,
@@ -4004,8 +4042,8 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                 actor_id=updated_by,
                 target_type="project",
                 target_id=project_id,
-                before=before,
-                after=after,
+                before={**before, "tenant": tenant_before},
+                after={**after, "tenant": tenant_after},
                 input_refs={"project_ids": [project_id], "changed_fields": list(changed_fields)},
                 output_refs={"project_ids": [project_id], "status": [str(after.get("status"))]},
                 method_version="runtime_project_update_v1",
@@ -4109,6 +4147,195 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             record = self._load_runtime_project(cursor=cursor, project=after)
         self.connection.commit()
         return record
+
+    def save_runtime_project_brand_entity(self, entity_input: RuntimeProjectBrandEntityInput) -> RuntimeProjectEntity:
+        project_id = entity_input.project_id.strip()
+        canonical_name = entity_input.canonical_name.strip()
+        updated_by = entity_input.updated_by.strip() or "runtime-console"
+        status = entity_input.status.strip().lower()
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not canonical_name:
+            raise ValueError("canonical_name is required")
+        if status not in {"active", "paused", "archived"}:
+            raise ValueError("status must be active, paused, or archived")
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM projects WHERE id = %s FOR UPDATE", (_uuid(project_id),))
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(BRAND_ENTITY_COLUMNS)}
+                FROM brand_entities
+                WHERE project_id = %s
+                ORDER BY id DESC
+                LIMIT 1
+                FOR UPDATE
+                """,
+                (_uuid(project_id),),
+            )
+            before_row = cursor.fetchone()
+            before = _row_dict(before_row, BRAND_ENTITY_COLUMNS) if before_row else None
+            entity_id = str(before["id"]) if before else _stable_id("brand-entity", project_id, canonical_name)
+            cursor.execute(
+                """
+                INSERT INTO brand_entities (
+                  id, project_id, canonical_name, official_domains, parent_company, product_lines, status
+                )
+                VALUES (%s, %s, %s, %s::jsonb, %s, %s::jsonb, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                  canonical_name = EXCLUDED.canonical_name,
+                  official_domains = EXCLUDED.official_domains,
+                  parent_company = EXCLUDED.parent_company,
+                  product_lines = EXCLUDED.product_lines,
+                  status = EXCLUDED.status
+                """,
+                (
+                    _uuid(entity_id),
+                    _uuid(project_id),
+                    canonical_name,
+                    json.dumps(list(entity_input.official_domains)),
+                    entity_input.parent_company.strip() if entity_input.parent_company else None,
+                    json.dumps(list(entity_input.product_lines)),
+                    status,
+                ),
+            )
+            cursor.execute(
+                """
+                UPDATE projects
+                SET target_brand = %s
+                WHERE id = %s
+                """,
+                (canonical_name, _uuid(project_id)),
+            )
+            cursor.execute(
+                f"""
+                SELECT {", ".join(BRAND_ENTITY_COLUMNS)}
+                FROM brand_entities
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(entity_id),),
+            )
+            after = _row_dict(cursor.fetchone(), BRAND_ENTITY_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="project_brand_entity_saved",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="brand_entity",
+                target_id=entity_id,
+                before=before,
+                after=after,
+                input_refs={"project_ids": [project_id], "entity_ids": [entity_id]},
+                output_refs={"project_ids": [project_id], "entity_ids": [entity_id], "status": [status]},
+                method_version="runtime_project_brand_entity_v1",
+                reason=entity_input.reason.strip() if entity_input.reason else "runtime_project_brand_entity_save",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+        self.connection.commit()
+        return RuntimeProjectEntity(entity=after, audit_events=(asdict(audit_event),))
+
+    def save_runtime_project_competitor_entity(
+        self, entity_input: RuntimeProjectCompetitorEntityInput
+    ) -> RuntimeProjectEntity:
+        project_id = entity_input.project_id.strip()
+        competitor_id = entity_input.competitor_id.strip() if entity_input.competitor_id else None
+        canonical_name = entity_input.canonical_name.strip()
+        updated_by = entity_input.updated_by.strip() or "runtime-console"
+        status = entity_input.status.strip().lower()
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not canonical_name:
+            raise ValueError("canonical_name is required")
+        if status not in {"active", "paused", "archived"}:
+            raise ValueError("status must be active, paused, or archived")
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM projects WHERE id = %s FOR UPDATE", (_uuid(project_id),))
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            before = None
+            if competitor_id:
+                cursor.execute(
+                    f"""
+                    SELECT {", ".join(COMPETITOR_ENTITY_COLUMNS)}
+                    FROM competitor_entities
+                    WHERE id = %s AND project_id = %s
+                    FOR UPDATE
+                    """,
+                    (_uuid(competitor_id), _uuid(project_id)),
+                )
+                before_row = cursor.fetchone()
+                if not before_row:
+                    raise ValueError("competitor not found")
+                before = _row_dict(before_row, COMPETITOR_ENTITY_COLUMNS)
+            else:
+                competitor_id = _stable_id("competitor-entity", project_id, canonical_name)
+            cursor.execute(
+                """
+                INSERT INTO competitor_entities (
+                  id, project_id, canonical_name, official_domains, parent_company, product_lines, status
+                )
+                VALUES (%s, %s, %s, %s::jsonb, %s, %s::jsonb, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                  canonical_name = EXCLUDED.canonical_name,
+                  official_domains = EXCLUDED.official_domains,
+                  parent_company = EXCLUDED.parent_company,
+                  product_lines = EXCLUDED.product_lines,
+                  status = EXCLUDED.status
+                """,
+                (
+                    _uuid(competitor_id),
+                    _uuid(project_id),
+                    canonical_name,
+                    json.dumps(list(entity_input.official_domains)),
+                    entity_input.parent_company.strip() if entity_input.parent_company else None,
+                    json.dumps(list(entity_input.product_lines)),
+                    status,
+                ),
+            )
+            cursor.execute(
+                """
+                SELECT count(*)
+                FROM competitor_entities
+                WHERE project_id = %s AND status = ANY(%s)
+                """,
+                (_uuid(project_id), ["active", "paused"]),
+            )
+            count_row = cursor.fetchone()
+            active_count = int(count_row[0] if not isinstance(count_row, dict) else count_row["count"])
+            if active_count < 3 or active_count > 5:
+                self.connection.rollback()
+                raise ValueError("project must keep 3-5 active or paused competitors")
+            cursor.execute(
+                f"""
+                SELECT {", ".join(COMPETITOR_ENTITY_COLUMNS)}
+                FROM competitor_entities
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(competitor_id),),
+            )
+            after = _row_dict(cursor.fetchone(), COMPETITOR_ENTITY_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="project_competitor_entity_saved",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="competitor_entity",
+                target_id=competitor_id,
+                before=before,
+                after=after,
+                input_refs={"project_ids": [project_id], "entity_ids": [competitor_id]},
+                output_refs={"project_ids": [project_id], "entity_ids": [competitor_id], "status": [status]},
+                method_version="runtime_project_competitor_entity_v1",
+                reason=entity_input.reason.strip()
+                if entity_input.reason
+                else "runtime_project_competitor_entity_save",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+        self.connection.commit()
+        return RuntimeProjectEntity(entity=after, audit_events=(asdict(audit_event),))
 
     def list_runtime_project_lifecycle_events(
         self,
@@ -7653,6 +7880,128 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             )
             row = cursor.fetchone()
         return _row_dict(row, PROMPT_QUESTION_READ_COLUMNS) if row else None
+
+    def update_runtime_prompt(self, update: RuntimePromptUpdateInput) -> dict[str, Any]:
+        project_id = update.project_id.strip()
+        prompt_id = update.prompt_id.strip()
+        updated_by = update.updated_by.strip() or "runtime-console"
+        text = update.text.strip()
+        intent_type = update.intent_type.strip()
+        city = update.city.strip()
+        language = update.language.strip()
+        target_brand = update.target_brand.strip()
+        competitors = tuple(item.strip() for item in update.competitors if item.strip())
+        prompt_version = update.prompt_version.strip()
+        status = update.status.strip().lower()
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not prompt_id:
+            raise ValueError("prompt_id is required")
+        if not text:
+            raise ValueError("text is required")
+        if not intent_type:
+            raise ValueError("intent_type is required")
+        if not city:
+            raise ValueError("city is required")
+        if not language:
+            raise ValueError("language is required")
+        if not target_brand:
+            raise ValueError("target_brand is required")
+        if not prompt_version:
+            raise ValueError("prompt_version is required")
+        if status not in {"active", "paused", "archived"}:
+            raise ValueError("status must be active, paused, or archived")
+        if update.priority < 0:
+            raise ValueError("priority must be non-negative")
+        if update.intent_weight <= 0:
+            raise ValueError("intent_weight must be positive")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROMPT_QUESTION_READ_COLUMNS)}
+                FROM prompt_questions
+                WHERE id = %s AND project_id = %s
+                FOR UPDATE
+                """,
+                (_uuid(prompt_id), _uuid(project_id)),
+            )
+            before_row = cursor.fetchone()
+            if not before_row:
+                raise ValueError("prompt not found")
+            before = _row_dict(before_row, PROMPT_QUESTION_READ_COLUMNS)
+            cursor.execute(
+                """
+                UPDATE prompt_questions
+                SET text = %s,
+                    intent_type = %s,
+                    city = %s,
+                    language = %s,
+                    target_brand = %s,
+                    competitors = %s,
+                    priority = %s,
+                    intent_weight = %s,
+                    prompt_version = %s,
+                    status = %s
+                WHERE id = %s AND project_id = %s
+                """,
+                (
+                    text,
+                    intent_type,
+                    city,
+                    language,
+                    target_brand,
+                    _json_payload(competitors),
+                    update.priority,
+                    update.intent_weight,
+                    prompt_version,
+                    status,
+                    _uuid(prompt_id),
+                    _uuid(project_id),
+                ),
+            )
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROMPT_QUESTION_READ_COLUMNS)}
+                FROM prompt_questions
+                WHERE id = %s AND project_id = %s
+                LIMIT 1
+                """,
+                (_uuid(prompt_id), _uuid(project_id)),
+            )
+            after = _row_dict(cursor.fetchone(), PROMPT_QUESTION_READ_COLUMNS)
+            changed_fields = tuple(
+                field
+                for field in (
+                    "text",
+                    "intent_type",
+                    "city",
+                    "language",
+                    "target_brand",
+                    "competitors",
+                    "priority",
+                    "intent_weight",
+                    "prompt_version",
+                    "status",
+                )
+                if before.get(field) != after.get(field)
+            )
+            audit_event = build_audit_event(
+                event_type="runtime_prompt_updated",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="prompt_question",
+                target_id=prompt_id,
+                before=before,
+                after=after,
+                input_refs={"prompt_question_ids": [prompt_id], "changed_fields": list(changed_fields)},
+                output_refs={"prompt_question_ids": [prompt_id], "status": [str(after.get("status"))]},
+                method_version="runtime_prompt_update_v1",
+                reason=update.reason.strip() if update.reason else "runtime_prompt_update",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+        self.connection.commit()
+        return after
 
     def list_runtime_prompt_imports(
         self,

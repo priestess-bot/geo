@@ -1,0 +1,1395 @@
+{
+  "execution_checklist_version": "au_p0b_google_execution_checklist_v1",
+  "generated_at": "2026-06-13T18:53:47Z",
+  "status": "fail",
+  "google_execution_checklist_ready": false,
+  "google_main_scoring_allowed": false,
+  "limited_coverage": true,
+  "next_action": "populate_google_playwright_smoke_environment",
+  "paths": {
+    "runbook": "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
+    "execution": "docs/runtime_preflight/au-p0b-google-spike-runbook-execution-latest.json",
+    "playwright_env": "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+    "playwright_smoke": "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json",
+    "manual_backfill_verification": "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
+    "health": "docs/runtime_preflight/au-p0b-google-spike-health-latest.json",
+    "health_manifest": "docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json",
+    "spike": "docs/runtime_preflight/au-p0b-google-spike-latest.json",
+    "spike_manifest": "docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json",
+    "status_report": "docs/runtime_preflight/au-p0b-google-spike-status-latest.json",
+    "package": "docs/runtime_preflight/au-p0b-google-evidence-package-latest.json",
+    "output": "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json",
+    "env_file": ".env.au-p0b-google"
+  },
+  "summary": {
+    "planned_runs": 240,
+    "step_count": 11,
+    "required_environment_count": 1,
+    "missing_required_environment_count": 1,
+    "missing_required_environment": [
+      "GOOGLE_PLAYWRIGHT_ENABLED"
+    ],
+    "full_run_required_environment_count": 2,
+    "missing_full_run_required_environment_count": 2,
+    "missing_full_run_required_environment": [
+      "DATABASE_URL",
+      "MANUAL_BACKFILL_PATH"
+    ],
+    "selector_group_count": 2,
+    "missing_selector_group_count": 2,
+    "missing_selector_groups": [
+      "google_aio_answer_selector",
+      "google_aio_prompt_selector"
+    ],
+    "missing_dependency_count": 0,
+    "missing_dependencies": [],
+    "file_gate_issue_count": 1,
+    "file_gate_issues": [
+      "MANUAL_BACKFILL_PATH:file_missing"
+    ],
+    "env_file_hygiene_ready": true,
+    "env_file_hygiene_error_count": 0,
+    "env_file_hygiene_warning_count": 0,
+    "environment_handoff_ready": false,
+    "environment_handoff_missing_required_count": 5,
+    "environment_handoff_missing_required": [
+      "smoke_env:GOOGLE_PLAYWRIGHT_ENABLED",
+      "full_run_env:DATABASE_URL",
+      "full_run_env:MANUAL_BACKFILL_PATH",
+      "selector_group:google_aio_answer_selector",
+      "selector_group:google_aio_prompt_selector"
+    ],
+    "environment_handoff_target_env_file": ".env.au-p0b-google",
+    "environment_handoff_setup_command_count": 3,
+    "environment_handoff_verification_command_count": 7,
+    "environment_handoff_secret_redacted": true,
+    "manual_backfill_handoff_ready": false,
+    "manual_backfill_handoff_status": "fail",
+    "manual_backfill_handoff_expected_record_count": 120,
+    "manual_backfill_handoff_record_count": 0,
+    "manual_backfill_handoff_expected_prompt_city_count": 60,
+    "manual_backfill_handoff_covered_prompt_city_count": 0,
+    "manual_backfill_handoff_missing_reason_count": 1,
+    "manual_backfill_handoff_missing_reasons": [
+      "manual_backfill:file_missing"
+    ],
+    "manual_backfill_handoff_template_path": "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl",
+    "manual_backfill_handoff_verification_path": "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
+    "manual_backfill_handoff_content_redacted": true,
+    "google_spike_phase_handoff_ready": false,
+    "google_spike_phase_handoff_next_phase": "environment",
+    "google_spike_phase_handoff_ready_phase_count": 0,
+    "google_spike_phase_handoff_blocked_phase_count": 6,
+    "google_spike_phase_handoff_full_spike_planned_runs": 240,
+    "google_spike_phase_order": [
+      "environment",
+      "browser_smoke",
+      "manual_backfill",
+      "health_check",
+      "full_spike",
+      "main_scoring"
+    ],
+    "remaining_blocker_count": 7,
+    "remaining_blockers": [
+      "health:file_missing",
+      "health_manifest:file_missing",
+      "manual_backfill:file_missing",
+      "playwright_env:playwright_smoke_environment_not_ready",
+      "playwright_smoke:smoke_not_successful",
+      "spike:file_missing",
+      "spike_manifest:file_missing"
+    ],
+    "runbook_verifier_status": "pass",
+    "playwright_env_verifier_status": "pass",
+    "status_verifier_status": "pass",
+    "package_verifier_status": "pass"
+  },
+  "runbook_source": {
+    "path": "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
+    "exists": true,
+    "source": "existing_file",
+    "errors": []
+  },
+  "runbook_verifier": {
+    "status": "pass",
+    "errors": [],
+    "path": "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
+    "runbook_version": "au_p0b_google_spike_runbook_v1",
+    "runbook_payload_hash": "a10c05e3628fce0b984f7a6c1612ca4c87c32ba29f4adaed2765945f1da4fbfc",
+    "computed_runbook_payload_hash": "a10c05e3628fce0b984f7a6c1612ca4c87c32ba29f4adaed2765945f1da4fbfc",
+    "hash_valid": true,
+    "planned_runs": 240,
+    "step_count": 11
+  },
+  "playwright_environment_source": {
+    "path": "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+    "exists": true,
+    "source": "existing_file",
+    "errors": []
+  },
+  "playwright_environment": {
+    "environment_report_version": "au_p0b_google_playwright_environment_report_v1",
+    "status": "fail",
+    "ready_for_playwright_smoke": false,
+    "ready_for_full_google_run": false,
+    "collector_health": "not_configured",
+    "next_action": "populate_google_playwright_smoke_environment",
+    "environment_report_hash": "1366f110e8010d7993d4da1269c98c2b15666b802e3e87ebbaa6425b6cbd0ea1",
+    "secrets_redacted": true
+  },
+  "playwright_environment_verifier": {
+    "status": "pass",
+    "errors": [],
+    "path": "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+    "environment_report_version": "au_p0b_google_playwright_environment_report_v1",
+    "environment_report_hash": "1366f110e8010d7993d4da1269c98c2b15666b802e3e87ebbaa6425b6cbd0ea1",
+    "computed_environment_report_hash": "1366f110e8010d7993d4da1269c98c2b15666b802e3e87ebbaa6425b6cbd0ea1",
+    "hash_valid": true,
+    "ready_for_playwright_smoke": false,
+    "ready_for_full_google_run": false,
+    "collector_health": "not_configured",
+    "missing_required": [
+      "GOOGLE_PLAYWRIGHT_ENABLED"
+    ],
+    "missing_full_run_required": [
+      "DATABASE_URL",
+      "MANUAL_BACKFILL_PATH"
+    ],
+    "missing_selector_groups": [
+      "google_aio_answer_selector",
+      "google_aio_prompt_selector"
+    ],
+    "env_file_hygiene_ready": true,
+    "env_file_hygiene_errors": [],
+    "env_file_hygiene_warnings": [],
+    "next_action": "populate_google_playwright_smoke_environment"
+  },
+  "env_file_hygiene": {
+    "path": ".env.au-p0b-google",
+    "exists": true,
+    "loaded": true,
+    "entry_count": 38,
+    "template_file": false,
+    "inside_workspace": true,
+    "relative_path": ".env.au-p0b-google",
+    "git_ignored": true,
+    "git_tracked": false,
+    "git_safe": true,
+    "file_mode": "0600",
+    "permission_safe": true,
+    "hygiene_required": true,
+    "hygiene_ready": true,
+    "errors": [],
+    "warnings": [],
+    "verifier_ready": true,
+    "verifier_errors": [],
+    "secret_redacted": true
+  },
+  "status_report_source": {
+    "path": "docs/runtime_preflight/au-p0b-google-spike-status-latest.json",
+    "exists": true,
+    "source": "existing_file",
+    "errors": []
+  },
+  "status_report": {
+    "status_report_version": "au_p0b_google_spike_status_report_v1",
+    "status": "fail",
+    "google_main_scoring_allowed": false,
+    "limited_coverage": true,
+    "next_action": "populate_google_playwright_smoke_environment",
+    "status_report_hash": "b6e1d737104ee7be8b133a36c02c8ec3b8832b6c26460dd23e3bb38de4265771"
+  },
+  "status_report_verifier": {
+    "status": "pass",
+    "errors": [],
+    "path": "docs/runtime_preflight/au-p0b-google-spike-status-latest.json",
+    "status_report_version": "au_p0b_google_spike_status_report_v1",
+    "status_report_hash": "b6e1d737104ee7be8b133a36c02c8ec3b8832b6c26460dd23e3bb38de4265771",
+    "computed_status_report_hash": "b6e1d737104ee7be8b133a36c02c8ec3b8832b6c26460dd23e3bb38de4265771",
+    "hash_valid": true,
+    "google_main_scoring_allowed": false,
+    "limited_coverage": true,
+    "next_action": "populate_google_playwright_smoke_environment",
+    "remaining_blocker_count": 7
+  },
+  "package_source": {
+    "path": "docs/runtime_preflight/au-p0b-google-evidence-package-latest.json",
+    "exists": true,
+    "source": "existing_file",
+    "errors": []
+  },
+  "evidence_package": {
+    "package_version": "au_p0b_google_evidence_package_v1",
+    "status": "fail",
+    "google_main_scoring_allowed": false,
+    "limited_coverage": true,
+    "next_action": "populate_google_playwright_smoke_environment",
+    "package_payload_hash": "0a994298bbf22ba28d39287a841d29ebf0dfaa0046c4132b5052e5780801e286",
+    "summary": {
+      "artifact_count": 10,
+      "missing_artifacts": [
+        "health",
+        "health_manifest",
+        "manual_backfill",
+        "spike",
+        "spike_manifest"
+      ],
+      "failed_artifacts": [
+        "health",
+        "health_manifest",
+        "manual_backfill",
+        "playwright_env",
+        "playwright_smoke",
+        "spike",
+        "spike_manifest"
+      ],
+      "ready_artifacts": [],
+      "blocking_reasons": [
+        "health:file_missing",
+        "health_manifest:file_missing",
+        "manual_backfill:file_missing",
+        "playwright_env:playwright_smoke_environment_not_ready",
+        "playwright_smoke:smoke_not_successful",
+        "spike:file_missing",
+        "spike_manifest:file_missing"
+      ]
+    }
+  },
+  "evidence_package_verifier": {
+    "status": "pass",
+    "errors": [],
+    "path": "docs/runtime_preflight/au-p0b-google-evidence-package-latest.json",
+    "package_version": "au_p0b_google_evidence_package_v1",
+    "package_payload_hash": "0a994298bbf22ba28d39287a841d29ebf0dfaa0046c4132b5052e5780801e286",
+    "computed_package_payload_hash": "0a994298bbf22ba28d39287a841d29ebf0dfaa0046c4132b5052e5780801e286",
+    "hash_valid": true,
+    "google_main_scoring_allowed": false,
+    "limited_coverage": true,
+    "next_action": "populate_google_playwright_smoke_environment",
+    "artifact_count": 10,
+    "missing_artifacts": [
+      "health",
+      "health_manifest",
+      "manual_backfill",
+      "spike",
+      "spike_manifest"
+    ],
+    "failed_artifacts": [
+      "health",
+      "health_manifest",
+      "manual_backfill",
+      "playwright_env",
+      "playwright_smoke",
+      "spike",
+      "spike_manifest"
+    ],
+    "remaining_blocker_count": 7
+  },
+  "required_environment": [
+    {
+      "name": "GOOGLE_PLAYWRIGHT_ENABLED",
+      "gate": "playwright_smoke",
+      "required": true,
+      "present": true,
+      "truthy": false,
+      "source": "env_file",
+      "value_length": 1,
+      "sha256_prefix": "5feceb66ffc8",
+      "secret_redacted": true,
+      "action": "set_truthy_environment",
+      "accepted_sources": [
+        "process",
+        "env_file"
+      ]
+    }
+  ],
+  "full_run_required_environment": [
+    {
+      "name": "MANUAL_BACKFILL_PATH",
+      "gate": "full_google_run",
+      "required": true,
+      "present": false,
+      "truthy": null,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true,
+      "action": "set_required_environment",
+      "accepted_sources": [
+        "process",
+        "env_file"
+      ]
+    },
+    {
+      "name": "DATABASE_URL",
+      "gate": "full_google_run",
+      "required": true,
+      "present": false,
+      "truthy": null,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true,
+      "action": "set_required_environment",
+      "accepted_sources": [
+        "process",
+        "env_file"
+      ]
+    }
+  ],
+  "selector_groups": [
+    {
+      "group": "google_aio_prompt_selector",
+      "candidate_names": [
+        "GOOGLE_AIO_PLAYWRIGHT_PROMPT_SELECTOR",
+        "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR"
+      ],
+      "present": false,
+      "selected_name": "",
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true,
+      "action": "set_google_playwright_selector"
+    },
+    {
+      "group": "google_aio_answer_selector",
+      "candidate_names": [
+        "GOOGLE_AIO_PLAYWRIGHT_ANSWER_SELECTOR",
+        "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR"
+      ],
+      "present": false,
+      "selected_name": "",
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true,
+      "action": "set_google_playwright_selector"
+    }
+  ],
+  "file_checks": [
+    {
+      "name": "GOOGLE_PLAYWRIGHT_STORAGE_STATE",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "expected_type": "file",
+      "exists": false,
+      "is_file": false,
+      "is_dir": false,
+      "secret_redacted": true,
+      "action": "keep_current_redacted_path"
+    },
+    {
+      "name": "GENO_BROWSER_ARTIFACT_DIR",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "expected_type": "directory",
+      "exists": false,
+      "is_file": false,
+      "is_dir": false,
+      "secret_redacted": true,
+      "action": "keep_current_redacted_path"
+    },
+    {
+      "name": "MANUAL_BACKFILL_PATH",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "expected_type": "file",
+      "exists": false,
+      "is_file": false,
+      "is_dir": false,
+      "secret_redacted": true,
+      "action": "keep_current_redacted_path"
+    }
+  ],
+  "dependency_checks": [
+    {
+      "name": "python_playwright_package",
+      "present": true,
+      "source": "python_import",
+      "secret_redacted": true,
+      "action": "keep_current_dependency"
+    }
+  ],
+  "environment_handoff": {
+    "version": "au_p0b_google_environment_handoff_v1",
+    "ready": false,
+    "missing_required_count": 5,
+    "missing_required": [
+      "smoke_env:GOOGLE_PLAYWRIGHT_ENABLED",
+      "full_run_env:DATABASE_URL",
+      "full_run_env:MANUAL_BACKFILL_PATH",
+      "selector_group:google_aio_answer_selector",
+      "selector_group:google_aio_prompt_selector"
+    ],
+    "target_env_file": ".env.au-p0b-google",
+    "setup_commands": [
+      "make verify-au-p0b-google-env-template",
+      "make au-p0b-google-env-bootstrap",
+      "make verify-au-p0b-google-env-bootstrap"
+    ],
+    "environment_items": [
+      {
+        "name": "GOOGLE_PLAYWRIGHT_ENABLED",
+        "gate": "playwright_smoke",
+        "required": true,
+        "present": true,
+        "truthy": false,
+        "source": "env_file",
+        "owner_hint": "browser_automation_operator",
+        "accepted_injection_methods": [
+          "process_environment",
+          "GENO_AU_P0B_GOOGLE_ENV_FILE",
+          ".env.au-p0b-google"
+        ],
+        "env_file_key": "GOOGLE_PLAYWRIGHT_ENABLED",
+        "value_length": 1,
+        "sha256_prefix": "5feceb66ffc8",
+        "secret_redacted": true,
+        "post_update_checks": [
+          "make au-p0b-google-playwright-env",
+          "make verify-au-p0b-google-playwright-env",
+          "make au-p0b-google-execution-checklist",
+          "make verify-au-p0b-google-execution-checklist"
+        ]
+      },
+      {
+        "name": "MANUAL_BACKFILL_PATH",
+        "gate": "full_google_run",
+        "required": true,
+        "present": false,
+        "truthy": null,
+        "source": "missing",
+        "owner_hint": "google_manual_backfill_operator",
+        "accepted_injection_methods": [
+          "process_environment",
+          "GENO_AU_P0B_GOOGLE_ENV_FILE",
+          ".env.au-p0b-google"
+        ],
+        "env_file_key": "MANUAL_BACKFILL_PATH",
+        "value_length": 0,
+        "sha256_prefix": "",
+        "secret_redacted": true,
+        "post_update_checks": [
+          "make au-p0b-google-playwright-env",
+          "make verify-au-p0b-google-playwright-env",
+          "make au-p0b-google-execution-checklist",
+          "make verify-au-p0b-google-execution-checklist"
+        ]
+      },
+      {
+        "name": "DATABASE_URL",
+        "gate": "full_google_run",
+        "required": true,
+        "present": false,
+        "truthy": null,
+        "source": "missing",
+        "owner_hint": "runtime_database_admin",
+        "accepted_injection_methods": [
+          "process_environment",
+          "GENO_AU_P0B_GOOGLE_ENV_FILE",
+          ".env.au-p0b-google"
+        ],
+        "env_file_key": "DATABASE_URL",
+        "value_length": 0,
+        "sha256_prefix": "",
+        "secret_redacted": true,
+        "post_update_checks": [
+          "make au-p0b-google-playwright-env",
+          "make verify-au-p0b-google-playwright-env",
+          "make au-p0b-google-execution-checklist",
+          "make verify-au-p0b-google-execution-checklist"
+        ]
+      }
+    ],
+    "selector_items": [
+      {
+        "group": "google_aio_prompt_selector",
+        "candidate_names": [
+          "GOOGLE_AIO_PLAYWRIGHT_PROMPT_SELECTOR",
+          "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR"
+        ],
+        "present": false,
+        "selected_name": "",
+        "source": "missing",
+        "owner_hint": "browser_automation_operator",
+        "accepted_injection_methods": [
+          "process_environment",
+          "GENO_AU_P0B_GOOGLE_ENV_FILE",
+          ".env.au-p0b-google"
+        ],
+        "value_length": 0,
+        "sha256_prefix": "",
+        "secret_redacted": true,
+        "post_update_checks": [
+          "make au-p0b-google-playwright-env",
+          "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py ${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} --require-ready-smoke"
+        ]
+      },
+      {
+        "group": "google_aio_answer_selector",
+        "candidate_names": [
+          "GOOGLE_AIO_PLAYWRIGHT_ANSWER_SELECTOR",
+          "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR"
+        ],
+        "present": false,
+        "selected_name": "",
+        "source": "missing",
+        "owner_hint": "browser_automation_operator",
+        "accepted_injection_methods": [
+          "process_environment",
+          "GENO_AU_P0B_GOOGLE_ENV_FILE",
+          ".env.au-p0b-google"
+        ],
+        "value_length": 0,
+        "sha256_prefix": "",
+        "secret_redacted": true,
+        "post_update_checks": [
+          "make au-p0b-google-playwright-env",
+          "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py ${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} --require-ready-smoke"
+        ]
+      }
+    ],
+    "file_items": [
+      {
+        "name": "GOOGLE_PLAYWRIGHT_STORAGE_STATE",
+        "expected_type": "file",
+        "present": false,
+        "exists": false,
+        "is_file": false,
+        "is_dir": false,
+        "source": "missing",
+        "owner_hint": "browser_automation_operator",
+        "accepted_injection_methods": [
+          "process_environment",
+          "GENO_AU_P0B_GOOGLE_ENV_FILE",
+          ".env.au-p0b-google"
+        ],
+        "value_length": 0,
+        "sha256_prefix": "",
+        "secret_redacted": true,
+        "post_update_checks": [
+          "make au-p0b-google-playwright-env",
+          "make verify-au-p0b-google-playwright-env"
+        ]
+      },
+      {
+        "name": "GENO_BROWSER_ARTIFACT_DIR",
+        "expected_type": "directory",
+        "present": false,
+        "exists": false,
+        "is_file": false,
+        "is_dir": false,
+        "source": "missing",
+        "owner_hint": "artifact_store_operator",
+        "accepted_injection_methods": [
+          "process_environment",
+          "GENO_AU_P0B_GOOGLE_ENV_FILE",
+          ".env.au-p0b-google"
+        ],
+        "value_length": 0,
+        "sha256_prefix": "",
+        "secret_redacted": true,
+        "post_update_checks": [
+          "make au-p0b-google-playwright-env",
+          "make verify-au-p0b-google-playwright-env"
+        ]
+      },
+      {
+        "name": "MANUAL_BACKFILL_PATH",
+        "expected_type": "file",
+        "present": false,
+        "exists": false,
+        "is_file": false,
+        "is_dir": false,
+        "source": "missing",
+        "owner_hint": "google_manual_backfill_operator",
+        "accepted_injection_methods": [
+          "process_environment",
+          "GENO_AU_P0B_GOOGLE_ENV_FILE",
+          ".env.au-p0b-google"
+        ],
+        "value_length": 0,
+        "sha256_prefix": "",
+        "secret_redacted": true,
+        "post_update_checks": [
+          "make au-p0b-google-playwright-env",
+          "make verify-au-p0b-google-playwright-env"
+        ]
+      }
+    ],
+    "dependency_items": [
+      {
+        "name": "python_playwright_package",
+        "present": true,
+        "source": "python_import",
+        "owner_hint": "runtime_operator",
+        "secret_redacted": true,
+        "post_update_checks": [
+          "make au-p0b-google-playwright-env",
+          "make verify-au-p0b-google-playwright-env"
+        ]
+      }
+    ],
+    "verification_commands": [
+      "make au-p0b-google-playwright-env",
+      "make verify-au-p0b-google-playwright-env",
+      "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py ${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} --require-ready-smoke",
+      "make au-p0b-google-manual-template",
+      "make verify-au-p0b-google-manual-backfill",
+      "make au-p0b-google-execution-checklist",
+      "make verify-au-p0b-google-execution-checklist"
+    ],
+    "evidence_outputs": [
+      "docs/runtime_preflight/au-p0b-google-env-bootstrap-latest.json",
+      "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+      "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
+      "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json"
+    ],
+    "redaction_policy": {
+      "raw_secret_values_allowed": false,
+      "recorded_fields": [
+        "present",
+        "source",
+        "truthy",
+        "value_length",
+        "sha256_prefix",
+        "exists",
+        "is_file",
+        "is_dir",
+        "secret_redacted"
+      ],
+      "forbidden_exact_secret_field_count": 2,
+      "forbidden_exact_secret_fields_redacted": true
+    }
+  },
+  "manual_backfill_handoff": {
+    "version": "au_p0b_google_manual_backfill_handoff_v1",
+    "ready": false,
+    "status": "fail",
+    "hash_valid": false,
+    "manual_backfill_ready": false,
+    "missing_reason_count": 1,
+    "missing_reasons": [
+      "manual_backfill:file_missing"
+    ],
+    "manual_jsonl_env_var": "MANUAL_BACKFILL_PATH",
+    "target_jsonl_path": "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl",
+    "target_jsonl_path_source": "default_template_path_or_MANUAL_BACKFILL_PATH_env_when_configured",
+    "manual_jsonl_path_redacted": true,
+    "template_path": "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl",
+    "template_manifest_path": "docs/runtime_preflight/au-p0b-google-manual-backfill-template-manifest.json",
+    "verification_path": "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
+    "expected_record_count": 120,
+    "record_count": 0,
+    "expected_prompt_city_count": 60,
+    "covered_prompt_city_count": 0,
+    "expected_sample_size": 2,
+    "prompt_count": 30,
+    "geo_cities": [
+      "Australia",
+      "Sydney"
+    ],
+    "file_sha256": "",
+    "verification_hash": "",
+    "required_fields": [
+      "prompt",
+      "city",
+      "language",
+      "device",
+      "answer_text",
+      "citation_urls",
+      "screenshot_url or html_snapshot_url"
+    ],
+    "operator_requirements": [
+      "fill_answer_text_for_each_record",
+      "include_at_least_one_citation_url_for_each_record",
+      "include_screenshot_url_or_html_snapshot_url_for_each_record",
+      "preserve_prompt_city_sample_index_and_sample_size"
+    ],
+    "setup_commands": [
+      "make au-p0b-google-manual-template"
+    ],
+    "verification_commands": [
+      "make verify-au-p0b-google-manual-backfill",
+      "make au-p0b-google-status",
+      "make verify-au-p0b-google-status",
+      "make au-p0b-google-package",
+      "make verify-au-p0b-google-package",
+      "make au-p0b-google-execution-checklist",
+      "make verify-au-p0b-google-execution-checklist"
+    ],
+    "evidence_outputs": [
+      "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl",
+      "docs/runtime_preflight/au-p0b-google-manual-backfill-template-manifest.json",
+      "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json"
+    ],
+    "redaction_policy": {
+      "raw_answer_values_allowed": false,
+      "raw_citation_values_allowed": false,
+      "raw_asset_urls_allowed": false,
+      "manual_jsonl_path_redacted": true,
+      "recorded_fields": [
+        "status",
+        "exists",
+        "hash_valid",
+        "record_count",
+        "expected_record_count",
+        "covered_prompt_city_count",
+        "file_sha256",
+        "verification_hash",
+        "missing_reasons",
+        "template_path",
+        "verification_path"
+      ]
+    }
+  },
+  "google_spike_phase_handoff": {
+    "version": "au_p0b_google_spike_phase_handoff_v1",
+    "ready": false,
+    "phase_count": 6,
+    "ready_phase_count": 0,
+    "blocked_phase_count": 6,
+    "next_phase": "environment",
+    "full_spike_planned_runs": 240,
+    "manual_expected_record_count": 120,
+    "phase_order": [
+      "environment",
+      "browser_smoke",
+      "manual_backfill",
+      "health_check",
+      "full_spike",
+      "main_scoring"
+    ],
+    "phases": [
+      {
+        "id": "environment",
+        "title": "Google Playwright and full-run input readiness",
+        "planned_runs": 0,
+        "ready": false,
+        "can_start": true,
+        "command_ids": [
+          "verify_playwright_env"
+        ],
+        "commands": [
+          {
+            "id": "verify_playwright_env",
+            "shell": "make verify-au-p0b-google-playwright-env",
+            "purpose": "Verify env report hash and redaction."
+          }
+        ],
+        "artifact_keys": [
+          "playwright_env"
+        ],
+        "artifacts": [
+          {
+            "key": "playwright_env",
+            "path": "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+            "exists": true,
+            "status": "fail",
+            "ready": false,
+            "hash_valid": true,
+            "errors": [
+              "playwright_smoke_environment_not_ready"
+            ],
+            "ready_for_playwright_smoke": false,
+            "ready_for_full_google_run": false,
+            "smoke_success": null,
+            "manual_backfill_ready": null,
+            "collector_health_ready": null,
+            "google_gates_ready": null,
+            "google_main_scoring_allowed": null
+          }
+        ],
+        "evidence_outputs": [
+          "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json"
+        ],
+        "prerequisite_gate_ids": [
+          "verify_env_template",
+          "hard_playwright_env_gate"
+        ],
+        "prerequisite_phase_id": "",
+        "blocking_reasons": [
+          "environment_handoff:full_run_env:DATABASE_URL",
+          "environment_handoff:full_run_env:MANUAL_BACKFILL_PATH",
+          "environment_handoff:selector_group:google_aio_answer_selector",
+          "environment_handoff:selector_group:google_aio_prompt_selector",
+          "environment_handoff:smoke_env:GOOGLE_PLAYWRIGHT_ENABLED",
+          "playwright_env:not_ready",
+          "playwright_env:playwright_smoke_environment_not_ready",
+          "playwright_env:status_not_pass"
+        ]
+      },
+      {
+        "id": "browser_smoke",
+        "title": "Single Google browser smoke capture",
+        "planned_runs": 1,
+        "ready": false,
+        "can_start": false,
+        "command_ids": [
+          "run_smoke",
+          "verify_smoke_strict"
+        ],
+        "commands": [
+          {
+            "id": "run_smoke",
+            "shell": "make au-p0b-google-playwright-smoke",
+            "purpose": "Run one real Google browser smoke capture."
+          },
+          {
+            "id": "verify_smoke_strict",
+            "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_smoke.py ${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_SMOKE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json} --require-success",
+            "purpose": "Fail until the smoke capture has screenshot/html hashes and browser capture metadata."
+          }
+        ],
+        "artifact_keys": [
+          "playwright_smoke"
+        ],
+        "artifacts": [
+          {
+            "key": "playwright_smoke",
+            "path": "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json",
+            "exists": true,
+            "status": "fail",
+            "ready": false,
+            "hash_valid": true,
+            "errors": [
+              "smoke_not_successful"
+            ],
+            "ready_for_playwright_smoke": null,
+            "ready_for_full_google_run": null,
+            "smoke_success": false,
+            "manual_backfill_ready": null,
+            "collector_health_ready": null,
+            "google_gates_ready": null,
+            "google_main_scoring_allowed": null
+          }
+        ],
+        "evidence_outputs": [
+          "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json"
+        ],
+        "prerequisite_gate_ids": [
+          "hard_playwright_env_gate"
+        ],
+        "prerequisite_phase_id": "environment",
+        "blocking_reasons": [
+          "playwright_smoke:not_ready",
+          "playwright_smoke:smoke_not_successful",
+          "playwright_smoke:status_not_pass",
+          "prerequisite_phase_not_ready:environment"
+        ]
+      },
+      {
+        "id": "manual_backfill",
+        "title": "Strict 120-row Google AI Mode manual verification",
+        "planned_runs": 120,
+        "ready": false,
+        "can_start": false,
+        "command_ids": [
+          "build_manual_template",
+          "verify_manual_backfill"
+        ],
+        "commands": [
+          {
+            "id": "build_manual_template",
+            "shell": "make au-p0b-google-manual-template",
+            "purpose": "Generate the 120-row manual backfill template."
+          },
+          {
+            "id": "verify_manual_backfill",
+            "shell": "make verify-au-p0b-google-manual-backfill",
+            "purpose": "Strict-verify the filled manual backfill JSONL before health/full spike."
+          }
+        ],
+        "artifact_keys": [
+          "manual_backfill"
+        ],
+        "artifacts": [
+          {
+            "key": "manual_backfill",
+            "path": "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
+            "exists": false,
+            "status": "fail",
+            "ready": false,
+            "hash_valid": false,
+            "errors": [
+              "file_missing"
+            ],
+            "ready_for_playwright_smoke": null,
+            "ready_for_full_google_run": null,
+            "smoke_success": null,
+            "manual_backfill_ready": false,
+            "collector_health_ready": null,
+            "google_gates_ready": null,
+            "google_main_scoring_allowed": null
+          }
+        ],
+        "evidence_outputs": [
+          "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json"
+        ],
+        "prerequisite_gate_ids": [
+          "verify_manual_backfill"
+        ],
+        "prerequisite_phase_id": "browser_smoke",
+        "blocking_reasons": [
+          "manual_backfill:file_missing",
+          "manual_backfill:not_ready",
+          "manual_backfill:status_not_pass",
+          "prerequisite_phase_not_ready:browser_smoke"
+        ]
+      },
+      {
+        "id": "health_check",
+        "title": "Collector health-only matrix preflight",
+        "planned_runs": 240,
+        "ready": false,
+        "can_start": false,
+        "command_ids": [
+          "run_health",
+          "manifest_health"
+        ],
+        "commands": [
+          {
+            "id": "run_health",
+            "shell": "make au-p0b-google-spike-health",
+            "purpose": "Run Google spike health-only check."
+          },
+          {
+            "id": "manifest_health",
+            "shell": "make au-p0b-google-spike-health-manifest",
+            "purpose": "Hash and manifest the health check payload."
+          }
+        ],
+        "artifact_keys": [
+          "health",
+          "health_manifest"
+        ],
+        "artifacts": [
+          {
+            "key": "health",
+            "path": "docs/runtime_preflight/au-p0b-google-spike-health-latest.json",
+            "exists": false,
+            "status": "fail",
+            "ready": false,
+            "hash_valid": false,
+            "errors": [
+              "file_missing"
+            ],
+            "ready_for_playwright_smoke": null,
+            "ready_for_full_google_run": null,
+            "smoke_success": null,
+            "manual_backfill_ready": null,
+            "collector_health_ready": null,
+            "google_gates_ready": false,
+            "google_main_scoring_allowed": null
+          },
+          {
+            "key": "health_manifest",
+            "path": "docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json",
+            "exists": false,
+            "status": "fail",
+            "ready": false,
+            "hash_valid": null,
+            "errors": [
+              "file_missing"
+            ],
+            "ready_for_playwright_smoke": null,
+            "ready_for_full_google_run": null,
+            "smoke_success": null,
+            "manual_backfill_ready": null,
+            "collector_health_ready": null,
+            "google_gates_ready": null,
+            "google_main_scoring_allowed": null
+          }
+        ],
+        "evidence_outputs": [
+          "docs/runtime_preflight/au-p0b-google-spike-health-latest.json",
+          "docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json"
+        ],
+        "prerequisite_gate_ids": [
+          "verify_smoke_strict",
+          "verify_manual_backfill"
+        ],
+        "prerequisite_phase_id": "manual_backfill",
+        "blocking_reasons": [
+          "health:file_missing",
+          "health:not_ready",
+          "health:status_not_pass",
+          "health_manifest:file_missing",
+          "health_manifest:not_ready",
+          "health_manifest:status_not_pass",
+          "prerequisite_phase_not_ready:manual_backfill"
+        ]
+      },
+      {
+        "id": "full_spike",
+        "title": "Full 240-run browser plus manual Google spike",
+        "planned_runs": 240,
+        "ready": false,
+        "can_start": false,
+        "command_ids": [
+          "run_full_spike",
+          "manifest_full_spike"
+        ],
+        "commands": [
+          {
+            "id": "run_full_spike",
+            "shell": "make au-p0b-google-spike",
+            "purpose": "Run the 240-run browser+manual Google spike matrix."
+          },
+          {
+            "id": "manifest_full_spike",
+            "shell": "make au-p0b-google-spike-manifest",
+            "purpose": "Hash and manifest the full spike payload."
+          }
+        ],
+        "artifact_keys": [
+          "spike",
+          "spike_manifest"
+        ],
+        "artifacts": [
+          {
+            "key": "spike",
+            "path": "docs/runtime_preflight/au-p0b-google-spike-latest.json",
+            "exists": false,
+            "status": "fail",
+            "ready": false,
+            "hash_valid": false,
+            "errors": [
+              "file_missing"
+            ],
+            "ready_for_playwright_smoke": null,
+            "ready_for_full_google_run": null,
+            "smoke_success": null,
+            "manual_backfill_ready": null,
+            "collector_health_ready": null,
+            "google_gates_ready": false,
+            "google_main_scoring_allowed": null
+          },
+          {
+            "key": "spike_manifest",
+            "path": "docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json",
+            "exists": false,
+            "status": "fail",
+            "ready": false,
+            "hash_valid": null,
+            "errors": [
+              "file_missing"
+            ],
+            "ready_for_playwright_smoke": null,
+            "ready_for_full_google_run": null,
+            "smoke_success": null,
+            "manual_backfill_ready": null,
+            "collector_health_ready": null,
+            "google_gates_ready": null,
+            "google_main_scoring_allowed": null
+          }
+        ],
+        "evidence_outputs": [
+          "docs/runtime_preflight/au-p0b-google-spike-latest.json",
+          "docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json"
+        ],
+        "prerequisite_gate_ids": [
+          "make verify-au-p0b-google-status"
+        ],
+        "prerequisite_phase_id": "health_check",
+        "blocking_reasons": [
+          "prerequisite_phase_not_ready:health_check",
+          "spike:file_missing",
+          "spike:not_ready",
+          "spike:status_not_pass",
+          "spike_manifest:file_missing",
+          "spike_manifest:not_ready",
+          "spike_manifest:status_not_pass"
+        ]
+      },
+      {
+        "id": "main_scoring",
+        "title": "Google main scoring denominator promotion",
+        "planned_runs": 0,
+        "ready": false,
+        "can_start": false,
+        "command_ids": [
+          "refresh_status",
+          "refresh_package"
+        ],
+        "commands": [
+          {
+            "id": "refresh_status",
+            "shell": "make au-p0b-google-status && make verify-au-p0b-google-status",
+            "purpose": "Refresh Google gate status."
+          },
+          {
+            "id": "refresh_package",
+            "shell": "make au-p0b-google-package && make verify-au-p0b-google-package",
+            "purpose": "Refresh the Google evidence package."
+          }
+        ],
+        "artifact_keys": [
+          "status_report",
+          "evidence_package"
+        ],
+        "artifacts": [
+          {
+            "key": "status_report",
+            "path": "docs/runtime_preflight/au-p0b-google-spike-status-latest.json",
+            "exists": true,
+            "status": "pass",
+            "ready": false,
+            "hash_valid": true,
+            "errors": [],
+            "ready_for_playwright_smoke": null,
+            "ready_for_full_google_run": null,
+            "smoke_success": null,
+            "manual_backfill_ready": null,
+            "collector_health_ready": null,
+            "google_gates_ready": null,
+            "google_main_scoring_allowed": false
+          },
+          {
+            "key": "evidence_package",
+            "path": "docs/runtime_preflight/au-p0b-google-evidence-package-latest.json",
+            "exists": true,
+            "status": "fail",
+            "ready": false,
+            "hash_valid": true,
+            "google_main_scoring_allowed": false,
+            "errors": [
+              "health:file_missing",
+              "health_manifest:file_missing",
+              "manual_backfill:file_missing",
+              "playwright_env:playwright_smoke_environment_not_ready",
+              "playwright_smoke:smoke_not_successful",
+              "spike:file_missing",
+              "spike_manifest:file_missing"
+            ]
+          }
+        ],
+        "evidence_outputs": [
+          "docs/runtime_preflight/au-p0b-google-spike-status-latest.json",
+          "docs/runtime_preflight/au-p0b-google-evidence-package-latest.json"
+        ],
+        "prerequisite_gate_ids": [
+          "hard_status_gate",
+          "hard_package_gate"
+        ],
+        "prerequisite_phase_id": "full_spike",
+        "blocking_reasons": [
+          "evidence_package:health:file_missing",
+          "evidence_package:health_manifest:file_missing",
+          "evidence_package:manual_backfill:file_missing",
+          "evidence_package:not_ready",
+          "evidence_package:playwright_env:playwright_smoke_environment_not_ready",
+          "evidence_package:playwright_smoke:smoke_not_successful",
+          "evidence_package:spike:file_missing",
+          "evidence_package:spike_manifest:file_missing",
+          "evidence_package:status_not_pass",
+          "google_main_scoring_blocker:health:file_missing",
+          "google_main_scoring_blocker:health_manifest:file_missing",
+          "google_main_scoring_blocker:manual_backfill:file_missing",
+          "google_main_scoring_blocker:playwright_env:playwright_smoke_environment_not_ready",
+          "google_main_scoring_blocker:playwright_smoke:smoke_not_successful",
+          "google_main_scoring_blocker:spike:file_missing",
+          "google_main_scoring_blocker:spike_manifest:file_missing",
+          "prerequisite_phase_not_ready:full_spike",
+          "status_report:not_ready"
+        ]
+      }
+    ],
+    "redaction_policy": {
+      "raw_secret_values_allowed": false,
+      "raw_answer_values_allowed": false,
+      "raw_citation_values_allowed": false,
+      "raw_asset_urls_allowed": false,
+      "phase_entries_reference_command_ids_and_artifact_paths_only": true
+    }
+  },
+  "setup_commands": [
+    {
+      "id": "verify_env_template",
+      "shell": "make verify-au-p0b-google-env-template",
+      "purpose": "Verify the committed Google env template is complete, disabled by default, and free of selectors/secrets."
+    },
+    {
+      "id": "bootstrap_env_file",
+      "shell": "make au-p0b-google-env-bootstrap",
+      "purpose": "Create or confirm the local Google spike env file with 0600 permissions and git hygiene audit."
+    },
+    {
+      "id": "verify_env_bootstrap",
+      "shell": "make verify-au-p0b-google-env-bootstrap",
+      "purpose": "Verify the bootstrap hash, env-file permissions, gitignored/not tracked state and redaction policy."
+    },
+    {
+      "id": "build_runbook",
+      "shell": "make au-p0b-google-runbook",
+      "purpose": "Freeze the Google spike command plan."
+    },
+    {
+      "id": "dry_run_runbook",
+      "shell": "make au-p0b-google-runbook-dry-run && make verify-au-p0b-google-runbook-execution",
+      "purpose": "Confirm the Google spike sequence is auditable before external browser/API calls."
+    },
+    {
+      "id": "build_playwright_env",
+      "shell": "make au-p0b-google-playwright-env",
+      "purpose": "Generate the redacted Google Playwright environment report."
+    },
+    {
+      "id": "build_execution_checklist",
+      "shell": "make au-p0b-google-execution-checklist",
+      "purpose": "Refresh this execution checklist after env/report/status changes."
+    }
+  ],
+  "execution_commands": [
+    {
+      "id": "verify_playwright_env",
+      "shell": "make verify-au-p0b-google-playwright-env",
+      "purpose": "Verify env report hash and redaction."
+    },
+    {
+      "id": "run_smoke",
+      "shell": "make au-p0b-google-playwright-smoke",
+      "purpose": "Run one real Google browser smoke capture."
+    },
+    {
+      "id": "verify_smoke_strict",
+      "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_smoke.py ${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_SMOKE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json} --require-success",
+      "purpose": "Fail until the smoke capture has screenshot/html hashes and browser capture metadata."
+    },
+    {
+      "id": "build_manual_template",
+      "shell": "make au-p0b-google-manual-template",
+      "purpose": "Generate the 120-row manual backfill template."
+    },
+    {
+      "id": "verify_manual_backfill",
+      "shell": "make verify-au-p0b-google-manual-backfill",
+      "purpose": "Strict-verify the filled manual backfill JSONL before health/full spike."
+    },
+    {
+      "id": "run_health",
+      "shell": "make au-p0b-google-spike-health",
+      "purpose": "Run Google spike health-only check."
+    },
+    {
+      "id": "manifest_health",
+      "shell": "make au-p0b-google-spike-health-manifest",
+      "purpose": "Hash and manifest the health check payload."
+    },
+    {
+      "id": "run_full_spike",
+      "shell": "make au-p0b-google-spike",
+      "purpose": "Run the 240-run browser+manual Google spike matrix."
+    },
+    {
+      "id": "manifest_full_spike",
+      "shell": "make au-p0b-google-spike-manifest",
+      "purpose": "Hash and manifest the full spike payload."
+    },
+    {
+      "id": "refresh_status",
+      "shell": "make au-p0b-google-status && make verify-au-p0b-google-status",
+      "purpose": "Refresh Google gate status."
+    },
+    {
+      "id": "refresh_package",
+      "shell": "make au-p0b-google-package && make verify-au-p0b-google-package",
+      "purpose": "Refresh the Google evidence package."
+    }
+  ],
+  "verification_commands": [
+    {
+      "id": "hard_playwright_env_gate",
+      "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py ${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} --require-ready-smoke",
+      "purpose": "Fail until Google Playwright is enabled, selectors and Playwright dependency are ready."
+    },
+    {
+      "id": "hard_status_gate",
+      "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_spike_status_report.py ${GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-spike-status-latest.json} --require-google-main-scoring-allowed",
+      "purpose": "Fail until Google can enter the main scoring denominator."
+    },
+    {
+      "id": "hard_package_gate",
+      "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_evidence_package.py ${GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-evidence-package-latest.json} --require-google-main-scoring-allowed",
+      "purpose": "Fail until the package proves Google main scoring is allowed."
+    }
+  ],
+  "work_items": [
+    {
+      "id": "google_playwright_environment",
+      "stage": "P0b",
+      "commands": [
+        "make verify-au-p0b-google-env-template",
+        "make au-p0b-google-env-bootstrap",
+        "make verify-au-p0b-google-env-bootstrap",
+        "make au-p0b-google-playwright-env"
+      ],
+      "hard_gate": "hard_playwright_env_gate"
+    },
+    {
+      "id": "google_playwright_smoke",
+      "stage": "P0b",
+      "commands": [
+        "make au-p0b-google-playwright-smoke"
+      ],
+      "hard_gate": "verify_smoke_strict"
+    },
+    {
+      "id": "google_manual_backfill",
+      "stage": "P0b",
+      "commands": [
+        "make au-p0b-google-manual-template",
+        "make verify-au-p0b-google-manual-backfill"
+      ],
+      "hard_gate": "verify_manual_backfill"
+    },
+    {
+      "id": "google_spike_health",
+      "stage": "P0b",
+      "commands": [
+        "make au-p0b-google-spike-health",
+        "make au-p0b-google-spike-health-manifest"
+      ],
+      "hard_gate": "make verify-au-p0b-google-status"
+    },
+    {
+      "id": "google_full_spike",
+      "stage": "P0b",
+      "commands": [
+        "make au-p0b-google-spike",
+        "make au-p0b-google-spike-manifest"
+      ],
+      "hard_gate": "hard_package_gate"
+    }
+  ],
+  "evidence_outputs": [
+    "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
+    "docs/runtime_preflight/au-p0b-google-spike-runbook-execution-latest.json",
+    "docs/runtime_preflight/au-p0b-google-env-bootstrap-latest.json",
+    "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+    "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json",
+    "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl",
+    "docs/runtime_preflight/au-p0b-google-manual-backfill-template-manifest.json",
+    "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
+    "docs/runtime_preflight/au-p0b-google-spike-health-latest.json",
+    "docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json",
+    "docs/runtime_preflight/au-p0b-google-spike-latest.json",
+    "docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json",
+    "docs/runtime_preflight/au-p0b-google-spike-status-latest.json",
+    "docs/runtime_preflight/au-p0b-google-evidence-package-latest.json"
+  ],
+  "current_boundary": [
+    "This checklist proves the P0b Google execution path is auditable, ordered and redacted.",
+    "It does not prove real Google selector/session readiness, smoke success, manual 120-row completion or 240-run completion.",
+    "The manual backfill handoff records only template paths, counts, hashes and missing reasons; raw answers, citations and asset URLs stay outside this checklist.",
+    "Google can enter the main scoring denominator only when the status/package hard gates pass."
+  ],
+  "google_execution_checklist_hash": "ef6357fc9dca88ff40fbaf2c5dcef5aaf07481d472ade1a572254eab05b953b9"
+}

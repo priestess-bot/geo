@@ -1,5 +1,8 @@
+import { ProjectLifecycleForm } from "./[project_id]/ProjectActions";
+import { actorHeaders, apiBase } from "../runtime";
+
 type RuntimeProject = {
-  project: { id: string; name?: string; target_brand?: string; status?: string; market_code?: string };
+  project: { id: string; name?: string; target_brand?: string; status?: string; market_code?: string; category?: string };
   tenant?: { name?: string };
   competitors?: Array<{ canonical_name?: string }>;
   prompt_count?: number;
@@ -10,15 +13,22 @@ type ProjectPage = {
   records: RuntimeProject[];
 };
 
-function apiBase(): string {
-  return process.env.API_INTERNAL_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://api:8000";
-}
+const hydrationControlProps = { suppressHydrationWarning: true };
 
-async function loadProjects(): Promise<ProjectPage> {
+async function loadProjects(status: string): Promise<ProjectPage> {
+  const query = new URLSearchParams({ limit: "50" });
+  if (status === "all") {
+    query.set("include_archived", "true");
+  } else if (status === "archived") {
+    query.set("status", "archived");
+    query.set("include_archived", "true");
+  } else if (status) {
+    query.set("status", status);
+  }
   try {
-    const response = await fetch(`${apiBase()}/v1/projects/runtime?limit=50`, {
+    const response = await fetch(`${apiBase()}/v1/projects/runtime?${query.toString()}`, {
       cache: "no-store",
-      headers: { "X-GENO-Actor-Id": process.env.GENO_ADMIN_ACTOR_ID || "runtime-console" }
+      headers: actorHeaders()
     });
     if (!response.ok) {
       return { total_count: 0, records: [] };
@@ -29,8 +39,23 @@ async function loadProjects(): Promise<ProjectPage> {
   }
 }
 
-export default async function ProjectsPage() {
-  const page = await loadProjects();
+export default async function ProjectsPage({ searchParams }: { searchParams?: Promise<{ status?: string; q?: string }> }) {
+  const params = await searchParams;
+  const status = params?.status || "";
+  const query = (params?.q || "").trim().toLowerCase();
+  const page = await loadProjects(status);
+  const records = query
+    ? page.records.filter((record) => {
+        const haystack = [
+          record.project.name,
+          record.project.target_brand,
+          record.project.category,
+          record.project.id,
+          record.tenant?.name
+        ].filter(Boolean).join(" ").toLowerCase();
+        return haystack.includes(query);
+      })
+    : page.records;
   return (
     <main className="shell">
       <section className="topbar">
@@ -45,18 +70,52 @@ export default async function ProjectsPage() {
         </nav>
       </section>
 
-      <section className="grid">
-        {page.records.map((record) => (
-          <a className="projectCard" href={`/projects/${record.project.id}`} key={record.project.id}>
+      <form className="toolbar" action="/projects">
+        <label>
+          <span>搜索项目</span>
+          <input {...hydrationControlProps} name="q" defaultValue={params?.q || ""} placeholder="项目名、品牌、租户、ID" />
+        </label>
+        <label>
+          <span>状态筛选</span>
+          <select {...hydrationControlProps} name="status" defaultValue={status}>
+            <option value="">默认隐藏 archived</option>
+            <option value="all">全部</option>
+            <option value="configured">configured</option>
+            <option value="active">active</option>
+            <option value="paused">paused</option>
+            <option value="archived">archived</option>
+          </select>
+        </label>
+        <button type="submit">筛选</button>
+      </form>
+
+      <section className="tablePanel">
+        <div className="tableHeader">
+          <span>项目</span>
+          <span>租户</span>
+          <span>状态</span>
+          <span>规模</span>
+          <span>操作</span>
+        </div>
+        {records.map((record) => (
+          <div className="tableRow" key={record.project.id}>
+            <div>
+              <strong>{record.project.target_brand || record.project.name}</strong>
+              <p className="muted">{record.project.name || "未命名项目"} · {record.project.category || "未填写品类"}</p>
+              <p className="muted">{record.project.id}</p>
+            </div>
+            <span>{record.tenant?.name || "未绑定租户"}</span>
             <span className="statusPill">{record.project.status || "unknown"}</span>
-            <h2>{record.project.target_brand || record.project.name}</h2>
-            <p className="muted">{record.tenant?.name || "未绑定租户"} · {record.project.market_code || "AU"}</p>
-            <p className="muted">竞品 {record.competitors?.length ?? 0} 个，提示问题 {record.prompt_count ?? 0} 条。</p>
-          </a>
+            <span className="muted">竞品 {record.competitors?.length ?? 0} 个 · Prompt {record.prompt_count ?? 0} 条</span>
+            <div className="actionRow">
+              <a className="button secondary" href={`/projects/${record.project.id}`}>打开详情</a>
+              <ProjectLifecycleForm projectId={record.project.id} status={record.project.status} />
+            </div>
+          </div>
         ))}
       </section>
 
-      {page.records.length === 0 ? (
+      {records.length === 0 ? (
         <section className="panel" style={{ marginTop: 18 }}>
           <h2>暂无项目或 API 未连接</h2>
           <p className="muted" style={{ marginTop: 8 }}>请先使用“新建项目”向导创建第一个澳大利亚 GEO 项目。</p>

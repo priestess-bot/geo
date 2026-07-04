@@ -1,0 +1,30 @@
+{
+  "template_version": "au_p0b_manual_backfill_template_v1",
+  "generated_at": "2026-06-12T01:19:44Z",
+  "project_id": "6624961f-36ae-539b-9d48-51619b42e37e",
+  "market_code": "AU",
+  "surface": "google_ai_mode",
+  "access_method": "manual",
+  "prompt_count": 30,
+  "geo_cities": [
+    "Australia",
+    "Sydney"
+  ],
+  "sample_size": 2,
+  "expected_record_count": 120,
+  "record_count": 120,
+  "jsonl_sha256": "84f8a987518471176d00c23b90a4f0d5ffa843b7c800364366f4473b7b439ebe",
+  "required_fields": [
+    "prompt",
+    "city",
+    "language",
+    "device",
+    "answer_text",
+    "citation_urls",
+    "screenshot_url or html_snapshot_url"
+  ],
+  "consumer": "ManualBackfillCollector via MANUAL_BACKFILL_PATH",
+  "manifest_hash": "a7da99ea224cd57a5659746c38bbf8c2918a4ebf5e78ddcface1a61c420ec466",
+  "output_path": "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl",
+  "manifest_path": "docs/runtime_preflight/au-p0b-google-manual-backfill-template-manifest.json"
+}

@@ -1,0 +1,326 @@
+{
+  "runbook_version": "au_p0b_google_spike_runbook_v1",
+  "generated_at": "2026-06-13T18:53:47Z",
+  "scope": {
+    "market": "AU",
+    "phase": "P0b Google AIO / AI Mode Spike",
+    "prompt_count": 30,
+    "surfaces": [
+      "google_aio",
+      "google_ai_mode"
+    ],
+    "geo_cities": [
+      "Australia",
+      "Sydney"
+    ],
+    "sample_size": 2,
+    "collection_paths": [
+      "browser",
+      "manual"
+    ],
+    "planned_runs": 240,
+    "pass_gate": {
+      "google_aio_success_rate_threshold": 0.8,
+      "required_collection_path_count": 2,
+      "required_assets": [
+        "screenshot",
+        "html_snapshot"
+      ]
+    }
+  },
+  "required_env": [
+    "GOOGLE_PLAYWRIGHT_ENABLED",
+    "MANUAL_BACKFILL_PATH",
+    "DATABASE_URL"
+  ],
+  "recommended_env": [
+    "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR",
+    "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR",
+    "GOOGLE_PLAYWRIGHT_SUBMIT_SELECTOR",
+    "GOOGLE_PLAYWRIGHT_CITATION_SELECTOR",
+    "GOOGLE_PLAYWRIGHT_STORAGE_STATE",
+    "GOOGLE_AIO_PLAYWRIGHT_START_URL",
+    "GOOGLE_AI_MODE_PLAYWRIGHT_START_URL",
+    "GOOGLE_PLAYWRIGHT_BROWSER_NAME",
+    "GOOGLE_PLAYWRIGHT_TIMEOUT_SECONDS",
+    "GOOGLE_PLAYWRIGHT_VENDOR_COST",
+    "SERP_API_KEY",
+    "SERP_API_ENDPOINT",
+    "SERP_API_ENGINE",
+    "SERP_API_GL",
+    "SERP_API_HL",
+    "SERP_API_LOCATION",
+    "SERP_API_VENDOR_COST",
+    "OBJECT_STORE_ENDPOINT",
+    "OBJECT_STORE_BUCKET",
+    "OBJECT_STORE_ACCESS_KEY",
+    "OBJECT_STORE_SECRET_KEY",
+    "GENO_BROWSER_ARTIFACT_DIR"
+  ],
+  "artifact_paths": {
+    "playwright_env_json": "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+    "playwright_smoke_json": "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json",
+    "manual_backfill_verification_json": "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
+    "health_json": "docs/runtime_preflight/au-p0b-google-spike-health-latest.json",
+    "health_manifest": "docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json",
+    "spike_json": "docs/runtime_preflight/au-p0b-google-spike-latest.json",
+    "spike_manifest": "docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json"
+  },
+  "gates": {
+    "health_gate": "collector_health_gate must pass before any real Google spike collection.",
+    "spike_gate": "worker must pass both google_spike_gate and google_spike_readiness_gate.",
+    "limited_coverage_gate": "If either Google gate fails, Google remains limited coverage and must not enter the main scoring denominator."
+  },
+  "steps": [
+    {
+      "id": "prepare_environment",
+      "title": "Prepare Google browser capture, third-party SERP API, manual backfill, database, and optional object storage",
+      "type": "manual",
+      "required_env": [
+        "GOOGLE_PLAYWRIGHT_ENABLED",
+        "MANUAL_BACKFILL_PATH",
+        "DATABASE_URL"
+      ],
+      "recommended_env": [
+        "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR",
+        "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR",
+        "GOOGLE_PLAYWRIGHT_SUBMIT_SELECTOR",
+        "GOOGLE_PLAYWRIGHT_CITATION_SELECTOR",
+        "GOOGLE_PLAYWRIGHT_STORAGE_STATE",
+        "GOOGLE_AIO_PLAYWRIGHT_START_URL",
+        "GOOGLE_AI_MODE_PLAYWRIGHT_START_URL",
+        "GOOGLE_PLAYWRIGHT_BROWSER_NAME",
+        "GOOGLE_PLAYWRIGHT_TIMEOUT_SECONDS",
+        "GOOGLE_PLAYWRIGHT_VENDOR_COST",
+        "SERP_API_KEY",
+        "SERP_API_ENDPOINT",
+        "SERP_API_ENGINE",
+        "SERP_API_GL",
+        "SERP_API_HL",
+        "SERP_API_LOCATION",
+        "SERP_API_VENDOR_COST",
+        "OBJECT_STORE_ENDPOINT",
+        "OBJECT_STORE_BUCKET",
+        "OBJECT_STORE_ACCESS_KEY",
+        "OBJECT_STORE_SECRET_KEY",
+        "GENO_BROWSER_ARTIFACT_DIR"
+      ],
+      "stop_on_failure": true,
+      "notes": [
+        "The first real Google spike path is selector-driven browser capture for google_aio.",
+        "Browser health fails fast with selector_missing, session_state_missing, or playwright_missing before collection.",
+        "The second path is manual backfill for google_ai_mode until AI Mode browser capture is implemented.",
+        "Generate, fill, and verify MANUAL_BACKFILL_PATH with au-p0b-google-manual-template and verify-au-p0b-google-manual-backfill before collection.",
+        "Run au-p0b-google-playwright-env and verify-au-p0b-google-playwright-env before the smoke capture to confirm selectors, Playwright package, and optional storage state are ready without leaking raw values.",
+        "Run au-p0b-google-playwright-smoke and verify-au-p0b-google-playwright-smoke before the 240-run matrix; use --require-success on the verifier before promoting the browser path.",
+        "Run verify-au-p0b-google-manual-backfill after filling MANUAL_BACKFILL_PATH so the strict 120-row manual verification artifact can be read by the status report.",
+        "Third-party SERP JSON capture is implemented as an alternate google_aio backend, but not part of the default 240-run matrix.",
+        "Do not persist secrets in generated JSON artifacts."
+      ]
+    },
+    {
+      "id": "google_playwright_env",
+      "title": "Build redacted Google Playwright environment readiness report",
+      "type": "command",
+      "command": [
+        "python3",
+        "scripts/build_au_p0b_google_playwright_env_report.py",
+        "--runbook-path",
+        "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
+        "--env-file",
+        ".env.au-p0b-google",
+        "--output-path",
+        "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json"
+      ],
+      "env": {
+        "PYTHONPATH": "packages/geno_core:apps/api"
+      },
+      "shell_command": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_au_p0b_google_playwright_env_report.py --runbook-path docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json --env-file .env.au-p0b-google --output-path docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+      "output_paths": [
+        "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json"
+      ],
+      "stop_on_failure": true,
+      "notes": [
+        "The environment report records presence/source/length/hash prefixes only; it must not persist raw selectors, secrets, or database URLs.",
+        "Default verification proves the readiness report is auditable; strict verification is used before smoke."
+      ]
+    },
+    {
+      "id": "google_playwright_env_verify",
+      "title": "Verify Google Playwright environment report and require smoke readiness",
+      "type": "command",
+      "command": [
+        "python3",
+        "scripts/verify_au_p0b_google_playwright_env_report.py",
+        "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+        "--require-ready-smoke"
+      ],
+      "env": {
+        "PYTHONPATH": "packages/geno_core:apps/api"
+      },
+      "shell_command": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py docs/runtime_preflight/au-p0b-google-playwright-env-latest.json --require-ready-smoke",
+      "output_paths": [],
+      "stop_on_failure": true,
+      "notes": []
+    },
+    {
+      "id": "google_playwright_smoke",
+      "title": "Run one Google Playwright browser smoke capture before the full matrix",
+      "type": "command",
+      "command": [
+        "python3",
+        "scripts/run_au_p0b_google_playwright_smoke.py",
+        "--output-path",
+        "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json"
+      ],
+      "env": {
+        "PYTHONPATH": "packages/geno_core:apps/api"
+      },
+      "shell_command": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/run_au_p0b_google_playwright_smoke.py --output-path docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json",
+      "output_paths": [
+        "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json"
+      ],
+      "stop_on_failure": true,
+      "notes": [
+        "The smoke runner writes an auditable JSON payload even when collector health is not ready.",
+        "Use scripts/verify_au_p0b_google_playwright_smoke.py --require-success for the final browser-path promotion gate."
+      ],
+      "planned_runs": 1
+    },
+    {
+      "id": "google_playwright_smoke_verify",
+      "title": "Verify Google Playwright smoke payload integrity and browser evidence structure",
+      "type": "command",
+      "command": [
+        "python3",
+        "scripts/verify_au_p0b_google_playwright_smoke.py",
+        "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json",
+        "--require-success"
+      ],
+      "env": {
+        "PYTHONPATH": "packages/geno_core:apps/api"
+      },
+      "shell_command": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_smoke.py docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json --require-success",
+      "output_paths": [],
+      "stop_on_failure": true,
+      "notes": [],
+      "planned_runs": 1
+    },
+    {
+      "id": "google_manual_backfill_verify",
+      "title": "Verify strict Google AI Mode manual backfill coverage before the full matrix",
+      "type": "command",
+      "command": [
+        "python3",
+        "scripts/verify_au_p0b_manual_backfill.py",
+        "--output-path",
+        "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json"
+      ],
+      "env": {
+        "PYTHONPATH": "packages/geno_core:apps/api"
+      },
+      "shell_command": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_manual_backfill.py --output-path docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
+      "output_paths": [
+        "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json"
+      ],
+      "stop_on_failure": true,
+      "notes": [
+        "The verifier reads MANUAL_BACKFILL_PATH when it is set, otherwise the generated template path.",
+        "Strict mode requires 120 rows, two samples for each prompt/city, answer text, citation URLs, and screenshot or HTML evidence.",
+        "The output JSON includes file_sha256 and verification_hash for status-report replay."
+      ],
+      "planned_runs": 120
+    },
+    {
+      "id": "google_spike_health_check",
+      "title": "Check Google spike collector readiness without external collection",
+      "type": "command",
+      "command": [
+        "make",
+        "au-p0b-google-spike-health"
+      ],
+      "env": {
+        "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-spike-health-latest.json"
+      },
+      "shell_command": "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH=docs/runtime_preflight/au-p0b-google-spike-health-latest.json make au-p0b-google-spike-health",
+      "output_paths": [
+        "docs/runtime_preflight/au-p0b-google-spike-health-latest.json"
+      ],
+      "stop_on_failure": true,
+      "notes": [],
+      "planned_runs": 240
+    },
+    {
+      "id": "google_spike_health_manifest",
+      "title": "Build audit manifest for the Google spike health check",
+      "type": "command",
+      "command": [
+        "make",
+        "au-p0b-google-spike-health-manifest"
+      ],
+      "env": {
+        "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-spike-health-latest.json",
+        "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_MANIFEST_PATH": "docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json"
+      },
+      "shell_command": "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH=docs/runtime_preflight/au-p0b-google-spike-health-latest.json GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_MANIFEST_PATH=docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json make au-p0b-google-spike-health-manifest",
+      "output_paths": [
+        "docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json"
+      ],
+      "stop_on_failure": true,
+      "notes": []
+    },
+    {
+      "id": "google_spike_collect",
+      "title": "Run the full Google spike matrix and require both Google gates",
+      "type": "command",
+      "command": [
+        "make",
+        "au-p0b-google-spike"
+      ],
+      "env": {
+        "GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-spike-latest.json"
+      },
+      "shell_command": "GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH=docs/runtime_preflight/au-p0b-google-spike-latest.json make au-p0b-google-spike",
+      "output_paths": [
+        "docs/runtime_preflight/au-p0b-google-spike-latest.json"
+      ],
+      "stop_on_failure": true,
+      "notes": [
+        "The worker exits non-zero if collection failures occur or either Google spike gate fails.",
+        "Default matrix is 30 prompts x 2 geo cities x k=2 x 2 Google surfaces/paths. Third-party SERP can be run as a separate comparison slice."
+      ],
+      "planned_runs": 240
+    },
+    {
+      "id": "google_spike_manifest",
+      "title": "Build audit manifest for the Google spike payload",
+      "type": "command",
+      "command": [
+        "make",
+        "au-p0b-google-spike-manifest"
+      ],
+      "env": {
+        "GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-spike-latest.json",
+        "GENO_AU_P0B_GOOGLE_SPIKE_MANIFEST_PATH": "docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json"
+      },
+      "shell_command": "GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH=docs/runtime_preflight/au-p0b-google-spike-latest.json GENO_AU_P0B_GOOGLE_SPIKE_MANIFEST_PATH=docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json make au-p0b-google-spike-manifest",
+      "output_paths": [
+        "docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json"
+      ],
+      "stop_on_failure": true,
+      "notes": []
+    },
+    {
+      "id": "google_spike_decision_handoff",
+      "title": "Record pass/fail conclusion in report method disclosure",
+      "type": "manual",
+      "stop_on_failure": true,
+      "output_paths": [],
+      "notes": [
+        "If google_spike_gate and google_spike_readiness_gate both pass, Google can enter the main scoring denominator.",
+        "If either gate fails, keep Google in limited coverage appendix and record failure reasons."
+      ]
+    }
+  ],
+  "runbook_payload_hash": "a10c05e3628fce0b984f7a6c1612ca4c87c32ba29f4adaed2765945f1da4fbfc"
+}

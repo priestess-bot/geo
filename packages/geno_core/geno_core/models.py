@@ -1291,6 +1291,7 @@ class RuntimeProjectLifecycleEventExport:
 @dataclass(frozen=True)
 class RuntimeProjectUpdateInput:
     project_id: str
+    tenant_name: str | None = None
     name: str | None = None
     target_brand: str | None = None
     category: str | None = None
@@ -1303,6 +1304,37 @@ class RuntimeProjectUpdateInput:
 class RuntimeProjectActionInput:
     project_id: str
     action: str
+    updated_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeProjectEntity:
+    entity: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeProjectBrandEntityInput:
+    project_id: str
+    canonical_name: str
+    official_domains: tuple[str, ...] = ()
+    parent_company: str | None = None
+    product_lines: tuple[str, ...] = ()
+    status: str = "active"
+    updated_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeProjectCompetitorEntityInput:
+    project_id: str
+    competitor_id: str | None = None
+    canonical_name: str = ""
+    official_domains: tuple[str, ...] = ()
+    parent_company: str | None = None
+    product_lines: tuple[str, ...] = ()
+    status: str = "active"
     updated_by: str = "runtime-console"
     reason: str | None = None
 
@@ -1581,6 +1613,24 @@ class RuntimePromptPage:
     limit: int
     offset: int
     records: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimePromptUpdateInput:
+    project_id: str
+    prompt_id: str
+    text: str
+    intent_type: str
+    city: str
+    language: str
+    target_brand: str
+    competitors: tuple[str, ...]
+    priority: int
+    intent_weight: float
+    prompt_version: str
+    status: str
+    updated_by: str = "runtime-console"
+    reason: str | None = None
 
 
 @dataclass(frozen=True)

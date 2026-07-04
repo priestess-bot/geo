@@ -1,0 +1,69 @@
+{
+  "manifest_version": "provider_preflight_evidence_manifest_v1",
+  "generated_at": "2026-06-12T00:24:46Z",
+  "preflight_payload": {
+    "path": "docs/runtime_preflight/au-p0b-google-serp-fixture-latest.json",
+    "size_bytes": 11357,
+    "file_sha256": "b52331c0d6912287f92e0e95052e5934f9e57121d34d597d7ce7c932ebc03708",
+    "payload_hash": "faf927a744e71c8839a0a716bc36f0fea47acf88543ffb0745270a276dac972f"
+  },
+  "verifier": {
+    "status": "pass",
+    "errors": [],
+    "path": "docs/runtime_preflight/au-p0b-google-serp-fixture-latest.json",
+    "preflight_payload_hash": "faf927a744e71c8839a0a716bc36f0fea47acf88543ffb0745270a276dac972f",
+    "computed_payload_hash": "faf927a744e71c8839a0a716bc36f0fea47acf88543ffb0745270a276dac972f",
+    "hash_valid": true,
+    "output_path_matches_file": true,
+    "summary_version": "provider_preflight_v1",
+    "checklist_version": "provider_preflight_audit_checklist_v1",
+    "phase": "collection_completed",
+    "exit_code": 0,
+    "ready_for_design_partner": false,
+    "recommended_next_action": "inspect_preflight_output",
+    "blocking_reasons": []
+  },
+  "run_summary": {
+    "mode": "google-serp-fixture",
+    "phase": "collection_completed",
+    "exit_code": 0,
+    "ready_for_design_partner": false,
+    "recommended_next_action": "inspect_preflight_output",
+    "planned_runs": 120,
+    "record_count": 120,
+    "success_count": 120,
+    "failure_count": 0,
+    "cities": [
+      "Australia",
+      "Sydney"
+    ],
+    "sample_size": 2,
+    "prompt_limit": 30
+  },
+  "audit_checklist": {
+    "overall_status": "fail",
+    "blocking_reasons": [],
+    "worker_args": [
+      "--mode",
+      "google-serp-fixture",
+      "--preflight-output-path",
+      "docs/runtime_preflight/au-p0b-google-serp-fixture-latest.json"
+    ],
+    "evidence_refs": {
+      "collector_health": "collector_health",
+      "collector_health_gate": "collector_health_gate",
+      "p0a_readiness_gate": "p0a_readiness_gate",
+      "preflight_summary": "preflight_summary",
+      "answer_run_ids": "answer_run_ids",
+      "failure_events": "",
+      "preflight_output_path": "docs/runtime_preflight/au-p0b-google-serp-fixture-latest.json"
+    },
+    "run_totals": {
+      "planned_runs": 120,
+      "record_count": 120,
+      "success_count": 120,
+      "failure_count": 0
+    }
+  },
+  "manifest_payload_hash": "e3725863f26c6bfeb9842e96397c20c86b98fc1907c18bda927d1ebaf87c5832"
+}

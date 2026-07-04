@@ -14,7 +14,7 @@ import time
 import uuid
 from collections.abc import Mapping
 from contextvars import ContextVar
-from dataclasses import asdict, replace
+from dataclasses import asdict, is_dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -76,6 +76,7 @@ from geno_core.knowledge import (
 )
 from geno_core.market import build_au_market_profile
 from geno_core.models import (
+    CollectionFailureRecord,
     EntityAliasCandidateAssignmentActionInput,
     EntityAliasCandidateAssignmentBatchActionInput,
     EntityAliasCandidateAssignmentInput,
@@ -91,6 +92,8 @@ from geno_core.models import (
     RuntimeProjectBrandAssetInput,
     RuntimeProjectBrandAssetScanInput,
     RuntimeProjectBrandKitInput,
+    RuntimeProjectBrandEntityInput,
+    RuntimeProjectCompetitorEntityInput,
     RuntimeProjectBrandAssetActivationInput,
     RuntimeProjectBrandLogoUpload,
     RuntimeProjectMemberDeleteInput,
@@ -100,9 +103,11 @@ from geno_core.models import (
     RuntimeProjectMemberInvitationEmailInput,
     RuntimeProjectMemberInvitationInput,
     RuntimeProjectActionInput,
+    RawEvidenceRecord,
     RuntimeProjectLaunchConfigInput,
     RuntimeProjectUpdateInput,
     RuntimePromptImportInput,
+    RuntimePromptUpdateInput,
     RuntimeNotificationEmailFeedbackInput,
     RuntimeNotificationEmailFeedbackProjectSuppressionInput,
     RuntimeNotificationEmailSuppressionInput,
@@ -147,6 +152,11 @@ from geno_core.webhook_signing import (
     RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER,
     runtime_notification_webhook_payload_hash,
     verify_runtime_notification_webhook_signature,
+)
+from workers.collector_worker.run_collection_slice import (
+    _collectors as worker_collectors,
+    _load_runtime_project_bootstrap,
+    _persist_records as persist_worker_collection_records,
 )
 from scripts.build_au_launch_status import (
     DEFAULT_OUTPUT_PATH as DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH,
@@ -1417,6 +1427,23 @@ class RuntimePromptImportRequest(BaseModel):
     max_rows: int = Field(default=100, ge=1, le=200)
 
 
+class RuntimePromptUpdateRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    prompt_id: str = Field(min_length=1)
+    text: str = Field(min_length=1, max_length=2000)
+    intent_type: str = Field(min_length=1, max_length=120)
+    city: str = Field(min_length=1, max_length=120)
+    language: str = Field(default="en-AU", min_length=1, max_length=80)
+    target_brand: str = Field(min_length=1, max_length=240)
+    competitors: list[str] = Field(default_factory=list, max_length=10)
+    priority: int = Field(default=1, ge=0, le=100000)
+    intent_weight: float = Field(default=1.0, gt=0, le=100)
+    prompt_version: str = Field(default="au_dtc_ecommerce_v1", min_length=1, max_length=120)
+    status: str = Field(default="active", min_length=1, max_length=80)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class ManualBackfillRequest(BaseModel):
     prompt_question_id: str = Field(min_length=1)
     platform: str = Field(default="google", min_length=1, max_length=80)
@@ -1806,6 +1833,7 @@ class RuntimeProjectCreateRequest(BaseModel):
 
 class RuntimeProjectUpdateRequest(BaseModel):
     project_id: str = Field(min_length=1)
+    tenant_name: str | None = Field(default=None, min_length=1, max_length=160)
     name: str | None = Field(default=None, min_length=1, max_length=160)
     target_brand: str | None = Field(default=None, min_length=1, max_length=160)
     category: str | None = Field(default=None, min_length=1, max_length=200)
@@ -1825,6 +1853,29 @@ class ProjectMemberRequest(BaseModel):
     project_id: str = Field(min_length=1)
     user_id: str = Field(min_length=1, max_length=120)
     role: str = Field(default="viewer", min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ProjectBrandEntityRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    canonical_name: str = Field(min_length=1, max_length=160)
+    official_domains: list[str] = Field(default_factory=list, max_length=5)
+    parent_company: str | None = Field(default=None, max_length=160)
+    product_lines: list[str] = Field(default_factory=list, max_length=10)
+    status: str = Field(default="active", min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ProjectCompetitorEntityRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    competitor_id: str | None = Field(default=None, max_length=80)
+    canonical_name: str = Field(min_length=1, max_length=160)
+    official_domains: list[str] = Field(default_factory=list, max_length=5)
+    parent_company: str | None = Field(default=None, max_length=160)
+    product_lines: list[str] = Field(default_factory=list, max_length=10)
+    status: str = Field(default="active", min_length=1, max_length=40)
     updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     reason: str | None = Field(default=None, max_length=500)
 
@@ -1922,6 +1973,17 @@ class RuntimeReportExportJobStatusRequest(BaseModel):
     report_export_id: str | None = Field(default=None, min_length=1)
     artifact_url: str | None = Field(default=None, max_length=1000)
     error_message: str | None = Field(default=None, max_length=2000)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeFixtureCollectionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    prompt_limit: int = Field(default=1, ge=1, le=10)
+    cities: list[str] = Field(default_factory=lambda: ["Sydney"], min_length=1, max_length=5)
+    sample_size: int = Field(default=3, ge=1, le=3)
+    persist_analysis: bool = True
+    score_formula_version: str = Field(default="au_visibility_v1", min_length=1, max_length=120)
+    requested_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     reason: str | None = Field(default=None, max_length=500)
 
 
@@ -3527,6 +3589,7 @@ def update_runtime_project(
             project = repository.update_runtime_project(
                 RuntimeProjectUpdateInput(
                     project_id=payload.project_id.strip(),
+                    tenant_name=payload.tenant_name.strip() if payload.tenant_name is not None else None,
                     name=payload.name.strip() if payload.name is not None else None,
                     target_brand=payload.target_brand.strip() if payload.target_brand is not None else None,
                     category=payload.category.strip() if payload.category is not None else None,
@@ -3579,6 +3642,83 @@ def action_runtime_project(
                 status_code = 400
             raise HTTPException(status_code=status_code, detail=str(exc)) from exc
         return asdict(project)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-entities/runtime/brand")
+def save_runtime_project_brand_entity(
+    payload: ProjectBrandEntityRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            entity = repository.save_runtime_project_brand_entity(
+                RuntimeProjectBrandEntityInput(
+                    project_id=payload.project_id.strip(),
+                    canonical_name=payload.canonical_name.strip(),
+                    official_domains=tuple(item.strip() for item in payload.official_domains if item.strip()),
+                    parent_company=payload.parent_company.strip() if payload.parent_company else None,
+                    product_lines=tuple(item.strip() for item in payload.product_lines if item.strip()),
+                    status=payload.status.strip().lower(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(entity)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-entities/runtime/competitors")
+def save_runtime_project_competitor_entity(
+    payload: ProjectCompetitorEntityRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            entity = repository.save_runtime_project_competitor_entity(
+                RuntimeProjectCompetitorEntityInput(
+                    project_id=payload.project_id.strip(),
+                    competitor_id=payload.competitor_id.strip() if payload.competitor_id else None,
+                    canonical_name=payload.canonical_name.strip(),
+                    official_domains=tuple(item.strip() for item in payload.official_domains if item.strip()),
+                    parent_company=payload.parent_company.strip() if payload.parent_company else None,
+                    product_lines=tuple(item.strip() for item in payload.product_lines if item.strip()),
+                    status=payload.status.strip().lower(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) in {"project not found", "competitor not found"} else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(entity)
     finally:
         close_repository_connection(repository)
 
@@ -5043,6 +5183,49 @@ def runtime_prompt_imports(
         close_repository_connection(repository)
 
 
+@app.patch("/v1/prompts/runtime")
+def update_runtime_prompt(
+    payload: RuntimePromptUpdateRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        prompt = repository.update_runtime_prompt(
+            RuntimePromptUpdateInput(
+                project_id=payload.project_id.strip(),
+                prompt_id=payload.prompt_id.strip(),
+                text=payload.text.strip(),
+                intent_type=payload.intent_type.strip(),
+                city=payload.city.strip(),
+                language=payload.language.strip(),
+                target_brand=payload.target_brand.strip(),
+                competitors=tuple(item.strip() for item in payload.competitors if item.strip()),
+                priority=payload.priority,
+                intent_weight=payload.intent_weight,
+                prompt_version=payload.prompt_version.strip(),
+                status=payload.status.strip(),
+                updated_by=payload.updated_by.strip(),
+                reason=payload.reason,
+            )
+        )
+        return {"prompt": prompt}
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "prompt not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
 @app.post("/v1/prompts/runtime/import.csv")
 def import_runtime_prompts_csv(
     payload: RuntimePromptImportRequest,
@@ -5250,6 +5433,98 @@ def runtime_collection_runs_export_csv(
         )
     finally:
         close_repository_connection(repository)
+
+
+@app.post("/v1/collection-runs/runtime/fixture")
+def run_runtime_fixture_collection(
+    payload: RuntimeFixtureCollectionRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+    finally:
+        close_repository_connection(repository)
+    try:
+        bootstrap = _load_runtime_project_bootstrap(payload.project_id.strip())
+        collection_repository = build_repository_from_env()
+        try:
+            apply_runtime_project_db_context(
+                collection_repository,
+                actor_id=actor_id,
+                project_id=bootstrap.project.id,
+            )
+            collection_runs = collection_repository.list_runtime_collection_runs(
+                project_id=bootstrap.project.id,
+                run_type="admin_fixture_e2e",
+                limit=1,
+                offset=0,
+            )
+        finally:
+            close_repository_connection(collection_repository)
+        if bootstrap.prompt_questions:
+            prompt_offset = collection_runs.total_count % len(bootstrap.prompt_questions)
+            rotated_prompts = bootstrap.prompt_questions[prompt_offset:] + bootstrap.prompt_questions[:prompt_offset]
+            if is_dataclass(bootstrap):
+                bootstrap = replace(bootstrap, prompt_questions=rotated_prompts)
+            else:
+                bootstrap.prompt_questions = rotated_prompts
+        else:
+            prompt_offset = 0
+        collectors = worker_collectors("fixture")
+        cities = tuple(city.strip() for city in payload.cities if city.strip())
+        if not cities:
+            raise ValueError("cities must contain at least one non-empty city")
+        records = run_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=collectors,
+            cities=cities,
+            sample_size=payload.sample_size,
+            prompt_limit=payload.prompt_limit,
+        )
+        successes = tuple(record for record in records if isinstance(record, RawEvidenceRecord))
+        failures = tuple(record for record in records if isinstance(record, CollectionFailureRecord))
+        persistence = persist_worker_collection_records(
+            bootstrap=bootstrap,
+            mode="fixture",
+            run_type="admin_fixture_e2e",
+            planned_runs=payload.prompt_limit * len(collectors) * len(cities) * payload.sample_size,
+            records=records,
+            successes=successes,
+            failures=failures,
+            persist_analysis=payload.persist_analysis,
+            score_formula_version=payload.score_formula_version,
+            judge_gateway="fixture",
+            judge_model="local-fixture-judge",
+            ensure_project_bootstrap=False,
+        )
+        return {
+            "mode": "fixture",
+            "project_id": bootstrap.project.id,
+            "record_count": len(records),
+            "success_count": len(successes),
+            "failure_count": len(failures),
+            "answer_run_ids": [record.answer_run.id for record in successes],
+            "prompt_offset": prompt_offset,
+            "persistence": persistence,
+            "requested_by": actor_id or payload.requested_by,
+            "reason": payload.reason or "admin_fixture_collection_run",
+        }
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/v1/evidence-runs/runtime/export.csv")
@@ -8514,6 +8789,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimePromptImportInput",
             "RuntimePromptImportResult",
             "RuntimePromptImportRequest",
+            "RuntimePromptUpdateInput",
+            "RuntimePromptUpdateRequest",
             "ManualBackfillCsvImportRequest",
             "EntityAliasInput",
             "RuntimeEntityAlias",
@@ -8663,6 +8940,7 @@ def contracts() -> dict[str, list[str]]:
             "/v1/entity-aliases/runtime/confirm",
             "/v1/entity-aliases/runtime/confirm-batch",
             "/v1/prompts/runtime",
+            "PATCH /v1/prompts/runtime",
             "/v1/prompts/runtime/export.csv",
             "/v1/prompts/runtime/imports",
             "/v1/prompts/runtime/import.csv",

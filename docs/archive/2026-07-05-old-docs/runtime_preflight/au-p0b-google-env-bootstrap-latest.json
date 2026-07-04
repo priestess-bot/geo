@@ -1,0 +1,90 @@
+{
+  "env_file_bootstrap_version": "au_p0b_google_env_file_bootstrap_v1",
+  "generated_at": "2026-06-13T18:53:46Z",
+  "status": "pass",
+  "env_file_bootstrap_ready": true,
+  "output_path": "docs/runtime_preflight/au-p0b-google-env-bootstrap-latest.json",
+  "action": "created_env_file_from_template",
+  "overwrite": false,
+  "template": {
+    "path": ".env.au-p0b-google.example",
+    "exists": true,
+    "template_verifier_status": "pass",
+    "template_verification_hash": "2288e89db88e55810266a00abc9f9cfb2edf3b4a5c487cadfe1067ad7afd78e1",
+    "file_sha256": "83859a27fe3c13d97fa27bd8954503e9118eae464b3acaa40ed83ed414a7e2c6"
+  },
+  "env_file": {
+    "path": ".env.au-p0b-google",
+    "exists": true,
+    "created": true,
+    "overwritten": false,
+    "hygiene": {
+      "path": ".env.au-p0b-google",
+      "exists": true,
+      "entry_count": 38,
+      "inside_workspace": true,
+      "relative_path": ".env.au-p0b-google",
+      "git_ignored": true,
+      "git_tracked": false,
+      "git_safe": true,
+      "file_mode": "0600",
+      "permission_safe": true,
+      "hygiene_required": true,
+      "hygiene_ready": true,
+      "errors": [],
+      "warnings": [],
+      "secret_redacted": true
+    },
+    "file_sha256": "83859a27fe3c13d97fa27bd8954503e9118eae464b3acaa40ed83ed414a7e2c6"
+  },
+  "summary": {
+    "template_verifier_status": "pass",
+    "template_hash_valid": true,
+    "env_file_exists": true,
+    "env_file_created": true,
+    "env_file_overwritten": false,
+    "env_file_git_ignored": true,
+    "env_file_git_tracked": false,
+    "env_file_permission_safe": true,
+    "env_file_hygiene_ready": true,
+    "env_file_mode": "0600",
+    "env_file_entry_count": 38,
+    "error_count": 0,
+    "warning_count": 0,
+    "next_action": "fill_google_selectors_session_manual_path_and_database_url"
+  },
+  "next_commands": [
+    "edit .env.au-p0b-google",
+    "make au-p0b-google-runbook",
+    "make au-p0b-google-playwright-env",
+    "make verify-au-p0b-google-playwright-env",
+    "make au-p0b-google-execution-checklist",
+    "make verify-au-p0b-google-execution-checklist"
+  ],
+  "verification_commands": [
+    "make verify-au-p0b-google-env-bootstrap",
+    "make au-p0b-google-playwright-env",
+    "make verify-au-p0b-google-playwright-env"
+  ],
+  "evidence_outputs": [
+    "docs/runtime_preflight/au-p0b-google-env-bootstrap-latest.json",
+    "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+    "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json"
+  ],
+  "errors": [],
+  "warnings": [],
+  "redaction_policy": {
+    "raw_secret_values_allowed": false,
+    "recorded_fields": [
+      "path",
+      "exists",
+      "mode",
+      "file_sha256",
+      "entry_count",
+      "git_ignored",
+      "git_tracked"
+    ],
+    "secret_redacted": true
+  },
+  "env_file_bootstrap_hash": "5d45bf22e0bfea5f3e66a3a730b3ab8e16cb91d11e91952ec8c70c4bac1eb66f"
+}

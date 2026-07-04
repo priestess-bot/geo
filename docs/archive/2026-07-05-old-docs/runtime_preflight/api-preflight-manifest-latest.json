@@ -1,0 +1,84 @@
+{
+  "manifest_version": "provider_preflight_evidence_manifest_v1",
+  "generated_at": "2026-06-11T09:17:10Z",
+  "preflight_payload": {
+    "path": "docs/runtime_preflight/api-preflight-latest.json",
+    "size_bytes": 5067,
+    "file_sha256": "bf59e146b5a689709df70fac702193a7613c4088439cb564a4ca57d94d484224",
+    "payload_hash": "3b2eca6122e14c4339f64240cc16b03c3323c2b2050acec35baab0fc7aa67806"
+  },
+  "verifier": {
+    "status": "pass",
+    "errors": [],
+    "path": "docs/runtime_preflight/api-preflight-latest.json",
+    "preflight_payload_hash": "3b2eca6122e14c4339f64240cc16b03c3323c2b2050acec35baab0fc7aa67806",
+    "computed_payload_hash": "3b2eca6122e14c4339f64240cc16b03c3323c2b2050acec35baab0fc7aa67806",
+    "hash_valid": true,
+    "output_path_matches_file": true,
+    "summary_version": "provider_preflight_v1",
+    "checklist_version": "provider_preflight_audit_checklist_v1",
+    "phase": "collector_health",
+    "exit_code": 3,
+    "ready_for_design_partner": false,
+    "recommended_next_action": "configure_missing_provider_credentials_or_collectors",
+    "blocking_reasons": [
+      "perplexity.sonar.api:not_configured",
+      "openai.web_search.api:not_configured",
+      "p0a_readiness_not_run"
+    ]
+  },
+  "run_summary": {
+    "mode": "api",
+    "phase": "collector_health",
+    "exit_code": 3,
+    "ready_for_design_partner": false,
+    "recommended_next_action": "configure_missing_provider_credentials_or_collectors",
+    "planned_runs": 6,
+    "record_count": 0,
+    "success_count": 0,
+    "failure_count": 0,
+    "cities": [
+      "Sydney"
+    ],
+    "sample_size": 3,
+    "prompt_limit": 1
+  },
+  "audit_checklist": {
+    "overall_status": "fail",
+    "blocking_reasons": [
+      "perplexity.sonar.api:not_configured",
+      "openai.web_search.api:not_configured",
+      "p0a_readiness_not_run"
+    ],
+    "worker_args": [
+      "--mode",
+      "api",
+      "--prompt-limit",
+      "1",
+      "--cities",
+      "Sydney",
+      "--sample-size",
+      "3",
+      "--require-ready-collectors",
+      "--require-p0a-readiness",
+      "--preflight-output-path",
+      "docs/runtime_preflight/api-preflight-latest.json"
+    ],
+    "evidence_refs": {
+      "collector_health": "collector_health",
+      "collector_health_gate": "collector_health_gate",
+      "p0a_readiness_gate": "p0a_readiness_gate",
+      "preflight_summary": "preflight_summary",
+      "answer_run_ids": "",
+      "failure_events": "",
+      "preflight_output_path": "docs/runtime_preflight/api-preflight-latest.json"
+    },
+    "run_totals": {
+      "planned_runs": 6,
+      "record_count": 0,
+      "success_count": 0,
+      "failure_count": 0
+    }
+  },
+  "manifest_payload_hash": "74a6c27ec87c932748ab1b30e71800c5955974fa095fb107612518ee1a7fde5c"
+}

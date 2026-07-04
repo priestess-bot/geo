@@ -137,6 +137,7 @@ from geno_core.models import (
     RuntimeProjectBrandAssetVersionPage,
     RuntimeProjectBrandLogoUpload,
     RuntimeProject,
+    RuntimeProjectEntity,
     RuntimeProjectLifecycleEventExport,
     RuntimeProjectLifecycleEvent,
     RuntimeProjectLifecycleEventPage,
@@ -3053,6 +3054,7 @@ class ApiContractsTest(unittest.TestCase):
                 "/v1/projects/runtime",
                 json={
                     "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "tenant_name": "Koala Client Team",
                     "name": "Koala GEO Pilot",
                     "target_brand": "Koala",
                     "category": "mattresses",
@@ -3066,6 +3068,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.json()["project"]["name"], "Koala GEO Pilot")
         self.assertIsInstance(fake_repository.project, RuntimeProjectUpdateInput)
         self.assertEqual(fake_repository.project.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.project.tenant_name, "Koala Client Team")
         self.assertEqual(fake_repository.project.updated_by, "agency-owner")
         self.assertEqual(fake_repository.project.reason, "refresh client metadata")
 
@@ -3247,6 +3250,90 @@ class ApiContractsTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 409)
         self.assertIn("project already archived", response.json()["detail"])
+
+    def test_runtime_project_brand_entity_save_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def save_runtime_project_brand_entity(self, entity: object) -> RuntimeProjectEntity:
+                self.entity = entity
+                return RuntimeProjectEntity(
+                    entity={
+                        "id": "brand-1",
+                        "project_id": entity.project_id,
+                        "canonical_name": entity.canonical_name,
+                        "official_domains": list(entity.official_domains),
+                        "parent_company": entity.parent_company,
+                        "product_lines": list(entity.product_lines),
+                        "status": entity.status,
+                    },
+                    audit_events=({"event_type": "project_brand_entity_saved"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/project-entities/runtime/brand",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "canonical_name": "Koala",
+                    "official_domains": ["koala.com"],
+                    "parent_company": "Koala Group",
+                    "product_lines": ["Mattress"],
+                    "status": "active",
+                    "updated_by": "agency-owner",
+                    "reason": "brand profile update",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["entity"]["canonical_name"], "Koala")
+        self.assertEqual(fake_repository.entity.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.entity.official_domains, ("koala.com",))
+        self.assertEqual(fake_repository.entity.updated_by, "agency-owner")
+        self.assertEqual(fake_repository.entity.reason, "brand profile update")
+
+    def test_runtime_project_competitor_entity_save_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def save_runtime_project_competitor_entity(self, entity: object) -> RuntimeProjectEntity:
+                self.entity = entity
+                return RuntimeProjectEntity(
+                    entity={
+                        "id": entity.competitor_id or "competitor-1",
+                        "project_id": entity.project_id,
+                        "canonical_name": entity.canonical_name,
+                        "official_domains": list(entity.official_domains),
+                        "parent_company": entity.parent_company,
+                        "product_lines": list(entity.product_lines),
+                        "status": entity.status,
+                    },
+                    audit_events=({"event_type": "project_competitor_entity_saved"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/project-entities/runtime/competitors",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "competitor_id": "7f28023e-977f-4c14-9007-95e7e84db71a",
+                    "canonical_name": "Ecosa",
+                    "official_domains": ["ecosa.com.au"],
+                    "parent_company": "",
+                    "product_lines": ["Mattress"],
+                    "status": "archived",
+                    "updated_by": "agency-owner",
+                    "reason": "remove from benchmark",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["entity"]["status"], "archived")
+        self.assertEqual(fake_repository.entity.competitor_id, "7f28023e-977f-4c14-9007-95e7e84db71a")
+        self.assertEqual(fake_repository.entity.official_domains, ("ecosa.com.au",))
+        self.assertEqual(fake_repository.entity.status, "archived")
 
     def test_runtime_project_lifecycle_events_endpoint_passes_project_filter(self) -> None:
         class FakeRepository:
@@ -4785,6 +4872,122 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.access_kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
         self.assertEqual(fake_repository.access_kwargs["actor_id"], "agency-owner")
 
+    def test_runtime_prompt_update_endpoint_passes_prompt_payload(self) -> None:
+        class FakeRepository:
+            def update_runtime_prompt(self, update: object) -> dict[str, object]:
+                self.update = update
+                return {
+                    "id": update.prompt_id,
+                    "project_id": update.project_id,
+                    "text": update.text,
+                    "intent_type": update.intent_type,
+                    "city": update.city,
+                    "language": update.language,
+                    "target_brand": update.target_brand,
+                    "competitors": update.competitors,
+                    "priority": update.priority,
+                    "intent_weight": update.intent_weight,
+                    "prompt_version": update.prompt_version,
+                    "status": update.status,
+                }
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.patch(
+                "/v1/prompts/runtime",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+                json={
+                    "project_id": "project-1",
+                    "prompt_id": "prompt-1",
+                    "text": "KoalaHome reviews Australia",
+                    "intent_type": "brand_awareness",
+                    "city": "Sydney",
+                    "language": "en-AU",
+                    "target_brand": "KoalaHome",
+                    "competitors": ["SleepyJoey", "AussieNest"],
+                    "priority": 12,
+                    "intent_weight": 1.5,
+                    "prompt_version": "au_dtc_ecommerce_v1",
+                    "status": "paused",
+                    "updated_by": "runtime-console",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["prompt"]["text"], "KoalaHome reviews Australia")
+        self.assertEqual(response.json()["prompt"]["competitors"], ["SleepyJoey", "AussieNest"])
+        self.assertEqual(fake_repository.update.project_id, "project-1")
+        self.assertEqual(fake_repository.update.prompt_id, "prompt-1")
+        self.assertEqual(fake_repository.update.status, "paused")
+
+    def test_runtime_prompt_update_endpoint_returns_404_for_missing_prompt(self) -> None:
+        class FakeRepository:
+            def update_runtime_prompt(self, update: object) -> dict[str, object]:
+                raise ValueError("prompt not found")
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.patch(
+                "/v1/prompts/runtime",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+                json={
+                    "project_id": "project-1",
+                    "prompt_id": "prompt-missing",
+                    "text": "Missing prompt",
+                    "intent_type": "brand_awareness",
+                    "city": "Sydney",
+                    "language": "en-AU",
+                    "target_brand": "KoalaHome",
+                    "competitors": [],
+                    "priority": 1,
+                    "intent_weight": 1,
+                    "prompt_version": "au_dtc_ecommerce_v1",
+                    "status": "active",
+                },
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"], "prompt not found")
+
+    def test_runtime_prompt_update_endpoint_requires_admin_or_owner_role_when_access_control_enabled(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, **kwargs: object) -> str:
+                self.role_kwargs = kwargs
+                return "viewer"
+
+            def update_runtime_prompt(self, update: object) -> dict[str, object]:
+                raise AssertionError("update_runtime_prompt should not be called for viewer role")
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.patch(
+                "/v1/prompts/runtime",
+                headers={"X-GENO-Actor-Id": "agency-viewer"},
+                json={
+                    "project_id": "project-1",
+                    "prompt_id": "prompt-1",
+                    "text": "KoalaHome reviews Australia",
+                    "intent_type": "brand_awareness",
+                    "city": "Sydney",
+                    "language": "en-AU",
+                    "target_brand": "KoalaHome",
+                    "competitors": [],
+                    "priority": 1,
+                    "intent_weight": 1,
+                    "prompt_version": "au_dtc_ecommerce_v1",
+                    "status": "active",
+                },
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("requires owner, admin", response.json()["detail"])
+        self.assertEqual(fake_repository.role_kwargs["actor_id"], "agency-viewer")
+
     def test_runtime_prompt_import_endpoint_requires_admin_or_owner_role_when_access_control_enabled(self) -> None:
         class FakeRepository:
             def get_project_member_role(self, **kwargs: object) -> str:
@@ -5143,6 +5346,62 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["run_type"], "p0a_slice")
         self.assertEqual(fake_repository.kwargs["limit"], 5)
         self.assertEqual(fake_repository.kwargs["offset"], 0)
+
+    def test_runtime_fixture_collection_endpoint_runs_target_project(self) -> None:
+        class FakeRepository:
+            def list_runtime_collection_runs(self, **kwargs: object) -> RuntimeCollectionRunPage:
+                self.collection_run_kwargs = kwargs
+                return RuntimeCollectionRunPage(
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                    records=(),
+                )
+
+        class FakeBootstrap:
+            class Project:
+                id = "project-1"
+
+            project = Project()
+            prompt_questions = ("prompt-1", "prompt-2")
+            market_profile = object()
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch("geno_api.main._load_runtime_project_bootstrap", return_value=FakeBootstrap()), patch(
+            "geno_api.main.worker_collectors", return_value=("collector-a", "collector-b")
+        ) as collectors, patch("geno_api.main.run_collection_slice", return_value=()) as run_slice, patch(
+            "geno_api.main.persist_worker_collection_records",
+            return_value={"enabled": True, "project_id": "project-1", "analysis": {"enabled": True}},
+        ) as persist:
+            response = self.client.post(
+                "/v1/collection-runs/runtime/fixture",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+                json={
+                    "project_id": "project-1",
+                    "prompt_limit": 1,
+                    "cities": ["Sydney"],
+                    "sample_size": 3,
+                    "persist_analysis": True,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["project_id"], "project-1")
+        self.assertEqual(response.json()["prompt_offset"], 1)
+        self.assertEqual(response.json()["persistence"]["enabled"], True)
+        self.assertEqual(fake_repository.collection_run_kwargs["project_id"], "project-1")
+        self.assertEqual(fake_repository.collection_run_kwargs["run_type"], "admin_fixture_e2e")
+        collectors.assert_called_once_with("fixture")
+        self.assertEqual(run_slice.call_args.kwargs["project_id"], "project-1")
+        self.assertEqual(run_slice.call_args.kwargs["prompts"], ("prompt-2", "prompt-1"))
+        self.assertEqual(run_slice.call_args.kwargs["cities"], ("Sydney",))
+        self.assertEqual(run_slice.call_args.kwargs["sample_size"], 3)
+        self.assertEqual(run_slice.call_args.kwargs["prompt_limit"], 1)
+        self.assertEqual(persist.call_args.kwargs["run_type"], "admin_fixture_e2e")
+        self.assertEqual(persist.call_args.kwargs["planned_runs"], 6)
+        self.assertFalse(persist.call_args.kwargs["ensure_project_bootstrap"])
 
     def test_runtime_fidelity_checks_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/fidelity-checks/runtime?status=not_run")
@@ -10341,6 +10600,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("RuntimePromptImportInput", payload["persistence"])
         self.assertIn("RuntimePromptImportResult", payload["persistence"])
         self.assertIn("RuntimePromptImportRequest", payload["persistence"])
+        self.assertIn("RuntimePromptUpdateInput", payload["persistence"])
+        self.assertIn("RuntimePromptUpdateRequest", payload["persistence"])
         self.assertIn("RuntimeScoreSnapshot", payload["persistence"])
         self.assertIn("RuntimeCitationGraph", payload["persistence"])
         self.assertIn("RuntimeReportArtifact", payload["persistence"])
@@ -10434,6 +10695,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/entity-aliases/runtime/confirm", payload["persistence"])
         self.assertIn("/v1/entity-aliases/runtime/confirm-batch", payload["persistence"])
         self.assertIn("/v1/prompts/runtime", payload["persistence"])
+        self.assertIn("PATCH /v1/prompts/runtime", payload["persistence"])
         self.assertIn("/v1/prompts/runtime/export.csv", payload["persistence"])
         self.assertIn("/v1/prompts/runtime/imports", payload["persistence"])
         self.assertIn("/v1/prompts/runtime/import.csv", payload["persistence"])

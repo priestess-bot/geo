@@ -1,0 +1,341 @@
+{
+  "registry_version": "au_broader_platform_registry_v1",
+  "market_profile": {
+    "market": "Australia",
+    "market_code": "AU",
+    "locale": "en-AU",
+    "timezone": "Australia/Sydney",
+    "currency": "AUD",
+    "primary_language": "Australian English",
+    "source_types": [
+      "official_site",
+      "google_business",
+      "review_site",
+      "reddit",
+      "youtube",
+      "local_media",
+      "industry_site",
+      "comparison_site",
+      "marketplace",
+      "government_or_regulator",
+      "association"
+    ],
+    "p0a_enabled_platform_surfaces": [
+      "chatgpt:chatgpt_search",
+      "perplexity:sonar"
+    ],
+    "p0b_platform_surfaces": [
+      "google:google_aio",
+      "google:google_ai_mode"
+    ],
+    "all_platform_surfaces": [
+      "chatgpt:chatgpt_search",
+      "perplexity:sonar",
+      "google:google_aio",
+      "google:google_ai_mode",
+      "gemini:gemini_search",
+      "bing_copilot:copilot_search",
+      "claude:claude_search",
+      "youtube:youtube_search",
+      "reddit:reddit_search",
+      "productreview:productreview_reviews"
+    ]
+  },
+  "summary": {
+    "candidate_count": 6,
+    "registered_candidate_count": 6,
+    "enabled_candidate_count": 0,
+    "disabled_candidate_count": 6,
+    "stage_counts": {
+      "P1": 3,
+      "P2": 3
+    },
+    "role_counts": {
+      "ai_answer_platform": 3,
+      "source_platform": 3
+    },
+    "p0a_enabled_platform_surfaces": [
+      "chatgpt:chatgpt_search",
+      "perplexity:sonar"
+    ],
+    "p0b_platform_surfaces": [
+      "google:google_aio",
+      "google:google_ai_mode"
+    ],
+    "candidate_platform_surfaces": [
+      "gemini:gemini_search",
+      "bing_copilot:copilot_search",
+      "claude:claude_search",
+      "youtube:youtube_search",
+      "reddit:reddit_search",
+      "productreview:productreview_reviews"
+    ],
+    "adapter_status_counts": {
+      "planned_not_implemented": 6
+    }
+  },
+  "candidate_platforms": [
+    {
+      "id": "gemini_ai_search",
+      "platform": "gemini",
+      "surface": "gemini_search",
+      "build_stage": "P1",
+      "platform_role": "ai_answer_platform",
+      "default_weight": 0.0,
+      "enabled": false,
+      "priority": 1,
+      "access_methods": [
+        "official_api",
+        "browser"
+      ],
+      "adapter_status": "planned_not_implemented",
+      "required_environment": [
+        "GEMINI_API_KEY"
+      ],
+      "evidence_requirements": [
+        "answer_present",
+        "surface_triggered",
+        "citations",
+        "raw_payload_hash"
+      ],
+      "scoring_policy": "excluded_until_adapter_health_and_method_disclosure_pass",
+      "source_signal_types": [
+        "official_site",
+        "local_media",
+        "comparison_site"
+      ],
+      "next_work_item": "gemini_collector_spike",
+      "market_profile_registered": true,
+      "market_profile_config": {
+        "platform": "gemini",
+        "surface": "gemini_search",
+        "build_stage": "P1",
+        "weight": 0.0,
+        "enabled": false
+      }
+    },
+    {
+      "id": "bing_copilot_search",
+      "platform": "bing_copilot",
+      "surface": "copilot_search",
+      "build_stage": "P1",
+      "platform_role": "ai_answer_platform",
+      "default_weight": 0.0,
+      "enabled": false,
+      "priority": 2,
+      "access_methods": [
+        "browser",
+        "third_party_api",
+        "manual"
+      ],
+      "adapter_status": "planned_not_implemented",
+      "required_environment": [
+        "BING_COPILOT_BROWSER_ENABLED"
+      ],
+      "evidence_requirements": [
+        "answer_present",
+        "surface_triggered",
+        "citations",
+        "screenshot_or_html_hash"
+      ],
+      "scoring_policy": "excluded_until_adapter_health_and_method_disclosure_pass",
+      "source_signal_types": [
+        "official_site",
+        "industry_site",
+        "local_media"
+      ],
+      "next_work_item": "copilot_browser_or_serp_spike",
+      "market_profile_registered": true,
+      "market_profile_config": {
+        "platform": "bing_copilot",
+        "surface": "copilot_search",
+        "build_stage": "P1",
+        "weight": 0.0,
+        "enabled": false
+      }
+    },
+    {
+      "id": "claude_web_search",
+      "platform": "claude",
+      "surface": "claude_search",
+      "build_stage": "P1",
+      "platform_role": "ai_answer_platform",
+      "default_weight": 0.0,
+      "enabled": false,
+      "priority": 3,
+      "access_methods": [
+        "official_api",
+        "browser"
+      ],
+      "adapter_status": "planned_not_implemented",
+      "required_environment": [
+        "ANTHROPIC_API_KEY"
+      ],
+      "evidence_requirements": [
+        "answer_present",
+        "citations_or_source_refs",
+        "raw_payload_hash"
+      ],
+      "scoring_policy": "excluded_until_adapter_health_and_method_disclosure_pass",
+      "source_signal_types": [
+        "official_site",
+        "comparison_site",
+        "industry_site"
+      ],
+      "next_work_item": "claude_search_adapter_spike",
+      "market_profile_registered": true,
+      "market_profile_config": {
+        "platform": "claude",
+        "surface": "claude_search",
+        "build_stage": "P1",
+        "weight": 0.0,
+        "enabled": false
+      }
+    },
+    {
+      "id": "youtube_search_reviews",
+      "platform": "youtube",
+      "surface": "youtube_search",
+      "build_stage": "P2",
+      "platform_role": "source_platform",
+      "default_weight": 0.0,
+      "enabled": false,
+      "priority": 4,
+      "access_methods": [
+        "official_api",
+        "browser"
+      ],
+      "adapter_status": "planned_not_implemented",
+      "required_environment": [
+        "YOUTUBE_API_KEY"
+      ],
+      "evidence_requirements": [
+        "source_url",
+        "title",
+        "channel",
+        "published_at",
+        "raw_payload_hash"
+      ],
+      "scoring_policy": "source_graph_only_until_answer_runner_defined",
+      "source_signal_types": [
+        "youtube",
+        "review_site"
+      ],
+      "next_work_item": "youtube_source_adapter",
+      "market_profile_registered": true,
+      "market_profile_config": {
+        "platform": "youtube",
+        "surface": "youtube_search",
+        "build_stage": "P2",
+        "weight": 0.0,
+        "enabled": false
+      }
+    },
+    {
+      "id": "reddit_au_threads",
+      "platform": "reddit",
+      "surface": "reddit_search",
+      "build_stage": "P2",
+      "platform_role": "source_platform",
+      "default_weight": 0.0,
+      "enabled": false,
+      "priority": 5,
+      "access_methods": [
+        "official_api",
+        "third_party_api",
+        "browser"
+      ],
+      "adapter_status": "planned_not_implemented",
+      "required_environment": [
+        "REDDIT_CLIENT_ID",
+        "REDDIT_CLIENT_SECRET"
+      ],
+      "evidence_requirements": [
+        "thread_url",
+        "subreddit",
+        "title",
+        "created_at",
+        "raw_payload_hash"
+      ],
+      "scoring_policy": "source_graph_only_until_answer_runner_defined",
+      "source_signal_types": [
+        "reddit",
+        "review_site",
+        "local_media"
+      ],
+      "next_work_item": "reddit_source_adapter",
+      "market_profile_registered": true,
+      "market_profile_config": {
+        "platform": "reddit",
+        "surface": "reddit_search",
+        "build_stage": "P2",
+        "weight": 0.0,
+        "enabled": false
+      }
+    },
+    {
+      "id": "productreview_au_reviews",
+      "platform": "productreview",
+      "surface": "productreview_reviews",
+      "build_stage": "P2",
+      "platform_role": "source_platform",
+      "default_weight": 0.0,
+      "enabled": false,
+      "priority": 6,
+      "access_methods": [
+        "browser",
+        "manual"
+      ],
+      "adapter_status": "planned_not_implemented",
+      "required_environment": [
+        "PRODUCTREVIEW_BROWSER_ENABLED"
+      ],
+      "evidence_requirements": [
+        "review_url",
+        "rating",
+        "review_text_hash",
+        "review_date"
+      ],
+      "scoring_policy": "source_graph_only_until_answer_runner_defined",
+      "source_signal_types": [
+        "review_site",
+        "comparison_site"
+      ],
+      "next_work_item": "productreview_source_adapter",
+      "market_profile_registered": true,
+      "market_profile_config": {
+        "platform": "productreview",
+        "surface": "productreview_reviews",
+        "build_stage": "P2",
+        "weight": 0.0,
+        "enabled": false
+      }
+    }
+  ],
+  "stage_policy": [
+    "P0a remains the stable evidence chain and only enables ChatGPT Search plus Perplexity Sonar.",
+    "P0b Google AIO and AI Mode remain isolated behind Google spike gates.",
+    "P1 AI-answer candidates are registered but disabled until adapter health, evidence fields and method disclosure pass.",
+    "P2 source-platform candidates feed citation graph, source gap and content evidence before they can affect scoring."
+  ],
+  "recommended_sequence": [
+    "gemini_ai_search",
+    "bing_copilot_search",
+    "claude_web_search",
+    "youtube_search_reviews",
+    "reddit_au_threads",
+    "productreview_au_reviews"
+  ],
+  "current_boundary": [
+    "This registry proves AU broader platform expansion is explicit and auditable.",
+    "It does not mean Gemini, Copilot, Claude, YouTube, Reddit or ProductReview collectors are implemented.",
+    "All broader candidates stay disabled and weight=0.0 until a dedicated adapter, evidence package and gate are added."
+  ],
+  "generated_at": "2026-07-04T17:19:12Z",
+  "status": "pass",
+  "broader_platform_registry_ready": true,
+  "paths": {
+    "output": "docs/runtime_preflight/au-broader-platform-registry-latest.json"
+  },
+  "broader_platform_registry_hash": "23649e40bf002f93a9bf814058099117d0454b698ac6844ce82286e6d7712b3e"
+}

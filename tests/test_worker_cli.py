@@ -8,6 +8,7 @@ import subprocess
 import sys
 import unittest
 from dataclasses import asdict
+from datetime import UTC, datetime
 from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
 from tempfile import TemporaryDirectory
@@ -25,9 +26,109 @@ class FakeWorkerRepository:
         self.saved_reports = 0
         self.saved_raw_evidence_records = 0
         self.saved_collection_summaries = 0
+        self.saved_project_bootstrap_count = 0
 
     def save_project_bootstrap(self, bootstrap: object) -> None:
+        self.saved_project_bootstrap_count += 1
         self.bootstrap = bootstrap
+
+    def list_runtime_projects(
+        self,
+        *,
+        project_id: str | None = None,
+        market_code: str | None = None,
+        status: str | None = None,
+        include_archived: bool = False,
+        actor_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> object:
+        bootstrap = build_au_project_bootstrap(
+            tenant_name="Runtime Target Tenant",
+            project_name="Runtime Target Project",
+            target_brand="RuntimeBrand",
+            category="Runtime category",
+        )
+        now = datetime.now(UTC)
+
+        class Page:
+            total_count = 1
+            records = (
+                type(
+                    "RuntimeProjectRecord",
+                    (),
+                    {
+                        "project": {
+                            "id": project_id,
+                            "tenant_id": bootstrap.tenant.id,
+                            "name": "Runtime Target Project",
+                            "market_code": "AU",
+                            "industry_code": "dtc_ecommerce",
+                            "target_brand": "RuntimeBrand",
+                            "category": "Runtime category",
+                            "prompt_version": "au_dtc_ecommerce_v1",
+                            "status": "configured",
+                            "created_at": now,
+                        },
+                        "tenant": {
+                            "id": bootstrap.tenant.id,
+                            "name": "Runtime Target Tenant",
+                            "slug": "runtime-target-tenant",
+                            "created_at": now,
+                        },
+                        "brand": {
+                            "id": bootstrap.brand.id,
+                            "project_id": project_id,
+                            "canonical_name": "RuntimeBrand",
+                            "official_domains": ["runtimebrand.example"],
+                            "parent_company": None,
+                            "product_lines": [],
+                            "status": "active",
+                        },
+                        "competitors": tuple(
+                            {
+                                "id": competitor.id,
+                                "project_id": project_id,
+                                "canonical_name": competitor.canonical_name,
+                                "official_domains": [],
+                                "parent_company": None,
+                                "product_lines": [],
+                                "status": "active",
+                            }
+                            for competitor in bootstrap.competitors[:3]
+                        ),
+                    },
+                )(),
+            )
+
+        return Page()
+
+    def list_runtime_prompts(
+        self,
+        *,
+        project_id: str | None = None,
+        market_code: str | None = None,
+        intent_type: str | None = None,
+        city: str | None = None,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> object:
+        bootstrap = build_au_project_bootstrap(target_brand="RuntimeBrand", category="Runtime category")
+        prompt = bootstrap.prompt_questions[0]
+
+        class Page:
+            total_count = 1
+            records = (
+                {
+                    **asdict(prompt),
+                    "project_id": project_id,
+                    "target_brand": "RuntimeBrand",
+                    "competitors": tuple(competitor.canonical_name for competitor in bootstrap.competitors[:3]),
+                },
+            )
+
+        return Page()
 
     def save_raw_evidence_records(self, records: tuple[object, ...]) -> None:
         self.saved_raw_evidence_records += len(records)
@@ -58,6 +159,7 @@ class FakeWorkerRepository:
 
     def save_report_export(self, report_export: object, audit_event: object) -> None:
         self.saved_reports += 1
+        self.report_export = report_export
 
     def save_fidelity_check(self, fidelity_check: object, audit_event: object) -> None:
         self.saved_fidelity_check = fidelity_check
@@ -200,6 +302,59 @@ class WorkerCliTest(unittest.TestCase):
         )
         self.assertRegex(payload["preflight_payload_hash"], r"^[0-9a-f]{64}$")
         self.assertEqual(payload["preflight_payload_hash"], self._preflight_payload_hash(payload))
+
+    def test_fixture_worker_can_persist_against_existing_runtime_project(self) -> None:
+        project_id = "4a6c168e-c596-56a8-932a-3271e2ef16f0"
+        repository = FakeWorkerRepository()
+
+        payload = self._run_worker_in_process(
+            "--mode",
+            "fixture",
+            "--project-id",
+            project_id,
+            "--prompt-limit",
+            "1",
+            "--cities",
+            "Sydney",
+            "--sample-size",
+            "1",
+            "--persist",
+            repository=repository,
+        )
+
+        self.assertEqual(payload["planned_runs"], 2)
+        self.assertEqual(payload["record_count"], 2)
+        self.assertEqual(payload["success_count"], 2)
+        self.assertEqual(payload["persistence"]["enabled"], True)
+        self.assertEqual(payload["persistence"]["project_id"], project_id)
+        self.assertEqual(payload["persistence"]["project_bootstrap"], False)
+        self.assertEqual(repository.saved_project_bootstrap_count, 0)
+        self.assertEqual(repository.saved_raw_evidence_records, 2)
+        self.assertEqual(repository.collection_summary.project_id, project_id)
+
+    def test_persist_analysis_uses_unique_worker_report_version(self) -> None:
+        project_id = "4a6c168e-c596-56a8-932a-3271e2ef16f0"
+        repository = FakeWorkerRepository()
+
+        payload = self._run_worker_in_process(
+            "--mode",
+            "fixture",
+            "--project-id",
+            project_id,
+            "--prompt-limit",
+            "1",
+            "--cities",
+            "Sydney",
+            "--sample-size",
+            "1",
+            "--persist",
+            "--persist-analysis",
+            repository=repository,
+        )
+
+        report_version = payload["persistence"]["analysis"]["report_version"]
+        self.assertRegex(report_version, r"^worker-runtime-\d{8}T\d{12}Z-[0-9a-f]{8}$")
+        self.assertEqual(repository.report_export.report_version, report_version)
 
     def test_api_worker_slice_without_keys_is_audited_failure(self) -> None:
         payload = self._run_worker("--mode", "api", "--prompt-limit", "1", "--cities", "Australia")

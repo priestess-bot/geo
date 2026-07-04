@@ -1,0 +1,182 @@
+{
+  "launch_status_version": "au_launch_status_v1",
+  "generated_at": "2026-06-15T01:10:05Z",
+  "status": "fail",
+  "ready_for_customer_report_handoff": false,
+  "next_action": "configure_required_environment",
+  "remaining_blockers": [
+    "p0a:full_batch:preflight_json:design_partner_not_ready",
+    "p0a:full_batch:preflight_manifest:preflight_manifest_design_partner_not_ready",
+    "p0a:full_batch:required_env_missing:OPENAI_API_KEY",
+    "p0a:full_batch:required_env_missing:PERPLEXITY_API_KEY",
+    "p0a:full_batch:small_batch_json:preflight_payload_file_missing",
+    "p0a:full_batch:small_batch_manifest:preflight_manifest_file_missing",
+    "p0a:full_batch_json:preflight_payload_file_missing",
+    "p0a:full_batch_manifest:preflight_manifest_file_missing",
+    "p0a:preflight:required_env_missing:OPENAI_API_KEY",
+    "p0a:preflight:required_env_missing:PERPLEXITY_API_KEY",
+    "p0a:readiness:required_env_missing:OPENAI_API_KEY",
+    "p0a:readiness:required_env_missing:PERPLEXITY_API_KEY",
+    "p0a:small_batch:preflight_json:design_partner_not_ready",
+    "p0a:small_batch:preflight_manifest:preflight_manifest_design_partner_not_ready",
+    "p0a:small_batch:required_env_missing:OPENAI_API_KEY",
+    "p0a:small_batch:required_env_missing:PERPLEXITY_API_KEY",
+    "p0a:small_batch_json:preflight_payload_file_missing",
+    "p0a:small_batch_manifest:preflight_manifest_file_missing",
+    "p0b_google:health:file_missing",
+    "p0b_google:health_manifest:file_missing",
+    "p0b_google:manual_backfill:file_missing",
+    "p0b_google:playwright_env:playwright_smoke_environment_not_ready",
+    "p0b_google:playwright_smoke:smoke_not_successful",
+    "p0b_google:spike:file_missing",
+    "p0b_google:spike_manifest:file_missing"
+  ],
+  "inputs": {
+    "p0a_status_path": "docs/runtime_preflight/au-p0a-status-latest.json",
+    "p0b_google_status_path": "docs/runtime_preflight/au-p0b-google-spike-status-latest.json",
+    "p0b_google_package_path": "docs/runtime_preflight/au-p0b-google-evidence-package-latest.json",
+    "p0b_google_runbook_path": "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
+    "p0b_google_execution_path": "docs/runtime_preflight/au-p0b-google-spike-runbook-execution-latest.json",
+    "p0c_report_package_path": "docs/runtime_preflight/au-p0c-report-package-latest.json",
+    "output_path": "docs/runtime_preflight/au-launch-status-latest.json"
+  },
+  "sources": {
+    "p0a_status": {
+      "path": "docs/runtime_preflight/au-p0a-status-latest.json",
+      "exists": true,
+      "source": "existing_file"
+    },
+    "p0b_google_status": {
+      "path": "docs/runtime_preflight/au-p0b-google-spike-status-latest.json",
+      "exists": true,
+      "source": "existing_file"
+    },
+    "p0b_google_package": {
+      "path": "docs/runtime_preflight/au-p0b-google-evidence-package-latest.json",
+      "exists": true,
+      "source": "existing_file"
+    },
+    "p0c_report_package": {
+      "path": "docs/runtime_preflight/au-p0c-report-package-latest.json",
+      "exists": true,
+      "source": "existing_file"
+    }
+  },
+  "p0a_design_partner": {
+    "status": "fail",
+    "verifier_status": "pass",
+    "errors": [],
+    "hash_valid": true,
+    "ready_for_design_partner": false,
+    "next_action": "configure_required_environment",
+    "remaining_blockers": [
+      "full_batch:preflight_json:design_partner_not_ready",
+      "full_batch:preflight_manifest:preflight_manifest_design_partner_not_ready",
+      "full_batch:required_env_missing:OPENAI_API_KEY",
+      "full_batch:required_env_missing:PERPLEXITY_API_KEY",
+      "full_batch:small_batch_json:preflight_payload_file_missing",
+      "full_batch:small_batch_manifest:preflight_manifest_file_missing",
+      "full_batch_json:preflight_payload_file_missing",
+      "full_batch_manifest:preflight_manifest_file_missing",
+      "preflight:required_env_missing:OPENAI_API_KEY",
+      "preflight:required_env_missing:PERPLEXITY_API_KEY",
+      "readiness:required_env_missing:OPENAI_API_KEY",
+      "readiness:required_env_missing:PERPLEXITY_API_KEY",
+      "small_batch:preflight_json:design_partner_not_ready",
+      "small_batch:preflight_manifest:preflight_manifest_design_partner_not_ready",
+      "small_batch:required_env_missing:OPENAI_API_KEY",
+      "small_batch:required_env_missing:PERPLEXITY_API_KEY",
+      "small_batch_json:preflight_payload_file_missing",
+      "small_batch_manifest:preflight_manifest_file_missing"
+    ],
+    "completion": {
+      "artifact_count": 10,
+      "ready_artifact_count": 0,
+      "design_ready_eligible_artifact_count": 5,
+      "non_failed_artifact_count": 5,
+      "missing_artifact_count": 4,
+      "failed_artifact_count": 5,
+      "completion_percent": 50.0,
+      "design_ready_artifact_percent": 0.0
+    },
+    "status_report_hash": "3ba36eb1b71f77fb186eeb3725829356e56a68780f1b3eccaa6a63094f285e0a"
+  },
+  "p0b_google": {
+    "status": "fail",
+    "status_verifier_status": "pass",
+    "package_verifier_status": "pass",
+    "errors": [],
+    "status_hash_valid": true,
+    "package_hash_valid": true,
+    "google_main_scoring_allowed": false,
+    "limited_coverage": true,
+    "next_action": "populate_google_playwright_smoke_environment",
+    "remaining_blockers": [
+      "health:file_missing",
+      "health_manifest:file_missing",
+      "manual_backfill:file_missing",
+      "playwright_env:playwright_smoke_environment_not_ready",
+      "playwright_smoke:smoke_not_successful",
+      "spike:file_missing",
+      "spike_manifest:file_missing"
+    ],
+    "status_report_hash": "b6e1d737104ee7be8b133a36c02c8ec3b8832b6c26460dd23e3bb38de4265771",
+    "package_payload_hash": "0a994298bbf22ba28d39287a841d29ebf0dfaa0046c4132b5052e5780801e286",
+    "package_summary": {
+      "artifact_count": 10,
+      "missing_artifacts": [
+        "health",
+        "health_manifest",
+        "manual_backfill",
+        "spike",
+        "spike_manifest"
+      ],
+      "failed_artifacts": [
+        "health",
+        "health_manifest",
+        "manual_backfill",
+        "playwright_env",
+        "playwright_smoke",
+        "spike",
+        "spike_manifest"
+      ],
+      "ready_artifacts": [],
+      "blocking_reasons": [
+        "health:file_missing",
+        "health_manifest:file_missing",
+        "manual_backfill:file_missing",
+        "playwright_env:playwright_smoke_environment_not_ready",
+        "playwright_smoke:smoke_not_successful",
+        "spike:file_missing",
+        "spike_manifest:file_missing"
+      ]
+    }
+  },
+  "p0c_customer_report": {
+    "status": "pass",
+    "package_verifier_status": "pass",
+    "errors": [],
+    "hash_valid": true,
+    "p0c_report_contract_ready": true,
+    "next_action": "ready_for_p0c_customer_report_handoff",
+    "remaining_blockers": [],
+    "report_contract_version": "au_p0c_report_package_v1",
+    "package_payload_hash": "5c0d1cab9131de8f4dac867859ca2c141ea7db21c969036abf7a104fb402acb7",
+    "google_coverage": "limited_coverage_appendix_only",
+    "api_browser_fidelity_status": "sampled",
+    "audit_event_count": 1,
+    "artifact_count": 8,
+    "failed_artifacts": [],
+    "ready_artifacts": [
+      "audit_summary_contract",
+      "csv",
+      "markdown",
+      "method_disclosure_contract",
+      "pdf",
+      "report_export_json",
+      "traceability_contract",
+      "white_label_pdf"
+    ]
+  },
+  "launch_status_hash": "9f1d521d1e987dc4537ba63482c7eb59811aea847276b67448d407ccaa3c573b"
+}

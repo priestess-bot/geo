@@ -1,0 +1,1055 @@
+{
+  "remediation_plan_version": "au_launch_remediation_plan_v1",
+  "generated_at": "2026-06-13T18:53:48Z",
+  "status": "pass",
+  "remediation_plan_ready": true,
+  "next_work_item_id": "p0a_environment",
+  "output_path": "docs/runtime_preflight/au-launch-remediation-plan-latest.json",
+  "launch_status": {
+    "path": "docs/runtime_preflight/au-launch-status-latest.json",
+    "status": "fail",
+    "ready_for_customer_report_handoff": false,
+    "next_action": "configure_required_environment",
+    "launch_status_hash": "7b91bdabc48a52d71dc0c1e5e880cd1d1d29f9d86bab3141aa3cdcd9959d66ce",
+    "remaining_blockers": [
+      "p0a:full_batch:preflight_json:design_partner_not_ready",
+      "p0a:full_batch:preflight_manifest:preflight_manifest_design_partner_not_ready",
+      "p0a:full_batch:required_env_missing:OPENAI_API_KEY",
+      "p0a:full_batch:required_env_missing:PERPLEXITY_API_KEY",
+      "p0a:full_batch:small_batch_json:preflight_payload_file_missing",
+      "p0a:full_batch:small_batch_manifest:preflight_manifest_file_missing",
+      "p0a:full_batch_json:preflight_payload_file_missing",
+      "p0a:full_batch_manifest:preflight_manifest_file_missing",
+      "p0a:preflight:required_env_missing:OPENAI_API_KEY",
+      "p0a:preflight:required_env_missing:PERPLEXITY_API_KEY",
+      "p0a:readiness:required_env_missing:OPENAI_API_KEY",
+      "p0a:readiness:required_env_missing:PERPLEXITY_API_KEY",
+      "p0a:small_batch:preflight_json:design_partner_not_ready",
+      "p0a:small_batch:preflight_manifest:preflight_manifest_design_partner_not_ready",
+      "p0a:small_batch:required_env_missing:OPENAI_API_KEY",
+      "p0a:small_batch:required_env_missing:PERPLEXITY_API_KEY",
+      "p0a:small_batch_json:preflight_payload_file_missing",
+      "p0a:small_batch_manifest:preflight_manifest_file_missing",
+      "p0b_google:health:file_missing",
+      "p0b_google:health_manifest:file_missing",
+      "p0b_google:manual_backfill:file_missing",
+      "p0b_google:playwright_env:playwright_smoke_environment_not_ready",
+      "p0b_google:playwright_smoke:smoke_not_successful",
+      "p0b_google:spike:file_missing",
+      "p0b_google:spike_manifest:file_missing"
+    ]
+  },
+  "launch_status_source": {
+    "path": "docs/runtime_preflight/au-launch-status-latest.json",
+    "exists": true,
+    "source": "existing_file"
+  },
+  "launch_status_verifier": {
+    "status": "pass",
+    "errors": [],
+    "path": "docs/runtime_preflight/au-launch-status-latest.json",
+    "launch_status_version": "au_launch_status_v1",
+    "launch_status_hash": "7b91bdabc48a52d71dc0c1e5e880cd1d1d29f9d86bab3141aa3cdcd9959d66ce",
+    "computed_launch_status_hash": "7b91bdabc48a52d71dc0c1e5e880cd1d1d29f9d86bab3141aa3cdcd9959d66ce",
+    "hash_valid": true,
+    "ready_for_customer_report_handoff": false,
+    "next_action": "configure_required_environment",
+    "remaining_blocker_count": 25
+  },
+  "summary": {
+    "blocker_count": 25,
+    "covered_blocker_count": 25,
+    "unmapped_blocker_count": 0,
+    "work_item_count": 8,
+    "external_dependency_blocker_count": 25,
+    "runnable_now_work_item_count": 0,
+    "runnable_now_work_items": [],
+    "unmapped_blockers": []
+  },
+  "work_items": [
+    {
+      "id": "p0a_environment",
+      "stage": "P0a",
+      "title": "Configure AU P0a provider keys and runtime database",
+      "status": "requires_external_input",
+      "external_dependency": true,
+      "dependency_class": "provider_keys_and_database",
+      "required_inputs": [
+        "OPENAI_API_KEY",
+        "PERPLEXITY_API_KEY"
+      ],
+      "commands": [
+        {
+          "shell": "make verify-au-p0a-env-template"
+        },
+        {
+          "shell": "make au-p0a-env-bootstrap"
+        },
+        {
+          "shell": "make verify-au-p0a-env-bootstrap"
+        },
+        {
+          "shell": "make au-p0a-runbook"
+        },
+        {
+          "shell": "make au-p0a-env"
+        },
+        {
+          "shell": "make verify-au-p0a-env"
+        },
+        {
+          "shell": "make au-p0a-environment-checklist"
+        },
+        {
+          "shell": "make verify-au-p0a-environment-checklist"
+        },
+        {
+          "shell": "make au-p0a-readiness"
+        }
+      ],
+      "verification_commands": [
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py ${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-env-bootstrap-latest.json",
+        "docs/runtime_preflight/au-p0a-runbook-latest.json",
+        "docs/runtime_preflight/au-p0a-env-latest.json",
+        "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
+        "docs/runtime_preflight/au-p0a-readiness-latest.json",
+        "docs/runtime_preflight/au-p0a-status-latest.json"
+      ],
+      "acceptance": "P0a env bootstrap audit passes, environment report is ready, the local env file passes hygiene, and AU P0a status no longer reports required_env_missing blockers.",
+      "clears_blockers": [
+        "p0a:full_batch:required_env_missing:OPENAI_API_KEY",
+        "p0a:full_batch:required_env_missing:PERPLEXITY_API_KEY",
+        "p0a:preflight:required_env_missing:OPENAI_API_KEY",
+        "p0a:preflight:required_env_missing:PERPLEXITY_API_KEY",
+        "p0a:readiness:required_env_missing:OPENAI_API_KEY",
+        "p0a:readiness:required_env_missing:PERPLEXITY_API_KEY",
+        "p0a:small_batch:required_env_missing:OPENAI_API_KEY",
+        "p0a:small_batch:required_env_missing:PERPLEXITY_API_KEY"
+      ],
+      "blocker_count": 8
+    },
+    {
+      "id": "p0a_small_batch",
+      "stage": "P0a",
+      "title": "Run and manifest the AU P0a small batch",
+      "status": "pending_after_preflight",
+      "external_dependency": true,
+      "dependency_class": "provider_api_execution",
+      "required_inputs": [
+        "P0a preflight design-partner gate pass"
+      ],
+      "commands": [
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 5 --cities Sydney --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --persist --persist-analysis --preflight-output-path docs/runtime_preflight/au-p0a-small-batch.json"
+        },
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_preflight_manifest.py docs/runtime_preflight/au-p0a-small-batch.json --manifest-path docs/runtime_preflight/au-p0a-small-batch-manifest.json --require-design-partner-ready"
+        }
+      ],
+      "verification_commands": [
+        {
+          "shell": "make au-p0a-package"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-small-batch.json",
+        "docs/runtime_preflight/au-p0a-small-batch-manifest.json",
+        "docs/runtime_preflight/au-p0a-evidence-package-latest.json"
+      ],
+      "acceptance": "Small batch payload and manifest are present and design-partner ready.",
+      "clears_blockers": [
+        "p0a:full_batch:small_batch_json:preflight_payload_file_missing",
+        "p0a:full_batch:small_batch_manifest:preflight_manifest_file_missing",
+        "p0a:small_batch:preflight_json:design_partner_not_ready",
+        "p0a:small_batch:preflight_manifest:preflight_manifest_design_partner_not_ready",
+        "p0a:small_batch_json:preflight_payload_file_missing",
+        "p0a:small_batch_manifest:preflight_manifest_file_missing"
+      ],
+      "blocker_count": 6
+    },
+    {
+      "id": "p0a_full_batch",
+      "stage": "P0a",
+      "title": "Run and manifest the full AU P0a design-partner batch",
+      "status": "pending_after_small_batch",
+      "external_dependency": true,
+      "dependency_class": "provider_api_execution",
+      "required_inputs": [
+        "P0a small batch design-partner gate pass"
+      ],
+      "commands": [
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 100 --cities Australia,Sydney,Melbourne,Brisbane --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --persist --persist-analysis --preflight-output-path docs/runtime_preflight/au-p0a-full-batch.json"
+        },
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/build_preflight_manifest.py docs/runtime_preflight/au-p0a-full-batch.json --manifest-path docs/runtime_preflight/au-p0a-full-batch-manifest.json --require-design-partner-ready"
+        }
+      ],
+      "verification_commands": [
+        {
+          "shell": "make au-p0a-package"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-full-batch.json",
+        "docs/runtime_preflight/au-p0a-full-batch-manifest.json",
+        "docs/runtime_preflight/au-p0a-evidence-package-latest.json"
+      ],
+      "acceptance": "Full batch payload and manifest are present and P0a design partner gate is ready.",
+      "clears_blockers": [
+        "p0a:full_batch:preflight_json:design_partner_not_ready",
+        "p0a:full_batch:preflight_manifest:preflight_manifest_design_partner_not_ready",
+        "p0a:full_batch_json:preflight_payload_file_missing",
+        "p0a:full_batch_manifest:preflight_manifest_file_missing"
+      ],
+      "blocker_count": 4
+    },
+    {
+      "id": "p0b_google_playwright_env",
+      "stage": "P0b",
+      "title": "Configure Google Playwright smoke environment",
+      "status": "requires_external_input",
+      "external_dependency": true,
+      "dependency_class": "google_ui_selectors_session_and_database",
+      "required_inputs": [
+        "GOOGLE_PLAYWRIGHT_ENABLED=1",
+        "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR or surface-specific prompt selector",
+        "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR or surface-specific answer selector",
+        "AU-capable browser/session setup",
+        "DATABASE_URL"
+      ],
+      "commands": [
+        {
+          "shell": "make verify-au-p0b-google-env-template"
+        },
+        {
+          "shell": "make au-p0b-google-env-bootstrap"
+        },
+        {
+          "shell": "make verify-au-p0b-google-env-bootstrap"
+        },
+        {
+          "shell": "make au-p0b-google-runbook"
+        },
+        {
+          "shell": "make au-p0b-google-playwright-env"
+        },
+        {
+          "shell": "make au-p0b-google-execution-checklist"
+        }
+      ],
+      "verification_commands": [
+        {
+          "shell": "make verify-au-p0b-google-execution-checklist"
+        },
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py ${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} --require-ready-smoke"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0b-google-env-bootstrap-latest.json",
+        "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
+        "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+        "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json"
+      ],
+      "acceptance": "Google Playwright environment report is ready for smoke, the local env file passes hygiene, and no raw secret values are present.",
+      "clears_blockers": [
+        "p0b_google:playwright_env:playwright_smoke_environment_not_ready"
+      ],
+      "blocker_count": 1
+    },
+    {
+      "id": "p0b_google_playwright_smoke",
+      "stage": "P0b",
+      "title": "Run one successful Google Playwright smoke capture",
+      "status": "pending_after_playwright_env",
+      "external_dependency": true,
+      "dependency_class": "google_browser_execution",
+      "required_inputs": [
+        "P0b Google Playwright environment ready"
+      ],
+      "commands": [
+        {
+          "shell": "make au-p0b-google-playwright-smoke"
+        }
+      ],
+      "verification_commands": [
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_smoke.py ${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_SMOKE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json} --require-success"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json"
+      ],
+      "acceptance": "Smoke payload has one successful browser capture, screenshot/html hashes, and answer_run_collected audit.",
+      "clears_blockers": [
+        "p0b_google:playwright_smoke:smoke_not_successful"
+      ],
+      "blocker_count": 1
+    },
+    {
+      "id": "p0b_google_manual_backfill",
+      "stage": "P0b",
+      "title": "Generate, fill, and verify Google AI Mode manual backfill",
+      "status": "requires_external_input",
+      "external_dependency": true,
+      "dependency_class": "manual_google_ai_mode_sampling",
+      "required_inputs": [
+        "120-row MANUAL_BACKFILL_PATH JSONL with answer text, citations, and screenshot or HTML evidence"
+      ],
+      "commands": [
+        {
+          "shell": "make au-p0b-google-manual-template"
+        },
+        {
+          "shell": "make verify-au-p0b-google-manual-backfill"
+        }
+      ],
+      "verification_commands": [
+        {
+          "shell": "make verify-au-p0b-google-manual-backfill"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl",
+        "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json"
+      ],
+      "acceptance": "Manual backfill verification is strict-pass for the 120-row browser+manual matrix.",
+      "clears_blockers": [
+        "p0b_google:manual_backfill:file_missing"
+      ],
+      "blocker_count": 1
+    },
+    {
+      "id": "p0b_google_spike_health",
+      "stage": "P0b",
+      "title": "Run Google spike health-only check and manifest it",
+      "status": "pending_after_smoke_and_manual",
+      "external_dependency": true,
+      "dependency_class": "google_collector_health",
+      "required_inputs": [
+        "Playwright smoke success",
+        "manual backfill verification pass"
+      ],
+      "commands": [
+        {
+          "shell": "make au-p0b-google-spike-health"
+        },
+        {
+          "shell": "make au-p0b-google-spike-health-manifest"
+        }
+      ],
+      "verification_commands": [
+        {
+          "shell": "make au-p0b-google-status"
+        },
+        {
+          "shell": "make verify-au-p0b-google-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0b-google-spike-health-latest.json",
+        "docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json"
+      ],
+      "acceptance": "Health JSON and manifest exist, hash-verify, and status no longer reports health missing.",
+      "clears_blockers": [
+        "p0b_google:health:file_missing",
+        "p0b_google:health_manifest:file_missing"
+      ],
+      "blocker_count": 2
+    },
+    {
+      "id": "p0b_google_full_spike",
+      "stage": "P0b",
+      "title": "Run full Google spike matrix and manifest it",
+      "status": "pending_after_spike_health",
+      "external_dependency": true,
+      "dependency_class": "google_browser_manual_spike_execution",
+      "required_inputs": [
+        "Google spike health pass"
+      ],
+      "commands": [
+        {
+          "shell": "make au-p0b-google-spike"
+        },
+        {
+          "shell": "make au-p0b-google-spike-manifest"
+        },
+        {
+          "shell": "make au-p0b-google-status"
+        },
+        {
+          "shell": "make au-p0b-google-package"
+        },
+        {
+          "shell": "make au-p0b-google-execution-checklist"
+        },
+        {
+          "shell": "make au-launch-status"
+        }
+      ],
+      "verification_commands": [
+        {
+          "shell": "make verify-au-p0b-google-status"
+        },
+        {
+          "shell": "make verify-au-p0b-google-execution-checklist"
+        },
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_evidence_package.py ${GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-evidence-package-latest.json} --require-google-main-scoring-allowed"
+        },
+        {
+          "shell": "make verify-au-launch-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0b-google-spike-latest.json",
+        "docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json",
+        "docs/runtime_preflight/au-p0b-google-evidence-package-latest.json",
+        "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json",
+        "docs/runtime_preflight/au-launch-status-latest.json"
+      ],
+      "acceptance": "P0b package allows Google main scoring or the launch report explicitly keeps Google limited coverage.",
+      "clears_blockers": [
+        "p0b_google:spike:file_missing",
+        "p0b_google:spike_manifest:file_missing"
+      ],
+      "blocker_count": 2
+    }
+  ],
+  "blocker_remediations": [
+    {
+      "blocker": "p0a:full_batch:preflight_json:design_partner_not_ready",
+      "work_item_id": "p0a_full_batch",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_api_execution",
+      "next_command": "PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 100 --cities Australia,Sydney,Melbourne,Brisbane --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --persist --persist-analysis --preflight-output-path docs/runtime_preflight/au-p0a-full-batch.json",
+      "verification_commands": [
+        {
+          "shell": "make au-p0a-package"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-full-batch.json",
+        "docs/runtime_preflight/au-p0a-full-batch-manifest.json",
+        "docs/runtime_preflight/au-p0a-evidence-package-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:full_batch:preflight_manifest:preflight_manifest_design_partner_not_ready",
+      "work_item_id": "p0a_full_batch",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_api_execution",
+      "next_command": "PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 100 --cities Australia,Sydney,Melbourne,Brisbane --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --persist --persist-analysis --preflight-output-path docs/runtime_preflight/au-p0a-full-batch.json",
+      "verification_commands": [
+        {
+          "shell": "make au-p0a-package"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-full-batch.json",
+        "docs/runtime_preflight/au-p0a-full-batch-manifest.json",
+        "docs/runtime_preflight/au-p0a-evidence-package-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:full_batch:required_env_missing:OPENAI_API_KEY",
+      "work_item_id": "p0a_environment",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_keys_and_database",
+      "next_command": "make verify-au-p0a-env-template",
+      "verification_commands": [
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py ${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-env-bootstrap-latest.json",
+        "docs/runtime_preflight/au-p0a-runbook-latest.json",
+        "docs/runtime_preflight/au-p0a-env-latest.json",
+        "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
+        "docs/runtime_preflight/au-p0a-readiness-latest.json",
+        "docs/runtime_preflight/au-p0a-status-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:full_batch:required_env_missing:PERPLEXITY_API_KEY",
+      "work_item_id": "p0a_environment",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_keys_and_database",
+      "next_command": "make verify-au-p0a-env-template",
+      "verification_commands": [
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py ${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-env-bootstrap-latest.json",
+        "docs/runtime_preflight/au-p0a-runbook-latest.json",
+        "docs/runtime_preflight/au-p0a-env-latest.json",
+        "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
+        "docs/runtime_preflight/au-p0a-readiness-latest.json",
+        "docs/runtime_preflight/au-p0a-status-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:full_batch:small_batch_json:preflight_payload_file_missing",
+      "work_item_id": "p0a_small_batch",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_api_execution",
+      "next_command": "PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 5 --cities Sydney --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --persist --persist-analysis --preflight-output-path docs/runtime_preflight/au-p0a-small-batch.json",
+      "verification_commands": [
+        {
+          "shell": "make au-p0a-package"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-small-batch.json",
+        "docs/runtime_preflight/au-p0a-small-batch-manifest.json",
+        "docs/runtime_preflight/au-p0a-evidence-package-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:full_batch:small_batch_manifest:preflight_manifest_file_missing",
+      "work_item_id": "p0a_small_batch",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_api_execution",
+      "next_command": "PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 5 --cities Sydney --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --persist --persist-analysis --preflight-output-path docs/runtime_preflight/au-p0a-small-batch.json",
+      "verification_commands": [
+        {
+          "shell": "make au-p0a-package"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-small-batch.json",
+        "docs/runtime_preflight/au-p0a-small-batch-manifest.json",
+        "docs/runtime_preflight/au-p0a-evidence-package-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:full_batch_json:preflight_payload_file_missing",
+      "work_item_id": "p0a_full_batch",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_api_execution",
+      "next_command": "PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 100 --cities Australia,Sydney,Melbourne,Brisbane --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --persist --persist-analysis --preflight-output-path docs/runtime_preflight/au-p0a-full-batch.json",
+      "verification_commands": [
+        {
+          "shell": "make au-p0a-package"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-full-batch.json",
+        "docs/runtime_preflight/au-p0a-full-batch-manifest.json",
+        "docs/runtime_preflight/au-p0a-evidence-package-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:full_batch_manifest:preflight_manifest_file_missing",
+      "work_item_id": "p0a_full_batch",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_api_execution",
+      "next_command": "PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 100 --cities Australia,Sydney,Melbourne,Brisbane --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --persist --persist-analysis --preflight-output-path docs/runtime_preflight/au-p0a-full-batch.json",
+      "verification_commands": [
+        {
+          "shell": "make au-p0a-package"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-full-batch.json",
+        "docs/runtime_preflight/au-p0a-full-batch-manifest.json",
+        "docs/runtime_preflight/au-p0a-evidence-package-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:preflight:required_env_missing:OPENAI_API_KEY",
+      "work_item_id": "p0a_environment",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_keys_and_database",
+      "next_command": "make verify-au-p0a-env-template",
+      "verification_commands": [
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py ${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-env-bootstrap-latest.json",
+        "docs/runtime_preflight/au-p0a-runbook-latest.json",
+        "docs/runtime_preflight/au-p0a-env-latest.json",
+        "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
+        "docs/runtime_preflight/au-p0a-readiness-latest.json",
+        "docs/runtime_preflight/au-p0a-status-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:preflight:required_env_missing:PERPLEXITY_API_KEY",
+      "work_item_id": "p0a_environment",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_keys_and_database",
+      "next_command": "make verify-au-p0a-env-template",
+      "verification_commands": [
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py ${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-env-bootstrap-latest.json",
+        "docs/runtime_preflight/au-p0a-runbook-latest.json",
+        "docs/runtime_preflight/au-p0a-env-latest.json",
+        "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
+        "docs/runtime_preflight/au-p0a-readiness-latest.json",
+        "docs/runtime_preflight/au-p0a-status-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:readiness:required_env_missing:OPENAI_API_KEY",
+      "work_item_id": "p0a_environment",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_keys_and_database",
+      "next_command": "make verify-au-p0a-env-template",
+      "verification_commands": [
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py ${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-env-bootstrap-latest.json",
+        "docs/runtime_preflight/au-p0a-runbook-latest.json",
+        "docs/runtime_preflight/au-p0a-env-latest.json",
+        "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
+        "docs/runtime_preflight/au-p0a-readiness-latest.json",
+        "docs/runtime_preflight/au-p0a-status-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:readiness:required_env_missing:PERPLEXITY_API_KEY",
+      "work_item_id": "p0a_environment",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_keys_and_database",
+      "next_command": "make verify-au-p0a-env-template",
+      "verification_commands": [
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py ${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-env-bootstrap-latest.json",
+        "docs/runtime_preflight/au-p0a-runbook-latest.json",
+        "docs/runtime_preflight/au-p0a-env-latest.json",
+        "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
+        "docs/runtime_preflight/au-p0a-readiness-latest.json",
+        "docs/runtime_preflight/au-p0a-status-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:small_batch:preflight_json:design_partner_not_ready",
+      "work_item_id": "p0a_small_batch",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_api_execution",
+      "next_command": "PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 5 --cities Sydney --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --persist --persist-analysis --preflight-output-path docs/runtime_preflight/au-p0a-small-batch.json",
+      "verification_commands": [
+        {
+          "shell": "make au-p0a-package"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-small-batch.json",
+        "docs/runtime_preflight/au-p0a-small-batch-manifest.json",
+        "docs/runtime_preflight/au-p0a-evidence-package-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:small_batch:preflight_manifest:preflight_manifest_design_partner_not_ready",
+      "work_item_id": "p0a_small_batch",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_api_execution",
+      "next_command": "PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 5 --cities Sydney --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --persist --persist-analysis --preflight-output-path docs/runtime_preflight/au-p0a-small-batch.json",
+      "verification_commands": [
+        {
+          "shell": "make au-p0a-package"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-small-batch.json",
+        "docs/runtime_preflight/au-p0a-small-batch-manifest.json",
+        "docs/runtime_preflight/au-p0a-evidence-package-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:small_batch:required_env_missing:OPENAI_API_KEY",
+      "work_item_id": "p0a_environment",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_keys_and_database",
+      "next_command": "make verify-au-p0a-env-template",
+      "verification_commands": [
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py ${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-env-bootstrap-latest.json",
+        "docs/runtime_preflight/au-p0a-runbook-latest.json",
+        "docs/runtime_preflight/au-p0a-env-latest.json",
+        "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
+        "docs/runtime_preflight/au-p0a-readiness-latest.json",
+        "docs/runtime_preflight/au-p0a-status-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:small_batch:required_env_missing:PERPLEXITY_API_KEY",
+      "work_item_id": "p0a_environment",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_keys_and_database",
+      "next_command": "make verify-au-p0a-env-template",
+      "verification_commands": [
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py ${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-env-bootstrap-latest.json",
+        "docs/runtime_preflight/au-p0a-runbook-latest.json",
+        "docs/runtime_preflight/au-p0a-env-latest.json",
+        "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
+        "docs/runtime_preflight/au-p0a-readiness-latest.json",
+        "docs/runtime_preflight/au-p0a-status-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:small_batch_json:preflight_payload_file_missing",
+      "work_item_id": "p0a_small_batch",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_api_execution",
+      "next_command": "PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 5 --cities Sydney --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --persist --persist-analysis --preflight-output-path docs/runtime_preflight/au-p0a-small-batch.json",
+      "verification_commands": [
+        {
+          "shell": "make au-p0a-package"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-small-batch.json",
+        "docs/runtime_preflight/au-p0a-small-batch-manifest.json",
+        "docs/runtime_preflight/au-p0a-evidence-package-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0a:small_batch_manifest:preflight_manifest_file_missing",
+      "work_item_id": "p0a_small_batch",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "provider_api_execution",
+      "next_command": "PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 5 --cities Sydney --sample-size 3 --require-ready-collectors --require-p0a-readiness --require-no-collection-failures --persist --persist-analysis --preflight-output-path docs/runtime_preflight/au-p0a-small-batch.json",
+      "verification_commands": [
+        {
+          "shell": "make au-p0a-package"
+        },
+        {
+          "shell": "make au-p0a-status"
+        },
+        {
+          "shell": "make verify-au-p0a-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0a-small-batch.json",
+        "docs/runtime_preflight/au-p0a-small-batch-manifest.json",
+        "docs/runtime_preflight/au-p0a-evidence-package-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0b_google:health:file_missing",
+      "work_item_id": "p0b_google_spike_health",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "google_collector_health",
+      "next_command": "make au-p0b-google-spike-health",
+      "verification_commands": [
+        {
+          "shell": "make au-p0b-google-status"
+        },
+        {
+          "shell": "make verify-au-p0b-google-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0b-google-spike-health-latest.json",
+        "docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0b_google:health_manifest:file_missing",
+      "work_item_id": "p0b_google_spike_health",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "google_collector_health",
+      "next_command": "make au-p0b-google-spike-health",
+      "verification_commands": [
+        {
+          "shell": "make au-p0b-google-status"
+        },
+        {
+          "shell": "make verify-au-p0b-google-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0b-google-spike-health-latest.json",
+        "docs/runtime_preflight/au-p0b-google-spike-health-manifest-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0b_google:manual_backfill:file_missing",
+      "work_item_id": "p0b_google_manual_backfill",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "manual_google_ai_mode_sampling",
+      "next_command": "make au-p0b-google-manual-template",
+      "verification_commands": [
+        {
+          "shell": "make verify-au-p0b-google-manual-backfill"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl",
+        "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0b_google:playwright_env:playwright_smoke_environment_not_ready",
+      "work_item_id": "p0b_google_playwright_env",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "google_ui_selectors_session_and_database",
+      "next_command": "make verify-au-p0b-google-env-template",
+      "verification_commands": [
+        {
+          "shell": "make verify-au-p0b-google-execution-checklist"
+        },
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py ${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} --require-ready-smoke"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0b-google-env-bootstrap-latest.json",
+        "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
+        "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+        "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0b_google:playwright_smoke:smoke_not_successful",
+      "work_item_id": "p0b_google_playwright_smoke",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "google_browser_execution",
+      "next_command": "make au-p0b-google-playwright-smoke",
+      "verification_commands": [
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_smoke.py ${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_SMOKE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json} --require-success"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0b_google:spike:file_missing",
+      "work_item_id": "p0b_google_full_spike",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "google_browser_manual_spike_execution",
+      "next_command": "make au-p0b-google-spike",
+      "verification_commands": [
+        {
+          "shell": "make verify-au-p0b-google-status"
+        },
+        {
+          "shell": "make verify-au-p0b-google-execution-checklist"
+        },
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_evidence_package.py ${GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-evidence-package-latest.json} --require-google-main-scoring-allowed"
+        },
+        {
+          "shell": "make verify-au-launch-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0b-google-spike-latest.json",
+        "docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json",
+        "docs/runtime_preflight/au-p0b-google-evidence-package-latest.json",
+        "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json",
+        "docs/runtime_preflight/au-launch-status-latest.json"
+      ]
+    },
+    {
+      "blocker": "p0b_google:spike_manifest:file_missing",
+      "work_item_id": "p0b_google_full_spike",
+      "mapped": true,
+      "external_dependency": true,
+      "dependency_class": "google_browser_manual_spike_execution",
+      "next_command": "make au-p0b-google-spike",
+      "verification_commands": [
+        {
+          "shell": "make verify-au-p0b-google-status"
+        },
+        {
+          "shell": "make verify-au-p0b-google-execution-checklist"
+        },
+        {
+          "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_evidence_package.py ${GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-evidence-package-latest.json} --require-google-main-scoring-allowed"
+        },
+        {
+          "shell": "make verify-au-launch-status"
+        }
+      ],
+      "evidence_outputs": [
+        "docs/runtime_preflight/au-p0b-google-spike-latest.json",
+        "docs/runtime_preflight/au-p0b-google-spike-manifest-latest.json",
+        "docs/runtime_preflight/au-p0b-google-evidence-package-latest.json",
+        "docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json",
+        "docs/runtime_preflight/au-launch-status-latest.json"
+      ]
+    }
+  ],
+  "remediation_plan_hash": "670baaab9a66a21618e6466aac53d3aaa4295c18c2e9ccf4564239c866bd16f9"
+}

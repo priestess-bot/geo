@@ -1,0 +1,294 @@
+{
+  "environment_checklist_version": "au_p0a_environment_checklist_v1",
+  "generated_at": "2026-06-13T18:23:33Z",
+  "status": "fail",
+  "environment_checklist_ready": false,
+  "next_action": "populate_required_environment",
+  "paths": {
+    "runbook": "docs/runtime_preflight/au-p0a-runbook-latest.json",
+    "environment_report": "docs/runtime_preflight/au-p0a-env-latest.json",
+    "status_report": "docs/runtime_preflight/au-p0a-status-latest.json",
+    "runbook_execution": "docs/runtime_preflight/au-p0a-runbook-execution-latest.json",
+    "readiness": "docs/runtime_preflight/au-p0a-readiness-latest.json",
+    "p0a_package": "docs/runtime_preflight/au-p0a-evidence-package-latest.json",
+    "output": "docs/runtime_preflight/au-p0a-environment-checklist-latest.json",
+    "env_file": ".env.au-p0a"
+  },
+  "summary": {
+    "required_count": 3,
+    "required_present_count": 1,
+    "missing_required_count": 2,
+    "missing_required": [
+      "PERPLEXITY_API_KEY",
+      "OPENAI_API_KEY"
+    ],
+    "recommended_count": 4,
+    "missing_recommended_count": 0,
+    "missing_recommended": [],
+    "runbook_verifier_status": "pass",
+    "environment_verifier_status": "pass",
+    "environment_report_ready": false,
+    "env_file_hygiene_ready": true,
+    "env_file_hygiene_error_count": 0
+  },
+  "runbook_source": {
+    "path": "docs/runtime_preflight/au-p0a-runbook-latest.json",
+    "exists": true,
+    "source": "existing_file",
+    "errors": []
+  },
+  "runbook_verifier": {
+    "status": "pass",
+    "errors": [],
+    "path": "docs/runtime_preflight/au-p0a-runbook-latest.json",
+    "runbook_version": "au_p0a_real_batch_runbook_v1",
+    "runbook_payload_hash": "5a4c9c7785af3d565d0986c6225511ecf41b3573e6260efff8a096f0ec969fd5",
+    "computed_runbook_payload_hash": "5a4c9c7785af3d565d0986c6225511ecf41b3573e6260efff8a096f0ec969fd5",
+    "hash_valid": true,
+    "small_batch_planned_runs": 30,
+    "full_batch_planned_runs": 2400,
+    "step_count": 9
+  },
+  "environment_report_source": {
+    "path": "docs/runtime_preflight/au-p0a-env-latest.json",
+    "exists": true,
+    "source": "existing_file",
+    "errors": []
+  },
+  "environment_report": {
+    "environment_report_version": "au_p0a_environment_report_v1",
+    "status": "fail",
+    "ready_for_real_batch": false,
+    "next_action": "populate_required_environment",
+    "environment_report_hash": "913e66c215ac7ddbbd205f78e12943c099fb44f4800707d9768ec4e7f1d4b862",
+    "secrets_redacted": true
+  },
+  "environment_report_verifier": {
+    "status": "pass",
+    "errors": [],
+    "path": "docs/runtime_preflight/au-p0a-env-latest.json",
+    "environment_report_version": "au_p0a_environment_report_v1",
+    "environment_report_hash": "913e66c215ac7ddbbd205f78e12943c099fb44f4800707d9768ec4e7f1d4b862",
+    "computed_environment_report_hash": "913e66c215ac7ddbbd205f78e12943c099fb44f4800707d9768ec4e7f1d4b862",
+    "hash_valid": true,
+    "ready_for_real_batch": false,
+    "missing_required": [
+      "OPENAI_API_KEY",
+      "PERPLEXITY_API_KEY"
+    ],
+    "missing_recommended": [],
+    "env_file_hygiene_ready": true,
+    "env_file_hygiene_errors": [],
+    "env_file_hygiene_warnings": [],
+    "next_action": "populate_required_environment"
+  },
+  "env_file_hygiene": {
+    "path": ".env.au-p0a",
+    "exists": true,
+    "entry_count": 14,
+    "inside_workspace": true,
+    "relative_path": ".env.au-p0a",
+    "git_ignored": true,
+    "git_tracked": false,
+    "git_safe": true,
+    "file_mode": "0600",
+    "permission_safe": true,
+    "hygiene_required": true,
+    "hygiene_ready": true,
+    "errors": [],
+    "warnings": [],
+    "secret_redacted": true
+  },
+  "status_report_summary": {
+    "source": {
+      "path": "docs/runtime_preflight/au-p0a-status-latest.json",
+      "exists": true,
+      "source": "existing_file",
+      "errors": []
+    },
+    "status": "fail",
+    "ready_for_design_partner": false,
+    "next_action": "configure_required_environment",
+    "status_report_hash": "3ba36eb1b71f77fb186eeb3725829356e56a68780f1b3eccaa6a63094f285e0a",
+    "remaining_blocker_count": 18,
+    "environment_blockers": [
+      "full_batch:required_env_missing:OPENAI_API_KEY",
+      "full_batch:required_env_missing:PERPLEXITY_API_KEY",
+      "preflight:required_env_missing:OPENAI_API_KEY",
+      "preflight:required_env_missing:PERPLEXITY_API_KEY",
+      "readiness:required_env_missing:OPENAI_API_KEY",
+      "readiness:required_env_missing:PERPLEXITY_API_KEY",
+      "small_batch:required_env_missing:OPENAI_API_KEY",
+      "small_batch:required_env_missing:PERPLEXITY_API_KEY"
+    ]
+  },
+  "required_environment": [
+    {
+      "name": "PERPLEXITY_API_KEY",
+      "required": true,
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true,
+      "action": "set_required_environment",
+      "accepted_sources": [
+        "process",
+        "env_file"
+      ]
+    },
+    {
+      "name": "OPENAI_API_KEY",
+      "required": true,
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true,
+      "action": "set_required_environment",
+      "accepted_sources": [
+        "process",
+        "env_file"
+      ]
+    },
+    {
+      "name": "DATABASE_URL",
+      "required": true,
+      "present": true,
+      "source": "env_file",
+      "value_length": 66,
+      "sha256_prefix": "237b9d13d4e5",
+      "secret_redacted": true,
+      "action": "keep_current_redacted_value",
+      "accepted_sources": [
+        "process",
+        "env_file"
+      ]
+    }
+  ],
+  "recommended_environment": [
+    {
+      "name": "OBJECT_STORE_ENDPOINT",
+      "required": false,
+      "present": true,
+      "source": "env_file",
+      "value_length": 21,
+      "sha256_prefix": "8127b8faeff4",
+      "secret_redacted": true,
+      "action": "keep_current_redacted_value",
+      "accepted_sources": [
+        "process",
+        "env_file"
+      ]
+    },
+    {
+      "name": "OBJECT_STORE_BUCKET",
+      "required": false,
+      "present": true,
+      "source": "env_file",
+      "value_length": 12,
+      "sha256_prefix": "e3cc67798a7a",
+      "secret_redacted": true,
+      "action": "keep_current_redacted_value",
+      "accepted_sources": [
+        "process",
+        "env_file"
+      ]
+    },
+    {
+      "name": "OBJECT_STORE_ACCESS_KEY",
+      "required": false,
+      "present": true,
+      "source": "env_file",
+      "value_length": 5,
+      "sha256_prefix": "5791b6226743",
+      "secret_redacted": true,
+      "action": "keep_current_redacted_value",
+      "accepted_sources": [
+        "process",
+        "env_file"
+      ]
+    },
+    {
+      "name": "OBJECT_STORE_SECRET_KEY",
+      "required": false,
+      "present": true,
+      "source": "env_file",
+      "value_length": 8,
+      "sha256_prefix": "179c076ac522",
+      "secret_redacted": true,
+      "action": "keep_current_redacted_value",
+      "accepted_sources": [
+        "process",
+        "env_file"
+      ]
+    }
+  ],
+  "setup_commands": [
+    {
+      "id": "verify_env_template",
+      "shell": "make verify-au-p0a-env-template",
+      "purpose": "Verify the committed env template is complete and does not contain provider secrets."
+    },
+    {
+      "id": "bootstrap_env_file",
+      "shell": "make au-p0a-env-bootstrap",
+      "purpose": "Create or verify the local P0a env file with gitignore and 0600 hygiene evidence."
+    },
+    {
+      "id": "verify_env_file_bootstrap",
+      "shell": "make verify-au-p0a-env-bootstrap",
+      "purpose": "Verify the P0a env-file bootstrap audit hash and hygiene checks."
+    },
+    {
+      "id": "build_runbook",
+      "shell": "make au-p0a-runbook",
+      "purpose": "Freeze the P0a command plan."
+    },
+    {
+      "id": "build_env_report",
+      "shell": "make au-p0a-env",
+      "purpose": "Generate the redacted env report."
+    },
+    {
+      "id": "verify_env_report",
+      "shell": "make verify-au-p0a-env",
+      "purpose": "Verify env report hash and schema."
+    }
+  ],
+  "verification_commands": [
+    {
+      "id": "hard_env_gate",
+      "shell": "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py ${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment",
+      "purpose": "Fail until PERPLEXITY_API_KEY, OPENAI_API_KEY and DATABASE_URL are present."
+    },
+    {
+      "id": "dry_run_runbook",
+      "shell": "make au-p0a-runbook-dry-run && make verify-au-p0a-runbook-execution",
+      "purpose": "Prove the next command sequence is auditable before external calls."
+    },
+    {
+      "id": "readiness_with_db",
+      "shell": "GENO_AU_P0A_REQUIRE_DB_CHECK=1 make au-p0a-readiness",
+      "purpose": "Optionally verify DATABASE_URL with a read-only PostgreSQL check before real batches."
+    },
+    {
+      "id": "refresh_status",
+      "shell": "make au-p0a-status && make verify-au-p0a-status",
+      "purpose": "Refresh P0a status blockers."
+    }
+  ],
+  "evidence_outputs": [
+    "docs/runtime_preflight/au-p0a-runbook-latest.json",
+    "docs/runtime_preflight/au-p0a-env-latest.json",
+    "docs/runtime_preflight/au-p0a-runbook-execution-latest.json",
+    "docs/runtime_preflight/au-p0a-readiness-latest.json",
+    "docs/runtime_preflight/au-p0a-evidence-package-latest.json",
+    "docs/runtime_preflight/au-p0a-status-latest.json"
+  ],
+  "current_boundary": [
+    "This checklist proves P0a environment configuration is auditable and redacted.",
+    "It does not prove real provider calls, small batch, full batch, P0b Google or customer handoff are complete."
+  ],
+  "environment_checklist_hash": "49448bcfe90beeb01ceff9a2b4110ae1b5c6e606c7b97d8ff252f5ffe132a956"
+}

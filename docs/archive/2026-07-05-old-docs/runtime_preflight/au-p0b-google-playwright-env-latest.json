@@ -1,0 +1,331 @@
+{
+  "environment_report_version": "au_p0b_google_playwright_environment_report_v1",
+  "generated_at": "2026-06-16T03:42:49Z",
+  "status": "fail",
+  "ready_for_playwright_smoke": false,
+  "ready_for_full_google_run": false,
+  "next_action": "populate_google_playwright_smoke_environment",
+  "runbook_path": "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
+  "output_path": "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+  "runbook": {
+    "path": "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
+    "exists": true,
+    "status": "pass",
+    "errors": [],
+    "hash_valid": true,
+    "runbook_version": "au_p0b_google_spike_runbook_v1",
+    "planned_runs": 240,
+    "step_count": 11
+  },
+  "env_file": {
+    "path": ".env.au-p0b-google",
+    "exists": true,
+    "loaded": true,
+    "entry_count": 38,
+    "errors": [],
+    "hygiene": {
+      "path": ".env.au-p0b-google",
+      "exists": true,
+      "entry_count": 38,
+      "template_file": false,
+      "inside_workspace": true,
+      "relative_path": ".env.au-p0b-google",
+      "git_ignored": true,
+      "git_tracked": false,
+      "git_safe": true,
+      "file_mode": "0600",
+      "permission_safe": true,
+      "hygiene_required": true,
+      "hygiene_ready": true,
+      "errors": [],
+      "warnings": [],
+      "secret_redacted": true
+    },
+    "secrets_redacted": true
+  },
+  "required": [
+    {
+      "name": "GOOGLE_PLAYWRIGHT_ENABLED",
+      "present": true,
+      "source": "env_file",
+      "value_length": 1,
+      "sha256_prefix": "5feceb66ffc8",
+      "secret_redacted": true,
+      "truthy": false
+    }
+  ],
+  "full_run_required": [
+    {
+      "name": "MANUAL_BACKFILL_PATH",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true
+    },
+    {
+      "name": "DATABASE_URL",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true
+    }
+  ],
+  "recommended": [
+    {
+      "name": "GOOGLE_PLAYWRIGHT_SUBMIT_SELECTOR",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true
+    },
+    {
+      "name": "GOOGLE_PLAYWRIGHT_CITATION_SELECTOR",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true
+    },
+    {
+      "name": "GOOGLE_PLAYWRIGHT_STORAGE_STATE",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true
+    },
+    {
+      "name": "GOOGLE_AIO_PLAYWRIGHT_START_URL",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true
+    },
+    {
+      "name": "GOOGLE_AI_MODE_PLAYWRIGHT_START_URL",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true
+    },
+    {
+      "name": "GOOGLE_PLAYWRIGHT_BROWSER_NAME",
+      "present": true,
+      "source": "env_file",
+      "value_length": 8,
+      "sha256_prefix": "ddf8d310d216",
+      "secret_redacted": true
+    },
+    {
+      "name": "GOOGLE_PLAYWRIGHT_TIMEOUT_SECONDS",
+      "present": true,
+      "source": "env_file",
+      "value_length": 2,
+      "sha256_prefix": "811786ad1ae7",
+      "secret_redacted": true
+    },
+    {
+      "name": "GOOGLE_PLAYWRIGHT_VENDOR_COST",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true
+    },
+    {
+      "name": "GENO_BROWSER_ARTIFACT_DIR",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true
+    },
+    {
+      "name": "OBJECT_STORE_ENDPOINT",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true
+    },
+    {
+      "name": "OBJECT_STORE_BUCKET",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true
+    }
+  ],
+  "selector_groups": [
+    {
+      "group": "google_aio_prompt_selector",
+      "candidate_names": [
+        "GOOGLE_AIO_PLAYWRIGHT_PROMPT_SELECTOR",
+        "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR"
+      ],
+      "present": false,
+      "selected_name": "",
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true
+    },
+    {
+      "group": "google_aio_answer_selector",
+      "candidate_names": [
+        "GOOGLE_AIO_PLAYWRIGHT_ANSWER_SELECTOR",
+        "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR"
+      ],
+      "present": false,
+      "selected_name": "",
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "secret_redacted": true
+    }
+  ],
+  "file_checks": [
+    {
+      "name": "GOOGLE_PLAYWRIGHT_STORAGE_STATE",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "expected_type": "file",
+      "exists": false,
+      "is_file": false,
+      "is_dir": false,
+      "secret_redacted": true
+    },
+    {
+      "name": "GENO_BROWSER_ARTIFACT_DIR",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "expected_type": "directory",
+      "exists": false,
+      "is_file": false,
+      "is_dir": false,
+      "secret_redacted": true
+    },
+    {
+      "name": "MANUAL_BACKFILL_PATH",
+      "present": false,
+      "source": "missing",
+      "value_length": 0,
+      "sha256_prefix": "",
+      "expected_type": "file",
+      "exists": false,
+      "is_file": false,
+      "is_dir": false,
+      "secret_redacted": true
+    }
+  ],
+  "dependency_checks": [
+    {
+      "name": "python_playwright_package",
+      "present": true,
+      "source": "python_import",
+      "secret_redacted": true
+    }
+  ],
+  "collector_health": "not_configured",
+  "missing_required": [
+    "GOOGLE_PLAYWRIGHT_ENABLED"
+  ],
+  "missing_full_run_required": [
+    "MANUAL_BACKFILL_PATH",
+    "DATABASE_URL"
+  ],
+  "missing_selector_groups": [
+    "google_aio_prompt_selector",
+    "google_aio_answer_selector"
+  ],
+  "summary": {
+    "required_count": 1,
+    "present_required_count": 0,
+    "missing_required_count": 1,
+    "missing_required": [
+      "GOOGLE_PLAYWRIGHT_ENABLED"
+    ],
+    "full_run_required_count": 2,
+    "present_full_run_required_count": 0,
+    "missing_full_run_required_count": 2,
+    "missing_full_run_required": [
+      "MANUAL_BACKFILL_PATH",
+      "DATABASE_URL"
+    ],
+    "recommended_count": 11,
+    "present_recommended_count": 2,
+    "missing_recommended_count": 9,
+    "missing_recommended": [
+      "GOOGLE_PLAYWRIGHT_SUBMIT_SELECTOR",
+      "GOOGLE_PLAYWRIGHT_CITATION_SELECTOR",
+      "GOOGLE_PLAYWRIGHT_STORAGE_STATE",
+      "GOOGLE_AIO_PLAYWRIGHT_START_URL",
+      "GOOGLE_AI_MODE_PLAYWRIGHT_START_URL",
+      "GOOGLE_PLAYWRIGHT_VENDOR_COST",
+      "GENO_BROWSER_ARTIFACT_DIR",
+      "OBJECT_STORE_ENDPOINT",
+      "OBJECT_STORE_BUCKET"
+    ],
+    "selector_group_count": 2,
+    "present_selector_group_count": 0,
+    "missing_selector_group_count": 2,
+    "missing_selector_groups": [
+      "google_aio_prompt_selector",
+      "google_aio_answer_selector"
+    ],
+    "dependency_count": 1,
+    "present_dependency_count": 1,
+    "missing_dependency_count": 0,
+    "missing_dependencies": [],
+    "runbook_status": "pass",
+    "runbook_hash_valid": true,
+    "env_file_exists": true,
+    "env_file_loaded": true,
+    "env_file_entry_count": 38,
+    "env_file_hygiene_ready": true,
+    "env_file_hygiene_error_count": 0,
+    "env_file_hygiene_warning_count": 0,
+    "storage_state_file_ready": true,
+    "manual_backfill_file_ready": false,
+    "playwright_available": true,
+    "collector_health": "not_configured",
+    "ready_for_playwright_smoke": false,
+    "ready_for_full_google_run": false,
+    "next_action": "populate_google_playwright_smoke_environment",
+    "raw_secret_values_allowed": false,
+    "selector_values_allowed": false,
+    "database_urls_allowed": false,
+    "provider_response_values_allowed": false
+  },
+  "warnings": [
+    "recommended_env_missing:GOOGLE_PLAYWRIGHT_SUBMIT_SELECTOR",
+    "recommended_env_missing:GOOGLE_PLAYWRIGHT_CITATION_SELECTOR",
+    "recommended_env_missing:GOOGLE_PLAYWRIGHT_STORAGE_STATE",
+    "recommended_env_missing:GOOGLE_AIO_PLAYWRIGHT_START_URL",
+    "recommended_env_missing:GOOGLE_AI_MODE_PLAYWRIGHT_START_URL",
+    "recommended_env_missing:GOOGLE_PLAYWRIGHT_VENDOR_COST",
+    "recommended_env_missing:GENO_BROWSER_ARTIFACT_DIR",
+    "recommended_env_missing:OBJECT_STORE_ENDPOINT",
+    "recommended_env_missing:OBJECT_STORE_BUCKET",
+    "full_run_required_env_missing:MANUAL_BACKFILL_PATH",
+    "full_run_required_env_missing:DATABASE_URL"
+  ],
+  "errors": [
+    "required_env_not_truthy:GOOGLE_PLAYWRIGHT_ENABLED",
+    "selector_group_missing:google_aio_prompt_selector",
+    "selector_group_missing:google_aio_answer_selector",
+    "collector_health:not_configured"
+  ],
+  "secrets_redacted": true,
+  "environment_report_hash": "0b99d800283d345c5318c112bb02e159a25b435d52d2857b243be969bf06b97d"
+}

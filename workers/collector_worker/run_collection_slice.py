@@ -7,7 +7,7 @@ import os
 import sys
 from collections import Counter
 from dataclasses import asdict
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -53,7 +53,19 @@ from geno_core.google_spike import (
     select_google_spike_prompts,
 )
 from geno_core.llm_gateway import LiteLLMGateway
-from geno_core.models import CollectionFailureRecord, ProjectBootstrap, PromptQuestion, RawEvidenceRecord
+from geno_core.industry import build_au_dtc_ecommerce_profile
+from geno_core.market import build_au_market_profile
+from geno_core.models import (
+    BrandEntity,
+    CollectionFailureRecord,
+    CompetitorEntity,
+    Project,
+    ProjectBootstrap,
+    ProjectMember,
+    PromptQuestion,
+    RawEvidenceRecord,
+    Tenant,
+)
 from geno_core.object_store import (
     archive_api_snapshot_assets,
     archive_browser_capture_assets,
@@ -69,8 +81,136 @@ from geno_core.knowledge import (
     search_knowledge_facts,
 )
 from geno_core.report import MarkdownCsvReportExporter
-from geno_core.runtime import RuntimePersistenceError, build_object_store_from_env, build_repository_from_env
+from geno_core.runtime import (
+    RuntimePersistenceError,
+    build_object_store_from_env,
+    build_repository_from_env,
+    close_repository_connection,
+)
 from geno_core.traceability import build_traceability_bundle
+
+
+def _tuple_strings(value: object) -> tuple[str, ...]:
+    if isinstance(value, (list, tuple)):
+        return tuple(str(item) for item in value if str(item).strip())
+    return ()
+
+
+def _datetime_value(value: object) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return datetime.now(UTC)
+    return datetime.now(UTC)
+
+
+def _prompt_from_record(record: dict[str, object]) -> PromptQuestion:
+    return PromptQuestion(
+        id=str(record["id"]),
+        project_id=str(record["project_id"]),
+        market_code=str(record.get("market_code") or "AU"),
+        industry_code=str(record.get("industry_code") or "dtc_ecommerce"),
+        text=str(record.get("text") or record.get("prompt_text") or ""),
+        intent_type=str(record.get("intent_type") or "brand_awareness"),
+        city=str(record.get("city") or "Australia"),
+        language=str(record.get("language") or "en-AU"),
+        target_brand=str(record.get("target_brand") or ""),
+        competitors=_tuple_strings(record.get("competitors")),
+        priority=int(record.get("priority") or 0),
+        intent_weight=float(record.get("intent_weight") or 1.0),
+        prompt_version=str(record.get("prompt_version") or "au_dtc_ecommerce_v1"),
+        status=str(record.get("status") or "active"),
+    )
+
+
+def _load_runtime_project_bootstrap(project_id: str) -> ProjectBootstrap:
+    repository = build_repository_from_env()
+    try:
+        project_page = repository.list_runtime_projects(project_id=project_id, include_archived=True, limit=1, offset=0)
+        if project_page.total_count < 1 or not project_page.records:
+            raise RuntimePersistenceError(f"project not found: {project_id}")
+        record = project_page.records[0]
+        project_row = record.project
+        tenant_row = record.tenant
+        brand_row = record.brand
+        if not brand_row:
+            raise RuntimePersistenceError(f"project brand entity not found: {project_id}")
+        active_competitors = tuple(
+            competitor
+            for competitor in record.competitors
+            if str(competitor.get("status") or "active") in {"active", "paused"}
+        )
+        if len(active_competitors) < 3 or len(active_competitors) > 5:
+            raise RuntimePersistenceError("runtime project must have 3-5 active or paused competitors before collection")
+        prompt_page = repository.list_runtime_prompts(project_id=project_id, status="active", limit=200, offset=0)
+        prompts = tuple(_prompt_from_record(prompt) for prompt in prompt_page.records)
+        if not prompts:
+            raise RuntimePersistenceError(f"project has no active prompts: {project_id}")
+    finally:
+        close_repository_connection(repository)
+    market_profile = build_au_market_profile()
+    industry_profile = build_au_dtc_ecommerce_profile()
+    project = Project(
+        id=str(project_row["id"]),
+        tenant_id=str(project_row["tenant_id"]),
+        name=str(project_row.get("name") or ""),
+        market_code=str(project_row.get("market_code") or market_profile.market_code),
+        industry_code=str(project_row.get("industry_code") or industry_profile.industry_code),
+        target_brand=str(project_row.get("target_brand") or brand_row.get("canonical_name") or ""),
+        category=str(project_row.get("category") or ""),
+        prompt_version=str(project_row.get("prompt_version") or "au_dtc_ecommerce_v1"),
+        status=str(project_row.get("status") or "configured"),
+        created_at=_datetime_value(project_row.get("created_at")),
+    )
+    tenant = Tenant(
+        id=str(tenant_row["id"]),
+        name=str(tenant_row.get("name") or ""),
+        slug=str(tenant_row.get("slug") or ""),
+        created_at=_datetime_value(tenant_row.get("created_at")),
+    )
+    brand = BrandEntity(
+        id=str(brand_row["id"]),
+        project_id=str(brand_row["project_id"]),
+        canonical_name=str(brand_row.get("canonical_name") or project.target_brand),
+        official_domains=_tuple_strings(brand_row.get("official_domains")),
+        parent_company=str(brand_row["parent_company"]) if brand_row.get("parent_company") else None,
+        product_lines=_tuple_strings(brand_row.get("product_lines")),
+        status=str(brand_row.get("status") or "active"),
+    )
+    competitors = tuple(
+        CompetitorEntity(
+            id=str(competitor["id"]),
+            project_id=str(competitor["project_id"]),
+            canonical_name=str(competitor.get("canonical_name") or ""),
+            official_domains=_tuple_strings(competitor.get("official_domains")),
+            parent_company=str(competitor["parent_company"]) if competitor.get("parent_company") else None,
+            product_lines=_tuple_strings(competitor.get("product_lines")),
+            status=str(competitor.get("status") or "active"),
+        )
+        for competitor in active_competitors
+    )
+    return ProjectBootstrap(
+        tenant=tenant,
+        project=project,
+        members=(
+            ProjectMember(
+                id=f"runtime-worker-member-{project.id}",
+                project_id=project.id,
+                user_id="runtime-worker",
+                role="owner",
+                created_at=datetime.now(UTC),
+            ),
+        ),
+        brand=brand,
+        competitors=competitors,
+        market_profile=market_profile,
+        industry_profile=industry_profile,
+        prompt_questions=prompts,
+        audit_events=(),
+    )
 
 
 def _collectors(mode: str) -> tuple[CollectorBackend, ...]:
@@ -458,9 +598,11 @@ def _persist_records(
     score_formula_version: str,
     judge_gateway: str,
     judge_model: str,
+    ensure_project_bootstrap: bool = True,
 ) -> dict[str, object]:
     repository = build_repository_from_env()
-    repository.save_project_bootstrap(bootstrap)
+    if ensure_project_bootstrap:
+        repository.save_project_bootstrap(bootstrap)
     snapshot_archive_summary: dict[str, object] = {
         "enabled": False,
         "reason": "OBJECT_STORE_ENDPOINT not configured",
@@ -596,7 +738,7 @@ def _persist_records(
         if not score_input_successes:
             return {
                 "enabled": True,
-                "project_bootstrap": True,
+                "project_bootstrap": ensure_project_bootstrap,
                 "tenant_id": bootstrap.tenant.id,
                 "project_id": bootstrap.project.id,
                 "prompt_questions": len(bootstrap.prompt_questions),
@@ -649,10 +791,14 @@ def _persist_records(
             industry_profile=bootstrap.industry_profile,
         )
         repository.save_citation_graph(bootstrap.project.id, graph)
+        report_version = (
+            f"worker-runtime-{collection_summary.created_at.strftime('%Y%m%dT%H%M%S%fZ')}"
+            f"-{collection_summary.id[:8]}"
+        )
         report = MarkdownCsvReportExporter().export(
             project_id=bootstrap.project.id,
             market_code=bootstrap.project.market_code,
-            report_version="worker-runtime-v1",
+            report_version=report_version,
             report_type="worker_runtime",
             prompt_version=bootstrap.project.prompt_version,
             snapshot=analysis_result.snapshot,
@@ -815,6 +961,7 @@ def _persist_records(
             "source_gaps": len(graph.source_gaps),
             "competitor_benchmarks": len(graph.competitor_benchmarks),
             "report_export_id": report.report_export.id,
+            "report_version": report.report_export.report_version,
             "report_evidence_answer_runs": len(report.report_evidence_answer_run_ids),
             "fidelity_check_id": fidelity_check["id"],
             "fidelity_check_status": fidelity_check["status"],
@@ -840,7 +987,7 @@ def _persist_records(
         }
     return {
         "enabled": True,
-        "project_bootstrap": True,
+        "project_bootstrap": ensure_project_bootstrap,
         "tenant_id": bootstrap.tenant.id,
         "project_id": bootstrap.project.id,
         "prompt_questions": len(bootstrap.prompt_questions),
@@ -865,6 +1012,11 @@ def main() -> None:
         "--mode",
         choices=["fixture", "api", "google-fixture", "google-spike", "google-serp-fixture", "google-serp-spike"],
         default="fixture",
+    )
+    parser.add_argument(
+        "--project-id",
+        default=None,
+        help="Load an existing runtime project from DATABASE_URL instead of using the built-in AU bootstrap.",
     )
     parser.add_argument("--prompt-limit", type=int, default=2)
     parser.add_argument(
@@ -995,7 +1147,11 @@ def main() -> None:
     except ValueError as exc:
         parser.error(str(exc))
 
-    bootstrap = build_au_project_bootstrap()
+    try:
+        bootstrap = _load_runtime_project_bootstrap(args.project_id.strip()) if args.project_id else build_au_project_bootstrap()
+    except RuntimePersistenceError as exc:
+        print(f"runtime_project_load_error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
     if args.plan_browser_fidelity_sampling:
         try:
             run_date = (
@@ -1020,11 +1176,12 @@ def main() -> None:
         if args.persist:
             try:
                 repository = build_repository_from_env()
-                repository.save_project_bootstrap(bootstrap)
+                if not args.project_id:
+                    repository.save_project_bootstrap(bootstrap)
                 repository.save_audit_events((sampling_audit,))
                 persistence = {
                     "enabled": True,
-                    "project_bootstrap": True,
+                    "project_bootstrap": not bool(args.project_id),
                     "audit_event_id": sampling_audit.id,
                 }
             except RuntimePersistenceError as exc:
@@ -1233,6 +1390,7 @@ def main() -> None:
                 score_formula_version=args.score_formula_version,
                 judge_gateway=args.judge_gateway,
                 judge_model=args.judge_model,
+                ensure_project_bootstrap=not bool(args.project_id),
             )
         except RuntimePersistenceError as exc:
             print(f"persistence_error: {exc}", file=sys.stderr)
