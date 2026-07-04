@@ -34,7 +34,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | W10-I01 | 16 / 14 | `production-v1-e2e` 骨架 | 无 | Verifying | `make production-v1-e2e` | `scripts/verify_production_v1_gate.py` | 待填 | 严格模式按 pending 失败，进度模式可观察未完成项 |
 | W1-I03 | 16 | 清除生产路径 demo fallback | W10-I01 | Done | `make no-fixture-production-smoke` | `scripts/verify_production_v1_gate.py`; `tests/test_admin_customer_web_contracts.py`; `tests/test_infra_contracts.py`; `tests/test_api_contracts.py`; `tests/test_worker_cli.py` | 待填 | 新建项目/启动配置/worker 默认真实 API；fixture collection/report 仅开发工具开关可用 |
-| W1-I01 | 16 / 6 | FastAPI domain route 边界 | W10-I01 | Not started | `make test` | 待填 | 待填 | 从 `main.py` 拆 domain router |
+| W1-I01 | 16 / 6 | FastAPI domain route 边界 | W10-I01 | Done | `python3 -m compileall apps/api/geno_api`; focused API/router tests | `apps/api/geno_api/ops_routes.py`; `tests/test_infra_contracts.py` | 待填 | 建立 ops domain router 模式；后续 domain router 按此迁移 |
 | W1-I02 | 16 / 6 | Repository 拆分边界 | W1-I01 | Not started | `make test` | 待填 | 待填 | 按 audit/access/project/connector 等顺序拆 |
 
 ## 3. Identity / Access

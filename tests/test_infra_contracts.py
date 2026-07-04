@@ -429,6 +429,23 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("COPY scripts ./scripts", dockerfile)
         self.assertIn("ENV PYTHONPATH=/app:/app/packages/geno_core:/app/apps/api", dockerfile)
 
+    def test_api_domain_route_boundary_has_ops_router(self) -> None:
+        main_source = (ROOT / "apps/api/geno_api/main.py").read_text(encoding="utf-8")
+        ops_source = (ROOT / "apps/api/geno_api/ops_routes.py").read_text(encoding="utf-8")
+        access_source = (ROOT / "apps/api/geno_api/runtime_access_routes.py").read_text(encoding="utf-8")
+
+        self.assertIn("register_ops_routes(app)", main_source)
+        self.assertIn("register_runtime_access_routes(", main_source)
+        self.assertIn("router = APIRouter", ops_source)
+        self.assertIn("@router.get(\"/health\")", ops_source)
+        self.assertIn("@router.get(\"/ready\")", ops_source)
+        self.assertIn("@router.get(\"/metrics\")", ops_source)
+        self.assertIn("def register_ops_routes(app: FastAPI)", ops_source)
+        self.assertIn("def register_runtime_access_routes(", access_source)
+        self.assertNotIn("@app.get(\"/health\")", main_source)
+        self.assertNotIn("@app.get(\"/ready\")", main_source)
+        self.assertNotIn("@app.get(\"/metrics\")", main_source)
+
     def test_runtime_project_rls_migration_uses_guc_context_and_project_policies(self) -> None:
         migration = (ROOT / "infra/db/migrations/up/0010_runtime_project_rls.sql").read_text(encoding="utf-8")
         rollback = (ROOT / "infra/db/migrations/down/0010_runtime_project_rls.down.sql").read_text(encoding="utf-8")

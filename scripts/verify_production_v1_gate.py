@@ -131,6 +131,11 @@ def _gate_no_fixture_production() -> list[Check]:
                 'collection_mode: str = Field(default="api"',
             ),
             _check_contains(
+                "runtime_access_launch_config_defaults_api",
+                "apps/api/geno_api/runtime_access_routes.py",
+                'collection_mode: str = Field(default="api"',
+            ),
+            _check_contains(
                 "launch_config_migration_defaults_api",
                 "infra/db/migrations/up/0015_customer_portal_launch_access_logs.sql",
                 "collection_mode text NOT NULL DEFAULT 'api'",
@@ -166,6 +171,9 @@ def _gate_no_fixture_production() -> list[Check]:
         ),
         "apps/api/geno_api/main.py": (
             'target_brand: str = Field(default="ExampleBrand"',
+            'collection_mode: str = Field(default="fixture"',
+        ),
+        "apps/api/geno_api/runtime_access_routes.py": (
             'collection_mode: str = Field(default="fixture"',
         ),
         "infra/db/migrations/up/0015_customer_portal_launch_access_logs.sql": (
@@ -281,9 +289,10 @@ def _gate_connector_real() -> list[Check]:
 def _gate_ops() -> list[Check]:
     return [
         *_gate_checklist(),
-        _check_contains("health_endpoint_exists", "apps/api/geno_api/main.py", "@app.get(\"/health\")"),
-        _check_contains("ready_endpoint_exists", "apps/api/geno_api/main.py", "@app.get(\"/ready\")"),
-        _check_contains("metrics_endpoint_exists", "apps/api/geno_api/main.py", "@app.get(\"/metrics\")"),
+        _check_contains("ops_router_registered", "apps/api/geno_api/main.py", "register_ops_routes(app)"),
+        _check_contains("health_endpoint_exists", "apps/api/geno_api/ops_routes.py", "@router.get(\"/health\")"),
+        _check_contains("ready_endpoint_exists", "apps/api/geno_api/ops_routes.py", "@router.get(\"/ready\")"),
+        _check_contains("metrics_endpoint_exists", "apps/api/geno_api/ops_routes.py", "@router.get(\"/metrics\")"),
         _check_contains("observability_compose_profile_exists", "infra/docker-compose.yml", "profiles:\n      - observability"),
         _pending("alert_smoke", "W9-I01 alert smoke not complete"),
     ]

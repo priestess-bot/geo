@@ -29,11 +29,10 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import hashes
 
 from geno_api.access_logging import persist_runtime_http_access_log
+from geno_api.ops_routes import register_ops_routes
 from geno_api.runtime_access_routes import register_runtime_access_routes
 from geno_api.runtime_metrics import (
-    METRICS_CONTENT_TYPE,
     observe_api_request,
-    render_runtime_metrics,
     reset_runtime_metrics,  # noqa: F401 - re-exported for API contract tests and runtime reset helpers.
 )
 from geno_core.action_plan import (
@@ -127,12 +126,10 @@ from geno_core.prompt_import import prompt_import_file_to_csv
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.runtime import (
     RuntimePersistenceError,
-    build_runtime_diagnostics,
     build_object_store_from_env,
     build_repository_from_env,
     close_repository_connection,
     close_runtime_postgres_pool,
-    runtime_database_diagnostic,
 )
 from geno_core.scoring import get_score_formula, list_score_formulas, normalize_score_weights
 from geno_core.traceability import build_traceability_bundle
@@ -310,6 +307,7 @@ from scripts.build_au_p0b_google_playwright_env_report import (
 )
 
 app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
+register_ops_routes(app)
 
 
 @app.on_event("shutdown")
@@ -2073,30 +2071,6 @@ class RuntimeNotificationEmailPreferenceResubscribeRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "service": "geno-saas-au-api"}
-
-
-@app.get("/ready")
-def readiness() -> JSONResponse:
-    diagnostic = runtime_database_diagnostic()
-    status_code = 200 if diagnostic.status == "pass" else 503
-    return JSONResponse(
-        status_code=status_code,
-        content={
-            "status": diagnostic.status,
-            "service": "geno-saas-au-api",
-            "checks": [asdict(diagnostic)],
-        },
-    )
-
-
-@app.get("/v1/runtime-diagnostics")
-def runtime_diagnostics() -> dict[str, object]:
-    return build_runtime_diagnostics().to_dict()
-
-
 @app.get("/v1/launch-status/au")
 def au_launch_status() -> dict[str, object]:
     return _build_au_launch_status_from_env()
@@ -3390,11 +3364,6 @@ def au_external_dependency_clearance() -> dict[str, object]:
             )
         ),
     )
-
-
-@app.get("/metrics")
-def runtime_metrics() -> Response:
-    return Response(content=render_runtime_metrics(), media_type=METRICS_CONTENT_TYPE)
 
 
 @app.get("/v1/market-profiles/au")

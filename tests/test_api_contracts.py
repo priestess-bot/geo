@@ -332,7 +332,7 @@ class ApiContractsTest(unittest.TestCase):
 
     def test_readiness_returns_503_when_database_check_fails(self) -> None:
         with patch(
-            "geno_api.main.runtime_database_diagnostic",
+            "geno_api.ops_routes.runtime_database_diagnostic",
             return_value=RuntimeComponentDiagnostic(
                 name="database",
                 status="fail",
@@ -349,7 +349,7 @@ class ApiContractsTest(unittest.TestCase):
 
     def test_readiness_returns_200_when_database_check_passes(self) -> None:
         with patch(
-            "geno_api.main.runtime_database_diagnostic",
+            "geno_api.ops_routes.runtime_database_diagnostic",
             return_value=RuntimeComponentDiagnostic(
                 name="database",
                 status="pass",
@@ -380,7 +380,7 @@ class ApiContractsTest(unittest.TestCase):
                 ),
             ),
         )
-        with patch("geno_api.main.build_runtime_diagnostics", return_value=diagnostics):
+        with patch("geno_api.ops_routes.build_runtime_diagnostics", return_value=diagnostics):
             response = self.client.get("/v1/runtime-diagnostics")
 
         self.assertEqual(response.status_code, 200)

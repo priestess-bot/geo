@@ -23,7 +23,7 @@ class ProjectLaunchConfigRequest(BaseModel):
     locale: str = Field(default="en-AU", min_length=1, max_length=40)
     country_code: str = Field(default="AU", min_length=1, max_length=8)
     timezone: str = Field(default="Australia/Sydney", min_length=1, max_length=120)
-    collection_mode: str = Field(default="fixture", min_length=1, max_length=40)
+    collection_mode: str = Field(default="api", min_length=1, max_length=40)
     schedule: dict[str, object] = Field(default_factory=dict)
     external_connectors: dict[str, object] = Field(default_factory=dict)
     scoring_profile: str = Field(default="au_visibility_v1", min_length=1, max_length=120)
