@@ -506,7 +506,7 @@ class RuntimeProjectAccessRepositoryMixin:
             after = _row_dict(cursor.fetchone(), RUNTIME_SESSION_COLUMNS)
             audit_event = build_audit_event(
                 event_type="runtime_session_revoked",
-                project_id=None,
+                project_id="",
                 actor_type="user",
                 actor_id=revoked_by,
                 target_type="runtime_session",
