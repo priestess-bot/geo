@@ -286,8 +286,11 @@ def _gate_security() -> list[Check]:
         _check_contains("session_auth_mode_exists", "apps/api/geno_api/main.py", "RUNTIME_AUTH_MODE_SESSION"),
         _check_contains("session_cookie_name_exists", "apps/api/geno_api/main.py", "GENO_RUNTIME_SESSION"),
         _check_contains("protected_api_uses_auth_context_project_scope", "apps/api/geno_api/main.py", "def _assert_auth_context_project_access"),
+        _check_contains("invitation_redeem_endpoint_exists", "apps/api/geno_api/main.py", "@app.post(\"/v1/auth/invitations/redeem\")"),
+        _check_contains("auth_me_endpoint_exists", "apps/api/geno_api/main.py", "@app.get(\"/v1/auth/me\")"),
+        _check_contains("auth_logout_endpoint_exists", "apps/api/geno_api/main.py", "@app.post(\"/v1/auth/logout\")"),
+        _check_contains("runtime_session_cookie_is_httponly", "apps/api/geno_api/main.py", "httponly=True"),
         _check_regex("jwt_or_jwks_auth_exists", "apps/api/geno_api/main.py", r"RUNTIME_AUTH_MODE_ENV|jwks|JWT"),
-        _pending("session_redemption_routes", "invitation/login routes that set the httpOnly session cookie are W2-I02 scope"),
         _pending("csrf_mutation_contract", "unsafe mutation CSRF enforcement not complete"),
     ]
     return _dedupe(checks)

@@ -157,6 +157,7 @@ from geno_core.models import (
     RuntimeReportExportJobPage,
     RuntimeReportExportJobQueueStats,
     RuntimeScoreWeightConfig,
+    RuntimeSession,
 )
 
 
@@ -4791,6 +4792,213 @@ class ApiContractsTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 409)
         self.assertIn("expired", response.json()["detail"])
+
+    def test_auth_invitation_redeem_creates_session_cookie_without_returning_raw_token(self) -> None:
+        class Scope:
+            tenant_id = "tenant-1"
+            tenant_roles: tuple[str, ...] = ()
+            project_ids = ("9a50797d-a341-55a4-8bdf-cc255c017e5c",)
+            project_roles = {"9a50797d-a341-55a4-8bdf-cc255c017e5c": "viewer"}
+            permissions = ("report.read", "report.download")
+
+        class FakeRepository:
+            def accept_runtime_project_member_invitation(self, invitation: object) -> RuntimeProjectMemberInvitation:
+                self.invitation = invitation
+                return RuntimeProjectMemberInvitation(
+                    invitation={
+                        "id": invitation.invitation_id,
+                        "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                        "email": "viewer@example.com",
+                        "role": "viewer",
+                        "status": "accepted",
+                        "member": {"user_id": "viewer@example.com", "role": "viewer"},
+                    },
+                    audit_events=({"event_type": "project_member_invitation_accepted"},),
+                )
+
+            def get_runtime_membership_scope(self, **kwargs: object) -> Scope:
+                self.scope_kwargs = kwargs
+                return Scope()
+
+            def create_runtime_session(self, session_input: object) -> RuntimeSession:
+                self.session_input = session_input
+                return RuntimeSession(
+                    session={
+                        "id": "session-1",
+                        "actor_id": "viewer@example.com",
+                        "tenant_id": "tenant-1",
+                        "project_ids": ["9a50797d-a341-55a4-8bdf-cc255c017e5c"],
+                        "roles": ["viewer"],
+                        "permissions": ["report.read", "report.download"],
+                        "status": "active",
+                    },
+                    audit_events=({"event_type": "runtime_session_created"},),
+                    raw_session_token="geno-session-secret",
+                )
+
+        fake_repository = FakeRepository()
+        with patch.dict("os.environ", {"GENO_RUNTIME_SESSION_COOKIE_SECURE": "0"}, clear=False), patch(
+            "geno_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geno_api.main.close_repository_connection"):
+            response = self.client.post(
+                "/v1/auth/invitations/redeem",
+                json={
+                    "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
+                    "invite_token": "geno-invite-token",
+                    "accepted_by": "viewer@example.com",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["invitation"]["status"], "accepted")
+        self.assertEqual(payload["session"]["actor_id"], "viewer@example.com")
+        self.assertNotIn("raw_session_token", response.text)
+        self.assertNotIn("geno-session-secret", response.text)
+        self.assertIn("GENO_RUNTIME_SESSION=geno-session-secret", response.headers["set-cookie"])
+        self.assertIn("HttpOnly", response.headers["set-cookie"])
+        self.assertIn("SameSite=lax", response.headers["set-cookie"])
+        self.assertEqual(fake_repository.invitation.invite_token, "geno-invite-token")
+        self.assertEqual(fake_repository.scope_kwargs["actor_id"], "viewer@example.com")
+        self.assertEqual(fake_repository.session_input.ttl_seconds, 604800)
+        self.assertEqual(fake_repository.session_input.permissions, ("report.read", "report.download"))
+
+    def test_auth_invitation_redeem_sets_invitation_context_when_access_control_enabled(self) -> None:
+        class FakeRepository:
+            def set_runtime_project_invitation_accept_context(self, **kwargs: object) -> None:
+                self.context_kwargs = kwargs
+
+            def accept_runtime_project_member_invitation(self, invitation: object) -> RuntimeProjectMemberInvitation:
+                return RuntimeProjectMemberInvitation(
+                    invitation={
+                        "id": invitation.invitation_id,
+                        "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                        "email": "viewer@example.com",
+                        "role": "viewer",
+                        "member": {"user_id": "viewer@example.com", "role": "viewer"},
+                    },
+                    audit_events=(),
+                )
+
+            def get_runtime_membership_scope(self, **kwargs: object) -> object:
+                raise PermissionError("scope unavailable in fake")
+
+            def create_runtime_session(self, session_input: object) -> RuntimeSession:
+                return RuntimeSession(
+                    session={"id": "session-1", "actor_id": "viewer@example.com", "project_ids": [session_input.project_ids[0]]},
+                    audit_events=(),
+                    raw_session_token="geno-session-secret",
+                )
+
+        fake_repository = FakeRepository()
+        with patch.dict(
+            "os.environ",
+            {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1", "GENO_RUNTIME_SESSION_COOKIE_SECURE": "0"},
+            clear=False,
+        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/auth/invitations/redeem",
+                json={
+                    "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
+                    "invite_token": "geno-invite-token",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            fake_repository.context_kwargs["invite_token_hash"],
+            hashlib.sha256("geno-invite-token".encode("utf-8")).hexdigest(),
+        )
+
+    def test_auth_invitation_redeem_rejects_reused_or_expired_token(self) -> None:
+        class FakeRepository:
+            def accept_runtime_project_member_invitation(self, invitation: object) -> object:
+                raise ValueError("cannot accept invitation with status accepted")
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/auth/invitations/redeem",
+                json={
+                    "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
+                    "invite_token": "geno-invite-token",
+                },
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("cannot accept", response.json()["detail"])
+
+    def test_auth_me_returns_session_scope(self) -> None:
+        class FakeRepository:
+            def validate_runtime_session(self, raw_session_token: str) -> RuntimeSession:
+                self.raw_session_token = raw_session_token
+                return RuntimeSession(
+                    session={
+                        "id": "session-1",
+                        "actor_id": "viewer@example.com",
+                        "tenant_id": "tenant-1",
+                        "project_ids": ["project-1"],
+                        "roles": ["viewer"],
+                        "permissions": ["report.read"],
+                    },
+                    audit_events=(),
+                )
+
+        fake_repository = FakeRepository()
+        with patch.dict(
+            "os.environ",
+            {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1", "GENO_RUNTIME_AUTH_MODE": "session"},
+            clear=False,
+        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get("/v1/auth/me", headers={"X-GENO-Session-Token": "raw-session-token"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["auth"]["actor_id"], "viewer@example.com")
+        self.assertEqual(response.json()["auth"]["project_ids"], ["project-1"])
+        self.assertEqual(fake_repository.raw_session_token, "raw-session-token")
+
+    def test_auth_logout_revokes_session_and_clears_cookie(self) -> None:
+        class FakeRepository:
+            def validate_runtime_session(self, raw_session_token: str) -> RuntimeSession:
+                return RuntimeSession(
+                    session={
+                        "id": "session-1",
+                        "actor_id": "viewer@example.com",
+                        "project_ids": ["project-1"],
+                        "roles": ["viewer"],
+                        "permissions": ["report.read"],
+                    },
+                    audit_events=(),
+                )
+
+            def revoke_runtime_session(self, revoke_input: object) -> RuntimeSession:
+                self.revoke_input = revoke_input
+                return RuntimeSession(session={"id": revoke_input.session_id, "status": "revoked"}, audit_events=())
+
+        fake_repository = FakeRepository()
+        with patch.dict(
+            "os.environ",
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "session",
+                "GENO_RUNTIME_SESSION_COOKIE_SECURE": "0",
+            },
+            clear=False,
+        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post("/v1/auth/logout", headers={"X-GENO-Session-Token": "raw-session-token"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "logged_out")
+        self.assertEqual(fake_repository.revoke_input.session_id, "session-1")
+        self.assertIn("GENO_RUNTIME_SESSION=", response.headers["set-cookie"])
+        self.assertIn("Max-Age=0", response.headers["set-cookie"])
 
     def test_runtime_prompts_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/prompts/runtime")
