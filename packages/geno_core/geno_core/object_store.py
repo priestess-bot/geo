@@ -13,7 +13,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, unquote, urlsplit
 from urllib.request import Request, urlopen
 
-from geno_core.models import EvidenceAsset, RawEvidenceRecord, RuntimeReportArtifact
+from geno_core.models import EvidenceAsset, RawEvidenceRecord, RuntimeEvidenceAssetInput, RuntimeReportArtifact
 
 
 RequestFn = Callable[[str, str, Mapping[str, str], bytes], tuple[int, Mapping[str, str], bytes]]
@@ -26,6 +26,16 @@ class ObjectStoreError(RuntimeError):
 @dataclass(frozen=True)
 class StoredObject:
     uri: str
+    bucket: str
+    key: str
+    content_type: str
+    content_hash: str
+    etag: str | None
+
+
+@dataclass(frozen=True)
+class RetrievedObject:
+    content: bytes
     bucket: str
     key: str
     content_type: str
@@ -79,15 +89,34 @@ class S3CompatibleObjectStore:
             raise ObjectStoreError(f"Bucket create failed: status={status} body={body[:200]!r}")
         self._bucket_ready = True
 
-    def put_s3_uri(self, *, uri: str, content: str | bytes, content_type: str) -> StoredObject:
+    def put_s3_uri(
+        self,
+        *,
+        uri: str,
+        content: str | bytes,
+        content_type: str,
+        expected_hash: str | None = None,
+    ) -> StoredObject:
         bucket, key = parse_s3_uri(uri)
         if bucket != self.bucket:
             raise ObjectStoreError(f"S3 URI bucket {bucket!r} does not match configured bucket {self.bucket!r}")
-        return self.put_object(key=key, content=content, content_type=content_type)
+        return self.put_object(key=key, content=content, content_type=content_type, expected_hash=expected_hash)
 
-    def put_object(self, *, key: str, content: str | bytes, content_type: str) -> StoredObject:
+    def put_object(
+        self,
+        *,
+        key: str,
+        content: str | bytes,
+        content_type: str,
+        expected_hash: str | None = None,
+    ) -> StoredObject:
         self.ensure_bucket()
         payload = content.encode("utf-8") if isinstance(content, str) else content
+        content_hash = hashlib.sha256(payload).hexdigest()
+        if expected_hash and not hmac.compare_digest(content_hash, expected_hash):
+            raise ObjectStoreError(
+                f"Object content hash mismatch: key={key} expected={expected_hash} actual={content_hash}"
+            )
         status, headers, body = self._signed_request(
             method="PUT",
             bucket=self.bucket,
@@ -103,8 +132,38 @@ class S3CompatibleObjectStore:
             bucket=self.bucket,
             key=key,
             content_type=content_type,
-            content_hash=hashlib.sha256(payload).hexdigest(),
+            content_hash=content_hash,
             etag=etag,
+        )
+
+    def get_s3_uri(self, *, uri: str, expected_hash: str | None = None) -> RetrievedObject:
+        bucket, key = parse_s3_uri(uri)
+        if bucket != self.bucket:
+            raise ObjectStoreError(f"S3 URI bucket {bucket!r} does not match configured bucket {self.bucket!r}")
+        return self.get_object(key=key, expected_hash=expected_hash)
+
+    def get_object(self, *, key: str, expected_hash: str | None = None) -> RetrievedObject:
+        status, headers, body = self._signed_request(
+            method="GET",
+            bucket=self.bucket,
+            key=key,
+            body=b"",
+            content_type=None,
+        )
+        if status != 200:
+            raise ObjectStoreError(f"Object download failed: key={key} status={status} body={body[:200]!r}")
+        content_hash = hashlib.sha256(body).hexdigest()
+        if expected_hash and not hmac.compare_digest(content_hash, expected_hash):
+            raise ObjectStoreError(
+                f"Downloaded object hash mismatch: key={key} expected={expected_hash} actual={content_hash}"
+            )
+        return RetrievedObject(
+            content=body,
+            bucket=self.bucket,
+            key=key,
+            content_type=_header(headers, "content-type") or "application/octet-stream",
+            content_hash=content_hash,
+            etag=_header(headers, "etag"),
         )
 
     def head_object(self, *, key: str) -> bool:
@@ -262,6 +321,60 @@ def archive_runtime_report_artifact(
         ]
     )
     return store.put_object(key=key, content=artifact.content, content_type=artifact.media_type)
+
+
+def archive_evidence_bytes(
+    *,
+    tenant_id: str | None,
+    project_id: str,
+    answer_run_id: str | None,
+    asset_type: str,
+    filename: str,
+    content: bytes,
+    content_type: str,
+    store: S3CompatibleObjectStore,
+    created_by: str = "collector",
+    visibility: str = "internal",
+    metadata: Mapping[str, Any] | None = None,
+) -> RuntimeEvidenceAssetInput:
+    if not project_id.strip():
+        raise ObjectStoreError("project_id is required")
+    if not asset_type.strip():
+        raise ObjectStoreError("asset_type is required")
+    if not content:
+        raise ObjectStoreError("evidence content is empty")
+    content_hash = hashlib.sha256(content).hexdigest()
+    safe_filename = _safe_asset_filename(filename)
+    key_parts = ["evidence-assets", project_id.strip()]
+    if answer_run_id:
+        key_parts.append(answer_run_id.strip())
+    key_parts.append(f"{asset_type.strip()}-{content_hash[:12]}-{safe_filename}")
+    stored = store.put_object(
+        key="/".join(key_parts),
+        content=content,
+        content_type=content_type,
+        expected_hash=content_hash,
+    )
+    return RuntimeEvidenceAssetInput(
+        tenant_id=tenant_id,
+        project_id=project_id,
+        answer_run_id=answer_run_id,
+        asset_type=asset_type,
+        url=stored.uri,
+        content_hash=stored.content_hash,
+        storage_backend="s3_compatible",
+        storage_key=stored.key,
+        bucket=stored.bucket,
+        content_type=stored.content_type,
+        byte_size=len(content),
+        metadata={
+            "etag": stored.etag,
+            "source": "object_store_archive",
+            **dict(metadata or {}),
+        },
+        visibility=visibility,
+        created_by=created_by,
+    )
 
 
 def archive_project_brand_logo(

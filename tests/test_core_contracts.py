@@ -227,6 +227,7 @@ from geno_core.models import (
 from geno_core.object_store import (
     S3CompatibleObjectStore,
     archive_api_snapshot_assets,
+    archive_evidence_bytes,
     archive_browser_capture_assets,
     archive_project_brand_logo,
     archive_report_artifacts,
@@ -3049,6 +3050,100 @@ class CoreContractsTest(unittest.TestCase):
         object_puts = [item for item in requests if item[0] == "PUT" and item[1].count("/") > 3]
         self.assertEqual(len(object_puts), 3)
         self.assertTrue(any(item[1].endswith(".pdf") and item[3].startswith(b"%PDF-1.4") for item in object_puts))
+
+    def test_s3_compatible_object_store_upload_download_and_hash_mismatch(self) -> None:
+        stored_payloads: dict[str, tuple[bytes, str]] = {}
+
+        def requester(
+            method: str,
+            url: str,
+            headers: object,
+            body: bytes,
+        ) -> tuple[int, dict[str, str], bytes]:
+            key = url.split("geno-evidence/", 1)[-1]
+            if method == "PUT" and url.endswith("/geno-evidence"):
+                return 200, {}, b""
+            if method == "PUT":
+                stored_payloads[key] = (body, dict(headers).get("content-type", "application/octet-stream"))
+                return 200, {"ETag": '"evidence-etag"'}, b""
+            if method == "GET" and key in stored_payloads:
+                payload, content_type = stored_payloads[key]
+                return 200, {"Content-Type": content_type, "ETag": '"evidence-etag"'}, payload
+            return 404, {}, b"missing"
+
+        store = S3CompatibleObjectStore(
+            endpoint="http://minio:9000",
+            bucket="geno-evidence",
+            access_key="minio",
+            secret_key="minio123",
+            requester=requester,
+        )
+        expected_hash = hashlib.sha256(b"<html>Evidence</html>").hexdigest()
+
+        stored = store.put_object(
+            key="evidence/project/run/asset.html",
+            content=b"<html>Evidence</html>",
+            content_type="text/html; charset=utf-8",
+            expected_hash=expected_hash,
+        )
+        downloaded = store.get_object(key=stored.key, expected_hash=stored.content_hash)
+
+        self.assertEqual(stored.uri, "s3://geno-evidence/evidence/project/run/asset.html")
+        self.assertEqual(stored.content_hash, expected_hash)
+        self.assertEqual(downloaded.content, b"<html>Evidence</html>")
+        self.assertEqual(downloaded.content_type, "text/html; charset=utf-8")
+        with self.assertRaisesRegex(Exception, "hash mismatch"):
+            store.put_object(
+                key="evidence/project/run/bad.html",
+                content=b"bad",
+                content_type="text/html",
+                expected_hash=expected_hash,
+            )
+        with self.assertRaisesRegex(Exception, "hash mismatch"):
+            store.get_object(key=stored.key, expected_hash="0" * 64)
+
+    def test_archive_evidence_bytes_returns_runtime_evidence_asset_input(self) -> None:
+        requests: list[tuple[str, str, dict[str, str], bytes]] = []
+
+        def requester(
+            method: str,
+            url: str,
+            headers: object,
+            body: bytes,
+        ) -> tuple[int, dict[str, str], bytes]:
+            requests.append((method, url, dict(headers), body))
+            return 200, {"ETag": '"asset-etag"'}, b""
+
+        store = S3CompatibleObjectStore(
+            endpoint="http://minio:9000",
+            bucket="geno-evidence",
+            access_key="minio",
+            secret_key="minio123",
+            requester=requester,
+        )
+        asset = archive_evidence_bytes(
+            tenant_id="0b6a5d38-a6c1-5be7-9351-80e456500a7b",
+            project_id="9a50797d-a341-55a4-8bdf-cc255c017e5c",
+            answer_run_id="6fcf21ee-22d8-5529-a91f-d8cead27cf2a",
+            asset_type="html_snapshot",
+            filename="../snapshot.html",
+            content=b"<html>Evidence</html>",
+            content_type="text/html; charset=utf-8",
+            store=store,
+            created_by="collector-worker",
+            metadata={"collector_backend_id": "openai.web_search.api"},
+        )
+
+        self.assertEqual(asset.storage_backend, "s3_compatible")
+        self.assertEqual(asset.bucket, "geno-evidence")
+        self.assertEqual(asset.content_type, "text/html; charset=utf-8")
+        self.assertEqual(asset.byte_size, len(b"<html>Evidence</html>"))
+        self.assertTrue(asset.storage_key and asset.storage_key.endswith("-snapshot.html"))
+        self.assertEqual(asset.metadata["etag"], '"asset-etag"')
+        self.assertEqual(asset.metadata["collector_backend_id"], "openai.web_search.api")
+        object_puts = [item for item in requests if item[0] == "PUT" and "evidence-assets" in item[1]]
+        self.assertEqual(len(object_puts), 1)
+        self.assertEqual(object_puts[0][3], b"<html>Evidence</html>")
 
     def test_project_brand_logo_archive_to_s3_compatible_store(self) -> None:
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"

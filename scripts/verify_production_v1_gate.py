@@ -257,8 +257,16 @@ def _gate_report_traceability() -> list[Check]:
         _check_contains("evidence_asset_repository_method_exists", "packages/geno_core/geno_core/repository.py", "def save_runtime_evidence_asset"),
         _check_contains("raw_evidence_records_write_scoped_assets", "packages/geno_core/geno_core/repository.py", "JOIN projects p ON p.id = ar.project_id"),
         _check_contains("evidence_created_audit_exists", "packages/geno_core/geno_core/repository.py", "event_type=\"evidence.created\""),
+        _check_contains("s3_compatible_store_exists", "packages/geno_core/geno_core/object_store.py", "class S3CompatibleObjectStore"),
+        _check_contains("object_store_download_exists", "packages/geno_core/geno_core/object_store.py", "def get_object"),
+        _check_contains("object_store_hash_mismatch_rejected", "packages/geno_core/geno_core/object_store.py", "Object content hash mismatch"),
+        _check_contains("archive_evidence_bytes_exists", "packages/geno_core/geno_core/object_store.py", "def archive_evidence_bytes"),
+        _check_contains("minio_compose_service_exists", "infra/docker-compose.yml", "minio/minio"),
+        _check_contains("evidence_metadata_migration_runs_in_compose", "infra/docker-compose.yml", "0019_evidence_asset_metadata.sql"),
         _check_contains("evidence_asset_metadata_test_exists", "tests/test_core_contracts.py", "test_evidence_asset_metadata_migration_is_additive_and_scoped"),
         _check_contains("evidence_asset_repository_test_exists", "tests/test_core_contracts.py", "test_postgres_repository_saves_runtime_evidence_asset_with_scope_link_and_audit"),
+        _check_contains("object_store_round_trip_test_exists", "tests/test_core_contracts.py", "test_s3_compatible_object_store_upload_download_and_hash_mismatch"),
+        _check_contains("archive_evidence_bytes_test_exists", "tests/test_core_contracts.py", "test_archive_evidence_bytes_returns_runtime_evidence_asset_input"),
         _pending("runtime_traceability_sample", "upgrade W4-I01d/W5-I02c/W6-I01f to sample report numbers against live data"),
     ]
 

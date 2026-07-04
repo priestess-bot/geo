@@ -104,6 +104,8 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("0015_customer_portal_launch_access_logs.sql", migration_command)
         self.assertIn("0016_runtime_sessions.sql", migration_command)
         self.assertIn("0017_tenant_membership_scope.sql", migration_command)
+        self.assertIn("0018_connector_secret_refs.sql", migration_command)
+        self.assertIn("0019_evidence_asset_metadata.sql", migration_command)
         self.assertIn("to_regprocedure('geno_runtime_can_access_project(uuid)')", migration_command)
         self.assertIn("postgres", migrator["depends_on"])
         self.assertEqual(api["depends_on"]["db-migrate"]["condition"], "service_completed_successfully")
