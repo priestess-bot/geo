@@ -261,7 +261,9 @@ def _gate_rls() -> list[Check]:
         _check_contains("runtime_rls_migration_exists", "infra/db/migrations/up/0010_runtime_project_rls.sql", "ENABLE ROW LEVEL SECURITY"),
         _check_contains("runtime_rls_forced", "infra/db/migrations/up/0010_runtime_project_rls.sql", "FORCE ROW LEVEL SECURITY"),
         _check_contains("runtime_rls_smoke_exists", "scripts/verify_db_smoke.py", "_assert_runtime_rls_isolation"),
-        _pending("app_scope_guc_contract", "current implementation still uses geno.runtime_*; upgrade to app.actor_id/app.tenant_id/app.project_ids/app.roles"),
+        _check_contains("app_scope_guc_contract", "infra/db/migrations/up/0010_runtime_project_rls.sql", "current_setting('app.actor_id'"),
+        _check_contains("app_project_ids_guc_contract", "infra/db/migrations/up/0010_runtime_project_rls.sql", "current_setting('app.project_ids'"),
+        _check_contains("db_smoke_sets_app_scope", "scripts/verify_db_smoke.py", "set_config('app.actor_id'"),
     ]
 
 

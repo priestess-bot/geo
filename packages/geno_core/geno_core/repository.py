@@ -3793,15 +3793,24 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                 SELECT
                   set_config(%s, %s, false),
                   set_config(%s, %s, false),
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false),
                   set_config(%s, %s, false)
                 """,
                 (
+                    "app.rls_enabled",
+                    "1",
+                    "app.actor_id",
+                    actor_id,
+                    "app.project_id",
+                    project_id,
                     "geno.runtime_project_access_control",
                     "1",
                     "geno.runtime_actor_id",
                     actor_id,
                     "geno.runtime_project_id",
-                        project_id,
+                    project_id,
                 ),
             )
 
@@ -3816,9 +3825,18 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                   set_config(%s, %s, false),
                   set_config(%s, %s, false),
                   set_config(%s, %s, false),
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false),
                   set_config(%s, %s, false)
                 """,
                 (
+                    "app.rls_enabled",
+                    "1",
+                    "app.actor_id",
+                    "",
+                    "app.project_id",
+                    "",
                     "geno.runtime_project_access_control",
                     "1",
                     "geno.runtime_actor_id",
@@ -3841,9 +3859,18 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                   set_config(%s, %s, false),
                   set_config(%s, %s, false),
                   set_config(%s, %s, false),
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false),
                   set_config(%s, %s, false)
                 """,
                 (
+                    "app.rls_enabled",
+                    "1",
+                    "app.actor_id",
+                    "",
+                    "app.project_id",
+                    "",
                     "geno.runtime_project_access_control",
                     "1",
                     "geno.runtime_actor_id",

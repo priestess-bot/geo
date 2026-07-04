@@ -196,6 +196,8 @@ EXPECTED_FUNCTIONS = (
     "geno_runtime_rls_enabled",
     "geno_runtime_actor_id",
     "geno_runtime_project_id",
+    "geno_runtime_project_ids",
+    "geno_runtime_roles",
     "geno_runtime_invitation_token_hash",
     "geno_runtime_can_access_project",
     "geno_runtime_can_accept_project_invitation",
@@ -497,15 +499,20 @@ def _assert_runtime_rls_isolation(admin_url: str, runtime_url: str) -> dict[str,
                 with runtime_connection.cursor(row_factory=dict_row) as cursor:
                     cursor.execute("SELECT current_user AS current_user")
                     runtime_user = cursor.fetchone()["current_user"]
-                    cursor.execute("SELECT set_config('geno.runtime_project_access_control', '1', false)")
+                    cursor.execute("SELECT set_config('app.rls_enabled', '1', false)")
                     cursor.execute(
-                        "SELECT set_config('geno.runtime_actor_id', %s, false)",
+                        "SELECT set_config('app.actor_id', %s, false)",
                         (fixture["actor_id"],),
                     )
                     cursor.execute(
-                        "SELECT set_config('geno.runtime_project_id', %s, false)",
+                        "SELECT set_config('app.project_id', %s, false)",
                         (fixture["visible_project_id"],),
                     )
+                    cursor.execute(
+                        "SELECT set_config('app.project_ids', %s, false)",
+                        (fixture["visible_project_id"],),
+                    )
+                    cursor.execute("SELECT set_config('app.roles', 'project_owner', false)")
                     cursor.execute("SELECT geno_runtime_rls_enabled() AS enabled")
                     rls_enabled = bool(cursor.fetchone()["enabled"])
                     cursor.execute("SELECT count(*)::int AS count FROM projects")

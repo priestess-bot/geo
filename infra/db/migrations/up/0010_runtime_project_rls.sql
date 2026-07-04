@@ -10,7 +10,11 @@ RETURNS boolean
 LANGUAGE sql
 STABLE
 AS $$
-  SELECT lower(coalesce(current_setting('geno.runtime_project_access_control', true), '')) IN ('1', 'true', 'yes', 'on');
+  SELECT lower(coalesce(
+    nullif(current_setting('app.rls_enabled', true), ''),
+    nullif(current_setting('geno.runtime_project_access_control', true), ''),
+    ''
+  )) IN ('1', 'true', 'yes', 'on');
 $$;
 
 CREATE OR REPLACE FUNCTION geno_runtime_actor_id()
@@ -18,7 +22,10 @@ RETURNS text
 LANGUAGE sql
 STABLE
 AS $$
-  SELECT nullif(current_setting('geno.runtime_actor_id', true), '');
+  SELECT coalesce(
+    nullif(current_setting('app.actor_id', true), ''),
+    nullif(current_setting('geno.runtime_actor_id', true), '')
+  );
 $$;
 
 CREATE OR REPLACE FUNCTION geno_runtime_project_id()
@@ -29,7 +36,10 @@ AS $$
 DECLARE
   value text;
 BEGIN
-  value := nullif(current_setting('geno.runtime_project_id', true), '');
+  value := coalesce(
+    nullif(current_setting('app.project_id', true), ''),
+    nullif(current_setting('geno.runtime_project_id', true), '')
+  );
   IF value IS NULL THEN
     RETURN NULL;
   END IF;
@@ -37,6 +47,37 @@ BEGIN
 EXCEPTION WHEN invalid_text_representation THEN
   RETURN NULL;
 END;
+$$;
+
+CREATE OR REPLACE FUNCTION geno_runtime_project_ids()
+RETURNS uuid[]
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  value text;
+  parts text[];
+BEGIN
+  value := nullif(current_setting('app.project_ids', true), '');
+  IF value IS NULL THEN
+    RETURN ARRAY[]::uuid[];
+  END IF;
+  parts := regexp_split_to_array(value, '\\s*,\\s*');
+  RETURN ARRAY(SELECT item::uuid FROM unnest(parts) AS item WHERE item <> '');
+EXCEPTION WHEN invalid_text_representation THEN
+  RETURN ARRAY[]::uuid[];
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION geno_runtime_roles()
+RETURNS text[]
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT CASE
+    WHEN nullif(current_setting('app.roles', true), '') IS NULL THEN ARRAY[]::text[]
+    ELSE regexp_split_to_array(current_setting('app.roles', true), '\\s*,\\s*')
+  END;
 $$;
 
 CREATE OR REPLACE FUNCTION geno_runtime_can_access_project(row_project_id uuid)
@@ -57,6 +98,12 @@ BEGIN
 
   context_project_id := geno_runtime_project_id();
   IF context_project_id IS NOT NULL AND row_project_id <> context_project_id THEN
+    RETURN false;
+  END IF;
+  IF context_project_id IS NULL
+    AND cardinality(geno_runtime_project_ids()) > 0
+    AND NOT (row_project_id = ANY(geno_runtime_project_ids()))
+  THEN
     RETURN false;
   END IF;
 

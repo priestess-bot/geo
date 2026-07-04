@@ -4496,14 +4496,20 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("set_config(%s, %s, false)", executed_sql)
         self.assertEqual(
             connection.calls[0][1],
-                (
-                    "geno.runtime_project_access_control",
-                    "1",
-                    "geno.runtime_actor_id",
-                    "agency-owner",
-                    "geno.runtime_project_id",
-                    project_id,
-                ),
+            (
+                "app.rls_enabled",
+                "1",
+                "app.actor_id",
+                "agency-owner",
+                "app.project_id",
+                project_id,
+                "geno.runtime_project_access_control",
+                "1",
+                "geno.runtime_actor_id",
+                "agency-owner",
+                "geno.runtime_project_id",
+                project_id,
+            ),
         )
 
     def test_postgres_repository_sets_runtime_invitation_accept_context(self) -> None:
