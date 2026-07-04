@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import threading
 import time
 import uuid
@@ -334,6 +335,8 @@ RUNTIME_AUTH_MODES = {
 RUNTIME_SESSION_COOKIE_NAME = "GENO_RUNTIME_SESSION"
 RUNTIME_SESSION_HEADER = "X-GENO-Session-Token"
 RUNTIME_SESSION_COOKIE_SECURE_ENV = "GENO_RUNTIME_SESSION_COOKIE_SECURE"
+RUNTIME_CSRF_COOKIE_NAME = "GENO_CSRF_TOKEN"
+RUNTIME_CSRF_HEADER = "X-GENO-CSRF-Token"
 DEFAULT_RUNTIME_SESSION_TTL_SECONDS = 604800
 RUNTIME_JWT_SECRET_ENV = "GENO_RUNTIME_JWT_SECRET"
 RUNTIME_JWKS_JSON_ENV = "GENO_RUNTIME_JWKS_JSON"
@@ -360,6 +363,7 @@ REPORT_ARTIFACT_SIGNING_SECRET_ENV = "GENO_REPORT_ARTIFACT_SIGNING_SECRET"
 REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS_ENV = "GENO_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS"
 DEFAULT_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS = 900.0
 MAX_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS = 86400.0
+RUNTIME_CUSTOMER_PORTAL_ACCESS_HEADER = "X-GENO-Customer-Portal-Access"
 RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ENV = "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET"
 RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ID_ENV = "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ID"
 RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS_ENV = (
@@ -378,6 +382,8 @@ RUNTIME_NOTIFICATION_EMAIL_POSTMARK_BASIC_PASSWORD_ENV = "GENO_NOTIFICATION_EMAI
 RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV = "GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET"
 PROJECT_MANAGE_ROLES = ("owner", "admin")
 PROJECT_ANALYZE_ROLES = ("owner", "admin", "analyst")
+CUSTOMER_PORTAL_REPORT_READY_STATUS = "client_ready"
+CUSTOMER_PORTAL_ROLES = {"viewer", "client_viewer"}
 _RUNTIME_JWT_ACTOR_ID: ContextVar[str | None] = ContextVar("geno_runtime_jwt_actor_id", default=None)
 _RUNTIME_SESSION_AUTH_CONTEXT: ContextVar[AuthContext | None] = ContextVar(
     "geno_runtime_session_auth_context",
@@ -699,11 +705,13 @@ def _report_artifact_signature_payload(
     sort: str | None,
     expires_at: int,
     actor_id: str | None,
+    customer_portal_access: bool = False,
 ) -> dict[str, object]:
     return {
         "actor_id": actor_id or "",
         "city": city or "",
         "client_name": client_name or "",
+        "customer_portal_access": bool(customer_portal_access),
         "expires_at": expires_at,
         "intent_type": intent_type or "",
         "platform": platform or "",
@@ -741,6 +749,15 @@ def _verify_report_artifact_signature(payload: dict[str, object], signature: str
     expected = _sign_report_artifact_payload(payload)
     if not hmac.compare_digest(signature, expected):
         raise HTTPException(status_code=401, detail="report artifact signature is invalid")
+
+
+def _is_truthy_header(value: str | None) -> bool:
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _context_is_customer_portal_viewer(context: AuthContext) -> bool:
+    roles = {role.strip().lower() for role in context.roles if role.strip()}
+    return bool(roles & CUSTOMER_PORTAL_ROLES)
 
 
 def _absolute_url_for_request(request: Request, path: str, query: dict[str, object]) -> str:
@@ -1174,11 +1191,21 @@ def _public_session_payload(session_record: dict[str, Any]) -> dict[str, object]
 
 
 def _set_runtime_session_cookie(response: Response, raw_session_token: str, *, max_age: int) -> None:
+    csrf_token = secrets.token_urlsafe(32)
     response.set_cookie(
         key=RUNTIME_SESSION_COOKIE_NAME,
         value=raw_session_token,
         max_age=max_age,
         httponly=True,
+        secure=runtime_session_cookie_secure(),
+        samesite="lax",
+        path="/",
+    )
+    response.set_cookie(
+        key=RUNTIME_CSRF_COOKIE_NAME,
+        value=csrf_token,
+        max_age=max_age,
+        httponly=False,
         secure=runtime_session_cookie_secure(),
         samesite="lax",
         path="/",
@@ -1193,6 +1220,30 @@ def _clear_runtime_session_cookie(response: Response) -> None:
         samesite="lax",
         path="/",
     )
+    response.delete_cookie(
+        key=RUNTIME_CSRF_COOKIE_NAME,
+        httponly=False,
+        secure=runtime_session_cookie_secure(),
+        samesite="lax",
+        path="/",
+    )
+
+
+def _runtime_session_csrf_exempt_path(path: str) -> bool:
+    return path == "/v1/auth/invitations/redeem"
+
+
+def _assert_runtime_session_csrf(request: Request) -> None:
+    if request.method.upper() not in {"POST", "PUT", "PATCH", "DELETE"}:
+        return
+    if _runtime_session_csrf_exempt_path(request.url.path):
+        return
+    header_token = request.headers.get(RUNTIME_CSRF_HEADER, "").strip()
+    cookie_token = request.cookies.get(RUNTIME_CSRF_COOKIE_NAME, "").strip()
+    if not header_token or not cookie_token:
+        raise HTTPException(status_code=403, detail=f"{RUNTIME_CSRF_HEADER} header and {RUNTIME_CSRF_COOKIE_NAME} cookie are required")
+    if not hmac.compare_digest(header_token, cookie_token):
+        raise HTTPException(status_code=403, detail="runtime CSRF token is invalid")
 
 
 @app.middleware("http")
@@ -1202,6 +1253,10 @@ async def runtime_session_auth_middleware(request: Request, call_next):
         if runtime_project_access_control_enabled() and runtime_auth_mode() == RUNTIME_AUTH_MODE_SESSION:
             raw_session_token = _runtime_session_token_from_request(request)
             if raw_session_token:
+                try:
+                    _assert_runtime_session_csrf(request)
+                except HTTPException as exc:
+                    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
                 try:
                     repository = build_repository_from_env()
                     try:
@@ -1273,6 +1328,7 @@ async def runtime_metrics_middleware(request: Request, call_next):
     request_body = b""
     response_body = b""
     response_headers: Mapping[str, str] = {}
+    response_raw_headers: list[tuple[bytes, bytes]] = []
     response_media_type: str | None = None
     try:
         request_body = await request.body()
@@ -1284,6 +1340,7 @@ async def runtime_metrics_middleware(request: Request, call_next):
         response = await call_next(request)
         status_code = response.status_code
         response_headers = dict(response.headers)
+        response_raw_headers = list(response.raw_headers)
         response_media_type = response.media_type
         chunks: list[bytes] = []
         async for chunk in response.body_iterator:
@@ -1293,9 +1350,9 @@ async def runtime_metrics_middleware(request: Request, call_next):
         response = Response(
             content=response_body,
             status_code=response.status_code,
-            headers=dict(response.headers),
             media_type=response_media_type,
         )
+        response.raw_headers = response_raw_headers
         response.headers[REQUEST_ID_HEADER] = request_id
         return response
     except Exception as exc:
@@ -1498,6 +1555,39 @@ def assert_runtime_project_access(
         actor_id=actor_id,
         project_id=normalized_project_id,
     )
+
+
+def _assert_runtime_customer_report_download_allowed(
+    repository: object,
+    *,
+    report_export_id: str,
+    project_id: str | None,
+    context: AuthContext,
+    customer_portal_access: bool,
+) -> None:
+    is_customer_viewer = customer_portal_access or _context_is_customer_portal_viewer(context)
+    if not is_customer_viewer and project_id and context.actor_id:
+        get_project_member_role = getattr(repository, "get_project_member_role", None)
+        if callable(get_project_member_role):
+            role = str(get_project_member_role(project_id=project_id, actor_id=context.actor_id) or "").strip().lower()
+            is_customer_viewer = role in CUSTOMER_PORTAL_ROLES
+    if not is_customer_viewer:
+        return
+    get_status = getattr(repository, "get_report_export_latest_management_status", None)
+    if not callable(get_status):
+        raise HTTPException(
+            status_code=503,
+            detail="customer report download requires repository.get_report_export_latest_management_status",
+        )
+    try:
+        latest_status = get_status(report_export_id=report_export_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if latest_status != CUSTOMER_PORTAL_REPORT_READY_STATUS:
+        raise HTTPException(
+            status_code=403,
+            detail="customer report download requires a published report",
+        )
 
 
 register_runtime_access_routes(
@@ -6884,9 +6974,12 @@ def runtime_report_artifact(
     signature: str | None = None,
     signed_actor_id: str | None = None,
     x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+    x_geno_customer_portal_access: str | None = Header(default=None, alias=RUNTIME_CUSTOMER_PORTAL_ACCESS_HEADER),
 ) -> Response:
     signed_download = expires_at is not None or signature is not None
+    customer_portal_access = _is_truthy_header(x_geno_customer_portal_access)
     if signed_download:
+        customer_portal_access = customer_portal_access or _is_truthy_header(request.query_params.get("customer_portal_access"))
         payload = _report_artifact_signature_payload(
             report_export_id=report_export_id,
             artifact_type=artifact_type,
@@ -6900,6 +6993,7 @@ def runtime_report_artifact(
             sort=sort,
             expires_at=expires_at or 0,
             actor_id=signed_actor_id,
+            customer_portal_access=customer_portal_access,
         )
         _verify_report_artifact_signature(payload, signature)
         actor_id = signed_actor_id.strip() if signed_actor_id else None
@@ -6915,11 +7009,19 @@ def runtime_report_artifact(
                 raise HTTPException(status_code=401, detail="signed_actor_id is required when runtime project access control is enabled")
             apply_runtime_project_db_context(repository, actor_id=actor_id)
             project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            context = build_runtime_auth_context(actor_id)
             assert_runtime_project_access(
                 repository,
                 project_id=project_id,
                 actor_id=actor_id,
                 require_project_id=project_id is not None,
+            )
+            _assert_runtime_customer_report_download_allowed(
+                repository,
+                report_export_id=report_export_id,
+                project_id=project_id,
+                context=context,
+                customer_portal_access=customer_portal_access,
             )
         artifact = repository.get_runtime_report_artifact(
             report_export_id=report_export_id,
@@ -6968,8 +7070,10 @@ def runtime_report_artifact_signed_url(
     status: str | None = None,
     sort: str | None = None,
     x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+    x_geno_customer_portal_access: str | None = Header(default=None, alias=RUNTIME_CUSTOMER_PORTAL_ACCESS_HEADER),
 ) -> dict[str, object]:
     actor_id = require_runtime_actor_id(x_geno_actor_id)
+    customer_portal_access = _is_truthy_header(x_geno_customer_portal_access)
     ttl_seconds = _report_artifact_signed_url_ttl_seconds()
     expires_at = int(time.time()) + ttl_seconds
     payload = _report_artifact_signature_payload(
@@ -6985,6 +7089,7 @@ def runtime_report_artifact_signed_url(
         sort=sort,
         expires_at=expires_at,
         actor_id=actor_id,
+        customer_portal_access=customer_portal_access,
     )
     signature = _sign_report_artifact_payload(payload)
     try:
@@ -7003,6 +7108,13 @@ def runtime_report_artifact_signed_url(
             actor_id=actor_id,
             require_project_id=True,
         )
+        _assert_runtime_customer_report_download_allowed(
+            repository,
+            report_export_id=report_export_id,
+            project_id=project_id,
+            context=build_runtime_auth_context(actor_id),
+            customer_portal_access=customer_portal_access,
+        )
     finally:
         close_repository_connection(repository)
 
@@ -7019,6 +7131,7 @@ def runtime_report_artifact_signed_url(
         "sort": sort,
         "expires_at": expires_at,
         "signed_actor_id": actor_id,
+        "customer_portal_access": "1" if customer_portal_access else "",
         "signature": signature,
     }
     download_url = _absolute_url_for_request(request, artifact_path, signed_query)

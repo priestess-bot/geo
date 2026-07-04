@@ -4855,9 +4855,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["session"]["actor_id"], "viewer@example.com")
         self.assertNotIn("raw_session_token", response.text)
         self.assertNotIn("geno-session-secret", response.text)
-        self.assertIn("GENO_RUNTIME_SESSION=geno-session-secret", response.headers["set-cookie"])
-        self.assertIn("HttpOnly", response.headers["set-cookie"])
-        self.assertIn("SameSite=lax", response.headers["set-cookie"])
+        set_cookie_headers = "\n".join(response.headers.get_list("set-cookie"))
+        self.assertIn("GENO_RUNTIME_SESSION=geno-session-secret", set_cookie_headers)
+        self.assertIn("GENO_CSRF_TOKEN=", set_cookie_headers)
+        self.assertIn("HttpOnly", set_cookie_headers)
+        self.assertIn("SameSite=lax", set_cookie_headers)
         self.assertEqual(fake_repository.invitation.invite_token, "geno-invite-token")
         self.assertEqual(fake_repository.scope_kwargs["actor_id"], "viewer@example.com")
         self.assertEqual(fake_repository.session_input.ttl_seconds, 604800)
@@ -4992,13 +4994,66 @@ class ApiContractsTest(unittest.TestCase):
         ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
             "geno_api.main.close_repository_connection"
         ):
-            response = self.client.post("/v1/auth/logout", headers={"X-GENO-Session-Token": "raw-session-token"})
+            response = self.client.post(
+                "/v1/auth/logout",
+                headers={
+                    "X-GENO-Session-Token": "raw-session-token",
+                    "X-GENO-CSRF-Token": "csrf-token",
+                },
+                cookies={"GENO_CSRF_TOKEN": "csrf-token"},
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "logged_out")
         self.assertEqual(fake_repository.revoke_input.session_id, "session-1")
-        self.assertIn("GENO_RUNTIME_SESSION=", response.headers["set-cookie"])
-        self.assertIn("Max-Age=0", response.headers["set-cookie"])
+        set_cookie_headers = "\n".join(response.headers.get_list("set-cookie"))
+        self.assertIn("GENO_RUNTIME_SESSION=", set_cookie_headers)
+        self.assertIn("GENO_CSRF_TOKEN=", set_cookie_headers)
+        self.assertIn("Max-Age=0", set_cookie_headers)
+
+    def test_auth_logout_rejects_session_mutation_without_csrf(self) -> None:
+        class FakeRepository:
+            def validate_runtime_session(self, raw_session_token: str) -> RuntimeSession:
+                raise AssertionError("CSRF must be checked before session validation")
+
+        with patch.dict(
+            "os.environ",
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "session",
+            },
+            clear=False,
+        ), patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post("/v1/auth/logout", headers={"X-GENO-Session-Token": "raw-session-token"})
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("X-GENO-CSRF-Token", response.json()["detail"])
+
+    def test_auth_logout_rejects_session_mutation_with_mismatched_csrf(self) -> None:
+        class FakeRepository:
+            def validate_runtime_session(self, raw_session_token: str) -> RuntimeSession:
+                raise AssertionError("CSRF must be checked before session validation")
+
+        with patch.dict(
+            "os.environ",
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "session",
+            },
+            clear=False,
+        ), patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/auth/logout",
+                headers={"X-GENO-Session-Token": "raw-session-token", "X-GENO-CSRF-Token": "csrf-token-a"},
+                cookies={"GENO_CSRF_TOKEN": "csrf-token-b"},
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("invalid", response.json()["detail"])
 
     def test_runtime_prompts_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/prompts/runtime")
@@ -10092,6 +10147,187 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(download_response.headers["x-geno-report-artifact-signed"], "true")
         self.assertEqual(fake_repository.context["actor_id"], "agency-owner")
         self.assertEqual(fake_repository.member_check["actor_id"], "agency-owner")
+
+    def test_runtime_report_artifact_customer_portal_denies_unpublished_reports(self) -> None:
+        class FakeRepository:
+            def set_runtime_project_access_context(self, **kwargs: object) -> None:
+                self.context = kwargs
+
+            def get_report_export_project_id(self, *, report_export_id: str) -> str:
+                self.report_export_id = report_export_id
+                return "project-1"
+
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
+                self.member_check = {"project_id": project_id, "actor_id": actor_id}
+                return "viewer"
+
+            def get_report_export_latest_management_status(self, *, report_export_id: str) -> str | None:
+                self.management_report_export_id = report_export_id
+                return None
+
+            def get_runtime_report_artifact(self, **kwargs: object) -> RuntimeReportArtifact:
+                raise AssertionError("unpublished customer report must not render an artifact")
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+            response = self.client.get(
+                "/v1/reports/runtime/report-1/artifact?type=pdf",
+                headers={
+                    "X-GENO-Actor-Id": "customer@example.com",
+                    "X-GENO-Customer-Portal-Access": "true",
+                },
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("published report", response.json()["detail"])
+        self.assertEqual(fake_repository.management_report_export_id, "report-1")
+        self.assertEqual(fake_repository.member_check["actor_id"], "customer@example.com")
+
+    def test_runtime_report_artifact_customer_portal_denies_revoked_reports(self) -> None:
+        class FakeRepository:
+            def set_runtime_project_access_context(self, **kwargs: object) -> None:
+                self.context = kwargs
+
+            def get_report_export_project_id(self, *, report_export_id: str) -> str:
+                return "project-1"
+
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
+                return "viewer"
+
+            def get_report_export_latest_management_status(self, *, report_export_id: str) -> str | None:
+                return "archived"
+
+            def get_runtime_report_artifact(self, **kwargs: object) -> RuntimeReportArtifact:
+                raise AssertionError("revoked customer report must not render an artifact")
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+            response = self.client.get(
+                "/v1/reports/runtime/report-1/artifact?type=markdown",
+                headers={
+                    "X-GENO-Actor-Id": "customer@example.com",
+                    "X-GENO-Customer-Portal-Access": "true",
+                },
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("published report", response.json()["detail"])
+
+    def test_runtime_report_artifact_customer_portal_allows_published_report(self) -> None:
+        class FakeRepository:
+            def set_runtime_project_access_context(self, **kwargs: object) -> None:
+                self.context = kwargs
+
+            def get_report_export_project_id(self, *, report_export_id: str) -> str:
+                return "project-1"
+
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
+                return "viewer"
+
+            def get_report_export_latest_management_status(self, *, report_export_id: str) -> str | None:
+                return "client_ready"
+
+            def get_runtime_report_artifact(self, **kwargs: object) -> RuntimeReportArtifact:
+                return RuntimeReportArtifact(
+                    report_export={"id": kwargs["report_export_id"], "report_version": "worker-runtime-v1"},
+                    artifact_type=str(kwargs["artifact_type"]),
+                    template=str(kwargs["template"]),
+                    template_payload={"template": kwargs["template"]},
+                    template_hash="template-hash",
+                    filename="worker-runtime-v1.md",
+                    media_type="text/markdown; charset=utf-8",
+                    content="published customer artifact",
+                    content_hash="artifact-hash",
+                    filters={},
+                    filter_hash="filter-hash",
+                    sort=str(kwargs["sort"]),
+                    total_count=1,
+                    row_count=1,
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+            response = self.client.get(
+                "/v1/reports/runtime/report-1/artifact?type=markdown",
+                headers={
+                    "X-GENO-Actor-Id": "customer@example.com",
+                    "X-GENO-Customer-Portal-Access": "true",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text, "published customer artifact")
+
+    def test_runtime_report_artifact_viewer_role_denies_unpublished_report_without_portal_header(self) -> None:
+        class FakeRepository:
+            def set_runtime_project_access_context(self, **kwargs: object) -> None:
+                self.context = kwargs
+
+            def get_report_export_project_id(self, *, report_export_id: str) -> str:
+                return "project-1"
+
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
+                self.member_check = {"project_id": project_id, "actor_id": actor_id}
+                return "viewer"
+
+            def get_report_export_latest_management_status(self, *, report_export_id: str) -> str | None:
+                return None
+
+            def get_runtime_report_artifact(self, **kwargs: object) -> RuntimeReportArtifact:
+                raise AssertionError("viewer role must not bypass customer publication status")
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+            response = self.client.get(
+                "/v1/reports/runtime/report-1/artifact?type=markdown",
+                headers={"X-GENO-Actor-Id": "customer@example.com"},
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("published report", response.json()["detail"])
+        self.assertEqual(fake_repository.member_check["actor_id"], "customer@example.com")
+
+    def test_runtime_report_artifact_customer_portal_denies_cross_project_actor(self) -> None:
+        class FakeRepository:
+            def set_runtime_project_access_context(self, **kwargs: object) -> None:
+                self.context = kwargs
+
+            def get_report_export_project_id(self, *, report_export_id: str) -> str:
+                return "project-2"
+
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str | None:
+                self.member_check = {"project_id": project_id, "actor_id": actor_id}
+                return None
+
+            def get_report_export_latest_management_status(self, *, report_export_id: str) -> str | None:
+                raise AssertionError("cross-project actor must be denied before publication status checks")
+
+            def get_runtime_report_artifact(self, **kwargs: object) -> RuntimeReportArtifact:
+                raise AssertionError("cross-project actor must not render an artifact")
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+            response = self.client.get(
+                "/v1/reports/runtime/report-1/artifact?type=pdf",
+                headers={
+                    "X-GENO-Actor-Id": "customer@example.com",
+                    "X-GENO-Customer-Portal-Access": "true",
+                },
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("does not have access", response.json()["detail"])
+        self.assertEqual(fake_repository.member_check["project_id"], "project-2")
 
     def test_runtime_action_plans_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/action-plans/runtime")

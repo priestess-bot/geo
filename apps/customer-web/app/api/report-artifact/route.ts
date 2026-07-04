@@ -39,7 +39,10 @@ export async function GET(request: NextRequest) {
   const artifactUrl = new URL(`/v1/reports/runtime/${encodeURIComponent(reportExportId)}/artifact`, apiBase());
   artifactUrl.searchParams.set("type", artifactType);
   const artifactResponse = await fetch(artifactUrl.toString(), {
-    headers: { "X-GENO-Actor-Id": actorId },
+    headers: {
+      "X-GENO-Actor-Id": actorId,
+      "X-GENO-Customer-Portal-Access": "true"
+    },
     cache: "no-store"
   });
 

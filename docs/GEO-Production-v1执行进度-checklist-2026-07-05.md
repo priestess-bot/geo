@@ -23,7 +23,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | C00 | 13 / 14 / 20 | 建立本 checklist 与 gate 骨架 | 无 | Verifying | `make test` | 本文件；`scripts/verify_production_v1_gate.py` | 待填 | 第一批工作包 |
 | C01 | 0 / 1 / 5 | 生产路径禁止 demo/fixture fallback | C00 | Done | `make no-fixture-production-smoke` | `scripts/verify_production_v1_gate.py`; focused unittest suite | 待填 | 生产默认路径改为真实 API/手工补录；fixture 端点仅开发工具开关可用 |
-| C02 | 13 / 15 | provider key、session token、invite token 不泄露 | C00 | Verifying | `make no-secret-leak-smoke` | `scripts/verify_production_v1_gate.py` | 待填 | 静态生产面扫描已接入，后续扩展到日志/报告 artifact |
+| C02 | 13 / 15 | provider key、session token、invite token 不泄露 | C00 | Verifying | `python3 scripts/verify_production_v1_gate.py security-smoke --allow-pending`; focused auth/session tests | `scripts/verify_production_v1_gate.py`; `tests/test_api_contracts.py`; `apps/api/geno_api/main.py` | 待填 | security-smoke 已无 pending；Provider secret storage 专项仍在 W3-I00 |
 | C03 | 14 | Production v1 E2E 从空环境跑通 | C01-C18 | Not started | `make production-v1-e2e` | 待填 | 待填 | 真实报告生产闭环 |
 | C04 | 14 | Enablement v1 E2E 跑通 | C19-C21 | Not started | `make enablement-v1-e2e` | 待填 | 待填 | KB/Content/Distribution 薄闭环 |
 | C05 | 20 | Final Gate 全部通过 | C01-C24 | Not started | `make production-v1-final-gate` | 待填 | 待填 | 最终验收 |
@@ -46,7 +46,7 @@
 | W2-I01c | 16 | protected API dependency rollout | W2-I01a/W2-I01b/W2-I03a/W2-I03b | Done | `python3 -m unittest tests.test_auth_context_contracts`; `make security-smoke --allow-pending` equivalent | `apps/api/geno_api/main.py`; `tests/test_auth_context_contracts.py` | 待填 | protected API 依赖已支持 session AuthContext 与 project scope；邀请兑换设置 cookie 由 W2-I02 完成 |
 | W2-I01d | 16 | system actor contract | W2-I01a | Done | `python3 -m unittest tests.test_auth_context_contracts`; `make security-smoke --allow-pending` equivalent | `apps/api/geno_api/auth_context.py`; `tests/test_auth_context_contracts.py` | 待填 | system actor 默认必须带 tenant/project scope 与 explicit permissions；maintenance 需显式 `allow_unscoped` |
 | W2-I01e | 16 / 7.11 | auth audit events | W2-I01a | Done | `python3 -m unittest tests.test_core_contracts.CoreContractsTest.test_auth_audit_event_vocabulary_rejects_raw_secret_refs`; `make security-smoke --allow-pending` equivalent | `packages/geno_core/geno_core/audit.py`; `tests/test_core_contracts.py` | 待填 | auth/authz/invitation/system_actor 事件词表完成，禁止 raw token/secret refs |
-| W2-I02 | 16 | Invitation token 一次性兑换 | W2-I01a/W2-I01b/W2-I03a/W2-I03b | Done | `python3 -m unittest tests.test_api_contracts.ApiContractsTest.test_auth_invitation_redeem_creates_session_cookie_without_returning_raw_token`; `make security-smoke --allow-pending` equivalent | `apps/api/geno_api/main.py`; `tests/test_api_contracts.py` | 待填 | `/v1/auth/invitations/redeem` 创建一次性 session cookie；`/v1/auth/me` 与 `/v1/auth/logout` 完成 |
+| W2-I02 | 16 | Invitation token 一次性兑换 | W2-I01a/W2-I01b/W2-I03a/W2-I03b | Done | focused auth/session unittest suite; `python3 scripts/verify_production_v1_gate.py security-smoke --allow-pending` | `apps/api/geno_api/main.py`; `tests/test_api_contracts.py` | 待填 | `/v1/auth/invitations/redeem` 创建一次性 httpOnly session cookie 与 CSRF cookie；`/v1/auth/me` 与 CSRF-protected `/v1/auth/logout` 完成 |
 | W2-I03a | 16 / 7.2 | RBAC matrix contract | W2-I01a | Done | `python3 -m unittest tests.test_rbac_contracts`; `make security-smoke --allow-pending` equivalent | `packages/geno_core/geno_core/rbac.py`; `tests/test_rbac_contracts.py` | 待填 | permission vocabulary 与 role matrix 已成为核心契约；路由全面接入由 W2-I01c 完成 |
 | W2-I03b | 16 | membership schema + scope repository | W2-I01b/W2-I03a | Done | `python3 -m unittest tests.test_membership_scope_contracts`; `make security-smoke --allow-pending` equivalent | `infra/db/migrations/up/0017_tenant_membership_scope.sql`; `packages/geno_core/geno_core/runtime_project_access_repository.py`; `tests/test_membership_scope_contracts.py` | 待填 | `tenant_members` 与 scope repository 完成；RLS `app.*` 升级由 W2-I03c 完成 |
 | W2-I03c | 16 / 8.2 | RLS smoke for core tables | W2-I03b | Done | `python3 scripts/verify_production_v1_gate.py security-smoke --allow-pending`; `make rls-smoke` equivalent | `infra/db/migrations/up/0010_runtime_project_rls.sql`; `scripts/verify_db_smoke.py`; `packages/geno_core/geno_core/repository.py` | 待填 | RLS helper 优先读取 `app.actor_id/app.project_id/app.project_ids/app.roles`，旧 `geno.runtime_*` 保留 fallback |
@@ -76,9 +76,9 @@
 | W6-I01a | 16 / 7.6 | ReportExport schema + immutable repository | W4-I01d/W5-I02c/W2-I03a | Not started | `make report-traceability-smoke` | 待填 | 待填 | fixed snapshot |
 | W6-I01b | 16 / 12 | Markdown/CSV generation from fixed snapshot | W6-I01a | Not started | `make report-traceability-smoke` | 待填 | 待填 | 同一 snapshot 渲染 |
 | W6-I01c | 16 / 2.5 | PDF generation and asset storage | W6-I01b/W4-I01b | Not started | `make report-traceability-smoke` | 待填 | 待填 | HTML + Playwright/Chromium |
-| W6-I01d | 16 | Approval/publish/revoke lifecycle | W6-I01a/W2-I03a | Not started | `make customer-access-negative-smoke` | 待填 | 待填 | 已撤回不可下载 |
-| W6-I01e | 16 | Customer report center + permissioned download | W6-I01c/W6-I01d/W4-I01c | Not started | `make customer-access-negative-smoke` | 待填 | 待填 | 客户门户安全查看 |
-| W6-I01f | 16 | Report security tests | W6-I01e | Not started | `make no-secret-leak-smoke` | 待填 | 待填 | no raw payload / no secret / revoked denied |
+| W6-I01d | 16 | Approval/publish/revoke lifecycle | W6-I01a/W2-I03a | In progress | `python3 scripts/verify_production_v1_gate.py customer-access-negative-smoke --allow-pending` | `apps/api/geno_api/main.py`; `packages/geno_core/geno_core/repository.py`; `tests/test_api_contracts.py` | 待填 | 客户下载已强制最新管理状态为 `client_ready`；完整审批 UI/生命周期仍待 W6 |
+| W6-I01e | 16 | Customer report center + permissioned download | W6-I01c/W6-I01d/W4-I01c | In progress | `python3 scripts/verify_production_v1_gate.py customer-access-negative-smoke --allow-pending` | `apps/customer-web/app/api/report-artifact/route.ts`; `apps/api/geno_api/main.py`; `tests/test_api_contracts.py` | 待填 | customer-web artifact proxy 已显式标记 portal 下载并由 API 授权；完整报告中心仍待 W6 |
+| W6-I01f | 16 | Report security tests | W6-I01e | In progress | focused report artifact unittest suite; `python3 scripts/verify_production_v1_gate.py security-smoke --allow-pending` | `tests/test_api_contracts.py`; `scripts/verify_production_v1_gate.py` | 待填 | 未发布/撤回/跨项目 report artifact 负向测试完成；raw evidence/provider key 负向测试随 W4/W3 扩展 |
 
 ## 6. Optimization / Enablement
 
@@ -96,8 +96,8 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | W9-I01 | 16 / 2.5 | Observability 最小生产门禁 | W10-I01 | Not started | `make ops-smoke` | 待填 | 待填 | logs/health/metrics/alerts |
 | W9-I02 | 16 / 2.5 | Backup / restore 演练 | W4-I01a | Not started | `make backup-smoke` | 待填 | 待填 | Postgres + object storage |
-| Q01 | 13.9 | customer negative access | W2/W4/W6 | Not started | `make customer-access-negative-smoke` | 待填 | 待填 | 跨租户/未发布/撤回/raw evidence/provider key |
-| Q02 | 13.9 | no secret leak | W3/W6/W9 | Not started | `make no-secret-leak-smoke` | 待填 | 待填 | API/log/frontend/report |
+| Q01 | 13.9 | customer negative access | W2/W4/W6 | In progress | `python3 scripts/verify_production_v1_gate.py customer-access-negative-smoke --allow-pending` | `tests/test_api_contracts.py`; `scripts/verify_production_v1_gate.py` | 待填 | report artifact 的未发布/撤回/跨项目已覆盖；raw evidence/provider key 随 W4/W3 补齐 |
+| Q02 | 13.9 | no secret leak | W3/W6/W9 | In progress | `python3 scripts/verify_production_v1_gate.py security-smoke --allow-pending` | `scripts/verify_production_v1_gate.py`; `tests/test_api_contracts.py` | 待填 | auth/session/invite token 与静态 provider secret 扫描已覆盖；日志/report artifact 深扫后续扩展 |
 | Q03 | 13.9 | report traceability | W4/W5/W6 | Not started | `make report-traceability-smoke` | 待填 | 待填 | 抽样 5 个数字 |
 
 ## 8. 本次不做完、但保留扩展边界的升级项

@@ -4612,6 +4612,37 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             return None
         return str(row["project_id"] if isinstance(row, dict) else row[0])
 
+    def get_report_export_latest_management_status(self, *, report_export_id: str) -> str | None:
+        report_export_id = report_export_id.strip()
+        if not report_export_id:
+            raise ValueError("report_export_id is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT input_refs
+                FROM audit_events
+                WHERE target_type = %s AND target_id = %s
+                  AND event_type = %s
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                ("report_export", report_export_id, "report_export_management_recorded"),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        input_refs = row["input_refs"] if isinstance(row, dict) else row[0]
+        if not isinstance(input_refs, dict):
+            return None
+        status_refs = input_refs.get("status") or ()
+        if isinstance(status_refs, str):
+            return status_refs.strip().lower() or None
+        for status in status_refs:
+            normalized = str(status).strip().lower()
+            if normalized:
+                return normalized
+        return None
+
     def get_report_export_job_project_id(self, *, job_id: str) -> str | None:
         with self.connection.cursor() as cursor:
             cursor.execute(

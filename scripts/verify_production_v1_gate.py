@@ -251,7 +251,13 @@ def _gate_customer_access_negative() -> list[Check]:
         _check_contains("customer_portal_token_rls_exists", "infra/db/migrations/up/0015_customer_portal_launch_access_logs.sql", "customer_portal_tokens_runtime_project_isolation"),
         _check_contains("artifact_route_checks_portal", "apps/customer-web/app/api/report-artifact/route.ts", "/v1/customer-portal/access"),
         _check_contains("artifact_route_uses_actor_header", "apps/customer-web/app/api/report-artifact/route.ts", "X-GENO-Actor-Id"),
-        _pending("revoked_report_denied_runtime_test", "add negative API test for unpublished/revoked/cross-project report artifacts"),
+        _check_contains("artifact_route_marks_customer_portal_access", "apps/customer-web/app/api/report-artifact/route.ts", "X-GENO-Customer-Portal-Access"),
+        _check_contains("report_artifact_checks_latest_management_status", "apps/api/geno_api/main.py", "get_report_export_latest_management_status"),
+        _check_contains("report_artifact_requires_client_ready_for_customers", "apps/api/geno_api/main.py", "CUSTOMER_PORTAL_REPORT_READY_STATUS"),
+        _check_contains("unpublished_report_denied_runtime_test", "tests/test_api_contracts.py", "test_runtime_report_artifact_customer_portal_denies_unpublished_reports"),
+        _check_contains("revoked_report_denied_runtime_test", "tests/test_api_contracts.py", "test_runtime_report_artifact_customer_portal_denies_revoked_reports"),
+        _check_contains("viewer_direct_report_denied_runtime_test", "tests/test_api_contracts.py", "test_runtime_report_artifact_viewer_role_denies_unpublished_report_without_portal_header"),
+        _check_contains("cross_project_report_denied_runtime_test", "tests/test_api_contracts.py", "test_runtime_report_artifact_customer_portal_denies_cross_project_actor"),
     ]
 
 
@@ -296,7 +302,11 @@ def _gate_security() -> list[Check]:
         _check_contains("auth_logout_endpoint_exists", "apps/api/geno_api/main.py", "@app.post(\"/v1/auth/logout\")"),
         _check_contains("runtime_session_cookie_is_httponly", "apps/api/geno_api/main.py", "httponly=True"),
         _check_regex("jwt_or_jwks_auth_exists", "apps/api/geno_api/main.py", r"RUNTIME_AUTH_MODE_ENV|jwks|JWT"),
-        _pending("csrf_mutation_contract", "unsafe mutation CSRF enforcement not complete"),
+        _check_contains("csrf_header_contract_exists", "apps/api/geno_api/main.py", "X-GENO-CSRF-Token"),
+        _check_contains("csrf_cookie_contract_exists", "apps/api/geno_api/main.py", "GENO_CSRF_TOKEN"),
+        _check_contains("csrf_enforced_for_session_mutations", "apps/api/geno_api/main.py", "def _assert_runtime_session_csrf"),
+        _check_contains("csrf_missing_token_test_exists", "tests/test_api_contracts.py", "test_auth_logout_rejects_session_mutation_without_csrf"),
+        _check_contains("csrf_mismatch_test_exists", "tests/test_api_contracts.py", "test_auth_logout_rejects_session_mutation_with_mismatched_csrf"),
     ]
     return _dedupe(checks)
 
