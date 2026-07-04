@@ -249,6 +249,9 @@ class ApiContractsTest(unittest.TestCase):
         encoded_signature = base64.urlsafe_b64encode(signature).rstrip(b"=").decode("ascii")
         return f"{encoded_header}.{encoded_payload}.{encoded_signature}"
 
+    def _dev_tools_env(self):
+        return patch.dict(os.environ, {"GENO_DEV_TOOLS_ENABLED": "1"}, clear=False)
+
     def _runtime_jwks_rs256_token(
         self,
         *,
@@ -2853,7 +2856,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(set(payload["platform_surfaces"]), {"chatgpt:chatgpt_search", "perplexity:sonar"})
 
     def test_m2a_fixture_evidence_slice_endpoint(self) -> None:
-        response = self.client.get("/v1/evidence-runs/au/p0a-fixture-slice")
+        with self._dev_tools_env():
+            response = self.client.get("/v1/evidence-runs/au/p0a-fixture-slice")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["record_count"], 8)
@@ -2864,6 +2868,12 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(len(first["evidence_assets"]), 2)
         self.assertGreater(first["collection_cost"]["total_cost"], 0)
         self.assertEqual(first["audit_events"][0]["event_type"], "answer_run_collected")
+
+    def test_fixture_evidence_slice_endpoint_is_developer_only_by_default(self) -> None:
+        with patch.dict(os.environ, {"GENO_DEV_TOOLS_ENABLED": "0"}, clear=False):
+            response = self.client.get("/v1/evidence-runs/au/p0a-fixture-slice")
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("GENO_DEV_TOOLS_ENABLED", response.json()["detail"])
 
     def test_runtime_project_create_endpoint_requires_persistence_config(self) -> None:
         response = self.client.post("/v1/projects/runtime/au/dtc-ecommerce")
@@ -5367,7 +5377,7 @@ class ApiContractsTest(unittest.TestCase):
             market_profile = object()
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+        with self._dev_tools_env(), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
             "geno_api.main.close_repository_connection"
         ), patch("geno_api.main._load_runtime_project_bootstrap", return_value=FakeBootstrap()), patch(
             "geno_api.main.worker_collectors", return_value=("collector-a", "collector-b")
@@ -10302,7 +10312,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["surfaces"], ["google_aio", "google_ai_mode"])
 
     def test_m2b_google_spike_fixture_gate_endpoint(self) -> None:
-        response = self.client.get("/v1/google-spikes/au/fixture-gate")
+        with self._dev_tools_env():
+            response = self.client.get("/v1/google-spikes/au/fixture-gate")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["record_count"], 240)
@@ -10312,7 +10323,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("insufficient_collection_paths=1/2", payload["readiness_gate"]["failure_reasons"])
 
     def test_m3_visibility_score_fixture_endpoint(self) -> None:
-        response = self.client.get("/v1/visibility-scores/au/p0a-fixture")
+        with self._dev_tools_env():
+            response = self.client.get("/v1/visibility-scores/au/p0a-fixture")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["analysis_count"], 40)
@@ -10321,7 +10333,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["audit_event"]["event_type"], "visibility_score_snapshot_created")
 
     def test_m4_citation_graph_fixture_endpoint(self) -> None:
-        response = self.client.get("/v1/citation-graphs/au/p0a-fixture")
+        with self._dev_tools_env():
+            response = self.client.get("/v1/citation-graphs/au/p0a-fixture")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertGreaterEqual(payload["node_count"], 3)
@@ -10331,7 +10344,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(any(item["answer_run_ids"] for item in payload["competitor_benchmarks"]))
 
     def test_m5_report_fixture_endpoint(self) -> None:
-        response = self.client.get("/v1/reports/au/p0a-fixture")
+        with self._dev_tools_env():
+            response = self.client.get("/v1/reports/au/p0a-fixture")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["report_export"]["report_version"], "p0a-fixture-v1")
@@ -10367,7 +10381,8 @@ class ApiContractsTest(unittest.TestCase):
         )
 
     def test_m6_action_plan_fixture_endpoint(self) -> None:
-        response = self.client.get("/v1/action-plans/au/p0a-fixture")
+        with self._dev_tools_env():
+            response = self.client.get("/v1/action-plans/au/p0a-fixture")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertGreater(payload["action_count"], 0)
@@ -10377,7 +10392,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["comparison_audit_event"]["event_type"], "retest_comparison_created")
 
     def test_m7_content_engine_fixture_endpoint(self) -> None:
-        response = self.client.get("/v1/content-engines/au/p0a-fixture")
+        with self._dev_tools_env():
+            response = self.client.get("/v1/content-engines/au/p0a-fixture")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertGreater(payload["knowledge_fact_count"], 0)
@@ -10390,7 +10406,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(len(payload["manual_distribution_records"]), payload["content_draft_count"])
 
     def test_traceability_fixture_endpoint(self) -> None:
-        response = self.client.get("/v1/traceability/au/p0a-fixture")
+        with self._dev_tools_env():
+            response = self.client.get("/v1/traceability/au/p0a-fixture")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         bundle = payload["traceability_bundle"]

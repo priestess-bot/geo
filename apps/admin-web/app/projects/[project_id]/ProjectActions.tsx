@@ -71,8 +71,10 @@ function statusLabel(status?: string): string {
     archived: "已归档",
     draft: "草稿",
     ready: "就绪",
-    fixture: "本地测试",
-    fixture_only: "仅本地测试",
+    fixture: "开发测试",
+    fixture_only: "仅开发测试",
+    manual: "手工补录",
+    manual_ready: "手工补录就绪",
     not_configured: "未配置",
     pending: "待处理",
     accepted: "已接受",
@@ -203,9 +205,9 @@ export function LaunchConfigForm({
       <label><span>时区</span><input {...hydrationControlProps} name="timezone" defaultValue={stringValue(launch.timezone) || "Australia/Sydney"} required /></label>
       <label>
         <span>采集模式</span>
-        <select {...hydrationControlProps} name="collection_mode" defaultValue={stringValue(launch.collection_mode) || "fixture"}>
-          <option value="fixture">本地测试 fixture</option>
+        <select {...hydrationControlProps} name="collection_mode" defaultValue={stringValue(launch.collection_mode) || "api"}>
           <option value="api">真实 API</option>
+          <option value="manual">手工补录</option>
         </select>
       </label>
       <label>
@@ -269,7 +271,7 @@ export function LaunchConfigForm({
             modeDefault="manual_or_browser"
             modelDefault="google_ai_mode"
             name="Google AI Mode"
-            statusDefault="fixture_only"
+            statusDefault="manual_ready"
           />
         </div>
       </section>
@@ -358,9 +360,9 @@ function ConnectorConfigCard({
       <label>
         <span>连接状态</span>
         <select {...hydrationControlProps} name={`${keyPrefix}_status`} defaultValue={status}>
-          <option value="fixture_only">仅本地测试</option>
           <option value="not_configured">未配置</option>
           <option value="configured">已配置</option>
+          <option value="manual_ready">手工补录就绪</option>
           <option value="active">运行中</option>
           <option value="paused">已暂停</option>
         </select>

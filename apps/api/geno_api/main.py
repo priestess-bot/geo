@@ -343,6 +343,7 @@ RUNTIME_JWT_ISSUER_ENV = "GENO_RUNTIME_JWT_ISSUER"
 RUNTIME_JWT_AUDIENCE_ENV = "GENO_RUNTIME_JWT_AUDIENCE"
 RUNTIME_JWT_CLOCK_SKEW_SECONDS_ENV = "GENO_RUNTIME_JWT_CLOCK_SKEW_SECONDS"
 RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES = {"1", "true", "yes", "on"}
+DEV_TOOLS_ENABLED_ENV = "GENO_DEV_TOOLS_ENABLED"
 REPORT_ARTIFACT_SIGNING_SECRET_ENV = "GENO_REPORT_ARTIFACT_SIGNING_SECRET"
 REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS_ENV = "GENO_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS"
 DEFAULT_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS = 900.0
@@ -383,6 +384,15 @@ def runtime_project_access_control_enabled() -> bool:
         os.getenv(RUNTIME_PROJECT_ACCESS_CONTROL_ENV, "").strip().lower()
         in RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES
     )
+
+
+def dev_tools_enabled() -> bool:
+    return os.getenv(DEV_TOOLS_ENABLED_ENV, "").strip().lower() in RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES
+
+
+def require_dev_tools_enabled() -> None:
+    if not dev_tools_enabled():
+        raise HTTPException(status_code=404, detail=f"developer-only endpoint requires {DEV_TOOLS_ENABLED_ENV}=1")
 
 
 def runtime_auth_mode() -> str:
@@ -1815,7 +1825,7 @@ class EntityAliasAssignmentEscalationRequest(BaseModel):
 class RuntimeProjectCreateRequest(BaseModel):
     tenant_name: str = Field(default="Design Partner AU", min_length=1, max_length=160)
     project_name: str = Field(default="AU DTC Evidence Pilot", min_length=1, max_length=160)
-    target_brand: str = Field(default="ExampleBrand", min_length=1, max_length=160)
+    target_brand: str = Field(default="Customer Brand", min_length=1, max_length=160)
     category: str = Field(default="DTC ecommerce products", min_length=1, max_length=200)
     competitors: list[str] = Field(default_factory=list, max_length=5)
     brand_official_domains: list[str] = Field(default_factory=list, max_length=5)
@@ -1824,7 +1834,7 @@ class RuntimeProjectCreateRequest(BaseModel):
     owner_user_id: str = Field(default="runtime-console", min_length=1, max_length=120)
     customer_email: str | None = Field(default=None, max_length=320)
     competitor_domains: list[str] = Field(default_factory=list, max_length=5)
-    collection_mode: str = Field(default="fixture", min_length=1, max_length=40)
+    collection_mode: str = Field(default="api", min_length=1, max_length=40)
     launch_status: str = Field(default="draft", min_length=1, max_length=40)
     schedule: dict[str, object] = Field(default_factory=dict)
     external_connectors: dict[str, object] = Field(default_factory=dict)
@@ -5321,6 +5331,7 @@ def au_p0a_collection_plan() -> dict[str, object]:
 
 @app.get("/v1/evidence-runs/au/p0a-fixture-slice")
 def au_p0a_fixture_slice() -> dict[str, object]:
+    require_dev_tools_enabled()
     bootstrap = build_au_project_bootstrap()
     records = run_fixture_collection_slice(
         project_id=bootstrap.project.id,
@@ -5440,6 +5451,7 @@ def run_runtime_fixture_collection(
     payload: RuntimeFixtureCollectionRequest,
     x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
+    require_dev_tools_enabled()
     actor_id = require_runtime_actor_id(x_geno_actor_id)
     try:
         repository = build_repository_from_env()
@@ -8172,6 +8184,7 @@ def au_google_spike_plan() -> dict[str, object]:
 
 @app.get("/v1/google-spikes/au/fixture-gate")
 def au_google_spike_fixture_gate() -> dict[str, object]:
+    require_dev_tools_enabled()
     bootstrap = build_au_project_bootstrap()
     plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
     prompts = select_google_spike_prompts(bootstrap.prompt_questions)
@@ -8196,6 +8209,7 @@ def au_google_spike_fixture_gate() -> dict[str, object]:
 
 @app.get("/v1/visibility-scores/au/p0a-fixture")
 def au_p0a_fixture_visibility_score() -> dict[str, object]:
+    require_dev_tools_enabled()
     bootstrap = build_au_project_bootstrap()
     records = run_fixture_collection_slice(
         project_id=bootstrap.project.id,
@@ -8225,6 +8239,7 @@ def au_p0a_fixture_visibility_score() -> dict[str, object]:
 
 @app.get("/v1/citation-graphs/au/p0a-fixture")
 def au_p0a_fixture_citation_graph() -> dict[str, object]:
+    require_dev_tools_enabled()
     bootstrap = build_au_project_bootstrap()
     records = run_fixture_collection_slice(
         project_id=bootstrap.project.id,
@@ -8262,6 +8277,7 @@ def au_p0a_fixture_citation_graph() -> dict[str, object]:
 
 @app.get("/v1/reports/au/p0a-fixture")
 def au_p0a_fixture_report() -> dict[str, object]:
+    require_dev_tools_enabled()
     bootstrap = build_au_project_bootstrap()
     records = run_fixture_collection_slice(
         project_id=bootstrap.project.id,
@@ -8316,6 +8332,7 @@ def au_p0a_fixture_report() -> dict[str, object]:
 
 @app.get("/v1/action-plans/au/p0a-fixture")
 def au_p0a_fixture_action_plan() -> dict[str, object]:
+    require_dev_tools_enabled()
     bootstrap = build_au_project_bootstrap()
     records = run_fixture_collection_slice(
         project_id=bootstrap.project.id,
@@ -8384,6 +8401,7 @@ def au_p0a_fixture_action_plan() -> dict[str, object]:
 
 @app.get("/v1/content-engines/au/p0a-fixture")
 def au_p0a_fixture_content_engine() -> dict[str, object]:
+    require_dev_tools_enabled()
     bootstrap = build_au_project_bootstrap()
     records = run_fixture_collection_slice(
         project_id=bootstrap.project.id,
@@ -8458,6 +8476,7 @@ def au_p0a_fixture_content_engine() -> dict[str, object]:
 
 @app.get("/v1/traceability/au/p0a-fixture")
 def au_p0a_fixture_traceability() -> dict[str, object]:
+    require_dev_tools_enabled()
     bootstrap = build_au_project_bootstrap()
     records = run_fixture_collection_slice(
         project_id=bootstrap.project.id,

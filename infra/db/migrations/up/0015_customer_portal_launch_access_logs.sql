@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS project_launch_configs (
   locale text NOT NULL DEFAULT 'en-AU',
   country_code text NOT NULL DEFAULT 'AU',
   timezone text NOT NULL DEFAULT 'Australia/Sydney',
-  collection_mode text NOT NULL DEFAULT 'fixture',
+  collection_mode text NOT NULL DEFAULT 'api',
   schedule jsonb NOT NULL DEFAULT '{}'::jsonb,
   external_connectors jsonb NOT NULL DEFAULT '{}'::jsonb,
   scoring_profile text NOT NULL DEFAULT 'au_visibility_v1',

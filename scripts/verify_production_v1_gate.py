@@ -93,27 +93,102 @@ def _gate_checklist() -> list[Check]:
 
 def _gate_no_fixture_production() -> list[Check]:
     checks = _gate_checklist()
-    production_fixture_hits = []
-    for relative in (
-        "apps/admin-web/app/projects/new/actions.ts",
-        "apps/admin-web/app/projects/new/CreateProjectForm.tsx",
-        "apps/admin-web/app/projects/[project_id]/actions.ts",
-        "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx",
-        "apps/api/geno_api/main.py",
-        "infra/db/migrations/up/0015_customer_portal_launch_access_logs.sql",
-        "infra/docker-compose.yml",
-    ):
+    checks.extend(
+        [
+            _check_contains(
+                "api_dev_tools_guard_exists",
+                "apps/api/geno_api/main.py",
+                "def require_dev_tools_enabled",
+            ),
+            _check_contains(
+                "api_fixture_endpoints_require_dev_tools",
+                "apps/api/geno_api/main.py",
+                "require_dev_tools_enabled()",
+            ),
+            _check_contains(
+                "admin_dev_tools_switch_exists",
+                "apps/admin-web/app/runtime.ts",
+                "GENO_ADMIN_DEV_TOOLS_ENABLED",
+            ),
+            _check_contains(
+                "admin_e2e_panel_gated",
+                "apps/admin-web/app/projects/[project_id]/page.tsx",
+                "devToolsEnabled ?",
+            ),
+            _check_contains(
+                "create_project_action_defaults_api",
+                "apps/admin-web/app/projects/new/actions.ts",
+                'requiredString(formData, "collection_mode", "api")',
+            ),
+            _check_contains(
+                "launch_config_action_defaults_api",
+                "apps/admin-web/app/projects/[project_id]/actions.ts",
+                'value(formData, "collection_mode") || "api"',
+            ),
+            _check_contains(
+                "runtime_create_request_defaults_api",
+                "apps/api/geno_api/main.py",
+                'collection_mode: str = Field(default="api"',
+            ),
+            _check_contains(
+                "launch_config_migration_defaults_api",
+                "infra/db/migrations/up/0015_customer_portal_launch_access_logs.sql",
+                "collection_mode text NOT NULL DEFAULT 'api'",
+            ),
+            _check_contains(
+                "worker_cli_defaults_api",
+                "workers/collector_worker/run_collection_slice.py",
+                'default="api"',
+            ),
+        ]
+    )
+    forbidden_by_file = {
+        "apps/admin-web/app/projects/new/actions.ts": (
+            '"fixture"',
+            "AU GEO Pilot",
+            "ExampleBrand",
+            "KoalaHome",
+        ),
+        "apps/admin-web/app/projects/new/CreateProjectForm.tsx": (
+            'value="fixture"',
+            '<option value="fixture"',
+            "AU GEO Pilot",
+            "ExampleBrand",
+            "KoalaHome",
+        ),
+        "apps/admin-web/app/projects/[project_id]/actions.ts": (
+            'collection_mode: value(formData, "collection_mode") || "fixture"',
+            'status: connector.status || "fixture_only"',
+        ),
+        "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx": (
+            '<option value="fixture"',
+            '<option value="fixture_only"',
+        ),
+        "apps/api/geno_api/main.py": (
+            'target_brand: str = Field(default="ExampleBrand"',
+            'collection_mode: str = Field(default="fixture"',
+        ),
+        "infra/db/migrations/up/0015_customer_portal_launch_access_logs.sql": (
+            "collection_mode text NOT NULL DEFAULT 'fixture'",
+        ),
+        "infra/docker-compose.yml": (
+            "      - --mode\n      - fixture",
+        ),
+    }
+    production_fixture_hits: list[str] = []
+    for relative, forbidden_patterns in forbidden_by_file.items():
         path = ROOT / relative
         if not path.exists():
             continue
-        text = path.read_text(encoding="utf-8", errors="ignore").lower()
-        if "fixture" in text or "au geo pilot" in text or "examplebrand" in text or "koalahome" in text:
-            production_fixture_hits.append(relative)
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        hits = [pattern for pattern in forbidden_patterns if pattern in text]
+        if hits:
+            production_fixture_hits.append(f"{relative} ({', '.join(hits)})")
     if production_fixture_hits:
         checks.append(
             _fail(
                 "production_fixture_references_absent",
-                "production-facing files still reference fixture/demo defaults: "
+                "production defaults still reference fixture/demo values: "
                 + ", ".join(sorted(production_fixture_hits)),
             )
         )

@@ -88,6 +88,7 @@ services:
       OBJECT_STORE_REGION: us-east-1
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geno-local}
+      GENO_DEV_TOOLS_ENABLED: ${GENO_DEV_TOOLS_ENABLED:-0}
       GENO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL:-}
       GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET:-}
       GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS:-2592000}
@@ -161,11 +162,12 @@ services:
       - python
       - workers/collector_worker/run_collection_slice.py
       - --mode
-      - fixture
+      - api
       - --prompt-limit
       - "1"
       - --persist
       - --persist-analysis
+      - --require-ready-collectors
     depends_on:
       postgres:
         condition: service_healthy
@@ -191,11 +193,12 @@ services:
       - python
       - workers/collector_worker/run_collection_slice.py
       - --mode
-      - fixture
+      - api
       - --prompt-limit
       - "1"
       - --persist
       - --persist-analysis
+      - --require-ready-collectors
       - --judge-gateway
       - litellm
       - --judge-model
@@ -536,6 +539,7 @@ services:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:${GENO_API_HOST_PORT:-8000}
       NEXT_PUBLIC_CUSTOMER_WEB_BASE_URL: http://localhost:${GENO_CUSTOMER_WEB_HOST_PORT:-3000}
       GENO_ADMIN_ACTOR_ID: ${GENO_ADMIN_ACTOR_ID:-runtime-console}
+      GENO_ADMIN_DEV_TOOLS_ENABLED: ${GENO_ADMIN_DEV_TOOLS_ENABLED:-0}
       PORT: ${GENO_ADMIN_WEB_CONTAINER_PORT:-3000}
     command:
       - npm

@@ -150,7 +150,7 @@ export async function saveLaunchConfigAction(
       notes: value(formData, "connector_perplexity_notes")
     },
     google_ai_mode: {
-      status: value(formData, "connector_google_ai_mode_status") || "fixture_only",
+      status: value(formData, "connector_google_ai_mode_status") || "manual_ready",
       mode: value(formData, "connector_google_ai_mode_mode") || "manual_or_browser",
       model: value(formData, "connector_google_ai_mode_model") || "google_ai_mode",
       env_var: value(formData, "connector_google_ai_mode_env_var") || "GOOGLE_PLAYWRIGHT_ENABLED",
@@ -165,7 +165,7 @@ export async function saveLaunchConfigAction(
     locale: value(formData, "locale") || "en-AU",
     country_code: value(formData, "country_code") || "AU",
     timezone: value(formData, "timezone") || "Australia/Sydney",
-    collection_mode: value(formData, "collection_mode") || "fixture",
+    collection_mode: value(formData, "collection_mode") || "api",
     schedule,
     external_connectors: externalConnectors,
     scoring_profile: value(formData, "scoring_profile") || "au_visibility_v1",

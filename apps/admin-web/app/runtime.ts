@@ -24,6 +24,10 @@ export function customerWebBaseUrl(): string {
   return process.env.CUSTOMER_WEB_BASE_URL || process.env.NEXT_PUBLIC_CUSTOMER_WEB_BASE_URL || "http://localhost:3000";
 }
 
+export function adminDevToolsEnabled(): boolean {
+  return String(process.env.GENO_ADMIN_DEV_TOOLS_ENABLED || "").trim().toLowerCase() === "1";
+}
+
 export function customerInvitationUrl(invitationId: string, inviteToken: string): string {
   const url = new URL("/", customerWebBaseUrl());
   url.searchParams.set("invitation_id", invitationId);

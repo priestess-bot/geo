@@ -54,6 +54,9 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("litellm", worker["command"])
         self.assertIn("--judge-model", worker["command"])
         self.assertIn("geno-gpt-4.1-mini", worker["command"])
+        mode_index = worker["command"].index("--mode")
+        self.assertEqual(worker["command"][mode_index + 1], "api")
+        self.assertIn("--require-ready-collectors", worker["command"])
         self.assertIn("litellm", worker["depends_on"])
 
     def test_runtime_e2e_profile_wires_verifier_to_postgres_and_minio(self) -> None:
@@ -103,6 +106,16 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("postgres", migrator["depends_on"])
         self.assertEqual(api["depends_on"]["db-migrate"]["condition"], "service_completed_successfully")
         self.assertIn("postgres db-migrate minio api customer-web admin-web dashboard-web", makefile)
+
+    def test_worker_profile_defaults_to_real_api_collectors(self) -> None:
+        config = self._compose_config("worker")
+        worker = config["services"]["collector-worker"]
+
+        mode_index = worker["command"].index("--mode")
+        self.assertEqual(worker["command"][mode_index + 1], "api")
+        self.assertIn("--persist", worker["command"])
+        self.assertIn("--persist-analysis", worker["command"])
+        self.assertIn("--require-ready-collectors", worker["command"])
 
     def test_scheduler_profile_wires_browser_fidelity_scheduler(self) -> None:
         config = self._compose_config("scheduler")

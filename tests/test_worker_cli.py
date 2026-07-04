@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from pathlib import Path
 import runpy
 import subprocess
 import sys
@@ -302,6 +303,15 @@ class WorkerCliTest(unittest.TestCase):
         )
         self.assertRegex(payload["preflight_payload_hash"], r"^[0-9a-f]{64}$")
         self.assertEqual(payload["preflight_payload_hash"], self._preflight_payload_hash(payload))
+
+    def test_worker_cli_default_mode_is_real_api_not_fixture(self) -> None:
+        source = Path("workers/collector_worker/run_collection_slice.py").read_text(encoding="utf-8")
+        mode_argument_start = source.index('"--mode"')
+        mode_argument_end = source.index('parser.add_argument(\n        "--project-id"', mode_argument_start)
+        mode_argument_source = source[mode_argument_start:mode_argument_end]
+
+        self.assertIn('default="api"', mode_argument_source)
+        self.assertNotIn('default="fixture"', mode_argument_source)
 
     def test_fixture_worker_can_persist_against_existing_runtime_project(self) -> None:
         project_id = "4a6c168e-c596-56a8-932a-3271e2ef16f0"

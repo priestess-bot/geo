@@ -22,7 +22,7 @@
 | 编号 | 对照章节 | 工作项 | 依赖 | 状态 | 验收命令 | 证据路径 | Commit | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | C00 | 13 / 14 / 20 | 建立本 checklist 与 gate 骨架 | 无 | Verifying | `make test` | 本文件；`scripts/verify_production_v1_gate.py` | 待填 | 第一批工作包 |
-| C01 | 0 / 1 / 5 | 生产路径禁止 demo/fixture fallback | C00 | Blocked | `make no-fixture-production-smoke` | `scripts/verify_production_v1_gate.py` | 待填 | 已暴露 Admin/API/compose/migration 仍有 fixture/demo 生产可见入口，进入 W1-I03 |
+| C01 | 0 / 1 / 5 | 生产路径禁止 demo/fixture fallback | C00 | Done | `make no-fixture-production-smoke` | `scripts/verify_production_v1_gate.py`; focused unittest suite | 待填 | 生产默认路径改为真实 API/手工补录；fixture 端点仅开发工具开关可用 |
 | C02 | 13 / 15 | provider key、session token、invite token 不泄露 | C00 | Verifying | `make no-secret-leak-smoke` | `scripts/verify_production_v1_gate.py` | 待填 | 静态生产面扫描已接入，后续扩展到日志/报告 artifact |
 | C03 | 14 | Production v1 E2E 从空环境跑通 | C01-C18 | Not started | `make production-v1-e2e` | 待填 | 待填 | 真实报告生产闭环 |
 | C04 | 14 | Enablement v1 E2E 跑通 | C19-C21 | Not started | `make enablement-v1-e2e` | 待填 | 待填 | KB/Content/Distribution 薄闭环 |
@@ -33,7 +33,7 @@
 | 编号 | 对照章节 | 工作项 | 依赖 | 状态 | 验收命令 | 证据路径 | Commit | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | W10-I01 | 16 / 14 | `production-v1-e2e` 骨架 | 无 | Verifying | `make production-v1-e2e` | `scripts/verify_production_v1_gate.py` | 待填 | 严格模式按 pending 失败，进度模式可观察未完成项 |
-| W1-I03 | 16 | 清除生产路径 demo fallback | W10-I01 | Not started | `make no-fixture-production-smoke` | 待填 | 待填 | 包括新建项目默认值、fixture collection、fixture report |
+| W1-I03 | 16 | 清除生产路径 demo fallback | W10-I01 | Done | `make no-fixture-production-smoke` | `scripts/verify_production_v1_gate.py`; `tests/test_admin_customer_web_contracts.py`; `tests/test_infra_contracts.py`; `tests/test_api_contracts.py`; `tests/test_worker_cli.py` | 待填 | 新建项目/启动配置/worker 默认真实 API；fixture collection/report 仅开发工具开关可用 |
 | W1-I01 | 16 / 6 | FastAPI domain route 边界 | W10-I01 | Not started | `make test` | 待填 | 待填 | 从 `main.py` 拆 domain router |
 | W1-I02 | 16 / 6 | Repository 拆分边界 | W1-I01 | Not started | `make test` | 待填 | 待填 | 按 audit/access/project/connector 等顺序拆 |
 

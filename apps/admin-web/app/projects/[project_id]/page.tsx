@@ -15,7 +15,7 @@ import {
   TokenCreateForm,
   TokenRevokeForm
 } from "./ProjectActions";
-import { actorHeaders, apiBase, runtimeRequest } from "../../runtime";
+import { actorHeaders, adminDevToolsEnabled, apiBase, runtimeRequest } from "../../runtime";
 
 type RuntimeProject = {
   project: { id: string; name?: string; target_brand?: string; category?: string; status?: string; market_code?: string };
@@ -283,7 +283,7 @@ export default async function ProjectDetailPage({
             projectId={projectId}
           />
         ) : null}
-        {activeTab === "e2e" ? <E2EPanel projectId={projectId} /> : null}
+        {activeTab === "e2e" ? <E2EPanel devToolsEnabled={adminDevToolsEnabled()} projectId={projectId} /> : null}
       </section>
     </main>
   );
@@ -630,7 +630,7 @@ function StatusPanel({
   );
 }
 
-function E2EPanel({ projectId }: { projectId: string }) {
+function E2EPanel({ devToolsEnabled, projectId }: { devToolsEnabled: boolean; projectId: string }) {
   return (
     <section className="detailPanel unframedPanel">
       <div className="sectionTitle">
@@ -639,8 +639,14 @@ function E2EPanel({ projectId }: { projectId: string }) {
           <h2>采集、评分、报告与追溯</h2>
         </div>
       </div>
-      <p className="muted formIntro">使用 fixture collector 写入当前项目，用真实数据库和对象存储验证本地闭环。</p>
-      <FixtureE2EForm projectId={projectId} />
+      {devToolsEnabled ? (
+        <>
+          <p className="muted formIntro">开发工具已开启：使用本地 collector 写入当前项目，用真实数据库和对象存储验证本地闭环。</p>
+          <FixtureE2EForm projectId={projectId} />
+        </>
+      ) : (
+        <p className="muted formIntro">生产环境不暴露本地测试入口。请通过正式采集任务和最终验收命令执行全流程验证。</p>
+      )}
     </section>
   );
 }
@@ -822,7 +828,7 @@ function statusLabel(status?: string): string {
     archived: "已归档",
     draft: "草稿",
     ready: "就绪",
-    fixture: "本地测试",
+    fixture: "开发测试",
     pending: "待处理",
     accepted: "已接受",
     revoked: "已撤销"

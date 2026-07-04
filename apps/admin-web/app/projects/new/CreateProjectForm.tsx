@@ -34,7 +34,7 @@ const emptySummary: DraftSummary = {
   competitorDomains: [],
   customerEmail: "",
   ownerUserId: "",
-  collectionMode: "fixture",
+  collectionMode: "api",
   launchStatus: "draft",
   schedule: "",
   externalConnectors: ""
@@ -62,8 +62,8 @@ export default function CreateProjectForm() {
   const summaryRows = useMemo(
     () => [
       ["租户名称", summary.tenantName || "Design Partner AU"],
-      ["项目名称", summary.projectName || "AU GEO Pilot"],
-      ["目标品牌", summary.targetBrand || "ExampleBrand"],
+      ["项目名称", summary.projectName || "客户品牌 GEO 项目"],
+      ["目标品牌", summary.targetBrand || "客户品牌"],
       ["品类", summary.category || "DTC ecommerce products"],
       ["官网域名", joinValues(summary.brandOfficialDomains)],
       ["母公司", summary.brandParentCompany || "未填写"],
@@ -141,7 +141,7 @@ export default function CreateProjectForm() {
         </div>
         <div className="formGrid">
           <label><span>租户名称</span><input name="tenant_name" placeholder="Design Partner AU" /></label>
-          <label><span>项目名称</span><input name="project_name" placeholder="AU GEO Pilot" /></label>
+          <label><span>项目名称</span><input name="project_name" placeholder="客户品牌 GEO 项目" /></label>
         </div>
       </section>
 
@@ -157,7 +157,7 @@ export default function CreateProjectForm() {
           <span className="statusPill">提交前校验</span>
         </div>
         <div className="formGrid">
-          <label><span>目标品牌</span><input name="target_brand" placeholder="ExampleBrand" required /></label>
+          <label><span>目标品牌</span><input name="target_brand" placeholder="客户品牌" required /></label>
           <label><span>品类</span><input name="category" placeholder="DTC ecommerce products" required /></label>
           <label><span>官网域名</span><input name="brand_official_domains" placeholder="example.com" required /></label>
           <label><span>母公司</span><input name="brand_parent_company" placeholder="可选" /></label>
@@ -208,7 +208,7 @@ export default function CreateProjectForm() {
           <span className="statusPill">Runtime API</span>
         </div>
         <div className="formGrid">
-          <label><span>采集模式</span><select name="collection_mode"><option value="fixture">fixture</option><option value="api">api</option></select></label>
+          <label><span>采集模式</span><select name="collection_mode" defaultValue="api"><option value="api">真实 API</option><option value="manual">手工补录</option></select></label>
           <label><span>启动状态</span><select name="launch_status"><option value="draft">draft</option><option value="ready">ready</option><option value="active">active</option></select></label>
           <label><span>调度配置 JSON</span><textarea name="schedule" placeholder='{"cadence":"weekly"}' suppressHydrationWarning /></label>
           <label><span>连接器配置 JSON</span><textarea name="external_connectors" placeholder='{"openai":{"status":"configured"}}' suppressHydrationWarning /></label>
@@ -298,7 +298,7 @@ function buildSummary(formData: FormData): DraftSummary {
     competitorDomains: lines(value(formData, "competitor_domains")),
     customerEmail: value(formData, "customer_email"),
     ownerUserId: value(formData, "owner_user_id"),
-    collectionMode: value(formData, "collection_mode") || "fixture",
+    collectionMode: value(formData, "collection_mode") || "api",
     launchStatus: value(formData, "launch_status") || "draft",
     schedule: value(formData, "schedule"),
     externalConnectors: value(formData, "external_connectors")

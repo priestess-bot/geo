@@ -1011,7 +1011,7 @@ def main() -> None:
     parser.add_argument(
         "--mode",
         choices=["fixture", "api", "google-fixture", "google-spike", "google-serp-fixture", "google-serp-spike"],
-        default="fixture",
+        default="api",
     )
     parser.add_argument(
         "--project-id",

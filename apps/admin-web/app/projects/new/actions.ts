@@ -40,8 +40,8 @@ export async function createProjectAction(
   }
   const payload = {
     tenant_name: requiredString(formData, "tenant_name", "Design Partner AU"),
-    project_name: requiredString(formData, "project_name", "AU GEO Pilot"),
-    target_brand: requiredString(formData, "target_brand", "ExampleBrand"),
+    project_name: requiredString(formData, "project_name", "客户品牌 GEO 项目"),
+    target_brand: requiredString(formData, "target_brand", "客户品牌"),
     category: requiredString(formData, "category", "DTC ecommerce products"),
     competitors,
     brand_official_domains: lines(formData.get("brand_official_domains")),
@@ -49,7 +49,7 @@ export async function createProjectAction(
     owner_user_id: requiredString(formData, "owner_user_id", adminActorId()),
     customer_email: String(formData.get("customer_email") || "").trim() || null,
     competitor_domains: lines(formData.get("competitor_domains")),
-    collection_mode: requiredString(formData, "collection_mode", "fixture"),
+    collection_mode: requiredString(formData, "collection_mode", "api"),
     launch_status: requiredString(formData, "launch_status", "draft"),
     schedule: schedule.data || {},
     external_connectors: externalConnectors.data || {},
