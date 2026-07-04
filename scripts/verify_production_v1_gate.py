@@ -248,6 +248,17 @@ def _gate_report_traceability() -> list[Check]:
         _check_contains("traceability_module_exists", "packages/geno_core/geno_core/traceability.py", "TraceabilityBundle"),
         _check_contains("report_evidence_table_exists", "infra/db/migrations/up/0001_init.sql", "CREATE TABLE report_evidence"),
         _check_contains("score_contributions_table_exists", "infra/db/migrations/up/0001_init.sql", "CREATE TABLE score_contributions"),
+        _check_contains("evidence_asset_metadata_migration_exists", "infra/db/migrations/up/0019_evidence_asset_metadata.sql", "ADD COLUMN IF NOT EXISTS project_id uuid"),
+        _check_contains("evidence_asset_content_type_exists", "infra/db/migrations/up/0019_evidence_asset_metadata.sql", "ADD COLUMN IF NOT EXISTS content_type text"),
+        _check_contains("evidence_asset_size_exists", "infra/db/migrations/up/0019_evidence_asset_metadata.sql", "ADD COLUMN IF NOT EXISTS byte_size bigint"),
+        _check_contains("evidence_asset_project_scope_index_exists", "infra/db/migrations/up/0019_evidence_asset_metadata.sql", "idx_evidence_assets_project_scope"),
+        _check_contains("runtime_evidence_asset_input_model_exists", "packages/geno_core/geno_core/models.py", "class RuntimeEvidenceAssetInput"),
+        _check_contains("runtime_evidence_asset_model_exists", "packages/geno_core/geno_core/models.py", "class RuntimeEvidenceAsset"),
+        _check_contains("evidence_asset_repository_method_exists", "packages/geno_core/geno_core/repository.py", "def save_runtime_evidence_asset"),
+        _check_contains("raw_evidence_records_write_scoped_assets", "packages/geno_core/geno_core/repository.py", "JOIN projects p ON p.id = ar.project_id"),
+        _check_contains("evidence_created_audit_exists", "packages/geno_core/geno_core/repository.py", "event_type=\"evidence.created\""),
+        _check_contains("evidence_asset_metadata_test_exists", "tests/test_core_contracts.py", "test_evidence_asset_metadata_migration_is_additive_and_scoped"),
+        _check_contains("evidence_asset_repository_test_exists", "tests/test_core_contracts.py", "test_postgres_repository_saves_runtime_evidence_asset_with_scope_link_and_audit"),
         _pending("runtime_traceability_sample", "upgrade W4-I01d/W5-I02c/W6-I01f to sample report numbers against live data"),
     ]
 

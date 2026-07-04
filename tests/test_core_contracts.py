@@ -8,6 +8,7 @@ import unittest
 from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -140,6 +141,7 @@ from geno_core.models import (
     RuntimeFidelityCheck,
     RuntimeFidelityCheckPage,
     RuntimeFidelityTrend,
+    RuntimeEvidenceAssetInput,
     RuntimeHumanReviewInput,
     RuntimeHumanReviewPage,
     RuntimeHumanReviewQueuePage,
@@ -6202,6 +6204,110 @@ class CoreContractsTest(unittest.TestCase):
         audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
         self.assertEqual(audit_insert[1], "manual_backfill_recorded")
         self.assertEqual(connection.commit_count, 1)
+
+    def test_evidence_asset_metadata_migration_is_additive_and_scoped(self) -> None:
+        migration = Path("infra/db/migrations/up/0019_evidence_asset_metadata.sql").read_text(encoding="utf-8")
+
+        self.assertIn("ADD COLUMN IF NOT EXISTS tenant_id uuid", migration)
+        self.assertIn("ADD COLUMN IF NOT EXISTS project_id uuid", migration)
+        self.assertIn("ADD COLUMN IF NOT EXISTS content_type text", migration)
+        self.assertIn("ADD COLUMN IF NOT EXISTS byte_size bigint", migration)
+        self.assertIn("ADD COLUMN IF NOT EXISTS metadata jsonb", migration)
+        self.assertIn("UPDATE evidence_assets ea", migration)
+        self.assertIn("idx_evidence_assets_project_scope", migration)
+        self.assertNotIn("SET NOT NULL", migration)
+
+    def test_postgres_repository_saves_runtime_evidence_asset_with_scope_link_and_audit(self) -> None:
+        asset_row = {
+            "id": "4e377e68-fd10-591f-92a2-86ba9f1426c9",
+            "tenant_id": "0b6a5d38-a6c1-5be7-9351-80e456500a7b",
+            "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+            "answer_run_id": "6fcf21ee-22d8-5529-a91f-d8cead27cf2a",
+            "asset_type": "html_snapshot",
+            "url": "s3://geo-evidence/project/html.html",
+            "content_hash": "a" * 64,
+            "storage_backend": "s3_compatible",
+            "storage_key": "project/html.html",
+            "bucket": "geo-evidence",
+            "content_type": "text/html",
+            "byte_size": 1024,
+            "metadata": {"source": "unit-test"},
+            "visibility": "internal",
+            "created_by": "collector-worker",
+            "created_at": datetime(2026, 7, 5, tzinfo=UTC),
+            "updated_at": datetime(2026, 7, 5, tzinfo=UTC),
+        }
+        connection = RecordingConnection(result_sets=[asset_row])
+
+        saved = PostgresEvidenceRepository(connection).save_runtime_evidence_asset(
+            RuntimeEvidenceAssetInput(
+                tenant_id=str(asset_row["tenant_id"]),
+                project_id=str(asset_row["project_id"]),
+                answer_run_id=str(asset_row["answer_run_id"]),
+                asset_type="html_snapshot",
+                url=str(asset_row["url"]),
+                content_hash=str(asset_row["content_hash"]),
+                storage_backend="s3_compatible",
+                storage_key="project/html.html",
+                bucket="geo-evidence",
+                content_type="text/html",
+                byte_size=1024,
+                metadata={"source": "unit-test"},
+                created_by="collector-worker",
+            )
+        )
+
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO evidence_assets", executed_sql)
+        self.assertIn("tenant_id, project_id, answer_run_id", executed_sql)
+        self.assertIn("INSERT INTO evidence_links", executed_sql)
+        self.assertIn("INSERT INTO audit_events", executed_sql)
+        self.assertEqual(saved.project_id, asset_row["project_id"])
+        self.assertEqual(saved.content_type, "text/html")
+        self.assertEqual(saved.byte_size, 1024)
+        evidence_insert = next(params for sql, params in connection.calls if "INSERT INTO evidence_assets" in sql)
+        self.assertEqual(evidence_insert[11], 1024)
+        link_insert = next(params for sql, params in connection.calls if "INSERT INTO evidence_links" in sql)
+        self.assertEqual(link_insert[4], "evidence_asset")
+        self.assertEqual(link_insert[6], "evidence_asset")
+        audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
+        self.assertEqual(audit_insert[1], "evidence.created")
+        self.assertEqual(connection.commit_count, 1)
+
+    def test_postgres_repository_raw_evidence_records_write_scoped_assets_and_links(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        prompt = bootstrap.prompt_questions[0]
+        record = build_manual_backfill_record(
+            ManualBackfillInput(
+                project_id=bootstrap.project.id,
+                prompt_question_id=prompt.id,
+                prompt_text=prompt.text,
+                market_code=prompt.market_code,
+                city=prompt.city,
+                language=prompt.language,
+                platform="google",
+                surface="google_ai_mode",
+                answer_text="Manual answer with html evidence.",
+                citation_urls=("https://examplebrand.example/au/manual",),
+                html_snapshot_url="s3://manual-backfill/examplebrand-google-ai-mode.html",
+            )
+        )
+        connection = RecordingConnection()
+
+        PostgresEvidenceRepository(connection).save_raw_evidence_records((record,))
+
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO evidence_assets", executed_sql)
+        self.assertIn("JOIN projects p ON p.id = ar.project_id", executed_sql)
+        self.assertIn("storage_backend, storage_key, bucket, content_type, byte_size", executed_sql)
+        self.assertIn("INSERT INTO evidence_links", executed_sql)
+        evidence_insert = next(params for sql, params in connection.calls if "INSERT INTO evidence_assets" in sql)
+        self.assertEqual(evidence_insert[5], "external_url")
+        self.assertEqual(evidence_insert[8], "text/html")
+        link_insert = next(params for sql, params in connection.calls if "INSERT INTO evidence_links" in sql)
+        self.assertEqual(link_insert[2], "answer_run")
+        self.assertEqual(link_insert[4], "evidence_asset")
+        self.assertEqual(link_insert[6], "contains_evidence_asset")
 
     def test_postgres_repository_saves_collection_run_summary_with_audit_event(self) -> None:
         bootstrap = build_au_project_bootstrap()

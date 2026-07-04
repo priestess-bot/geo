@@ -238,6 +238,48 @@ class EvidenceAsset:
 
 
 @dataclass(frozen=True)
+class RuntimeEvidenceAssetInput:
+    project_id: str
+    asset_type: str
+    url: str
+    content_hash: str | None = None
+    tenant_id: str | None = None
+    answer_run_id: str | None = None
+    storage_backend: str = "external_url"
+    storage_key: str | None = None
+    bucket: str | None = None
+    content_type: str | None = None
+    byte_size: int | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    visibility: str = "internal"
+    created_by: str = "system"
+    source_type: str | None = None
+    source_id: str | None = None
+    relation_type: str = "evidence_asset"
+
+
+@dataclass(frozen=True)
+class RuntimeEvidenceAsset:
+    id: str
+    tenant_id: str | None
+    project_id: str
+    answer_run_id: str | None
+    asset_type: str
+    url: str
+    content_hash: str
+    storage_backend: str
+    storage_key: str | None
+    bucket: str | None
+    content_type: str | None
+    byte_size: int | None
+    metadata: dict[str, Any]
+    visibility: str
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
 class CollectorLog:
     id: str
     answer_run_id: str | None

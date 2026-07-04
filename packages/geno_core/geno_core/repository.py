@@ -70,6 +70,8 @@ from geno_core.models import (
     RuntimeCollectionRun,
     RuntimeCollectionRunPage,
     RuntimeEvidenceExport,
+    RuntimeEvidenceAsset,
+    RuntimeEvidenceAssetInput,
     RuntimeEvidencePage,
     RuntimeEvidenceRun,
     RuntimeEntityAlias,
@@ -702,6 +704,23 @@ def _vector_literal(values: tuple[float, ...] | list[float]) -> str:
 
 def _datetime(value: datetime | None) -> datetime | None:
     return value
+
+
+def _runtime_evidence_asset_content_hash(*, url: str, content_hash: str | None, metadata: object | None = None) -> str:
+    if content_hash:
+        return content_hash
+    return hashlib.sha256(
+        json.dumps(
+            {
+                "url": url,
+                "metadata": _json_compatible(metadata or {}),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _llm_call_logs_from_analysis(analysis: AnswerAnalysis) -> tuple[dict[str, Any], ...]:
@@ -3246,7 +3265,25 @@ ENTITY_ALIAS_JOIN_COLUMNS = ENTITY_ALIAS_COLUMNS + (
 )
 RAW_ANSWER_COLUMNS = ("id", "answer_run_id", "answer_text", "raw_payload", "raw_payload_hash", "created_at")
 CITATION_COLUMNS = ("id", "answer_run_id", "url", "domain", "position", "source_type", "created_at")
-ASSET_COLUMNS = ("id", "answer_run_id", "asset_type", "url", "content_hash", "created_at")
+ASSET_COLUMNS = (
+    "id",
+    "tenant_id",
+    "project_id",
+    "answer_run_id",
+    "asset_type",
+    "url",
+    "content_hash",
+    "storage_backend",
+    "storage_key",
+    "bucket",
+    "content_type",
+    "byte_size",
+    "metadata",
+    "visibility",
+    "created_by",
+    "created_at",
+    "updated_at",
+)
 COLLECTOR_LOG_COLUMNS = (
     "id",
     "answer_run_id",
@@ -15424,9 +15461,112 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                         prompt.prompt_version,
                         prompt.status,
                     ),
-                )
+            )
             self.save_audit_events(bootstrap.audit_events, cursor=cursor)
         self.connection.commit()
+
+    def save_runtime_evidence_asset(self, asset: RuntimeEvidenceAssetInput) -> RuntimeEvidenceAsset:
+        asset_id = _stable_id(
+            "runtime-evidence-asset",
+            asset.project_id,
+            asset.answer_run_id or "",
+            asset.asset_type,
+            asset.url,
+            asset.storage_key or "",
+        )
+        content_hash = _runtime_evidence_asset_content_hash(
+            url=asset.url,
+            content_hash=asset.content_hash,
+            metadata=asset.metadata,
+        )
+        source_type = asset.source_type or ("answer_run" if asset.answer_run_id else None)
+        source_id = asset.source_id or asset.answer_run_id
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                INSERT INTO evidence_assets (
+                  id, tenant_id, project_id, answer_run_id, asset_type, url, content_hash,
+                  storage_backend, storage_key, bucket, content_type, byte_size,
+                  metadata, visibility, created_by
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                  content_hash = EXCLUDED.content_hash,
+                  storage_backend = EXCLUDED.storage_backend,
+                  storage_key = EXCLUDED.storage_key,
+                  bucket = EXCLUDED.bucket,
+                  content_type = EXCLUDED.content_type,
+                  byte_size = EXCLUDED.byte_size,
+                  metadata = EXCLUDED.metadata,
+                  visibility = EXCLUDED.visibility,
+                  updated_at = now()
+                RETURNING {", ".join(ASSET_COLUMNS)}
+                """,
+                (
+                    _uuid(asset_id),
+                    _uuid(asset.tenant_id),
+                    _uuid(asset.project_id),
+                    _uuid(asset.answer_run_id),
+                    asset.asset_type,
+                    asset.url,
+                    content_hash,
+                    asset.storage_backend,
+                    asset.storage_key,
+                    asset.bucket,
+                    asset.content_type,
+                    asset.byte_size,
+                    _json_payload(asset.metadata),
+                    asset.visibility,
+                    asset.created_by,
+                ),
+            )
+            row = _row_dict(cursor.fetchone(), ASSET_COLUMNS)
+            if source_type and source_id:
+                cursor.execute(
+                    """
+                    INSERT INTO evidence_links (
+                      id, project_id, source_type, source_id, target_type, target_id,
+                      relation_type, answer_run_ids
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    (
+                        _uuid(_stable_id("evidence-link", asset.project_id, source_type, source_id, asset_id)),
+                        _uuid(asset.project_id),
+                        source_type,
+                        _uuid(source_id),
+                        "evidence_asset",
+                        _uuid(asset_id),
+                        asset.relation_type,
+                        _uuid_array((asset.answer_run_id,) if asset.answer_run_id else ()),
+                    ),
+                )
+            audit_event = build_audit_event(
+                event_type="evidence.created",
+                project_id=asset.project_id,
+                actor_type="system",
+                actor_id=asset.created_by,
+                target_type="evidence_asset",
+                target_id=asset_id,
+                before=None,
+                after={
+                    "asset_id": asset_id,
+                    "project_id": asset.project_id,
+                    "answer_run_id": asset.answer_run_id,
+                    "asset_type": asset.asset_type,
+                    "content_hash": content_hash,
+                    "content_type": asset.content_type,
+                    "byte_size": asset.byte_size,
+                    "visibility": asset.visibility,
+                },
+                input_refs={"answer_run_ids": [asset.answer_run_id] if asset.answer_run_id else []},
+                output_refs={"evidence_asset_ids": [asset_id]},
+                method_version="runtime_evidence_asset_v1",
+                reason="persist runtime evidence asset metadata",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+        self.connection.commit()
+        return RuntimeEvidenceAsset(**row)
 
     def save_raw_evidence_records(self, records: tuple[RawEvidenceRecord, ...]) -> None:
         with self.connection.cursor() as cursor:
@@ -15495,10 +15635,26 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                         ),
                     )
                 for asset in record.evidence_assets:
+                    asset_content_hash = _runtime_evidence_asset_content_hash(
+                        url=asset.url,
+                        content_hash=asset.content_hash,
+                        metadata={
+                            "answer_run_id": record.answer_run.id,
+                            "asset_type": asset.asset_type,
+                        },
+                    )
                     cursor.execute(
                         """
-                        INSERT INTO evidence_assets (id, answer_run_id, asset_type, url, content_hash)
-                        VALUES (%s, %s, %s, %s, %s)
+                        INSERT INTO evidence_assets (
+                          id, tenant_id, project_id, answer_run_id, asset_type, url, content_hash,
+                          storage_backend, storage_key, bucket, content_type, byte_size,
+                          metadata, visibility, created_by
+                        )
+                        SELECT %s, p.tenant_id, ar.project_id, %s, %s, %s, %s,
+                               %s, %s, %s, %s, %s, %s, %s, %s
+                        FROM answer_runs ar
+                        JOIN projects p ON p.id = ar.project_id
+                        WHERE ar.id = %s
                         ON CONFLICT (id) DO NOTHING
                         """,
                         (
@@ -15506,7 +15662,43 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                             _uuid(asset.answer_run_id),
                             asset.asset_type,
                             asset.url,
-                            asset.content_hash,
+                            asset_content_hash,
+                            "external_url",
+                            None,
+                            None,
+                            "image/png" if asset.asset_type == "screenshot" else "text/html"
+                            if asset.asset_type == "html_snapshot"
+                            else None,
+                            None,
+                            _json_payload(
+                                {
+                                    "source": "raw_evidence_record",
+                                    "collector_backend_id": record.answer_run.collector_backend_id,
+                                    "asset_type": asset.asset_type,
+                                }
+                            ),
+                            "internal",
+                            "collector",
+                            _uuid(asset.answer_run_id),
+                        ),
+                    )
+                    cursor.execute(
+                        """
+                        INSERT INTO evidence_links (
+                          id, project_id, source_type, source_id, target_type, target_id,
+                          relation_type, answer_run_ids
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (id) DO NOTHING
+                        """,
+                        (
+                            _uuid(_stable_id("evidence-link", record.answer_run.id, asset.id)),
+                            _uuid(record.answer_run.project_id),
+                            "answer_run",
+                            _uuid(record.answer_run.id),
+                            "evidence_asset",
+                            _uuid(asset.id),
+                            "contains_evidence_asset",
+                            _uuid_array((record.answer_run.id,)),
                         ),
                     )
                 for log in record.collector_logs:
