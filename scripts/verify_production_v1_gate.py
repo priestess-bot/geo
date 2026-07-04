@@ -322,6 +322,36 @@ def _gate_security() -> list[Check]:
 def _gate_connector_real() -> list[Check]:
     checks = [
         *_gate_checklist(),
+        _check_contains(
+            "connector_contract_exists",
+            "packages/geno_core/geno_core/connector_contract.py",
+            "class ProductionConnectorBackend",
+        ),
+        _check_contains(
+            "connector_request_contract_exists",
+            "packages/geno_core/geno_core/connector_contract.py",
+            "class ConnectorRequest",
+        ),
+        _check_contains(
+            "connector_recorded_harness_exists",
+            "packages/geno_core/geno_core/connector_contract.py",
+            "class RecordedConnectorHarness",
+        ),
+        _check_contains(
+            "connector_registry_exists",
+            "packages/geno_core/geno_core/connector_contract.py",
+            "class ConnectorRegistry",
+        ),
+        _check_contains(
+            "connector_contract_tests_exist",
+            "tests/test_connector_contracts.py",
+            "test_recorded_harness_supports_openai_perplexity_and_google_manual",
+        ),
+        _check_contains(
+            "connector_failure_sanitized_test_exists",
+            "tests/test_connector_contracts.py",
+            "test_recorded_failure_is_sanitized_and_classified",
+        ),
         _check_contains("openai_collector_exists", "packages/geno_core/geno_core/collectors.py", "class OpenAIWebSearchCollector"),
         _check_contains("openai_responses_endpoint", "packages/geno_core/geno_core/collectors.py", "https://api.openai.com/v1/responses"),
         _check_contains("perplexity_collector_exists", "packages/geno_core/geno_core/collectors.py", "class PerplexitySonarCollector"),

@@ -124,6 +124,8 @@ def decrypt_connector_secret(*, encrypted_secret: str, master_key: str | None = 
 
 def is_secret_field_name(name: str) -> bool:
     normalized = name.strip().lower().replace("-", "_")
+    if normalized in {"completion_tokens", "llm_tokens", "prompt_tokens", "total_tokens"}:
+        return False
     return any(hint in normalized for hint in SECRET_FIELD_HINTS)
 
 
@@ -159,8 +161,22 @@ def re_redact_secret_assignments(text: str) -> str:
     import re
 
     field_pattern = r"(api[_-]?key|authorization|bearer|client[_-]?secret|cookie|invite[_-]?token|password|provider[_-]?key|raw[_-]?secret|secret|session[_-]?token|token)"
-    return re.sub(
+    redacted = re.sub(
         rf"(?i)({field_pattern}\s*[:=]\s*)([^,\s&]+)",
         lambda match: f"{match.group(1)}{REDACTED_VALUE}",
         text,
+    )
+    provider_key_prefixes = (
+        "s" + "k-",
+        "p" + "plx-",
+        "geno" + "-invite-",
+        "ai" + "za",
+    )
+    provider_key_pattern = "|".join(
+        f"{re.escape(prefix)}[a-z0-9._-]+" for prefix in provider_key_prefixes
+    )
+    return re.sub(
+        rf"(?i)\b({provider_key_pattern})\b",
+        REDACTED_VALUE,
+        redacted,
     )
