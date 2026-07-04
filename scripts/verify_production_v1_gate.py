@@ -285,6 +285,13 @@ def _gate_customer_access_negative() -> list[Check]:
         _check_contains("revoked_report_denied_runtime_test", "tests/test_api_contracts.py", "test_runtime_report_artifact_customer_portal_denies_revoked_reports"),
         _check_contains("viewer_direct_report_denied_runtime_test", "tests/test_api_contracts.py", "test_runtime_report_artifact_viewer_role_denies_unpublished_report_without_portal_header"),
         _check_contains("cross_project_report_denied_runtime_test", "tests/test_api_contracts.py", "test_runtime_report_artifact_customer_portal_denies_cross_project_actor"),
+        _check_contains("evidence_asset_summary_endpoint_exists", "apps/api/geno_api/main.py", "/v1/evidence-assets/runtime/{evidence_asset_id}/summary"),
+        _check_contains("evidence_asset_download_endpoint_exists", "apps/api/geno_api/main.py", "/v1/evidence-assets/runtime/{evidence_asset_id}/download"),
+        _check_contains("evidence_asset_summary_hides_bucket_test", "tests/test_api_contracts.py", "test_runtime_evidence_asset_summary_hides_direct_bucket_url"),
+        _check_contains("evidence_asset_download_proxy_test", "tests/test_api_contracts.py", "test_runtime_evidence_asset_download_proxies_object_store_for_internal_role"),
+        _check_contains("customer_raw_evidence_denied_test", "tests/test_api_contracts.py", "test_runtime_evidence_asset_customer_portal_cannot_download_raw_asset"),
+        _check_contains("cross_project_evidence_denied_test", "tests/test_api_contracts.py", "test_runtime_evidence_asset_cross_project_download_denied"),
+        _check_contains("evidence_download_uses_object_store_proxy", "apps/api/geno_api/main.py", "X-GENO-Evidence-Asset-Proxy"),
     ]
 
 

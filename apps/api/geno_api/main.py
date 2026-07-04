@@ -126,7 +126,7 @@ from geno_core.models import (
     RuntimeSavedViewInput,
     RuntimeScoreWeightConfigInput,
 )
-from geno_core.object_store import ObjectStoreError, archive_project_brand_logo
+from geno_core.object_store import ObjectStoreError, archive_project_brand_logo, parse_s3_uri
 from geno_core.prompt_import import prompt_import_file_to_csv
 from geno_core.report import MarkdownCsvReportExporter
 from geno_core.rbac import normalize_role
@@ -1589,6 +1589,86 @@ def _assert_runtime_customer_report_download_allowed(
             status_code=403,
             detail="customer report download requires a published report",
         )
+
+
+def _evidence_asset_payload(asset: object) -> dict[str, object]:
+    if is_dataclass(asset):
+        return asdict(asset)
+    if isinstance(asset, Mapping):
+        return dict(asset)
+    return {}
+
+
+def _evidence_asset_public_summary(asset: object) -> dict[str, object]:
+    payload = _evidence_asset_payload(asset)
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), Mapping) else {}
+    return {
+        "id": payload.get("id"),
+        "tenant_id": payload.get("tenant_id"),
+        "project_id": payload.get("project_id"),
+        "answer_run_id": payload.get("answer_run_id"),
+        "asset_type": payload.get("asset_type"),
+        "content_hash": payload.get("content_hash"),
+        "content_type": payload.get("content_type"),
+        "byte_size": payload.get("byte_size"),
+        "storage_backend": payload.get("storage_backend"),
+        "visibility": payload.get("visibility"),
+        "created_by": payload.get("created_by"),
+        "created_at": payload.get("created_at"),
+        "updated_at": payload.get("updated_at"),
+        "metadata": {
+            key: value
+            for key, value in dict(metadata).items()
+            if key not in {"bucket", "storage_key", "url", "raw_url", "direct_url"}
+        },
+        "download_proxy": f"/v1/evidence-assets/runtime/{payload.get('id')}/download",
+    }
+
+
+def _assert_runtime_evidence_asset_access(
+    repository: object,
+    *,
+    asset: object,
+    context: AuthContext,
+    customer_portal_access: bool,
+    require_raw: bool,
+) -> None:
+    payload = _evidence_asset_payload(asset)
+    project_id = str(payload.get("project_id") or "").strip()
+    if not project_id:
+        raise HTTPException(status_code=403, detail="evidence asset is missing project scope")
+    role = ""
+    get_project_member_role = getattr(repository, "get_project_member_role", None)
+    if callable(get_project_member_role) and context.actor_id:
+        role = str(get_project_member_role(project_id=project_id, actor_id=context.actor_id) or "").strip().lower()
+    is_customer_viewer = customer_portal_access or _context_is_customer_portal_viewer(context) or role in CUSTOMER_PORTAL_ROLES
+    if require_raw and is_customer_viewer:
+        raise HTTPException(status_code=403, detail="customer portal users cannot download raw evidence assets")
+    allowed_roles = PROJECT_ANALYZE_ROLES if require_raw else None
+    assert_runtime_project_access(
+        repository,
+        project_id=project_id,
+        actor_id=context.actor_id,
+        allowed_roles=allowed_roles,
+        require_project_id=True,
+    )
+
+
+def _download_runtime_evidence_asset_object(asset: object) -> tuple[bytes, str]:
+    payload = _evidence_asset_payload(asset)
+    url = str(payload.get("url") or "").strip()
+    if not url.startswith("s3://"):
+        raise HTTPException(status_code=409, detail="evidence asset is not stored behind the object-store proxy")
+    try:
+        bucket, key = parse_s3_uri(url)
+        store = build_object_store_from_env()
+        if bucket != store.bucket:
+            raise HTTPException(status_code=409, detail="evidence asset bucket does not match configured object store")
+        content_hash = str(payload.get("content_hash") or "").strip() or None
+        downloaded = store.get_object(key=key, expected_hash=content_hash)
+    except ObjectStoreError as exc:
+        raise HTTPException(status_code=502, detail=f"evidence object store read failed: {exc}") from exc
+    return downloaded.content, downloaded.content_type
 
 
 register_runtime_access_routes(
@@ -5796,6 +5876,74 @@ def runtime_evidence_runs(
             offset=offset,
         )
         return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/evidence-assets/runtime/{evidence_asset_id}/summary")
+def runtime_evidence_asset_summary(
+    evidence_asset_id: str,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+    x_geno_customer_portal_access: str | None = Header(default=None, alias=RUNTIME_CUSTOMER_PORTAL_ACCESS_HEADER),
+) -> dict[str, object]:
+    context = build_runtime_auth_context(x_geno_actor_id)
+    customer_portal_access = _is_truthy_header(x_geno_customer_portal_access)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        asset = repository.get_runtime_evidence_asset(evidence_asset_id=evidence_asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="Runtime evidence asset not found")
+        _assert_runtime_evidence_asset_access(
+            repository,
+            asset=asset,
+            context=context,
+            customer_portal_access=customer_portal_access,
+            require_raw=False,
+        )
+        return _evidence_asset_public_summary(asset)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/evidence-assets/runtime/{evidence_asset_id}/download")
+def runtime_evidence_asset_download(
+    evidence_asset_id: str,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+    x_geno_customer_portal_access: str | None = Header(default=None, alias=RUNTIME_CUSTOMER_PORTAL_ACCESS_HEADER),
+) -> Response:
+    context = build_runtime_auth_context(x_geno_actor_id)
+    customer_portal_access = _is_truthy_header(x_geno_customer_portal_access)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        asset = repository.get_runtime_evidence_asset(evidence_asset_id=evidence_asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="Runtime evidence asset not found")
+        _assert_runtime_evidence_asset_access(
+            repository,
+            asset=asset,
+            context=context,
+            customer_portal_access=customer_portal_access,
+            require_raw=True,
+        )
+        content, content_type = _download_runtime_evidence_asset_object(asset)
+        summary = _evidence_asset_public_summary(asset)
+        return Response(
+            content=content,
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{evidence_asset_id}"',
+                "X-GENO-Evidence-Asset-Id": evidence_asset_id,
+                "X-GENO-Evidence-Asset-Hash": str(summary.get("content_hash") or ""),
+                "X-GENO-Evidence-Asset-Type": str(summary.get("asset_type") or ""),
+                "X-GENO-Evidence-Asset-Proxy": "true",
+            },
+        )
     finally:
         close_repository_connection(repository)
 

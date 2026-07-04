@@ -10488,6 +10488,186 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("does not have access", response.json()["detail"])
         self.assertEqual(fake_repository.member_check["project_id"], "project-2")
 
+    def test_runtime_evidence_asset_summary_hides_direct_bucket_url(self) -> None:
+        class FakeRepository:
+            def set_runtime_project_access_context(self, **kwargs: object) -> None:
+                self.context = kwargs
+
+            def get_runtime_evidence_asset(self, *, evidence_asset_id: str) -> dict[str, object]:
+                self.evidence_asset_id = evidence_asset_id
+                return {
+                    "id": evidence_asset_id,
+                    "tenant_id": "tenant-1",
+                    "project_id": "project-1",
+                    "answer_run_id": "answer-run-1",
+                    "asset_type": "html_snapshot",
+                    "url": "s3://geno-evidence/project-1/answer-run-1/asset.html",
+                    "content_hash": "a" * 64,
+                    "storage_backend": "s3_compatible",
+                    "storage_key": "project-1/answer-run-1/asset.html",
+                    "bucket": "geno-evidence",
+                    "content_type": "text/html; charset=utf-8",
+                    "byte_size": 123,
+                    "metadata": {"bucket": "geno-evidence", "storage_key": "hidden", "safe": "visible"},
+                    "visibility": "internal",
+                    "created_by": "collector",
+                    "created_at": "2026-07-05T00:00:00Z",
+                    "updated_at": "2026-07-05T00:00:00Z",
+                }
+
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
+                self.member_check = {"project_id": project_id, "actor_id": actor_id}
+                return "analyst"
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+            response = self.client.get(
+                "/v1/evidence-assets/runtime/evidence-1/summary",
+                headers={"X-GENO-Actor-Id": "analyst@example.com"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        serialized = json.dumps(payload, sort_keys=True)
+        self.assertEqual(payload["content_hash"], "a" * 64)
+        self.assertEqual(payload["metadata"], {"safe": "visible"})
+        self.assertIn("/v1/evidence-assets/runtime/evidence-1/download", payload["download_proxy"])
+        self.assertNotIn("s3://geno-evidence", serialized)
+        self.assertNotIn("storage_key", serialized)
+        self.assertEqual(fake_repository.member_check["actor_id"], "analyst@example.com")
+
+    def test_runtime_evidence_asset_download_proxies_object_store_for_internal_role(self) -> None:
+        class FakeRepository:
+            def set_runtime_project_access_context(self, **kwargs: object) -> None:
+                self.context = kwargs
+
+            def get_runtime_evidence_asset(self, *, evidence_asset_id: str) -> dict[str, object]:
+                return {
+                    "id": evidence_asset_id,
+                    "tenant_id": "tenant-1",
+                    "project_id": "project-1",
+                    "answer_run_id": "answer-run-1",
+                    "asset_type": "html_snapshot",
+                    "url": "s3://geno-evidence/project-1/answer-run-1/asset.html",
+                    "content_hash": "a" * 64,
+                    "storage_backend": "s3_compatible",
+                    "storage_key": "project-1/answer-run-1/asset.html",
+                    "bucket": "geno-evidence",
+                    "content_type": "text/html; charset=utf-8",
+                    "byte_size": 123,
+                    "metadata": {},
+                    "visibility": "internal",
+                    "created_by": "collector",
+                    "created_at": "2026-07-05T00:00:00Z",
+                    "updated_at": "2026-07-05T00:00:00Z",
+                }
+
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
+                return "analyst"
+
+        class FakeObjectStore:
+            bucket = "geno-evidence"
+
+            def get_object(self, *, key: str, expected_hash: str | None = None) -> object:
+                self.key = key
+                self.expected_hash = expected_hash
+
+                class Downloaded:
+                    content = b"<html>raw evidence</html>"
+                    content_type = "text/html; charset=utf-8"
+
+                return Downloaded()
+
+        fake_store = FakeObjectStore()
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch("geno_api.main.build_object_store_from_env", return_value=fake_store), patch.dict(
+            "os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True
+        ):
+            response = self.client.get(
+                "/v1/evidence-assets/runtime/evidence-1/download",
+                headers={"X-GENO-Actor-Id": "analyst@example.com"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"<html>raw evidence</html>")
+        self.assertEqual(response.headers["x-geno-evidence-asset-proxy"], "true")
+        self.assertEqual(fake_store.key, "project-1/answer-run-1/asset.html")
+        self.assertEqual(fake_store.expected_hash, "a" * 64)
+
+    def test_runtime_evidence_asset_customer_portal_cannot_download_raw_asset(self) -> None:
+        class FakeRepository:
+            def set_runtime_project_access_context(self, **kwargs: object) -> None:
+                self.context = kwargs
+
+            def get_runtime_evidence_asset(self, *, evidence_asset_id: str) -> dict[str, object]:
+                return {
+                    "id": evidence_asset_id,
+                    "project_id": "project-1",
+                    "asset_type": "html_snapshot",
+                    "url": "s3://geno-evidence/project-1/asset.html",
+                    "content_hash": "a" * 64,
+                    "storage_backend": "s3_compatible",
+                    "metadata": {},
+                }
+
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
+                return "viewer"
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch("geno_api.main.build_object_store_from_env") as store_builder, patch.dict(
+            "os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True
+        ):
+            response = self.client.get(
+                "/v1/evidence-assets/runtime/evidence-1/download",
+                headers={
+                    "X-GENO-Actor-Id": "customer@example.com",
+                    "X-GENO-Customer-Portal-Access": "true",
+                },
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("cannot download raw evidence", response.json()["detail"])
+        store_builder.assert_not_called()
+
+    def test_runtime_evidence_asset_cross_project_download_denied(self) -> None:
+        class FakeRepository:
+            def set_runtime_project_access_context(self, **kwargs: object) -> None:
+                self.context = kwargs
+
+            def get_runtime_evidence_asset(self, *, evidence_asset_id: str) -> dict[str, object]:
+                return {
+                    "id": evidence_asset_id,
+                    "project_id": "project-2",
+                    "asset_type": "html_snapshot",
+                    "url": "s3://geno-evidence/project-2/asset.html",
+                    "content_hash": "a" * 64,
+                    "metadata": {},
+                }
+
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str | None:
+                self.member_check = {"project_id": project_id, "actor_id": actor_id}
+                return None
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch("geno_api.main.build_object_store_from_env") as store_builder, patch.dict(
+            "os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True
+        ):
+            response = self.client.get(
+                "/v1/evidence-assets/runtime/evidence-1/download",
+                headers={"X-GENO-Actor-Id": "analyst@example.com"},
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("does not have access", response.json()["detail"])
+        self.assertEqual(fake_repository.member_check["project_id"], "project-2")
+        store_builder.assert_not_called()
+
     def test_runtime_action_plans_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/action-plans/runtime")
         self.assertEqual(response.status_code, 503)

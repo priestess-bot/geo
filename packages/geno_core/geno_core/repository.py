@@ -15568,6 +15568,22 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         self.connection.commit()
         return RuntimeEvidenceAsset(**row)
 
+    def get_runtime_evidence_asset(self, *, evidence_asset_id: str) -> RuntimeEvidenceAsset | None:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(ASSET_COLUMNS)}
+                FROM evidence_assets
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(evidence_asset_id),),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return RuntimeEvidenceAsset(**_row_dict(row, ASSET_COLUMNS))
+
     def save_raw_evidence_records(self, records: tuple[RawEvidenceRecord, ...]) -> None:
         with self.connection.cursor() as cursor:
             for record in records:
