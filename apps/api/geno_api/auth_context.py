@@ -108,6 +108,7 @@ def build_system_auth_context(
     roles: tuple[str, ...] | list[str] | None = None,
     permissions: tuple[str, ...] | list[str] | None = None,
     request_id: str | None = None,
+    allow_unscoped: bool = False,
 ) -> AuthContext:
     normalized_service_name = service_name.strip()
     normalized_reason = reason.strip()
@@ -115,13 +116,20 @@ def build_system_auth_context(
         raise AuthContextError("service_name is required for system AuthContext")
     if not normalized_reason:
         raise AuthContextError("reason is required for system AuthContext")
+    normalized_project_ids = _normalize_items(project_ids)
+    normalized_permissions = _normalize_items(permissions)
+    normalized_tenant_id = tenant_id.strip() if tenant_id else None
+    if not allow_unscoped and not normalized_tenant_id and not normalized_project_ids:
+        raise AuthContextError("system AuthContext requires tenant_id or project_ids unless allow_unscoped is true")
+    if not allow_unscoped and not normalized_permissions:
+        raise AuthContextError("system AuthContext requires explicit permissions unless allow_unscoped is true")
     return AuthContext(
         actor_id=f"system:{normalized_service_name}",
         actor_type="system",
-        tenant_id=tenant_id.strip() if tenant_id else None,
-        project_ids=_normalize_items(project_ids),
+        tenant_id=normalized_tenant_id,
+        project_ids=normalized_project_ids,
         roles=_normalize_items(roles),
-        permissions=_normalize_items(permissions),
+        permissions=normalized_permissions,
         session_id=None,
         request_id=request_id.strip() if request_id else None,
         ip_hash=None,

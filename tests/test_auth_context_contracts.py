@@ -77,6 +77,25 @@ class AuthContextContractsTest(unittest.TestCase):
         with self.assertRaisesRegex(AuthContextError, "reason is required"):
             build_system_auth_context(service_name="collector-worker", reason=" ")
 
+    def test_system_auth_context_requires_scope_and_permissions_by_default(self) -> None:
+        with self.assertRaisesRegex(AuthContextError, "requires tenant_id or project_ids"):
+            build_system_auth_context(service_name="collector-worker", reason="scheduled_collection")
+        with self.assertRaisesRegex(AuthContextError, "requires explicit permissions"):
+            build_system_auth_context(
+                service_name="collector-worker",
+                reason="scheduled_collection",
+                project_ids=["project-1"],
+            )
+
+        context = build_system_auth_context(
+            service_name="maintenance",
+            reason="schema_probe",
+            allow_unscoped=True,
+        )
+
+        self.assertTrue(context.is_system_actor)
+        self.assertEqual(context.permissions, ())
+
     def test_anonymous_context_has_no_scope_or_actor(self) -> None:
         context = build_anonymous_auth_context(auth_method="header", request_id="request-1")
 

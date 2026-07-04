@@ -23,7 +23,7 @@ from geno_core.action_plan import (
     build_retest_comparison_audit_event,
     compare_retest_windows,
 )
-from geno_core.audit import build_audit_event, hash_payload
+from geno_core.audit import AUTH_AUDIT_EVENT_TYPES, build_audit_event, build_auth_audit_event, hash_payload
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
@@ -981,6 +981,33 @@ class CoreContractsTest(unittest.TestCase):
         )
         self.assertEqual(event.before_hash, hash_payload({"a": 1, "b": 2}))
         self.assertEqual(event.after_hash, hash_payload({"b": 3, "a": 1}))
+
+    def test_auth_audit_event_vocabulary_rejects_raw_secret_refs(self) -> None:
+        self.assertIn("auth.login", AUTH_AUDIT_EVENT_TYPES)
+        event = build_auth_audit_event(
+            event_type="auth.login",
+            project_id="project-1",
+            actor_type="user",
+            actor_id="viewer@example.com",
+            target_type="runtime_session",
+            target_id="session-1",
+            input_refs={"session_token_hashes": ["hash-only"]},
+            output_refs={"session_ids": ["session-1"]},
+            reason="invitation_redeem",
+        )
+
+        self.assertEqual(event.event_type, "auth.login")
+        self.assertEqual(event.method_version, "auth_audit_v1")
+
+        with self.assertRaisesRegex(ValueError, "raw secret"):
+            build_auth_audit_event(
+                event_type="auth.login",
+                actor_type="user",
+                actor_id="viewer@example.com",
+                target_type="runtime_session",
+                target_id="session-1",
+                input_refs={"session_token": ["raw-token"]},
+            )
 
     def test_report_export_is_immutable_snapshot(self) -> None:
         report = ReportExport(

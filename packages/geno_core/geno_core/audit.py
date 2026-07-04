@@ -10,6 +10,38 @@ from uuid import uuid4
 from geno_core.models import AuditEvent
 
 
+AUTH_AUDIT_EVENT_TYPES = frozenset(
+    {
+        "auth.login",
+        "auth.logout",
+        "auth.session_created",
+        "auth.session_expired",
+        "auth.denied",
+        "authz.denied",
+        "invitation.created",
+        "invitation.redeemed",
+        "invitation.failed",
+        "system_actor.used",
+    }
+)
+AUTH_AUDIT_FORBIDDEN_REF_KEYS = frozenset(
+    {
+        "token",
+        "tokens",
+        "raw_token",
+        "raw_tokens",
+        "invite_token",
+        "invite_tokens",
+        "session_token",
+        "session_tokens",
+        "password",
+        "passwords",
+        "secret",
+        "secrets",
+    }
+)
+
+
 def canonical_json(payload: Any) -> str:
     if is_dataclass(payload):
         payload = asdict(payload)
@@ -50,4 +82,41 @@ def build_audit_event(
         method_version=method_version,
         reason=reason,
         created_at=datetime.now(UTC),
+    )
+
+
+def build_auth_audit_event(
+    *,
+    event_type: str,
+    actor_type: str,
+    actor_id: str,
+    target_type: str,
+    target_id: str,
+    project_id: str = "",
+    before: Any | None = None,
+    after: Any | None = None,
+    input_refs: dict[str, list[str]] | None = None,
+    output_refs: dict[str, list[str]] | None = None,
+    method_version: str = "auth_audit_v1",
+    reason: str | None = None,
+) -> AuditEvent:
+    if event_type not in AUTH_AUDIT_EVENT_TYPES:
+        raise ValueError(f"unknown auth audit event_type: {event_type}")
+    for refs in (input_refs or {}, output_refs or {}):
+        forbidden = sorted(set(refs) & AUTH_AUDIT_FORBIDDEN_REF_KEYS)
+        if forbidden:
+            raise ValueError(f"auth audit refs must not include raw secret fields: {', '.join(forbidden)}")
+    return build_audit_event(
+        event_type=event_type,
+        project_id=project_id,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        target_type=target_type,
+        target_id=target_id,
+        before=before,
+        after=after,
+        input_refs=input_refs,
+        output_refs=output_refs,
+        method_version=method_version,
+        reason=reason,
     )
