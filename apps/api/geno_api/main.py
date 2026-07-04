@@ -125,6 +125,7 @@ from geno_core.models import (
 from geno_core.object_store import ObjectStoreError, archive_project_brand_logo
 from geno_core.prompt_import import prompt_import_file_to_csv
 from geno_core.report import MarkdownCsvReportExporter
+from geno_core.rbac import normalize_role
 from geno_core.runtime import (
     RuntimePersistenceError,
     build_object_store_from_env,
@@ -321,7 +322,15 @@ RUNTIME_AUTH_MODE_ENV = "GENO_RUNTIME_AUTH_MODE"
 RUNTIME_AUTH_MODE_HEADER = "header"
 RUNTIME_AUTH_MODE_JWT = "jwt"
 RUNTIME_AUTH_MODE_JWKS = "jwks"
-RUNTIME_AUTH_MODES = {RUNTIME_AUTH_MODE_HEADER, RUNTIME_AUTH_MODE_JWT, RUNTIME_AUTH_MODE_JWKS}
+RUNTIME_AUTH_MODE_SESSION = "session"
+RUNTIME_AUTH_MODES = {
+    RUNTIME_AUTH_MODE_HEADER,
+    RUNTIME_AUTH_MODE_JWT,
+    RUNTIME_AUTH_MODE_JWKS,
+    RUNTIME_AUTH_MODE_SESSION,
+}
+RUNTIME_SESSION_COOKIE_NAME = "GENO_RUNTIME_SESSION"
+RUNTIME_SESSION_HEADER = "X-GENO-Session-Token"
 RUNTIME_JWT_SECRET_ENV = "GENO_RUNTIME_JWT_SECRET"
 RUNTIME_JWKS_JSON_ENV = "GENO_RUNTIME_JWKS_JSON"
 RUNTIME_JWKS_URL_ENV = "GENO_RUNTIME_JWKS_URL"
@@ -366,6 +375,10 @@ RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV = "GENO_NOTIFICATION_EMAI
 PROJECT_MANAGE_ROLES = ("owner", "admin")
 PROJECT_ANALYZE_ROLES = ("owner", "admin", "analyst")
 _RUNTIME_JWT_ACTOR_ID: ContextVar[str | None] = ContextVar("geno_runtime_jwt_actor_id", default=None)
+_RUNTIME_SESSION_AUTH_CONTEXT: ContextVar[AuthContext | None] = ContextVar(
+    "geno_runtime_session_auth_context",
+    default=None,
+)
 REQUEST_ID_HEADER = "X-GENO-Request-Id"
 RUNTIME_ACCESS_LOGGER = logging.getLogger("geno_api.access")
 _RUNTIME_JWKS_CACHE_LOCK = threading.Lock()
@@ -397,7 +410,7 @@ def require_dev_tools_enabled() -> None:
 def runtime_auth_mode() -> str:
     mode = os.getenv(RUNTIME_AUTH_MODE_ENV, RUNTIME_AUTH_MODE_HEADER).strip().lower() or RUNTIME_AUTH_MODE_HEADER
     if mode not in RUNTIME_AUTH_MODES:
-        raise HTTPException(status_code=503, detail=f"{RUNTIME_AUTH_MODE_ENV} must be header, jwt, or jwks")
+        raise HTTPException(status_code=503, detail=f"{RUNTIME_AUTH_MODE_ENV} must be header, jwt, jwks, or session")
     return mode
 
 
@@ -1114,6 +1127,58 @@ async def runtime_jwt_actor_middleware(request: Request, call_next):
         _RUNTIME_JWT_ACTOR_ID.reset(actor_token)
 
 
+def _runtime_session_token_from_request(request: Request) -> str:
+    header_token = request.headers.get(RUNTIME_SESSION_HEADER, "").strip()
+    if header_token:
+        return header_token
+    return request.cookies.get(RUNTIME_SESSION_COOKIE_NAME, "").strip()
+
+
+def _session_record_items(record: dict[str, Any], key: str) -> tuple[str, ...]:
+    value = record.get(key) or ()
+    if isinstance(value, str):
+        return (value,) if value.strip() else ()
+    return tuple(str(item).strip() for item in value if str(item).strip())
+
+
+def build_auth_context_from_runtime_session(session_record: dict[str, Any]) -> AuthContext:
+    actor_id = str(session_record.get("actor_id") or "").strip()
+    if not actor_id:
+        raise HTTPException(status_code=401, detail="runtime session is missing actor_id")
+    return build_user_auth_context(
+        actor_id=actor_id,
+        auth_method="session",
+        tenant_id=str(session_record["tenant_id"]) if session_record.get("tenant_id") else None,
+        project_ids=_session_record_items(session_record, "project_ids"),
+        roles=_session_record_items(session_record, "roles"),
+        permissions=_session_record_items(session_record, "permissions"),
+        session_id=str(session_record["id"]) if session_record.get("id") else None,
+    )
+
+
+@app.middleware("http")
+async def runtime_session_auth_middleware(request: Request, call_next):
+    context_token = _RUNTIME_SESSION_AUTH_CONTEXT.set(None)
+    try:
+        if runtime_project_access_control_enabled() and runtime_auth_mode() == RUNTIME_AUTH_MODE_SESSION:
+            raw_session_token = _runtime_session_token_from_request(request)
+            if raw_session_token:
+                try:
+                    repository = build_repository_from_env()
+                    try:
+                        session = repository.validate_runtime_session(raw_session_token)
+                    finally:
+                        close_repository_connection(repository)
+                except RuntimePersistenceError as exc:
+                    return JSONResponse(status_code=503, content={"detail": str(exc)})
+                except ValueError as exc:
+                    return JSONResponse(status_code=401, content={"detail": str(exc)})
+                _RUNTIME_SESSION_AUTH_CONTEXT.set(build_auth_context_from_runtime_session(session.session))
+        return await call_next(request)
+    finally:
+        _RUNTIME_SESSION_AUTH_CONTEXT.reset(context_token)
+
+
 def _route_template_for_metrics(request: Request) -> str:
     route = request.scope.get("route")
     route_path = getattr(route, "path", "")
@@ -1248,6 +1313,14 @@ async def runtime_metrics_middleware(request: Request, call_next):
 
 def build_runtime_auth_context(x_geno_actor_id: str | None = None) -> AuthContext:
     auth_mode = runtime_auth_mode()
+    if runtime_project_access_control_enabled() and auth_mode == RUNTIME_AUTH_MODE_SESSION:
+        context = _RUNTIME_SESSION_AUTH_CONTEXT.get()
+        if context is None:
+            raise HTTPException(
+                status_code=401,
+                detail=f"{RUNTIME_SESSION_COOKIE_NAME} cookie or {RUNTIME_SESSION_HEADER} header is required when runtime auth mode is session",
+            )
+        return context
     if runtime_project_access_control_enabled() and auth_mode in {RUNTIME_AUTH_MODE_JWT, RUNTIME_AUTH_MODE_JWKS}:
         if auth_mode == RUNTIME_AUTH_MODE_JWT:
             _runtime_jwt_secret()
@@ -1273,6 +1346,29 @@ def build_runtime_auth_context(x_geno_actor_id: str | None = None) -> AuthContex
 
 def require_runtime_actor_id(x_geno_actor_id: str | None = None) -> str | None:
     return build_runtime_auth_context(x_geno_actor_id).actor_id
+
+
+def _auth_context_role_allowed(context: AuthContext, allowed_roles: tuple[str, ...] | None) -> bool:
+    if not allowed_roles:
+        return True
+    allowed = {normalize_role(role) for role in allowed_roles}
+    return any(normalize_role(role) in allowed for role in context.roles)
+
+
+def _assert_auth_context_project_access(
+    context: AuthContext,
+    *,
+    project_id: str,
+    allowed_roles: tuple[str, ...] | None,
+) -> bool:
+    if not context.project_ids:
+        return False
+    if project_id not in context.project_ids:
+        raise HTTPException(status_code=403, detail="actor does not have access to project")
+    if not _auth_context_role_allowed(context, allowed_roles):
+        allowed = ", ".join(allowed_roles or ())
+        raise HTTPException(status_code=403, detail=f"actor role cannot perform this action; requires {allowed}")
+    return True
 
 
 def apply_runtime_project_db_context(
@@ -1319,6 +1415,18 @@ def assert_runtime_project_access(
             status_code=401,
             detail=f"{RUNTIME_ACTOR_HEADER} is required when runtime project access control is enabled",
         )
+    context = build_runtime_auth_context(actor_id)
+    if _assert_auth_context_project_access(
+        context,
+        project_id=normalized_project_id,
+        allowed_roles=allowed_roles,
+    ):
+        apply_runtime_project_db_context(
+            repository,
+            actor_id=context.actor_id,
+            project_id=normalized_project_id,
+        )
+        return
     get_project_member_role = getattr(repository, "get_project_member_role", None)
     if callable(get_project_member_role):
         role = get_project_member_role(project_id=normalized_project_id, actor_id=actor_id)

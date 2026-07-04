@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
+from geno_core.models import RuntimeSession
 from geno_api.auth_context import (
     AuthContextError,
     auth_context_scope,
@@ -15,7 +16,7 @@ from geno_api.auth_context import (
     hash_context_value,
 )
 import geno_api.main as api_main
-from geno_api.main import build_runtime_auth_context
+from geno_api.main import assert_runtime_project_access, build_runtime_auth_context
 
 
 class AuthContextContractsTest(unittest.TestCase):
@@ -126,6 +127,92 @@ class AuthContextContractsTest(unittest.TestCase):
 
         self.assertEqual(context.actor_id, "jwt-owner")
         self.assertEqual(context.auth_method, "jwt")
+
+    def test_runtime_auth_context_uses_session_scope(self) -> None:
+        session = RuntimeSession(
+            session={
+                "id": "session-1",
+                "actor_id": "viewer@example.com",
+                "tenant_id": "tenant-1",
+                "project_ids": ["project-1"],
+                "roles": ["viewer"],
+                "permissions": ["report.read"],
+            },
+            audit_events=(),
+        )
+
+        context = api_main.build_auth_context_from_runtime_session(session.session)
+        token = api_main._RUNTIME_SESSION_AUTH_CONTEXT.set(context)
+        try:
+            with patch.dict(
+                os.environ,
+                {
+                    "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                    "GENO_RUNTIME_AUTH_MODE": "session",
+                },
+                clear=False,
+            ):
+                resolved = build_runtime_auth_context(None)
+        finally:
+            api_main._RUNTIME_SESSION_AUTH_CONTEXT.reset(token)
+
+        self.assertEqual(resolved.actor_id, "viewer@example.com")
+        self.assertEqual(resolved.auth_method, "session")
+        self.assertEqual(resolved.tenant_id, "tenant-1")
+        self.assertEqual(resolved.project_ids, ("project-1",))
+        self.assertEqual(resolved.roles, ("viewer",))
+
+    def test_runtime_auth_context_requires_session_cookie_or_header_in_session_mode(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GENO_RUNTIME_AUTH_MODE": "session",
+            },
+            clear=False,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                build_runtime_auth_context(None)
+
+        self.assertEqual(raised.exception.status_code, 401)
+        self.assertIn("GENO_RUNTIME_SESSION", raised.exception.detail)
+
+    def test_runtime_project_access_can_use_auth_context_scope_before_repository_role_lookup(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, **kwargs: object) -> str | None:
+                raise AssertionError("membership lookup should not be used when AuthContext has project scope")
+
+            def set_runtime_project_access_context(self, *, actor_id: str, project_id: str | None = None) -> None:
+                self.context = (actor_id, project_id)
+
+        context = api_main.build_user_auth_context(
+            actor_id="owner@example.com",
+            auth_method="session",
+            tenant_id="tenant-1",
+            project_ids=["project-1"],
+            roles=["owner"],
+        )
+        token = api_main._RUNTIME_SESSION_AUTH_CONTEXT.set(context)
+        try:
+            with patch.dict(
+                os.environ,
+                {
+                    "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                    "GENO_RUNTIME_AUTH_MODE": "session",
+                },
+                clear=False,
+            ):
+                repository = FakeRepository()
+                assert_runtime_project_access(
+                    repository,
+                    project_id="project-1",
+                    actor_id="owner@example.com",
+                    allowed_roles=("owner", "admin"),
+                )
+        finally:
+            api_main._RUNTIME_SESSION_AUTH_CONTEXT.reset(token)
+
+        self.assertEqual(repository.context, ("owner@example.com", "project-1"))
 
 
 if __name__ == "__main__":

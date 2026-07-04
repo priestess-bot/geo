@@ -283,8 +283,11 @@ def _gate_security() -> list[Check]:
         _check_contains("tenant_members_table_exists", "infra/db/migrations/up/0017_tenant_membership_scope.sql", "CREATE TABLE IF NOT EXISTS tenant_members"),
         _check_contains("tenant_members_rls_exists", "infra/db/migrations/up/0017_tenant_membership_scope.sql", "tenant_members_runtime_tenant_isolation"),
         _check_contains("membership_scope_repository_exists", "packages/geno_core/geno_core/runtime_project_access_repository.py", "def get_runtime_membership_scope"),
+        _check_contains("session_auth_mode_exists", "apps/api/geno_api/main.py", "RUNTIME_AUTH_MODE_SESSION"),
+        _check_contains("session_cookie_name_exists", "apps/api/geno_api/main.py", "GENO_RUNTIME_SESSION"),
+        _check_contains("protected_api_uses_auth_context_project_scope", "apps/api/geno_api/main.py", "def _assert_auth_context_project_access"),
         _check_regex("jwt_or_jwks_auth_exists", "apps/api/geno_api/main.py", r"RUNTIME_AUTH_MODE_ENV|jwks|JWT"),
-        _pending("session_cookie_api_rollout", "session cookie redemption routes are W2-I01c/W2-I02 scope"),
+        _pending("session_redemption_routes", "invitation/login routes that set the httpOnly session cookie are W2-I02 scope"),
         _pending("csrf_mutation_contract", "unsafe mutation CSRF enforcement not complete"),
     ]
     return _dedupe(checks)
