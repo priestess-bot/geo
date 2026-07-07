@@ -7,5 +7,6 @@ COPY apps/admin-web/package-lock.json ./package-lock.json
 RUN npm ci
 
 COPY apps/admin-web ./
+COPY docs ./docs
 
 CMD ["npm", "run", "dev"]

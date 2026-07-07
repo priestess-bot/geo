@@ -53,6 +53,8 @@ from geno_core.models import (
     RetestSchedule,
     RuntimeActionPlan,
     RuntimeActionPlanPage,
+    RuntimeActionRecommendationUpdate,
+    RuntimeActionRecommendationUpdateInput,
     RuntimeAlertEvent,
     RuntimeAlertEventInput,
     RuntimeAlertItem,
@@ -65,6 +67,8 @@ from geno_core.models import (
     RuntimeCitationGraphNode,
     RuntimeCitationGraphPage,
     RuntimeContentDraft,
+    RuntimeContentDraftReview,
+    RuntimeContentDraftReviewInput,
     RuntimeContentEngine,
     RuntimeContentEnginePage,
     RuntimeCollectionRun,
@@ -101,6 +105,18 @@ from geno_core.models import (
     RuntimeHumanReviewRecord,
     RuntimeKnowledgeSearchPage,
     RuntimeKnowledgeSearchResult,
+    RuntimeKnowledgeFactImportInput,
+    RuntimeKnowledgeFactImportResult,
+    RuntimeKnowledgeApplicationPage,
+    RuntimeKnowledgeApplicationRequest,
+    RuntimeKnowledgeApplicationResult,
+    RuntimeKnowledgeDocument,
+    RuntimeKnowledgeDocumentCrawlInput,
+    RuntimeKnowledgeDocumentExtractionInput,
+    RuntimeKnowledgeDocumentInput,
+    RuntimeKnowledgeFactReviewInput,
+    RuntimeManualDistributionBackfill,
+    RuntimeManualDistributionBackfillInput,
     RuntimeNotification,
     RuntimeNotificationDelivery,
     RuntimeNotificationDeliveryPage,
@@ -155,6 +171,8 @@ from geno_core.models import (
     RuntimePromptImportHistoryPage,
     RuntimePromptImportInput,
     RuntimePromptImportResult,
+    RuntimePromptCandidateImportInput,
+    RuntimePromptCandidateReviewInput,
     RuntimePromptPage,
     RuntimePromptUpdateInput,
     RuntimeReportArtifact,
@@ -171,6 +189,9 @@ from geno_core.models import (
     RuntimeSavedViewPage,
     RuntimeScoreWeightConfig,
     RuntimeScoreWeightConfigInput,
+    RuntimeScoreWeightProfile,
+    RuntimeScoreWeightProfileInput,
+    RuntimeScoreWeightProfilePage,
     RuntimeScoreSnapshot,
     RuntimeScoreSnapshotPage,
     RuntimeScoreSnapshotRun,
@@ -190,12 +211,35 @@ from geno_core.report import (
 )
 from geno_core.runtime_project_access_repository import RuntimeProjectAccessRepositoryMixin
 from geno_core.fidelity import build_runtime_fidelity_check
-from geno_core.scoring import get_score_formula, normalize_score_weights
+from geno_core.scoring import get_score_formula, list_score_weight_profiles, normalize_score_weights
 from geno_core.knowledge import (
     KNOWLEDGE_EMBEDDING_MODEL,
+    KNOWLEDGE_FACT_APPROVED_STATUS,
     embed_knowledge_text,
     knowledge_fact_content_hash,
     knowledge_fact_text,
+)
+from geno_core.knowledge_application import (
+    DEEPSEEK_DEFAULT_MODEL,
+    DOCUMENT_STATUS_CRAWLED,
+    DOCUMENT_STATUS_EXTRACTED,
+    DOCUMENT_STATUS_FAILED,
+    DOCUMENT_STATUS_QUEUED,
+    GEO_CONTENT_DRAFT_PROMPT_VERSION,
+    KNOWLEDGE_APPLICATION_PIPELINE_VERSION,
+    PROMPT_CANDIDATE_APPROVED,
+    PROMPT_CANDIDATE_ARCHIVED,
+    PROMPT_CANDIDATE_IMPORTED,
+    PROMPT_CANDIDATE_PENDING,
+    PROMPT_CANDIDATE_REJECTED,
+    build_knowledge_application_artifacts,
+    crawl_public_knowledge_url,
+    deepseek_extract_knowledge_facts,
+    deepseek_generate_knowledge_application,
+    extract_knowledge_facts_from_document,
+    load_deepseek_api_key,
+    normalize_knowledge_url,
+    stable_knowledge_id,
 )
 
 
@@ -914,6 +958,19 @@ def _runtime_method_disclosure(report: RuntimeReportExport) -> dict[str, Any]:
     return disclosure
 
 
+REPORT_MANAGEMENT_STATUS_ALIASES = {
+    "pending_review": "internal_review",
+    "approved": "internal_review",
+    "published": "client_ready",
+    "revoked": "archived",
+}
+
+
+def _normalize_report_management_status(status: str) -> str:
+    normalized = status.strip().lower()
+    return REPORT_MANAGEMENT_STATUS_ALIASES.get(normalized, normalized)
+
+
 RUNTIME_EVIDENCE_SORTS = {
     "collected_at_desc": "ar.collected_at DESC, ar.id DESC",
     "collected_at_asc": "ar.collected_at ASC, ar.id ASC",
@@ -1128,6 +1185,75 @@ def _parse_prompt_import_csv(
     if not prompts:
         raise ValueError("csv must contain at least one prompt row")
     return tuple(prompts)
+
+
+def _parse_knowledge_fact_import_csv(
+    *,
+    project_id: str,
+    csv_content: str,
+    max_rows: int,
+    default_market_code: str,
+) -> tuple[dict[str, Any], ...]:
+    content = csv_content.strip()
+    if not content:
+        raise ValueError("csv_content is required")
+    reader = csv.DictReader(StringIO(content))
+    if not reader.fieldnames:
+        raise ValueError("csv header is required")
+    fieldnames = {field.strip() for field in reader.fieldnames if field}
+    missing = sorted({"fact_type", "subject", "predicate", "object_value"} - fieldnames)
+    if missing:
+        raise ValueError(f"csv missing required columns: {', '.join(missing)}")
+    facts: list[dict[str, Any]] = []
+    seen_keys: set[tuple[str, str, str, str, str, str]] = set()
+    for row_index, row in enumerate(reader, start=1):
+        if row_index > max_rows:
+            raise ValueError(f"csv row count exceeds max_rows={max_rows}")
+        fact = {str(key).strip(): (value.strip() if isinstance(value, str) else value) for key, value in row.items() if key}
+        fact_type = str(fact.get("fact_type") or "").strip()
+        subject = str(fact.get("subject") or "").strip()
+        predicate = str(fact.get("predicate") or "").strip()
+        object_value = str(fact.get("object_value") or "").strip()
+        if not fact_type:
+            raise ValueError(f"row {row_index} fact_type is required")
+        if not subject:
+            raise ValueError(f"row {row_index} subject is required")
+        if not predicate:
+            raise ValueError(f"row {row_index} predicate is required")
+        if not object_value:
+            raise ValueError(f"row {row_index} object_value is required")
+        market_code = str(fact.get("market_code") or default_market_code or "AU").strip().upper()
+        city = str(fact.get("city") or "").strip()
+        normalized_key = (
+            market_code,
+            fact_type.lower(),
+            subject.lower(),
+            predicate.lower(),
+            object_value.lower(),
+            city.lower(),
+        )
+        if normalized_key in seen_keys:
+            raise ValueError(f"row {row_index} duplicates knowledge fact")
+        seen_keys.add(normalized_key)
+        try:
+            confidence = float(str(fact.get("confidence") or "0.8").strip())
+        except ValueError as exc:
+            raise ValueError(f"row {row_index} confidence must be a number") from exc
+        if confidence < 0 or confidence > 1:
+            raise ValueError(f"row {row_index} confidence must be between 0 and 1")
+        fact["project_id"] = project_id
+        fact["market_code"] = market_code
+        fact["fact_type"] = fact_type
+        fact["subject"] = subject
+        fact["predicate"] = predicate
+        fact["object_value"] = object_value
+        fact["city"] = city or None
+        fact["confidence"] = confidence
+        fact["status"] = str(fact.get("status") or KNOWLEDGE_FACT_APPROVED_STATUS).strip() or KNOWLEDGE_FACT_APPROVED_STATUS
+        facts.append(fact)
+    if not facts:
+        raise ValueError("csv must contain at least one knowledge fact row")
+    return tuple(facts)
 
 
 def _normalize_import_prompt(
@@ -2553,7 +2679,7 @@ def _render_runtime_content_engines_csv(page: RuntimeContentEnginePage) -> str:
             "knowledge_fact_ids",
             "knowledge_fact_types",
             "knowledge_fact_content_hashes",
-            "active_knowledge_fact_count",
+            "approved_knowledge_fact_count",
             "connector_count",
             "connector_providers",
             "connector_statuses",
@@ -2620,8 +2746,10 @@ def _render_runtime_content_engines_csv(page: RuntimeContentEnginePage) -> str:
             "knowledge_fact_ids": ordered_unique([fact.get("id") for fact in record.knowledge_facts]),
             "knowledge_fact_types": ordered_unique([fact.get("fact_type") for fact in record.knowledge_facts]),
             "knowledge_fact_content_hashes": ordered_unique(knowledge_fact_content_hashes),
-            "active_knowledge_fact_count": sum(
-                1 for fact in record.knowledge_facts if str(fact.get("status") or "").lower() == "active"
+            "approved_knowledge_fact_count": sum(
+                1
+                for fact in record.knowledge_facts
+                if str(fact.get("status") or "").lower() == KNOWLEDGE_FACT_APPROVED_STATUS
             ),
             "connector_count": len(record.integration_connectors),
             "connector_providers": ordered_unique([connector.get("provider") for connector in record.integration_connectors]),
@@ -3584,6 +3712,10 @@ ACTION_RECOMMENDATION_COLUMNS = (
     "related_source_types",
     "next_check_date",
     "created_at",
+    "action_type",
+    "customer_visible",
+    "score_contribution_ids",
+    "visibility_note",
 )
 RETEST_SCHEDULE_COLUMNS = (
     "id",
@@ -3627,6 +3759,102 @@ KNOWLEDGE_FACT_EMBEDDING_COLUMNS = (
     "knowledge_fact_id",
     "embedding_model",
     "content_hash",
+    "created_at",
+    "updated_at",
+)
+KNOWLEDGE_DOCUMENT_COLUMNS = (
+    "id",
+    "project_id",
+    "source_type",
+    "normalized_url",
+    "source_url",
+    "title",
+    "raw_text",
+    "content_hash",
+    "status",
+    "error_reason",
+    "metadata",
+    "imported_by",
+    "created_at",
+    "updated_at",
+)
+KNOWLEDGE_DOCUMENT_VERSION_COLUMNS = (
+    "id",
+    "project_id",
+    "knowledge_document_id",
+    "version_number",
+    "normalized_url",
+    "source_url",
+    "title",
+    "raw_text",
+    "content_hash",
+    "status",
+    "crawl_adapter_version",
+    "byte_size",
+    "metadata",
+    "created_by",
+    "created_at",
+)
+KNOWLEDGE_GENERATION_JOB_COLUMNS = (
+    "id",
+    "project_id",
+    "job_type",
+    "status",
+    "request_payload",
+    "step_events",
+    "generation_model",
+    "generation_prompt_version",
+    "secret_ref",
+    "raw_output_hash",
+    "error_reason",
+    "requested_by",
+    "started_at",
+    "completed_at",
+    "created_at",
+    "updated_at",
+)
+PROMPT_CANDIDATE_COLUMNS = (
+    "id",
+    "project_id",
+    "generation_job_id",
+    "text",
+    "intent_type",
+    "market_code",
+    "city",
+    "language",
+    "target_brand",
+    "competitors",
+    "priority",
+    "intent_weight",
+    "source_knowledge_fact_ids",
+    "rationale",
+    "duplicate_state",
+    "review_status",
+    "reviewed_by",
+    "reviewed_at",
+    "imported_prompt_id",
+    "generation_model",
+    "generation_prompt_version",
+    "created_at",
+    "updated_at",
+)
+FAQ_ANSWER_CANDIDATE_COLUMNS = (
+    "id",
+    "project_id",
+    "generation_job_id",
+    "question",
+    "answer_markdown",
+    "target_prompt_ids",
+    "used_knowledge_fact_ids",
+    "market_code",
+    "city",
+    "language",
+    "review_status",
+    "reviewed_by",
+    "reviewed_at",
+    "generation_model",
+    "generation_prompt_version",
+    "rationale",
     "created_at",
     "updated_at",
 )
@@ -3787,6 +4015,21 @@ SCORE_WEIGHT_CONFIG_COLUMNS = (
     "created_at",
     "updated_at",
 )
+SCORE_WEIGHT_PROFILE_COLUMNS = (
+    "id",
+    "profile_key",
+    "name",
+    "description",
+    "base_formula_version",
+    "weights",
+    "scope",
+    "is_system",
+    "status",
+    "created_by",
+    "updated_by",
+    "created_at",
+    "updated_at",
+)
 HUMAN_REVIEW_COLUMNS = (
     "id",
     "project_id",
@@ -3818,6 +4061,11 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         self.email_preference_base_url = email_preference_base_url.strip()
         self.email_preference_token_secret = email_preference_token_secret
         self.email_preference_token_ttl_seconds = max(1, int(email_preference_token_ttl_seconds))
+
+    def _knowledge_deepseek_api_key(self, secret_ref: str | None) -> str | None:
+        if secret_ref:
+            return self.resolve_connector_secret(secret_ref=secret_ref)
+        return load_deepseek_api_key()
 
     def set_runtime_project_access_context(self, *, actor_id: str, project_id: str | None = None) -> None:
         actor_id = actor_id.strip()
@@ -4002,8 +4250,8 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             raise ValueError("target_brand cannot be empty")
         if category is not None and not category:
             raise ValueError("category cannot be empty")
-        if status is not None and status not in {"configured", "active", "paused"}:
-            raise ValueError("status must be configured, active, or paused")
+        if status is not None and status not in {"active", "paused"}:
+            raise ValueError("status must be active or paused")
         with self.connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -4150,24 +4398,7 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             else:
                 if before_status != "archived":
                     raise ValueError("project is not archived")
-                cursor.execute(
-                    """
-                    SELECT input_refs
-                    FROM audit_events
-                    WHERE project_id = %s
-                      AND target_type = 'project'
-                      AND target_id = %s
-                      AND event_type = 'project_archived'
-                    ORDER BY created_at DESC, id DESC
-                    LIMIT 1
-                    """,
-                    (_uuid(project_id), project_id),
-                )
-                archive_audit = cursor.fetchone()
-                archive_input_refs = _row_dict(archive_audit, ("input_refs",)).get("input_refs")
-                prior_status_values = archive_input_refs.get("status_before") if isinstance(archive_input_refs, dict) else None
-                prior_status = str(prior_status_values[0]).lower() if prior_status_values else ""
-                after_status = prior_status if prior_status in {"configured", "active", "paused"} else "active"
+                after_status = "paused"
                 event_type = "project_restored"
                 method_version = "runtime_project_restore_v1"
             cursor.execute(
@@ -9495,6 +9726,135 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                 config=_row_dict(row, SCORE_WEIGHT_CONFIG_COLUMNS),
             )
 
+    def list_score_weight_profiles(self, *, include_archived: bool = False) -> RuntimeScoreWeightProfilePage:
+        system_profiles = tuple(
+            RuntimeScoreWeightProfile(score_weight_profile=profile, audit_events=())
+            for profile in list_score_weight_profiles()
+            if include_archived or str(profile.get("status")) != "archived"
+        )
+        with self.connection.cursor() as cursor:
+            where_clause = "" if include_archived else "WHERE status <> 'archived'"
+            cursor.execute(
+                f"""
+                SELECT {", ".join(SCORE_WEIGHT_PROFILE_COLUMNS)}
+                FROM score_weight_profiles
+                {where_clause}
+                ORDER BY is_system DESC, updated_at DESC, profile_key ASC
+                """,
+            )
+            custom_profiles = tuple(
+                RuntimeScoreWeightProfile(score_weight_profile=row, audit_events=())
+                for row in _rows_dict(cursor.fetchall(), SCORE_WEIGHT_PROFILE_COLUMNS)
+            )
+        records = (*system_profiles, *custom_profiles)
+        return RuntimeScoreWeightProfilePage(total_count=len(records), records=records)
+
+    def get_score_weight_profile(self, profile_key: str) -> RuntimeScoreWeightProfile | None:
+        profile_key = profile_key.strip() or "au_visibility_v1"
+        for profile in list_score_weight_profiles():
+            if str(profile.get("profile_key")) == profile_key:
+                return RuntimeScoreWeightProfile(score_weight_profile=profile, audit_events=())
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(SCORE_WEIGHT_PROFILE_COLUMNS)}
+                FROM score_weight_profiles
+                WHERE profile_key = %s
+                LIMIT 1
+                """,
+                (profile_key,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return RuntimeScoreWeightProfile(
+                score_weight_profile=_row_dict(row, SCORE_WEIGHT_PROFILE_COLUMNS),
+                audit_events=(),
+            )
+
+    def save_score_weight_profile(self, profile: RuntimeScoreWeightProfileInput) -> RuntimeScoreWeightProfile:
+        profile_key = profile.profile_key.strip()
+        name = profile.name.strip()
+        base_formula_version = profile.base_formula_version.strip() or "au_visibility_v1"
+        updated_by = profile.updated_by.strip() or "runtime-console"
+        created_by = profile.created_by.strip() or updated_by
+        status = profile.status.strip().lower() or "active"
+        if not profile_key:
+            raise ValueError("profile_key is required")
+        if not name:
+            raise ValueError("name is required")
+        if profile_key in {str(item["profile_key"]) for item in list_score_weight_profiles()}:
+            raise ValueError("system score profile cannot be overwritten; save as a new custom profile")
+        if status not in {"active", "archived"}:
+            raise ValueError("status must be active or archived")
+        base_formula = get_score_formula(base_formula_version)
+        weights = normalize_score_weights(profile.weights, formula_version=base_formula.formula_version)
+        profile_id = _stable_id("score-weight-profile", profile_key)
+        after = {
+            "id": profile_id,
+            "profile_key": profile_key,
+            "name": name,
+            "description": profile.description.strip() if profile.description else None,
+            "base_formula_version": base_formula.formula_version,
+            "weights": weights,
+            "scope": "global",
+            "is_system": False,
+            "status": status,
+            "created_by": created_by,
+            "updated_by": updated_by,
+        }
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(SCORE_WEIGHT_PROFILE_COLUMNS)}
+                FROM score_weight_profiles
+                WHERE profile_key = %s
+                LIMIT 1
+                """,
+                (profile_key,),
+            )
+            existing = cursor.fetchone()
+            before = _row_dict(existing, SCORE_WEIGHT_PROFILE_COLUMNS) if existing else None
+            cursor.execute(
+                """
+                INSERT INTO score_weight_profiles (
+                  id, profile_key, name, description, base_formula_version, weights, scope,
+                  is_system, status, created_by, updated_by
+                ) VALUES (%s, %s, %s, %s, %s, %s, 'global', false, %s, %s, %s)
+                ON CONFLICT (profile_key) DO UPDATE SET
+                  name = EXCLUDED.name,
+                  description = EXCLUDED.description,
+                  base_formula_version = EXCLUDED.base_formula_version,
+                  weights = EXCLUDED.weights,
+                  status = EXCLUDED.status,
+                  updated_by = EXCLUDED.updated_by,
+                  updated_at = now()
+                """,
+                (
+                    _uuid(profile_id),
+                    profile_key,
+                    name,
+                    after["description"],
+                    base_formula.formula_version,
+                    _json_payload(weights),
+                    status,
+                    created_by,
+                    updated_by,
+                ),
+            )
+            cursor.execute(
+                f"""
+                SELECT {", ".join(SCORE_WEIGHT_PROFILE_COLUMNS)}
+                FROM score_weight_profiles
+                WHERE profile_key = %s
+                LIMIT 1
+                """,
+                (profile_key,),
+            )
+            saved = _row_dict(cursor.fetchone(), SCORE_WEIGHT_PROFILE_COLUMNS)
+        self.connection.commit()
+        return RuntimeScoreWeightProfile(score_weight_profile=saved, audit_events=())
+
     def save_score_weight_config(self, config: RuntimeScoreWeightConfigInput) -> RuntimeScoreWeightConfig:
         project_id = config.project_id.strip()
         formula_version = config.formula_version.strip() or "au_visibility_v1"
@@ -9593,6 +9953,12 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         project_id: str,
         formula_version: str = "au_visibility_v1",
     ) -> dict[str, float]:
+        profile = self.get_score_weight_profile(formula_version)
+        if profile is not None:
+            return normalize_score_weights(
+                dict(profile.score_weight_profile.get("weights") or {}),
+                formula_version=str(profile.score_weight_profile.get("base_formula_version") or "au_visibility_v1"),
+            )
         record = self.get_score_weight_config(project_id=project_id, formula_version=formula_version)
         if record is None:
             return dict(get_score_formula(formula_version).weights)
@@ -12859,7 +13225,7 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         event: RuntimeReportManagementInput,
     ) -> RuntimeReportExport:
         report_export_id = event.report_export_id.strip()
-        status = event.status.strip().lower()
+        status = _normalize_report_management_status(event.status)
         updated_by = event.updated_by.strip()
         note = event.note.strip() if event.note else None
         allowed_statuses = {"internal_review", "client_ready", "archived"}
@@ -14011,6 +14377,192 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             row_count=row_count,
         )
 
+    def update_runtime_action_recommendation(
+        self,
+        update: RuntimeActionRecommendationUpdateInput,
+    ) -> RuntimeActionRecommendationUpdate:
+        project_id = update.project_id.strip()
+        action_id = update.action_id.strip()
+        status = update.status.strip().lower()
+        owner_id = update.owner_id.strip() if update.owner_id else None
+        visibility_note = update.visibility_note.strip() if update.visibility_note else None
+        updated_by = update.updated_by.strip() or "runtime-console"
+        reason = update.reason.strip() if update.reason else None
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not action_id:
+            raise ValueError("action_id is required")
+        if status not in {"open", "in_progress", "done", "blocked", "dismissed"}:
+            raise ValueError("action status must be open, in_progress, done, blocked, or dismissed")
+        with self.connection.cursor() as cursor:
+            before = self._load_action_recommendation_by_id(cursor=cursor, action_id=action_id)
+            if not before or str(before.get("project_id")) != project_id:
+                raise ValueError("action_recommendation not found")
+            cursor.execute(
+                f"""
+                UPDATE action_recommendations
+                SET status = %s,
+                    owner_id = %s,
+                    customer_visible = COALESCE(%s, customer_visible),
+                    visibility_note = %s
+                WHERE id = %s AND project_id = %s
+                RETURNING {", ".join(ACTION_RECOMMENDATION_COLUMNS)}
+                """,
+                (
+                    status,
+                    owner_id,
+                    update.customer_visible,
+                    visibility_note,
+                    _uuid(action_id),
+                    _uuid(project_id),
+                ),
+            )
+            after = _row_dict(cursor.fetchone(), ACTION_RECOMMENDATION_COLUMNS)
+            if not after:
+                raise ValueError("action_recommendation not found")
+            audit_event = build_audit_event(
+                event_type="action_recommendation_updated",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=updated_by,
+                target_type="action_recommendation",
+                target_id=action_id,
+                before=before,
+                after=after,
+                input_refs={
+                    "action_recommendation_ids": [action_id],
+                    "status": [status],
+                },
+                output_refs={"action_recommendation_ids": [action_id]},
+                method_version="runtime_action_recommendation_update_v1",
+                reason=reason or "update action recommendation",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+        self.connection.commit()
+        return RuntimeActionRecommendationUpdate(
+            action_recommendation=after,
+            audit_events=(asdict(audit_event),),
+        )
+
+    def review_runtime_content_draft(
+        self,
+        review: RuntimeContentDraftReviewInput,
+    ) -> RuntimeContentDraftReview:
+        project_id = review.project_id.strip()
+        content_draft_id = review.content_draft_id.strip()
+        review_status = review.review_status.strip().lower()
+        reviewer_id = review.reviewer_id.strip() or "runtime-console"
+        decision = review.decision.strip() or "content draft reviewed"
+        notes = review.notes.strip() if review.notes else None
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not content_draft_id:
+            raise ValueError("content_draft_id is required")
+        if review_status not in {"approved", "needs_changes", "rejected", "pending_human_review"}:
+            raise ValueError("content draft review_status must be approved, needs_changes, rejected, or pending_human_review")
+        human_review = self.save_human_review(
+            RuntimeHumanReviewInput(
+                project_id=project_id,
+                target_type="content_draft",
+                target_id=content_draft_id,
+                review_status=review_status,
+                decision=decision,
+                reviewer_id=reviewer_id,
+                notes=notes,
+                payload=review.payload or {},
+            )
+        )
+        with self.connection.cursor() as cursor:
+            runtime_draft = self._load_runtime_content_draft_by_id(
+                cursor=cursor,
+                content_draft_id=content_draft_id,
+            )
+        if runtime_draft is None or str(runtime_draft.draft.get("project_id")) != project_id:
+            raise ValueError("content draft not found")
+        return RuntimeContentDraftReview(
+            content_draft=runtime_draft.draft,
+            human_review=human_review.human_review,
+            audit_events=tuple((*human_review.audit_events, *runtime_draft.audit_events)),
+        )
+
+    def backfill_runtime_manual_distribution_record(
+        self,
+        backfill: RuntimeManualDistributionBackfillInput,
+    ) -> RuntimeManualDistributionBackfill:
+        project_id = backfill.project_id.strip()
+        distribution_record_id = backfill.distribution_record_id.strip()
+        target_url = backfill.target_url.strip()
+        status = backfill.status.strip().lower() or "url_backfilled"
+        checked_by = backfill.checked_by.strip() or "runtime-console"
+        notes = backfill.notes.strip() if backfill.notes else None
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not distribution_record_id:
+            raise ValueError("distribution_record_id is required")
+        if not target_url:
+            raise ValueError("target_url is required")
+        if not (target_url.startswith("https://") or target_url.startswith("http://")):
+            raise ValueError("target_url must be http(s)")
+        if status not in {"url_backfilled", "published", "verified", "blocked"}:
+            raise ValueError("distribution status must be url_backfilled, published, verified, or blocked")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(MANUAL_DISTRIBUTION_RECORD_COLUMNS)}
+                FROM manual_distribution_records
+                WHERE id = %s AND project_id = %s
+                LIMIT 1
+                """,
+                (_uuid(distribution_record_id), _uuid(project_id)),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise ValueError("manual distribution record not found")
+            before = _row_dict(row, MANUAL_DISTRIBUTION_RECORD_COLUMNS)
+            cursor.execute(
+                f"""
+                UPDATE manual_distribution_records
+                SET target_url = %s,
+                    status = %s,
+                    submitted_at = COALESCE(submitted_at, now()),
+                    checked_at = now(),
+                    notes = %s
+                WHERE id = %s AND project_id = %s
+                RETURNING {", ".join(MANUAL_DISTRIBUTION_RECORD_COLUMNS)}
+                """,
+                (
+                    target_url,
+                    status,
+                    notes if notes is not None else before.get("notes"),
+                    _uuid(distribution_record_id),
+                    _uuid(project_id),
+                ),
+            )
+            after = _row_dict(cursor.fetchone(), MANUAL_DISTRIBUTION_RECORD_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="manual_distribution_record_backfilled",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=checked_by,
+                target_type="manual_distribution_record",
+                target_id=distribution_record_id,
+                before=before,
+                after=after,
+                input_refs={
+                    "manual_distribution_record_ids": [distribution_record_id],
+                    "content_draft_ids": [str(after.get("content_draft_id") or "")],
+                },
+                output_refs={"manual_distribution_record_ids": [distribution_record_id], "status": [status]},
+                method_version="manual_distribution_backfill_v1",
+                reason="manual URL/proof backfill for Production v1 distribution task",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+        self.connection.commit()
+        return RuntimeManualDistributionBackfill(
+            manual_distribution_record=after,
+            audit_events=(asdict(audit_event),),
+        )
+
     def record_runtime_alert_event(self, event: RuntimeAlertEventInput) -> RuntimeAlertEvent:
         project_id = event.project_id.strip()
         alert_id = event.alert_id.strip()
@@ -14733,7 +15285,13 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             "kfe.embedding_model = %s",
             "(kf.market_code = %s OR kf.market_code = %s)",
         ]
-        params: list[object] = [_uuid(project_id), "active", embedding_model, market_code, "GLOBAL"]
+        params: list[object] = [
+            _uuid(project_id),
+            KNOWLEDGE_FACT_APPROVED_STATUS,
+            embedding_model,
+            market_code,
+            "GLOBAL",
+        ]
         if city:
             filters.append("(kf.city IS NULL OR kf.city = %s)")
             params.append(city)
@@ -14802,6 +15360,1373 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             audit_events=audit_events,
         )
 
+    def import_runtime_knowledge_facts_csv(
+        self,
+        knowledge_import: RuntimeKnowledgeFactImportInput,
+    ) -> RuntimeKnowledgeFactImportResult:
+        project_id = knowledge_import.project_id.strip()
+        imported_by = knowledge_import.imported_by.strip() or "runtime-console"
+        max_rows = max(1, min(knowledge_import.max_rows, 200))
+        default_market_code = (knowledge_import.default_market_code or "AU").strip().upper() or "AU"
+        source_format = (knowledge_import.source_format or "csv").strip().lower()
+        source_filename = (knowledge_import.source_filename or "").strip() or None
+        if not project_id:
+            raise ValueError("project_id is required")
+        facts = _parse_knowledge_fact_import_csv(
+            project_id=project_id,
+            csv_content=knowledge_import.csv_content,
+            max_rows=max_rows,
+            default_market_code=default_market_code,
+        )
+        now = datetime.now(UTC)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, market_code
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            project_row = cursor.fetchone()
+            if not project_row:
+                raise ValueError("project not found")
+            fact_models = tuple(
+                LocalizedKnowledgeFact(
+                    id=_stable_id(
+                        "runtime-knowledge-fact-import",
+                        project_id,
+                        fact["market_code"],
+                        fact["fact_type"],
+                        fact["subject"],
+                        fact["predicate"],
+                        fact["object_value"],
+                        fact.get("city") or "global",
+                    ),
+                    project_id=project_id,
+                    market_code=fact["market_code"],
+                    fact_type=fact["fact_type"],
+                    subject=fact["subject"],
+                    predicate=fact["predicate"],
+                    object_value=fact["object_value"],
+                    city=fact.get("city"),
+                    evidence_source_id=None,
+                    confidence=float(fact["confidence"]),
+                    status=str(fact["status"]),
+                    valid_from=now,
+                    valid_until=None,
+                )
+                for fact in facts
+            )
+            fact_ids: list[str] = []
+            for fact in fact_models:
+                fact_ids.append(fact.id)
+                cursor.execute(
+                    """
+                    INSERT INTO localized_knowledge_facts (
+                      id, project_id, market_code, fact_type, subject, predicate, object_value,
+                      city, evidence_source_id, confidence, status, valid_from, valid_until
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                      market_code = EXCLUDED.market_code,
+                      fact_type = EXCLUDED.fact_type,
+                      subject = EXCLUDED.subject,
+                      predicate = EXCLUDED.predicate,
+                      object_value = EXCLUDED.object_value,
+                      city = EXCLUDED.city,
+                      confidence = EXCLUDED.confidence,
+                      status = EXCLUDED.status,
+                      valid_from = EXCLUDED.valid_from,
+                      valid_until = EXCLUDED.valid_until
+                    """,
+                    (
+                        _uuid(fact.id),
+                        _uuid(fact.project_id),
+                        fact.market_code,
+                        fact.fact_type,
+                        fact.subject,
+                        fact.predicate,
+                        fact.object_value,
+                        fact.city,
+                        _uuid(fact.evidence_source_id),
+                        fact.confidence,
+                        fact.status,
+                        _datetime(fact.valid_from),
+                        _datetime(fact.valid_until),
+                    ),
+                )
+            embedding_audit = self._index_knowledge_fact_embeddings(
+                cursor=cursor,
+                facts=fact_models,
+                actor_id=imported_by,
+            )
+            after = {
+                "project_id": project_id,
+                "knowledge_fact_count": len(fact_models),
+                "knowledge_fact_ids": fact_ids,
+                "source_format": source_format,
+                "source_filename": source_filename,
+                "default_market_code": default_market_code,
+            }
+            import_audit = build_audit_event(
+                event_type="runtime_knowledge_facts_imported",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=imported_by,
+                target_type="knowledge_fact_import",
+                target_id=_stable_id("knowledge-fact-import", project_id, imported_by, len(fact_models)),
+                before={"project_id": project_id, "imported_knowledge_fact_count": 0},
+                after=after,
+                input_refs={
+                    "csv_sha256": [_artifact_hash(knowledge_import.csv_content)],
+                    "source_format": source_format,
+                    "source_filename": source_filename,
+                },
+                output_refs={"knowledge_fact_ids": fact_ids},
+                method_version=f"runtime_knowledge_fact_import_{source_format}_v1",
+                reason=f"import runtime knowledge facts from {source_format}",
+            )
+            audit_events_to_save = (embedding_audit, import_audit) if embedding_audit else (import_audit,)
+            self.save_audit_events(audit_events_to_save, cursor=cursor)
+            imported_rows: list[dict[str, Any]] = []
+            for fact_id in fact_ids:
+                cursor.execute(
+                    f"""
+                    SELECT {", ".join(LOCALIZED_KNOWLEDGE_FACT_COLUMNS)}
+                    FROM localized_knowledge_facts
+                    WHERE id = %s
+                    LIMIT 1
+                    """,
+                    (_uuid(fact_id),),
+                )
+                row = cursor.fetchone()
+                if row:
+                    imported_rows.append(_row_dict(row, LOCALIZED_KNOWLEDGE_FACT_COLUMNS))
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE project_id = %s AND target_type IN (%s, %s)
+                ORDER BY created_at DESC
+                LIMIT 5
+                """,
+                (_uuid(project_id), "knowledge_fact_import", "knowledge_fact_embedding_index"),
+            )
+            audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        self.connection.commit()
+        return RuntimeKnowledgeFactImportResult(
+            knowledge_fact_import=after,
+            knowledge_facts=tuple(imported_rows),
+            audit_events=audit_events,
+        )
+
+    def create_runtime_knowledge_document(
+        self,
+        document_input: RuntimeKnowledgeDocumentInput,
+    ) -> RuntimeKnowledgeDocument:
+        project_id = document_input.project_id.strip()
+        imported_by = document_input.imported_by.strip() or "runtime-console"
+        source_type = document_input.source_type.strip().lower()
+        source_url = (document_input.source_url or "").strip() or None
+        raw_text = (document_input.raw_text or "").strip()
+        title = (document_input.title or "").strip()
+        if not project_id:
+            raise ValueError("project_id is required")
+        if source_type not in {"csv", "url", "web_text"}:
+            raise ValueError("source_type must be csv, url, or web_text")
+        if source_type == "url" and not source_url:
+            raise ValueError("source_url is required for url knowledge documents")
+        if source_type != "url" and not raw_text:
+            raise ValueError("raw_text is required for csv or web_text knowledge documents")
+        normalized_url = normalize_knowledge_url(source_url) if source_type == "url" and source_url else source_url
+        content_hash = _artifact_hash(raw_text or source_url or "")
+        document_id = stable_knowledge_id("knowledge-document", project_id, source_type, normalized_url or content_hash)
+        now = datetime.now(UTC)
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM projects WHERE id = %s LIMIT 1", (_uuid(project_id),))
+            if not cursor.fetchone():
+                raise ValueError("project not found")
+            cursor.execute(
+                """
+                INSERT INTO knowledge_documents (
+                  id, project_id, source_type, normalized_url, source_url, title, raw_text,
+                  content_hash, status, error_reason, metadata, imported_by, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                  title = EXCLUDED.title,
+                  raw_text = EXCLUDED.raw_text,
+                  content_hash = EXCLUDED.content_hash,
+                  status = EXCLUDED.status,
+                  metadata = EXCLUDED.metadata,
+                  imported_by = EXCLUDED.imported_by,
+                  updated_at = now()
+                """,
+                (
+                    _uuid(document_id),
+                    _uuid(project_id),
+                    source_type,
+                    normalized_url,
+                    source_url,
+                    title or source_url or "Knowledge document",
+                    raw_text,
+                    content_hash,
+                    DOCUMENT_STATUS_QUEUED if source_type == "url" else DOCUMENT_STATUS_CRAWLED,
+                    _json_payload(document_input.metadata),
+                    imported_by,
+                    _datetime(now),
+                    _datetime(now),
+                ),
+            )
+            cursor.execute(
+                f"SELECT {', '.join(KNOWLEDGE_DOCUMENT_COLUMNS)} FROM knowledge_documents WHERE id = %s LIMIT 1",
+                (_uuid(document_id),),
+            )
+            document = _row_dict(cursor.fetchone(), KNOWLEDGE_DOCUMENT_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="knowledge.document_imported",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=imported_by,
+                target_type="knowledge_document",
+                target_id=document_id,
+                before=None,
+                after=document,
+                input_refs={"source_url": [source_url] if source_url else [], "source_type": source_type},
+                output_refs={"knowledge_document_ids": [document_id]},
+                method_version="runtime_knowledge_document_import_v1",
+                reason="import knowledge source document for GEO knowledge application",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE project_id = %s AND target_type = %s AND target_id = %s
+                ORDER BY created_at DESC
+                LIMIT 5
+                """,
+                (_uuid(project_id), "knowledge_document", document_id),
+            )
+            audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        self.connection.commit()
+        return RuntimeKnowledgeDocument(knowledge_document=document, audit_events=audit_events)
+
+    def crawl_runtime_knowledge_document(
+        self,
+        crawl_input: RuntimeKnowledgeDocumentCrawlInput,
+    ) -> RuntimeKnowledgeDocument:
+        project_id = crawl_input.project_id.strip()
+        document_id = crawl_input.knowledge_document_id.strip()
+        crawled_by = crawl_input.crawled_by.strip() or "runtime-console"
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not document_id:
+            raise ValueError("knowledge_document_id is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(KNOWLEDGE_DOCUMENT_COLUMNS)}
+                FROM knowledge_documents
+                WHERE id = %s AND project_id = %s
+                FOR UPDATE
+                """,
+                (_uuid(document_id), _uuid(project_id)),
+            )
+            before_row = cursor.fetchone()
+            if not before_row:
+                raise ValueError("knowledge document not found")
+            before = _row_dict(before_row, KNOWLEDGE_DOCUMENT_COLUMNS)
+            source_url = str(before.get("source_url") or "")
+            if not source_url:
+                raise ValueError("knowledge document has no source_url")
+            job_id = stable_knowledge_id("knowledge-crawl-job", project_id, document_id, datetime.now(UTC).isoformat())
+            cursor.execute(
+                """
+                INSERT INTO knowledge_generation_jobs (
+                  id, project_id, job_type, status, request_payload, step_events, generation_model,
+                  generation_prompt_version, requested_by, started_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+                """,
+                (
+                    _uuid(job_id),
+                    _uuid(project_id),
+                    "crawl",
+                    "running",
+                    _json_payload({"knowledge_document_id": document_id, "source_url": source_url}),
+                    _json_payload([{"step": "crawl_started", "adapter": "crawl4ai_adapter_v1"}]),
+                    DEEPSEEK_DEFAULT_MODEL,
+                    KNOWLEDGE_APPLICATION_PIPELINE_VERSION,
+                    crawled_by,
+                ),
+            )
+            try:
+                crawl_result = crawl_public_knowledge_url(
+                    source_url=source_url,
+                    max_bytes=crawl_input.max_bytes,
+                    timeout_seconds=crawl_input.timeout_seconds,
+                )
+                cursor.execute(
+                    """
+                    SELECT COALESCE(max(version_number), 0) + 1 AS next_version_number
+                    FROM knowledge_document_versions
+                    WHERE knowledge_document_id = %s
+                    """,
+                    (_uuid(document_id),),
+                )
+                version_number_row = cursor.fetchone()
+                version_number = int(
+                    version_number_row[0]
+                    if not isinstance(version_number_row, dict)
+                    else version_number_row["next_version_number"]
+                )
+                version_id = stable_knowledge_id("knowledge-document-version", document_id, version_number, crawl_result.content_hash)
+                cursor.execute(
+                    """
+                    INSERT INTO knowledge_document_versions (
+                      id, project_id, knowledge_document_id, version_number, normalized_url, source_url,
+                      title, raw_text, content_hash, status, crawl_adapter_version, byte_size,
+                      metadata, created_by
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    (
+                        _uuid(version_id),
+                        _uuid(project_id),
+                        _uuid(document_id),
+                        version_number,
+                        crawl_result.normalized_url,
+                        crawl_result.source_url,
+                        crawl_result.title,
+                        crawl_result.markdown,
+                        crawl_result.content_hash,
+                        DOCUMENT_STATUS_CRAWLED,
+                        crawl_result.adapter_version,
+                        crawl_result.byte_size,
+                        _json_payload(
+                            {
+                                "status_code": crawl_result.status_code,
+                                "content_type": crawl_result.content_type,
+                                "max_pages": crawl_input.max_pages,
+                            }
+                        ),
+                        crawled_by,
+                    ),
+                )
+                cursor.execute(
+                    """
+                    UPDATE knowledge_documents
+                    SET normalized_url = %s,
+                        title = %s,
+                        raw_text = %s,
+                        content_hash = %s,
+                        status = %s,
+                        error_reason = NULL,
+                        updated_at = now()
+                    WHERE id = %s AND project_id = %s
+                    """,
+                    (
+                        crawl_result.normalized_url,
+                        crawl_result.title,
+                        crawl_result.markdown,
+                        crawl_result.content_hash,
+                        DOCUMENT_STATUS_CRAWLED,
+                        _uuid(document_id),
+                        _uuid(project_id),
+                    ),
+                )
+                cursor.execute(
+                    """
+                    UPDATE knowledge_generation_jobs
+                    SET status = %s,
+                        completed_at = now(),
+                        updated_at = now(),
+                        raw_output_hash = %s,
+                        step_events = %s
+                    WHERE id = %s
+                    """,
+                    (
+                        "succeeded",
+                        _artifact_hash(crawl_result.markdown),
+                        _json_payload(
+                            [
+                                {"step": "crawl_started", "adapter": "crawl4ai_adapter_v1"},
+                                {"step": "crawl_succeeded", "version_id": version_id},
+                            ]
+                        ),
+                        _uuid(job_id),
+                    ),
+                )
+                error_reason = None
+            except ValueError as exc:
+                error_reason = str(exc)
+                cursor.execute(
+                    """
+                    UPDATE knowledge_documents
+                    SET status = %s, error_reason = %s, updated_at = now()
+                    WHERE id = %s AND project_id = %s
+                    """,
+                    (DOCUMENT_STATUS_FAILED, error_reason, _uuid(document_id), _uuid(project_id)),
+                )
+                cursor.execute(
+                    """
+                    UPDATE knowledge_generation_jobs
+                    SET status = %s, error_reason = %s, completed_at = now(), updated_at = now()
+                    WHERE id = %s
+                    """,
+                    ("failed", error_reason, _uuid(job_id)),
+                )
+            cursor.execute(
+                f"SELECT {', '.join(KNOWLEDGE_DOCUMENT_COLUMNS)} FROM knowledge_documents WHERE id = %s LIMIT 1",
+                (_uuid(document_id),),
+            )
+            after = _row_dict(cursor.fetchone(), KNOWLEDGE_DOCUMENT_COLUMNS)
+            audit_event = build_audit_event(
+                event_type="knowledge.document_crawled" if error_reason is None else "knowledge.document_crawl_failed",
+                project_id=project_id,
+                actor_type="worker",
+                actor_id=crawled_by,
+                target_type="knowledge_document",
+                target_id=document_id,
+                before=before,
+                after=after,
+                input_refs={"source_url": [source_url], "knowledge_document_ids": [document_id]},
+                output_refs={"knowledge_generation_job_ids": [job_id]},
+                method_version="crawl4ai_adapter_v1",
+                reason="crawl public URL for GEO knowledge source",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE project_id = %s AND target_type = %s AND target_id = %s
+                ORDER BY created_at DESC
+                LIMIT 5
+                """,
+                (_uuid(project_id), "knowledge_document", document_id),
+            )
+            audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        self.connection.commit()
+        return RuntimeKnowledgeDocument(knowledge_document=after, audit_events=audit_events)
+
+    def extract_runtime_knowledge_document_facts(
+        self,
+        extraction_input: RuntimeKnowledgeDocumentExtractionInput,
+    ) -> RuntimeKnowledgeFactImportResult:
+        project_id = extraction_input.project_id.strip()
+        document_id = extraction_input.knowledge_document_id.strip()
+        extracted_by = extraction_input.extracted_by.strip() or "runtime-console"
+        if not project_id:
+            raise ValueError("project_id is required")
+        if not document_id:
+            raise ValueError("knowledge_document_id is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(KNOWLEDGE_DOCUMENT_COLUMNS)}
+                FROM knowledge_documents
+                WHERE id = %s AND project_id = %s
+                LIMIT 1
+                """,
+                (_uuid(document_id), _uuid(project_id)),
+            )
+            document_row = cursor.fetchone()
+            if not document_row:
+                raise ValueError("knowledge document not found")
+            document = _row_dict(document_row, KNOWLEDGE_DOCUMENT_COLUMNS)
+            cursor.execute(
+                """
+                SELECT id, market_code, target_brand, category
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            project_row = cursor.fetchone()
+            if not project_row:
+                raise ValueError("project not found")
+            project = _row_dict(project_row, ("id", "market_code", "target_brand", "category"))
+            cursor.execute(
+                f"""
+                SELECT {", ".join(KNOWLEDGE_DOCUMENT_VERSION_COLUMNS)}
+                FROM knowledge_document_versions
+                WHERE knowledge_document_id = %s
+                ORDER BY version_number DESC
+                LIMIT 1
+                """,
+                (_uuid(document_id),),
+            )
+            version_row = cursor.fetchone()
+            if version_row:
+                version = _row_dict(version_row, KNOWLEDGE_DOCUMENT_VERSION_COLUMNS)
+                raw_text = str(version.get("raw_text") or "")
+                version_id = str(version["id"])
+            else:
+                raw_text = str(document.get("raw_text") or "")
+                version_id = stable_knowledge_id("knowledge-document-version-inline", document_id, document.get("content_hash") or "")
+            if not raw_text.strip():
+                raise ValueError("knowledge document has no raw_text")
+            job_id = stable_knowledge_id("knowledge-extract-job", project_id, document_id, datetime.now(UTC).isoformat())
+            cursor.execute(
+                """
+                INSERT INTO knowledge_generation_jobs (
+                  id, project_id, job_type, status, request_payload, step_events, generation_model,
+                  generation_prompt_version, secret_ref, requested_by, started_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+                """,
+                (
+                    _uuid(job_id),
+                    _uuid(project_id),
+                    "extract_facts",
+                    "running",
+                    _json_payload({"knowledge_document_id": document_id, "max_facts": extraction_input.max_facts}),
+                    _json_payload([{"step": "extract_started", "pipeline": KNOWLEDGE_APPLICATION_PIPELINE_VERSION}]),
+                    extraction_input.model,
+                    "knowledge_fact_extraction_v1",
+                    extraction_input.secret_ref,
+                    extracted_by,
+                ),
+            )
+            model_facts: tuple[dict[str, Any], ...] | None = None
+            model_step_events = [{"step": "extract_started", "pipeline": KNOWLEDGE_APPLICATION_PIPELINE_VERSION}]
+            deepseek_key = self._knowledge_deepseek_api_key(extraction_input.secret_ref)
+            if deepseek_key:
+                try:
+                    model_facts = deepseek_extract_knowledge_facts(
+                        api_key=deepseek_key,
+                        raw_text=raw_text,
+                        target_brand=str(project.get("target_brand") or ""),
+                        category=str(project.get("category") or ""),
+                        market_code=str(project.get("market_code") or "AU"),
+                        max_facts=extraction_input.max_facts,
+                        model=extraction_input.model,
+                    )
+                    model_step_events.append(
+                        {
+                            "step": "deepseek_extract_succeeded",
+                            "model": extraction_input.model,
+                            "fact_count": len(model_facts),
+                        }
+                    )
+                except ValueError as exc:
+                    model_step_events.append(
+                        {
+                            "step": "deepseek_extract_fallback",
+                            "model": extraction_input.model,
+                            "error_reason": str(exc),
+                        }
+                    )
+            else:
+                model_step_events.append({"step": "deepseek_extract_skipped", "reason": "api_key_not_configured"})
+            extraction = extract_knowledge_facts_from_document(
+                project_id=project_id,
+                document_id=document_id,
+                document_version_id=version_id,
+                raw_text=raw_text,
+                source_url=str(document.get("source_url") or "") or None,
+                market_code=str(project.get("market_code") or "AU"),
+                target_brand=str(project.get("target_brand") or ""),
+                category=str(project.get("category") or ""),
+                extracted_by=extracted_by,
+                max_facts=extraction_input.max_facts,
+                auto_approve=extraction_input.auto_approve,
+                model=extraction_input.model,
+                model_facts=model_facts,
+            )
+            imported_rows: list[dict[str, Any]] = []
+            for fact in extraction.facts:
+                cursor.execute(
+                    """
+                    INSERT INTO localized_knowledge_facts (
+                      id, project_id, market_code, fact_type, subject, predicate, object_value,
+                      city, evidence_source_id, confidence, status, valid_from, valid_until,
+                      knowledge_document_id, knowledge_document_version_id, source_url, source_quote,
+                      source_kind, review_status, reviewed_by, reviewed_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                      object_value = EXCLUDED.object_value,
+                      confidence = EXCLUDED.confidence,
+                      status = EXCLUDED.status,
+                      source_quote = EXCLUDED.source_quote,
+                      review_status = EXCLUDED.review_status,
+                      reviewed_by = EXCLUDED.reviewed_by,
+                      reviewed_at = EXCLUDED.reviewed_at
+                    """,
+                    (
+                        _uuid(fact.id),
+                        _uuid(fact.project_id),
+                        fact.market_code,
+                        fact.fact_type,
+                        fact.subject,
+                        fact.predicate,
+                        fact.object_value,
+                        fact.city,
+                        _uuid(fact.evidence_source_id),
+                        fact.confidence,
+                        fact.status,
+                        _datetime(fact.valid_from),
+                        _datetime(fact.valid_until),
+                        _uuid(document_id),
+                        _uuid(version_id),
+                        document.get("source_url"),
+                        fact.object_value[:500],
+                        "model_extracted",
+                        fact.status,
+                        extracted_by if fact.status == KNOWLEDGE_FACT_APPROVED_STATUS else None,
+                        datetime.now(UTC) if fact.status == KNOWLEDGE_FACT_APPROVED_STATUS else None,
+                    ),
+                )
+                cursor.execute(
+                    f"SELECT {', '.join(LOCALIZED_KNOWLEDGE_FACT_COLUMNS)} FROM localized_knowledge_facts WHERE id = %s",
+                    (_uuid(fact.id),),
+                )
+                imported_rows.append(_row_dict(cursor.fetchone(), LOCALIZED_KNOWLEDGE_FACT_COLUMNS))
+            embedding_audit = self._index_knowledge_fact_embeddings(
+                cursor=cursor,
+                facts=tuple(fact for fact in extraction.facts if fact.status == KNOWLEDGE_FACT_APPROVED_STATUS),
+                actor_id=extracted_by,
+            )
+            cursor.execute(
+                "UPDATE knowledge_documents SET status = %s, updated_at = now() WHERE id = %s AND project_id = %s",
+                (DOCUMENT_STATUS_EXTRACTED, _uuid(document_id), _uuid(project_id)),
+            )
+            cursor.execute(
+                """
+                UPDATE knowledge_generation_jobs
+                SET status = %s,
+                    raw_output_hash = %s,
+                    step_events = %s,
+                    completed_at = now(),
+                    updated_at = now()
+                WHERE id = %s
+                """,
+                (
+                    "succeeded",
+                    extraction.raw_output_hash,
+                    _json_payload(
+                        [
+                            *model_step_events,
+                            {"step": "extract_succeeded", "knowledge_fact_count": len(extraction.facts)},
+                        ]
+                    ),
+                    _uuid(job_id),
+                ),
+            )
+            audit_events_to_save = tuple(event for event in (embedding_audit, extraction.audit_event) if event)
+            self.save_audit_events(audit_events_to_save, cursor=cursor)
+            after = {
+                "project_id": project_id,
+                "knowledge_document_id": document_id,
+                "knowledge_fact_count": len(imported_rows),
+                "knowledge_fact_ids": [str(row["id"]) for row in imported_rows],
+                "generation_job_id": job_id,
+            }
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE project_id = %s AND target_id IN (%s, %s)
+                ORDER BY created_at DESC
+                LIMIT 10
+                """,
+                (_uuid(project_id), document_id, project_id),
+            )
+            audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        self.connection.commit()
+        return RuntimeKnowledgeFactImportResult(
+            knowledge_fact_import=after,
+            knowledge_facts=tuple(imported_rows),
+            audit_events=audit_events,
+        )
+
+    def review_runtime_knowledge_fact(self, review: RuntimeKnowledgeFactReviewInput) -> dict[str, Any]:
+        project_id = review.project_id.strip()
+        fact_id = review.knowledge_fact_id.strip()
+        reviewed_by = review.reviewed_by.strip() or "runtime-console"
+        review_status = review.review_status.strip().lower()
+        if review_status not in {"approved", "rejected", "archived", "pending_review"}:
+            raise ValueError("knowledge fact review_status must be approved, rejected, archived, or pending_review")
+        fact_status = KNOWLEDGE_FACT_APPROVED_STATUS if review_status == "approved" else review_status
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT {', '.join(LOCALIZED_KNOWLEDGE_FACT_COLUMNS)} FROM localized_knowledge_facts WHERE id = %s AND project_id = %s FOR UPDATE",
+                (_uuid(fact_id), _uuid(project_id)),
+            )
+            before_row = cursor.fetchone()
+            if not before_row:
+                raise ValueError("knowledge fact not found")
+            before = _row_dict(before_row, LOCALIZED_KNOWLEDGE_FACT_COLUMNS)
+            cursor.execute(
+                """
+                UPDATE localized_knowledge_facts
+                SET status = %s,
+                    review_status = %s,
+                    reviewed_by = %s,
+                    reviewed_at = now()
+                WHERE id = %s AND project_id = %s
+                """,
+                (fact_status, review_status, reviewed_by, _uuid(fact_id), _uuid(project_id)),
+            )
+            cursor.execute(
+                f"SELECT {', '.join(LOCALIZED_KNOWLEDGE_FACT_COLUMNS)} FROM localized_knowledge_facts WHERE id = %s AND project_id = %s",
+                (_uuid(fact_id), _uuid(project_id)),
+            )
+            after = _row_dict(cursor.fetchone(), LOCALIZED_KNOWLEDGE_FACT_COLUMNS)
+            audit_event = build_audit_event(
+                event_type=f"knowledge.fact_{review_status}",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=reviewed_by,
+                target_type="knowledge_fact",
+                target_id=fact_id,
+                before=before,
+                after=after,
+                input_refs={"knowledge_fact_ids": [fact_id], "decision": review.decision},
+                output_refs={"knowledge_fact_ids": [fact_id], "review_status": review_status},
+                method_version="knowledge_fact_review_v1",
+                reason=review.notes or review.decision,
+            )
+            audit_events_to_save = (audit_event,)
+            if review_status == "approved":
+                fact_model = LocalizedKnowledgeFact(
+                    id=str(after["id"]),
+                    project_id=str(after["project_id"]),
+                    market_code=str(after["market_code"]),
+                    fact_type=str(after["fact_type"]),
+                    subject=str(after["subject"]),
+                    predicate=str(after["predicate"]),
+                    object_value=str(after["object_value"]),
+                    city=str(after["city"]) if after.get("city") else None,
+                    evidence_source_id=str(after["evidence_source_id"]) if after.get("evidence_source_id") else None,
+                    confidence=float(after["confidence"]),
+                    status=str(after["status"]),
+                    valid_from=after["valid_from"],
+                    valid_until=after.get("valid_until"),
+                )
+                embedding_audit = self._index_knowledge_fact_embeddings(
+                    cursor=cursor,
+                    facts=(fact_model,),
+                    actor_id=reviewed_by,
+                )
+                audit_events_to_save = tuple(event for event in (embedding_audit, audit_event) if event)
+            self.save_audit_events(audit_events_to_save, cursor=cursor)
+        self.connection.commit()
+        return {"knowledge_fact": after, "audit_events": tuple(asdict(event) for event in audit_events_to_save)}
+
+    def run_runtime_knowledge_application(
+        self,
+        request: RuntimeKnowledgeApplicationRequest,
+    ) -> RuntimeKnowledgeApplicationResult:
+        project_id = request.project_id.strip()
+        requested_by = request.requested_by.strip() or "runtime-console"
+        generation_type = request.generation_type.strip().lower()
+        if generation_type not in {"content_draft", "faq_candidates", "prompt_candidates", "all"}:
+            raise ValueError("generation_type must be content_draft, faq_candidates, prompt_candidates, or all")
+        quantity = max(1, min(request.quantity, 50))
+        job_id = stable_knowledge_id(
+            "knowledge-application-job",
+            project_id,
+            generation_type,
+            request.content_type,
+            request.intent_type or "",
+            request.city or "",
+            datetime.now(UTC).isoformat(),
+        )
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, market_code, target_brand, category
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            project_row = cursor.fetchone()
+            if not project_row:
+                raise ValueError("project not found")
+            project = _row_dict(project_row, ("id", "market_code", "target_brand", "category"))
+            cursor.execute(
+                f"""
+                SELECT {", ".join(LOCALIZED_KNOWLEDGE_FACT_COLUMNS)}
+                FROM localized_knowledge_facts
+                WHERE project_id = %s AND status = %s
+                ORDER BY confidence DESC, fact_type ASC, id ASC
+                LIMIT 50
+                """,
+                (_uuid(project_id), KNOWLEDGE_FACT_APPROVED_STATUS),
+            )
+            facts = tuple(_rows_dict(cursor.fetchall(), LOCALIZED_KNOWLEDGE_FACT_COLUMNS))
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROMPT_QUESTION_READ_COLUMNS)}
+                FROM prompt_questions
+                WHERE project_id = %s AND status = %s
+                ORDER BY priority ASC, id ASC
+                LIMIT 200
+                """,
+                (_uuid(project_id), "active"),
+            )
+            prompts = tuple(_rows_dict(cursor.fetchall(), PROMPT_QUESTION_READ_COLUMNS))
+            action = None
+            if request.action_id:
+                cursor.execute(
+                    f"""
+                    SELECT {", ".join(ACTION_RECOMMENDATION_COLUMNS)}
+                    FROM action_recommendations
+                    WHERE id = %s AND project_id = %s
+                    LIMIT 1
+                    """,
+                    (_uuid(request.action_id), _uuid(project_id)),
+                )
+                action_row = cursor.fetchone()
+                if action_row:
+                    action = _row_dict(action_row, ACTION_RECOMMENDATION_COLUMNS)
+            request_payload = {
+                "generation_type": generation_type,
+                "content_type": request.content_type,
+                "target_platform": request.target_platform,
+                "intent_type": request.intent_type,
+                "city": request.city,
+                "competitor": request.competitor,
+                "quantity": quantity,
+                "action_id": request.action_id,
+                "prompt_ids": list(request.prompt_ids),
+                "prompt_template_id": request.prompt_template_id,
+                "prompt_template_version": request.prompt_template_version,
+                "knowledge_source_policy": request.knowledge_source_policy,
+            }
+            cursor.execute(
+                """
+                INSERT INTO knowledge_generation_jobs (
+                  id, project_id, job_type, status, request_payload, step_events,
+                  generation_model, generation_prompt_version, secret_ref, requested_by, started_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+                """,
+                (
+                    _uuid(job_id),
+                    _uuid(project_id),
+                    generation_type,
+                    "running",
+                    _json_payload(request_payload),
+                    _json_payload([{"step": "generation_started", "pipeline": KNOWLEDGE_APPLICATION_PIPELINE_VERSION}]),
+                    request.model,
+                    KNOWLEDGE_APPLICATION_PIPELINE_VERSION,
+                    request.secret_ref,
+                    requested_by,
+                ),
+            )
+            model_output: dict[str, Any] | None = None
+            model_step_events = [{"step": "generation_started", "pipeline": KNOWLEDGE_APPLICATION_PIPELINE_VERSION}]
+            deepseek_key = self._knowledge_deepseek_api_key(request.secret_ref)
+            if deepseek_key:
+                try:
+                    model_output = deepseek_generate_knowledge_application(
+                        api_key=deepseek_key,
+                        target_brand=str(project["target_brand"]),
+                        category=str(project["category"]),
+                        market_code=str(project["market_code"] or "AU"),
+                        facts=facts,
+                        prompts=prompts,
+                        generation_type=generation_type,
+                        content_type=request.content_type.strip() or "faq",
+                        target_platform=request.target_platform.strip() or "chatgpt",
+                        intent_type=request.intent_type,
+                        city=request.city,
+                        competitor=request.competitor,
+                        quantity=quantity,
+                        model=request.model,
+                    )
+                    model_step_events.append(
+                        {
+                            "step": "deepseek_generation_succeeded",
+                            "model": request.model,
+                            "response_hash": model_output.get("response_hash"),
+                        }
+                    )
+                except ValueError as exc:
+                    model_step_events.append(
+                        {
+                            "step": "deepseek_generation_fallback",
+                            "model": request.model,
+                            "error_reason": str(exc),
+                        }
+                    )
+            else:
+                model_step_events.append({"step": "deepseek_generation_skipped", "reason": "api_key_not_configured"})
+            artifacts = build_knowledge_application_artifacts(
+                project_id=project_id,
+                target_brand=str(project["target_brand"]),
+                category=str(project["category"]),
+                market_code=str(project["market_code"] or "AU"),
+                facts=facts,
+                prompts=prompts,
+                action=action,
+                generation_type=generation_type,
+                content_type=request.content_type.strip() or "faq",
+                target_platform=request.target_platform.strip() or "chatgpt",
+                intent_type=request.intent_type,
+                city=request.city,
+                competitor=request.competitor,
+                quantity=quantity,
+                requested_by=requested_by,
+                generation_job_id=job_id,
+                model=request.model,
+                model_output=model_output,
+            )
+            content_rows: list[dict[str, Any]] = []
+            for draft in artifacts.content_drafts:
+                cursor.execute(
+                    """
+                    INSERT INTO content_drafts (
+                      id, project_id, title, content_type, content_template_id, target_question_ids,
+                      target_city, target_platform, target_source_type, used_knowledge_fact_ids,
+                      source_gap_types, source_action_id, evidence_answer_run_ids,
+                      draft_markdown, review_status, created_by, created_at,
+                      generation_job_id, source_document_ids, source_fact_ids,
+                      generation_model, generation_prompt_version, raw_output_hash
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    (
+                        _uuid(draft.id),
+                        _uuid(draft.project_id),
+                        draft.title,
+                        draft.content_type,
+                        draft.content_template_id,
+                        _uuid_array(draft.target_question_ids),
+                        draft.target_city,
+                        draft.target_platform,
+                        draft.target_source_type,
+                        _uuid_array(draft.used_knowledge_fact_ids),
+                        list(draft.source_gap_types),
+                        _uuid(draft.source_action_id),
+                        _uuid_array(draft.evidence_answer_run_ids),
+                        draft.draft_markdown,
+                        draft.review_status,
+                        draft.created_by,
+                        _datetime(draft.created_at),
+                        _uuid(job_id),
+                        [],
+                        _uuid_array(draft.used_knowledge_fact_ids),
+                        request.model,
+                        GEO_CONTENT_DRAFT_PROMPT_VERSION,
+                        artifacts.raw_output_hash,
+                    ),
+                )
+                cursor.execute(
+                    f"SELECT {', '.join(CONTENT_DRAFT_COLUMNS)} FROM content_drafts WHERE id = %s LIMIT 1",
+                    (_uuid(draft.id),),
+                )
+                content_rows.append(_row_dict(cursor.fetchone(), CONTENT_DRAFT_COLUMNS))
+            prompt_rows: list[dict[str, Any]] = []
+            for candidate in artifacts.prompt_candidates:
+                cursor.execute(
+                    """
+                    INSERT INTO prompt_candidates (
+                      id, project_id, generation_job_id, text, intent_type, market_code, city,
+                      language, target_brand, competitors, priority, intent_weight,
+                      source_knowledge_fact_ids, rationale, duplicate_state, review_status,
+                      generation_model, generation_prompt_version
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    (
+                        _uuid(str(candidate["id"])),
+                        _uuid(project_id),
+                        _uuid(job_id),
+                        candidate["text"],
+                        candidate["intent_type"],
+                        candidate["market_code"],
+                        candidate["city"],
+                        candidate["language"],
+                        candidate["target_brand"],
+                        _json_payload(candidate["competitors"]),
+                        candidate["priority"],
+                        candidate["intent_weight"],
+                        _uuid_array(candidate["source_knowledge_fact_ids"]),
+                        candidate["rationale"],
+                    candidate["duplicate_state"],
+                    candidate["review_status"],
+                    candidate["generation_model"],
+                    request.prompt_template_version or candidate["generation_prompt_version"],
+                ),
+            )
+                cursor.execute(
+                    f"SELECT {', '.join(PROMPT_CANDIDATE_COLUMNS)} FROM prompt_candidates WHERE id = %s LIMIT 1",
+                    (_uuid(str(candidate["id"])),),
+                )
+                prompt_rows.append(_row_dict(cursor.fetchone(), PROMPT_CANDIDATE_COLUMNS))
+            faq_rows: list[dict[str, Any]] = []
+            for candidate in artifacts.faq_candidates:
+                cursor.execute(
+                    """
+                    INSERT INTO faq_answer_candidates (
+                      id, project_id, generation_job_id, question, answer_markdown, target_prompt_ids,
+                      used_knowledge_fact_ids, market_code, city, language, review_status,
+                      generation_model, generation_prompt_version, rationale
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    (
+                        _uuid(str(candidate["id"])),
+                        _uuid(project_id),
+                        _uuid(job_id),
+                        candidate["question"],
+                        candidate["answer_markdown"],
+                        _uuid_array(candidate["target_prompt_ids"]),
+                        _uuid_array(candidate["used_knowledge_fact_ids"]),
+                        candidate["market_code"],
+                        candidate["city"],
+                        candidate["language"],
+                        candidate["review_status"],
+                        candidate["generation_model"],
+                        candidate["generation_prompt_version"],
+                        candidate["rationale"],
+                    ),
+                )
+                cursor.execute(
+                    f"SELECT {', '.join(FAQ_ANSWER_CANDIDATE_COLUMNS)} FROM faq_answer_candidates WHERE id = %s LIMIT 1",
+                    (_uuid(str(candidate["id"])),),
+                )
+                faq_rows.append(_row_dict(cursor.fetchone(), FAQ_ANSWER_CANDIDATE_COLUMNS))
+            cursor.execute(
+                """
+                UPDATE knowledge_generation_jobs
+                SET status = %s,
+                    raw_output_hash = %s,
+                    step_events = %s,
+                    completed_at = now(),
+                    updated_at = now()
+                WHERE id = %s
+                """,
+                (
+                    "succeeded",
+                    artifacts.raw_output_hash,
+                    _json_payload(
+                        [
+                            *model_step_events,
+                            {
+                                "step": "generation_succeeded",
+                                "content_drafts": len(content_rows),
+                                "prompt_candidates": len(prompt_rows),
+                                "faq_candidates": len(faq_rows),
+                            },
+                        ]
+                    ),
+                    _uuid(job_id),
+                ),
+            )
+            self.save_audit_events((artifacts.audit_event,), cursor=cursor)
+            cursor.execute(
+                f"SELECT {', '.join(KNOWLEDGE_GENERATION_JOB_COLUMNS)} FROM knowledge_generation_jobs WHERE id = %s LIMIT 1",
+                (_uuid(job_id),),
+            )
+            job = _row_dict(cursor.fetchone(), KNOWLEDGE_GENERATION_JOB_COLUMNS)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE project_id = %s AND target_type = %s AND target_id = %s
+                ORDER BY created_at DESC
+                LIMIT 5
+                """,
+                (_uuid(project_id), "knowledge_generation_job", job_id),
+            )
+            audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        self.connection.commit()
+        return RuntimeKnowledgeApplicationResult(
+            generation_job=job,
+            content_drafts=tuple(content_rows),
+            prompt_candidates=tuple(prompt_rows),
+            faq_candidates=tuple(faq_rows),
+            audit_events=audit_events,
+        )
+
+    def review_runtime_prompt_candidate(self, review: RuntimePromptCandidateReviewInput) -> dict[str, Any]:
+        project_id = review.project_id.strip()
+        candidate_id = review.prompt_candidate_id.strip()
+        reviewed_by = review.reviewed_by.strip() or "runtime-console"
+        review_status = review.review_status.strip().lower()
+        if review_status not in {PROMPT_CANDIDATE_APPROVED, PROMPT_CANDIDATE_REJECTED, PROMPT_CANDIDATE_PENDING, PROMPT_CANDIDATE_ARCHIVED}:
+            raise ValueError("prompt candidate review_status must be approved, rejected, pending_review, or archived")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT {', '.join(PROMPT_CANDIDATE_COLUMNS)} FROM prompt_candidates WHERE id = %s AND project_id = %s FOR UPDATE",
+                (_uuid(candidate_id), _uuid(project_id)),
+            )
+            before_row = cursor.fetchone()
+            if not before_row:
+                raise ValueError("prompt candidate not found")
+            before = _row_dict(before_row, PROMPT_CANDIDATE_COLUMNS)
+            cursor.execute(
+                """
+                UPDATE prompt_candidates
+                SET review_status = %s, reviewed_by = %s, reviewed_at = now(), updated_at = now()
+                WHERE id = %s AND project_id = %s
+                """,
+                (review_status, reviewed_by, _uuid(candidate_id), _uuid(project_id)),
+            )
+            cursor.execute(
+                f"SELECT {', '.join(PROMPT_CANDIDATE_COLUMNS)} FROM prompt_candidates WHERE id = %s AND project_id = %s LIMIT 1",
+                (_uuid(candidate_id), _uuid(project_id)),
+            )
+            after = _row_dict(cursor.fetchone(), PROMPT_CANDIDATE_COLUMNS)
+            audit_event = build_audit_event(
+                event_type=f"prompt_candidate_{review_status}",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=reviewed_by,
+                target_type="prompt_candidate",
+                target_id=candidate_id,
+                before=before,
+                after=after,
+                input_refs={"prompt_candidate_ids": [candidate_id], "decision": review.decision},
+                output_refs={"prompt_candidate_ids": [candidate_id], "review_status": review_status},
+                method_version="prompt_candidate_review_v1",
+                reason=review.notes or review.decision,
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+        self.connection.commit()
+        return {"prompt_candidate": after, "audit_events": (asdict(audit_event),)}
+
+    def import_runtime_approved_prompt_candidates(
+        self,
+        prompt_import: RuntimePromptCandidateImportInput,
+    ) -> RuntimePromptImportResult:
+        project_id = prompt_import.project_id.strip()
+        imported_by = prompt_import.imported_by.strip() or "runtime-console"
+        if not project_id:
+            raise ValueError("project_id is required")
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, market_code, industry_code, target_brand, prompt_version
+                FROM projects
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (_uuid(project_id),),
+            )
+            project_row = cursor.fetchone()
+            if not project_row:
+                raise ValueError("project not found")
+            project = _row_dict(project_row, ("id", "market_code", "industry_code", "target_brand", "prompt_version"))
+            filters = ["project_id = %s", "review_status = %s"]
+            params: list[object] = [_uuid(project_id), PROMPT_CANDIDATE_APPROVED]
+            if prompt_import.prompt_candidate_ids:
+                filters.append("id = ANY(%s)")
+                params.append(_uuid_array(list(prompt_import.prompt_candidate_ids)))
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROMPT_CANDIDATE_COLUMNS)}
+                FROM prompt_candidates
+                WHERE {" AND ".join(filters)}
+                ORDER BY priority ASC, created_at ASC
+                FOR UPDATE
+                """,
+                tuple(params),
+            )
+            candidates = _rows_dict(cursor.fetchall(), PROMPT_CANDIDATE_COLUMNS)
+            if not candidates:
+                raise ValueError("no approved prompt candidates found")
+            prompt_version = (
+                prompt_import.prompt_version
+                or f"knowledge_generated_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
+            )
+            imported_rows: list[dict[str, Any]] = []
+            prompt_ids: list[str] = []
+            candidate_to_prompt: dict[str, str] = {}
+            for index, candidate in enumerate(candidates, start=1):
+                prompt_id = stable_knowledge_id("prompt-candidate-import", project_id, prompt_version, candidate["id"], candidate["text"])
+                prompt_ids.append(prompt_id)
+                candidate_to_prompt[str(candidate["id"])] = prompt_id
+                cursor.execute(
+                    """
+                    INSERT INTO prompt_questions (
+                      id, project_id, market_code, industry_code, text, intent_type, city,
+                      language, target_brand, competitors, priority, intent_weight,
+                      prompt_version, status
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                      text = EXCLUDED.text,
+                      intent_type = EXCLUDED.intent_type,
+                      city = EXCLUDED.city,
+                      language = EXCLUDED.language,
+                      target_brand = EXCLUDED.target_brand,
+                      competitors = EXCLUDED.competitors,
+                      priority = EXCLUDED.priority,
+                      intent_weight = EXCLUDED.intent_weight,
+                      prompt_version = EXCLUDED.prompt_version,
+                      status = EXCLUDED.status
+                    """,
+                    (
+                        _uuid(prompt_id),
+                        _uuid(project_id),
+                        candidate["market_code"] or project["market_code"],
+                        project["industry_code"],
+                        candidate["text"],
+                        candidate["intent_type"],
+                        candidate["city"],
+                        candidate["language"],
+                        candidate["target_brand"] or project["target_brand"],
+                        _json_payload(candidate["competitors"]),
+                        int(candidate["priority"] or index),
+                        float(candidate["intent_weight"] or 1.0),
+                        prompt_version,
+                        "active",
+                    ),
+                )
+                cursor.execute(
+                    """
+                    UPDATE prompt_candidates
+                    SET review_status = %s, imported_prompt_id = %s, updated_at = now()
+                    WHERE id = %s
+                    """,
+                    (PROMPT_CANDIDATE_IMPORTED, _uuid(prompt_id), _uuid(str(candidate["id"]))),
+                )
+                cursor.execute(
+                    f"SELECT {', '.join(PROMPT_QUESTION_READ_COLUMNS)} FROM prompt_questions WHERE id = %s LIMIT 1",
+                    (_uuid(prompt_id),),
+                )
+                imported_rows.append(_row_dict(cursor.fetchone(), PROMPT_QUESTION_READ_COLUMNS))
+            after = {
+                "project_id": project_id,
+                "prompt_count": len(imported_rows),
+                "prompt_ids": prompt_ids,
+                "prompt_version": prompt_version,
+                "source_format": "prompt_candidates",
+                "candidate_to_prompt": candidate_to_prompt,
+            }
+            audit_event = build_audit_event(
+                event_type="prompt_candidate_imported",
+                project_id=project_id,
+                actor_type="user",
+                actor_id=imported_by,
+                target_type="prompt_import",
+                target_id=stable_knowledge_id("prompt-candidate-import-audit", project_id, imported_by, prompt_version),
+                before={"project_id": project_id, "imported_prompt_count": 0},
+                after=after,
+                input_refs={"prompt_candidate_ids": list(candidate_to_prompt.keys())},
+                output_refs={"prompt_question_ids": prompt_ids},
+                method_version="prompt_candidate_import_v1",
+                reason="import approved knowledge-generated prompt candidates",
+            )
+            self.save_audit_events((audit_event,), cursor=cursor)
+            cursor.execute(
+                f"""
+                SELECT {", ".join(AUDIT_EVENT_COLUMNS)}
+                FROM audit_events
+                WHERE project_id = %s AND target_type = %s AND target_id = %s
+                ORDER BY created_at DESC
+                LIMIT 5
+                """,
+                (_uuid(project_id), "prompt_import", audit_event.target_id),
+            )
+            audit_events = _rows_dict(cursor.fetchall(), AUDIT_EVENT_COLUMNS)
+        self.connection.commit()
+        return RuntimePromptImportResult(prompt_import=after, prompts=tuple(imported_rows), audit_events=audit_events)
+
+    def list_runtime_knowledge_application(
+        self,
+        *,
+        project_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> RuntimeKnowledgeApplicationPage:
+        project_id = project_id.strip()
+        if not project_id:
+            raise ValueError("project_id is required")
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {", ".join(KNOWLEDGE_DOCUMENT_COLUMNS)}
+                FROM knowledge_documents
+                WHERE project_id = %s
+                ORDER BY updated_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (_uuid(project_id), limit, offset),
+            )
+            documents = tuple(_rows_dict(cursor.fetchall(), KNOWLEDGE_DOCUMENT_COLUMNS))
+            cursor.execute(
+                f"""
+                SELECT {", ".join(LOCALIZED_KNOWLEDGE_FACT_COLUMNS)}
+                FROM localized_knowledge_facts
+                WHERE project_id = %s
+                ORDER BY valid_from DESC, id DESC
+                LIMIT %s
+                """,
+                (_uuid(project_id), 100),
+            )
+            facts = tuple(_rows_dict(cursor.fetchall(), LOCALIZED_KNOWLEDGE_FACT_COLUMNS))
+            cursor.execute(
+                f"""
+                SELECT {", ".join(KNOWLEDGE_GENERATION_JOB_COLUMNS)}
+                FROM knowledge_generation_jobs
+                WHERE project_id = %s
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s
+                """,
+                (_uuid(project_id), 50),
+            )
+            jobs = tuple(_rows_dict(cursor.fetchall(), KNOWLEDGE_GENERATION_JOB_COLUMNS))
+            cursor.execute(
+                f"""
+                SELECT {", ".join(PROMPT_CANDIDATE_COLUMNS)}
+                FROM prompt_candidates
+                WHERE project_id = %s
+                ORDER BY created_at DESC, priority ASC
+                LIMIT %s
+                """,
+                (_uuid(project_id), 100),
+            )
+            prompt_candidates = tuple(_rows_dict(cursor.fetchall(), PROMPT_CANDIDATE_COLUMNS))
+            cursor.execute(
+                f"""
+                SELECT {", ".join(FAQ_ANSWER_CANDIDATE_COLUMNS)}
+                FROM faq_answer_candidates
+                WHERE project_id = %s
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s
+                """,
+                (_uuid(project_id), 100),
+            )
+            faq_candidates = tuple(_rows_dict(cursor.fetchall(), FAQ_ANSWER_CANDIDATE_COLUMNS))
+            cursor.execute(
+                f"""
+                SELECT {", ".join(CONTENT_DRAFT_COLUMNS)}
+                FROM content_drafts
+                WHERE project_id = %s
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s
+                """,
+                (_uuid(project_id), 50),
+            )
+            content_drafts = tuple(
+                self._load_runtime_content_draft(cursor=cursor, draft=draft)
+                for draft in _rows_dict(cursor.fetchall(), CONTENT_DRAFT_COLUMNS)
+            )
+            cursor.execute("SELECT count(*) FROM knowledge_documents WHERE project_id = %s", (_uuid(project_id),))
+            count_row = cursor.fetchone()
+            total_count = int(count_row[0] if not isinstance(count_row, dict) else count_row["count"])
+        return RuntimeKnowledgeApplicationPage(
+            project_id=project_id,
+            knowledge_documents=documents,
+            knowledge_facts=facts,
+            generation_jobs=jobs,
+            prompt_candidates=prompt_candidates,
+            faq_candidates=faq_candidates,
+            content_drafts=content_drafts,
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+        )
+
     def _load_runtime_content_engine(
         self,
         *,
@@ -14813,10 +16738,10 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             f"""
             SELECT {", ".join(LOCALIZED_KNOWLEDGE_FACT_COLUMNS)}
             FROM localized_knowledge_facts
-            WHERE project_id = %s
+            WHERE project_id = %s AND status = %s
             ORDER BY market_code ASC, fact_type ASC, subject ASC, id ASC
             """,
-            (_uuid(project_id),),
+            (_uuid(project_id), KNOWLEDGE_FACT_APPROVED_STATUS),
         )
         knowledge_facts = _rows_dict(cursor.fetchall(), LOCALIZED_KNOWLEDGE_FACT_COLUMNS)
         draft_filters = ["project_id = %s"]
@@ -14898,10 +16823,10 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                 f"""
                 SELECT {", ".join(LOCALIZED_KNOWLEDGE_FACT_COLUMNS)}
                 FROM localized_knowledge_facts
-                WHERE id = %s
+                WHERE id = %s AND status = %s
                 LIMIT 1
                 """,
-                (_uuid(fact_id),),
+                (_uuid(fact_id), KNOWLEDGE_FACT_APPROVED_STATUS),
             )
             fact_row = cursor.fetchone()
             if fact_row:
@@ -15293,6 +17218,19 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
 
     def save_project_bootstrap(self, bootstrap: ProjectBootstrap) -> None:
         with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false)
+                """,
+                (
+                    "app.rls_enabled",
+                    "0",
+                    "geno.runtime_project_access_control",
+                    "0",
+                ),
+            )
             cursor.execute(
                 """
                 INSERT INTO market_profiles (id, market_code, payload)
@@ -16178,8 +18116,9 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                     INSERT INTO action_recommendations (
                       id, project_id, title, description, priority, status, owner_id,
                       source_gap_type, evidence_answer_run_ids, related_source_types,
-                      next_check_date, created_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                      next_check_date, created_at, action_type, customer_visible,
+                      score_contribution_ids, visibility_note
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
@@ -16195,6 +18134,10 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                         list(action.related_source_types),
                         _datetime(action.next_check_date),
                         _datetime(action.created_at),
+                        action.action_type,
+                        action.customer_visible,
+                        _uuid_array(action.score_contribution_ids),
+                        action.visibility_note,
                     ),
                 )
             cursor.execute(

@@ -90,6 +90,12 @@ button:disabled {
   color: #1f5c39;
 }
 
+.notice.warning {
+  background: #fff8e8;
+  border: 1px solid #ecd396;
+  color: #6d5116;
+}
+
 .inlineForm {
   align-items: flex-end;
   display: grid;
@@ -463,7 +469,7 @@ h3 {
 .stats {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  grid-template-columns: repeat(4, minmax(150px, 1fr)) minmax(280px, 1.5fr);
   margin-top: 16px;
 }
 
@@ -482,6 +488,35 @@ h3 {
 
 .stat strong {
   font-size: 24px;
+}
+
+.projectStatusControls {
+  background: #ffffff;
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.projectStatusControls strong {
+  display: block;
+  font-size: 22px;
+  margin-top: 4px;
+}
+
+.statusActionGroup,
+.competitorStatusActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.competitorStatusActions {
+  background: #ffffff;
+  border-top: 1px solid #d8e0e8;
+  padding: 12px;
 }
 
 .tabBar {
@@ -745,6 +780,10 @@ textarea {
   align-items: start;
 }
 
+.noTopMargin {
+  margin-top: 0;
+}
+
 .spacedPanel {
   margin-top: 16px;
 }
@@ -828,8 +867,40 @@ textarea {
 }
 
 .accessFlow {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 14px;
+}
+
+.accessStep {
+  background: #f7fafc;
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.accessStep span {
+  align-items: center;
+  background: #173f5a;
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  height: 26px;
+  justify-content: center;
+  width: 26px;
+}
+
+.accessStep strong {
+  font-size: 14px;
+}
+
+.accessStep p {
+  color: #637482;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .connectorCard {
@@ -839,6 +910,75 @@ textarea {
   display: grid;
   gap: 10px;
   padding: 12px;
+}
+
+.readonlyField {
+  background: #f7fafc;
+  border: 1px solid #d8e0e8;
+  border-radius: 6px;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+}
+
+.readonlyField span {
+  color: #5b6e7d;
+  font-size: 12px;
+}
+
+.readonlyField strong {
+  font-size: 14px;
+}
+
+.scoreWeightTable {
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  display: grid;
+  overflow: hidden;
+}
+
+.scoreWeightHeader,
+.scoreWeightRow {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(140px, 0.7fr) minmax(80px, 0.3fr) minmax(0, 1.4fr);
+  padding: 10px 12px;
+}
+
+.scoreWeightHeader {
+  background: #edf3f7;
+  color: #516776;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scoreWeightRow + .scoreWeightRow {
+  border-top: 1px solid #d8e0e8;
+}
+
+.scoreWeightRow strong,
+.scoreWeightRow span,
+.scoreWeightRow p {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.scoreWeightRow p {
+  color: #637482;
+}
+
+.scoreWeightEditor {
+  display: grid;
+  gap: 14px;
+}
+
+.editableScoreWeightTable input {
+  width: 96px;
+  min-width: 0;
+}
+
+.projectBrandForm {
+  max-width: 760px;
 }
 
 .compactConfig {
@@ -879,6 +1019,160 @@ textarea {
 
 .summaryStrip strong {
   font-size: 15px;
+}
+
+.knowledgePanel .notice {
+  margin-top: 12px;
+}
+
+.knowledgeImportForm {
+  margin-top: 12px;
+}
+
+.knowledgeSearchForm {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.knowledgeFactList {
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  display: grid;
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.knowledgeFactRow {
+  align-items: start;
+  background: #ffffff;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(110px, 140px);
+  padding: 12px;
+}
+
+.knowledgeFactRow + .knowledgeFactRow {
+  border-top: 1px solid #d8e0e8;
+}
+
+.knowledgeFactRow strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+
+.knowledgeFactRow p {
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+
+.knowledgeScore {
+  background: #f7fafc;
+  border: 1px solid #d8e0e8;
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.knowledgeCenter {
+  border-top: 1px solid #d8e0e8;
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.knowledgePipeline {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  margin-top: 16px;
+}
+
+.knowledgePipeline div {
+  background: #f7fafc;
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+}
+
+.knowledgePipeline span {
+  align-items: center;
+  background: #173f5a;
+  border-radius: 6px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.knowledgePipeline strong {
+  font-size: 14px;
+}
+
+.knowledgePipeline p {
+  color: #637482;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.metricGrid.compact {
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+}
+
+.stackedForms {
+  display: grid;
+  gap: 12px;
+}
+
+.templateGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  margin-top: 16px;
+}
+
+.templateCard {
+  background: #ffffff;
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.compactTitle {
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.templateCard p,
+.templateCard pre {
+  color: #637482;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.knowledgeScore span,
+.knowledgeScore small {
+  color: #637482;
+  font-size: 12px;
+}
+
+.knowledgeScore strong {
+  font-size: 18px;
+  margin: 0;
 }
 
 .promptTable {
@@ -937,6 +1231,57 @@ textarea {
   overflow: hidden;
 }
 
+.invitationListStack {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.activeInvitationList {
+  border-color: #b9dfc9;
+}
+
+.inactiveInvitationList {
+  border-color: #d9d2bd;
+  margin-top: 0;
+}
+
+.historyPanel {
+  background: #ffffff;
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.historyPanel summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 12px;
+}
+
+.historyPanel summary::-webkit-details-marker {
+  display: none;
+}
+
+.historyPanel summary span {
+  color: #314b5d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.historyPanel summary small {
+  color: #637482;
+  font-size: 12px;
+}
+
+.historyPanel .summaryListRow {
+  background: #f8f7f2;
+}
+
 .summaryListRow {
   align-items: center;
   background: #ffffff;
@@ -955,6 +1300,50 @@ textarea {
   font-size: 14px;
   margin-bottom: 4px;
   overflow-wrap: anywhere;
+}
+
+.opsWorkbench {
+  display: grid;
+  gap: 14px;
+}
+
+.operationSection {
+  display: grid;
+  gap: 14px;
+}
+
+.operationGuide {
+  background: #f7fafc;
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  padding: 14px;
+}
+
+.operationGuide p {
+  color: #536b7a;
+  font-size: 13px;
+  line-height: 1.55;
+  margin-top: 8px;
+}
+
+.operationGuide span {
+  color: #5b6e7d;
+  display: block;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.operationGuide strong {
+  color: #17232d;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.operationSubtabs {
+  margin-bottom: 14px;
 }
 
 .paginationRow {
@@ -1023,6 +1412,341 @@ textarea {
   width: max-content;
 }
 
+.developmentBoardShell {
+  display: grid;
+  gap: 18px;
+}
+
+.developmentTopbar {
+  align-items: flex-start;
+}
+
+.developmentSourcePanel {
+  background: #ffffff;
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 14px;
+}
+
+.developmentSourcePanel div,
+.developmentMetric,
+.developmentHeroCard {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.developmentSourcePanel span,
+.developmentMetric span,
+.developmentHeroCard span,
+.developmentItemMeta dt {
+  color: #5b6e7d;
+  font-size: 12px;
+}
+
+.developmentSourcePanel strong,
+.developmentItemMeta dd {
+  color: #17232d;
+  font-size: 13px;
+  line-height: 1.35;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.developmentHeroGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(260px, 1.4fr) repeat(5, minmax(120px, 0.8fr));
+}
+
+.developmentHeroCard,
+.developmentMetric,
+.developmentGroup,
+.developmentUpgradePanel,
+.developmentDocPanel,
+.developmentNotice {
+  background: #ffffff;
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+}
+
+.developmentHeroCard,
+.developmentMetric,
+.developmentNotice {
+  padding: 14px;
+}
+
+.developmentNotice {
+  display: grid;
+  gap: 10px;
+}
+
+.developmentNotice div {
+  display: grid;
+  gap: 9px;
+}
+
+.developmentNotice p {
+  color: #536b7a;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.developmentHeroCard strong {
+  color: #10212b;
+  font-size: 38px;
+  line-height: 1;
+}
+
+.developmentMetric strong {
+  color: #10212b;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.developmentProgress {
+  background: #e9eff4;
+  border-radius: 999px;
+  height: 9px;
+  overflow: hidden;
+}
+
+.developmentProgress span {
+  background: #1d6f84;
+  display: block;
+  height: 100%;
+}
+
+.developmentGroups {
+  display: grid;
+  gap: 12px;
+}
+
+.developmentGroup {
+  overflow: hidden;
+}
+
+.developmentGroup summary {
+  align-items: center;
+  cursor: pointer;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(220px, 1.3fr);
+  list-style: none;
+  padding: 14px;
+}
+
+.developmentGroup summary::-webkit-details-marker {
+  display: none;
+}
+
+.developmentGroup summary span {
+  display: grid;
+  gap: 4px;
+}
+
+.developmentGroup summary small {
+  color: #5b6e7d;
+  font-size: 12px;
+}
+
+.developmentItemList {
+  border-top: 1px solid #d8e0e8;
+  display: grid;
+}
+
+.developmentItem {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(260px, 0.95fr) minmax(260px, 1.05fr);
+  padding: 14px;
+}
+
+.developmentItem + .developmentItem {
+  border-top: 1px solid #d8e0e8;
+}
+
+.developmentItemMain {
+  display: grid;
+  gap: 8px;
+}
+
+.developmentItemMain h2 {
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.developmentItemMain p,
+.developmentUpgrade p {
+  color: #536b7a;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.developmentBlockers {
+  background: #fff3f0;
+  border: 1px solid #f1c1b8;
+  border-radius: 6px;
+  color: #8b2d1d !important;
+  padding: 8px 10px;
+}
+
+.developmentItemMeta {
+  background: #f7fafc;
+  border: 1px solid #d8e0e8;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 10px;
+}
+
+.developmentUpgradePanel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.developmentDocPanel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.developmentUpgradeGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.developmentDocGrid,
+.developmentArtifactGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.developmentGateGrid,
+.developmentPrincipleGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.developmentUpgrade {
+  background: #f7fafc;
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+}
+
+.developmentDocCard,
+.developmentArtifactCard,
+.developmentGateCard,
+.developmentPrinciple,
+.developmentFocusItem {
+  background: #f7fafc;
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.developmentGateCard {
+  align-content: start;
+}
+
+.developmentGateCard code,
+.developmentFocusItem code {
+  background: #eef4f7;
+  border: 1px solid #d5e2e9;
+  border-radius: 6px;
+  color: #16313f;
+  display: block;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  padding: 8px;
+}
+
+.developmentFocusList {
+  display: grid;
+  gap: 10px;
+}
+
+.developmentFocusItem {
+  align-items: start;
+  grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
+}
+
+.developmentFocusItem div {
+  display: grid;
+  gap: 6px;
+}
+
+.developmentUpgrade h3,
+.developmentDocCard h3,
+.developmentArtifactCard h3,
+.developmentGateCard h3,
+.developmentPrinciple h3,
+.developmentFocusItem h3 {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.developmentDocCard p,
+.developmentArtifactCard p,
+.developmentGateCard p,
+.developmentPrinciple p,
+.developmentFocusItem p {
+  color: #536b7a;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.statusPill-done {
+  background: #eff8f3;
+  border-color: #b9dfc9;
+  color: #1f5c39;
+}
+
+.statusPill-production {
+  background: #e9f7f2;
+  border-color: #81c7a5;
+  color: #155f3d;
+}
+
+.statusPill-blocked {
+  background: #fff3f0;
+  border-color: #f1c1b8;
+  color: #8b2d1d;
+}
+
+.statusPill-verifying {
+  background: #fff8e8;
+  border-color: #ecd396;
+  color: #715416;
+}
+
+.statusPill-progress {
+  background: #eef6fb;
+  border-color: #bbd8e8;
+  color: #23546d;
+}
+
+.statusPill-deferred {
+  background: #f1f0eb;
+  border-color: #d9d2bd;
+  color: #675832;
+}
+
 pre {
   background: #f2f6f9;
   border: 1px solid #d8e0e8;
@@ -1046,9 +1770,23 @@ pre {
   .promptSummary,
   .connectorGrid,
   .accessFlow,
+  .operationGuide,
+  .scoreWeightHeader,
+  .scoreWeightRow,
   .summaryListRow,
+  .historyPanel summary,
   .summaryGrid,
   .summaryTable div,
+  .developmentSourcePanel,
+  .developmentHeroGrid,
+  .developmentGroup summary,
+  .developmentItem,
+  .developmentUpgradeGrid,
+  .developmentDocGrid,
+  .developmentArtifactGrid,
+  .developmentGateGrid,
+  .developmentPrincipleGrid,
+  .developmentFocusItem,
   .tableHeader,
   .tableRow,
   .toolbar,

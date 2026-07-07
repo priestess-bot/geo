@@ -2,6 +2,8 @@
 
 生成日期：2026-07-05
 
+测试流程：[GEO-可复用测试流程-2026-07-06.md](./GEO-可复用测试流程-2026-07-06.md)
+
 ---
 
 ## 0. Scope Control Summary
@@ -266,7 +268,7 @@ QA 也不是单独 slice，而是每个 slice 的验收机制。W10-I01 `product
 
 | 编号 | 技术点 | P0 冻结决策 | 不进入 P0 的内容 |
 | --- | --- | --- | --- |
-| TD-01 | Deployment target | P0 默认部署目标是 single VM / small VM group 上的 Docker Compose：API、Admin Web、Customer Web、Dashboard Web、workers、Valkey、observability 同栈运行；PostgreSQL 和对象存储可用 compose 本地服务或托管等价服务，但必须走同一 adapter。入口建议用 Traefik/Caddy/Nginx 反代，admin/customer/dashboard/api 使用同一 parent domain 的子域。 | Kubernetes、ECS/Fargate、Vercel split hosting、multi-region HA 不阻塞 P0。 |
+| TD-01 | Deployment target | P0 默认部署目标是 single VM / small VM group 上的 Docker Compose：API、Admin Web、Customer Web、workers、Valkey、observability 同栈运行；PostgreSQL 和对象存储可用 compose 本地服务或托管等价服务，但必须走同一 adapter。入口建议用 Traefik/Caddy/Nginx 反代，admin/customer/api 使用同一 parent domain 的子域。Development Board 合并在 Admin Web `/development-board`。 | Kubernetes、ECS/Fargate、Vercel split hosting、multi-region HA 不阻塞 P0；独立 Dashboard Web 不作为默认入口。 |
 | TD-02 | Worker queue | P0 使用 Dramatiq + Valkey 作为生产队列；保留现有 Python CLI worker 作为 local/dev/manual entrypoint。必须支持 retry、idempotency lock、provider concurrency limit、failure category、dead-letter equivalent failed job table。 | Temporal 不作为 P0 依赖；等 Retest/Distribution 需要长流程补偿时再评估。 |
 | TD-03 | Provider secret storage | P0 使用 DB encrypted column + `connector_config_ref` + `secret_ref` + app-level redaction；raw key 只允许以加密密文进入 DB，不允许进入 API response、日志、前端 bundle、报告或 audit payload。`SecretStore` 必须是 adapter，预留外部 secret manager。 | 重型外部 secret manager 不阻塞 P0；env var 只允许作为 dev/test 或少量内部 bootstrap key。 |
 | TD-04 | Object storage | P0 使用 S3-compatible adapter：local/staging 默认 MinIO，production 可接 S3/R2/MinIO 等兼容后端。DB 存 metadata/hash/visibility，客户下载走 backend permission proxy；内部大文件可由 API 授权后签发短期 signed URL。 | 直接把 bucket URL 暴露给客户、绕过 API 权限代理不允许。 |
@@ -331,7 +333,7 @@ edge proxy: Traefik/Caddy/Nginx
 api: FastAPI
 admin-web: Next.js
 customer-web: Next.js
-dashboard-web: Next.js
+development-board: Admin Web route
 workers: Dramatiq workers
 queue: Valkey
 db: PostgreSQL
@@ -1476,9 +1478,9 @@ audit_event_id
 10. Retest result。
 11. Access denied / revoked report state。
 
-### 10.3 Dashboard Web P0 页面
+### 10.3 Development Board / Ops P0 页面
 
-Dashboard 只做只读运维，不做业务操作：
+Development Board 合并原独立 Dashboard 的文档索引、审计口径、下一步焦点、验收门禁和最近测试产物。Ops 卡片只做只读运维，不做业务操作：
 
 1. API health。
 2. DB health。
@@ -1683,10 +1685,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m compileall apps/api/geno_api packages/geno_
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/geno_core:apps/api python3 -m unittest discover -s tests
 npm --prefix apps/admin-web run typecheck
 npm --prefix apps/customer-web run typecheck
-npm --prefix apps/dashboard-web run typecheck
 npm --prefix apps/admin-web run build
 npm --prefix apps/customer-web run build
-npm --prefix apps/dashboard-web run build
 make docker-config
 make docker-config-observability
 make db-smoke
@@ -4163,7 +4163,7 @@ GET /health
 GET /metrics
 
 Frontend changes:
-Dashboard Web health cards
+Development Board health cards
 
 Worker changes:
 Emit structured JSON logs, metrics, and OTel spans/events at job boundaries

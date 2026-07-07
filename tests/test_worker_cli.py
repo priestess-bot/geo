@@ -68,7 +68,7 @@ class FakeWorkerRepository:
                             "target_brand": "RuntimeBrand",
                             "category": "Runtime category",
                             "prompt_version": "au_dtc_ecommerce_v1",
-                            "status": "configured",
+                            "status": "paused",
                             "created_at": now,
                         },
                         "tenant": {

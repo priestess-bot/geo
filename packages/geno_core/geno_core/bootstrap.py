@@ -59,7 +59,7 @@ def build_au_project_bootstrap(
         target_brand=target_brand,
         category=category,
         prompt_version=PROMPT_VERSION_AU_DTC_V1,
-        status="configured",
+        status="paused",
         created_at=now,
     )
     members = (

@@ -5,7 +5,7 @@ import base64
 import hmac
 import json
 import unittest
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -18,6 +18,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 from geno_core.action_plan import (
+    ACTION_PLAN_P0_ACTION_TYPES,
     build_action_plan_audit_event,
     build_action_recommendations,
     build_retest_schedule,
@@ -25,6 +26,12 @@ from geno_core.action_plan import (
     compare_retest_windows,
 )
 from geno_core.audit import AUTH_AUDIT_EVENT_TYPES, build_audit_event, build_auth_audit_event, hash_payload
+from geno_core.analysis_contract import (
+    ANALYSIS_OUTPUT_CONTRACT_VERSION,
+    HUMAN_REVIEW_OVERRIDE_VERSION,
+    apply_human_review_override,
+    build_answer_analysis_output_contract,
+)
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.bootstrap import build_au_project_bootstrap
 from geno_core.collection import (
@@ -90,6 +97,11 @@ from geno_core.graph_store import (
     summarize_citation_graph_store,
 )
 from geno_core.knowledge import (
+    CONTENT_REVIEW_PENDING_STATUS,
+    KNOWLEDGE_FACT_APPROVED_STATUS,
+    MANUAL_DISTRIBUTION_BACKFILL_REQUIRED_STATUS,
+    MANUAL_DISTRIBUTION_BACKFILLED_STATUS,
+    backfill_manual_distribution_record,
     build_content_drafts,
     build_content_engine_audit_event,
     build_integration_connectors,
@@ -98,6 +110,15 @@ from geno_core.knowledge import (
     search_knowledge_facts,
     embed_knowledge_text,
     knowledge_fact_text,
+)
+from geno_core.knowledge_application import (
+    PRIVATE_HOST_ERROR,
+    build_knowledge_application_artifacts,
+    crawl_public_knowledge_url,
+    deepseek_extract_knowledge_facts,
+    deepseek_generate_knowledge_application,
+    extract_knowledge_facts_from_document,
+    normalize_knowledge_url,
 )
 from geno_core.llm_gateway import FixtureLLMGateway, LiteLLMGateway, LLMGatewayRequestError
 from geno_core.market import build_au_market_profile
@@ -195,6 +216,7 @@ from geno_core.models import (
     RuntimePromptImportInput,
     RuntimePromptImportHistoryPage,
     RuntimePromptImportResult,
+    RuntimeKnowledgeFactImportInput,
     RuntimeAlertPage,
     RuntimeAuditEventExport,
     RuntimeAuditEventPage,
@@ -251,10 +273,12 @@ from geno_core.runtime import (
 from geno_core.scoring import (
     AU_VISIBILITY_V1,
     AU_VISIBILITY_V1_1_LOCAL_BOOST,
+    VISIBILITY_V1_0,
     RegistryScoringFormula,
     get_score_formula,
     list_score_formulas,
     normalize_score_weights,
+    normalize_score_weights_to_cents,
     rescore_snapshot_with_formula,
     score_answer_analysis,
 )
@@ -264,7 +288,7 @@ from geno_core.stubs import (
     NotConfiguredReportExporter,
     NotConfiguredScoringFormula,
 )
-from geno_core.traceability import build_traceability_bundle
+from geno_core.traceability import build_traceability_bundle, verify_report_traceability_smoke
 from geno_core.vector_store import InMemoryPgVectorStore, InMemoryQdrantVectorStore, summarize_vector_search
 from geno_core.webhook_signing import (
     RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER,
@@ -943,6 +967,28 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(len(result.contributions), len(AU_VISIBILITY_V1))
         self.assertEqual(result.snapshot.component_weights_snapshot, AU_VISIBILITY_V1)
 
+    def test_score_weight_normalization_keeps_two_decimals_and_exact_total(self) -> None:
+        weights = normalize_score_weights_to_cents(
+            {
+                "MentionScore": 2,
+                "RecommendationScore": 2,
+                "PositionScore": 1,
+                "CitationScore": 1,
+                "LocalRelevanceScore": 1,
+                "SentimentScore": 1,
+                "FreshnessScore": 1,
+                "CompetitorShareScore": 1,
+            }
+        )
+        self.assertEqual(sum(weights.values()), 1.0)
+        self.assertTrue(all(round(value, 2) == value for value in weights.values()))
+        self.assertEqual(weights["MentionScore"], 0.2)
+        self.assertEqual(weights["RecommendationScore"], 0.2)
+
+    def test_score_weight_normalization_rejects_zero_total(self) -> None:
+        with self.assertRaises(ValueError):
+            normalize_score_weights_to_cents({key: 0 for key in AU_VISIBILITY_V1})
+
     def test_score_weights_are_configurable_and_frozen_in_snapshot(self) -> None:
         weights = normalize_score_weights(
             {
@@ -978,6 +1024,84 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(result.snapshot.component_weights_snapshot, weights)
         self.assertEqual({item.component_name: item.weight for item in result.contributions}, weights)
         self.assertAlmostEqual(sum(result.snapshot.component_weights_snapshot.values()), 1.0)
+
+    def test_production_v1_scoring_formula_is_versioned_and_uses_explicit_denominators(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(),),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=1,
+        )
+        analysis = RuleBasedAnswerParser().parse_record(
+            record=records[0],
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+        )
+
+        result = RegistryScoringFormula("visibility_v1.0").score_analyses(
+            project_id=bootstrap.project.id,
+            analyses=(analysis,),
+            platform_weights_snapshot={"perplexity": 1.0},
+            scope_type="production_v1_formula_contract",
+            scope_value="single_answer",
+        )
+
+        self.assertEqual(result.snapshot.formula_version, "visibility_v1.0")
+        self.assertEqual(result.snapshot.component_weights_snapshot, VISIBILITY_V1_0)
+        self.assertEqual(round(sum(result.snapshot.component_weights_snapshot.values()), 6), 1.0)
+        denominators_by_component = {item.component_name: item.denominator for item in result.contributions}
+        self.assertEqual(denominators_by_component["MentionScore"], "surface_triggered")
+        self.assertEqual(denominators_by_component["RecommendationScore"], "surface_triggered")
+        self.assertEqual(denominators_by_component["CitationScore"], "answer")
+        self.assertEqual(result.audit_event.method_version, "visibility_v1.0")
+        formula_listing = next(item for item in list_score_formulas() if item["formula_version"] == "visibility_v1.0")
+        self.assertEqual(formula_listing["weights"], VISIBILITY_V1_0)
+        self.assertEqual(formula_listing["status"], "active")
+
+    def test_score_snapshot_contributions_trace_each_component_to_answer_runs(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=2,
+        )
+        analysis_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"chatgpt": 0.5, "perplexity": 0.5},
+            formula_version="visibility_v1.0",
+            scope_type="production_v1_traceability",
+            scope_value="score_contributions",
+        )
+        expected_answer_run_ids = {record.answer_run.id for record in records}
+
+        self.assertEqual(analysis_result.snapshot.formula_version, "visibility_v1.0")
+        self.assertEqual(set(analysis_result.snapshot.answer_run_ids), expected_answer_run_ids)
+        self.assertEqual(len(analysis_result.contributions), len(VISIBILITY_V1_0))
+        for contribution in analysis_result.contributions:
+            self.assertEqual(contribution.score_snapshot_id, analysis_result.snapshot.id)
+            self.assertEqual(set(contribution.evidence_answer_run_ids), expected_answer_run_ids)
+            self.assertIn(contribution.component_name, VISIBILITY_V1_0)
+            self.assertIn(contribution.denominator, {"surface_triggered", "answer"})
+            self.assertIn("avg_parser_confidence", contribution.confidence_note)
 
     def test_score_formula_registry_supports_versioned_replay(self) -> None:
         self.assertEqual(get_score_formula("au_visibility_v1").weights, AU_VISIBILITY_V1)
@@ -2153,6 +2277,86 @@ class CoreContractsTest(unittest.TestCase):
         self.assertGreaterEqual(analysis.local_relevance_score, 40)
         self.assertEqual(analysis.parser_engine_id, "rule_based_v2_aliases")
 
+    def test_answer_analysis_output_contract_exposes_p0_fields_without_unearned_metrics(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(),),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=1,
+        )
+        analysis = RuleBasedAnswerParser().parse_record(
+            record=records[0],
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+        )
+
+        payload = build_answer_analysis_output_contract(analysis=analysis, record=records[0])
+
+        self.assertEqual(payload["contract_version"], ANALYSIS_OUTPUT_CONTRACT_VERSION)
+        self.assertEqual(payload["parser_version"], "rule_based_v2_aliases")
+        self.assertEqual(payload["brand_mentions"], ["brand"])
+        self.assertIn("Emma Sleep", payload["competitor_mentions"])
+        self.assertEqual(payload["recommendation_state"], "brand_recommended")
+        self.assertTrue(payload["citation_domains"])
+        self.assertEqual(payload["citation_strength"], "strong")
+        self.assertIn("average_position", payload["not_claimed_metrics"])
+        self.assertIn("share_of_voice", payload["not_claimed_metrics"])
+        self.assertNotIn("average_position", payload["raw_metrics"])
+        self.assertNotIn("share_of_voice", payload["raw_metrics"])
+
+    def test_human_review_override_versions_analysis_and_preserves_original_parser_output(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(),),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=1,
+        )
+        analysis = RuleBasedAnswerParser().parse_record(
+            record=records[0],
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+        )
+
+        reviewed, audit_event = apply_human_review_override(
+            project_id=bootstrap.project.id,
+            analysis=analysis,
+            reviewer_id="analyst@example.com",
+            overrides={"brand_recommended": False, "uncertainty_flags": analysis.uncertainty_flags + ["reviewed"]},
+            reason="Analyst confirmed the answer mentions the brand but does not recommend it strongly.",
+        )
+
+        self.assertFalse(reviewed.brand_recommended)
+        self.assertTrue(reviewed.analysis_version.endswith("+human_review"))
+        self.assertIsNotNone(reviewed.parser_comparison)
+        assert reviewed.parser_comparison is not None
+        self.assertTrue(reviewed.parser_comparison["human_review_history"])
+        self.assertEqual(
+            reviewed.parser_comparison["human_review_history"][0]["override_version"],
+            HUMAN_REVIEW_OVERRIDE_VERSION,
+        )
+        self.assertEqual(
+            reviewed.parser_comparison["original_parser_output"]["brand_recommended"],
+            analysis.brand_recommended,
+        )
+        self.assertEqual(audit_event.event_type, "analysis.reviewed")
+        self.assertEqual(audit_event.method_version, HUMAN_REVIEW_OVERRIDE_VERSION)
+
     def test_m3_comparative_parser_records_judge_result_and_agreement(self) -> None:
         bootstrap = build_au_project_bootstrap(
             target_brand="Koala",
@@ -2912,6 +3116,119 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(report.audit_event.output_refs["report_export_ids"], [report.report_export.id])
         self.assertEqual(report.report_evidence_answer_run_ids, report.report_export.answer_run_ids)
 
+    def test_report_export_artifacts_are_generated_from_one_fixed_snapshot(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=2,
+        )
+        analysis_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25},
+            formula_version="visibility_v1.0",
+        )
+        graph = build_citation_graph(
+            project_id=bootstrap.project.id,
+            records=records,
+            analyses=analysis_result.analyses,
+            competitors=bootstrap.competitors,
+            industry_profile=bootstrap.industry_profile,
+        )
+        exporter = MarkdownCsvReportExporter()
+        report = exporter.export(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            report_version="production-v1-fixed-snapshot",
+            report_type="production_v1_report",
+            prompt_version=bootstrap.project.prompt_version,
+            snapshot=analysis_result.snapshot,
+            contributions=analysis_result.contributions,
+            records=records,
+            graph=graph,
+            platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25},
+            score_input_policy=analysis_result.score_input_policy,
+            audit_events=(analysis_result.audit_event,),
+        )
+        repeated = exporter.export(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            report_version="production-v1-fixed-snapshot",
+            report_type="production_v1_report",
+            prompt_version=bootstrap.project.prompt_version,
+            snapshot=analysis_result.snapshot,
+            contributions=analysis_result.contributions,
+            records=records,
+            graph=graph,
+            platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25},
+            score_input_policy=analysis_result.score_input_policy,
+            audit_events=(analysis_result.audit_event,),
+        )
+
+        self.assertEqual(report.report_export.id, repeated.report_export.id)
+        self.assertEqual(report.report_export.methodology_hash, repeated.report_export.methodology_hash)
+        self.assertEqual(report.report_export.score_snapshot_ids, (analysis_result.snapshot.id,))
+        self.assertEqual(report.report_export.answer_run_ids, tuple(record.answer_run.id for record in records))
+        self.assertEqual(report.markdown, repeated.markdown)
+        self.assertEqual(report.csv_content, repeated.csv_content)
+        self.assertEqual(report.pdf_content, repeated.pdf_content)
+        self.assertIn("Formula: visibility_v1.0", report.markdown)
+        self.assertIn("Score Contributions", report.markdown)
+        self.assertIn("answer_run_id,prompt_question_id,platform", report.csv_content)
+        self.assertTrue(report.pdf_content.startswith(b"%PDF-1.4"))
+        self.assertIn(b"%%EOF", report.pdf_content)
+
+        requests: list[tuple[str, str, dict[str, str], bytes]] = []
+
+        def requester(
+            method: str,
+            url: str,
+            headers: object,
+            body: bytes,
+        ) -> tuple[int, dict[str, str], bytes]:
+            requests.append((method, url, dict(headers), body))
+            return 200, {"ETag": '"fixed-snapshot-etag"'}, b""
+
+        store = S3CompatibleObjectStore(
+            endpoint="http://minio:9000",
+            bucket="geno-reports",
+            access_key="minio",
+            secret_key="minio123",
+            requester=requester,
+        )
+        stored = archive_report_artifacts(report, store)
+
+        self.assertEqual(len(stored), 3)
+        stored_by_type = {item.content_type: item for item in stored}
+        self.assertEqual(
+            stored_by_type["text/markdown; charset=utf-8"].content_hash,
+            hashlib.sha256(report.markdown.encode("utf-8")).hexdigest(),
+        )
+        self.assertEqual(
+            stored_by_type["text/csv; charset=utf-8"].content_hash,
+            hashlib.sha256(report.csv_content.encode("utf-8")).hexdigest(),
+        )
+        self.assertEqual(
+            stored_by_type["application/pdf"].content_hash,
+            hashlib.sha256(report.pdf_content).hexdigest(),
+        )
+        object_puts = [item for item in requests if item[0] == "PUT" and item[1].count("/") > 3]
+        self.assertEqual(len(object_puts), 3)
+        self.assertTrue(any(item[1].endswith(".md") and item[3] == report.markdown.encode("utf-8") for item in object_puts))
+        self.assertTrue(any(item[1].endswith(".csv") and item[3] == report.csv_content.encode("utf-8") for item in object_puts))
+        self.assertTrue(any(item[1].endswith(".pdf") and item[3] == report.pdf_content for item in object_puts))
+
     def test_m5_report_method_disclosure_can_use_fidelity_records_without_changing_report_denominator(self) -> None:
         bootstrap = build_au_project_bootstrap(
             target_brand="Koala",
@@ -3469,6 +3786,68 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(audit_event.event_type, "action_plan_created")
         self.assertEqual(audit_event.output_refs["retest_schedule_ids"], [schedule.id])
 
+    def test_action_plan_p0_minimal_generates_three_deterministic_private_actions(self) -> None:
+        bootstrap = build_au_project_bootstrap(
+            target_brand="Koala",
+            category="mattresses",
+            competitors=("Emma Sleep", "Sleeping Duck", "Ecosa"),
+        )
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=3,
+        )
+        analysis_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25},
+            formula_version="visibility_v1.0",
+        )
+        weak_snapshot = analysis_result.snapshot.__class__(
+            **{
+                **analysis_result.snapshot.__dict__,
+                "id": "aaaaaaaa-aaaa-5aaa-aaaa-aaaaaaaaaaaa",
+                "mention_rate": 0.2,
+                "recommendation_rate": 0.1,
+            }
+        )
+        graph = build_citation_graph(
+            project_id=bootstrap.project.id,
+            records=records,
+            analyses=analysis_result.analyses,
+            competitors=bootstrap.competitors,
+            industry_profile=bootstrap.industry_profile,
+        )
+        actions = build_action_recommendations(
+            project_id=bootstrap.project.id,
+            graph=graph,
+            snapshot=weak_snapshot,
+            contributions=analysis_result.contributions,
+            owner_id="delivery-owner",
+            now=datetime(2026, 6, 10, tzinfo=UTC),
+        )
+
+        action_types = {action.action_type for action in actions}
+        self.assertTrue(set(ACTION_PLAN_P0_ACTION_TYPES).issubset(action_types))
+        self.assertTrue(all(action.status == "open" for action in actions))
+        self.assertTrue(all(action.owner_id == "delivery-owner" for action in actions))
+        self.assertTrue(all(not action.customer_visible for action in actions))
+        self.assertTrue(all(action.visibility_note == "internal_only_until_reviewed" for action in actions))
+        self.assertTrue(all(action.evidence_answer_run_ids for action in actions))
+        self.assertTrue(all(action.score_contribution_ids for action in actions))
+        self.assertTrue(
+            all(
+                set(action.evidence_answer_run_ids).issubset(set(weak_snapshot.answer_run_ids))
+                for action in actions
+            )
+        )
+
     def test_m6_retest_comparison_classifies_trend(self) -> None:
         bootstrap = build_au_project_bootstrap()
         records = run_fixture_collection_slice(
@@ -3509,6 +3888,65 @@ class CoreContractsTest(unittest.TestCase):
         )
         self.assertEqual(audit_event.event_type, "retest_comparison_created")
         self.assertEqual(audit_event.output_refs["retest_comparison_ids"], [comparison.id])
+
+    def test_retest_p0_minimal_compares_before_after_delta_for_same_prompt_set(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(),),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=2,
+        )
+        baseline = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"perplexity": 0.25},
+            formula_version="visibility_v1.0",
+        ).snapshot
+        schedule = build_retest_schedule(
+            project_id=bootstrap.project.id,
+            prompt_version=bootstrap.project.prompt_version,
+            sample_size=1,
+            answer_run_ids=tuple(baseline.answer_run_ids),
+            start_at=datetime(2026, 6, 10, tzinfo=UTC),
+            offsets_days=(0, 7),
+        )
+        retest = baseline.__class__(
+            **{
+                **baseline.__dict__,
+                "id": "bbbbbbbb-bbbb-5bbb-bbbb-bbbbbbbbbbbb",
+                "final_score": round(baseline.final_score + 2.5, 4),
+                "created_at": datetime(2026, 6, 17, tzinfo=UTC),
+            }
+        )
+        comparison = compare_retest_windows(
+            project_id=bootstrap.project.id,
+            baseline=baseline,
+            retest=retest,
+            now=datetime(2026, 6, 17, tzinfo=UTC),
+        )
+        markdown_section = (
+            "## Retest Result\n"
+            f"- before_score: {comparison.baseline_score}\n"
+            f"- after_score: {comparison.retest_score}\n"
+            f"- delta: {comparison.score_delta}\n"
+            f"- trend: {comparison.trend}\n"
+        )
+
+        self.assertEqual(schedule.answer_run_ids, tuple(baseline.answer_run_ids))
+        self.assertEqual(schedule.offsets_days, (0, 7))
+        self.assertEqual(comparison.baseline_answer_run_ids, tuple(baseline.answer_run_ids))
+        self.assertEqual(comparison.retest_answer_run_ids, tuple(retest.answer_run_ids))
+        self.assertEqual(comparison.score_delta, 2.5)
+        self.assertEqual(comparison.trend, "improved")
+        self.assertIn("before_score", markdown_section)
+        self.assertIn("after_score", markdown_section)
+        self.assertIn("delta", markdown_section)
 
     def test_m7_content_drafts_bind_knowledge_gap_and_evidence(self) -> None:
         bootstrap = build_au_project_bootstrap()
@@ -3577,14 +4015,105 @@ class CoreContractsTest(unittest.TestCase):
         self.assertTrue(search_results)
         self.assertTrue(any(result.fallback_used for result in search_results))
         self.assertTrue(drafts)
-        self.assertTrue(all(draft.review_status == "pending_human_review" for draft in drafts))
+        self.assertTrue(all(fact.status == KNOWLEDGE_FACT_APPROVED_STATUS for fact in facts))
+        self.assertTrue(all(draft.review_status == CONTENT_REVIEW_PENDING_STATUS for draft in drafts))
         self.assertTrue(all(draft.used_knowledge_fact_ids for draft in drafts))
         self.assertTrue(all(draft.source_gap_types for draft in drafts))
         self.assertTrue(all(draft.evidence_answer_run_ids for draft in drafts))
         self.assertEqual(len(connectors), 7)
         self.assertEqual(len(distribution_records), len(drafts))
+        self.assertTrue(
+            all(record.status == MANUAL_DISTRIBUTION_BACKFILL_REQUIRED_STATUS for record in distribution_records)
+        )
         self.assertEqual(audit_event.event_type, "content_engine_fixture_created")
         self.assertEqual(audit_event.output_refs["content_draft_ids"], [draft.id for draft in drafts])
+
+    def test_enablement_v1_uses_only_approved_facts_and_manual_distribution_backfill(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia", "Sydney"),
+            sample_size=1,
+            prompt_limit=3,
+        )
+        analysis_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25},
+        )
+        graph = build_citation_graph(
+            project_id=bootstrap.project.id,
+            records=records,
+            analyses=analysis_result.analyses,
+            competitors=bootstrap.competitors,
+            industry_profile=bootstrap.industry_profile,
+        )
+        actions = build_action_recommendations(
+            project_id=bootstrap.project.id,
+            graph=graph,
+            snapshot=analysis_result.snapshot,
+            contributions=analysis_result.contributions,
+        )
+        approved_facts = build_localized_knowledge_facts(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            brand=bootstrap.brand,
+            category=bootstrap.project.category,
+            answer_run_ids=tuple(record.answer_run.id for record in records),
+            now=datetime(2026, 6, 10, tzinfo=UTC),
+        )
+        draft_fact = replace(approved_facts[0], id=str(uuid5(NAMESPACE_URL, "geno:knowledge-fact:draft")), status="draft")
+        archived_fact = replace(
+            approved_facts[1],
+            id=str(uuid5(NAMESPACE_URL, "geno:knowledge-fact:archived")),
+            status="archived",
+        )
+        search_results = search_knowledge_facts(
+            facts=approved_facts + (draft_fact, archived_fact),
+            query="ExampleBrand Australia shipping review Sydney",
+            market_code="AU",
+            city="Sydney",
+            limit=6,
+        )
+        drafts = build_content_drafts(
+            project_id=bootstrap.project.id,
+            target_brand=bootstrap.project.target_brand,
+            category=bootstrap.project.category,
+            actions=actions,
+            prompts=bootstrap.prompt_questions,
+            knowledge_results=search_results,
+            now=datetime(2026, 6, 10, tzinfo=UTC),
+        )
+        distribution_records = build_manual_distribution_records(project_id=bootstrap.project.id, drafts=drafts)
+        backfilled = backfill_manual_distribution_record(
+            distribution_records[0],
+            target_url="https://example.com/au/evidence-proof",
+            checked_at=datetime(2026, 6, 18, tzinfo=UTC),
+            notes="Published manually after human review.",
+        )
+
+        self.assertTrue(search_results)
+        self.assertTrue(all(result.fact.status == KNOWLEDGE_FACT_APPROVED_STATUS for result in search_results))
+        self.assertNotIn(draft_fact.id, {result.fact.id for result in search_results})
+        self.assertNotIn(archived_fact.id, {result.fact.id for result in search_results})
+        self.assertTrue(all(draft.review_status == CONTENT_REVIEW_PENDING_STATUS for draft in drafts))
+        self.assertTrue(all(draft.source_action_id for draft in drafts))
+        self.assertTrue(all(draft.evidence_answer_run_ids for draft in drafts))
+        self.assertTrue(all(draft.used_knowledge_fact_ids for draft in drafts))
+        self.assertTrue(
+            all(record.status == MANUAL_DISTRIBUTION_BACKFILL_REQUIRED_STATUS for record in distribution_records)
+        )
+        self.assertTrue(all(record.target_url == "" for record in distribution_records))
+        self.assertEqual(backfilled.status, MANUAL_DISTRIBUTION_BACKFILLED_STATUS)
+        self.assertEqual(backfilled.target_url, "https://example.com/au/evidence-proof")
+        self.assertEqual(backfilled.notes, "Published manually after human review.")
+        with self.assertRaisesRegex(ValueError, "target_url must be http"):
+            backfill_manual_distribution_record(distribution_records[0], target_url="javascript:alert(1)")
 
     def test_traceability_bundle_connects_report_to_raw_evidence_and_actions(self) -> None:
         bootstrap = build_au_project_bootstrap()
@@ -3674,6 +4203,67 @@ class CoreContractsTest(unittest.TestCase):
         self.assertTrue(any(link.relation_type == "explained_by" for link in bundle.evidence_links))
         self.assertTrue(any(link.relation_type == "supports_draft" for link in bundle.evidence_links))
         self.assertIn("answer runs", bundle.explanation_summary)
+
+    def test_report_traceability_smoke_passes_and_fails_on_broken_links(self) -> None:
+        bootstrap = build_au_project_bootstrap()
+        records = run_fixture_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+            cities=("Australia",),
+            sample_size=1,
+            prompt_limit=2,
+        )
+        analysis_result = analyze_and_score_records(
+            project_id=bootstrap.project.id,
+            records=records,
+            brand=bootstrap.brand,
+            competitors=bootstrap.competitors,
+            platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25},
+        )
+        graph = build_citation_graph(
+            project_id=bootstrap.project.id,
+            records=records,
+            analyses=analysis_result.analyses,
+            competitors=bootstrap.competitors,
+            industry_profile=bootstrap.industry_profile,
+        )
+        report = MarkdownCsvReportExporter().export(
+            project_id=bootstrap.project.id,
+            market_code=bootstrap.project.market_code,
+            report_version="traceability-smoke-v1",
+            report_type="traceability_smoke",
+            prompt_version=bootstrap.project.prompt_version,
+            snapshot=analysis_result.snapshot,
+            contributions=analysis_result.contributions,
+            records=records,
+            graph=graph,
+            platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25},
+        )
+
+        result = verify_report_traceability_smoke(
+            report_export=report.report_export,
+            snapshot=analysis_result.snapshot,
+            contributions=analysis_result.contributions,
+            analyses=analysis_result.analyses,
+            records=records,
+        )
+
+        self.assertEqual(result.status, "pass")
+        self.assertEqual(result.broken_links, ())
+        self.assertEqual(set(result.checked_answer_run_ids), {record.answer_run.id for record in records})
+        self.assertEqual(set(result.checked_raw_answer_ids), {record.raw_answer.id for record in records})
+        self.assertTrue(result.checked_evidence_asset_ids)
+        broken = verify_report_traceability_smoke(
+            report_export=report.report_export,
+            snapshot=analysis_result.snapshot,
+            contributions=analysis_result.contributions,
+            analyses=analysis_result.analyses[1:],
+            records=records,
+        )
+        self.assertEqual(broken.status, "fail")
+        self.assertTrue(any("analysis_missing" in item for item in broken.broken_links))
 
     def test_postgres_repository_maps_fixture_chain_to_runtime_tables(self) -> None:
         bootstrap = build_au_project_bootstrap()
@@ -3875,7 +4465,7 @@ class CoreContractsTest(unittest.TestCase):
             "city": None,
             "evidence_source_id": "438ab927-5873-5516-8df3-47f6c75ef007",
             "confidence": 0.72,
-            "status": "active",
+            "status": KNOWLEDGE_FACT_APPROVED_STATUS,
             "valid_from": now,
             "valid_until": None,
             "embedding_model": "fixture-knowledge-embedding-v1",
@@ -3918,6 +4508,66 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("JOIN knowledge_fact_embeddings kfe ON kfe.knowledge_fact_id = kf.id", executed_sql)
         self.assertIn("kfe.embedding <=> %s::vector", executed_sql)
         self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
+
+    def test_postgres_repository_imports_runtime_knowledge_facts_and_indexes_embeddings(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        imported_fact = {
+            "id": "06975d61-853b-5a25-ae0e-b62bbfe82c15",
+            "project_id": project_id,
+            "market_code": "AU",
+            "fact_type": "returns_policy",
+            "subject": "KoalaHome",
+            "predicate": "has_policy",
+            "object_value": "30 day returns",
+            "city": "Sydney",
+            "evidence_source_id": None,
+            "confidence": 0.86,
+            "status": KNOWLEDGE_FACT_APPROVED_STATUS,
+            "valid_from": datetime.now(UTC),
+            "valid_until": None,
+        }
+        audit_rows = [
+            {
+                "id": "425f980b-138f-4afa-8784-79d6f16f92ce",
+                "event_type": "runtime_knowledge_facts_imported",
+                "project_id": project_id,
+                "actor_type": "user",
+                "actor_id": "runtime-console",
+                "target_type": "knowledge_fact_import",
+                "target_id": "import-1",
+                "before_hash": None,
+                "after_hash": "after",
+                "input_refs": {"csv_sha256": ["hash"]},
+                "output_refs": {"knowledge_fact_ids": [imported_fact["id"]]},
+                "method_version": "runtime_knowledge_fact_import_csv_v1",
+                "reason": "import runtime knowledge facts from csv",
+                "created_at": datetime.now(UTC),
+            }
+        ]
+        connection = RecordingConnection(result_sets=[{"id": project_id, "market_code": "AU"}, imported_fact, audit_rows])
+
+        result = PostgresEvidenceRepository(connection).import_runtime_knowledge_facts_csv(
+            RuntimeKnowledgeFactImportInput(
+                project_id=project_id,
+                csv_content=(
+                    "fact_type,subject,predicate,object_value,market_code,city,confidence,status\n"
+                    "returns_policy,KoalaHome,has_policy,30 day returns,AU,Sydney,0.86,approved"
+                ),
+                imported_by="runtime-console",
+                default_market_code="AU",
+            )
+        )
+
+        self.assertEqual(result.knowledge_fact_import["knowledge_fact_count"], 1)
+        self.assertEqual(result.knowledge_facts[0]["fact_type"], "returns_policy")
+        self.assertEqual(result.audit_events[0]["event_type"], "runtime_knowledge_facts_imported")
+        executed_sql = "\n".join(sql for sql, _ in connection.calls)
+        self.assertIn("INSERT INTO localized_knowledge_facts", executed_sql)
+        self.assertIn("ON CONFLICT (id) DO UPDATE SET market_code = EXCLUDED.market_code", executed_sql)
+        self.assertIn("INSERT INTO knowledge_fact_embeddings", executed_sql)
+        self.assertIn("knowledge_fact_embeddings_indexed", str(connection.calls))
+        self.assertIn("runtime_knowledge_facts_imported", str(connection.calls))
+        self.assertGreaterEqual(connection.commit_count, 1)
 
     def test_vector_store_pgvector_and_qdrant_projection_keep_search_results_stable(self) -> None:
         bootstrap = build_au_project_bootstrap()
@@ -3977,6 +4627,10 @@ class CoreContractsTest(unittest.TestCase):
         )
         for table in expected_tables:
             self.assertIn(f"INSERT INTO {table}", executed_sql)
+        context_sql, context_params = connection.calls[0]
+        self.assertIn("set_config", context_sql)
+        self.assertIn("app.rls_enabled", context_params)
+        self.assertIn("geno.runtime_project_access_control", context_params)
         prompt_inserts = [params for sql, params in connection.calls if "INSERT INTO prompt_questions" in sql]
         competitor_inserts = [params for sql, params in connection.calls if "INSERT INTO competitor_entities" in sql]
         first_project_insert = next(params for sql, params in connection.calls if "INSERT INTO projects" in sql)
@@ -4005,7 +4659,7 @@ class CoreContractsTest(unittest.TestCase):
                         "target_brand": "ExampleBrand",
                         "category": "DTC ecommerce products",
                         "prompt_version": "au_dtc_ecommerce_v1",
-                        "status": "configured",
+                        "status": "paused",
                         "created_at": now,
                     }
                 ],
@@ -4145,7 +4799,7 @@ class CoreContractsTest(unittest.TestCase):
             "target_brand": "ExampleBrand",
             "category": "DTC ecommerce products",
             "prompt_version": "au_dtc_ecommerce_v1",
-            "status": "configured",
+            "status": "paused",
             "created_at": now,
         }
         after_project = {
@@ -4327,7 +4981,6 @@ class CoreContractsTest(unittest.TestCase):
         connection = RecordingConnection(
             result_sets=[
                 before_project,
-                ({"status_before": ["paused"], "status_after": ["archived"]},),
                 after_project,
                 {
                     "id": tenant_id,
@@ -4370,13 +5023,13 @@ class CoreContractsTest(unittest.TestCase):
 
         self.assertEqual(record.project["status"], "paused")
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
-        self.assertIn("event_type = 'project_archived'", executed_sql)
+        self.assertNotIn("event_type = 'project_archived'", executed_sql)
         audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
         self.assertEqual(audit_insert[1], "project_restored")
         self.assertEqual(audit_insert[11], "runtime_project_restore_v1")
         self.assertEqual(connection.commit_count, 1)
 
-    def test_postgres_repository_restores_runtime_project_to_active_without_archive_audit(self) -> None:
+    def test_postgres_repository_restores_runtime_project_to_paused_without_archive_audit(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
         tenant_id = "8330ea73-6914-5278-90cb-147f8369fed6"
@@ -4392,11 +5045,10 @@ class CoreContractsTest(unittest.TestCase):
             "status": "archived",
             "created_at": now,
         }
-        after_project = {**before_project, "status": "active"}
+        after_project = {**before_project, "status": "paused"}
         connection = RecordingConnection(
             result_sets=[
                 before_project,
-                None,
                 after_project,
                 {
                     "id": tenant_id,
@@ -4420,7 +5072,7 @@ class CoreContractsTest(unittest.TestCase):
             )
         )
 
-        self.assertEqual(record.project["status"], "active")
+        self.assertEqual(record.project["status"], "paused")
         audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
         self.assertEqual(audit_insert[1], "project_restored")
         self.assertEqual(audit_insert[11], "runtime_project_restore_v1")
@@ -4674,6 +5326,12 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(
             connection.calls[0][1],
             (
+                "app.rls_enabled",
+                "1",
+                "app.actor_id",
+                "",
+                "app.project_id",
+                "",
                 "geno.runtime_project_access_control",
                 "1",
                 "geno.runtime_actor_id",
@@ -7999,6 +8657,100 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(audit_insert[6], report_export_id)
         self.assertEqual(audit_insert[11], "report_export_management_v1")
         self.assertEqual(audit_insert[12], "Ready for client delivery")
+
+    def test_postgres_repository_maps_report_publish_revoke_aliases_and_rejects_invalid_status(self) -> None:
+        now = datetime(2026, 6, 10, tzinfo=UTC)
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
+        snapshot_id = "a7f7f8aa-5d40-4fdf-a2b3-b8729a9a5e2f"
+        answer_run_id = "438ab927-5873-5516-8df3-47f6c75ef007"
+        report_row = {
+            "id": report_export_id,
+            "project_id": project_id,
+            "market_code": "AU",
+            "report_version": "worker-runtime-v1",
+            "report_type": "worker_runtime",
+            "score_snapshot_ids": [snapshot_id],
+            "answer_run_ids": [answer_run_id],
+            "prompt_version": "au_dtc_ecommerce_v1",
+            "scoring_formula_version": "visibility_v1.0",
+            "platform_weights_snapshot": {"chatgpt": 0.30, "perplexity": 0.25},
+            "method_disclosure": {},
+            "sample_size": 1,
+            "window_start": now,
+            "window_end": now,
+            "methodology_hash": "methodology-hash",
+            "markdown_url": "s3://geno-reports/report.md",
+            "pdf_url": "s3://geno-reports/report.pdf",
+            "csv_url": "s3://geno-reports/report.csv",
+            "exported_by": "system",
+            "exported_at": now,
+        }
+        answer_run_row = {
+            "id": answer_run_id,
+            "project_id": project_id,
+            "prompt_question_id": "f1f8ee6a-cd19-5afc-a053-b4d16a5e56c0",
+            "platform": "perplexity",
+            "surface": "sonar",
+            "access_method": "official_api",
+            "market_code": "AU",
+            "city": "Sydney",
+            "language": "en-AU",
+            "device": "desktop",
+            "answer_present": True,
+            "surface_triggered": True,
+            "sample_index": 1,
+            "sample_size": 1,
+            "model_or_surface": "sonar",
+            "account_state": "api_key",
+            "collector_backend_id": "fixture_perplexity_sonar",
+            "collector_version": "fixture-v1",
+            "collected_at": now,
+            "status": "completed",
+            "prompt_text": "Is ExampleBrand good in Australia?",
+            "prompt_intent_type": "brand_awareness",
+            "prompt_priority": 1,
+            "prompt_version": "au_dtc_ecommerce_v1",
+        }
+
+        for submitted_status, stored_status in (
+            ("approved", "internal_review"),
+            ("published", "client_ready"),
+            ("revoked", "archived"),
+        ):
+            connection = RecordingConnection(
+                result_sets=[
+                    report_row,
+                    None,
+                    {"id": snapshot_id, "project_id": project_id, "final_score": 87.35},
+                    answer_run_row,
+                    [],
+                    {"count": 0},
+                ]
+            )
+            PostgresEvidenceRepository(connection).record_runtime_report_management_event(
+                RuntimeReportManagementInput(
+                    report_export_id=report_export_id,
+                    status=submitted_status,
+                    updated_by="runtime-console",
+                    note=f"mark {submitted_status}",
+                )
+            )
+            audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
+            self.assertEqual(audit_insert[9]["status"], [stored_status])
+            self.assertEqual(connection.commit_count, 1)
+
+        invalid_connection = RecordingConnection()
+        with self.assertRaisesRegex(ValueError, "status must be internal_review, client_ready, or archived"):
+            PostgresEvidenceRepository(invalid_connection).record_runtime_report_management_event(
+                RuntimeReportManagementInput(
+                    report_export_id=report_export_id,
+                    status="published_and_emailed",
+                    updated_by="runtime-console",
+                    note="invalid",
+                )
+            )
+        self.assertEqual(invalid_connection.commit_count, 0)
 
     def test_postgres_repository_exports_report_management_events_csv(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
@@ -12402,7 +13154,7 @@ class CoreContractsTest(unittest.TestCase):
             "content_draft_id": draft_id,
             "platform": "manual",
             "target_url": "",
-            "status": "draft_created",
+            "status": MANUAL_DISTRIBUTION_BACKFILL_REQUIRED_STATUS,
             "submitted_at": None,
             "checked_at": None,
             "notes": "Manual distribution only.",
@@ -12537,7 +13289,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(draft.knowledge_facts[0]["id"], fact_id)
         self.assertEqual(draft.answer_runs[0]["prompt_text"], "Is ExampleBrand good in Australia?")
         self.assertEqual(draft.action_recommendation["source_gap_type"], "low_mention_rate")
-        self.assertEqual(draft.manual_distribution_records[0]["status"], "draft_created")
+        self.assertEqual(draft.manual_distribution_records[0]["status"], MANUAL_DISTRIBUTION_BACKFILL_REQUIRED_STATUS)
         self.assertEqual(draft.audit_events[0]["event_type"], "content_draft_review_status_updated")
         self.assertEqual(record.integration_connectors[0]["provider"], "google_search_console")
         self.assertEqual(record.audit_events[0]["event_type"], "content_engine_fixture_created")
@@ -12568,7 +13320,7 @@ class CoreContractsTest(unittest.TestCase):
             "city": None,
             "evidence_source_id": answer_run_id,
             "confidence": 0.72,
-            "status": "active",
+            "status": KNOWLEDGE_FACT_APPROVED_STATUS,
             "valid_from": now,
             "valid_until": None,
         }
@@ -12597,7 +13349,7 @@ class CoreContractsTest(unittest.TestCase):
             "content_draft_id": draft_id,
             "platform": "manual",
             "target_url": "https://example.com/au/faq",
-            "status": "draft_created",
+            "status": MANUAL_DISTRIBUTION_BACKFILLED_STATUS,
             "submitted_at": None,
             "checked_at": None,
             "notes": "Manual distribution only.",
@@ -16033,6 +16785,179 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("entity.entity_kind = ea.entity_kind", executed_sql)
         self.assertIn("WHERE entity.project_id = %s AND ea.entity_kind = %s", executed_sql)
         self.assertIn("FROM audit_events WHERE project_id = %s AND target_type = %s AND target_id = %s", executed_sql)
+
+    def test_knowledge_application_blocks_private_urls_and_crawls_public_text(self) -> None:
+        with self.assertRaises(ValueError) as context:
+            normalize_knowledge_url("http://127.0.0.1/admin")
+        self.assertEqual(str(context.exception), PRIVATE_HOST_ERROR)
+
+        def fake_get(url: str, *, timeout_seconds: float, max_bytes: int) -> dict[str, object]:
+            return {
+                "body": b"<html><title>Brand FAQ</title><body><h1>KoalaHome shipping</h1><p>KoalaHome offers fast Australian delivery and 30 day returns.</p></body></html>",
+                "status_code": 200,
+                "content_type": "text/html; charset=utf-8",
+                "charset": "utf-8",
+            }
+
+        result = crawl_public_knowledge_url(source_url="https://example.com/faq", http_get=fake_get)
+        self.assertEqual(result.normalized_url, "https://example.com/faq")
+        self.assertIn("KoalaHome offers fast Australian delivery", result.markdown)
+        self.assertEqual(len(result.content_hash), 64)
+
+    def test_knowledge_application_extracts_reviewable_facts_and_generates_grounded_outputs(self) -> None:
+        project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
+        extraction = extract_knowledge_facts_from_document(
+            project_id=project_id,
+            document_id="doc-1",
+            document_version_id="doc-version-1",
+            raw_text="KoalaHome offers fast Australian delivery. KoalaHome has 30 day returns for Australian customers.",
+            source_url="https://example.com/faq",
+            market_code="AU",
+            target_brand="KoalaHome",
+            category="homewares",
+            extracted_by="analyst-1",
+            auto_approve=True,
+        )
+        self.assertGreaterEqual(len(extraction.facts), 2)
+        self.assertTrue(all(fact.status == KNOWLEDGE_FACT_APPROVED_STATUS for fact in extraction.facts))
+        self.assertEqual(extraction.audit_event.event_type, "knowledge.fact_extracted")
+
+        facts = tuple(
+            {
+                "id": fact.id,
+                "status": fact.status,
+                "fact_type": fact.fact_type,
+                "subject": fact.subject,
+                "predicate": fact.predicate,
+                "object_value": fact.object_value,
+                "city": fact.city,
+            }
+            for fact in extraction.facts
+        )
+        prompts = (
+            {
+                "id": "prompt-1",
+                "text": "Does KoalaHome offer fast delivery in Australia?",
+                "intent_type": "service_coverage",
+                "city": "Australia",
+            },
+        )
+        artifacts = build_knowledge_application_artifacts(
+            project_id=project_id,
+            target_brand="KoalaHome",
+            category="homewares",
+            market_code="AU",
+            facts=facts,
+            prompts=prompts,
+            action=None,
+            generation_type="all",
+            content_type="faq",
+            target_platform="chatgpt",
+            intent_type=None,
+            city="Australia",
+            competitor=None,
+            quantity=3,
+            requested_by="analyst-1",
+            generation_job_id="job-1",
+        )
+        self.assertEqual(len(artifacts.content_drafts), 1)
+        self.assertGreaterEqual(len(artifacts.faq_candidates), 1)
+        self.assertEqual(len(artifacts.prompt_candidates), 3)
+        self.assertTrue(artifacts.content_drafts[0].used_knowledge_fact_ids)
+        self.assertTrue(artifacts.prompt_candidates[0]["source_knowledge_fact_ids"])
+        self.assertEqual(artifacts.audit_event.event_type, "knowledge.application_generated")
+
+    def test_deepseek_knowledge_application_adapter_parses_structured_json_without_leaking_key(self) -> None:
+        requests: list[dict[str, object]] = []
+
+        def fake_post(endpoint: str, *, headers: dict[str, str], payload: dict[str, object], timeout_seconds: float) -> dict[str, object]:
+            requests.append({"endpoint": endpoint, "headers": headers, "payload": payload, "timeout_seconds": timeout_seconds})
+            task_payload = json.loads(payload["messages"][1]["content"])  # type: ignore[index]
+            if task_payload["task"] == "extract_knowledge_facts":
+                content = {
+                    "facts": [
+                        {
+                            "fact_type": "shipping_policy",
+                            "subject": "KoalaHome",
+                            "predicate": "has_shipping_policy",
+                            "object_value": "KoalaHome offers fast Sydney delivery.",
+                            "city": "Sydney",
+                            "confidence": 0.94,
+                        }
+                    ]
+                }
+            else:
+                content = {
+                    "content_markdown": "# KoalaHome FAQ\n\nKoalaHome offers fast Sydney delivery.",
+                    "faq_candidates": [
+                        {
+                            "question": "Does KoalaHome deliver quickly in Sydney?",
+                            "answer_markdown": "KoalaHome offers fast Sydney delivery.",
+                        }
+                    ],
+                    "prompt_candidates": [
+                        {"text": "Does KoalaHome deliver quickly in Sydney?"},
+                    ],
+                }
+            return {
+                "status_code": 200,
+                "body": json.dumps(
+                    {
+                        "choices": [
+                            {
+                                "message": {
+                                    "content": json.dumps(content, ensure_ascii=False),
+                                }
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ).encode("utf-8"),
+                "charset": "utf-8",
+            }
+
+        facts = deepseek_extract_knowledge_facts(
+            api_key="deepseek-test-key",
+            raw_text="KoalaHome offers fast Sydney delivery.",
+            target_brand="KoalaHome",
+            category="homewares",
+            market_code="AU",
+            max_facts=3,
+            http_post=fake_post,
+        )
+        self.assertEqual(facts[0]["predicate"], "has_shipping_policy")
+        self.assertEqual(facts[0]["confidence"], 0.94)
+
+        output = deepseek_generate_knowledge_application(
+            api_key="deepseek-test-key",
+            target_brand="KoalaHome",
+            category="homewares",
+            market_code="AU",
+            facts=(
+                {
+                    "id": "06975d61-853b-5a25-ae0e-b62bbfe82c15",
+                    "status": KNOWLEDGE_FACT_APPROVED_STATUS,
+                    "fact_type": "shipping_policy",
+                    "subject": "KoalaHome",
+                    "predicate": "has_shipping_policy",
+                    "object_value": "KoalaHome offers fast Sydney delivery.",
+                },
+            ),
+            prompts=(),
+            generation_type="all",
+            content_type="faq",
+            target_platform="chatgpt",
+            intent_type=None,
+            city="Sydney",
+            competitor=None,
+            quantity=3,
+            http_post=fake_post,
+        )
+        self.assertIn("KoalaHome offers fast Sydney delivery", output["content_markdown"])
+        self.assertEqual(output["prompt_candidates"][0]["text"], "Does KoalaHome deliver quickly in Sydney?")
+        self.assertTrue(all(request["headers"]["Authorization"] == "Bearer deepseek-test-key" for request in requests))
+        serialized_requests = json.dumps(requests, ensure_ascii=False)
+        self.assertNotIn("deepseek-test-key", serialized_requests.replace("Bearer deepseek-test-key", ""))
 
 
 if __name__ == "__main__":

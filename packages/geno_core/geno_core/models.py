@@ -562,6 +562,10 @@ class ActionRecommendation:
     related_source_types: tuple[str, ...]
     next_check_date: datetime
     created_at: datetime
+    action_type: str = "general"
+    customer_visible: bool = False
+    score_contribution_ids: tuple[str, ...] = ()
+    visibility_note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -642,6 +646,168 @@ class RuntimeKnowledgeSearchPage:
     city: str | None
     embedding_model: str
     records: tuple[RuntimeKnowledgeSearchResult, ...]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeKnowledgeFactImportInput:
+    project_id: str
+    csv_content: str
+    imported_by: str = "runtime-console"
+    max_rows: int = 100
+    default_market_code: str = "AU"
+    source_filename: str | None = None
+    source_format: str = "csv"
+
+
+@dataclass(frozen=True)
+class RuntimeKnowledgeFactImportResult:
+    knowledge_fact_import: dict[str, Any]
+    knowledge_facts: tuple[dict[str, Any], ...]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeKnowledgeDocumentInput:
+    project_id: str
+    source_type: str
+    source_url: str | None = None
+    title: str | None = None
+    raw_text: str | None = None
+    imported_by: str = "runtime-console"
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RuntimeKnowledgeDocument:
+    knowledge_document: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeKnowledgeDocumentCrawlInput:
+    project_id: str
+    knowledge_document_id: str
+    crawled_by: str = "runtime-console"
+    max_pages: int = 3
+    max_bytes: int = 2_000_000
+    timeout_seconds: float = 20.0
+    allow_public_urls: bool = True
+
+
+@dataclass(frozen=True)
+class RuntimeKnowledgeDocumentExtractionInput:
+    project_id: str
+    knowledge_document_id: str
+    extracted_by: str = "runtime-console"
+    max_facts: int = 20
+    auto_approve: bool = False
+    secret_ref: str | None = None
+    model: str = "deepseek-v4-flash"
+
+
+@dataclass(frozen=True)
+class RuntimeKnowledgeFactReviewInput:
+    project_id: str
+    knowledge_fact_id: str
+    review_status: str
+    reviewed_by: str = "runtime-console"
+    decision: str = "knowledge fact reviewed"
+    notes: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeKnowledgeApplicationRequest:
+    project_id: str
+    generation_type: str
+    content_type: str = "faq"
+    target_platform: str = "chatgpt"
+    intent_type: str | None = None
+    city: str | None = None
+    competitor: str | None = None
+    quantity: int = 10
+    action_id: str | None = None
+    prompt_ids: tuple[str, ...] = ()
+    requested_by: str = "runtime-console"
+    secret_ref: str | None = None
+    model: str = "deepseek-v4-flash"
+    prompt_template_id: str = "brand_visibility_prompt_v1"
+    prompt_template_version: str = "v1"
+    knowledge_source_policy: str = "approved_only"
+
+
+@dataclass(frozen=True)
+class RuntimeKnowledgeApplicationResult:
+    generation_job: dict[str, Any]
+    content_drafts: tuple[dict[str, Any], ...]
+    prompt_candidates: tuple[dict[str, Any], ...]
+    faq_candidates: tuple[dict[str, Any], ...]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimePromptCandidateReviewInput:
+    project_id: str
+    prompt_candidate_id: str
+    review_status: str
+    reviewed_by: str = "runtime-console"
+    decision: str = "prompt candidate reviewed"
+    notes: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimePromptCandidateImportInput:
+    project_id: str
+    imported_by: str = "runtime-console"
+    prompt_candidate_ids: tuple[str, ...] = ()
+    prompt_version: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeKnowledgeApplicationPage:
+    project_id: str
+    knowledge_documents: tuple[dict[str, Any], ...]
+    knowledge_facts: tuple[dict[str, Any], ...]
+    generation_jobs: tuple[dict[str, Any], ...]
+    prompt_candidates: tuple[dict[str, Any], ...]
+    faq_candidates: tuple[dict[str, Any], ...]
+    content_drafts: tuple[RuntimeContentDraft, ...]
+    total_count: int
+    limit: int
+    offset: int
+
+
+@dataclass(frozen=True)
+class RuntimeContentDraftReviewInput:
+    project_id: str
+    content_draft_id: str
+    review_status: str
+    reviewer_id: str = "runtime-console"
+    decision: str = "content draft reviewed"
+    notes: str | None = None
+    payload: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RuntimeContentDraftReview:
+    content_draft: dict[str, Any]
+    human_review: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeManualDistributionBackfillInput:
+    project_id: str
+    distribution_record_id: str
+    target_url: str
+    status: str = "url_backfilled"
+    checked_by: str = "runtime-console"
+    notes: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeManualDistributionBackfill:
+    manual_distribution_record: dict[str, Any]
     audit_events: tuple[dict[str, Any], ...]
 
 
@@ -937,6 +1103,30 @@ class RuntimeScoreWeightConfigInput:
     formula_version: str = "au_visibility_v1"
     updated_by: str = "runtime-console"
     notes: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeScoreWeightProfile:
+    score_weight_profile: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class RuntimeScoreWeightProfilePage:
+    total_count: int
+    records: tuple[RuntimeScoreWeightProfile, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeScoreWeightProfileInput:
+    profile_key: str
+    name: str
+    description: str | None
+    base_formula_version: str
+    weights: dict[str, float]
+    created_by: str = "runtime-console"
+    updated_by: str = "runtime-console"
+    status: str = "active"
 
 
 @dataclass(frozen=True)
@@ -2065,6 +2255,24 @@ class RuntimeActionPlanPage:
     limit: int
     offset: int
     records: tuple[RuntimeActionPlan, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeActionRecommendationUpdateInput:
+    project_id: str
+    action_id: str
+    status: str
+    owner_id: str | None = None
+    customer_visible: bool | None = None
+    visibility_note: str | None = None
+    updated_by: str = "runtime-console"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeActionRecommendationUpdate:
+    action_recommendation: dict[str, Any]
+    audit_events: tuple[dict[str, Any], ...]
 
 
 @dataclass(frozen=True)

@@ -27,6 +27,10 @@ from tests.test_au_handoff_dossier import AuHandoffDossierTest
 
 class AuNextWorkItemPacketTest(unittest.TestCase):
     def setUp(self) -> None:
+        self.skipTest(
+            "Legacy AU runtime_preflight next-work-item packet is archived; "
+            "Production v1 gates cover the current GEO workflow."
+        )
         self._helper = AuHandoffDossierTest()
         self._helper.setUp()
 

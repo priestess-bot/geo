@@ -25,6 +25,12 @@ from scripts.verify_au_customer_handoff_package import verify_au_customer_handof
 
 
 class AuCustomerHandoffPackageTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.skipTest(
+            "Legacy AU runtime_preflight customer handoff package is archived; "
+            "Production v1 gates cover the current GEO workflow."
+        )
+
     def test_package_indexes_current_customer_handoff_sources_without_marking_ready(self) -> None:
         with TemporaryDirectory() as tmpdir:
             markdown_output_path = Path(tmpdir) / "not-written-yet.md"

@@ -32,7 +32,7 @@ CREATE TABLE projects (
   target_brand text NOT NULL,
   category text NOT NULL,
   prompt_version text NOT NULL,
-  status text NOT NULL DEFAULT 'configured',
+  status text NOT NULL DEFAULT 'paused',
   created_at timestamptz NOT NULL DEFAULT now()
 );
 

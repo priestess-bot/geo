@@ -1,5 +1,6 @@
 import { ProjectLifecycleForm } from "./[project_id]/ProjectActions";
 import { actorHeaders, apiBase } from "../runtime";
+import { projectStatusLabel } from "./status";
 
 type RuntimeProject = {
   project: { id: string; name?: string; target_brand?: string; status?: string; market_code?: string; category?: string };
@@ -60,8 +61,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams?: Pr
     <main className="shell">
       <section className="topbar">
         <div>
-          <p className="eyebrow">项目列表</p>
-          <h1>运行态 GEO 项目</h1>
+          <h1>项目列表</h1>
           <p className="muted" style={{ marginTop: 8 }}>只展示内部项目列表，客户门户不会暴露此页面。</p>
         </div>
         <nav className="nav">
@@ -78,12 +78,11 @@ export default async function ProjectsPage({ searchParams }: { searchParams?: Pr
         <label>
           <span>状态筛选</span>
           <select {...hydrationControlProps} name="status" defaultValue={status}>
-            <option value="">默认隐藏 archived</option>
+            <option value="">默认隐藏已归档</option>
             <option value="all">全部</option>
-            <option value="configured">configured</option>
-            <option value="active">active</option>
-            <option value="paused">paused</option>
-            <option value="archived">archived</option>
+            <option value="active">运行中</option>
+            <option value="paused">暂停中</option>
+            <option value="archived">已归档</option>
           </select>
         </label>
         <button type="submit">筛选</button>
@@ -105,7 +104,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams?: Pr
               <p className="muted">{record.project.id}</p>
             </div>
             <span>{record.tenant?.name || "未绑定租户"}</span>
-            <span className="statusPill">{record.project.status || "unknown"}</span>
+            <span className="statusPill">{projectStatusLabel(record.project.status)}</span>
             <span className="muted">竞品 {record.competitors?.length ?? 0} 个 · Prompt {record.prompt_count ?? 0} 条</span>
             <div className="actionRow">
               <a className="button secondary" href={`/projects/${record.project.id}`}>打开详情</a>

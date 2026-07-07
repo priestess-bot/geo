@@ -75,6 +75,7 @@ from geno_core.knowledge import (
     build_manual_distribution_records,
     search_knowledge_facts,
 )
+from geno_core.knowledge_application import load_deepseek_api_key
 from geno_core.market import build_au_market_profile
 from geno_core.models import (
     CollectionFailureRecord,
@@ -87,10 +88,19 @@ from geno_core.models import (
     EntityAliasCandidateReviewInput,
     EntityAliasInput,
     RuntimeAlertEventInput,
+    RuntimeActionRecommendationUpdateInput,
     RuntimeConnectorSecretInput,
+    RuntimeContentDraftReviewInput,
     RuntimeEntityAliasBatchConfirmResult,
     RuntimeHumanReviewInput,
+    RuntimeKnowledgeApplicationRequest,
+    RuntimeKnowledgeDocumentCrawlInput,
+    RuntimeKnowledgeDocumentExtractionInput,
+    RuntimeKnowledgeDocumentInput,
+    RuntimeKnowledgeFactReviewInput,
     ManualBackfillInput,
+    RuntimeManualDistributionBackfillInput,
+    RuntimeKnowledgeFactImportInput,
     RuntimeProjectBrandAssetInput,
     RuntimeProjectBrandAssetScanInput,
     RuntimeProjectBrandKitInput,
@@ -111,6 +121,8 @@ from geno_core.models import (
     RuntimeSessionRevokeInput,
     RuntimeProjectUpdateInput,
     RuntimePromptImportInput,
+    RuntimePromptCandidateImportInput,
+    RuntimePromptCandidateReviewInput,
     RuntimePromptUpdateInput,
     RuntimeNotificationEmailFeedbackInput,
     RuntimeNotificationEmailFeedbackProjectSuppressionInput,
@@ -125,6 +137,7 @@ from geno_core.models import (
     RuntimeReportManagementInput,
     RuntimeSavedViewInput,
     RuntimeScoreWeightConfigInput,
+    RuntimeScoreWeightProfileInput,
 )
 from geno_core.object_store import ObjectStoreError, archive_project_brand_logo, parse_s3_uri
 from geno_core.prompt_import import prompt_import_file_to_csv
@@ -385,6 +398,12 @@ PROJECT_MANAGE_ROLES = ("owner", "admin")
 PROJECT_ANALYZE_ROLES = ("owner", "admin", "analyst")
 CUSTOMER_PORTAL_REPORT_READY_STATUS = "client_ready"
 CUSTOMER_PORTAL_ROLES = {"viewer", "client_viewer"}
+REPORT_MANAGEMENT_STATUS_ALIASES = {
+    "pending_review": "internal_review",
+    "approved": "internal_review",
+    "published": CUSTOMER_PORTAL_REPORT_READY_STATUS,
+    "revoked": "archived",
+}
 _RUNTIME_JWT_ACTOR_ID: ContextVar[str | None] = ContextVar("geno_runtime_jwt_actor_id", default=None)
 _RUNTIME_SESSION_AUTH_CONTEXT: ContextVar[AuthContext | None] = ContextVar(
     "geno_runtime_session_auth_context",
@@ -1318,6 +1337,19 @@ def _emit_runtime_access_log(
     RUNTIME_ACCESS_LOGGER.info(json.dumps(payload, sort_keys=True, separators=(",", ":")))
 
 
+def _runtime_access_log_persistence_configured() -> bool:
+    return bool(os.environ.get("DATABASE_URL", "").strip())
+
+
+def _runtime_access_log_persistence_required() -> bool:
+    return os.environ.get("GENO_RUNTIME_ACCESS_LOG_REQUIRE_DB", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 @app.middleware("http")
 async def runtime_metrics_middleware(request: Request, call_next):
     if request.url.path == "/metrics":
@@ -1378,29 +1410,42 @@ async def runtime_metrics_middleware(request: Request, call_next):
             client_host=request.client.host if request.client else None,
             error_type=error_type,
         )
-        try:
-            persist_runtime_http_access_log(
-                request=request,
-                request_id=request_id,
-                route_path=route_path,
-                status_code=status_code,
-                duration_seconds=duration_seconds,
-                request_body=request_body,
-                response_body=response_body,
-                response_headers=response_headers,
-                response_media_type=response_media_type,
-                actor_header=RUNTIME_ACTOR_HEADER,
-                jwt_actor_id=_RUNTIME_JWT_ACTOR_ID.get(),
-                error_type=error_type,
-            )
-        except Exception as exc:
+        if _runtime_access_log_persistence_configured():
+            try:
+                persist_runtime_http_access_log(
+                    request=request,
+                    request_id=request_id,
+                    route_path=route_path,
+                    status_code=status_code,
+                    duration_seconds=duration_seconds,
+                    request_body=request_body,
+                    response_body=response_body,
+                    response_headers=response_headers,
+                    response_media_type=response_media_type,
+                    actor_header=RUNTIME_ACTOR_HEADER,
+                    jwt_actor_id=_RUNTIME_JWT_ACTOR_ID.get(),
+                    error_type=error_type,
+                )
+            except Exception as exc:
+                RUNTIME_ACCESS_LOGGER.warning(
+                    json.dumps(
+                        {
+                            "event_type": "runtime_http_access_log_persist_failed",
+                            "request_id": request_id,
+                            "error_type": type(exc).__name__,
+                            "error": str(exc),
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                )
+        elif _runtime_access_log_persistence_required():
             RUNTIME_ACCESS_LOGGER.warning(
                 json.dumps(
                     {
-                        "event_type": "runtime_http_access_log_persist_failed",
+                        "event_type": "runtime_http_access_log_persist_skipped",
                         "request_id": request_id,
-                        "error_type": type(exc).__name__,
-                        "error": str(exc),
+                        "reason": "DATABASE_URL is not configured",
                     },
                     sort_keys=True,
                     separators=(",", ":"),
@@ -1591,11 +1636,26 @@ def _assert_runtime_customer_report_download_allowed(
         )
 
 
+def _normalize_report_management_status(status: str) -> str:
+    normalized = status.strip().lower()
+    return REPORT_MANAGEMENT_STATUS_ALIASES.get(normalized, normalized)
+
+
 def _evidence_asset_payload(asset: object) -> dict[str, object]:
     if is_dataclass(asset):
         return asdict(asset)
     if isinstance(asset, Mapping):
         return dict(asset)
+    return {}
+
+
+def _runtime_record_payload(record: object) -> dict[str, object]:
+    if is_dataclass(record):
+        return asdict(record)
+    if isinstance(record, Mapping):
+        return dict(record)
+    if hasattr(record, "__dict__"):
+        return {str(key): value for key, value in vars(record).items() if not str(key).startswith("_")}
     return {}
 
 
@@ -1742,6 +1802,16 @@ class ScoreWeightConfigRequest(BaseModel):
     notes: str | None = Field(default=None, max_length=500)
 
 
+class ScoreWeightProfileRequest(BaseModel):
+    profile_key: str = Field(min_length=1, max_length=120)
+    name: str = Field(min_length=1, max_length=160)
+    description: str | None = Field(default=None, max_length=1000)
+    base_formula_version: str = Field(default="au_visibility_v1", min_length=1, max_length=80)
+    weights: dict[str, float]
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    status: str = Field(default="active", min_length=1, max_length=40)
+
+
 class HumanReviewRequest(BaseModel):
     project_id: str = Field(min_length=1)
     target_type: str = Field(min_length=1, max_length=120)
@@ -1758,6 +1828,14 @@ class RuntimePromptImportRequest(BaseModel):
     csv_content: str = Field(min_length=1, max_length=120000)
     imported_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     max_rows: int = Field(default=100, ge=1, le=200)
+
+
+class RuntimeKnowledgeFactImportRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    csv_content: str = Field(min_length=1, max_length=120000)
+    imported_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    max_rows: int = Field(default=100, ge=1, le=200)
+    default_market_code: str = Field(default="AU", min_length=1, max_length=20)
 
 
 class RuntimePromptUpdateRequest(BaseModel):
@@ -2192,6 +2270,53 @@ class ConnectorSecretRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class ConnectorTestRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    provider: str = Field(min_length=1, max_length=80)
+    mode: str = Field(default="official_api", min_length=1, max_length=80)
+    model: str = Field(default="", max_length=120)
+    raw_secret: str | None = Field(default=None, min_length=1, max_length=4000)
+    secret_ref: str | None = Field(default=None, min_length=1, max_length=240)
+    tested_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+def allowed_connector_models(provider: str, mode: str) -> set[str]:
+    provider = provider.strip().lower()
+    mode = mode.strip().lower()
+    matrix: dict[tuple[str, str], set[str]] = {
+        ("openai", "official_api"): {"gpt-4.1-mini", "gpt-4o-mini"},
+        ("openai", "deepseek_fallback"): {"deepseek-v4-flash"},
+        ("openai", "disabled"): {"disabled"},
+        ("perplexity", "official_api"): {"sonar", "sonar-pro"},
+        ("perplexity", "deepseek_fallback"): {"deepseek-v4-flash"},
+        ("perplexity", "disabled"): {"disabled"},
+        ("google_ai_mode", "manual_backfill"): {"google_ai_mode_manual_backfill", "google_ai_mode"},
+        ("google_ai_mode", "browser_or_serp"): {"google_ai_mode_browser", "serp_provider"},
+        ("google_ai_mode", "disabled"): {"disabled"},
+    }
+    return matrix.get((provider, mode), set())
+
+
+def assert_connector_model_allowed(provider: str, mode: str, model: str) -> None:
+    allowed = allowed_connector_models(provider, mode)
+    if not allowed:
+        raise HTTPException(status_code=400, detail="连接器运行模式不支持。")
+    if model not in allowed:
+        raise HTTPException(status_code=400, detail=f"模型/服务 {model} 不适用于当前连接器运行模式。")
+
+
+def default_connector_model(provider: str, mode: str) -> str:
+    allowed = sorted(allowed_connector_models(provider, mode))
+    if provider == "openai" and mode == "official_api":
+        return "gpt-4.1-mini"
+    if provider == "perplexity" and mode == "official_api":
+        return "sonar"
+    if provider == "google_ai_mode" and mode == "manual_backfill":
+        return "google_ai_mode_manual_backfill"
+    return allowed[0] if allowed else ""
+
+
 class ProjectMemberRequest(BaseModel):
     project_id: str = Field(min_length=1)
     user_id: str = Field(min_length=1, max_length=120)
@@ -2278,6 +2403,102 @@ class RuntimeFidelityCheckRequest(BaseModel):
     project_id: str = Field(min_length=1)
     report_export_id: str | None = Field(default=None, min_length=1)
     checked_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+
+
+class RuntimeActionRecommendationUpdateRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    status: str = Field(min_length=1, max_length=80)
+    owner_id: str | None = Field(default=None, max_length=120)
+    customer_visible: bool | None = None
+    visibility_note: str | None = Field(default=None, max_length=1000)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeContentDraftReviewRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    review_status: str = Field(min_length=1, max_length=80)
+    reviewer_id: str = Field(default="runtime-console", min_length=1, max_length=120)
+    decision: str = Field(default="content draft reviewed", min_length=1, max_length=500)
+    notes: str | None = Field(default=None, max_length=1000)
+    payload: dict[str, object] = Field(default_factory=dict)
+
+
+class RuntimeManualDistributionBackfillRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    target_url: str = Field(min_length=1, max_length=2000)
+    status: str = Field(default="url_backfilled", min_length=1, max_length=80)
+    checked_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class RuntimeKnowledgeDocumentRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    source_type: str = Field(min_length=1, max_length=40)
+    source_url: str | None = Field(default=None, max_length=2000)
+    title: str | None = Field(default=None, max_length=300)
+    raw_text: str | None = Field(default=None, max_length=200000)
+    imported_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class RuntimeKnowledgeDocumentCrawlRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    crawled_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    max_pages: int = Field(default=3, ge=1, le=20)
+    max_bytes: int = Field(default=2_000_000, ge=1000, le=10_000_000)
+    timeout_seconds: float = Field(default=20.0, ge=1.0, le=120.0)
+
+
+class RuntimeKnowledgeDocumentExtractionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    extracted_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    max_facts: int = Field(default=20, ge=1, le=50)
+    auto_approve: bool = False
+    secret_ref: str | None = Field(default=None, max_length=300)
+    model: str = Field(default="deepseek-v4-flash", min_length=1, max_length=120)
+
+
+class RuntimeKnowledgeFactReviewRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    review_status: str = Field(min_length=1, max_length=80)
+    reviewed_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    decision: str = Field(default="knowledge fact reviewed", min_length=1, max_length=500)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class RuntimeKnowledgeApplicationGenerateRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    generation_type: str = Field(default="all", min_length=1, max_length=80)
+    content_type: str = Field(default="faq", min_length=1, max_length=80)
+    target_platform: str = Field(default="chatgpt", min_length=1, max_length=80)
+    intent_type: str | None = Field(default=None, max_length=120)
+    city: str | None = Field(default=None, max_length=120)
+    competitor: str | None = Field(default=None, max_length=160)
+    quantity: int = Field(default=10, ge=1, le=50)
+    action_id: str | None = Field(default=None, max_length=80)
+    prompt_ids: list[str] = Field(default_factory=list, max_length=50)
+    requested_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    secret_ref: str | None = Field(default=None, max_length=300)
+    model: str = Field(default="deepseek-v4-flash", min_length=1, max_length=120)
+    prompt_template_id: str = Field(default="brand_visibility_prompt_v1", min_length=1, max_length=160)
+    prompt_template_version: str = Field(default="v1", min_length=1, max_length=80)
+    knowledge_source_policy: str = Field(default="approved_only", min_length=1, max_length=80)
+
+
+class RuntimePromptCandidateReviewRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    review_status: str = Field(min_length=1, max_length=80)
+    reviewed_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    decision: str = Field(default="prompt candidate reviewed", min_length=1, max_length=500)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class RuntimePromptCandidateImportRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    imported_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    prompt_candidate_ids: list[str] = Field(default_factory=list, max_length=200)
+    prompt_version: str | None = Field(default=None, max_length=160)
 
 
 class RuntimeReportManagementEventRequest(BaseModel):
@@ -3754,6 +3975,9 @@ def create_runtime_au_dtc_project(
     customer_email_supplied = bool(request.customer_email and request.customer_email.strip())
     if customer_email_supplied and "@" not in customer_email:
         raise HTTPException(status_code=400, detail="customer_email must be a valid email address")
+    launch_status = request.launch_status.strip().lower()
+    if launch_status not in {"draft", "ready", "active", "paused"}:
+        raise HTTPException(status_code=400, detail="launch_status must be draft, ready, active, or paused")
     brand_product_lines = tuple(item.strip() for item in request.brand_product_lines if item.strip())
     competitor_domains = tuple(item.strip().lower() for item in request.competitor_domains if item.strip())
     try:
@@ -3768,6 +3992,7 @@ def create_runtime_au_dtc_project(
             brand_product_lines=brand_product_lines,
             owner_user_id=owner_user_id,
         )
+        bootstrap = replace(bootstrap, project=replace(bootstrap.project, status="paused"))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
@@ -3792,7 +4017,7 @@ def create_runtime_au_dtc_project(
                     collection_mode=request.collection_mode.strip(),
                     schedule=request.schedule,
                     external_connectors=request.external_connectors,
-                    status=request.launch_status.strip().lower(),
+                    status=launch_status,
                     created_by=owner_user_id,
                     updated_by=owner_user_id,
                     metadata={"created_from": "runtime_project_create"},
@@ -3836,6 +4061,10 @@ def create_runtime_au_dtc_project(
                 )
             )
             customer_invitation = asdict(invitation)
+            customer_invitation["invite_token"] = invitation.invitation.get("invite_token")
+            customer_invitation["invitation_id"] = invitation.invitation.get("id")
+            customer_invitation["status"] = invitation.invitation.get("status")
+            customer_invitation["email"] = invitation.invitation.get("email")
         return {
             "tenant_id": bootstrap.tenant.id,
             "project_id": bootstrap.project.id,
@@ -4276,6 +4505,107 @@ def rotate_runtime_connector_secret(
     x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
 ) -> dict[str, object]:
     return save_runtime_connector_secret(payload=payload, x_geno_actor_id=x_geno_actor_id)
+
+
+@app.get("/v1/connectors/runtime/secrets/reveal")
+def reveal_runtime_connector_secret(
+    project_id: str = Query(min_length=1),
+    secret_ref: str = Query(min_length=1, max_length=240),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        if not hasattr(repository, "resolve_connector_secret"):
+            raise HTTPException(status_code=503, detail="connector secret reveal is unavailable")
+        raw_secret = repository.resolve_connector_secret(secret_ref=secret_ref.strip())
+        return {"secret_ref": secret_ref.strip(), "raw_secret": raw_secret}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/connectors/runtime/test")
+def test_runtime_connector(
+    payload: ConnectorTestRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    provider = payload.provider.strip().lower()
+    mode = payload.mode.strip().lower()
+    model = payload.model.strip() or default_connector_model(provider, mode)
+    if provider not in {"openai", "perplexity", "google_ai_mode"}:
+        raise HTTPException(status_code=400, detail="provider must be openai, perplexity, or google_ai_mode")
+    assert_connector_model_allowed(provider, mode, model)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        secret_ref = payload.secret_ref.strip() if payload.secret_ref else None
+        if payload.raw_secret:
+            secret_record = repository.save_connector_secret(
+                RuntimeConnectorSecretInput(
+                    project_id=payload.project_id.strip(),
+                    provider=provider,
+                    purpose="api_key",
+                    raw_secret=payload.raw_secret,
+                    metadata={"created_from": "runtime_connector_test", "mode": mode, "model": model},
+                    updated_by=actor_id or payload.tested_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else "runtime_connector_test_secret_save",
+                )
+            )
+            secret_ref = str(secret_record.connector_secret.get("secret_ref") or "")
+        if provider == "google_ai_mode" and mode == "manual_backfill":
+            status = "manual_ready"
+            message = "Google AI Mode 使用手工补录路径，已标记为可用。"
+        elif mode == "disabled":
+            status = "paused"
+            message = "连接器已停用。"
+        elif model == "deepseek-v4-flash":
+            api_key = payload.raw_secret or None
+            if not api_key and secret_ref and hasattr(repository, "resolve_connector_secret"):
+                api_key = repository.resolve_connector_secret(secret_ref=secret_ref)
+            if not api_key:
+                api_key = load_deepseek_api_key()
+            if not api_key:
+                raise HTTPException(status_code=400, detail="DeepSeek API key is required for this connector test")
+            status = "active"
+            message = "DeepSeek v4 Flash 代替连接验证通过。"
+        else:
+            if not payload.raw_secret and not secret_ref:
+                raise HTTPException(status_code=400, detail="raw_secret or secret_ref is required for connector test")
+            status = "ready"
+            message = "密钥已保存；官方连接器真实采集由 connector-real-smoke 验证。"
+        return {
+            "connector_test": {
+                "project_id": payload.project_id,
+                "provider": provider,
+                "mode": mode,
+                "model": model,
+                "status": status,
+                "message": message,
+                "secret_ref": secret_ref or None,
+            }
+        }
+    finally:
+        close_repository_connection(repository)
 
 
 @app.get("/v1/project-members/runtime")
@@ -6613,6 +6943,22 @@ def runtime_score_weight_config(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        get_profile = getattr(repository, "get_score_weight_profile", None)
+        if callable(get_profile):
+            profile = get_profile(formula_version.strip())
+            if profile is not None:
+                profile_data = profile.score_weight_profile
+                return {
+                    "score_weight_config": {
+                        "id": profile_data.get("id"),
+                        "project_id": project_id,
+                        "formula_version": profile_data.get("profile_key"),
+                        "weights": profile_data.get("weights") or {},
+                        "updated_by": profile_data.get("updated_by") or "system-default",
+                        "notes": profile_data.get("description"),
+                    },
+                    "audit_events": [],
+                }
         formula = get_score_formula(formula_version)
         config = repository.get_score_weight_config(project_id=project_id, formula_version=formula.formula_version)
         if config is None:
@@ -6668,6 +7014,63 @@ def save_runtime_score_weight_config(
     except ValueError as exc:
         status_code = 404 if str(exc) == "project not found" else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/score-weight-profiles/runtime")
+def runtime_score_weight_profiles(
+    include_archived: bool = False,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        list_profiles = getattr(repository, "list_score_weight_profiles", None)
+        if not callable(list_profiles):
+            return {"records": [], "total_count": 0}
+        page = list_profiles(include_archived=include_archived)
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/score-weight-profiles/runtime")
+def save_runtime_score_weight_profile(
+    payload: ScoreWeightProfileRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        weights = normalize_score_weights(payload.weights, formula_version=payload.base_formula_version.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        save_profile = getattr(repository, "save_score_weight_profile", None)
+        if not callable(save_profile):
+            raise HTTPException(status_code=503, detail="score weight profile persistence is unavailable")
+        profile = save_profile(
+            RuntimeScoreWeightProfileInput(
+                profile_key=payload.profile_key.strip(),
+                name=payload.name.strip(),
+                description=payload.description.strip() if payload.description else None,
+                base_formula_version=payload.base_formula_version.strip(),
+                weights=weights,
+                created_by=actor_id or payload.updated_by.strip(),
+                updated_by=actor_id or payload.updated_by.strip(),
+                status=payload.status.strip(),
+            )
+        )
+        return asdict(profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         close_repository_connection(repository)
 
@@ -7038,7 +7441,7 @@ def record_runtime_report_management_event(
             report = repository.record_runtime_report_management_event(
                 RuntimeReportManagementInput(
                     report_export_id=report_export_id,
-                    status=payload.status.strip(),
+                    status=_normalize_report_management_status(payload.status),
                     updated_by=actor_id or payload.updated_by.strip(),
                     note=payload.note.strip() if payload.note else None,
                 )
@@ -8450,6 +8853,45 @@ def runtime_action_plans_export_csv(
         close_repository_connection(repository)
 
 
+@app.patch("/v1/action-plans/runtime/{action_id}")
+def update_runtime_action_recommendation(
+    action_id: str,
+    payload: RuntimeActionRecommendationUpdateRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            record = repository.update_runtime_action_recommendation(
+                RuntimeActionRecommendationUpdateInput(
+                    project_id=payload.project_id,
+                    action_id=action_id,
+                    status=payload.status,
+                    owner_id=payload.owner_id,
+                    customer_visible=payload.customer_visible,
+                    visibility_note=payload.visibility_note,
+                    updated_by=actor_id or payload.updated_by,
+                    reason=payload.reason,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "action_recommendation not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
 @app.get("/v1/runtime-alerts")
 def runtime_alerts(
     project_id: str | None = None,
@@ -8691,6 +9133,374 @@ def runtime_knowledge_fact_search(
         return asdict(page)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.patch("/v1/content-drafts/runtime/{content_draft_id}/review")
+def review_runtime_content_draft(
+    content_draft_id: str,
+    payload: RuntimeContentDraftReviewRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            record = repository.review_runtime_content_draft(
+                RuntimeContentDraftReviewInput(
+                    project_id=payload.project_id.strip(),
+                    content_draft_id=content_draft_id.strip(),
+                    review_status=payload.review_status.strip(),
+                    reviewer_id=actor_id or payload.reviewer_id.strip(),
+                    decision=payload.decision.strip(),
+                    notes=payload.notes.strip() if payload.notes else None,
+                    payload=payload.payload,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "content draft not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return _runtime_record_payload(record)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.patch("/v1/manual-distribution-records/runtime/{distribution_record_id}/backfill")
+def backfill_runtime_manual_distribution_record(
+    distribution_record_id: str,
+    payload: RuntimeManualDistributionBackfillRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            record = repository.backfill_runtime_manual_distribution_record(
+                RuntimeManualDistributionBackfillInput(
+                    project_id=payload.project_id.strip(),
+                    distribution_record_id=distribution_record_id.strip(),
+                    target_url=payload.target_url.strip(),
+                    status=payload.status.strip(),
+                    checked_by=actor_id or payload.checked_by.strip(),
+                    notes=payload.notes.strip() if payload.notes else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "manual distribution record not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return _runtime_record_payload(record)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/knowledge-facts/runtime/import.csv")
+def import_runtime_knowledge_facts_csv(
+    payload: RuntimeKnowledgeFactImportRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        result = repository.import_runtime_knowledge_facts_csv(
+            RuntimeKnowledgeFactImportInput(
+                project_id=payload.project_id.strip(),
+                csv_content=payload.csv_content,
+                imported_by=payload.imported_by.strip(),
+                max_rows=payload.max_rows,
+                default_market_code=payload.default_market_code.strip(),
+            )
+        )
+        response_payload = asdict(result)
+        knowledge_fact_import = response_payload.get("knowledge_fact_import")
+        if isinstance(knowledge_fact_import, dict):
+            knowledge_fact_count = int(knowledge_fact_import.get("knowledge_fact_count") or 0)
+            knowledge_fact_import.setdefault("fact_count", knowledge_fact_count)
+            response_payload["fact_count"] = knowledge_fact_count
+            response_payload["knowledge_fact_count"] = knowledge_fact_count
+        return response_payload
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/knowledge-applications/runtime")
+def runtime_knowledge_application(
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            page = repository.list_runtime_knowledge_application(project_id=project_id.strip(), limit=limit, offset=offset)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/knowledge-documents/runtime")
+def create_runtime_knowledge_document(
+    payload: RuntimeKnowledgeDocumentRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        try:
+            document = repository.create_runtime_knowledge_document(
+                RuntimeKnowledgeDocumentInput(
+                    project_id=payload.project_id.strip(),
+                    source_type=payload.source_type.strip(),
+                    source_url=payload.source_url.strip() if payload.source_url else None,
+                    title=payload.title.strip() if payload.title else None,
+                    raw_text=payload.raw_text,
+                    imported_by=actor_id or payload.imported_by.strip(),
+                    metadata=payload.metadata,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(document)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/knowledge-documents/runtime/{knowledge_document_id}/crawl")
+def crawl_runtime_knowledge_document(
+    knowledge_document_id: str,
+    payload: RuntimeKnowledgeDocumentCrawlRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        try:
+            document = repository.crawl_runtime_knowledge_document(
+                RuntimeKnowledgeDocumentCrawlInput(
+                    project_id=payload.project_id.strip(),
+                    knowledge_document_id=knowledge_document_id.strip(),
+                    crawled_by=actor_id or payload.crawled_by.strip(),
+                    max_pages=payload.max_pages,
+                    max_bytes=payload.max_bytes,
+                    timeout_seconds=payload.timeout_seconds,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "knowledge document not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(document)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/knowledge-documents/runtime/{knowledge_document_id}/extract-facts")
+def extract_runtime_knowledge_document_facts(
+    knowledge_document_id: str,
+    payload: RuntimeKnowledgeDocumentExtractionRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        try:
+            result = repository.extract_runtime_knowledge_document_facts(
+                RuntimeKnowledgeDocumentExtractionInput(
+                    project_id=payload.project_id.strip(),
+                    knowledge_document_id=knowledge_document_id.strip(),
+                    extracted_by=actor_id or payload.extracted_by.strip(),
+                    max_facts=payload.max_facts,
+                    auto_approve=payload.auto_approve,
+                    secret_ref=payload.secret_ref.strip() if payload.secret_ref else None,
+                    model=payload.model.strip(),
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) in {"knowledge document not found", "project not found"} else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(result)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.patch("/v1/knowledge-facts/runtime/{knowledge_fact_id}/review")
+def review_runtime_knowledge_fact(
+    knowledge_fact_id: str,
+    payload: RuntimeKnowledgeFactReviewRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        try:
+            return repository.review_runtime_knowledge_fact(
+                RuntimeKnowledgeFactReviewInput(
+                    project_id=payload.project_id.strip(),
+                    knowledge_fact_id=knowledge_fact_id.strip(),
+                    review_status=payload.review_status.strip(),
+                    reviewed_by=actor_id or payload.reviewed_by.strip(),
+                    decision=payload.decision.strip(),
+                    notes=payload.notes.strip() if payload.notes else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "knowledge fact not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/knowledge-applications/runtime/generate")
+def generate_runtime_knowledge_application(
+    payload: RuntimeKnowledgeApplicationGenerateRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        try:
+            result = repository.run_runtime_knowledge_application(
+                RuntimeKnowledgeApplicationRequest(
+                    project_id=payload.project_id.strip(),
+                    generation_type=payload.generation_type.strip(),
+                    content_type=payload.content_type.strip(),
+                    target_platform=payload.target_platform.strip(),
+                    intent_type=payload.intent_type.strip() if payload.intent_type else None,
+                    city=payload.city.strip() if payload.city else None,
+                    competitor=payload.competitor.strip() if payload.competitor else None,
+                    quantity=payload.quantity,
+                    action_id=payload.action_id.strip() if payload.action_id else None,
+                    prompt_ids=tuple(item.strip() for item in payload.prompt_ids if item.strip()),
+                    requested_by=actor_id or payload.requested_by.strip(),
+                    secret_ref=payload.secret_ref.strip() if payload.secret_ref else None,
+                    model=payload.model.strip(),
+                    prompt_template_id=payload.prompt_template_id.strip(),
+                    prompt_template_version=payload.prompt_template_version.strip(),
+                    knowledge_source_policy=payload.knowledge_source_policy.strip(),
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(result)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.patch("/v1/prompt-candidates/runtime/{prompt_candidate_id}/review")
+def review_runtime_prompt_candidate(
+    prompt_candidate_id: str,
+    payload: RuntimePromptCandidateReviewRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        try:
+            return repository.review_runtime_prompt_candidate(
+                RuntimePromptCandidateReviewInput(
+                    project_id=payload.project_id.strip(),
+                    prompt_candidate_id=prompt_candidate_id.strip(),
+                    review_status=payload.review_status.strip(),
+                    reviewed_by=actor_id or payload.reviewed_by.strip(),
+                    decision=payload.decision.strip(),
+                    notes=payload.notes.strip() if payload.notes else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "prompt candidate not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/prompt-candidates/runtime/import-approved")
+def import_runtime_approved_prompt_candidates(
+    payload: RuntimePromptCandidateImportRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        try:
+            result = repository.import_runtime_approved_prompt_candidates(
+                RuntimePromptCandidateImportInput(
+                    project_id=payload.project_id.strip(),
+                    imported_by=actor_id or payload.imported_by.strip(),
+                    prompt_candidate_ids=tuple(item.strip() for item in payload.prompt_candidate_ids if item.strip()),
+                    prompt_version=payload.prompt_version.strip() if payload.prompt_version else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(result)
     finally:
         close_repository_connection(repository)
 
@@ -9506,6 +10316,8 @@ def contracts() -> dict[str, list[str]]:
             "RuntimeContentDraft",
             "RuntimeContentEngine",
             "RuntimeContentEnginePage",
+            "RuntimeKnowledgeFactImportInput",
+            "RuntimeKnowledgeFactImportRequest",
             "RuntimeKnowledgeSearchResult",
             "RuntimeKnowledgeSearchPage",
             "RuntimeTraceabilityDetail",
@@ -9616,7 +10428,10 @@ def contracts() -> dict[str, list[str]]:
             "/v1/runtime-alerts/{alert_id}/events",
             "/v1/content-engines/runtime",
             "/v1/content-engines/runtime/export.csv",
+            "/v1/content-drafts/runtime/{content_draft_id}/review",
+            "/v1/manual-distribution-records/runtime/{distribution_record_id}/backfill",
             "/v1/knowledge-facts/runtime/search",
+            "/v1/knowledge-facts/runtime/import.csv",
             "/v1/traceability/runtime",
             "/v1/traceability/runtime/export.csv",
             "/ready",

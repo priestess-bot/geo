@@ -8,9 +8,19 @@ from geno_core.models import (
     ActionRecommendation,
     AuditEvent,
     CitationGraphResult,
+    ScoreContribution,
     RetestComparison,
     RetestSchedule,
     VisibilityScoreSnapshot,
+)
+
+ACTION_TYPE_MISSING_WEAK_CITATION_SOURCE = "missing_or_weak_citation_source"
+ACTION_TYPE_BRAND_NOT_MENTIONED = "brand_not_mentioned"
+ACTION_TYPE_COMPETITOR_OUTRANKS_BRAND = "competitor_outranks_brand"
+ACTION_PLAN_P0_ACTION_TYPES = (
+    ACTION_TYPE_BRAND_NOT_MENTIONED,
+    ACTION_TYPE_COMPETITOR_OUTRANKS_BRAND,
+    ACTION_TYPE_MISSING_WEAK_CITATION_SOURCE,
 )
 
 
@@ -23,11 +33,24 @@ def build_action_recommendations(
     project_id: str,
     graph: CitationGraphResult,
     snapshot: VisibilityScoreSnapshot,
+    contributions: tuple[ScoreContribution, ...] = (),
     owner_id: str = "system",
     now: datetime | None = None,
 ) -> tuple[ActionRecommendation, ...]:
     created_at = now or datetime.now(UTC)
     actions: list[ActionRecommendation] = []
+    contribution_ids = tuple(contribution.id for contribution in contributions) or (snapshot.id,)
+    mention_contribution_ids = tuple(
+        contribution.id for contribution in contributions if "mention" in contribution.component_name.lower()
+    ) or contribution_ids
+    recommendation_contribution_ids = tuple(
+        contribution.id
+        for contribution in contributions
+        if "recommendation" in contribution.component_name.lower() or "position" in contribution.component_name.lower()
+    ) or contribution_ids
+    citation_contribution_ids = tuple(
+        contribution.id for contribution in contributions if "citation" in contribution.component_name.lower()
+    ) or contribution_ids
     for index, gap in enumerate(graph.source_gaps, start=1):
         priority = "high" if gap.expected_weight >= 0.9 else "medium"
         related_run_ids = tuple(
@@ -50,6 +73,10 @@ def build_action_recommendations(
                 related_source_types=(gap.source_type,),
                 next_check_date=created_at + timedelta(days=7),
                 created_at=created_at,
+                action_type=ACTION_TYPE_MISSING_WEAK_CITATION_SOURCE,
+                customer_visible=False,
+                score_contribution_ids=citation_contribution_ids,
+                visibility_note="internal_only_until_reviewed",
             )
         )
     if snapshot.mention_rate < 0.5:
@@ -67,23 +94,32 @@ def build_action_recommendations(
                 related_source_types=(),
                 next_check_date=created_at + timedelta(days=7),
                 created_at=created_at,
+                action_type=ACTION_TYPE_BRAND_NOT_MENTIONED,
+                customer_visible=False,
+                score_contribution_ids=mention_contribution_ids,
+                visibility_note="internal_only_until_reviewed",
             )
         )
-    if snapshot.recommendation_rate < 0.35:
+    competitor_pressure = max((benchmark.mention_rate for benchmark in graph.competitor_benchmarks), default=0.0)
+    if snapshot.recommendation_rate < 0.35 or competitor_pressure > snapshot.mention_rate:
         actions.append(
             ActionRecommendation(
                 id=_stable_id("action", project_id, "recommendation-rate", snapshot.id),
                 project_id=project_id,
-                title="Improve recommendation strength",
+                title="Improve brand recommendation against competitor pressure",
                 description="Add comparison, review, and proof content that gives AI systems clear reasons to recommend the brand.",
                 priority="medium",
                 status="open",
                 owner_id=owner_id,
-                source_gap_type="low_recommendation_rate",
+                source_gap_type="competitor_pressure",
                 evidence_answer_run_ids=tuple(snapshot.answer_run_ids),
                 related_source_types=("comparison_site", "review_site"),
                 next_check_date=created_at + timedelta(days=14),
                 created_at=created_at,
+                action_type=ACTION_TYPE_COMPETITOR_OUTRANKS_BRAND,
+                customer_visible=False,
+                score_contribution_ids=recommendation_contribution_ids,
+                visibility_note="internal_only_until_reviewed",
             )
         )
     return tuple(actions)

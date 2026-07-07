@@ -26,7 +26,15 @@ export async function createProjectAction(
   _previousState: CreateProjectActionState,
   formData: FormData
 ): Promise<CreateProjectActionState> {
-  const competitors = lines(formData.get("competitors"));
+  const competitorsFromRows = formData
+    .getAll("competitor_name")
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  const competitorDomainsFromRows = formData
+    .getAll("competitor_domain")
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  const competitors = competitorsFromRows.length ? competitorsFromRows : lines(formData.get("competitors"));
   if (competitors.length < 3 || competitors.length > 5) {
     return { ok: false, error: "竞品名称需要填写 3 到 5 个。" };
   }
@@ -48,7 +56,7 @@ export async function createProjectAction(
     brand_parent_company: String(formData.get("brand_parent_company") || "").trim() || null,
     owner_user_id: requiredString(formData, "owner_user_id", adminActorId()),
     customer_email: String(formData.get("customer_email") || "").trim() || null,
-    competitor_domains: lines(formData.get("competitor_domains")),
+    competitor_domains: competitorDomainsFromRows.length ? competitorDomainsFromRows : lines(formData.get("competitor_domains")),
     collection_mode: requiredString(formData, "collection_mode", "api"),
     launch_status: requiredString(formData, "launch_status", "draft"),
     schedule: schedule.data || {},

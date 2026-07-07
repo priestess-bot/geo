@@ -2,7 +2,7 @@
 
 本仓库是围绕 **智推时代（GenOptima）** 及其 **GEO（Generative Engine Optimization，生成式引擎优化）** 业务的一次完整调研与产品落地规划。内容包括：公司与行业可审计调研复盘、GENO 方法论与技术栈拆解、竞品格局、合作案例核查，以及面向**澳大利亚首发**的 GENO SaaS MVP 技术设计与需求拆解。
 
-本库已从文档与规划进入工程实现：除调研文档外，当前已包含 FastAPI API、独立 Next.js 客户门户 `apps/customer-web`、独立内部项目中心 `apps/admin-web`、独立工程进展 Dashboard `apps/dashboard-web`、遗留 Runtime Console、Python 核心契约、AU 项目启动包、Prompt Pack、证据链、评分、信源图谱、报告导出、行动计划、复测、Traceability Bundle、PostgreSQL RLS/GUC 项目隔离、Docker Compose、CI 与工程实施审计日志。核心原则仍是**可审计**：每一个工程输出逐步建立 `AuditEvent / EvidenceLink / ScoreContribution / CollectionRunSummary / ReportExport / ApiBrowserFidelityCheck / ActionRecommendation / RetestComparison / ContentDraft / KnowledgeFactEmbedding / HumanReviewRecord / TraceabilityBundle` 溯源链；新增客户门户还补充了 `customer_portal_tokens`、`project_launch_configs` 和 `runtime_http_access_logs`，其中门户 token 只保存 hash，HTTP request/response 正文优先归档对象存储，DB 保存 URI/hash/size/status。
+本库已从文档与规划进入工程实现：除调研文档外，当前已包含 FastAPI API、独立 Next.js 客户门户 `apps/customer-web`、独立内部项目中心 `apps/admin-web`、已合并到 Admin Web 的 Development Board、遗留 Runtime Console、Python 核心契约、AU 项目启动包、Prompt Pack、证据链、评分、信源图谱、报告导出、行动计划、复测、Traceability Bundle、PostgreSQL RLS/GUC 项目隔离、Docker Compose、CI 与工程实施审计日志。核心原则仍是**可审计**：每一个工程输出逐步建立 `AuditEvent / EvidenceLink / ScoreContribution / CollectionRunSummary / ReportExport / ApiBrowserFidelityCheck / ActionRecommendation / RetestComparison / ContentDraft / KnowledgeFactEmbedding / HumanReviewRecord / TraceabilityBundle` 溯源链；新增客户门户还补充了 `customer_portal_tokens`、`project_launch_configs` 和 `runtime_http_access_logs`，其中门户 token 只保存 hash，HTTP request/response 正文优先归档对象存储，DB 保存 URI/hash/size/status。
 
 ## 启动项目
 
@@ -12,7 +12,7 @@
 make docker-up-auto-ports
 ```
 
-该命令会在 `18000-18249` 范围内自动寻找空闲端口，生成 gitignored 的 `tmp/docker-compose.auto-ports.env`，再通过 Docker Compose 启动 `postgres`、`minio`、`api`、`customer-web`、`admin-web` 和 `dashboard-web`。终端会打印本次实际访问地址：Customer Web 是客户门户和项目仪表盘，Admin Web 是内部项目中心和 step-by-step 项目创建向导，Dashboard Web 是只读工程进展看板，另有 API、API docs、MinIO Console 和 PostgreSQL 映射端口。Dashboard Web 使用仓库内静态 JSON 展示 PROJECT-PLAN、当前交接文件和工程实施审计日志，不依赖运行时 API。旧 `apps/web` 暂作为遗留 Runtime Console 代码留存，但不再由默认自动端口启动暴露；内部调试能力后续按域迁移到 `apps/admin-web`。关闭同一组自动端口容器：
+该命令会在 `18000-18249` 范围内自动寻找空闲端口，生成 gitignored 的 `tmp/docker-compose.auto-ports.env`，再通过 Docker Compose 启动 `postgres`、`minio`、`api`、`customer-web` 和 `admin-web`。终端会打印本次实际访问地址：Customer Web 是客户门户和项目仪表盘，Admin Web 是内部项目中心、项目创建向导和 Development Board。当前进度、文档索引、审计口径、验收门禁和最近测试产物统一在 `Admin Web /development-board` 展示。旧 `apps/dashboard-web` 只保留退役提示页，不再由默认自动端口启动；旧 `apps/web` 暂作为遗留 Runtime Console 代码留存，但不再由默认自动端口启动暴露。关闭同一组自动端口容器：
 
 ```bash
 make docker-down-auto-ports

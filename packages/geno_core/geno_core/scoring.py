@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal, ROUND_FLOOR, InvalidOperation
 from statistics import pstdev
 from typing import Any
 from uuid import uuid4
@@ -43,6 +44,17 @@ AU_VISIBILITY_V1_1_LOCAL_BOOST: dict[str, float] = {
     "CompetitorShareScore": 0.05,
 }
 
+VISIBILITY_V1_0: dict[str, float] = {
+    "MentionScore": 0.30,
+    "RecommendationScore": 0.30,
+    "PositionScore": 0.10,
+    "CitationScore": 0.10,
+    "LocalRelevanceScore": 0.20,
+    "SentimentScore": 0.00,
+    "FreshnessScore": 0.00,
+    "CompetitorShareScore": 0.00,
+}
+
 
 @dataclass(frozen=True)
 class ScoreFormulaDefinition:
@@ -51,6 +63,17 @@ class ScoreFormulaDefinition:
     description: str
     status: str
     supersedes: str | None = None
+
+
+@dataclass(frozen=True)
+class ScoreWeightProfileDefinition:
+    profile_key: str
+    name: str
+    description: str
+    base_formula_version: str
+    weights: dict[str, float]
+    is_system: bool = True
+    status: str = "active"
 
 
 SCORE_FORMULA_REGISTRY: dict[str, ScoreFormulaDefinition] = {
@@ -66,6 +89,40 @@ SCORE_FORMULA_REGISTRY: dict[str, ScoreFormulaDefinition] = {
         description="AU visibility score variant that increases local relevance and freshness emphasis.",
         status="candidate",
         supersedes="au_visibility_v1",
+    ),
+    "visibility_v1.0": ScoreFormulaDefinition(
+        formula_version="visibility_v1.0",
+        weights=VISIBILITY_V1_0,
+        description=(
+            "Production v1 GEO formula: Trigger is reported as denominator context; Brand Mention 30%, "
+            "Recommendation 30%, Citation Strength 10%, Competitor Relative Position 10%, and "
+            "Local/market relevance 20% using existing component signals."
+        ),
+        status="active",
+    ),
+}
+
+SCORE_WEIGHT_PROFILE_REGISTRY: dict[str, ScoreWeightProfileDefinition] = {
+    "au_visibility_v1": ScoreWeightProfileDefinition(
+        profile_key="au_visibility_v1",
+        name="AU GEO 可见度均衡方案",
+        description="适合澳大利亚 DTC 项目的默认方案，平衡品牌提及、推荐强度、引用可信度、本地相关性和竞品份额。",
+        base_formula_version="au_visibility_v1",
+        weights=AU_VISIBILITY_V1,
+    ),
+    "au_visibility_v1_1_local_boost": ScoreWeightProfileDefinition(
+        profile_key="au_visibility_v1_1_local_boost",
+        name="AU 本地相关性强化方案",
+        description="更重视城市、本地配送、退换政策和澳大利亚市场语境，适合本地服务差异明显的品牌。",
+        base_formula_version="au_visibility_v1",
+        weights=AU_VISIBILITY_V1_1_LOCAL_BOOST,
+    ),
+    "visibility_v1_0_purchase_decision": ScoreWeightProfileDefinition(
+        profile_key="visibility_v1_0_purchase_decision",
+        name="购买决策推荐方案",
+        description="更重视 AI 是否把目标品牌作为购买建议推荐，并关注品牌在答案顺序中的位置。",
+        base_formula_version="au_visibility_v1",
+        weights=VISIBILITY_V1_0,
     ),
 }
 
@@ -83,6 +140,25 @@ def list_score_formulas() -> tuple[dict[str, Any], ...]:
     )
 
 
+def list_score_weight_profiles() -> tuple[dict[str, Any], ...]:
+    return tuple(
+        {
+            "id": None,
+            "profile_key": profile.profile_key,
+            "name": profile.name,
+            "description": profile.description,
+            "base_formula_version": profile.base_formula_version,
+            "formula_version": profile.base_formula_version,
+            "weights": dict(profile.weights),
+            "scope": "global",
+            "is_system": profile.is_system,
+            "status": profile.status,
+            "updated_by": "system-default",
+        }
+        for profile in SCORE_WEIGHT_PROFILE_REGISTRY.values()
+    )
+
+
 def get_score_formula(formula_version: str = "au_visibility_v1") -> ScoreFormulaDefinition:
     version = formula_version.strip() or "au_visibility_v1"
     try:
@@ -90,6 +166,44 @@ def get_score_formula(formula_version: str = "au_visibility_v1") -> ScoreFormula
     except KeyError as exc:
         known_versions = ", ".join(sorted(SCORE_FORMULA_REGISTRY))
         raise ValueError(f"Unknown score formula version: {version}. Known versions: {known_versions}") from exc
+
+
+def normalize_score_weights_to_cents(score_weights: dict[str, float] | None = None) -> dict[str, float]:
+    if score_weights is None:
+        return dict(AU_VISIBILITY_V1)
+    expected = set(SCORE_COMPONENTS)
+    provided = set(score_weights)
+    missing = sorted(expected - provided)
+    unknown = sorted(provided - expected)
+    if missing:
+        raise ValueError(f"Missing score weight components: {', '.join(missing)}")
+    if unknown:
+        raise ValueError(f"Unknown score weight components: {', '.join(unknown)}")
+    decimals: dict[str, Decimal] = {}
+    for name in SCORE_COMPONENTS:
+        try:
+            value = Decimal(str(score_weights[name]))
+        except (InvalidOperation, ValueError) as exc:
+            raise ValueError(f"Invalid score weight for {name}") from exc
+        if value < 0:
+            raise ValueError("Score weights must be non-negative")
+        decimals[name] = value
+    total = sum(decimals.values(), Decimal("0"))
+    if total <= 0:
+        raise ValueError("Score weights must have a positive total")
+    scaled: list[tuple[str, Decimal, int, Decimal]] = []
+    allocated = 0
+    for name in SCORE_COMPONENTS:
+        exact = decimals[name] / total * Decimal("100")
+        floor_units = int(exact.to_integral_value(rounding=ROUND_FLOOR))
+        scaled.append((name, exact, floor_units, exact - Decimal(floor_units)))
+        allocated += floor_units
+    remainder = 100 - allocated
+    order = sorted(range(len(scaled)), key=lambda index: (-scaled[index][3], scaled[index][0]))
+    units = {name: floor_units for name, _, floor_units, _ in scaled}
+    for index in order[:remainder]:
+        units[scaled[index][0]] += 1
+    return {name: round(units[name] / 100, 2) for name in SCORE_COMPONENTS}
 
 
 def normalize_score_weights(
@@ -100,21 +214,7 @@ def normalize_score_weights(
     formula = get_score_formula(formula_version)
     if score_weights is None:
         return dict(formula.weights)
-    expected = set(SCORE_COMPONENTS)
-    provided = set(score_weights)
-    missing = sorted(expected - provided)
-    unknown = sorted(provided - expected)
-    if missing:
-        raise ValueError(f"Missing score weight components: {', '.join(missing)}")
-    if unknown:
-        raise ValueError(f"Unknown score weight components: {', '.join(unknown)}")
-    normalized = {name: round(float(score_weights[name]), 6) for name in SCORE_COMPONENTS}
-    if any(weight < 0 for weight in normalized.values()):
-        raise ValueError("Score weights must be non-negative")
-    total_weight = round(sum(normalized.values()), 6)
-    if abs(total_weight - 1.0) > 0.0001:
-        raise ValueError("Score weights must sum to 1.0")
-    return normalized
+    return normalize_score_weights_to_cents(score_weights)
 
 
 class RegistryScoringFormula:

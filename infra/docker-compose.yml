@@ -39,7 +39,10 @@ services:
           /migrations/up/0016_runtime_sessions.sql \
           /migrations/up/0017_tenant_membership_scope.sql \
           /migrations/up/0018_connector_secret_refs.sql \
-          /migrations/up/0019_evidence_asset_metadata.sql
+          /migrations/up/0019_evidence_asset_metadata.sql \
+          /migrations/up/0020_action_recommendation_contract.sql \
+          /migrations/up/0021_knowledge_application.sql \
+          /migrations/up/0022_score_profile_cleanup.sql
         do
           psql -h postgres -U geno -d geno -v ON_ERROR_STOP=1 -f "$$file"
         done
@@ -77,6 +80,7 @@ services:
       - ./litellm_config.yaml:/app/config.yaml:ro
 
   api:
+    image: ${GENO_API_IMAGE:-geno-api:local}
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
@@ -92,6 +96,8 @@ services:
       OBJECT_STORE_REGION: us-east-1
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geno-local}
+      GENO_CONNECTOR_SECRET_MASTER_KEY: ${GENO_CONNECTOR_SECRET_MASTER_KEY:-geno-local-connector-secret-master-key}
+      GENO_RUNTIME_PROJECT_ACCESS_CONTROL: ${GENO_RUNTIME_PROJECT_ACCESS_CONTROL:-1}
       GENO_DEV_TOOLS_ENABLED: ${GENO_DEV_TOOLS_ENABLED:-0}
       GENO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL:-}
       GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET:-}
@@ -148,6 +154,7 @@ services:
         condition: service_started
 
   collector-worker:
+    image: ${GENO_API_IMAGE:-geno-api:local}
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
@@ -162,6 +169,7 @@ services:
       OBJECT_STORE_REGION: us-east-1
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geno-local}
+      GENO_RUNTIME_PROJECT_ACCESS_CONTROL: ${GENO_RUNTIME_PROJECT_ACCESS_CONTROL:-1}
     command:
       - python
       - workers/collector_worker/run_collection_slice.py
@@ -179,6 +187,7 @@ services:
         condition: service_started
 
   collector-worker-litellm:
+    image: ${GENO_API_IMAGE:-geno-api:local}
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
@@ -474,6 +483,7 @@ services:
         condition: service_healthy
 
   runtime-e2e:
+    image: ${GENO_API_IMAGE:-geno-api:local}
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
@@ -496,6 +506,7 @@ services:
         condition: service_started
 
   db-smoke:
+    image: ${GENO_API_IMAGE:-geno-api:local}
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
@@ -556,11 +567,15 @@ services:
       - "${GENO_ADMIN_WEB_CONTAINER_PORT:-3000}"
     ports:
       - "${GENO_ADMIN_WEB_HOST_PORT:-3001}:${GENO_ADMIN_WEB_CONTAINER_PORT:-3000}"
+    volumes:
+      - ../docs:/app/docs:ro
     depends_on:
       api:
         condition: service_started
 
   dashboard-web:
+    profiles:
+      - retired-dashboard
     build:
       context: ..
       dockerfile: apps/dashboard-web/Dockerfile

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -12,6 +11,10 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parents[1]
 CHECKLIST_PATH = ROOT / "docs/GEO-Production-v1执行进度-checklist-2026-07-05.md"
 PLAN_PATH = ROOT / "docs/GEO-Production-v1完整规划-2026-07-05.md"
+CONNECTOR_REAL_SMOKE_PATH = ROOT / "tmp/connector-real-smoke/latest.json"
+FRONTEND_PAGE_CLICK_SMOKE_PATH = ROOT / "tmp/frontend-page-click-smoke/latest.json"
+FULL_PROJECT_LIFECYCLE_SMOKE_PATH = ROOT / "tmp/full-project-lifecycle-smoke/latest.json"
+PROMPTFOO_KNOWLEDGE_EVAL_PATH = ROOT / "tmp/promptfoo-knowledge-eval/latest.json"
 
 
 @dataclass(frozen=True)
@@ -43,6 +46,10 @@ def _check_file_exists(name: str, relative: str) -> Check:
 
 def _check_contains(name: str, relative: str, needle: str) -> Check:
     return Check(name, "pass" if _contains(relative, needle) else "fail", f"{relative}: {needle}")
+
+
+def _check_absent(name: str, relative: str, needle: str) -> Check:
+    return Check(name, "pass" if not _contains(relative, needle) else "fail", f"{relative}: {needle}")
 
 
 def _check_regex(name: str, relative: str, pattern: str) -> Check:
@@ -89,6 +96,20 @@ def _gate_checklist() -> list[Check]:
         _check_contains("checklist_tracks_final_gate", str(CHECKLIST_PATH.relative_to(ROOT)), "Final Gate"),
         _check_contains("checklist_marks_deferred_upgrades", str(CHECKLIST_PATH.relative_to(ROOT)), "Deferred upgrade"),
     ]
+
+
+def _check_checklist_status(item: str, accepted_statuses: set[str]) -> Check:
+    if not CHECKLIST_PATH.exists():
+        return _fail(f"{item}_checklist_status", "checklist file is missing")
+    for line in _read(CHECKLIST_PATH).splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) >= 5 and cells[0] == item:
+            status = cells[4]
+            if status in accepted_statuses:
+                return _pass(f"{item}_checklist_status", f"{item} is {status}")
+            accepted = ", ".join(sorted(accepted_statuses))
+            return _pending(f"{item}_checklist_status", f"{item} is {status}; expected one of: {accepted}")
+    return _fail(f"{item}_checklist_status", f"{item} missing from checklist")
 
 
 def _gate_no_fixture_production() -> list[Check]:
@@ -267,7 +288,25 @@ def _gate_report_traceability() -> list[Check]:
         _check_contains("evidence_asset_repository_test_exists", "tests/test_core_contracts.py", "test_postgres_repository_saves_runtime_evidence_asset_with_scope_link_and_audit"),
         _check_contains("object_store_round_trip_test_exists", "tests/test_core_contracts.py", "test_s3_compatible_object_store_upload_download_and_hash_mismatch"),
         _check_contains("archive_evidence_bytes_test_exists", "tests/test_core_contracts.py", "test_archive_evidence_bytes_returns_runtime_evidence_asset_input"),
-        _pending("runtime_traceability_sample", "upgrade W4-I01d/W5-I02c/W6-I01f to sample report numbers against live data"),
+        _check_contains("report_traceability_smoke_exists", "packages/geno_core/geno_core/traceability.py", "def verify_report_traceability_smoke"),
+        _check_contains("report_traceability_smoke_result_exists", "packages/geno_core/geno_core/traceability.py", "class ReportTraceabilitySmokeResult"),
+        _check_contains("report_traceability_broken_link_test_exists", "tests/test_core_contracts.py", "test_report_traceability_smoke_passes_and_fails_on_broken_links"),
+        _check_contains("analysis_output_contract_exists", "packages/geno_core/geno_core/analysis_contract.py", "def build_answer_analysis_output_contract"),
+        _check_contains("analysis_human_override_exists", "packages/geno_core/geno_core/analysis_contract.py", "def apply_human_review_override"),
+        _check_contains("analysis_output_contract_test_exists", "tests/test_core_contracts.py", "test_answer_analysis_output_contract_exposes_p0_fields_without_unearned_metrics"),
+        _check_contains("analysis_human_override_test_exists", "tests/test_core_contracts.py", "test_human_review_override_versions_analysis_and_preserves_original_parser_output"),
+        _check_contains("production_v1_formula_exists", "packages/geno_core/geno_core/scoring.py", "visibility_v1.0"),
+        _check_contains("production_v1_formula_weights_exist", "packages/geno_core/geno_core/scoring.py", "VISIBILITY_V1_0"),
+        _check_contains("production_v1_formula_test_exists", "tests/test_core_contracts.py", "test_production_v1_scoring_formula_is_versioned_and_uses_explicit_denominators"),
+        _check_contains("score_contribution_trace_test_exists", "tests/test_core_contracts.py", "test_score_snapshot_contributions_trace_each_component_to_answer_runs"),
+        _check_contains("report_export_schema_exists", "packages/geno_core/geno_core/models.py", "class ReportExport"),
+        _check_contains("report_export_repository_insert_is_immutable", "packages/geno_core/geno_core/repository.py", "ON CONFLICT (id) DO NOTHING"),
+        _check_contains("report_export_artifacts_use_fixed_snapshot_test_exists", "tests/test_core_contracts.py", "test_report_export_artifacts_are_generated_from_one_fixed_snapshot"),
+        _check_contains("report_markdown_generation_exists", "packages/geno_core/geno_core/report.py", "def _build_markdown_report"),
+        _check_contains("report_csv_generation_exists", "packages/geno_core/geno_core/report.py", "def _build_csv_evidence"),
+        _check_contains("report_pdf_generation_exists", "packages/geno_core/geno_core/report.py", "def render_markdown_pdf"),
+        _check_contains("report_artifact_archive_exists", "packages/geno_core/geno_core/object_store.py", "def archive_report_artifacts"),
+        _check_contains("report_artifact_archive_test_exists", "tests/test_core_contracts.py", "test_report_artifacts_archive_to_s3_compatible_store"),
     ]
 
 
@@ -279,8 +318,18 @@ def _gate_customer_access_negative() -> list[Check]:
         _check_contains("artifact_route_checks_portal", "apps/customer-web/app/api/report-artifact/route.ts", "/v1/customer-portal/access"),
         _check_contains("artifact_route_uses_actor_header", "apps/customer-web/app/api/report-artifact/route.ts", "X-GENO-Actor-Id"),
         _check_contains("artifact_route_marks_customer_portal_access", "apps/customer-web/app/api/report-artifact/route.ts", "X-GENO-Customer-Portal-Access"),
+        _check_contains("customer_report_center_exists", "apps/customer-web/app/portal/[module]/page.tsx", "报告交付"),
+        _check_contains("customer_report_center_lists_reports", "apps/customer-web/app/portal/[module]/page.tsx", "runtime?.reports.records"),
+        _check_contains("customer_report_center_downloads_markdown", "apps/customer-web/app/portal/[module]/page.tsx", "artifactHref(reportId, \"markdown\""),
+        _check_contains("customer_report_center_downloads_csv", "apps/customer-web/app/portal/[module]/page.tsx", "artifactHref(reportId, \"csv\""),
+        _check_contains("customer_report_center_downloads_pdf", "apps/customer-web/app/portal/[module]/page.tsx", "artifactHref(reportId, \"pdf\""),
+        _check_contains("report_management_status_aliases_api", "apps/api/geno_api/main.py", "REPORT_MANAGEMENT_STATUS_ALIASES"),
+        _check_contains("report_management_status_aliases_repository", "packages/geno_core/geno_core/repository.py", "REPORT_MANAGEMENT_STATUS_ALIASES"),
+        _check_contains("report_management_lifecycle_alias_api_test", "tests/test_api_contracts.py", "test_runtime_report_management_endpoint_maps_publish_revoke_lifecycle_aliases"),
+        _check_contains("report_management_lifecycle_alias_repository_test", "tests/test_core_contracts.py", "test_postgres_repository_maps_report_publish_revoke_aliases_and_rejects_invalid_status"),
         _check_contains("report_artifact_checks_latest_management_status", "apps/api/geno_api/main.py", "get_report_export_latest_management_status"),
         _check_contains("report_artifact_requires_client_ready_for_customers", "apps/api/geno_api/main.py", "CUSTOMER_PORTAL_REPORT_READY_STATUS"),
+        _check_contains("published_report_allowed_runtime_test", "tests/test_api_contracts.py", "test_runtime_report_artifact_customer_portal_allows_published_report"),
         _check_contains("unpublished_report_denied_runtime_test", "tests/test_api_contracts.py", "test_runtime_report_artifact_customer_portal_denies_unpublished_reports"),
         _check_contains("revoked_report_denied_runtime_test", "tests/test_api_contracts.py", "test_runtime_report_artifact_customer_portal_denies_revoked_reports"),
         _check_contains("viewer_direct_report_denied_runtime_test", "tests/test_api_contracts.py", "test_runtime_report_artifact_viewer_role_denies_unpublished_report_without_portal_header"),
@@ -380,13 +429,250 @@ def _gate_connector_real() -> list[Check]:
         ),
         _check_contains("openai_collector_exists", "packages/geno_core/geno_core/collectors.py", "class OpenAIWebSearchCollector"),
         _check_contains("openai_responses_endpoint", "packages/geno_core/geno_core/collectors.py", "https://api.openai.com/v1/responses"),
+        _check_contains(
+            "openai_connector_backend_exists",
+            "packages/geno_core/geno_core/production_connectors.py",
+            "class OpenAIWebSearchConnectorBackend",
+        ),
+        _check_contains(
+            "openai_connector_success_test_exists",
+            "tests/test_connector_contracts.py",
+            "test_openai_connector_backend_collects_responses_api_payload",
+        ),
+        _check_contains(
+            "openai_connector_failure_test_exists",
+            "tests/test_connector_contracts.py",
+            "test_openai_connector_backend_classifies_provider_auth_failure",
+        ),
         _check_contains("perplexity_collector_exists", "packages/geno_core/geno_core/collectors.py", "class PerplexitySonarCollector"),
+        _check_contains(
+            "perplexity_connector_backend_exists",
+            "packages/geno_core/geno_core/production_connectors.py",
+            "class PerplexitySonarConnectorBackend",
+        ),
+        _check_contains(
+            "perplexity_connector_success_test_exists",
+            "tests/test_connector_contracts.py",
+            "test_perplexity_connector_backend_collects_sonar_payload",
+        ),
+        _check_contains(
+            "perplexity_connector_rate_limit_test_exists",
+            "tests/test_connector_contracts.py",
+            "test_perplexity_connector_backend_classifies_rate_limit_failure",
+        ),
         _check_contains("google_manual_backfill_exists", "apps/api/geno_api/main.py", "/v1/evidence-runs/runtime/manual-backfill"),
+        _check_contains(
+            "google_manual_connector_backend_exists",
+            "packages/geno_core/geno_core/production_connectors.py",
+            "class GoogleManualBackfillConnectorBackend",
+        ),
+        _check_contains(
+            "google_manual_connector_success_test_exists",
+            "tests/test_connector_contracts.py",
+            "test_google_manual_connector_backend_collects_jsonl_backfill",
+        ),
+        _check_contains(
+            "google_manual_connector_missing_file_test_exists",
+            "tests/test_connector_contracts.py",
+            "test_google_manual_connector_backend_reports_missing_backfill_file",
+        ),
     ]
-    if os.environ.get("OPENAI_API_KEY") and os.environ.get("PERPLEXITY_API_KEY"):
-        checks.append(_pending("real_provider_smoke_execution", "wire 10 prompt staging smoke through W3-I02/W3-I03"))
+    checks.extend(
+        [
+            _check_contains("connector_real_smoke_script_exists", "scripts/run_connector_real_smoke.py", "DEFAULT_MODEL = \"deepseek-v4-flash\""),
+            _check_contains("connector_real_smoke_uses_deepseek_endpoint", "scripts/run_connector_real_smoke.py", "https://api.deepseek.com/chat/completions"),
+            _check_contains("connector_real_smoke_reads_key_file", "scripts/run_connector_real_smoke.py", "deepseek_api_key.txt"),
+            _check_contains("connector_real_smoke_redacts_raw_key", "scripts/run_connector_real_smoke.py", "report contains the raw API key"),
+            _check_contains("connector_real_smoke_make_target_runs_script", "Makefile", "scripts/run_connector_real_smoke.py"),
+        ]
+    )
+    if CONNECTOR_REAL_SMOKE_PATH.exists():
+        try:
+            report = json.loads(CONNECTOR_REAL_SMOKE_PATH.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            checks.append(_fail("connector_real_smoke_artifact_valid_json", str(exc)))
+            return checks
+        status = str(report.get("status") or "")
+        model = str(report.get("model") or "")
+        provider = str(report.get("provider") or "")
+        summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+        checks.append(
+            _pass("connector_real_smoke_artifact_exists", str(CONNECTOR_REAL_SMOKE_PATH.relative_to(ROOT)))
+        )
+        checks.append(
+            _pass("connector_real_smoke_artifact_passed", "status=passed")
+            if status == "passed"
+            else _fail("connector_real_smoke_artifact_passed", f"status={status}")
+        )
+        checks.append(
+            _pass("connector_real_smoke_model_is_v4_flash", model)
+            if model == "deepseek-v4-flash"
+            else _fail("connector_real_smoke_model_is_v4_flash", model or "missing model")
+        )
+        checks.append(
+            _pass("connector_real_smoke_provider_is_deepseek", provider)
+            if provider == "deepseek"
+            else _fail("connector_real_smoke_provider_is_deepseek", provider or "missing provider")
+        )
+        checks.append(
+            _pass("connector_real_smoke_three_prompts_passed", json.dumps(summary, ensure_ascii=False))
+            if int(summary.get("pass") or 0) >= 3 and int(summary.get("fail") or 0) == 0
+            else _fail("connector_real_smoke_three_prompts_passed", json.dumps(summary, ensure_ascii=False))
+        )
+        raw_artifact = CONNECTOR_REAL_SMOKE_PATH.read_text(encoding="utf-8", errors="ignore")
+        key_path = ROOT / "deepseek_api_key.txt"
+        if key_path.exists():
+            api_key = key_path.read_text(encoding="utf-8").strip()
+            checks.append(
+                _fail("connector_real_smoke_artifact_no_raw_key", "raw key leaked in artifact")
+                if api_key and api_key in raw_artifact
+                else _pass("connector_real_smoke_artifact_no_raw_key", "artifact does not contain raw DeepSeek key")
+            )
     else:
-        checks.append(_pass("real_provider_smoke_skipped_local", "OPENAI_API_KEY/PERPLEXITY_API_KEY absent; Local/CI may skip real provider subset"))
+        checks.append(_fail("connector_real_smoke_artifact_exists", str(CONNECTOR_REAL_SMOKE_PATH.relative_to(ROOT))))
+    return checks
+
+
+def _gate_frontend_page_click() -> list[Check]:
+    checks = [
+        *_gate_checklist(),
+        _check_contains("frontend_page_click_script_exists", "scripts/run_frontend_page_click_smoke.py", "def run_smoke"),
+        _check_contains("frontend_page_click_uses_playwright", "scripts/run_frontend_page_click_smoke.py", "sync_playwright"),
+        _check_contains("frontend_page_click_checks_admin_pages", "scripts/run_frontend_page_click_smoke.py", "/development-board"),
+        _check_contains("frontend_page_click_checks_launch_connectors", "scripts/run_frontend_page_click_smoke.py", "basic_tab=launch"),
+        _check_contains("frontend_page_click_checks_connector_test_ui", "scripts/run_frontend_page_click_smoke.py", "deepseek-v4-flash"),
+        _check_contains("frontend_page_click_checks_operation_tabs", "scripts/run_frontend_page_click_smoke.py", "operation_tab=quality"),
+        _check_absent("frontend_page_click_does_not_require_retired_connector_ops_tab", "scripts/run_frontend_page_click_smoke.py", "operation_tab=connectors"),
+        _check_contains("frontend_page_click_checks_customer_pages", "scripts/run_frontend_page_click_smoke.py", "/portal/traceability"),
+        _check_absent("frontend_page_click_does_not_require_retired_dashboard", "scripts/run_frontend_page_click_smoke.py", '"/?tab=next"'),
+        _check_contains("frontend_page_click_detects_framework_overlay", "scripts/run_frontend_page_click_smoke.py", "framework error overlay detected"),
+        _check_contains("frontend_page_click_make_target_runs_script", "Makefile", "scripts/run_frontend_page_click_smoke.py"),
+    ]
+    if FRONTEND_PAGE_CLICK_SMOKE_PATH.exists():
+        try:
+            report = json.loads(FRONTEND_PAGE_CLICK_SMOKE_PATH.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            checks.append(_fail("frontend_page_click_artifact_valid_json", str(exc)))
+            return checks
+        status = str(report.get("status") or "")
+        summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+        checks.append(_pass("frontend_page_click_artifact_exists", str(FRONTEND_PAGE_CLICK_SMOKE_PATH.relative_to(ROOT))))
+        checks.append(
+            _pass("frontend_page_click_artifact_passed", "status=passed")
+            if status == "passed"
+            else _fail("frontend_page_click_artifact_passed", f"status={status}")
+        )
+        checks.append(
+            _pass("frontend_page_click_has_page_coverage", json.dumps(summary, ensure_ascii=False))
+            if int(summary.get("pass") or 0) >= 25 and int(summary.get("fail") or 0) == 0
+            else _fail("frontend_page_click_has_page_coverage", json.dumps(summary, ensure_ascii=False))
+        )
+    else:
+        checks.append(_fail("frontend_page_click_artifact_exists", str(FRONTEND_PAGE_CLICK_SMOKE_PATH.relative_to(ROOT))))
+    return checks
+
+
+def _gate_full_project_lifecycle() -> list[Check]:
+    required_steps = {
+        "create_project",
+        "read_project",
+        "update_project",
+        "project_status_action_flow",
+        "project_lifecycle_pause_restore",
+        "negative_invalid_project_action",
+        "brand_competitor_crud",
+        "connector_secret_masking",
+        "connector_test_launch_config",
+        "project_member_crud",
+        "invitation_revoke_regenerate",
+        "prompt_import_update_export",
+        "negative_invalid_prompt_csv",
+        "knowledge_import_search",
+        "negative_invalid_knowledge_csv",
+        "manual_backfill_single_csv",
+        "negative_manual_backfill_missing_prompt",
+        "fixture_collection_analysis_scoring",
+        "runtime_outputs_exist",
+        "report_publish_download_revoke",
+        "report_job_fidelity",
+        "action_plan_update",
+        "ops_views_audit_exports",
+        "negative_cross_project_backfill",
+    }
+    checks = [
+        *_gate_checklist(),
+        _check_contains(
+            "full_lifecycle_script_exists",
+            "scripts/run_full_project_lifecycle_smoke.py",
+            "def _run(",
+        ),
+        _check_contains(
+            "full_lifecycle_creates_runtime_project",
+            "scripts/run_full_project_lifecycle_smoke.py",
+            "/v1/projects/runtime/au/dtc-ecommerce",
+        ),
+        _check_contains(
+            "full_lifecycle_checks_crud",
+            "scripts/run_full_project_lifecycle_smoke.py",
+            "project_member_crud",
+        ),
+        _check_contains(
+            "full_lifecycle_checks_negative_branches",
+            "scripts/run_full_project_lifecycle_smoke.py",
+            "negative_cross_project_backfill",
+        ),
+        _check_contains(
+            "full_lifecycle_checks_report_lifecycle",
+            "scripts/run_full_project_lifecycle_smoke.py",
+            "report_publish_download_revoke",
+        ),
+        _check_contains(
+            "full_lifecycle_make_target_runs_script",
+            "Makefile",
+            "scripts/run_full_project_lifecycle_smoke.py",
+        ),
+    ]
+    if FULL_PROJECT_LIFECYCLE_SMOKE_PATH.exists():
+        try:
+            report = json.loads(FULL_PROJECT_LIFECYCLE_SMOKE_PATH.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            checks.append(_fail("full_lifecycle_artifact_valid_json", str(exc)))
+            return checks
+        status = str(report.get("status") or "")
+        summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+        steps = report.get("steps") if isinstance(report.get("steps"), list) else []
+        passed_steps = {
+            str(step.get("name"))
+            for step in steps
+            if isinstance(step, dict) and str(step.get("status")) == "pass"
+        }
+        skipped_critical_steps = sorted(
+            str(step.get("name"))
+            for step in steps
+            if isinstance(step, dict)
+            and str(step.get("name")) in {"connector_secret_masking", "fixture_collection_analysis_scoring"}
+            and isinstance(step.get("data"), dict)
+            and bool(step["data"].get("skipped"))
+        )
+        missing_steps = sorted(required_steps - passed_steps)
+        checks.append(_pass("full_lifecycle_artifact_exists", str(FULL_PROJECT_LIFECYCLE_SMOKE_PATH.relative_to(ROOT))))
+        checks.append(
+            _pass("full_lifecycle_artifact_passed", "status=passed")
+            if status == "passed"
+            else _fail("full_lifecycle_artifact_passed", f"status={status}")
+        )
+        checks.append(
+            _pass("full_lifecycle_no_skipped_critical_steps", "critical steps executed")
+            if not skipped_critical_steps
+            else _fail("full_lifecycle_no_skipped_critical_steps", f"skipped={skipped_critical_steps}")
+        )
+        checks.append(
+            _pass("full_lifecycle_step_coverage", json.dumps(summary, ensure_ascii=False))
+            if not missing_steps and int(summary.get("fail") or 0) == 0
+            else _fail("full_lifecycle_step_coverage", f"missing={missing_steps}; summary={json.dumps(summary, ensure_ascii=False)}")
+        )
+    else:
+        checks.append(_fail("full_lifecycle_artifact_exists", str(FULL_PROJECT_LIFECYCLE_SMOKE_PATH.relative_to(ROOT))))
     return checks
 
 
@@ -397,8 +683,15 @@ def _gate_ops() -> list[Check]:
         _check_contains("health_endpoint_exists", "apps/api/geno_api/ops_routes.py", "@router.get(\"/health\")"),
         _check_contains("ready_endpoint_exists", "apps/api/geno_api/ops_routes.py", "@router.get(\"/ready\")"),
         _check_contains("metrics_endpoint_exists", "apps/api/geno_api/ops_routes.py", "@router.get(\"/metrics\")"),
+        _check_contains("runtime_metrics_middleware_exists", "apps/api/geno_api/main.py", "runtime_metrics_middleware"),
+        _check_contains("prometheus_scrapes_metrics", "infra/prometheus/prometheus.yml", "metrics_path: /metrics"),
+        _check_contains("grafana_prometheus_datasource_exists", "infra/grafana/provisioning/datasources/prometheus.yml", "http://prometheus:9090"),
         _check_contains("observability_compose_profile_exists", "infra/docker-compose.yml", "profiles:\n      - observability"),
-        _pending("alert_smoke", "W9-I01 alert smoke not complete"),
+        _check_contains("runtime_alert_api_exists", "apps/api/geno_api/main.py", "/v1/runtime-alerts"),
+        _check_contains("runtime_alert_notification_worker_exists", "infra/docker-compose.yml", "runtime-alert-notification-worker"),
+        _check_contains("runtime_alert_escalation_worker_exists", "infra/docker-compose.yml", "runtime-alert-escalation-worker"),
+        _check_contains("ops_smoke_script_exists", "scripts/verify_ops_smoke.py", "def build_ops_smoke_report"),
+        _check_contains("ops_make_target_runs_script", "Makefile", "scripts/verify_ops_smoke.py"),
     ]
 
 
@@ -407,8 +700,84 @@ def _gate_backup() -> list[Check]:
         *_gate_checklist(),
         _check_contains("postgres_volume_exists", "infra/docker-compose.yml", "postgres_data"),
         _check_contains("minio_volume_exists", "infra/docker-compose.yml", "minio_data"),
-        _pending("postgres_restore_smoke", "W9-I02 restore smoke script not complete"),
-        _pending("object_store_restore_smoke", "W9-I02 object storage restore smoke not complete"),
+        _check_contains("latest_action_contract_migration_runs", "infra/docker-compose.yml", "0020_action_recommendation_contract.sql"),
+        _check_contains("backup_smoke_script_exists", "scripts/verify_backup_smoke.py", "def build_backup_smoke_report"),
+        _check_contains("backup_script_checks_postgres_manifest", "scripts/verify_backup_smoke.py", "postgres_dump_sha256"),
+        _check_contains("backup_script_checks_object_manifest", "scripts/verify_backup_smoke.py", "object_payload_sha256"),
+        _check_contains("backup_make_target_runs_script", "Makefile", "scripts/verify_backup_smoke.py"),
+    ]
+
+
+def _gate_official_ui_contract() -> list[Check]:
+    customer_module = _read(ROOT / "apps/customer-web/app/portal/[module]/page.tsx")
+    customer_json_dumps = re.findall(r"JSON\.stringify|<pre>", customer_module)
+    checks = [
+        *_gate_checklist(),
+        _check_contains("admin_operations_tab_exists", "apps/admin-web/app/projects/[project_id]/page.tsx", '{ id: "operations", label: "运营工作台" }'),
+        _check_contains("admin_operations_panel_exists", "apps/admin-web/app/projects/[project_id]/page.tsx", "function OperationsPanel"),
+        _check_absent("admin_connector_secret_panel_removed_from_operations", "apps/admin-web/app/projects/[project_id]/page.tsx", "ConnectorSecretPanel"),
+        _check_contains("admin_launch_connector_config_wired", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "ConnectorConfigCard"),
+        _check_contains("admin_launch_connector_test_action_wired", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "testConnectorAction"),
+        _check_contains("admin_launch_connector_deepseek_fallback_wired", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "deepseek-v4-flash"),
+        _check_contains("admin_google_backfill_panel_wired", "apps/admin-web/app/projects/[project_id]/page.tsx", "ManualBackfillPanel"),
+        _check_contains("admin_human_review_panel_wired", "apps/admin-web/app/projects/[project_id]/page.tsx", "HumanReviewPanel"),
+        _check_contains("admin_report_center_panel_wired", "apps/admin-web/app/projects/[project_id]/page.tsx", "ReportCenterPanel"),
+        _check_contains("admin_action_plan_panel_wired", "apps/admin-web/app/projects/[project_id]/page.tsx", "ActionPlanPanel"),
+        _check_contains("admin_brand_assets_panel_wired", "apps/admin-web/app/projects/[project_id]/page.tsx", "BrandAssetsPanel"),
+        _check_contains("admin_quality_ops_panel_wired", "apps/admin-web/app/projects/[project_id]/page.tsx", "QualityOpsPanel"),
+        _check_contains("admin_connector_secret_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "/v1/connectors/runtime/secrets"),
+        _check_contains("admin_manual_backfill_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "/v1/evidence-runs/runtime/manual-backfill"),
+        _check_contains("admin_human_review_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "/v1/human-reviews/runtime"),
+        _check_contains("admin_report_lifecycle_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "/management-events"),
+        _check_contains("admin_report_job_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "/v1/report-export-jobs/runtime"),
+        _check_contains("admin_action_plan_mutation_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "/v1/action-plans/runtime/"),
+        _check_contains("admin_content_draft_review_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "/v1/content-drafts/runtime/"),
+        _check_contains("admin_distribution_backfill_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "/v1/manual-distribution-records/runtime/"),
+        _check_contains("admin_content_review_form_exists", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "ContentDraftReviewForm"),
+        _check_contains("admin_distribution_backfill_form_exists", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "ManualDistributionBackfillForm"),
+        _check_contains("api_content_draft_review_endpoint_exists", "apps/api/geno_api/main.py", "/v1/content-drafts/runtime/{content_draft_id}/review"),
+        _check_contains("api_distribution_backfill_endpoint_exists", "apps/api/geno_api/main.py", "/v1/manual-distribution-records/runtime/{distribution_record_id}/backfill"),
+        _check_contains("api_content_draft_review_test_exists", "tests/test_api_contracts.py", "test_runtime_content_draft_review_endpoint_passes_payload"),
+        _check_contains("api_distribution_backfill_test_exists", "tests/test_api_contracts.py", "test_runtime_manual_distribution_backfill_endpoint_passes_payload"),
+        _check_contains("customer_portal_key_value_grid_exists", "apps/customer-web/app/portal/[module]/page.tsx", "function KeyValueGrid"),
+        _check_contains("customer_portal_record_list_exists", "apps/customer-web/app/portal/[module]/page.tsx", "function RecordList"),
+        _check_contains("customer_portal_structured_traceability_exists", "apps/customer-web/app/portal/[module]/page.tsx", "Traceability Bundle"),
+        _check_contains("customer_portal_structured_action_summary_exists", "apps/customer-web/app/portal/[module]/page.tsx", "行动建议"),
+        _check_contains("customer_portal_handoff_no_pilot_copy", "apps/customer-web/app/portal/[module]/page.tsx", "正式交付包准备状态"),
+        _check_contains("customer_portal_structured_css_exists", "apps/customer-web/app/globals.css", ".kvGrid"),
+    ]
+    if customer_json_dumps:
+        checks.append(_fail("customer_portal_has_no_json_dump", "Customer portal module still contains JSON.stringify or <pre>"))
+    else:
+        checks.append(_pass("customer_portal_has_no_json_dump", "Customer portal module renders structured components"))
+    project_actions = _read(ROOT / "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx")
+    if "后端尚未提供内容审核/Distribution URL 回填 mutation" in project_actions:
+        checks.append(_fail("admin_content_workbench_no_missing_mutation_copy", "Content workbench still claims missing mutation"))
+    else:
+        checks.append(_pass("admin_content_workbench_no_missing_mutation_copy", "Content workbench exposes explicit review and distribution forms"))
+    return checks
+
+
+def _gate_development_board_truth() -> list[Check]:
+    return [
+        *_gate_checklist(),
+        _check_contains("development_board_reads_commit_column", "apps/admin-web/app/development-board/page.tsx", "commit: string"),
+        _check_contains("development_board_has_production_ready_flag", "apps/admin-web/app/development-board/page.tsx", "productionReady: boolean"),
+        _check_contains("development_board_requires_command_evidence_commit", "apps/admin-web/app/development-board/page.tsx", "commit hash 未填写"),
+        _check_contains("development_board_completion_uses_production_ready", "apps/admin-web/app/development-board/page.tsx", "checklist.totals.productionReady"),
+        _check_contains("development_board_shows_blockers", "apps/admin-web/app/development-board/page.tsx", "developmentBlockers"),
+        _check_contains("development_board_warning_metric_exists", "apps/admin-web/app/development-board/page.tsx", "待补正式证据"),
+        _check_contains("development_board_absorbs_retired_dashboard", "apps/admin-web/app/development-board/page.tsx", "18006 独立 Dashboard 不再作为默认入口"),
+        _check_contains("development_board_shows_gate_evidence", "apps/admin-web/app/development-board/page.tsx", "make production-v1-final-gate"),
+        _check_contains("development_board_shows_artifacts", "apps/admin-web/app/development-board/page.tsx", "tmp/frontend-page-click-smoke/latest.json"),
+        _check_contains(
+            "development_board_shows_current_documents",
+            "apps/admin-web/app/development-board/page.tsx",
+            "GEO-Production-v1正式可用性复查报告-2026-07-05.md",
+        ),
+        _check_contains("development_board_production_status_css_exists", "apps/admin-web/app/globals.css", "statusPill-production"),
+        _check_contains("development_board_blocker_css_exists", "apps/admin-web/app/globals.css", ".developmentBlockers"),
+        _check_contains("development_board_doc_panel_css_exists", "apps/admin-web/app/globals.css", ".developmentDocPanel"),
     ]
 
 
@@ -423,14 +792,19 @@ def _gate_production_e2e() -> list[Check]:
         "W4-I01d",
         "W5-I01",
         "W5-I02c",
-        "W6-I01f",
-        "W7-I01",
-        "W7-I02",
     )
     return [
         *_gate_checklist(),
         _check_contains("runtime_e2e_script_exists", "scripts/verify_runtime_e2e.py", "def main()"),
-        *[_pending(f"{item}_not_done", f"{item} is not marked Done in checklist") for item in required],
+        _check_contains("action_plan_p0_action_types_exist", "packages/geno_core/geno_core/action_plan.py", "ACTION_PLAN_P0_ACTION_TYPES"),
+        _check_contains("action_plan_p0_generates_private_actions_test", "tests/test_core_contracts.py", "test_action_plan_p0_minimal_generates_three_deterministic_private_actions"),
+        _check_contains("action_model_customer_visible_default", "packages/geno_core/geno_core/models.py", "customer_visible: bool = False"),
+        _check_contains("action_model_score_contribution_links", "packages/geno_core/geno_core/models.py", "score_contribution_ids: tuple[str, ...] = ()"),
+        _check_contains("action_contract_migration_exists", "infra/db/migrations/up/0020_action_recommendation_contract.sql", "ADD COLUMN IF NOT EXISTS action_type"),
+        _check_contains("action_repository_persists_customer_visibility", "packages/geno_core/geno_core/repository.py", "customer_visible"),
+        _check_contains("retest_p0_delta_test_exists", "tests/test_core_contracts.py", "test_retest_p0_minimal_compares_before_after_delta_for_same_prompt_set"),
+        _check_contains("retest_comparison_audit_exists", "packages/geno_core/geno_core/action_plan.py", "retest_comparison_created"),
+        *[_check_checklist_status(item, {"Done", "Verifying"}) for item in required],
     ]
 
 
@@ -438,11 +812,140 @@ def _gate_enablement_e2e() -> list[Check]:
     return [
         *_gate_checklist(),
         _check_contains("knowledge_module_exists", "packages/geno_core/geno_core/knowledge.py", "build_localized_knowledge_facts"),
+        _check_contains("knowledge_approved_status_contract_exists", "packages/geno_core/geno_core/knowledge.py", "KNOWLEDGE_FACT_APPROVED_STATUS"),
+        _check_contains("knowledge_search_filters_approved_only", "packages/geno_core/geno_core/knowledge.py", "fact.status != KNOWLEDGE_FACT_APPROVED_STATUS"),
+        _check_contains("runtime_knowledge_search_filters_approved_only", "packages/geno_core/geno_core/repository.py", "KNOWLEDGE_FACT_APPROVED_STATUS"),
+        _check_contains("runtime_knowledge_search_api_exists", "apps/api/geno_api/main.py", "def runtime_knowledge_fact_search"),
         _check_contains("content_drafts_model_exists", "packages/geno_core/geno_core/models.py", "class ContentDraft"),
+        _check_contains("content_review_pending_contract_exists", "packages/geno_core/geno_core/knowledge.py", "CONTENT_REVIEW_PENDING_STATUS"),
+        _check_contains("runtime_content_engines_api_exists", "apps/api/geno_api/main.py", "def runtime_content_engines"),
+        _check_contains("runtime_content_export_api_exists", "apps/api/geno_api/main.py", "def runtime_content_engines_export_csv"),
         _check_contains("distribution_model_exists", "packages/geno_core/geno_core/models.py", "class ManualDistributionRecord"),
-        _pending("knowledge_api_complete", "W8-I01 API/UI persistence not complete"),
-        _pending("content_api_complete", "W8-I02 API/UI persistence not complete"),
-        _pending("distribution_api_complete", "W8-I03 API/UI persistence not complete"),
+        _check_contains(
+            "manual_distribution_backfill_contract_exists",
+            "packages/geno_core/geno_core/knowledge.py",
+            "backfill_manual_distribution_record",
+        ),
+        _check_contains(
+            "manual_distribution_no_auto_publish_contract_exists",
+            "packages/geno_core/geno_core/knowledge.py",
+            "no automatic publishing in Production v1",
+        ),
+        _check_contains(
+            "enablement_v1_contract_test_exists",
+            "tests/test_core_contracts.py",
+            "test_enablement_v1_uses_only_approved_facts_and_manual_distribution_backfill",
+        ),
+        _check_contains(
+            "runtime_content_export_api_test_exists",
+            "tests/test_api_contracts.py",
+            "test_runtime_content_engines_export_endpoint_returns_csv_with_hash_headers",
+        ),
+        _check_contains(
+            "runtime_knowledge_search_api_test_exists",
+            "tests/test_api_contracts.py",
+            "test_runtime_knowledge_fact_search_endpoint_passes_query",
+        ),
+        _check_contains("knowledge_application_core_exists", "packages/geno_core/geno_core/knowledge_application.py", "def build_knowledge_application_artifacts"),
+        _check_contains("knowledge_application_api_exists", "apps/api/geno_api/main.py", "/v1/knowledge-applications/runtime/generate"),
+        _check_contains("knowledge_application_admin_panel_exists", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "PromptGenerationPanel"),
+        _check_contains("knowledge_application_api_test_exists", "tests/test_api_contracts.py", "test_runtime_knowledge_application_generate_endpoint_passes_payload"),
+        _check_contains("knowledge_application_web_test_exists", "tests/test_web_console_contracts.py", "test_admin_project_page_surfaces_knowledge_application_workbench"),
+    ]
+
+
+def _gate_knowledge_application() -> list[Check]:
+    return [
+        *_gate_checklist(),
+        _check_contains("knowledge_application_models_exist", "packages/geno_core/geno_core/models.py", "class RuntimeKnowledgeApplicationRequest"),
+        _check_contains("knowledge_documents_table_exists", "infra/db/migrations/up/0021_knowledge_application.sql", "CREATE TABLE IF NOT EXISTS knowledge_documents"),
+        _check_contains("knowledge_document_versions_table_exists", "infra/db/migrations/up/0021_knowledge_application.sql", "CREATE TABLE IF NOT EXISTS knowledge_document_versions"),
+        _check_contains("knowledge_generation_jobs_table_exists", "infra/db/migrations/up/0021_knowledge_application.sql", "CREATE TABLE IF NOT EXISTS knowledge_generation_jobs"),
+        _check_contains("prompt_candidates_table_exists", "infra/db/migrations/up/0021_knowledge_application.sql", "CREATE TABLE IF NOT EXISTS prompt_candidates"),
+        _check_contains("faq_candidates_table_exists", "infra/db/migrations/up/0021_knowledge_application.sql", "CREATE TABLE IF NOT EXISTS faq_answer_candidates"),
+        _check_contains("knowledge_application_migration_runs", "infra/docker-compose.yml", "0021_knowledge_application.sql"),
+        _check_contains("knowledge_url_private_network_guard_exists", "packages/geno_core/geno_core/knowledge_application.py", "blocked_private_network"),
+        _check_contains("knowledge_crawl_adapter_contract_exists", "packages/geno_core/geno_core/knowledge_application.py", "crawl4ai_adapter_v1"),
+        _check_contains("knowledge_haystack_adapter_contract_exists", "packages/geno_core/geno_core/knowledge_application.py", "knowledge_application_haystack_adapter_v1"),
+        _check_contains("knowledge_deepseek_default_model_exists", "packages/geno_core/geno_core/knowledge_application.py", "deepseek-v4-flash"),
+        _check_contains("knowledge_deepseek_extract_adapter_exists", "packages/geno_core/geno_core/knowledge_application.py", "def deepseek_extract_knowledge_facts"),
+        _check_contains("knowledge_deepseek_generate_adapter_exists", "packages/geno_core/geno_core/knowledge_application.py", "def deepseek_generate_knowledge_application"),
+        _check_contains("knowledge_deepseek_key_file_fallback_exists", "packages/geno_core/geno_core/knowledge_application.py", "deepseek_api_key.txt"),
+        _check_contains("knowledge_document_repository_create_exists", "packages/geno_core/geno_core/repository.py", "def create_runtime_knowledge_document"),
+        _check_contains("knowledge_document_repository_crawl_exists", "packages/geno_core/geno_core/repository.py", "def crawl_runtime_knowledge_document"),
+        _check_contains("knowledge_document_repository_extract_exists", "packages/geno_core/geno_core/repository.py", "def extract_runtime_knowledge_document_facts"),
+        _check_contains("knowledge_application_repository_generate_exists", "packages/geno_core/geno_core/repository.py", "def run_runtime_knowledge_application"),
+        _check_contains("prompt_candidate_import_repository_exists", "packages/geno_core/geno_core/repository.py", "def import_runtime_approved_prompt_candidates"),
+        _check_contains("knowledge_document_api_create_exists", "apps/api/geno_api/main.py", "/v1/knowledge-documents/runtime"),
+        _check_contains("knowledge_document_api_crawl_exists", "apps/api/geno_api/main.py", "/crawl"),
+        _check_contains("knowledge_document_api_extract_exists", "apps/api/geno_api/main.py", "/extract-facts"),
+        _check_contains("knowledge_application_api_generate_exists", "apps/api/geno_api/main.py", "/v1/knowledge-applications/runtime/generate"),
+        _check_contains("prompt_candidate_api_import_exists", "apps/api/geno_api/main.py", "/v1/prompt-candidates/runtime/import-approved"),
+        _check_contains("admin_knowledge_panel_wired", "apps/admin-web/app/projects/[project_id]/page.tsx", "KnowledgeDocumentImportPanel"),
+        _check_contains("admin_knowledge_create_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "createKnowledgeDocumentAction"),
+        _check_contains("admin_knowledge_generate_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "generateKnowledgeApplicationAction"),
+        _check_contains("admin_prompt_candidate_import_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "importApprovedPromptCandidatesAction"),
+        _check_contains("knowledge_application_core_test_exists", "tests/test_core_contracts.py", "test_knowledge_application_extracts_reviewable_facts_and_generates_grounded_outputs"),
+        _check_contains("knowledge_deepseek_adapter_test_exists", "tests/test_core_contracts.py", "test_deepseek_knowledge_application_adapter_parses_structured_json_without_leaking_key"),
+        _check_contains("knowledge_application_api_test_exists", "tests/test_api_contracts.py", "test_runtime_knowledge_application_generate_endpoint_passes_payload"),
+        _check_contains("knowledge_application_web_contract_test_exists", "tests/test_web_console_contracts.py", "test_admin_project_page_surfaces_knowledge_application_workbench"),
+        _check_contains("promptfoo_knowledge_eval_script_exists", "scripts/run_promptfoo_knowledge_eval.py", "promptfoo-compatible-local-eval"),
+    ]
+
+
+def _gate_promptfoo_knowledge_eval() -> list[Check]:
+    checks = [
+        *_gate_checklist(),
+        _check_contains("promptfoo_knowledge_eval_script_exists", "scripts/run_promptfoo_knowledge_eval.py", "def build_eval_report"),
+        _check_contains("promptfoo_knowledge_eval_uses_v4_flash", "scripts/run_promptfoo_knowledge_eval.py", "deepseek-v4-flash"),
+        _check_contains("promptfoo_knowledge_eval_checks_approved_fact", "scripts/run_promptfoo_knowledge_eval.py", "uses_approved_fact"),
+        _check_contains("promptfoo_knowledge_eval_checks_pending_fact_exclusion", "scripts/run_promptfoo_knowledge_eval.py", "excludes_pending_review_fact"),
+        _check_contains("promptfoo_knowledge_eval_make_target_runs_script", "Makefile", "scripts/run_promptfoo_knowledge_eval.py"),
+    ]
+    if PROMPTFOO_KNOWLEDGE_EVAL_PATH.exists():
+        try:
+            report = json.loads(PROMPTFOO_KNOWLEDGE_EVAL_PATH.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            checks.append(_fail("promptfoo_knowledge_eval_artifact_valid_json", str(exc)))
+            return checks
+        status = str(report.get("status") or "")
+        model = str(report.get("model") or "")
+        summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+        checks.append(_pass("promptfoo_knowledge_eval_artifact_exists", str(PROMPTFOO_KNOWLEDGE_EVAL_PATH.relative_to(ROOT))))
+        checks.append(
+            _pass("promptfoo_knowledge_eval_artifact_passed", "status=passed")
+            if status == "passed"
+            else _fail("promptfoo_knowledge_eval_artifact_passed", f"status={status}")
+        )
+        checks.append(
+            _pass("promptfoo_knowledge_eval_model_is_v4_flash", model)
+            if model == "deepseek-v4-flash"
+            else _fail("promptfoo_knowledge_eval_model_is_v4_flash", model or "missing model")
+        )
+        checks.append(
+            _pass("promptfoo_knowledge_eval_all_checks_passed", json.dumps(summary, ensure_ascii=False))
+            if int(summary.get("pass") or 0) >= 3 and int(summary.get("fail") or 0) == 0
+            else _fail("promptfoo_knowledge_eval_all_checks_passed", json.dumps(summary, ensure_ascii=False))
+        )
+    else:
+        checks.append(_fail("promptfoo_knowledge_eval_artifact_exists", str(PROMPTFOO_KNOWLEDGE_EVAL_PATH.relative_to(ROOT))))
+    return checks
+
+
+def _gate_frontend_knowledge_click() -> list[Check]:
+    return [
+        *_gate_checklist(),
+        _check_contains("frontend_full_click_script_exists", "scripts/run_frontend_page_click_smoke.py", "def run_smoke"),
+        _check_contains("frontend_click_covers_project_detail", "scripts/run_frontend_page_click_smoke.py", "/projects/"),
+        _check_contains("admin_knowledge_panel_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "知识库看板"),
+        _check_contains("admin_knowledge_import_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "导入 URL / 文本 / CSV"),
+        _check_contains("admin_knowledge_crawl_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "运行网页抓取"),
+        _check_contains("admin_knowledge_extract_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "抽取知识事实"),
+        _check_contains("admin_knowledge_generate_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "生成提问 Prompt 候选"),
+        _check_contains("admin_prompt_candidate_review_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "审核候选 Prompt"),
+        _check_contains("admin_prompt_candidate_import_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "导入已批准 Prompt"),
+        _check_contains("admin_knowledge_css_exists", "apps/admin-web/app/globals.css", ".knowledgePanel"),
+        _check_contains("admin_knowledge_web_contract_test_exists", "tests/test_web_console_contracts.py", "test_admin_project_page_surfaces_knowledge_application_workbench"),
     ]
 
 
@@ -464,11 +967,18 @@ GATES: dict[str, Callable[[], list[Check]]] = {
     "security-smoke": _gate_security,
     "production-v1-e2e": _gate_production_e2e,
     "enablement-v1-e2e": _gate_enablement_e2e,
+    "knowledge-application-smoke": _gate_knowledge_application,
+    "promptfoo-knowledge-eval": _gate_promptfoo_knowledge_eval,
+    "frontend-knowledge-click-smoke": _gate_frontend_knowledge_click,
     "no-fixture-production-smoke": _gate_no_fixture_production,
     "no-secret-leak-smoke": _gate_no_secret_leak,
     "report-traceability-smoke": _gate_report_traceability,
     "customer-access-negative-smoke": _gate_customer_access_negative,
     "connector-real-smoke": _gate_connector_real,
+    "frontend-page-click-smoke": _gate_frontend_page_click,
+    "full-project-lifecycle-smoke": _gate_full_project_lifecycle,
+    "official-ui-contract-smoke": _gate_official_ui_contract,
+    "development-board-truth-smoke": _gate_development_board_truth,
     "ops-smoke": _gate_ops,
     "backup-smoke": _gate_backup,
 }

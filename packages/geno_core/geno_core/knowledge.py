@@ -18,6 +18,10 @@ from geno_core.models import (
 )
 
 KNOWLEDGE_EMBEDDING_MODEL = "fixture-knowledge-embedding-v1"
+KNOWLEDGE_FACT_APPROVED_STATUS = "approved"
+CONTENT_REVIEW_PENDING_STATUS = "pending_human_review"
+MANUAL_DISTRIBUTION_BACKFILL_REQUIRED_STATUS = "awaiting_url_backfill"
+MANUAL_DISTRIBUTION_BACKFILLED_STATUS = "url_backfilled"
 
 
 def _stable_id(kind: str, *parts: object) -> str:
@@ -78,7 +82,7 @@ def build_localized_knowledge_facts(
             city=city,
             evidence_source_id=evidence_source_id,
             confidence=confidence,
-            status="active",
+            status=KNOWLEDGE_FACT_APPROVED_STATUS,
             valid_from=created_at,
             valid_until=None,
         )
@@ -97,7 +101,7 @@ def search_knowledge_facts(
     query_terms = {term.strip().lower() for term in query.replace("/", " ").replace("-", " ").split() if term.strip()}
     scored: list[KnowledgeSearchResult] = []
     for fact in facts:
-        if fact.status != "active":
+        if fact.status != KNOWLEDGE_FACT_APPROVED_STATUS:
             continue
         is_market_match = fact.market_code == market_code
         is_global_fallback = fact.market_code == "GLOBAL"
@@ -166,7 +170,7 @@ def build_content_drafts(
                 source_action_id=action.id,
                 evidence_answer_run_ids=action.evidence_answer_run_ids,
                 draft_markdown=draft_markdown,
-                review_status="pending_human_review",
+                review_status=CONTENT_REVIEW_PENDING_STATUS,
                 created_by=created_by,
                 created_at=created_at,
             )
@@ -215,12 +219,37 @@ def build_manual_distribution_records(
             content_draft_id=draft.id,
             platform="manual",
             target_url="",
-            status="draft_created",
+            status=MANUAL_DISTRIBUTION_BACKFILL_REQUIRED_STATUS,
             submitted_at=None,
             checked_at=None,
-            notes="Manual distribution only records URL/status after human review; no automatic publishing in M7 fixture.",
+            notes="Manual distribution only records URL/status after human review; no automatic publishing in Production v1.",
         )
         for draft in drafts
+    )
+
+
+def backfill_manual_distribution_record(
+    record: ManualDistributionRecord,
+    *,
+    target_url: str,
+    checked_at: datetime | None = None,
+    notes: str | None = None,
+) -> ManualDistributionRecord:
+    url = target_url.strip()
+    if not url:
+        raise ValueError("target_url is required")
+    if not (url.startswith("https://") or url.startswith("http://")):
+        raise ValueError("target_url must be http(s)")
+    return ManualDistributionRecord(
+        id=record.id,
+        project_id=record.project_id,
+        content_draft_id=record.content_draft_id,
+        platform=record.platform,
+        target_url=url,
+        status=MANUAL_DISTRIBUTION_BACKFILLED_STATUS,
+        submitted_at=record.submitted_at or checked_at or datetime.now(UTC),
+        checked_at=checked_at or datetime.now(UTC),
+        notes=notes.strip() if notes else record.notes,
     )
 
 

@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { createProjectAction, type CreateProjectActionState } from "./actions";
+import { statusLabel } from "../status";
 
 const initialState: CreateProjectActionState = { ok: false };
 
@@ -45,6 +46,7 @@ export default function CreateProjectForm() {
   const [modalOpen, setModalOpen] = useState(false);
   const [confirmedSubmit, setConfirmedSubmit] = useState(false);
   const [summary, setSummary] = useState<DraftSummary>(emptySummary);
+  const [competitorRows, setCompetitorRows] = useState(() => [0, 1, 2]);
   const [clientError, setClientError] = useState("");
   const confirmedSubmitRef = useRef(false);
   const submitButtonRef = useRef<HTMLButtonElement>(null);
@@ -70,9 +72,9 @@ export default function CreateProjectForm() {
       ["竞品名称", joinValues(summary.competitors)],
       ["竞品域名", joinValues(summary.competitorDomains)],
       ["客户邮箱", summary.customerEmail || "未填写"],
-      ["项目 owner", summary.ownerUserId || "runtime-console"],
+      ["项目负责人", summary.ownerUserId || "runtime-console"],
       ["采集模式", summary.collectionMode],
-      ["启动状态", summary.launchStatus],
+      ["启动状态", statusLabel(summary.launchStatus)],
       ["调度配置 JSON", summary.schedule || "{}"],
       ["连接器配置 JSON", summary.externalConnectors || "{}"]
     ],
@@ -169,14 +171,40 @@ export default function CreateProjectForm() {
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <span className="stepIndex">3</span>
             <div>
-              <h2>竞品范围</h2>
+            <h2>竞品范围</h2>
               <p className="muted">首期要求 3 到 5 个竞品，减少评分和对比维度漂移。</p>
             </div>
           </div>
         </div>
-        <div className="formGrid">
-          <label><span>竞品名称</span><textarea name="competitors" placeholder={"Competitor A\nCompetitor B\nCompetitor C"} required suppressHydrationWarning /></label>
-          <label><span>竞品域名</span><textarea name="competitor_domains" placeholder={"competitor-a.com\ncompetitor-b.com\ncompetitor-c.com"} suppressHydrationWarning /></label>
+        <div className="competitorInputGrid">
+          {competitorRows.map((row, index) => (
+            <div className="competitorInputRow" key={row}>
+              <label>
+                <span>竞品 {index + 1} 名称</span>
+                <input name="competitor_name" placeholder={`竞品 ${index + 1}`} required={index < 3} suppressHydrationWarning />
+              </label>
+              <label>
+                <span>竞品 {index + 1} 域名</span>
+                <input name="competitor_domain" placeholder={`competitor-${index + 1}.com`} suppressHydrationWarning />
+              </label>
+              <button
+                type="button"
+                className="secondary compactIconButton"
+                disabled={competitorRows.length <= 3}
+                onClick={() => setCompetitorRows((rows) => rows.filter((item) => item !== row))}
+              >
+                删除
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="secondary addCompetitorButton"
+            disabled={competitorRows.length >= 5}
+            onClick={() => setCompetitorRows((rows) => [...rows, Math.max(...rows) + 1])}
+          >
+            添加新竞品
+          </button>
         </div>
       </section>
 
@@ -186,13 +214,13 @@ export default function CreateProjectForm() {
             <span className="stepIndex">4</span>
             <div>
               <h2>客户入口</h2>
-              <p className="muted">客户邮箱用于生成 viewer 邀请；客户首次用邀请链接换取门户 token。</p>
+              <p className="muted">客户邮箱用于生成客户查看邀请；客户首次用邀请链接换取门户 token。</p>
             </div>
           </div>
         </div>
         <div className="formGrid">
           <label><span>客户邮箱</span><input name="customer_email" type="email" placeholder="customer@example.com" required /></label>
-          <label><span>项目 owner</span><input name="owner_user_id" placeholder="runtime-console" /></label>
+          <label><span>项目负责人</span><input name="owner_user_id" placeholder="runtime-console" /></label>
         </div>
       </section>
 
@@ -202,16 +230,23 @@ export default function CreateProjectForm() {
             <span className="stepIndex">5</span>
             <div>
               <h2>采集与外部调用</h2>
-              <p className="muted">涉及外部调用的配置只保存状态和参数，不保存 raw secret。</p>
+              <p className="muted">涉及外部调用的配置只保存状态和参数，不保存原始密钥。</p>
             </div>
           </div>
           <span className="statusPill">Runtime API</span>
         </div>
         <div className="formGrid">
           <label><span>采集模式</span><select name="collection_mode" defaultValue="api"><option value="api">真实 API</option><option value="manual">手工补录</option></select></label>
-          <label><span>启动状态</span><select name="launch_status"><option value="draft">draft</option><option value="ready">ready</option><option value="active">active</option></select></label>
+          <label>
+            <span>启动状态</span>
+            <select name="launch_status" defaultValue="draft">
+              <option value="draft">草稿</option>
+              <option value="ready">就绪</option>
+              <option value="active">运行中</option>
+            </select>
+          </label>
           <label><span>调度配置 JSON</span><textarea name="schedule" placeholder='{"cadence":"weekly"}' suppressHydrationWarning /></label>
-          <label><span>连接器配置 JSON</span><textarea name="external_connectors" placeholder='{"openai":{"status":"configured"}}' suppressHydrationWarning /></label>
+          <label><span>连接器配置 JSON</span><textarea name="external_connectors" placeholder='{"openai":{"mode":"official_api","model":"gpt-4.1-mini"}}' suppressHydrationWarning /></label>
         </div>
         <div className="testRow">
           <span className="muted">提交会调用 POST /v1/projects/runtime/au/dtc-ecommerce。</span>
@@ -294,8 +329,8 @@ function buildSummary(formData: FormData): DraftSummary {
     category: value(formData, "category"),
     brandOfficialDomains: lines(value(formData, "brand_official_domains")),
     brandParentCompany: value(formData, "brand_parent_company"),
-    competitors: lines(value(formData, "competitors")),
-    competitorDomains: lines(value(formData, "competitor_domains")),
+    competitors: formData.getAll("competitor_name").map((item) => String(item || "").trim()).filter(Boolean),
+    competitorDomains: formData.getAll("competitor_domain").map((item) => String(item || "").trim()).filter(Boolean),
     customerEmail: value(formData, "customer_email"),
     ownerUserId: value(formData, "owner_user_id"),
     collectionMode: value(formData, "collection_mode") || "api",

@@ -17,6 +17,19 @@ class CollectorConfigurationError(RuntimeError):
     pass
 
 
+class CollectorProviderError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        payload: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.payload = payload or {}
+
+
 @dataclass(frozen=True)
 class JsonHttpResponse:
     status_code: int
@@ -1049,6 +1062,12 @@ class ThirdPartySerpCollector(GoogleSpikeCollectorShell):
             payload=self.build_payload(prompt=prompt, market=market, city=city, language=language),
             timeout_seconds=self._timeout_seconds,
         )
+        if response.status_code >= 400:
+            raise CollectorProviderError(
+                "Perplexity provider request failed",
+                status_code=response.status_code,
+                payload=response.payload,
+            )
         return self.parse_response(response.payload)
 
 
@@ -1315,15 +1334,33 @@ class PerplexitySonarCollector:
         if not isinstance(message, dict):
             raise ValueError("Perplexity response missing message")
         content = str(message.get("content", ""))
-        citation_urls: list[str] = []
+        citation_items: list[str | dict[str, object]] = []
         raw_citations = payload.get("citations") or payload.get("search_results") or []
         if isinstance(raw_citations, list):
             for item in raw_citations:
                 if isinstance(item, str):
-                    citation_urls.append(item)
+                    citation_items.append(item)
                 elif isinstance(item, dict) and isinstance(item.get("url"), str):
-                    citation_urls.append(str(item["url"]))
-        citations = _citation_dicts(citation_urls)
+                    citation_items.append(
+                        {
+                            "url": str(item["url"]),
+                            "domain": _extract_domain(str(item["url"])),
+                            "position": len(citation_items) + 1,
+                            "title": item.get("title"),
+                            "snippet": item.get("snippet") or item.get("text"),
+                            "source_type": item.get("source_type"),
+                        }
+                    )
+        citations = []
+        for item in citation_items:
+            if isinstance(item, str):
+                citations.extend(_citation_dicts([item]))
+            elif isinstance(item, dict):
+                citations.append(item)
+        citations = [
+            {**citation, "position": index}
+            for index, citation in enumerate(citations, start=1)
+        ]
         snapshot_payload, snapshot_url, snapshot_hash = _api_snapshot_payload(
             collector_backend_id=self.id(),
             payload=payload,
@@ -1361,6 +1398,12 @@ class PerplexitySonarCollector:
             payload=self.build_payload(prompt=prompt, market=market, city=city, language=language),
             timeout_seconds=self._timeout_seconds,
         )
+        if response.status_code >= 400:
+            raise CollectorProviderError(
+                "Perplexity provider request failed",
+                status_code=response.status_code,
+                payload=response.payload,
+            )
         return self.parse_response(response.payload)
 
 
@@ -1469,4 +1512,10 @@ class OpenAIWebSearchCollector:
             payload=self.build_payload(prompt=prompt, market=market, city=city, language=language),
             timeout_seconds=self._timeout_seconds,
         )
+        if response.status_code >= 400:
+            raise CollectorProviderError(
+                "OpenAI provider request failed",
+                status_code=response.status_code,
+                payload=response.payload,
+            )
         return self.parse_response(response.payload)

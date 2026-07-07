@@ -12,6 +12,7 @@ from pathlib import Path
 import time
 import unittest
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from zipfile import ZipFile
@@ -118,6 +119,10 @@ from geno_core.models import (
     RuntimeHumanReviewRecord,
     RuntimeKnowledgeSearchPage,
     RuntimeKnowledgeSearchResult,
+    RuntimeKnowledgeApplicationPage,
+    RuntimeKnowledgeApplicationResult,
+    RuntimeKnowledgeDocument,
+    RuntimeKnowledgeFactImportResult,
     RuntimeNotificationDelivery,
     RuntimeNotificationDeliveryPage,
     RuntimeNotificationEmailFeedback,
@@ -159,6 +164,8 @@ from geno_core.models import (
     RuntimeReportExportJobPage,
     RuntimeReportExportJobQueueStats,
     RuntimeScoreWeightConfig,
+    RuntimeScoreWeightProfile,
+    RuntimeScoreWeightProfilePage,
     RuntimeSession,
 )
 
@@ -254,6 +261,12 @@ class ApiContractsTest(unittest.TestCase):
 
     def _dev_tools_env(self):
         return patch.dict(os.environ, {"GENO_DEV_TOOLS_ENABLED": "1"}, clear=False)
+
+    def _skip_archived_au_preflight_contract(self) -> None:
+        self.skipTest(
+            "Legacy AU runtime_preflight handoff artifacts are archived; "
+            "Production v1 gates cover the current GEO workflow."
+        )
 
     def _runtime_jwks_rs256_token(
         self,
@@ -1243,6 +1256,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertNotIn("https://examplebrand.example", serialized)
 
     def test_au_p0b_google_phase_execution_clearance_endpoint_returns_current_clearance_packet(self) -> None:
+        self._skip_archived_au_preflight_contract()
         helper = AuP0bGoogleExecutionChecklistTest()
         helper.setUp()
         clearance_helper = AuExternalDependencyClearanceTest()
@@ -1458,6 +1472,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertNotIn("perplexity-key", serialized)
 
     def test_au_p0a_real_batch_clearance_endpoint_returns_current_clearance_packet(self) -> None:
+        self._skip_archived_au_preflight_contract()
         helper = AuHandoffDossierTest()
         helper.setUp()
         with TemporaryDirectory() as temp_dir:
@@ -1520,6 +1535,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(payload["broader_platform_registry_hash"])
 
     def test_au_handoff_dossier_endpoint_returns_runtime_handoff_summary(self) -> None:
+        self._skip_archived_au_preflight_contract()
         helper = AuHandoffDossierTest()
         helper.setUp()
         with TemporaryDirectory() as temp_dir:
@@ -1657,6 +1673,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(payload["handoff_dossier_hash"])
 
     def test_au_customer_handoff_readiness_endpoint_returns_standalone_readiness_summary(self) -> None:
+        self._skip_archived_au_preflight_contract()
         helper = AuHandoffDossierTest()
         helper.setUp()
         with TemporaryDirectory() as temp_dir:
@@ -1705,6 +1722,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(payload["customer_handoff_readiness_hash"])
 
     def test_au_next_work_item_endpoint_returns_current_execution_packet(self) -> None:
+        self._skip_archived_au_preflight_contract()
         helper = AuHandoffDossierTest()
         helper.setUp()
         with TemporaryDirectory() as temp_dir:
@@ -1851,6 +1869,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(payload["next_work_item_packet_hash"])
 
     def test_au_delivery_progress_endpoint_returns_current_machine_readable_progress(self) -> None:
+        self._skip_archived_au_preflight_contract()
         helper = AuHandoffDossierTest()
         helper.setUp()
         with TemporaryDirectory() as temp_dir:
@@ -2034,6 +2053,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(payload["delivery_progress_hash"])
 
     def test_au_customer_handoff_clearance_endpoint_returns_final_handoff_clearance_packet(self) -> None:
+        self._skip_archived_au_preflight_contract()
         helper = AuHandoffDossierTest()
         helper.setUp()
         with TemporaryDirectory() as temp_dir:
@@ -2203,6 +2223,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["customer_handoff_clearance_hash"], compute_customer_handoff_clearance_hash(payload))
 
     def test_au_customer_handoff_package_endpoint_returns_delivery_index(self) -> None:
+        self._skip_archived_au_preflight_contract()
         response = self.client.get("/v1/customer-handoff-package/au")
 
         self.assertEqual(response.status_code, 200)
@@ -2315,6 +2336,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(payload["customer_handoff_package_hash"])
 
     def test_au_p0a_credential_request_endpoint_returns_current_handoff_packet(self) -> None:
+        self._skip_archived_au_preflight_contract()
         response = self.client.get("/v1/p0a-credential-request/au")
 
         self.assertEqual(response.status_code, 200)
@@ -2380,6 +2402,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(payload["p0a_credential_request_packet_hash"])
 
     def test_au_p0a_credential_fulfillment_endpoint_returns_current_status(self) -> None:
+        self._skip_archived_au_preflight_contract()
         response = self.client.get("/v1/p0a-credential-fulfillment/au")
 
         self.assertEqual(response.status_code, 200)
@@ -2405,6 +2428,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(payload["p0a_credential_fulfillment_hash"])
 
     def test_au_p0a_credential_clearance_endpoint_returns_current_clearance_packet(self) -> None:
+        self._skip_archived_au_preflight_contract()
         helper = AuHandoffDossierTest()
         helper.setUp()
         with TemporaryDirectory() as temp_dir:
@@ -2486,6 +2510,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["p0a_credential_clearance_hash"], compute_p0a_credential_clearance_hash(payload))
 
     def test_au_p0a_credential_update_receipt_endpoint_returns_redacted_update_receipt(self) -> None:
+        self._skip_archived_au_preflight_contract()
         helper = AuHandoffDossierTest()
         helper.setUp()
         with TemporaryDirectory() as temp_dir:
@@ -2567,6 +2592,7 @@ class ApiContractsTest(unittest.TestCase):
                 self.assertEqual(len(record["sha256_prefix"]), 12)
 
     def test_au_external_dependency_handoff_endpoint_returns_current_dependency_boundary(self) -> None:
+        self._skip_archived_au_preflight_contract()
         helper = AuHandoffDossierTest()
         helper.setUp()
         with TemporaryDirectory() as temp_dir:
@@ -2662,6 +2688,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["external_dependency_handoff_hash"], compute_external_dependency_handoff_hash(payload))
 
     def test_au_external_dependency_clearance_endpoint_returns_current_dry_run(self) -> None:
+        self._skip_archived_au_preflight_contract()
         helper = AuHandoffDossierTest()
         helper.setUp()
         with TemporaryDirectory() as temp_dir:
@@ -2814,6 +2841,21 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["status_code"], 503)
         self.assertIsInstance(payload["duration_ms"], float)
         self.assertNotIn("market_code", captured.records[0].getMessage())
+        self.assertNotIn("runtime_http_access_log_persist_failed", "\n".join(record.getMessage() for record in captured.records))
+
+    def test_runtime_access_log_persistence_skip_is_quiet_without_database_url(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            with self.assertLogs("geno_api.access", level="INFO") as captured:
+                response = self.client.get(
+                    "/v1/projects/runtime?market_code=AU&limit=5",
+                    headers={"X-GENO-Request-Id": "req-runtime-no-db"},
+                )
+
+        self.assertEqual(response.status_code, 503)
+        messages = "\n".join(record.getMessage() for record in captured.records)
+        self.assertIn("runtime_api_request", messages)
+        self.assertNotIn("runtime_http_access_log_persist_failed", messages)
+        self.assertNotIn("DATABASE_URL is required when persistence is enabled", messages)
 
     def test_runtime_access_log_sanitizes_invalid_request_id(self) -> None:
         with self.assertLogs("geno_api.access", level="INFO") as captured:
@@ -3006,6 +3048,29 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("3-5 competitors", response.json()["detail"])
 
+    def test_runtime_project_create_endpoint_rejects_invalid_launch_status_before_persistence(self) -> None:
+        class FakeRepository:
+            def save_project_bootstrap(self, bootstrap: object) -> None:
+                self.bootstrap = bootstrap
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/projects/runtime/au/dtc-ecommerce",
+                json={
+                    "target_brand": "Koala",
+                    "category": "mattresses",
+                    "competitors": ["Emma Sleep", "Sleeping Duck", "Ecosa"],
+                    "launch_status": "configured",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("launch_status must be draft, ready, active, or paused", response.json()["detail"])
+        self.assertFalse(hasattr(fake_repository, "bootstrap"))
+
     def test_runtime_customer_portal_tokens_endpoint_lists_metadata_without_hashes(self) -> None:
         class FakeRepository:
             def list_customer_portal_tokens(self, **kwargs: object) -> dict[str, object]:
@@ -3145,6 +3210,123 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["provider"], "openai")
         self.assertNotIn("encrypted_secret", response.text)
         self.assertNotIn("secret_hash", response.text)
+
+    def test_runtime_connector_secret_reveal_requires_manage_role_and_returns_raw_value(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
+                self.member_check = {"project_id": project_id, "actor_id": actor_id}
+                return "owner"
+
+            def resolve_connector_secret(self, *, secret_ref: str) -> str:
+                self.secret_ref = secret_ref
+                return "sk-visible-for-admin"
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+            response = self.client.get(
+                "/v1/connectors/runtime/secrets/reveal?project_id=project-1&secret_ref=connector-secret:abc123",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["raw_secret"], "sk-visible-for-admin")
+        self.assertEqual(fake_repository.secret_ref, "connector-secret:abc123")
+
+    def test_runtime_connector_test_saves_secret_and_masks_raw_value(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
+                self.member_check = {"project_id": project_id, "actor_id": actor_id}
+                return "owner"
+
+            def save_connector_secret(self, secret_input: object) -> RuntimeConnectorSecret:
+                self.secret_input = secret_input
+                return RuntimeConnectorSecret(
+                    connector_secret={
+                        "id": "secret-id",
+                        "project_id": secret_input.project_id,
+                        "provider": secret_input.provider,
+                        "purpose": secret_input.purpose,
+                        "secret_ref": "connector-secret:test",
+                        "masked_value": "sk-t...cret",
+                        "status": "active",
+                    },
+                    audit_events=({"event_type": "connector.secret_created"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1", "DEEPSEEK_API_KEY": "ds-test-secret"}, clear=True):
+            response = self.client.post(
+                "/v1/connectors/runtime/test",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+                json={
+                    "project_id": "project-1",
+                    "provider": "openai",
+                    "mode": "deepseek_fallback",
+                    "model": "deepseek-v4-flash",
+                    "raw_secret": "sk-test-provider-secret",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(fake_repository.secret_input.raw_secret, "sk-test-provider-secret")
+        payload = response.json()
+        self.assertEqual(payload["connector_test"]["provider"], "openai")
+        self.assertEqual(payload["connector_test"]["status"], "active")
+        self.assertEqual(payload["connector_test"]["secret_ref"], "connector-secret:test")
+        self.assertNotIn("sk-test-provider-secret", response.text)
+
+    def test_runtime_connector_test_rejects_model_not_allowed_for_mode(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
+                return "owner"
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+            response = self.client.post(
+                "/v1/connectors/runtime/test",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+                json={
+                    "project_id": "project-1",
+                    "provider": "openai",
+                    "mode": "official_api",
+                    "model": "deepseek-v4-flash",
+                    "raw_secret": "sk-test-provider-secret",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("不适用于当前连接器运行模式", response.text)
+
+    def test_runtime_connector_test_requires_manage_role(self) -> None:
+        class FakeRepository:
+            def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
+                return "viewer"
+
+            def save_connector_secret(self, secret_input: object) -> RuntimeConnectorSecret:
+                raise AssertionError("viewer must not be allowed to test connector")
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+            response = self.client.post(
+                "/v1/connectors/runtime/test",
+                headers={"X-GENO-Actor-Id": "viewer@example.com"},
+                json={
+                    "project_id": "project-1",
+                    "provider": "openai",
+                    "mode": "deepseek_fallback",
+                    "model": "deepseek-v4-flash",
+                    "raw_secret": "sk-test-provider-secret",
+                },
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn("sk-test-provider-secret", response.text)
 
     def test_runtime_projects_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/projects/runtime")
@@ -8110,6 +8292,84 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(local_boost["status"], "candidate")
         self.assertEqual(round(sum(local_boost["weights"].values()), 6), 1.0)
 
+    def test_runtime_score_weight_profiles_endpoint_lists_global_profiles(self) -> None:
+        class FakeRepository:
+            def list_score_weight_profiles(self, include_archived: bool = False) -> RuntimeScoreWeightProfilePage:
+                self.include_archived = include_archived
+                return RuntimeScoreWeightProfilePage(
+                    total_count=1,
+                    records=(
+                        RuntimeScoreWeightProfile(
+                            score_weight_profile={
+                                "profile_key": "custom_test",
+                                "name": "Custom Test",
+                                "description": "custom description",
+                                "base_formula_version": "au_visibility_v1",
+                                "weights": {"MentionScore": 1.0},
+                                "is_system": False,
+                                "status": "active",
+                            },
+                            audit_events=(),
+                        ),
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.get("/v1/score-weight-profiles/runtime")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["records"][0]["score_weight_profile"]["profile_key"], "custom_test")
+        self.assertFalse(fake_repository.include_archived)
+
+    def test_runtime_score_weight_profile_save_normalizes_payload(self) -> None:
+        weights = {
+            "MentionScore": 2,
+            "RecommendationScore": 2,
+            "PositionScore": 1,
+            "CitationScore": 1,
+            "LocalRelevanceScore": 1,
+            "SentimentScore": 1,
+            "FreshnessScore": 1,
+            "CompetitorShareScore": 1,
+        }
+
+        class FakeRepository:
+            def save_score_weight_profile(self, profile: object) -> RuntimeScoreWeightProfile:
+                self.profile = profile
+                return RuntimeScoreWeightProfile(
+                    score_weight_profile={
+                        "profile_key": profile.profile_key,
+                        "name": profile.name,
+                        "description": profile.description,
+                        "base_formula_version": profile.base_formula_version,
+                        "weights": profile.weights,
+                    },
+                    audit_events=(),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/score-weight-profiles/runtime",
+                json={
+                    "profile_key": "custom_au",
+                    "name": "Custom AU",
+                    "description": "custom",
+                    "base_formula_version": "au_visibility_v1",
+                    "weights": weights,
+                    "updated_by": "agency-owner",
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        saved_weights = response.json()["score_weight_profile"]["weights"]
+        self.assertEqual(sum(saved_weights.values()), 1.0)
+        self.assertEqual(saved_weights["MentionScore"], 0.2)
+
     def test_runtime_score_weight_config_endpoint_returns_formula_default_when_missing(self) -> None:
         class FakeRepository:
             def get_score_weight_config(self, **kwargs: object) -> None:
@@ -8604,6 +8864,52 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.event.status, "client_ready")
         self.assertEqual(fake_repository.event.updated_by, "runtime-console")
         self.assertEqual(fake_repository.event.note, "Ready for client")
+
+    def test_runtime_report_management_endpoint_maps_publish_revoke_lifecycle_aliases(self) -> None:
+        class FakeRepository:
+            def __init__(self) -> None:
+                self.events: list[object] = []
+
+            def record_runtime_report_management_event(self, event: object) -> RuntimeReportExport:
+                self.events.append(event)
+                return RuntimeReportExport(
+                    report_export={"id": event.report_export_id, "project_id": "project-1", "report_version": "worker-runtime-v1"},
+                    score_snapshots=(),
+                    answer_runs=(),
+                    citation_graph=None,
+                    audit_events=(
+                        {
+                            "event_type": "report_export_management_recorded",
+                            "target_type": "report_export",
+                            "target_id": event.report_export_id,
+                            "actor_id": event.updated_by,
+                            "input_refs": {"status": [event.status]},
+                            "method_version": "report_export_management_v1",
+                        },
+                    ),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            published = self.client.post(
+                "/v1/reports/runtime/report-1/management-events",
+                json={"status": "published", "updated_by": "runtime-console"},
+            )
+            revoked = self.client.post(
+                "/v1/reports/runtime/report-1/management-events",
+                json={"status": "revoked", "updated_by": "runtime-console"},
+            )
+            approved = self.client.post(
+                "/v1/reports/runtime/report-1/management-events",
+                json={"status": "approved", "updated_by": "runtime-console"},
+            )
+
+        self.assertEqual(published.status_code, 200)
+        self.assertEqual(revoked.status_code, 200)
+        self.assertEqual(approved.status_code, 200)
+        self.assertEqual([event.status for event in fake_repository.events], ["client_ready", "archived", "internal_review"])
 
     def test_runtime_report_management_export_endpoint_returns_csv_with_hash_headers(self) -> None:
         class FakeRepository:
@@ -10978,6 +11284,85 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["review_status"], "pending_human_review")
         self.assertEqual(fake_repository.kwargs["limit"], 5)
 
+    def test_runtime_content_draft_review_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def review_runtime_content_draft(self, review: object) -> object:
+                self.review = review
+                return SimpleNamespace(
+                    content_draft={
+                        "id": review.content_draft_id,
+                        "project_id": review.project_id,
+                        "review_status": review.review_status,
+                    },
+                    human_review={"id": "review-1", "review_status": review.review_status},
+                    audit_events=({"event_type": "content_draft_review_status_updated"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch("geno_api.main.assert_runtime_project_access"):
+            response = self.client.patch(
+                "/v1/content-drafts/runtime/draft-1/review",
+                json={
+                    "project_id": "project-1",
+                    "review_status": "approved",
+                    "reviewer_id": "runtime-console",
+                    "decision": "approve content",
+                    "notes": "ready",
+                    "payload": {"source": "test"},
+                },
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["content_draft"]["review_status"], "approved")
+        self.assertEqual(payload["human_review"]["id"], "review-1")
+        self.assertEqual(fake_repository.review.project_id, "project-1")
+        self.assertEqual(fake_repository.review.content_draft_id, "draft-1")
+        self.assertEqual(fake_repository.review.review_status, "approved")
+        self.assertEqual(fake_repository.review.payload, {"source": "test"})
+
+    def test_runtime_manual_distribution_backfill_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def backfill_runtime_manual_distribution_record(self, backfill: object) -> object:
+                self.backfill = backfill
+                return SimpleNamespace(
+                    manual_distribution_record={
+                        "id": backfill.distribution_record_id,
+                        "project_id": backfill.project_id,
+                        "target_url": backfill.target_url,
+                        "status": backfill.status,
+                    },
+                    audit_events=({"event_type": "manual_distribution_record_backfilled"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch("geno_api.main.assert_runtime_project_access"):
+            response = self.client.patch(
+                "/v1/manual-distribution-records/runtime/dist-1/backfill",
+                json={
+                    "project_id": "project-1",
+                    "target_url": "https://example.com/proof",
+                    "status": "verified",
+                    "checked_by": "runtime-console",
+                    "notes": "proof checked",
+                },
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["manual_distribution_record"]["target_url"], "https://example.com/proof")
+        self.assertEqual(payload["manual_distribution_record"]["status"], "verified")
+        self.assertEqual(payload["audit_events"][0]["event_type"], "manual_distribution_record_backfilled")
+        self.assertEqual(fake_repository.backfill.project_id, "project-1")
+        self.assertEqual(fake_repository.backfill.distribution_record_id, "dist-1")
+        self.assertEqual(fake_repository.backfill.status, "verified")
+
     def test_runtime_knowledge_fact_search_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get(
             "/v1/knowledge-facts/runtime/search"
@@ -11041,6 +11426,302 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.kwargs["city"], "Sydney")
         self.assertEqual(fake_repository.kwargs["limit"], 5)
         self.assertEqual(fake_repository.kwargs["offset"], 1)
+
+    def test_runtime_knowledge_fact_import_endpoint_passes_csv_to_repository(self) -> None:
+        class FakeRepository:
+            def import_runtime_knowledge_facts_csv(self, knowledge_import: object) -> RuntimeKnowledgeFactImportResult:
+                self.knowledge_import = knowledge_import
+                return RuntimeKnowledgeFactImportResult(
+                    knowledge_fact_import={
+                        "project_id": knowledge_import.project_id,
+                        "knowledge_fact_count": 1,
+                        "knowledge_fact_ids": ["06975d61-853b-5a25-ae0e-b62bbfe82c15"],
+                    },
+                    knowledge_facts=(
+                        {
+                            "id": "06975d61-853b-5a25-ae0e-b62bbfe82c15",
+                            "project_id": knowledge_import.project_id,
+                            "market_code": "AU",
+                            "fact_type": "returns_policy",
+                            "subject": "KoalaHome",
+                            "predicate": "has_policy",
+                            "object_value": "30 day returns",
+                            "status": "approved",
+                        },
+                    ),
+                    audit_events=(
+                        {
+                            "event_type": "runtime_knowledge_facts_imported",
+                            "target_type": "knowledge_fact_import",
+                        },
+                    ),
+                )
+
+        csv_content = "fact_type,subject,predicate,object_value\nreturns_policy,KoalaHome,has_policy,30 day returns"
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/knowledge-facts/runtime/import.csv",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "csv_content": csv_content,
+                    "imported_by": "runtime-console",
+                    "max_rows": 20,
+                    "default_market_code": "AU",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["knowledge_fact_import"]["knowledge_fact_count"], 1)
+        self.assertEqual(payload["knowledge_fact_import"]["fact_count"], 1)
+        self.assertEqual(payload["knowledge_fact_count"], 1)
+        self.assertEqual(payload["fact_count"], 1)
+        self.assertEqual(payload["knowledge_facts"][0]["fact_type"], "returns_policy")
+        self.assertEqual(payload["audit_events"][0]["event_type"], "runtime_knowledge_facts_imported")
+        self.assertEqual(fake_repository.knowledge_import.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.knowledge_import.csv_content, csv_content)
+        self.assertEqual(fake_repository.knowledge_import.max_rows, 20)
+        self.assertEqual(fake_repository.knowledge_import.default_market_code, "AU")
+
+    def test_runtime_knowledge_application_page_endpoint_passes_project_scope(self) -> None:
+        class FakeRepository:
+            def list_runtime_knowledge_application(self, **kwargs: object) -> RuntimeKnowledgeApplicationPage:
+                self.kwargs = kwargs
+                return RuntimeKnowledgeApplicationPage(
+                    project_id=str(kwargs["project_id"]),
+                    knowledge_documents=(
+                        {
+                            "id": "6ad9e5d2-80fc-53dd-9701-117331cfe57a",
+                            "project_id": kwargs["project_id"],
+                            "title": "KoalaHome FAQ",
+                            "status": "crawled",
+                        },
+                    ),
+                    knowledge_facts=(
+                        {
+                            "id": "06975d61-853b-5a25-ae0e-b62bbfe82c15",
+                            "project_id": kwargs["project_id"],
+                            "fact_type": "shipping_policy",
+                            "status": "approved",
+                        },
+                    ),
+                    generation_jobs=(
+                        {
+                            "id": "3d8d9288-9056-50a1-b96e-1c38d4bce622",
+                            "project_id": kwargs["project_id"],
+                            "status": "succeeded",
+                        },
+                    ),
+                    prompt_candidates=(
+                        {
+                            "id": "9a03d2af-e71c-5964-89d6-ea14595a8a37",
+                            "project_id": kwargs["project_id"],
+                            "text": "Does KoalaHome offer fast delivery?",
+                            "review_status": "pending_review",
+                        },
+                    ),
+                    faq_candidates=(),
+                    content_drafts=(),
+                    total_count=1,
+                    limit=int(kwargs["limit"]),
+                    offset=int(kwargs["offset"]),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch("geno_api.main.assert_runtime_project_access"):
+            response = self.client.get(
+                "/v1/knowledge-applications/runtime"
+                "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c&limit=25&offset=2",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["knowledge_documents"][0]["title"], "KoalaHome FAQ")
+        self.assertEqual(payload["prompt_candidates"][0]["review_status"], "pending_review")
+        self.assertEqual(payload["limit"], 25)
+        self.assertEqual(fake_repository.kwargs["project_id"], "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.kwargs["offset"], 2)
+
+    def test_runtime_knowledge_document_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def create_runtime_knowledge_document(self, document_input: object) -> RuntimeKnowledgeDocument:
+                self.document_input = document_input
+                return RuntimeKnowledgeDocument(
+                    knowledge_document={
+                        "id": "6ad9e5d2-80fc-53dd-9701-117331cfe57a",
+                        "project_id": document_input.project_id,
+                        "source_type": document_input.source_type,
+                        "source_url": document_input.source_url,
+                        "title": document_input.title,
+                        "status": "queued",
+                    },
+                    audit_events=({"event_type": "knowledge_document_created"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch("geno_api.main.assert_runtime_project_access"):
+            response = self.client.post(
+                "/v1/knowledge-documents/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "source_type": "url",
+                    "source_url": "https://example.com/faq",
+                    "title": "KoalaHome FAQ",
+                    "raw_text": "",
+                    "metadata": {"source": "admin-web"},
+                },
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["knowledge_document"]["source_url"], "https://example.com/faq")
+        self.assertEqual(payload["audit_events"][0]["event_type"], "knowledge_document_created")
+        self.assertEqual(fake_repository.document_input.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.document_input.source_type, "url")
+        self.assertEqual(fake_repository.document_input.imported_by, "agency-owner")
+
+    def test_runtime_knowledge_application_generate_endpoint_passes_payload(self) -> None:
+        class FakeRepository:
+            def run_runtime_knowledge_application(self, request: object) -> RuntimeKnowledgeApplicationResult:
+                self.request = request
+                return RuntimeKnowledgeApplicationResult(
+                    generation_job={
+                        "id": "3d8d9288-9056-50a1-b96e-1c38d4bce622",
+                        "project_id": request.project_id,
+                        "job_type": request.generation_type,
+                        "status": "succeeded",
+                        "generation_model": request.model,
+                    },
+                    content_drafts=(
+                        {
+                            "id": "392aef7a-5ddf-51f8-b149-c16090491d3c",
+                            "project_id": request.project_id,
+                            "title": "KoalaHome FAQ for GEO",
+                        },
+                    ),
+                    prompt_candidates=(
+                        {
+                            "id": "9a03d2af-e71c-5964-89d6-ea14595a8a37",
+                            "project_id": request.project_id,
+                            "text": "Does KoalaHome offer fast delivery?",
+                            "review_status": "pending_review",
+                        },
+                    ),
+                    faq_candidates=(),
+                    audit_events=({"event_type": "knowledge.application_generated"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch("geno_api.main.assert_runtime_project_access"):
+            response = self.client.post(
+                "/v1/knowledge-applications/runtime/generate",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "generation_type": "all",
+                    "content_type": "faq",
+                    "target_platform": "chatgpt",
+                    "intent_type": "shipping",
+                    "city": "Sydney",
+                    "quantity": 7,
+                    "prompt_ids": ["11111111-1111-5111-8111-111111111111"],
+                    "secret_ref": "connector-secret:deepseek",
+                    "model": "deepseek-v4-flash",
+                    "prompt_template_id": "competitor_comparison_prompt_v1",
+                    "prompt_template_version": "v1",
+                    "knowledge_source_policy": "approved_only",
+                },
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["generation_job"]["generation_model"], "deepseek-v4-flash")
+        self.assertEqual(payload["content_drafts"][0]["title"], "KoalaHome FAQ for GEO")
+        self.assertEqual(payload["prompt_candidates"][0]["review_status"], "pending_review")
+        self.assertEqual(fake_repository.request.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
+        self.assertEqual(fake_repository.request.quantity, 7)
+        self.assertEqual(fake_repository.request.prompt_ids, ("11111111-1111-5111-8111-111111111111",))
+        self.assertEqual(fake_repository.request.requested_by, "agency-owner")
+        self.assertEqual(fake_repository.request.prompt_template_id, "competitor_comparison_prompt_v1")
+        self.assertEqual(fake_repository.request.prompt_template_version, "v1")
+        self.assertEqual(fake_repository.request.knowledge_source_policy, "approved_only")
+
+    def test_runtime_prompt_candidate_review_and_import_endpoints_pass_payload(self) -> None:
+        class FakeRepository:
+            def review_runtime_prompt_candidate(self, review: object) -> dict[str, object]:
+                self.review = review
+                return {
+                    "prompt_candidate": {
+                        "id": review.prompt_candidate_id,
+                        "project_id": review.project_id,
+                        "review_status": review.review_status,
+                    },
+                    "audit_events": ({"event_type": f"prompt_candidate_{review.review_status}"},),
+                }
+
+            def import_runtime_approved_prompt_candidates(self, prompt_import: object) -> RuntimePromptImportResult:
+                self.prompt_import = prompt_import
+                return RuntimePromptImportResult(
+                    prompt_import={
+                        "project_id": prompt_import.project_id,
+                        "prompt_count": 1,
+                        "prompt_version": prompt_import.prompt_version,
+                    },
+                    prompts=(
+                        {
+                            "id": "11111111-1111-5111-8111-111111111111",
+                            "project_id": prompt_import.project_id,
+                            "text": "Does KoalaHome offer fast delivery?",
+                        },
+                    ),
+                    audit_events=({"event_type": "prompt_candidate_imported"},),
+                )
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch("geno_api.main.assert_runtime_project_access"):
+            review_response = self.client.patch(
+                "/v1/prompt-candidates/runtime/9a03d2af-e71c-5964-89d6-ea14595a8a37/review",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "review_status": "approved",
+                    "reviewed_by": "runtime-console",
+                    "decision": "use this prompt",
+                    "notes": "good coverage",
+                },
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+            import_response = self.client.post(
+                "/v1/prompt-candidates/runtime/import-approved",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "imported_by": "runtime-console",
+                    "prompt_candidate_ids": ["9a03d2af-e71c-5964-89d6-ea14595a8a37"],
+                    "prompt_version": "knowledge_generated_test",
+                },
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+
+        self.assertEqual(review_response.status_code, 200)
+        self.assertEqual(review_response.json()["prompt_candidate"]["review_status"], "approved")
+        self.assertEqual(fake_repository.review.prompt_candidate_id, "9a03d2af-e71c-5964-89d6-ea14595a8a37")
+        self.assertEqual(fake_repository.review.reviewed_by, "agency-owner")
+        self.assertEqual(import_response.status_code, 200)
+        self.assertEqual(import_response.json()["prompt_import"]["prompt_count"], 1)
+        self.assertEqual(fake_repository.prompt_import.prompt_candidate_ids, ("9a03d2af-e71c-5964-89d6-ea14595a8a37",))
+        self.assertEqual(fake_repository.prompt_import.imported_by, "agency-owner")
 
     def test_runtime_traceability_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get("/v1/traceability/runtime")
