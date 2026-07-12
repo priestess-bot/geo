@@ -2767,6 +2767,7 @@ def _process_claim(
     job = claim.worker_payload()
     active_guard = guard or repository.lease_guard(claim, lease_seconds=lease_seconds)
     active_guard.start()
+    finalizing_started = claim.claimed_from == "finalizing"
     try:
         descriptor_persisted = False
         with repository.fence_job_commits(claim, lease_seconds=lease_seconds) as fenced:
@@ -2787,6 +2788,7 @@ def _process_claim(
             _test_after_business_failpoint(claim)
             active_guard.raise_if_stopped()
             if claim.claimed_from != "finalizing" and claim.spec.supports_finalizing:
+                finalizing_started = True
                 fenced.begin_finalizing(
                     descriptor={
                         "descriptor_version": "durable_artifact_finalize_v1",
@@ -2852,6 +2854,24 @@ def _process_claim(
                 "reclaimed": claim.reclaimed,
             }
         active_guard.stop()
+        if finalizing_started:
+            repository.connection.rollback()
+            try:
+                repository.expire_job_finalizing(
+                    claim,
+                    error_code=exc.__class__.__name__,
+                    error_message=str(exc),
+                )
+            except LostLeaseError:
+                repository.connection.rollback()
+            return {
+                "table": table,
+                "id": str(claim.job_id),
+                "status": "finalizing",
+                "reclaimed": claim.reclaimed,
+                "descriptor_recovery_required": True,
+                "error": str(exc),
+            }
         try:
             failed = repository.fail_job(
                 claim,
@@ -2872,6 +2892,8 @@ def _process_claim(
             "reclaimed": claim.reclaimed,
             "error": str(exc),
         }
+    finally:
+        active_guard.stop()
 
 
 def run_once(repository: KnowledgePipelineRepository, *, worker_id: str, lease_seconds: int, max_jobs: int) -> dict[str, Any]:
@@ -2880,10 +2902,9 @@ def run_once(repository: KnowledgePipelineRepository, *, worker_id: str, lease_s
     if pipeline:
         processed.append({"table": "knowledge_pipeline_runs", "id": str(pipeline["id"]), "status": "running"})
 
-    # Owner transfer for every table happens before any recovered handler runs.
-    # Guards start immediately so later tables cannot expire while an earlier
-    # recovered handler is executing.
-    recovery_claims: list[tuple[LeaseClaim, LeaseGuard]] = []
+    # Each recovery claim is delivered to its handler immediately. The loop
+    # never owns more than one guard, so an exception cannot strand heartbeat
+    # threads or consume attempts for work whose handler never started.
     recovery_order = repository.next_job_table_order(
         queue_name="knowledge_recovery", worker_id=worker_id
     )
@@ -2896,7 +2917,17 @@ def run_once(repository: KnowledgePipelineRepository, *, worker_id: str, lease_s
         )
         if outcome.claim is not None:
             guard = repository.lease_guard(outcome.claim, lease_seconds=lease_seconds).start()
-            recovery_claims.append((outcome.claim, guard))
+            try:
+                processed.append(
+                    _process_claim(
+                        repository,
+                        outcome.claim,
+                        lease_seconds=lease_seconds,
+                        guard=guard,
+                    )
+                )
+            finally:
+                guard.stop()
         elif outcome.kind != "empty":
             processed.append(
                 {
@@ -2907,15 +2938,6 @@ def run_once(repository: KnowledgePipelineRepository, *, worker_id: str, lease_s
                 }
             )
     repository.record_recovery_pass(worker_id=worker_id, slots_used=len(recovery_order))
-    for claim, guard in recovery_claims:
-        processed.append(
-            _process_claim(
-                repository,
-                claim,
-                lease_seconds=lease_seconds,
-                guard=guard,
-            )
-        )
 
     # Fresh work has a separate budget and a DB-persisted round-robin cursor.
     for _ in range(max(0, max_jobs)):

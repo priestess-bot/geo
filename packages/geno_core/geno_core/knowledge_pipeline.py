@@ -30,6 +30,7 @@ from geno_core.durable_jobs import (
     claim_durable_job,
     complete_durable_job,
     durable_job_spec,
+    expire_durable_finalizing_lease,
     fail_durable_job,
     next_fair_table_order,
     record_recovery_pass,
@@ -3442,6 +3443,21 @@ class KnowledgePipelineRepository:
         self, claim: LeaseClaim, *, descriptor: dict[str, Any]
     ) -> dict[str, Any]:
         return begin_durable_finalizing(self.connection, claim, descriptor=descriptor)
+
+    def expire_job_finalizing(
+        self,
+        claim: LeaseClaim,
+        *,
+        error_code: str,
+        error_message: str,
+    ) -> dict[str, Any]:
+        self.connection.rollback()
+        return expire_durable_finalizing_lease(
+            self.connection,
+            claim,
+            error_code=error_code,
+            error_message=error_message,
+        )
 
     def acknowledge_job_cancel(self, claim: LeaseClaim) -> dict[str, Any]:
         self.connection.rollback()

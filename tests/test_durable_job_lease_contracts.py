@@ -22,6 +22,11 @@ from geno_core.durable_jobs import (
 )
 from workers.knowledge_worker.run_knowledge_pipeline import _knowledge_terminal_status
 from workers.task_queue.tasks import _run_collection_subprocess
+from scripts.verify_durable_job_lease_recovery import (
+    _artifact_output_hash_valid,
+    _artifact_with_output_hash,
+    _source_hash,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -200,6 +205,19 @@ class DurableJobLeaseContractsTest(unittest.TestCase):
             collection_actor.rindex("store.complete"),
         )
         self.assertIn("descriptor_only_recovery", collection_actor)
+        recovery_loop = knowledge_worker[
+            knowledge_worker.index('queue_name="knowledge_recovery"') :
+            knowledge_worker.index('queue_name="knowledge_fresh"')
+        ]
+        self.assertNotIn("recovery_claims", recovery_loop)
+        self.assertLess(recovery_loop.index("_process_claim("), recovery_loop.index("record_recovery_pass"))
+        self.assertIn("finally:\n                guard.stop()", recovery_loop)
+        finalizing_failure = knowledge_worker[
+            knowledge_worker.index("if finalizing_started:") :
+            knowledge_worker.index("repository.fail_job(")
+        ]
+        self.assertIn("repository.expire_job_finalizing", finalizing_failure)
+        self.assertIn('"descriptor_recovery_required": True', finalizing_failure)
 
     def test_production_claim_sql_matches_index_order(self) -> None:
         knowledge = durable_job_spec("knowledge_import_jobs")
@@ -239,6 +257,46 @@ class DurableJobLeaseContractsTest(unittest.TestCase):
         self.assertIn('"satisfied": bool(args.run_actor_kill_tests and failure is None)', verifier)
         self.assertGreaterEqual(verifier.count('"--no-deps"'), 3)
         self.assertIn('"name": "seed_cleanup"', verifier)
+        self.assertIn('"runtime_image_source_binding"', verifier)
+        self.assertIn('"--force-recreate"', verifier)
+        self.assertIn('"tracked_runtime_source_sha256"', verifier)
+        self.assertIn("Knowledge reclaimed handler terminal state", verifier)
+        self.assertIn("INSERT INTO knowledge_pipeline_runs", verifier)
+
+    def test_artifact_hash_covers_runtime_image_source_binding(self) -> None:
+        artifact = _artifact_with_output_hash(
+            {
+                "git_commit": "commit-a",
+                "checks": [
+                    {
+                        "name": "runtime_image_source_binding",
+                        "status": "passed",
+                        "details": {
+                            "services": {
+                                "task-worker-knowledge": {
+                                    "container_id": "container-a",
+                                    "image_content_id": "sha256:image-a",
+                                    "container_source_hash": "source-a",
+                                }
+                            }
+                        },
+                    }
+                ],
+            }
+        )
+        self.assertTrue(_artifact_output_hash_valid(artifact))
+        artifact["checks"][0]["details"]["services"]["task-worker-knowledge"][
+            "image_content_id"
+        ] = "sha256:stale-image"
+        self.assertFalse(_artifact_output_hash_valid(artifact))
+
+    def test_runtime_source_hash_changes_with_tracked_file_content(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "worker.py").write_text("current", encoding="utf-8")
+            current = _source_hash(root, ("worker.py",))
+            (root / "worker.py").write_text("stale", encoding="utf-8")
+            self.assertNotEqual(current, _source_hash(root, ("worker.py",)))
 
     @unittest.skipUnless(os.name == "posix", "process-group cleanup is POSIX-specific")
     def test_collection_timeout_kills_descendant_process_group(self) -> None:

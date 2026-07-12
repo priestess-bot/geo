@@ -486,6 +486,7 @@ def _cas_record(
     sql: str,
     params: Sequence[Any],
     success_metrics: Sequence[str] = (),
+    success_metrics_by_status: Mapping[str, Sequence[str]] | None = None,
     failure_metrics: Sequence[str] = ("lease_lost",),
 ) -> dict[str, Any]:
     from psycopg.rows import dict_row
@@ -502,6 +503,9 @@ def _cas_record(
                 raise LostLeaseError(f"lost durable lease for {spec.table}")
             for metric_name in success_metrics:
                 _increment_metric(cursor, spec, metric_name)
+            if success_metrics_by_status:
+                for metric_name in success_metrics_by_status.get(str(record.get("status")), ()):
+                    _increment_metric(cursor, spec, metric_name)
             connection.commit()
             return record
     except LostLeaseError:
@@ -648,6 +652,7 @@ def fail_durable_job(
             claim.worker_id,
             claim.lease_token,
         ),
+        success_metrics_by_status={"dead_letter": ("dead_lettered",)},
         failure_metrics=("stale_completion", "lease_lost"),
     )
 
@@ -676,6 +681,39 @@ def begin_durable_finalizing(
             claim.lease_token,
         ),
         failure_metrics=("stale_completion", "lease_lost"),
+    )
+
+
+def expire_durable_finalizing_lease(
+    connection: Any,
+    claim: LeaseClaim,
+    *,
+    error_code: str,
+    error_message: str,
+) -> dict[str, Any]:
+    """Stop this owner without downgrading a persisted artifact descriptor."""
+    spec = _trusted_spec(claim.spec)
+    if not spec.supports_finalizing:
+        raise ValueError(f"{spec.table} does not support artifact finalizing")
+    return _cas_record(
+        connection,
+        spec=spec,
+        sql=f"""
+            UPDATE {spec.table}
+            SET lease_expires_at = now(), heartbeat_at = now(),
+                last_error_code = %s, last_error_message = %s, updated_at = now()
+            WHERE id = %s AND status = 'finalizing'
+              AND locked_by = %s AND lease_token = %s
+            RETURNING *
+        """,
+        params=(
+            error_code[:200],
+            error_message[:2000],
+            claim.job_id,
+            claim.worker_id,
+            claim.lease_token,
+        ),
+        failure_metrics=(),
     )
 
 

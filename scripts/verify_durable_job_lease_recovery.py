@@ -12,11 +12,28 @@ from uuid import uuid4
 
 
 ROOT = Path(__file__).resolve().parents[1]
+_BOUND_SERVICES = (
+    "task-worker-runtime",
+    "task-worker-knowledge",
+    "task-recovery-dispatcher",
+)
 
 
 def _stable_hash(value: object) -> str:
     payload = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _artifact_with_output_hash(artifact: dict[str, Any]) -> dict[str, Any]:
+    finalized = dict(artifact)
+    finalized["output_hash"] = _stable_hash(finalized)
+    return finalized
+
+
+def _artifact_output_hash_valid(artifact: dict[str, Any]) -> bool:
+    body = dict(artifact)
+    supplied = str(body.pop("output_hash", ""))
+    return bool(supplied) and supplied == _stable_hash(body)
 
 
 def _run(command: list[str], *, timeout: int = 120) -> subprocess.CompletedProcess[str]:
@@ -45,6 +62,139 @@ def _compose(project: str, *args: str, timeout: int = 180) -> subprocess.Complet
         ],
         timeout=timeout,
     )
+
+
+def _tracked_runtime_source_files() -> tuple[str, ...]:
+    completed = _run(
+        ["git", "ls-files", "packages/geno_core", "apps/api", "workers"]
+    )
+    files = tuple(line.strip() for line in completed.stdout.splitlines() if line.strip())
+    if not files:
+        raise RuntimeError("runtime source manifest is empty")
+    return files
+
+
+def _source_hash(root: Path, relative_paths: tuple[str, ...]) -> str:
+    digest = hashlib.sha256()
+    for relative_path in relative_paths:
+        content = (root / relative_path).read_bytes()
+        digest.update(relative_path.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(hashlib.sha256(content).digest())
+    return digest.hexdigest()
+
+
+def _container_source_hash(container_id: str, relative_paths: tuple[str, ...]) -> str:
+    script = """
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+digest = hashlib.sha256()
+for relative_path in json.loads(sys.argv[1]):
+    content = (Path('/app') / relative_path).read_bytes()
+    digest.update(relative_path.encode('utf-8'))
+    digest.update(b'\\0')
+    digest.update(hashlib.sha256(content).digest())
+print(digest.hexdigest())
+"""
+    completed = _run(
+        ["docker", "exec", container_id, "python", "-c", script, json.dumps(relative_paths)],
+        timeout=120,
+    )
+    source_hash = completed.stdout.strip()
+    if len(source_hash) != 64:
+        raise RuntimeError(f"invalid source hash from container {container_id}")
+    return source_hash
+
+
+def _bound_container_receipt(
+    project: str,
+    service: str,
+    *,
+    commit: str,
+    relative_paths: tuple[str, ...],
+    host_source_hash: str,
+) -> dict[str, Any]:
+    container_id = _compose(project, "ps", "-q", service).stdout.strip()
+    if not container_id:
+        raise RuntimeError(f"{service} has no Compose container")
+    inspected = json.loads(_run(["docker", "inspect", container_id]).stdout)[0]
+    if not bool(inspected.get("State", {}).get("Running")):
+        raise RuntimeError(f"{service} container is not running")
+    container_source_hash = _container_source_hash(container_id, relative_paths)
+    if container_source_hash != host_source_hash:
+        raise RuntimeError(f"{service} image source does not match the current worktree")
+    image_id = str(inspected.get("Image") or "")
+    image = json.loads(_run(["docker", "image", "inspect", image_id]).stdout)[0]
+    environment = {
+        item.split("=", 1)[0]: item.split("=", 1)[1]
+        for item in inspected.get("Config", {}).get("Env", [])
+        if "=" in item
+    }
+    durable_configuration = {
+        key: environment[key]
+        for key in (
+            "GENO_KNOWLEDGE_WORKER_LEASE_SECONDS",
+            "GENO_COLLECTION_JOB_LEASE_SECONDS",
+        )
+        if key in environment
+    }
+    return {
+        "service": service,
+        "container_id": str(inspected.get("Id") or container_id),
+        "image_content_id": image_id,
+        "image_reference": str(inspected.get("Config", {}).get("Image") or ""),
+        "image_repo_digests": list(image.get("RepoDigests") or []),
+        "verified_git_commit": commit,
+        "binding_method": "tracked_runtime_source_sha256",
+        "source_file_count": len(relative_paths),
+        "host_source_hash": host_source_hash,
+        "container_source_hash": container_source_hash,
+        "source_match": True,
+        "durable_configuration": durable_configuration,
+    }
+
+
+def _build_and_bind_runtime_images(
+    project: str,
+    *,
+    commit: str,
+    worktree_dirty: bool,
+    relative_paths: tuple[str, ...],
+    host_source_hash: str,
+) -> dict[str, Any]:
+    if worktree_dirty:
+        raise RuntimeError("actor-kill evidence requires a clean worktree before image build")
+    _compose(project, "build", *_BOUND_SERVICES, timeout=1800)
+    _compose(
+        project,
+        "up",
+        "-d",
+        "--no-deps",
+        "--force-recreate",
+        *_BOUND_SERVICES,
+        timeout=300,
+    )
+    receipts = {
+        service: _bound_container_receipt(
+            project,
+            service,
+            commit=commit,
+            relative_paths=relative_paths,
+            host_source_hash=host_source_hash,
+        )
+        for service in _BOUND_SERVICES
+    }
+    return {
+        "git_commit": commit,
+        "build_mode": "docker_compose_build_then_force_recreate",
+        "built_services": list(_BOUND_SERVICES),
+        "source_file_count": len(relative_paths),
+        "host_source_hash": host_source_hash,
+        "services": receipts,
+    }
 
 
 def _wait_for(
@@ -193,17 +343,33 @@ def _audit_fingerprints(connection: Any, job_id: object) -> list[str]:
     return fingerprints
 
 
-def _knowledge_actor_kill(connection: Any, *, project: str, project_id: object) -> dict[str, Any]:
+def _knowledge_actor_kill(
+    connection: Any,
+    *,
+    project: str,
+    project_id: object,
+    lease_seconds: int,
+) -> dict[str, Any]:
     job_id = uuid4()
+    pipeline_run_id = uuid4()
     with connection.cursor() as cursor:
         cursor.execute(
             """
+            INSERT INTO knowledge_pipeline_runs (
+              id, project_id, run_type, status, entry_source, created_by, started_at
+            ) VALUES (%s, %s, 'full_ingestion', 'running', 'text',
+                      'durable-verifier', now())
+            """,
+            (pipeline_run_id, project_id),
+        )
+        cursor.execute(
+            """
             INSERT INTO knowledge_import_jobs (
-              id, project_id, source_mode, status, requested_by, source_config
-            ) VALUES (%s, %s, 'pasted_text', 'queued', 'durable-verifier',
+              id, project_id, pipeline_run_id, source_mode, status, requested_by, source_config
+            ) VALUES (%s, %s, %s, 'pasted_text', 'queued', 'durable-verifier',
                       '{"text":"durable actor kill source"}'::jsonb)
             """,
-            (job_id, project_id),
+            (job_id, project_id, pipeline_run_id),
         )
     connection.commit()
 
@@ -243,7 +409,12 @@ def _knowledge_actor_kill(connection: Any, *, project: str, project_id: object) 
         connection.commit()
         return row if row and row[1] >= 2 and row[2] >= 1 else None
 
-    transferred = _wait_for("Knowledge expired lease reclaim", reclaimed, timeout_seconds=30)
+    observation_timeout = max(30, (lease_seconds * 2) + 10)
+    _wait_for(
+        "Knowledge expired lease reclaim",
+        reclaimed,
+        timeout_seconds=observation_timeout,
+    )
     fingerprints = _wait_for(
         "Knowledge token rotation audit",
         lambda: (values if len(values := _audit_fingerprints(connection, job_id)) >= 2 else None),
@@ -251,12 +422,40 @@ def _knowledge_actor_kill(connection: Any, *, project: str, project_id: object) 
     )
     if len(set(fingerprints)) < 2:
         raise AssertionError("Knowledge reclaim did not rotate token fingerprint")
+
+    def terminal() -> object:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT status, attempt_count, lease_reclaimed_count, last_reclaimed_from
+                FROM knowledge_import_jobs WHERE id = %s
+                """,
+                (job_id,),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+        return (
+            row
+            if row
+            and row[0] in {"succeeded", "partial_succeeded", "failed", "dead_letter", "cancelled"}
+            else None
+        )
+
+    terminal_row = _wait_for(
+        "Knowledge reclaimed handler terminal state",
+        terminal,
+        timeout_seconds=observation_timeout,
+    )
     return {
         "job_id": str(job_id),
-        "attempt_count": int(transferred[1]),
-        "lease_reclaimed_count": int(transferred[2]),
-        "previous_worker_recorded": bool(transferred[3]),
+        "pipeline_run_id": str(pipeline_run_id),
+        "terminal_status": str(terminal_row[0]),
+        "attempt_count": int(terminal_row[1]),
+        "lease_reclaimed_count": int(terminal_row[2]),
+        "previous_worker_recorded": bool(terminal_row[3]),
         "token_rotated": True,
+        "lease_seconds": lease_seconds,
+        "observation_timeout_seconds": observation_timeout,
     }
 
 
@@ -445,25 +644,50 @@ def main() -> int:
     started_at = datetime.now(UTC)
     commit = _run(["git", "rev-parse", "HEAD"]).stdout.strip()
     worktree_dirty = bool(_run(["git", "status", "--porcelain"]).stdout.strip())
+    source_files = _tracked_runtime_source_files()
+    host_source_hash = _source_hash(ROOT, source_files)
     inputs = {
         "git_commit": commit,
         "compose_project": args.compose_project,
         "actor_kill_tests": args.run_actor_kill_tests,
+        "host_source_hash": host_source_hash,
     }
     checks: list[dict[str, Any]] = []
     connection: Any | None = None
     tenant_id: object | None = None
     failure: BaseException | None = None
+    binding: dict[str, Any] = {}
     try:
+        if args.run_actor_kill_tests:
+            binding = _record(
+                checks,
+                "runtime_image_source_binding",
+                lambda: _build_and_bind_runtime_images(
+                    args.compose_project,
+                    commit=commit,
+                    worktree_dirty=worktree_dirty,
+                    relative_paths=source_files,
+                    host_source_hash=host_source_hash,
+                ),
+            )
         connection = psycopg.connect(args.database_url)
         _record(checks, "schema_and_index_contract", lambda: _schema_check(connection))
         if args.run_actor_kill_tests:
             tenant_id, project_id = _seed_scope(connection)
+            knowledge_configuration = binding["services"]["task-worker-knowledge"][
+                "durable_configuration"
+            ]
+            knowledge_lease_seconds = int(
+                knowledge_configuration["GENO_KNOWLEDGE_WORKER_LEASE_SECONDS"]
+            )
             _record(
                 checks,
                 "knowledge_actor_kill_reclaim",
                 lambda: _knowledge_actor_kill(
-                    connection, project=args.compose_project, project_id=project_id
+                    connection,
+                    project=args.compose_project,
+                    project_id=project_id,
+                    lease_seconds=knowledge_lease_seconds,
                 ),
             )
             _record(
@@ -534,6 +758,7 @@ def main() -> int:
         "environment": {
             "compose_project": args.compose_project,
             "actor_kill_tests": args.run_actor_kill_tests,
+            "host_source_hash": host_source_hash,
         },
         "input_hash": _stable_hash(inputs),
         "status": "failed" if failure else "passed" if args.run_actor_kill_tests else "configuration_only",
@@ -541,6 +766,7 @@ def main() -> int:
         "required_live_checks": {
             "actor_kill_tests": bool(args.run_actor_kill_tests),
             "check_names": [
+                "runtime_image_source_binding",
                 "knowledge_actor_kill_reclaim",
                 "collection_actor_kill_reclaim",
                 "collection_child_kill_is_retry",
@@ -549,7 +775,9 @@ def main() -> int:
         },
         "checks": checks,
     }
-    artifact["output_hash"] = _stable_hash(artifact)
+    artifact = _artifact_with_output_hash(artifact)
+    if not _artifact_output_hash_valid(artifact):
+        raise RuntimeError("durable lease verifier produced an invalid output hash")
     artifact_path = ROOT / args.artifact_path
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text(

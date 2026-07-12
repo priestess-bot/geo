@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from unittest.mock import patch
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -102,6 +103,25 @@ class DurableJobLeasePostgresTest(unittest.TestCase):
             )
         self.connection.commit()
         return job_id
+
+    def _insert_expired_crawl_job(self, *, attempt_count: int = 1) -> tuple[UUID, UUID]:
+        job_id = uuid4()
+        token = uuid4()
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO crawl_jobs (
+                  id, project_id, status, source_url, locked_by, locked_at,
+                  heartbeat_at, lease_token, lease_expires_at, attempt_count, max_attempts
+                ) VALUES (%s, %s, 'running', 'https://example.test/recovery',
+                          'old-crawl-owner', now() - interval '10 seconds',
+                          now() - interval '10 seconds', %s,
+                          now() - interval '1 second', %s, 5)
+                """,
+                (job_id, self.project_id, token, attempt_count),
+            )
+        self.connection.commit()
+        return job_id, token
 
     def test_fresh_claim_heartbeats_and_unexpired_active_is_not_claimed(self) -> None:
         job_id = self._insert_import_job()
@@ -538,6 +558,324 @@ class DurableJobLeasePostgresTest(unittest.TestCase):
                     self.assertFalse(contender)
             with _collection_rate_limit_context() as after_release:
                 self.assertTrue(after_release)
+
+    def test_recovery_second_claim_exception_stops_prior_guard_and_preserves_later_attempt(self) -> None:
+        from geno_core.knowledge_pipeline import KnowledgePipelineRepository
+        from workers.knowledge_worker import run_knowledge_pipeline as knowledge_worker
+
+        import_id = self._insert_import_job(
+            status="running",
+            worker_id="old-import-owner",
+            token=uuid4(),
+            lease_expires_at=datetime.now(UTC) - timedelta(seconds=1),
+            attempt_count=1,
+        )
+        crawl_id, crawl_token = self._insert_expired_crawl_job()
+        repository = KnowledgePipelineRepository(self.connection, database_url=DATABASE_URL)
+        repository.set_maintenance_scope(worker_id="claim-fault-worker")
+        original_claim = repository.claim_job_outcome
+
+        def fail_second_claim(table: str, **kwargs: object):
+            if table == "crawl_jobs":
+                raise RuntimeError("injected second recovery claim failure")
+            return original_claim(table, **kwargs)
+
+        def start_without_terminal(
+            _repository: object,
+            claim: LeaseClaim,
+            *,
+            lease_seconds: int,
+            guard: object,
+        ) -> dict[str, object]:
+            guard.start()
+            return {"id": str(claim.job_id), "status": "simulated_started"}
+
+        with patch.object(
+            repository,
+            "next_job_table_order",
+            return_value=("knowledge_import_jobs", "crawl_jobs"),
+        ), patch.object(
+            repository, "claim_job_outcome", side_effect=fail_second_claim
+        ), patch.object(
+            knowledge_worker, "_process_claim", side_effect=start_without_terminal
+        ):
+            with self.assertRaisesRegex(RuntimeError, "second recovery claim"):
+                knowledge_worker.run_once(
+                    repository,
+                    worker_id="claim-fault-worker",
+                    lease_seconds=3,
+                    max_jobs=0,
+                )
+
+        time.sleep(3.5)
+        reclaimed = claim_durable_job(
+            self.connection,
+            durable_job_spec("knowledge_import_jobs"),
+            worker_id="claim-fault-reaper",
+            lease_seconds=30,
+            mode="recovery",
+        ).claim
+        self.assertIsNotNone(reclaimed)
+        assert reclaimed is not None
+        self.assertEqual(reclaimed.job_id, import_id)
+        self.assertEqual(reclaimed.attempt_count, 3)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT attempt_count, lease_token, locked_by FROM crawl_jobs WHERE id = %s",
+                (crawl_id,),
+            )
+            crawl_attempt, current_token, locked_by = cursor.fetchone()
+        self.connection.commit()
+        self.assertEqual(crawl_attempt, 1)
+        self.assertEqual(current_token, crawl_token)
+        self.assertEqual(locked_by, "old-crawl-owner")
+
+    def test_recovery_process_exception_stops_guard_and_preserves_later_attempt(self) -> None:
+        from geno_core.knowledge_pipeline import KnowledgePipelineRepository
+        from workers.knowledge_worker import run_knowledge_pipeline as knowledge_worker
+
+        import_id = self._insert_import_job(
+            status="running",
+            worker_id="old-process-owner",
+            token=uuid4(),
+            lease_expires_at=datetime.now(UTC) - timedelta(seconds=1),
+            attempt_count=1,
+        )
+        crawl_id, crawl_token = self._insert_expired_crawl_job()
+        repository = KnowledgePipelineRepository(self.connection, database_url=DATABASE_URL)
+        repository.set_maintenance_scope(worker_id="process-fault-worker")
+
+        def crash_after_guard_start(
+            _repository: object,
+            _claim: LeaseClaim,
+            *,
+            lease_seconds: int,
+            guard: object,
+        ) -> dict[str, object]:
+            guard.start()
+            raise RuntimeError("injected recovery process failure")
+
+        with patch.object(
+            repository,
+            "next_job_table_order",
+            return_value=("knowledge_import_jobs", "crawl_jobs"),
+        ), patch.object(
+            knowledge_worker, "_process_claim", side_effect=crash_after_guard_start
+        ):
+            with self.assertRaisesRegex(RuntimeError, "recovery process"):
+                knowledge_worker.run_once(
+                    repository,
+                    worker_id="process-fault-worker",
+                    lease_seconds=3,
+                    max_jobs=0,
+                )
+
+        time.sleep(3.5)
+        reclaimed = claim_durable_job(
+            self.connection,
+            durable_job_spec("knowledge_import_jobs"),
+            worker_id="process-fault-reaper",
+            lease_seconds=30,
+            mode="recovery",
+        ).claim
+        self.assertIsNotNone(reclaimed)
+        assert reclaimed is not None
+        self.assertEqual(reclaimed.job_id, import_id)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT attempt_count, lease_token FROM crawl_jobs WHERE id = %s",
+                (crawl_id,),
+            )
+            crawl_attempt, current_token = cursor.fetchone()
+        self.connection.commit()
+        self.assertEqual(crawl_attempt, 1)
+        self.assertEqual(current_token, crawl_token)
+
+    def test_recovery_pass_record_exception_leaves_no_heartbeat_owner(self) -> None:
+        from geno_core.knowledge_pipeline import KnowledgePipelineRepository
+        from workers.knowledge_worker import run_knowledge_pipeline as knowledge_worker
+
+        import_id = self._insert_import_job(
+            status="running",
+            worker_id="old-record-owner",
+            token=uuid4(),
+            lease_expires_at=datetime.now(UTC) - timedelta(seconds=1),
+            attempt_count=1,
+        )
+        repository = KnowledgePipelineRepository(self.connection, database_url=DATABASE_URL)
+        repository.set_maintenance_scope(worker_id="record-fault-worker")
+
+        def start_without_terminal(
+            _repository: object,
+            claim: LeaseClaim,
+            *,
+            lease_seconds: int,
+            guard: object,
+        ) -> dict[str, object]:
+            guard.start()
+            return {"id": str(claim.job_id), "status": "simulated_started"}
+
+        with patch.object(
+            repository,
+            "next_job_table_order",
+            return_value=("knowledge_import_jobs",),
+        ), patch.object(
+            repository,
+            "record_recovery_pass",
+            side_effect=RuntimeError("injected recovery pass record failure"),
+        ), patch.object(
+            knowledge_worker, "_process_claim", side_effect=start_without_terminal
+        ):
+            with self.assertRaisesRegex(RuntimeError, "pass record"):
+                knowledge_worker.run_once(
+                    repository,
+                    worker_id="record-fault-worker",
+                    lease_seconds=3,
+                    max_jobs=0,
+                )
+
+        time.sleep(3.5)
+        reclaimed = claim_durable_job(
+            self.connection,
+            durable_job_spec("knowledge_import_jobs"),
+            worker_id="record-fault-reaper",
+            lease_seconds=30,
+            mode="recovery",
+        ).claim
+        self.assertIsNotNone(reclaimed)
+        assert reclaimed is not None
+        self.assertEqual(reclaimed.job_id, import_id)
+
+    def test_after_finalizing_failure_recovers_descriptor_without_second_provider_call(self) -> None:
+        from geno_core.knowledge_pipeline import KnowledgePipelineRepository
+        from workers.knowledge_worker import run_knowledge_pipeline as knowledge_worker
+
+        job_id = self._insert_import_job(max_attempts=1)
+        claim = claim_durable_job(
+            self.connection,
+            durable_job_spec("knowledge_import_jobs"),
+            worker_id="finalizing-failpoint-owner",
+            lease_seconds=30,
+            mode="fresh",
+        ).claim
+        assert claim is not None
+
+        class HealthyGuard:
+            cancel_requested = False
+
+            def start(self):
+                return self
+
+            def stop(self) -> None:
+                return None
+
+            def raise_if_stopped(self) -> None:
+                return None
+
+        provider_calls: list[str] = []
+
+        def provider_result(*_args: object) -> dict[str, object]:
+            provider_calls.append("called")
+            return {"artifact_ids": ["stable-finalizing-artifact"]}
+
+        repository = KnowledgePipelineRepository(self.connection, database_url=DATABASE_URL)
+        environment = {
+            "GENO_DEPLOYMENT_ENVIRONMENT": "test",
+            "GENO_DURABLE_JOB_AFTER_FINALIZING_FAILPOINT": "knowledge_import_jobs",
+            "GENO_DURABLE_JOB_AFTER_FINALIZING_FAILPOINT_ATTEMPT": "1",
+            "GENO_DURABLE_JOB_AFTER_FINALIZING_PAUSE_SECONDS": "0",
+        }
+        with patch.dict(os.environ, environment, clear=False), patch.object(
+            knowledge_worker, "_process_job", side_effect=provider_result
+        ):
+            first = knowledge_worker._process_claim(
+                repository,
+                claim,
+                lease_seconds=30,
+                guard=HealthyGuard(),
+            )
+        self.assertEqual(first["status"], "finalizing")
+        self.assertTrue(first["descriptor_recovery_required"])
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT status, finalize_descriptor, lease_expires_at <= now() FROM knowledge_import_jobs WHERE id = %s",
+                (job_id,),
+            )
+            status, descriptor, expired = cursor.fetchone()
+        self.connection.commit()
+        self.assertEqual(status, "finalizing")
+        self.assertTrue(expired)
+        self.assertEqual(descriptor["result"], {"artifact_ids": ["stable-finalizing-artifact"]})
+
+        recovered = claim_durable_job(
+            self.connection,
+            durable_job_spec("knowledge_import_jobs"),
+            worker_id="finalizing-failpoint-reaper",
+            lease_seconds=30,
+            mode="recovery",
+        ).claim
+        assert recovered is not None
+        with patch.object(
+            knowledge_worker,
+            "_process_job",
+            side_effect=AssertionError("descriptor recovery called provider twice"),
+        ):
+            terminal = knowledge_worker._process_claim(
+                repository,
+                recovered,
+                lease_seconds=30,
+                guard=HealthyGuard(),
+            )
+        self.assertEqual(terminal["status"], "succeeded")
+        self.assertEqual(provider_calls, ["called"])
+
+    def test_fail_transition_to_dead_letter_increments_counter_once(self) -> None:
+        job_id = self._insert_import_job(max_attempts=1)
+        claim = claim_durable_job(
+            self.connection,
+            durable_job_spec("knowledge_import_jobs"),
+            worker_id="handler-dlq-owner",
+            lease_seconds=30,
+            mode="fresh",
+        ).claim
+        assert claim is not None
+
+        def dead_letter_count() -> int:
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COALESCE((
+                      SELECT metric_value FROM durable_job_metric_counters
+                      WHERE queue_name = 'knowledge'
+                        AND job_type = 'knowledge_import_jobs'
+                        AND metric_name = 'dead_lettered'
+                    ), 0)
+                    """
+                )
+                value = int(cursor.fetchone()[0])
+            self.connection.commit()
+            return value
+
+        before = dead_letter_count()
+        failed = fail_durable_job(
+            self.connection,
+            claim,
+            error_code="provider_failure",
+            error_message="attempt exhausted",
+            retryable=True,
+        )
+        self.assertEqual(failed["id"], job_id)
+        self.assertEqual(failed["status"], "dead_letter")
+        self.assertEqual(dead_letter_count(), before + 1)
+        with self.assertRaises(LostLeaseError):
+            fail_durable_job(
+                self.connection,
+                claim,
+                error_code="duplicate_failure",
+                error_message="must not count twice",
+                retryable=True,
+            )
+        self.assertEqual(dead_letter_count(), before + 1)
 
     def test_expired_finalizing_keeps_state_and_attempt_exhaustion_dead_letters(self) -> None:
         from geno_core.knowledge_pipeline import KnowledgePipelineRepository

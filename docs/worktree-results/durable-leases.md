@@ -10,9 +10,13 @@ Branch: `codex/durable-leases`
 - Claims use short `FOR UPDATE SKIP LOCKED` transactions, random UUID fencing tokens,
   PostgreSQL time, expired-first recovery, persisted round-robin fairness, cancellation CAS,
   retry/DLQ transitions, and token-fenced heartbeat/commit/fail/finalize operations.
+- Knowledge recovery owns at most one claim/guard at a time and delivers it immediately to its
+  handler. Every exit path stops that guard, so a later claim or pass-recording failure cannot
+  keep an abandoned owner alive or consume attempts for handlers that never started.
 - Knowledge business-result persistence and terminal promotion share one transaction.
   Artifact-producing jobs persist a finalizing descriptor before terminal promotion so a
-  reclaimed finalizer does not repeat the external operation.
+  reclaimed finalizer does not repeat the external operation. Once finalizing starts, ordinary
+  promotion failures expire that lease in place rather than downgrading it to retryable work.
 - Collection runs the blocking collector in an isolated process group. A separate DB
   connection heartbeats the lease; cancellation, timeout, or lost ownership terminates the
   full child process group. PostgreSQL session advisory locks enforce provider concurrency
@@ -20,8 +24,10 @@ Branch: `codex/durable-leases`
 - Runtime Prometheus output includes durable queue depth/age, expired work, terminal counts,
   event counters, recovery cursors/slots, and worker heartbeat age without exposing tokens.
 - `scripts/verify_durable_job_lease_recovery.py` performs schema checks and real Knowledge
-  actor kill, Collection actor kill, and Collection child kill tests. The generated artifact
-  is intentionally ignored at `tmp/durable-job-lease-recovery/latest.json`.
+  actor kill, Collection actor kill, and Collection child kill tests. Before fault injection it
+  builds and force-recreates all three runtime services, then binds their container IDs and image
+  content IDs to a byte-for-byte hash of the current tracked runtime source. The generated
+  artifact is intentionally ignored at `tmp/durable-job-lease-recovery/latest.json`.
 
 ## Integration-Owned Changes
 
@@ -74,7 +80,9 @@ test-durable-leases:
 	GENO_DURABLE_JOB_TEST_DATABASE_URL="$${GENO_DURABLE_JOB_TEST_DATABASE_URL:?required}" \
 		PYTHONPATH=packages/geno_core:apps/api:. python3 -m pytest -q \
 		tests/test_durable_job_lease_contracts.py \
-		tests/test_durable_job_lease_postgres.py
+		tests/test_durable_job_lease_postgres.py \
+		tests/test_api_contracts.py::ApiContractsTest::test_terminal_collection_job_cancel_maps_state_conflict_to_409 \
+		tests/test_api_contracts.py::ApiContractsTest::test_missing_collection_job_cancel_remains_404
 
 smoke-durable-lease-recovery:
 	PYTHONPATH=packages/geno_core:apps/api:. python3 scripts/verify_durable_job_lease_recovery.py \
@@ -93,8 +101,12 @@ Require all of the following from `tmp/durable-job-lease-recovery/latest.json`:
 - `git_commit` equals the commit under test
 - `required_live_checks.actor_kill_tests == true`
 - `required_live_checks.satisfied == true`
-- every check is passed, including `knowledge_actor_kill_reclaim`,
+- `runtime_image_source_binding` records all expected service container/image IDs and every
+  `source_match` is true for the current `git_commit` and `host_source_hash`
+- every check is passed, including `runtime_image_source_binding`, `knowledge_actor_kill_reclaim`,
   `collection_actor_kill_reclaim`, and `collection_child_kill_is_retry`
+- the Knowledge reclaim check reaches a terminal state with an observation timeout covering at
+  least two configured lease windows
 - recomputed `input_hash` and `output_hash` match the artifact contract
 
 ## Rollout And Rollback
@@ -125,8 +137,8 @@ the `queue` and `job_type` labels and must not add job IDs, payloads, or lease t
 
 Executed successfully in the isolated `geo-durable-leases` Compose project:
 
-- 51 contract and existing regression tests, plus 4 subtests;
-- 16 real PostgreSQL contention, fencing, finalizing, metric, and query-plan tests;
+- 53 contract and existing regression tests, plus 4 subtests, and 2 focused API tests;
+- 21 real PostgreSQL contention, fencing, guard-fault, finalizing, metric, and query-plan tests;
 - Ruff, Python `compileall`, and `git diff --check`;
 - a fresh database migration chain through `0029`;
 - `0029` down/up/up migration round trip;
