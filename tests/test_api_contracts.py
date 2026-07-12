@@ -12,6 +12,7 @@ from pathlib import Path
 import time
 import unittest
 from datetime import UTC, datetime
+from decimal import Decimal
 from types import SimpleNamespace
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -8472,7 +8473,10 @@ class ApiContractsTest(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 200)
         saved_weights = response.json()["score_weight_profile"]["weights"]
-        self.assertEqual(sum(saved_weights.values()), 1.0)
+        self.assertEqual(
+            sum((Decimal(str(value)) for value in saved_weights.values()), Decimal("0")),
+            Decimal("1.0"),
+        )
         self.assertEqual(saved_weights["MentionScore"], 0.2)
 
     def test_runtime_score_weight_config_endpoint_returns_formula_default_when_missing(self) -> None:

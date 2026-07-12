@@ -6,6 +6,7 @@ import hmac
 import json
 import unittest
 from dataclasses import FrozenInstanceError, replace
+from decimal import Decimal
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -304,6 +305,15 @@ from geno_core.webhook_signing import (
     sign_runtime_notification_webhook,
     verify_runtime_notification_webhook_signature,
 )
+
+
+def _bound_json_payload(value: object) -> object:
+    """Return the structured value wrapped by psycopg Json/Jsonb parameters."""
+    return getattr(value, "obj", value)
+
+
+def _serialize_bound_json(value: object) -> str:
+    return json.dumps(_bound_json_payload(value), ensure_ascii=False, sort_keys=True, default=str)
 
 
 class RecordingCursor:
@@ -991,7 +1001,7 @@ class CoreContractsTest(unittest.TestCase):
                 "CompetitorShareScore": 1,
             }
         )
-        self.assertEqual(sum(weights.values()), 1.0)
+        self.assertEqual(sum((Decimal(str(value)) for value in weights.values()), Decimal("0")), Decimal("1.0"))
         self.assertTrue(all(round(value, 2) == value for value in weights.values()))
         self.assertEqual(weights["MentionScore"], 0.2)
         self.assertEqual(weights["RecommendationScore"], 0.2)
@@ -8914,7 +8924,7 @@ class CoreContractsTest(unittest.TestCase):
                 )
             )
             audit_insert = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
-            self.assertEqual(audit_insert[9]["status"], [stored_status])
+            self.assertEqual(_bound_json_payload(audit_insert[9])["status"], [stored_status])
             self.assertEqual(connection.commit_count, 1)
 
         invalid_connection = RecordingConnection()
@@ -10109,9 +10119,10 @@ class CoreContractsTest(unittest.TestCase):
         )
         self.assertEqual(delivery_insert_params[4], "slack")
         self.assertIn("https://hooks.slack.com/services/T000/B000/XXX", str(delivery_insert_params[5]))
-        self.assertIn("runtime_notification_delivery_slack_v1", str(delivery_insert_params[8]))
-        self.assertIn("Brand absent in Sydney", str(delivery_insert_params[8]))
-        self.assertIn("blocks", str(delivery_insert_params[8]))
+        delivery_payload = _serialize_bound_json(delivery_insert_params[8])
+        self.assertIn("runtime_notification_delivery_slack_v1", delivery_payload)
+        self.assertIn("Brand absent in Sydney", delivery_payload)
+        self.assertIn("blocks", delivery_payload)
 
     def test_postgres_repository_queues_email_notification_delivery_payload(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)
@@ -10199,29 +10210,30 @@ class CoreContractsTest(unittest.TestCase):
         )
         self.assertEqual(delivery_insert_params[4], "email")
         self.assertEqual(delivery_insert_params[5], "mailto:ops@example.com,muted@example.com")
-        self.assertIn("runtime_notification_delivery_email_v1", str(delivery_insert_params[8]))
-        self.assertIn("ops@example.com", str(delivery_insert_params[8]))
-        self.assertNotIn('"muted@example.com"', str(delivery_insert_params[8]))
-        self.assertIn("[GENO CRITICAL] Brand absent in Sydney", str(delivery_insert_params[8]))
-        self.assertIn(RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION, str(delivery_insert_params[8]))
-        self.assertIn("email_template_hash", str(delivery_insert_params[8]))
-        self.assertIn("email_subject_hash", str(delivery_insert_params[8]))
-        self.assertIn("email_body_hash", str(delivery_insert_params[8]))
-        self.assertIn("List-Unsubscribe", str(delivery_insert_params[8]))
-        self.assertIn("List-Unsubscribe=One-Click", str(delivery_insert_params[8]))
-        self.assertIn("token=", str(delivery_insert_params[8]))
-        self.assertIn("email_preference_token_hash", str(delivery_insert_params[8]))
-        self.assertIn("email_preference_manage_token_hash", str(delivery_insert_params[8]))
-        self.assertIn("email_tokenized_unsubscribe_url_hash", str(delivery_insert_params[8]))
-        self.assertIn("email_tokenized_preferences_url_hash", str(delivery_insert_params[8]))
-        self.assertNotIn("preference-secret", str(delivery_insert_params[8]))
-        self.assertIn("Reply-To", str(delivery_insert_params[8]))
-        self.assertIn("X-GENO-Notification-Preferences-Url", str(delivery_insert_params[8]))
-        self.assertIn("Notification controls:", str(delivery_insert_params[8]))
-        self.assertIn("email_control_hashes", str(delivery_insert_params[8]))
-        self.assertIn("email_reply_to_hash", str(delivery_insert_params[8]))
-        self.assertIn("email_suppressed_recipient_hashes", str(delivery_insert_params[8]))
-        self.assertIn("email_filtered_recipient_count", str(delivery_insert_params[8]))
+        delivery_payload = _serialize_bound_json(delivery_insert_params[8])
+        self.assertIn("runtime_notification_delivery_email_v1", delivery_payload)
+        self.assertIn("ops@example.com", delivery_payload)
+        self.assertNotIn('"muted@example.com"', delivery_payload)
+        self.assertIn("[GENO CRITICAL] Brand absent in Sydney", delivery_payload)
+        self.assertIn(RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION, delivery_payload)
+        self.assertIn("email_template_hash", delivery_payload)
+        self.assertIn("email_subject_hash", delivery_payload)
+        self.assertIn("email_body_hash", delivery_payload)
+        self.assertIn("List-Unsubscribe", delivery_payload)
+        self.assertIn("List-Unsubscribe=One-Click", delivery_payload)
+        self.assertIn("token=", delivery_payload)
+        self.assertIn("email_preference_token_hash", delivery_payload)
+        self.assertIn("email_preference_manage_token_hash", delivery_payload)
+        self.assertIn("email_tokenized_unsubscribe_url_hash", delivery_payload)
+        self.assertIn("email_tokenized_preferences_url_hash", delivery_payload)
+        self.assertNotIn("preference-secret", delivery_payload)
+        self.assertIn("Reply-To", delivery_payload)
+        self.assertIn("X-GENO-Notification-Preferences-Url", delivery_payload)
+        self.assertIn("Notification controls:", delivery_payload)
+        self.assertIn("email_control_hashes", delivery_payload)
+        self.assertIn("email_reply_to_hash", delivery_payload)
+        self.assertIn("email_suppressed_recipient_hashes", delivery_payload)
+        self.assertIn("email_filtered_recipient_count", delivery_payload)
         self.assertIn("email_template_hashes", str(audit_events[0].output_refs))
         self.assertIn("email_subject_hashes", str(audit_events[0].output_refs))
         self.assertIn("email_body_hashes", str(audit_events[0].output_refs))
@@ -10362,9 +10374,10 @@ class CoreContractsTest(unittest.TestCase):
         delivery_insert_params = next(
             params for sql, params in connection.calls if "INSERT INTO runtime_notification_deliveries" in sql
         )
-        self.assertIn("ops@example.com", str(delivery_insert_params[8]))
-        self.assertNotIn('"muted@example.com"', str(delivery_insert_params[8]))
-        self.assertIn(muted_hash, str(delivery_insert_params[8]))
+        delivery_payload = _serialize_bound_json(delivery_insert_params[8])
+        self.assertIn("ops@example.com", delivery_payload)
+        self.assertNotIn('"muted@example.com"', delivery_payload)
+        self.assertIn(muted_hash, delivery_payload)
         self.assertIn(muted_hash, str(audit_events[0].output_refs))
 
     def test_postgres_repository_suppresses_email_notification_delivery_by_project_suppression_hash(self) -> None:
@@ -10441,10 +10454,11 @@ class CoreContractsTest(unittest.TestCase):
         delivery_insert_params = next(
             params for sql, params in connection.calls if "INSERT INTO runtime_notification_deliveries" in sql
         )
-        self.assertIn("ops@example.com", str(delivery_insert_params[8]))
-        self.assertNotIn('"muted@example.com"', str(delivery_insert_params[8]))
-        self.assertIn("email_project_suppression_hashes", str(delivery_insert_params[8]))
-        self.assertIn(muted_hash, str(delivery_insert_params[8]))
+        delivery_payload = _serialize_bound_json(delivery_insert_params[8])
+        self.assertIn("ops@example.com", delivery_payload)
+        self.assertNotIn('"muted@example.com"', delivery_payload)
+        self.assertIn("email_project_suppression_hashes", delivery_payload)
+        self.assertIn(muted_hash, delivery_payload)
         self.assertIn(muted_hash, str(audit_events[0].output_refs))
         self.assertIn("email_project_suppression_hash_count", str(audit_events[0].output_refs))
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
@@ -11311,9 +11325,10 @@ class CoreContractsTest(unittest.TestCase):
         update_params = [
             params for sql, params in connection.calls if "UPDATE runtime_notification_subscriptions SET metadata" in sql
         ][0]
-        self.assertIn(recipient_hash, str(update_params))
-        self.assertIn(feedback_id, str(update_params))
-        self.assertNotIn("ops@example.com", str(update_params))
+        update_payload = _serialize_bound_json(update_params[0])
+        self.assertIn(recipient_hash, update_payload)
+        self.assertIn(feedback_id, update_payload)
+        self.assertNotIn("ops@example.com", update_payload)
 
     def test_postgres_repository_applies_runtime_notification_email_feedback_project_suppression(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)
@@ -11393,9 +11408,10 @@ class CoreContractsTest(unittest.TestCase):
         insert_params = [
             params for sql, params in connection.calls if "INSERT INTO runtime_notification_email_suppressions" in sql
         ][0]
-        self.assertIn(recipient_hash, str(insert_params))
-        self.assertIn(feedback_id, str(insert_params))
-        self.assertIn("runtime_notification_email_feedback_project_suppression", str(insert_params))
+        insert_metadata = _serialize_bound_json(insert_params[5])
+        self.assertEqual(insert_params[1], recipient_hash)
+        self.assertEqual(str(insert_params[4]), feedback_id)
+        self.assertIn("runtime_notification_email_feedback_project_suppression", insert_metadata)
         self.assertNotIn("ops@example.com", str(connection.calls))
         self.assertNotIn("smtp-feedback-1", str(connection.calls))
 
@@ -11677,9 +11693,10 @@ class CoreContractsTest(unittest.TestCase):
         update_params = [
             params for sql, params in connection.calls if "UPDATE runtime_notification_subscriptions SET metadata" in sql
         ][0]
-        self.assertIn(recipient_hash, str(update_params))
-        self.assertIn(token_hash, str(update_params))
-        self.assertNotIn("ops@example.com", str(update_params))
+        update_payload = _serialize_bound_json(update_params[0])
+        self.assertIn(recipient_hash, update_payload)
+        self.assertIn(token_hash, update_payload)
+        self.assertNotIn("ops@example.com", update_payload)
 
     def test_postgres_repository_gets_runtime_notification_email_preference_status(self) -> None:
         now = datetime(2026, 6, 12, tzinfo=UTC)
@@ -11872,9 +11889,10 @@ class CoreContractsTest(unittest.TestCase):
         update_params = [
             params for sql, params in connection.calls if "UPDATE runtime_notification_subscriptions SET metadata" in sql
         ][0]
-        self.assertIn(token_hash, str(update_params))
-        self.assertNotIn(recipient_hash, str(update_params[0]["email_suppressed_recipient_hashes"]))
-        self.assertNotIn("ops@example.com", str(update_params))
+        update_payload = _bound_json_payload(update_params[0])
+        self.assertIn(token_hash, _serialize_bound_json(update_payload))
+        self.assertNotIn(recipient_hash, update_payload["email_suppressed_recipient_hashes"])
+        self.assertNotIn("ops@example.com", _serialize_bound_json(update_payload))
 
     def test_postgres_repository_renders_runtime_report_artifact(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
