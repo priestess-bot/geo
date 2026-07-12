@@ -1,0 +1,24 @@
+gate_id: content-v2-gate-5-production-pilot
+status: pending
+owner: null
+depends_on: [content-v2-gate-4-publication-connectors]
+scope:
+  - atomic_cutover_rehearsal
+  - encrypted_backup_restore
+  - single_au_website_pilot
+  - legacy_removal
+evidence:
+  git_commit: null
+  worktree_dirty: null
+  schema_hash: null
+  openapi_hash: null
+  prompt_system_release_ids: []
+  artifact_hashes: {}
+  test_summary: null
+conclusions:
+  product: {status: pending, approver: null, approved_at: null, notes: null}
+  engineering: {status: pending, approver: null, approved_at: null, notes: null}
+  security: {status: pending, approver: null, approved_at: null, notes: null}
+  delivery: {status: pending, approver: null, approved_at: null, notes: null}
+deviations: []
+decided_at: null
