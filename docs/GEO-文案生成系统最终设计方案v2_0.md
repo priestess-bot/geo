@@ -2,7 +2,8 @@
 
 > - 文档状态：Final Design Baseline，待阶段审批记录签署
 > - 设计日期：2026-07-13
-> - 代码基线：`8220422`
+> - 实施起始基线：`8220422`
+> - 当前已验证实现基线：`de74271`
 > - 数据策略：现有数据均为可删除测试数据，不做历史数据迁移或回填
 > - 实施方式：一个长期项目完成全部范围，使用小批次、阶段 Gate 和最多三个并行 worktree
 > - 首个真实试点：单一 AU 项目，Website，`en-AU + zh-CN`
@@ -123,7 +124,10 @@ infra/db/schema-v2/
   baseline/
     0000_extensions_roles.sql
     0010_tenancy_project_rls.sql
-    0011_auth_sessions_invitations.sql
+    0011_auth_session_context.sql
+    0012_auth_state_guards.sql
+    0013_auth_commands.sql
+    0014_auth_login_provision.sql
     0020_collection_geo_scoring.sql
     0030_knowledge_pipeline.sql
     0040_reports_notifications_integrations.sql
