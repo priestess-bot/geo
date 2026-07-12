@@ -563,6 +563,19 @@ def run_contract_checks() -> dict[str, Any]:
     with STATE.lock:
         assert "admin" in STATE.project_surfaces
 
+    partial_delivery = BrowserClient(ADMIN_PORT)
+    partial_delivery.cookies["GENO_ADMIN_REDEEM_RECOVERY"] = admin.cookies["GENO_ADMIN_REDEEM_RECOVERY"]
+    partial_delivery.cookies["GENO_RUNTIME_SESSION"] = admin.cookies["GENO_RUNTIME_SESSION"]
+    with STATE.lock:
+        auth_me_count = len(STATE.auth_me_cookie_headers)
+    status, headers, body = partial_delivery.request("POST", "/api/auth/session-confirm")
+    assert status == 409, (status, body)
+    assert json_body(body)["code"] == "auth_session_delivery_invalid"
+    assert "GENO_ADMIN_REDEEM_RECOVERY" in partial_delivery.cookies
+    assert not any("GENO_ADMIN_REDEEM_RECOVERY=" in value for value in headers.get("set-cookie", []))
+    with STATE.lock:
+        assert len(STATE.auth_me_cookie_headers) == auth_me_count
+
     status, confirm_headers, body = admin.request("POST", "/api/auth/session-confirm")
     assert status == 200, (status, body)
     assert json_body(body)["session"]["scope_version"] == "runtime_session_scope_v2"
@@ -650,7 +663,7 @@ def run_contract_checks() -> dict[str, Any]:
         assert ("customer", 200, 200) in STATE.project_queries
 
     return {
-        "checks": 32,
+        "checks": 36,
         "admin_surface_projection": True,
         "customer_surface_projection": True,
         "stable_replay_key": analyst_keys[0],

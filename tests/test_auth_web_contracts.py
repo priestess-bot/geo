@@ -157,6 +157,8 @@ if (recovery.validateRecoveryConfiguration().secureCookies !== true) throw new E
         for app in (ADMIN, CUSTOMER):
             confirm = source(app / "api/auth/session-confirm/route.ts")
             self.assertIn('new URL("/v1/auth/me"', confirm)
+            self.assertIn("if (!sessionToken || !csrfToken)", confirm)
+            self.assertIn('code: "auth_session_delivery_invalid"', confirm)
             self.assertIn("isRuntimeAuthMeResponse(payload)", confirm)
             self.assertNotIn('request.headers.get("cookie")', confirm)
             self.assertIn("GENO_RUNTIME_SESSION=", confirm)

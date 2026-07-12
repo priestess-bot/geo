@@ -19,12 +19,12 @@ const SURFACE = "admin" as const;
 export async function POST(request: NextRequest) {
   const sessionToken = request.cookies.get("GENO_RUNTIME_SESSION")?.value || "";
   const csrfToken = request.cookies.get("GENO_CSRF_TOKEN")?.value || "";
-  if (!sessionToken) {
+  if (!sessionToken || !csrfToken) {
     return errorResponse({
-      code: "auth_request_failed",
-      detail: "An authenticated session is required.",
+      code: "auth_session_delivery_invalid",
+      detail: "Complete session and CSRF cookies are required before confirmation.",
       correlation_id: randomUUID()
-    }, 401);
+    }, 409);
   }
   try {
     validateRecoveryConfiguration();
