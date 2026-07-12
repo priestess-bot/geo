@@ -12,6 +12,11 @@ from urllib.parse import urlparse
 
 from geno_core.object_store import RequestFn, S3CompatibleObjectStore
 from geno_core.repository import DbConnection, PostgresEvidenceRepository
+from geno_core.schema_compatibility import (
+    SchemaCompatibilityConnection,
+    SchemaCompatibilityResult,
+    check_schema_compatibility_from_env,
+)
 
 
 class RuntimePersistenceError(RuntimeError):
@@ -124,6 +129,15 @@ def connect_postgres_from_env(
             "psycopg is required for PostgreSQL persistence; install apps/api/requirements.txt"
         ) from exc
     return psycopg.connect(database_url)
+
+
+def validate_runtime_schema_compatibility(
+    env: Mapping[str, str] | None = None,
+    *,
+    connector: Callable[[str], SchemaCompatibilityConnection] | None = None,
+) -> SchemaCompatibilityResult:
+    """Shared API/worker startup boundary for the opt-in Schema v2 check."""
+    return check_schema_compatibility_from_env(env, connector=connector)
 
 
 class _PooledDbConnection:

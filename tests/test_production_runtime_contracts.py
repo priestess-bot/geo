@@ -6,7 +6,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from geno_api.main import validate_production_runtime_security
+from geno_api.main import validate_production_runtime_security, validate_production_startup
 from geno_core.report import render_markdown_pdf
 from geno_core.task_queue import dispatch_background_task
 
@@ -34,6 +34,15 @@ def safe_production_environment() -> dict[str, str]:
 
 
 class ProductionRuntimeContractsTest(unittest.TestCase):
+    def test_api_startup_uses_the_shared_schema_compatibility_boundary(self) -> None:
+        with patch("geno_api.main.validate_production_runtime_security") as security_check, patch(
+            "geno_api.main.validate_runtime_schema_compatibility"
+        ) as schema_check:
+            validate_production_startup()
+
+        security_check.assert_called_once_with()
+        schema_check.assert_called_once_with()
+
     def test_safe_production_runtime_configuration_passes(self) -> None:
         with patch.dict(os.environ, safe_production_environment(), clear=True):
             validate_production_runtime_security()
