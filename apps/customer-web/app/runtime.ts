@@ -6,6 +6,7 @@ import {
   type AuthErrorEnvelope,
   type RuntimeAuthMeResponse
 } from "./_auth/contracts";
+import { resolveCounterpartPortalUrl } from "./_auth/portalUrl";
 
 type RuntimeRequestOptions = {
   method?: string;
@@ -13,6 +14,7 @@ type RuntimeRequestOptions = {
   query?: Record<string, string | number | undefined | null>;
   cache?: RequestCache;
   actorId?: string;
+  includeCsrfProof?: boolean;
 };
 
 export type RuntimePage<T = Record<string, unknown>> = {
@@ -84,7 +86,13 @@ export function apiBase(): string {
 }
 
 export function adminWebBaseUrl(): string {
-  return process.env.ADMIN_WEB_BASE_URL || process.env.NEXT_PUBLIC_ADMIN_WEB_BASE_URL || "http://localhost:3001/login";
+  return resolveCounterpartPortalUrl({
+    configuredValue: process.env.ADMIN_WEB_BASE_URL,
+    developmentFallback: "http://localhost:3001/login",
+    environmentName: "ADMIN_WEB_BASE_URL",
+    nodeEnv: process.env.NODE_ENV,
+    publicDevelopmentValue: process.env.NEXT_PUBLIC_ADMIN_WEB_BASE_URL
+  });
 }
 
 export async function hasRuntimeSession(): Promise<boolean> {
@@ -92,14 +100,18 @@ export async function hasRuntimeSession(): Promise<boolean> {
   return Boolean(cookieStore.get("GENO_RUNTIME_SESSION")?.value);
 }
 
-async function actorHeaders(actorId?: string, extra?: HeadersInit): Promise<HeadersInit> {
+async function actorHeaders(
+  actorId?: string,
+  extra?: HeadersInit,
+  includeCsrfProof = true
+): Promise<HeadersInit> {
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get("GENO_RUNTIME_SESSION")?.value || "";
   const csrfToken = cookieStore.get("GENO_CSRF_TOKEN")?.value || "";
   if (sessionToken) {
     return {
       "X-GENO-Session-Token": sessionToken,
-      ...(csrfToken
+      ...(csrfToken && includeCsrfProof
         ? {
             "X-GENO-CSRF-Token": csrfToken,
             Cookie: `GENO_CSRF_TOKEN=${encodeURIComponent(csrfToken)}`
@@ -130,8 +142,8 @@ function runtimeUrl(path: string, query?: RuntimeRequestOptions["query"]): strin
 export async function runtimeRequest<T>(path: string, options: RuntimeRequestOptions = {}): Promise<RuntimeResult<T>> {
   try {
     const headers = options.body
-      ? await actorHeaders(options.actorId, { "Content-Type": "application/json" })
-      : await actorHeaders(options.actorId);
+      ? await actorHeaders(options.actorId, { "Content-Type": "application/json" }, options.includeCsrfProof)
+      : await actorHeaders(options.actorId, undefined, options.includeCsrfProof);
     const response = await fetch(runtimeUrl(path, options.query), {
       method: options.method || "GET",
       headers,
@@ -161,7 +173,9 @@ export async function runtimeRequest<T>(path: string, options: RuntimeRequestOpt
 }
 
 export async function loadSessionPortal(projectId?: string): Promise<SessionPortalResponse> {
-  const authResponse = await runtimeRequest<RuntimeAuthMeResponse>("/v1/auth/me");
+  const authResponse = await runtimeRequest<RuntimeAuthMeResponse>("/v1/auth/me", {
+    includeCsrfProof: false
+  });
   if (!authResponse.ok) {
     return {
       authenticated: false,

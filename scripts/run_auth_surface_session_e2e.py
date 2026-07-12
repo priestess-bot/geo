@@ -100,6 +100,13 @@ class MockState:
                 "viewer-browser": Invitation("viewer-browser-secret", "client_viewer", ("customer",), "viewer"),
                 "viewer-mobile": Invitation("viewer-mobile-secret", "client_viewer", ("customer",), "viewer"),
                 "many-id": Invitation("many-secret", "client_viewer", ("customer",), "many"),
+                "invalid-scope-id": Invitation("invalid-scope-secret", "analyst", ("admin",), "mixed"),
+                "race-admin-id": Invitation("race-admin-secret", "analyst", ("admin",), "mixed"),
+                "race-customer-id": Invitation("race-customer-secret", "client_viewer", ("customer",), "viewer"),
+                "rate-redeem-id": Invitation("rate-redeem-secret", "analyst", ("admin",), "mixed"),
+                "rate-redeem-customer-id": Invitation(
+                    "rate-redeem-customer-secret", "client_viewer", ("customer",), "viewer"
+                ),
             }
             self.ledgers.clear()
             self.sessions.clear()
@@ -133,6 +140,7 @@ class MockAuthApiHandler(BaseHTTPRequestHandler):
         payload: dict[str, Any],
         *,
         cookies: tuple[str, ...] = (),
+        headers: dict[str, str] | None = None,
     ) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
@@ -141,6 +149,8 @@ class MockAuthApiHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         for cookie in cookies:
             self.send_header("Set-Cookie", cookie)
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -180,6 +190,17 @@ class MockAuthApiHandler(BaseHTTPRequestHandler):
         surface = str(payload.get("requested_surface") or "")
         with STATE.lock:
             STATE.preflight_requests.append({"invitation_id": invitation_id, "surface": surface})
+            if invitation_id == "rate-preflight-id":
+                self._send_json(
+                    429,
+                    {
+                        "code": "auth_preflight_rate_limited",
+                        "detail": "Preflight rate limit reached.",
+                        "correlation_id": "preflight-rate-limited",
+                    },
+                    headers={"Retry-After": "999999"},
+                )
+                return
             invitation = STATE.invitations.get(invitation_id)
             if invitation_id == "stale-id" and invitation and invitation.token == token:
                 compatibility = "policy_stale"
@@ -217,6 +238,17 @@ class MockAuthApiHandler(BaseHTTPRequestHandler):
         key = str(self.headers.get("Idempotency-Key") or "")
         with STATE.lock:
             STATE.redeem_requests.append({"invitation_id": invitation_id, "surface": surface, "key": key})
+            if invitation_id in {"rate-redeem-id", "rate-redeem-customer-id"}:
+                self._send_json(
+                    429,
+                    {
+                        "code": "auth_preflight_rate_limited",
+                        "detail": "Redemption rate limit reached.",
+                        "correlation_id": "redeem-rate-limited",
+                    },
+                    headers={"Retry-After": "120"},
+                )
+                return
             invitation = STATE.invitations.get(invitation_id)
             if not invitation or invitation.token != token:
                 self._send_json(404, {"code": "invitation_invalid", "detail": "Invalid invitation", "correlation_id": "redeem-invalid"})
@@ -265,10 +297,13 @@ class MockAuthApiHandler(BaseHTTPRequestHandler):
 
     def _auth_me(self) -> None:
         session_token = str(self.headers.get("X-GENO-Session-Token") or "")
+        csrf_token = str(self.headers.get("X-GENO-CSRF-Token") or "")
+        cookie_header = str(self.headers.get("Cookie") or "")
+        csrf_proof = bool(csrf_token and f"GENO_CSRF_TOKEN={csrf_token}" in cookie_header.split("; "))
         with STATE.lock:
             session = STATE.sessions.get(session_token)
-            STATE.auth_me_cookie_headers.append(str(self.headers.get("Cookie") or ""))
-            if session:
+            STATE.auth_me_cookie_headers.append(cookie_header)
+            if session and csrf_proof:
                 STATE.confirmed_sessions.append(session_token)
         if not session:
             self._send_json(401, {"code": "auth_request_failed", "detail": "Session required", "correlation_id": "auth-me-401"})
@@ -281,6 +316,12 @@ class MockAuthApiHandler(BaseHTTPRequestHandler):
         project_id = (query.get("project_id") or [""])[0]
         limit = max(1, min(200, int((query.get("limit") or ["50"])[0])))
         offset = max(0, int((query.get("offset") or ["0"])[0]))
+        if project_id == "forbidden-project":
+            self._send_json(403, {"code": "forbidden", "detail": "hidden", "correlation_id": "project-403"})
+            return
+        if project_id == "failed-project":
+            self._send_json(503, {"code": "unavailable", "detail": "hidden", "correlation_id": "project-503"})
+            return
         with STATE.lock:
             session = STATE.sessions.get(session_token)
             STATE.project_surfaces.append(surface)
@@ -451,10 +492,140 @@ def location_path(headers: dict[str, list[str]]) -> str:
     return parsed.path + (f"?{parsed.query}" if parsed.query else "")
 
 
+def exercise_concurrent_prepare_recovery(
+    *,
+    port: int,
+    surface: str,
+    invitation_id: str,
+    invite_token: str,
+    recovery_cookie_name: str,
+    landing_path: str,
+) -> str:
+    first_tab = BrowserClient(port)
+    second_tab = BrowserClient(port)
+    payload = {"invitation_id": invitation_id, "invite_token": invite_token}
+
+    status, _, body = first_tab.request("POST", "/api/auth/redeem-prepare", payload)
+    assert status == 200 and json_body(body)["prepared"] is True, (status, body)
+    status, _, body = second_tab.request("POST", "/api/auth/redeem-prepare", payload)
+    assert status == 200 and json_body(body)["prepared"] is True, (status, body)
+    first_recovery = first_tab.cookies[recovery_cookie_name]
+    second_recovery = second_tab.cookies[recovery_cookie_name]
+    assert first_recovery != second_recovery
+
+    status, lost_headers, _ = first_tab.request(
+        "POST", "/api/auth/login", payload, apply_cookies=False
+    )
+    assert status == 303 and location_path(lost_headers) == landing_path, lost_headers
+    lost_delivery = session_cookie_headers(lost_headers)
+    assert len(lost_delivery) == 2, lost_headers
+
+    old_session = f"old-{surface}-session"
+    old_csrf = f"old-{surface}-csrf"
+    with STATE.lock:
+        STATE.sessions[old_session] = scope_for("mixed" if surface == "admin" else "viewer")
+        auth_me_count = len(STATE.auth_me_cookie_headers)
+    second_tab.cookies["GENO_RUNTIME_SESSION"] = old_session
+    second_tab.cookies["GENO_CSRF_TOKEN"] = old_csrf
+
+    status, confirm_headers, body = second_tab.request("POST", "/api/auth/session-confirm")
+    assert status == 202, (status, body)
+    assert json_body(body)["status"] == "delivery_not_received"
+    assert second_tab.cookies[recovery_cookie_name] == second_recovery
+    assert not confirm_headers.get("set-cookie")
+    with STATE.lock:
+        assert len(STATE.auth_me_cookie_headers) == auth_me_count
+
+    status, replay_headers, _ = second_tab.request("POST", "/api/auth/login", payload)
+    assert status == 303 and location_path(replay_headers) == landing_path, replay_headers
+    assert session_cookie_headers(replay_headers) == lost_delivery
+    assert second_tab.cookies[recovery_cookie_name] != second_recovery
+    with STATE.lock:
+        keys = [
+            entry["key"]
+            for entry in STATE.redeem_requests
+            if entry["invitation_id"] == invitation_id
+        ]
+    assert len(keys) == 2 and len(set(keys)) == 1
+
+    status, confirm_headers, body = second_tab.request("POST", "/api/auth/session-confirm")
+    assert status == 200, (status, body)
+    assert json_body(body)["session"]["scope_version"] == "runtime_session_scope_v2"
+    assert recovery_cookie_name not in second_tab.cookies
+    assert any(
+        value.startswith(f"{recovery_cookie_name}=") and "Max-Age=0" in value
+        for value in confirm_headers.get("set-cookie", [])
+    )
+    return keys[0]
+
+
 def run_contract_checks() -> dict[str, Any]:
     STATE.reset()
     admin = BrowserClient(ADMIN_PORT)
     customer = BrowserClient(CUSTOMER_PORT)
+
+    legacy_sentinel = "LEGACY_TOKEN_SENTINEL"
+    status, headers, _ = admin.request(
+        "GET",
+        f"/login?invitation_id=legacy-admin&invite_token={legacy_sentinel}&untrusted=1",
+    )
+    assert status == 303 and location_path(headers) == "/login?invitation_id=legacy-admin", headers
+    assert headers.get("referrer-policy") == ["no-referrer"]
+    status, headers, body = admin.request("GET", location_path(headers))
+    assert status == 200 and legacy_sentinel not in body.decode("utf-8")
+    assert headers.get("referrer-policy") == ["no-referrer"]
+    assert "单独提供的一次性邀请 code" in body.decode("utf-8")
+
+    status, headers, _ = customer.request(
+        "GET",
+        f"/?invitation_id=legacy-customer&invite_token={legacy_sentinel}&project_id=project-b&untrusted=1",
+    )
+    assert status == 303 and location_path(headers) == "/?invitation_id=legacy-customer", headers
+    assert headers.get("referrer-policy") == ["no-referrer"]
+    status, headers, body = customer.request("GET", location_path(headers))
+    assert status == 200 and legacy_sentinel not in body.decode("utf-8")
+    assert headers.get("referrer-policy") == ["no-referrer"]
+    assert "单独提供的一次性邀请 code" in body.decode("utf-8")
+
+    for rate_client in (admin, customer):
+        status, headers, body = rate_client.request(
+            "POST",
+            "/api/auth/redeem-prepare",
+            {"invitation_id": "rate-preflight-id", "invite_token": "rate-preflight-secret"},
+        )
+        assert status == 429, (status, body)
+        assert json_body(body)["code"] == "auth_preflight_rate_limited"
+        assert headers.get("retry-after") == ["3600"]
+
+    for rate_client, invitation_id, invite_token in (
+        (admin, "rate-redeem-id", "rate-redeem-secret"),
+        (customer, "rate-redeem-customer-id", "rate-redeem-customer-secret"),
+    ):
+        payload = {"invitation_id": invitation_id, "invite_token": invite_token}
+        status, _, body = rate_client.request("POST", "/api/auth/redeem-prepare", payload)
+        assert status == 200, (status, body)
+        status, headers, body = rate_client.request("POST", "/api/auth/login", payload)
+        assert status == 429, (status, body)
+        assert json_body(body)["code"] == "auth_preflight_rate_limited"
+        assert headers.get("retry-after") == ["120"]
+
+    admin_race_key = exercise_concurrent_prepare_recovery(
+        port=ADMIN_PORT,
+        surface="admin",
+        invitation_id="race-admin-id",
+        invite_token="race-admin-secret",
+        recovery_cookie_name="GENO_ADMIN_REDEEM_RECOVERY",
+        landing_path="/projects",
+    )
+    customer_race_key = exercise_concurrent_prepare_recovery(
+        port=CUSTOMER_PORT,
+        surface="customer",
+        invitation_id="race-customer-id",
+        invite_token="race-customer-secret",
+        recovery_cookie_name="GENO_CUSTOMER_REDEEM_RECOVERY",
+        landing_path="/",
+    )
+    assert admin_race_key != customer_race_key
 
     status, _, body = admin.request(
         "POST",
@@ -576,6 +747,20 @@ def run_contract_checks() -> dict[str, Any]:
     with STATE.lock:
         assert len(STATE.auth_me_cookie_headers) == auth_me_count
 
+    mismatched_delivery = BrowserClient(ADMIN_PORT)
+    mismatched_delivery.cookies["GENO_ADMIN_REDEEM_RECOVERY"] = admin.cookies["GENO_ADMIN_REDEEM_RECOVERY"]
+    mismatched_delivery.cookies["GENO_RUNTIME_SESSION"] = "old-admin-session"
+    mismatched_delivery.cookies["GENO_CSRF_TOKEN"] = "old-admin-csrf"
+    with STATE.lock:
+        auth_me_count = len(STATE.auth_me_cookie_headers)
+    status, headers, body = mismatched_delivery.request("POST", "/api/auth/session-confirm")
+    assert status == 409, (status, body)
+    assert json_body(body)["code"] == "auth_session_delivery_invalid"
+    assert "GENO_ADMIN_REDEEM_RECOVERY" in mismatched_delivery.cookies
+    assert not headers.get("set-cookie")
+    with STATE.lock:
+        assert len(STATE.auth_me_cookie_headers) == auth_me_count
+
     status, confirm_headers, body = admin.request("POST", "/api/auth/session-confirm")
     assert status == 200, (status, body)
     assert json_body(body)["session"]["scope_version"] == "runtime_session_scope_v2"
@@ -587,19 +772,42 @@ def run_contract_checks() -> dict[str, Any]:
     assert "GENO_CSRF_TOKEN=" in confirm_cookie_header
     assert "REDEEM_RECOVERY" not in confirm_cookie_header
 
+    invalid_session_client = BrowserClient(ADMIN_PORT)
+    invalid_session_client.cookies["GENO_RUNTIME_SESSION"] = "expired-or-invalid-session"
+    status, headers, _ = invalid_session_client.request("GET", "/projects/project-a")
+    assert status in {303, 307, 308} and location_path(headers) == "/login", headers
+
+    status, _, body = admin.request("GET", "/projects/forbidden-project")
+    assert status == 200
+    text = body.decode("utf-8")
+    assert "无权访问项目" in text and "project-403" in text
+
+    status, _, body = admin.request("GET", "/projects/missing-project")
+    assert status == 200
+    text = body.decode("utf-8")
+    assert "项目不存在或已撤回" in text
+
+    status, _, body = admin.request("GET", "/projects/failed-project")
+    assert status == 200
+    text = body.decode("utf-8")
+    assert "项目加载失败" in text and "项目服务暂时不可用" in text and "project-503" in text
+
     invalid_scope_client = BrowserClient(ADMIN_PORT)
     status, _, body = invalid_scope_client.request(
         "POST",
         "/api/auth/redeem-prepare",
-        {"invitation_id": "analyst-browser", "invite_token": "analyst-browser-secret"},
+        {"invitation_id": "invalid-scope-id", "invite_token": "invalid-scope-secret"},
     )
     assert status == 200, (status, body)
-    invalid_scope = scope_for("mixed")
-    invalid_scope["project_ids"] = []
+    status, _, body = invalid_scope_client.request(
+        "POST",
+        "/api/auth/login",
+        {"invitation_id": "invalid-scope-id", "invite_token": "invalid-scope-secret"},
+    )
+    assert status == 303, (status, body)
+    invalid_scope_session = invalid_scope_client.cookies["GENO_RUNTIME_SESSION"]
     with STATE.lock:
-        STATE.sessions["invalid-scope-session"] = invalid_scope
-    invalid_scope_client.cookies["GENO_RUNTIME_SESSION"] = "invalid-scope-session"
-    invalid_scope_client.cookies["GENO_CSRF_TOKEN"] = "invalid-scope-csrf"
+        STATE.sessions[invalid_scope_session]["project_ids"] = []
     status, headers, body = invalid_scope_client.request("POST", "/api/auth/session-confirm")
     assert status == 502, (status, body)
     assert json_body(body)["code"] == "auth_session_delivery_invalid"
@@ -622,6 +830,9 @@ def run_contract_checks() -> dict[str, Any]:
     with STATE.lock:
         assert STATE.invitations["viewer-id"].state == "accepted"
 
+    with STATE.lock:
+        confirmed_before_customer_ssr = len(STATE.confirmed_sessions)
+        auth_me_before_customer_ssr = len(STATE.auth_me_cookie_headers)
     status, _, body = customer.request("GET", "/")
     text = body.decode("utf-8")
     assert status == 200
@@ -630,6 +841,17 @@ def run_contract_checks() -> dict[str, Any]:
     assert "viewer-secret" not in text
     with STATE.lock:
         assert "customer" in STATE.project_surfaces
+        assert len(STATE.confirmed_sessions) == confirmed_before_customer_ssr
+        assert len(STATE.auth_me_cookie_headers) == auth_me_before_customer_ssr + 1
+        assert "GENO_CSRF_TOKEN=" not in STATE.auth_me_cookie_headers[-1]
+    assert "GENO_CUSTOMER_REDEEM_RECOVERY" in customer.cookies
+
+    status, headers, _ = customer.request(
+        "GET",
+        "/?invitation_id=legacy-customer&invite_token=LOGGED_SENTINEL&project_id=project-b&untrusted=1",
+    )
+    assert status == 303, headers
+    assert location_path(headers) == "/?invitation_id=legacy-customer&project_id=project-b"
 
     mixed_customer = BrowserClient(CUSTOMER_PORT)
     mixed_customer.cookies["GENO_RUNTIME_SESSION"] = admin.cookies["GENO_RUNTIME_SESSION"]
@@ -663,10 +885,12 @@ def run_contract_checks() -> dict[str, Any]:
         assert ("customer", 200, 200) in STATE.project_queries
 
     return {
-        "checks": 36,
+        "checks": 64,
         "admin_surface_projection": True,
         "customer_surface_projection": True,
         "stable_replay_key": analyst_keys[0],
+        "admin_concurrent_replay_key": admin_race_key,
+        "customer_concurrent_replay_key": customer_race_key,
     }
 
 
@@ -684,10 +908,17 @@ def run_playwright_checks() -> dict[str, Any]:
         admin_context = browser.new_context(viewport={"width": 1440, "height": 900})
         admin_page = admin_context.new_page()
         admin_page.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
-        admin_page.goto(
-            f"http://127.0.0.1:{ADMIN_PORT}/login?invitation_id=viewer-browser",
+        admin_sentinel = "BROWSER_ADMIN_TOKEN_SENTINEL"
+        admin_response = admin_page.goto(
+            f"http://127.0.0.1:{ADMIN_PORT}/login?invitation_id=viewer-browser&invite_token={admin_sentinel}&untrusted=1",
             wait_until="networkidle",
         )
+        assert admin_response and admin_response.headers.get("referrer-policy") == "no-referrer"
+        assert urlsplit(admin_page.url).path == "/login"
+        assert urlsplit(admin_page.url).query == "invitation_id=viewer-browser"
+        assert "invite_token" not in admin_page.url
+        assert admin_sentinel not in admin_page.content()
+        assert admin_sentinel not in admin_page.evaluate("document.referrer")
         assert admin_page.title()
         assert admin_page.locator("h1").inner_text() == "内部用户登录"
         assert admin_page.get_by_label("邀请 ID").input_value() == "viewer-browser"
@@ -708,7 +939,7 @@ def run_playwright_checks() -> dict[str, Any]:
         admin_page.get_by_label("邀请 ID").fill("analyst-browser")
         admin_page.get_by_label("一次性邀请 token").fill("analyst-browser-secret")
         admin_page.get_by_role("button", name="兑换邀请并登录").click()
-        admin_page.wait_for_url(f"http://127.0.0.1:{ADMIN_PORT}/projects", wait_until="networkidle")
+        admin_page.wait_for_url("**/projects", wait_until="networkidle")
         admin_page.get_by_text("Admin Project Alpha").wait_for()
         assert admin_page.get_by_text("Customer Project Beta").count() == 0
         admin_shot = screenshot_dir / "admin-desktop.png"
@@ -718,10 +949,20 @@ def run_playwright_checks() -> dict[str, Any]:
         customer_context = browser.new_context(viewport={"width": 390, "height": 844})
         customer_page = customer_context.new_page()
         customer_page.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
-        customer_page.goto(f"http://127.0.0.1:{CUSTOMER_PORT}/?invitation_id=viewer-mobile", wait_until="networkidle")
+        customer_sentinel = "BROWSER_CUSTOMER_TOKEN_SENTINEL"
+        customer_response = customer_page.goto(
+            f"http://127.0.0.1:{CUSTOMER_PORT}/?invitation_id=viewer-mobile&invite_token={customer_sentinel}&project_id=project-b",
+            wait_until="networkidle",
+        )
+        assert customer_response and customer_response.headers.get("referrer-policy") == "no-referrer"
+        assert urlsplit(customer_page.url).path == "/"
+        assert urlsplit(customer_page.url).query == "invitation_id=viewer-mobile"
+        assert "invite_token" not in customer_page.url
+        assert customer_sentinel not in customer_page.content()
+        assert customer_sentinel not in customer_page.evaluate("document.referrer")
         customer_page.get_by_label("一次性邀请 token").fill("viewer-mobile-secret")
         customer_page.get_by_role("button", name="兑换邀请并登录").click()
-        customer_page.wait_for_url(f"http://127.0.0.1:{CUSTOMER_PORT}/", wait_until="networkidle")
+        customer_page.wait_for_url("**/", wait_until="networkidle")
         customer_page.get_by_text("Customer Project Beta").first.wait_for()
         assert "viewer-mobile-secret" not in customer_page.url
         customer_shot = screenshot_dir / "customer-mobile.png"

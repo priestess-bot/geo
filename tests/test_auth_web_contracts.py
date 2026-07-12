@@ -75,6 +75,44 @@ clear();
 process.env.GENO_AUTH_RECOVERY_COOKIE_SECRET_FILE = secretFile;
 process.env.GENO_RUNTIME_SESSION_COOKIE_SECURE = "true";
 if (recovery.validateRecoveryConfiguration().secureCookies !== true) throw new Error("_FILE failed");
+const adminRequest = { invitation_id: "invite-a", invite_token: "token-a", requested_surface: "admin" };
+const adminFirst = recovery.createRedemptionRecovery(adminRequest, 1700000000000);
+const adminSecond = recovery.createRedemptionRecovery(adminRequest, 1700000000000);
+if (adminFirst.cookieValue === adminSecond.cookieValue) throw new Error("recovery encryption IV was reused");
+if (adminFirst.payload.key !== adminSecond.payload.key) throw new Error("same request did not get stable key");
+if (adminFirst.payload.phase !== "prepared") throw new Error("initial phase was not prepared");
+const customerSameInput = recovery.createRedemptionRecovery(
+  { ...adminRequest, requested_surface: "customer" },
+  1700000000000
+);
+if (customerSameInput.payload.key === adminFirst.payload.key) throw new Error("surface did not bind key");
+const differentToken = recovery.createRedemptionRecovery(
+  { ...adminRequest, invite_token: "token-b" },
+  1700000000000
+);
+if (differentToken.payload.key === adminFirst.payload.key) throw new Error("token did not bind key");
+const differentId = recovery.createRedemptionRecovery(
+  { ...adminRequest, invitation_id: "invite-b" },
+  1700000000000
+);
+if (differentId.payload.key === adminFirst.payload.key) throw new Error("invitation id did not bind key");
+if (adminFirst.payload.key.includes("token-a") || adminFirst.payload.key.includes("invite-a")) {
+  throw new Error("idempotency key disclosed request input");
+}
+const delivered = recovery.markRedemptionRecoveryDelivered(adminFirst.payload, "session-new");
+if (delivered.payload.phase !== "delivered") throw new Error("delivery phase was not frozen");
+if (recovery.inspectSessionDeliveryRecovery(adminFirst.cookieValue, "admin", "session-old", 1700000000000).status !== "prepared") {
+  throw new Error("prepared recovery accepted an old session");
+}
+if (recovery.inspectSessionDeliveryRecovery(delivered.cookieValue, "admin", "session-new", 1700000000000).status !== "delivered") {
+  throw new Error("delivered recovery did not match its session");
+}
+if (recovery.inspectSessionDeliveryRecovery(delivered.cookieValue, "admin", "session-old", 1700000000000).status !== "session_mismatch") {
+  throw new Error("delivered recovery accepted a different session");
+}
+if (recovery.safeRetryAfter("999999") !== "3600" || recovery.safeRetryAfter("date") !== undefined) {
+  throw new Error("Retry-After sanitizer failed");
+}
 process.env.GENO_AUTH_RECOVERY_COOKIE_SECRET = "direct-secret-0123456789-0123456789";
 mustThrow("dual source", "exactly one source");
 clear();
@@ -122,6 +160,74 @@ if (recovery.validateRecoveryConfiguration().secureCookies !== true) throw new E
                     text=True,
                 )
 
+    def test_counterpart_portal_urls_fail_closed_in_production(self) -> None:
+        admin = (ADMIN / "_auth/portalUrl.ts").read_bytes()
+        customer = (CUSTOMER / "_auth/portalUrl.ts").read_bytes()
+        self.assertEqual(admin, customer)
+        node_script = r"""
+const portal = require(process.argv[1]);
+function resolve(overrides = {}) {
+  return portal.resolveCounterpartPortalUrl({
+    configuredValue: "https://portal.example.test/",
+    developmentFallback: "http://localhost:3000/",
+    environmentName: "CUSTOMER_WEB_BASE_URL",
+    nodeEnv: "production",
+    ...overrides
+  });
+}
+function mustThrow(label, expected, options) {
+  try { resolve(options); } catch (error) {
+    if (String(error).includes(expected)) return;
+    throw new Error(`${label}: unexpected error ${String(error)}`);
+  }
+  throw new Error(`${label}: expected rejection`);
+}
+if (resolve() !== "https://portal.example.test/") throw new Error("production HTTPS failed");
+mustThrow("missing production URL", "required in production", { configuredValue: undefined });
+mustThrow("public production URL", "required in production", {
+  configuredValue: undefined, publicDevelopmentValue: "https://public.example.test/"
+});
+mustThrow("production HTTP", "must use HTTPS", { configuredValue: "http://portal.example.test/" });
+mustThrow("userinfo", "must not contain userinfo", { configuredValue: "https://user:pass@portal.example.test/" });
+mustThrow("remote development HTTP", "must use HTTPS", {
+  configuredValue: "http://portal.example.test/", nodeEnv: "development"
+});
+if (!resolve({ configuredValue: undefined, nodeEnv: "development" }).startsWith("http://localhost:3000/")) {
+  throw new Error("local development fallback failed");
+}
+"""
+        with tempfile.TemporaryDirectory(prefix="auth-web-portal-url-test-") as temp:
+            temp_path = Path(temp)
+            for app_name in ("admin-web", "customer-web"):
+                app = ROOT / "apps" / app_name
+                output = temp_path / app_name
+                subprocess.run(
+                    [
+                        str(app / "node_modules/.bin/tsc"),
+                        str(app / "app/_auth/portalUrl.ts"),
+                        "--outDir",
+                        str(output),
+                        "--module",
+                        "commonjs",
+                        "--moduleResolution",
+                        "node",
+                        "--target",
+                        "ES2022",
+                        "--skipLibCheck",
+                    ],
+                    cwd=ROOT,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                subprocess.run(
+                    ["node", "-e", node_script, str(output / "portalUrl.js")],
+                    cwd=ROOT,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+
     def test_login_routes_require_bound_recovery_before_upstream_mutation(self) -> None:
         for app in (ADMIN, CUSTOMER):
             login = source(app / "api/auth/login/route.ts")
@@ -148,6 +254,10 @@ if (recovery.validateRecoveryConfiguration().secureCookies !== true) throw new E
         for login in (admin, customer):
             self.assertIn("hasCompleteSessionDelivery(sessionCookies)", login)
             self.assertIn('response.headers.append("set-cookie", cookie)', login)
+            self.assertLess(
+                login.index("setRecoveryCookie(\n    response"),
+                login.index('response.headers.append("set-cookie", cookie)')
+            )
             self.assertIn("NextResponse.redirect", login)
             self.assertIn(", 303)", login)
         self.assertIn('const LANDING = "/projects"', admin)
@@ -160,6 +270,8 @@ if (recovery.validateRecoveryConfiguration().secureCookies !== true) throw new E
             self.assertIn("if (!sessionToken || !csrfToken)", confirm)
             self.assertIn('code: "auth_session_delivery_invalid"', confirm)
             self.assertIn("isRuntimeAuthMeResponse(payload)", confirm)
+            self.assertIn("inspectSessionDeliveryRecovery", confirm)
+            self.assertIn('recovery.status === "prepared"', confirm)
             self.assertNotIn('request.headers.get("cookie")', confirm)
             self.assertIn("GENO_RUNTIME_SESSION=", confirm)
             self.assertIn("GENO_CSRF_TOKEN=", confirm)
@@ -184,6 +296,7 @@ if (recovery.validateRecoveryConfiguration().secureCookies !== true) throw new E
         self.assertIn('query.set("offset"', admin_list)
         self.assertIn('aria-label="项目分页"', admin_list)
         self.assertNotIn("project_ids?.filter", customer_runtime)
+        self.assertIn("includeCsrfProof: false", customer_runtime)
 
     def test_raw_invitation_token_is_not_moved_to_url_or_browser_storage(self) -> None:
         paths = [
@@ -200,6 +313,14 @@ if (recovery.validateRecoveryConfiguration().secureCookies !== true) throw new E
         self.assertNotIn("sessionStorage", combined)
         self.assertNotIn("params.invite_token", combined)
         self.assertIn("preparedBody", combined)
+        for middleware in (
+            ROOT / "apps/admin-web/middleware.ts",
+            ROOT / "apps/customer-web/middleware.ts",
+        ):
+            middleware_source = source(middleware)
+            self.assertIn("hasInvitationTokenKey", middleware_source)
+            self.assertIn('Referrer-Policy", "no-referrer"', middleware_source)
+            self.assertNotIn('get("invite_token")', middleware_source)
 
     def test_errors_preserve_code_detail_correlation_and_recommended_surface(self) -> None:
         contract = source(ADMIN / "_auth/contracts.ts")
@@ -210,6 +331,21 @@ if (recovery.validateRecoveryConfiguration().secureCookies !== true) throw new E
         self.assertIn("error?.recommended_surface", form)
         self.assertIn('url.searchParams.set("invitation_id"', form)
         self.assertIn('url.searchParams.delete("invite_token"', form)
+        self.assertIn("auth_preflight_rate_limited", contract)
+        for app in (ADMIN, CUSTOMER):
+            for route in ("api/auth/redeem-prepare/route.ts", "api/auth/login/route.ts"):
+                route_source = source(app / route)
+                self.assertIn("safeRetryAfter", route_source)
+                self.assertIn('"Retry-After"', route_source)
+
+    def test_admin_project_detail_distinguishes_auth_and_resource_failures(self) -> None:
+        detail = source(ADMIN / "projects/[project_id]/page.tsx")
+        self.assertIn("ProjectLoadResult", detail)
+        self.assertIn("projectResult.status === 401", detail)
+        self.assertIn('redirect("/login")', detail)
+        self.assertIn("projectResult.status === 403", detail)
+        self.assertIn("projectResult.status === 404", detail)
+        self.assertIn("项目服务暂时不可用", detail)
 
     def test_auth_me_validator_checks_nested_scope_and_exact_project_projection(self) -> None:
         contract = source(ADMIN / "_auth/contracts.ts")

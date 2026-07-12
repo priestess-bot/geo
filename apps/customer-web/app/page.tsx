@@ -78,6 +78,9 @@ export default async function CustomerHome({
         <section className="emptyState">
           <h2>使用客户邀请登录</h2>
           <p>邀请只用于首次兑换。成功后浏览器保存安全会话，不会在 URL 中继续携带 token。</p>
+          {invitationId ? (
+            <p className="muted">请输入邮件中单独提供的一次性邀请 code；如未收到，请联系项目方重发邀请。</p>
+          ) : null}
           {sessionData.error ? (
             <div aria-live="polite" role="alert" style={{ color: "#9b2f20", marginTop: 12 }}>
               <p>{sessionData.error.detail}</p>

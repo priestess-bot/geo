@@ -9,7 +9,9 @@ import {
 } from "../../../_auth/contracts";
 import {
   clearRecoveryCookie,
+  inspectSessionDeliveryRecovery,
   readJsonResponse,
+  recoveryCookieName,
   validateRecoveryConfiguration
 } from "../../../_auth/recovery";
 import { apiBase } from "../../../runtime";
@@ -26,6 +28,10 @@ export async function POST(request: NextRequest) {
       correlation_id: randomUUID()
     }, 409);
   }
+  const recoveryCookie = request.cookies.get(recoveryCookieName(SURFACE))?.value;
+  if (!recoveryCookie) {
+    return noPendingDelivery("not_pending");
+  }
   try {
     validateRecoveryConfiguration();
   } catch {
@@ -34,6 +40,17 @@ export async function POST(request: NextRequest) {
       detail: "Secure login recovery is unavailable.",
       correlation_id: randomUUID()
     }, 503);
+  }
+  const recovery = inspectSessionDeliveryRecovery(recoveryCookie, SURFACE, sessionToken);
+  if (recovery.status === "prepared") {
+    return noPendingDelivery("delivery_not_received");
+  }
+  if (recovery.status !== "delivered") {
+    return errorResponse({
+      code: "auth_session_delivery_invalid",
+      detail: "The current session does not match the pending recovered delivery.",
+      correlation_id: randomUUID()
+    }, 409);
   }
 
   let upstream: Response;
@@ -81,4 +98,8 @@ export async function POST(request: NextRequest) {
 
 function errorResponse(error: AuthErrorEnvelope, status: number) {
   return NextResponse.json(error, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+function noPendingDelivery(status: "not_pending" | "delivery_not_received") {
+  return NextResponse.json({ status }, { status: 202, headers: { "Cache-Control": "no-store" } });
 }

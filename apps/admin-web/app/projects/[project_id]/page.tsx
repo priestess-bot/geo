@@ -33,6 +33,7 @@ import {
   ActionPlanPanel
 } from "./ProjectActions";
 import type { ReactNode } from "react";
+import { redirect } from "next/navigation";
 import { actorHeaders, adminDevToolsEnabled, apiBase, runtimeRequest } from "../../runtime";
 import { projectStatusLabel, statusLabel } from "../status";
 
@@ -61,6 +62,12 @@ type RuntimeProject = {
 type ProjectPage = {
   total_count: number;
   records: RuntimeProject[];
+};
+
+type ProjectLoadResult = {
+  record: RuntimeProject | null;
+  status?: number;
+  correlation_id?: string;
 };
 
 type LaunchConfigResponse = {
@@ -172,7 +179,7 @@ const operationTabs = [
   { id: "quality", label: "质量与运维" }
 ] as const;
 
-async function loadProject(projectId: string): Promise<RuntimeProject | null> {
+async function loadProject(projectId: string): Promise<ProjectLoadResult> {
   try {
     const query = new URLSearchParams({ project_id: projectId, surface: "admin" });
     const response = await fetch(`${apiBase()}/v1/projects/runtime?${query.toString()}`, {
@@ -180,12 +187,17 @@ async function loadProject(projectId: string): Promise<RuntimeProject | null> {
       headers: await actorHeaders()
     });
     if (!response.ok) {
-      return null;
+      const payload = await response.json().catch(() => undefined) as { correlation_id?: unknown } | undefined;
+      return {
+        record: null,
+        status: response.status,
+        correlation_id: typeof payload?.correlation_id === "string" ? payload.correlation_id : undefined
+      };
     }
     const page = (await response.json()) as ProjectPage;
-    return page.records[0] || null;
+    return { record: page.records[0] || null, status: page.records[0] ? 200 : 404 };
   } catch {
-    return null;
+    return { record: null };
   }
 }
 
@@ -443,17 +455,34 @@ export default async function ProjectDetailPage({
     offset: promptOffset
   };
 
-  const [record, launchConfig] = await Promise.all([
+  const [projectResult, launchConfig] = await Promise.all([
     loadProject(projectId),
     loadLaunchConfig(projectId)
   ]);
+  if (projectResult.status === 401) {
+    redirect("/login");
+  }
+  const record = projectResult.record;
   if (!record) {
+    const title = projectResult.status === 403
+      ? "无权访问项目"
+      : projectResult.status === 404
+        ? "项目不存在或已撤回"
+        : "项目加载失败";
+    const detail = projectResult.status === 403
+      ? "当前会话没有此项目的管理权限。"
+      : projectResult.status === 404
+        ? "该项目不存在、已撤回，或当前会话不可见。"
+        : "项目服务暂时不可用，请稍后重试。";
     return (
       <main className="shell">
         <section className="topbar">
           <div>
-            <h1>项目不可用</h1>
-            <p className="muted" style={{ marginTop: 8 }}>项目不存在、已撤回，或当前会话没有管理权限。</p>
+            <h1>{title}</h1>
+            <p className="muted" style={{ marginTop: 8 }}>{detail}</p>
+            {projectResult.correlation_id ? (
+              <p className="muted" style={{ marginTop: 8 }}>关联 ID：{projectResult.correlation_id}</p>
+            ) : null}
           </div>
           <nav className="nav"><a className="button secondary" href="/projects">返回项目列表</a></nav>
         </section>

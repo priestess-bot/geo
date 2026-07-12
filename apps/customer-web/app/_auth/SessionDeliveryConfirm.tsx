@@ -19,6 +19,9 @@ export function SessionDeliveryConfirm({ active }: { active: boolean }) {
       signal: controller.signal
     }).then(async (response) => {
       const payload = await response.json().catch(() => undefined) as unknown;
+      if (response.status === 202) {
+        return;
+      }
       if (!response.ok) {
         setError(parseAuthError(payload, "auth_request_failed", "会话确认失败，请刷新页面重试。"));
         return;

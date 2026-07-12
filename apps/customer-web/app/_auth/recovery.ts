@@ -2,6 +2,7 @@ import {
   createCipheriv,
   createDecipheriv,
   createHash,
+  createHmac,
   randomBytes,
   timingSafeEqual
 } from "node:crypto";
@@ -20,22 +21,32 @@ const COOKIE_NAMES: Record<InvitationSurface, string> = {
 
 export interface RedemptionRecoveryPayload {
   version: typeof RECOVERY_VERSION;
+  phase: "prepared" | "delivered";
   key: string;
   requested_surface: InvitationSurface;
   token_fingerprint: string;
   request_hash: string;
   issued_at: number;
   expires_at: number;
+  session_token_fingerprint?: string;
 }
+
+export type SessionDeliveryRecoveryCheck =
+  | { status: "prepared"; payload: RedemptionRecoveryPayload }
+  | { status: "delivered"; payload: RedemptionRecoveryPayload }
+  | { status: "session_mismatch" }
+  | { status: "invalid" };
 
 type UntrustedRecoveryPayload = {
   version?: unknown;
+  phase?: unknown;
   key?: unknown;
   requested_surface?: unknown;
   token_fingerprint?: unknown;
   request_hash?: unknown;
   issued_at?: unknown;
   expires_at?: unknown;
+  session_token_fingerprint?: unknown;
 };
 
 export function recoveryCookieName(surface: InvitationSurface): string {
@@ -63,12 +74,14 @@ export function createRedemptionRecovery(request: InvitationRequest, now = Date.
   payload: RedemptionRecoveryPayload;
 } {
   const issuedAt = Math.floor(now / 1000);
+  const frozenRequestHash = requestHash(request);
   const payload: RedemptionRecoveryPayload = {
     version: RECOVERY_VERSION,
-    key: randomBytes(32).toString("base64url"),
+    phase: "prepared",
+    key: stableIdempotencyKey(request.requested_surface, frozenRequestHash),
     requested_surface: request.requested_surface,
     token_fingerprint: tokenFingerprint(request.invite_token),
-    request_hash: requestHash(request),
+    request_hash: frozenRequestHash,
     issued_at: issuedAt,
     expires_at: issuedAt + RECOVERY_TTL_SECONDS
   };
@@ -88,9 +101,7 @@ export function readRedemptionRecovery(
     const nowSeconds = Math.floor(now / 1000);
     if (
       payload.requested_surface !== request.requested_surface
-      || payload.expires_at <= nowSeconds
-      || payload.issued_at > nowSeconds + 30
-      || payload.expires_at - payload.issued_at !== RECOVERY_TTL_SECONDS
+      || !recoveryIsCurrent(payload, nowSeconds)
       || !safeEqual(payload.token_fingerprint, tokenFingerprint(request.invite_token))
       || !safeEqual(payload.request_hash, requestHash(request))
     ) {
@@ -102,17 +113,70 @@ export function readRedemptionRecovery(
   }
 }
 
+export function markRedemptionRecoveryDelivered(
+  payload: RedemptionRecoveryPayload,
+  sessionToken: string
+): { cookieValue: string; payload: RedemptionRecoveryPayload } {
+  const sessionFingerprint = tokenFingerprint(sessionToken);
+  if (
+    payload.phase === "delivered"
+    && payload.session_token_fingerprint
+    && !safeEqual(payload.session_token_fingerprint, sessionFingerprint)
+  ) {
+    throw new Error("session delivery changed for the recovery attempt");
+  }
+  const delivered: RedemptionRecoveryPayload = {
+    ...payload,
+    phase: "delivered",
+    session_token_fingerprint: sessionFingerprint
+  };
+  return { cookieValue: encryptPayload(delivered), payload: delivered };
+}
+
+export function inspectSessionDeliveryRecovery(
+  cookieValue: string | undefined,
+  surface: InvitationSurface,
+  sessionToken: string,
+  now = Date.now()
+): SessionDeliveryRecoveryCheck {
+  if (!cookieValue) {
+    return { status: "invalid" };
+  }
+  try {
+    const payload = decryptPayload(cookieValue);
+    if (
+      payload.requested_surface !== surface
+      || !recoveryIsCurrent(payload, Math.floor(now / 1000))
+    ) {
+      return { status: "invalid" };
+    }
+    if (payload.phase === "prepared") {
+      return { status: "prepared", payload };
+    }
+    if (
+      !payload.session_token_fingerprint
+      || !safeEqual(payload.session_token_fingerprint, tokenFingerprint(sessionToken))
+    ) {
+      return { status: "session_mismatch" };
+    }
+    return { status: "delivered", payload };
+  } catch {
+    return { status: "invalid" };
+  }
+}
+
 export function setRecoveryCookie(
   response: NextResponse,
   surface: InvitationSurface,
-  value: string
+  value: string,
+  maxAge = RECOVERY_TTL_SECONDS
 ): void {
   response.cookies.set(recoveryCookieName(surface), value, {
     httpOnly: true,
     secure: secureCookiesEnabled(),
     sameSite: "lax",
     path: "/",
-    maxAge: RECOVERY_TTL_SECONDS
+    maxAge: Math.max(0, Math.min(RECOVERY_TTL_SECONDS, Math.floor(maxAge)))
   });
 }
 
@@ -133,6 +197,15 @@ export async function readJsonResponse(response: Response): Promise<unknown> {
   return response.json().catch(() => undefined);
 }
 
+export function safeRetryAfter(value: string | null, maxSeconds = 3600): string | undefined {
+  const normalized = value?.trim() || "";
+  if (!/^\d{1,9}$/.test(normalized)) {
+    return undefined;
+  }
+  const seconds = Number(normalized);
+  return String(Math.max(1, Math.min(maxSeconds, seconds)));
+}
+
 export function upstreamSetCookies(headers: Headers): string[] {
   const enhanced = headers as Headers & { getSetCookie?: () => string[] };
   const values = enhanced.getSetCookie?.();
@@ -148,6 +221,19 @@ export function hasCompleteSessionDelivery(cookies: string[]): boolean {
     cookies.some((cookie) => /^GENO_RUNTIME_SESSION=/i.test(cookie))
     && cookies.some((cookie) => /^GENO_CSRF_TOKEN=/i.test(cookie))
   );
+}
+
+export function sessionTokenFromDelivery(cookies: string[]): string | null {
+  const header = cookies.find((cookie) => /^GENO_RUNTIME_SESSION=/i.test(cookie));
+  if (!header) {
+    return null;
+  }
+  const pair = header.split(";", 1)[0];
+  const separator = pair.indexOf("=");
+  const value = separator >= 0 ? pair.slice(separator + 1) : "";
+  return value && /^[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]+$/.test(value)
+    ? value
+    : null;
 }
 
 export function validateRecoveryConfiguration(): { secureCookies: boolean } {
@@ -209,6 +295,7 @@ function validatePayload(value: unknown): RedemptionRecoveryPayload {
   const candidate = value as UntrustedRecoveryPayload;
   if (
     candidate.version !== RECOVERY_VERSION
+    || (candidate.phase !== "prepared" && candidate.phase !== "delivered")
     || (candidate.requested_surface !== "admin" && candidate.requested_surface !== "customer")
     || typeof candidate.key !== "string"
     || candidate.key.length < 32
@@ -218,10 +305,28 @@ function validatePayload(value: unknown): RedemptionRecoveryPayload {
     || !Number.isInteger(candidate.issued_at)
     || typeof candidate.expires_at !== "number"
     || !Number.isInteger(candidate.expires_at)
+    || (candidate.phase === "prepared" && candidate.session_token_fingerprint !== undefined)
+    || (candidate.phase === "delivered"
+      && (typeof candidate.session_token_fingerprint !== "string"
+        || !/^[a-f0-9]{64}$/.test(candidate.session_token_fingerprint)))
   ) {
     throw new Error("invalid recovery payload fields");
   }
   return candidate as RedemptionRecoveryPayload;
+}
+
+function stableIdempotencyKey(surface: InvitationSurface, frozenRequestHash: string): string {
+  return createHmac("sha256", recoverySecret())
+    .update(`geno-auth-idempotency:v${RECOVERY_VERSION}\0${surface}\0${frozenRequestHash}`, "utf8")
+    .digest("base64url");
+}
+
+function recoveryIsCurrent(payload: RedemptionRecoveryPayload, nowSeconds: number): boolean {
+  return (
+    payload.expires_at > nowSeconds
+    && payload.issued_at <= nowSeconds + 30
+    && payload.expires_at - payload.issued_at === RECOVERY_TTL_SECONDS
+  );
 }
 
 function tokenFingerprint(inviteToken: string): string {

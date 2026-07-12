@@ -14,6 +14,9 @@ export default async function AdminLoginPage({
         <p className="eyebrow">GEO 项目管理台</p>
         <h1>内部用户登录</h1>
         <p className="muted">使用管理台邀请完成登录。</p>
+        {invitationId ? (
+          <p className="muted">请输入邮件中单独提供的一次性邀请 code；如未收到，请联系管理员重发邀请。</p>
+        ) : null}
         <InvitationLoginForm
           initialInvitationId={invitationId || ""}
           landingPath="/projects"

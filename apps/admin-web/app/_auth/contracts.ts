@@ -48,7 +48,8 @@ export type StableAuthErrorCode =
   | "redeem_recovery_expired"
   | "redeem_replay_limit_exceeded"
   | "redeem_prepare_required"
-  | "auth_writes_temporarily_disabled";
+  | "auth_writes_temporarily_disabled"
+  | "auth_preflight_rate_limited";
 
 export type AuthBffErrorCode =
   | StableAuthErrorCode
@@ -164,6 +165,7 @@ const STABLE_AUTH_ERRORS = new Set<string>([
   "redeem_replay_limit_exceeded",
   "redeem_prepare_required",
   "auth_writes_temporarily_disabled",
+  "auth_preflight_rate_limited",
   "auth_invalid_request",
   "auth_recovery_unavailable",
   "auth_request_failed",

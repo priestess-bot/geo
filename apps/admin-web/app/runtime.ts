@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
 
+import { resolveCounterpartPortalUrl } from "./_auth/portalUrl";
+
 type RuntimeRequestOptions = {
   method?: string;
   body?: unknown;
@@ -23,7 +25,13 @@ export function adminActorId(): string {
 }
 
 export function customerWebBaseUrl(): string {
-  return process.env.CUSTOMER_WEB_BASE_URL || process.env.NEXT_PUBLIC_CUSTOMER_WEB_BASE_URL || "http://localhost:3000";
+  return resolveCounterpartPortalUrl({
+    configuredValue: process.env.CUSTOMER_WEB_BASE_URL,
+    developmentFallback: "http://localhost:3000/",
+    environmentName: "CUSTOMER_WEB_BASE_URL",
+    nodeEnv: process.env.NODE_ENV,
+    publicDevelopmentValue: process.env.NEXT_PUBLIC_CUSTOMER_WEB_BASE_URL
+  });
 }
 
 export function adminDevToolsEnabled(): boolean {

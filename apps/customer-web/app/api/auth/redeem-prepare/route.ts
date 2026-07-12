@@ -15,6 +15,7 @@ import {
   readJsonResponse,
   readRedemptionRecovery,
   recoveryCookieName,
+  safeRetryAfter,
   setRecoveryCookie,
   validateRecoveryConfiguration
 } from "../../../_auth/recovery";
@@ -84,7 +85,8 @@ export async function POST(request: NextRequest) {
   if (!upstream.ok) {
     return errorResponse(
       parseAuthError(payload, "auth_request_failed", "Invitation preflight failed.", randomUUID()),
-      upstream.status
+      upstream.status,
+      upstream.status === 429 ? safeRetryAfter(upstream.headers.get("retry-after")) : undefined
     );
   }
   if (!isInvitationPreflightResponse(payload)) {
@@ -143,6 +145,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function errorResponse(error: AuthErrorEnvelope, status: number) {
-  return NextResponse.json(error, { status, headers: { "Cache-Control": "no-store" } });
+function errorResponse(error: AuthErrorEnvelope, status: number, retryAfter?: string) {
+  return NextResponse.json(error, {
+    status,
+    headers: { "Cache-Control": "no-store", ...(retryAfter ? { "Retry-After": retryAfter } : {}) }
+  });
 }
