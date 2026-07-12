@@ -15,6 +15,8 @@ BEGIN
             NOREPLICATION NOBYPASSRLS;
     END IF;
     ALTER ROLE geno_v2_api_login PASSWORD NULL;
+    ALTER ROLE geno_v2_api_login RESET ALL;
+    ALTER ROLE geno_v2_api_login IN DATABASE geno_v2 RESET ALL;
 
     IF EXISTS (
         SELECT 1
@@ -108,6 +110,12 @@ CREATE TABLE project_member_invitations (
     CONSTRAINT project_invitations_metadata_object
         CHECK (jsonb_typeof(metadata) = 'object'),
     CONSTRAINT project_invitations_expiry_order CHECK (expires_at > created_at),
+    CONSTRAINT project_invitations_acceptance_order
+        CHECK (accepted_at IS NULL OR (
+            accepted_at >= created_at AND accepted_at <= expires_at
+        )),
+    CONSTRAINT project_invitations_revocation_order
+        CHECK (revoked_at IS NULL OR revoked_at >= created_at),
     CONSTRAINT project_invitations_lifecycle_coherent
         CHECK (
             (status = 'pending'
@@ -157,6 +165,7 @@ CREATE TABLE runtime_sessions (
         FOREIGN KEY (tenant_id) REFERENCES tenants(id)
         ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT runtime_sessions_id_tenant_actor_unique UNIQUE (id, tenant_id, actor_id),
+    CONSTRAINT runtime_sessions_id_tenant_unique UNIQUE (id, tenant_id),
     CONSTRAINT runtime_sessions_redemption_id_pair_unique
         UNIQUE (redemption_attempt_id, id),
     CONSTRAINT runtime_sessions_token_hash_sha256
@@ -212,6 +221,7 @@ CREATE TABLE auth_invitation_redemption_attempts (
         REFERENCES project_member_invitations(id, project_id, tenant_id)
         ON UPDATE RESTRICT ON DELETE CASCADE,
     CONSTRAINT auth_attempts_invitation_id_pair_unique UNIQUE (invitation_id, id),
+    CONSTRAINT auth_attempts_id_tenant_unique UNIQUE (id, tenant_id),
     CONSTRAINT auth_attempts_session_id_pair_unique UNIQUE (session_id, id),
     CONSTRAINT auth_attempts_idempotency_unique
         UNIQUE (invitation_id, requested_surface, idempotency_key_hash),
@@ -249,8 +259,8 @@ CREATE TABLE auth_invitation_redemption_attempts (
 
 ALTER TABLE project_member_invitations
     ADD CONSTRAINT project_invitations_accepted_attempt_fkey
-    FOREIGN KEY (accepted_by_attempt_id)
-    REFERENCES auth_invitation_redemption_attempts(id)
+    FOREIGN KEY (accepted_by_attempt_id, tenant_id)
+    REFERENCES auth_invitation_redemption_attempts(id, tenant_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT
     DEFERRABLE INITIALLY DEFERRED;
 
@@ -263,8 +273,8 @@ ALTER TABLE project_member_invitations
 
 ALTER TABLE runtime_sessions
     ADD CONSTRAINT runtime_sessions_redemption_attempt_fkey
-    FOREIGN KEY (redemption_attempt_id)
-    REFERENCES auth_invitation_redemption_attempts(id)
+    FOREIGN KEY (redemption_attempt_id, tenant_id)
+    REFERENCES auth_invitation_redemption_attempts(id, tenant_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT
     DEFERRABLE INITIALLY DEFERRED;
 
@@ -277,7 +287,7 @@ ALTER TABLE runtime_sessions
 
 ALTER TABLE auth_invitation_redemption_attempts
     ADD CONSTRAINT auth_attempts_session_fkey
-    FOREIGN KEY (session_id) REFERENCES runtime_sessions(id)
+    FOREIGN KEY (session_id, tenant_id) REFERENCES runtime_sessions(id, tenant_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT
     DEFERRABLE INITIALLY DEFERRED;
 
@@ -370,6 +380,136 @@ AS $jsonb_text_set$
     SELECT coalesce(array_agg(DISTINCT item ORDER BY item), ARRAY[]::text[])
     FROM jsonb_array_elements_text(value) AS array_item(item);
 $jsonb_text_set$;
+
+CREATE FUNCTION geno_v2_validate_auth_redemption_lineage()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog
+AS $validate_auth_lineage$
+DECLARE
+    lineage_attempt_id uuid;
+    invitation_row public.project_member_invitations%ROWTYPE;
+    attempt_row public.auth_invitation_redemption_attempts%ROWTYPE;
+    session_row public.runtime_sessions%ROWTYPE;
+    chain_required boolean := false;
+BEGIN
+    -- Deferred triggers must validate the final row state, not their queued NEW snapshot.
+    IF TG_TABLE_NAME = 'project_member_invitations' THEN
+        SELECT * INTO invitation_row
+        FROM public.project_member_invitations
+        WHERE id = NEW.id;
+        IF NOT FOUND THEN
+            RETURN NULL;
+        END IF;
+        lineage_attempt_id := invitation_row.accepted_by_attempt_id;
+        IF lineage_attempt_id IS NULL THEN
+            SELECT id INTO lineage_attempt_id
+            FROM public.auth_invitation_redemption_attempts
+            WHERE invitation_id = invitation_row.id AND status = 'succeeded'
+            ORDER BY created_at, id
+            LIMIT 1;
+        END IF;
+        IF lineage_attempt_id IS NULL THEN
+            RETURN NULL;
+        END IF;
+    ELSIF TG_TABLE_NAME = 'auth_invitation_redemption_attempts' THEN
+        lineage_attempt_id := NEW.id;
+    ELSIF TG_TABLE_NAME = 'runtime_sessions' THEN
+        SELECT redemption_attempt_id INTO lineage_attempt_id
+        FROM public.runtime_sessions
+        WHERE id = NEW.id;
+        IF lineage_attempt_id IS NULL THEN
+            RETURN NULL;
+        END IF;
+        chain_required := true;
+    ELSE
+        RAISE EXCEPTION 'unsupported auth lineage trigger table'
+            USING ERRCODE = '23514';
+    END IF;
+
+    SELECT * INTO attempt_row
+    FROM public.auth_invitation_redemption_attempts
+    WHERE id = lineage_attempt_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'auth lineage redemption attempt is missing'
+            USING ERRCODE = '23514';
+    END IF;
+    SELECT * INTO invitation_row
+    FROM public.project_member_invitations
+    WHERE id = attempt_row.invitation_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'auth lineage invitation is missing'
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF attempt_row.tenant_id <> invitation_row.tenant_id
+       OR attempt_row.project_id <> invitation_row.project_id THEN
+        RAISE EXCEPTION 'auth lineage invitation and attempt scope mismatch'
+            USING ERRCODE = '23514';
+    END IF;
+    IF attempt_row.token_fingerprint <> invitation_row.invite_token_hash THEN
+        RAISE EXCEPTION 'auth lineage invitation token fingerprint mismatch'
+            USING ERRCODE = '23514';
+    END IF;
+    IF attempt_row.requested_surface <> invitation_row.audience
+       OR NOT (attempt_row.requested_surface = ANY(invitation_row.allowed_surfaces)) THEN
+        RAISE EXCEPTION 'auth lineage requested surface is not allowed'
+            USING ERRCODE = '23514';
+    END IF;
+
+    chain_required := chain_required
+        OR attempt_row.status = 'succeeded'
+        OR invitation_row.accepted_by_attempt_id = attempt_row.id;
+    IF NOT chain_required THEN
+        RETURN NULL;
+    END IF;
+    IF invitation_row.status <> 'accepted'
+       OR invitation_row.accepted_by_attempt_id <> attempt_row.id
+       OR attempt_row.status <> 'succeeded'
+       OR attempt_row.session_id IS NULL THEN
+        RAISE EXCEPTION 'auth lineage accepted and succeeded state is not exact'
+            USING ERRCODE = '23514';
+    END IF;
+
+    SELECT * INTO session_row
+    FROM public.runtime_sessions
+    WHERE id = attempt_row.session_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'auth lineage runtime session is missing'
+            USING ERRCODE = '23514';
+    END IF;
+    IF session_row.redemption_attempt_id <> attempt_row.id
+       OR session_row.tenant_id <> attempt_row.tenant_id
+       OR session_row.tenant_id <> invitation_row.tenant_id
+       OR session_row.actor_id <> invitation_row.email
+       OR session_row.authz_policy_version <> invitation_row.policy_version THEN
+        RAISE EXCEPTION 'auth lineage session identity or policy mismatch'
+            USING ERRCODE = '23514';
+    END IF;
+    IF invitation_row.created_at > attempt_row.created_at
+       OR attempt_row.created_at > invitation_row.accepted_at
+       OR invitation_row.accepted_at > session_row.issued_at
+       OR session_row.issued_at > invitation_row.expires_at
+       OR session_row.issued_at >= session_row.expires_at THEN
+        RAISE EXCEPTION 'auth lineage issuance timeline is invalid'
+            USING ERRCODE = '23514';
+    END IF;
+    IF NOT (session_row.project_ids ? attempt_row.project_id::text)
+       OR NOT EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(session_row.project_scopes) AS scope(value)
+            WHERE scope.value->>'project_id' = attempt_row.project_id::text
+              AND scope.value->'roles' ? invitation_row.role
+              AND scope.value->'portal_capabilities'
+                    ? ('portal.' || attempt_row.requested_surface || '.access')
+       ) THEN
+        RAISE EXCEPTION 'auth lineage project or portal scope mismatch'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NULL;
+END;
+$validate_auth_lineage$;
 
 CREATE FUNCTION geno_v2_validate_runtime_session_snapshot()
 RETURNS trigger
@@ -710,6 +850,7 @@ BEGIN
     JOIN public.tenants AS tenant_row ON tenant_row.id = session_row.tenant_id
     WHERE session_row.session_token_hash = supplied_hash
       AND session_row.status = 'active'
+      AND session_row.issued_at <= statement_timestamp()
       AND session_row.expires_at > statement_timestamp()
       AND session_row.scope_version = 'runtime_session_scope_v2'
       AND session_row.authz_policy_version = 'auth_surface_policy_v1'
@@ -827,6 +968,30 @@ AS $tenant_member_access$
     );
 $tenant_member_access$;
 
+CREATE FUNCTION geno_v2_session_can_read_project_member(
+    row_project_id uuid,
+    row_tenant_id uuid,
+    row_user_id text
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog
+AS $project_member_access$
+    SELECT EXISTS (
+        SELECT 1
+        FROM public.geno_v2_resolve_session_context() AS context
+        CROSS JOIN LATERAL jsonb_array_elements(context.project_scopes) AS scope(value)
+        WHERE context.tenant_id = row_tenant_id
+          AND scope.value->>'project_id' = row_project_id::text
+          AND (
+              context.actor_id = row_user_id
+              OR scope.value->'permissions' ? 'member.manage'
+          )
+    );
+$project_member_access$;
+
 CREATE FUNCTION geno_v2_session_can_read_audit(
     row_tenant_id uuid,
     row_project_id uuid,
@@ -857,6 +1022,7 @@ AS $audit_access$
 $audit_access$;
 
 ALTER FUNCTION geno_v2_jsonb_text_set(jsonb) OWNER TO geno_v2_authz_owner;
+ALTER FUNCTION geno_v2_validate_auth_redemption_lineage() OWNER TO geno_v2_authz_owner;
 ALTER FUNCTION geno_v2_validate_runtime_session_snapshot() OWNER TO geno_v2_authz_owner;
 ALTER FUNCTION geno_v2_guard_runtime_session_update() OWNER TO geno_v2_authz_owner;
 ALTER FUNCTION geno_v2_resolve_session_context() OWNER TO geno_v2_authz_owner;
@@ -868,10 +1034,28 @@ ALTER FUNCTION geno_v2_session_has_project_permission(uuid, uuid, text)
 ALTER FUNCTION geno_v2_session_can_read_profile(text, text) OWNER TO geno_v2_authz_owner;
 ALTER FUNCTION geno_v2_session_can_read_tenant_member(uuid, text)
     OWNER TO geno_v2_authz_owner;
+ALTER FUNCTION geno_v2_session_can_read_project_member(uuid, uuid, text)
+    OWNER TO geno_v2_authz_owner;
 ALTER FUNCTION geno_v2_session_can_read_audit(uuid, uuid, text)
     OWNER TO geno_v2_authz_owner;
 
-GRANT SELECT ON runtime_sessions, project_members TO geno_v2_authz_owner;
+GRANT SELECT ON project_member_invitations, auth_invitation_redemption_attempts,
+    runtime_sessions, project_members TO geno_v2_authz_owner;
+
+CREATE CONSTRAINT TRIGGER project_invitations_validate_auth_lineage
+AFTER INSERT OR UPDATE ON project_member_invitations
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_auth_redemption_lineage();
+
+CREATE CONSTRAINT TRIGGER auth_attempts_validate_auth_lineage
+AFTER INSERT OR UPDATE ON auth_invitation_redemption_attempts
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_auth_redemption_lineage();
+
+CREATE CONSTRAINT TRIGGER runtime_sessions_validate_auth_lineage
+AFTER INSERT OR UPDATE ON runtime_sessions
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_auth_redemption_lineage();
 
 CREATE TRIGGER runtime_sessions_validate_snapshot
 BEFORE INSERT ON runtime_sessions
@@ -916,7 +1100,7 @@ USING (geno_v2_session_can_read_tenant_member(tenant_id, user_id));
 
 CREATE POLICY project_members_session_select ON project_members
 FOR SELECT TO geno_v2_runtime
-USING (geno_v2_session_has_project_permission(project_id, tenant_id, 'project.read'));
+USING (geno_v2_session_can_read_project_member(project_id, tenant_id, user_id));
 
 CREATE POLICY audit_events_session_select ON audit_events
 FOR SELECT TO geno_v2_runtime
@@ -937,6 +1121,8 @@ GRANT EXECUTE ON FUNCTION geno_v2_session_has_project_permission(uuid, uuid, tex
 GRANT EXECUTE ON FUNCTION geno_v2_session_can_read_profile(text, text)
     TO geno_v2_runtime;
 GRANT EXECUTE ON FUNCTION geno_v2_session_can_read_tenant_member(uuid, text)
+    TO geno_v2_runtime;
+GRANT EXECUTE ON FUNCTION geno_v2_session_can_read_project_member(uuid, uuid, text)
     TO geno_v2_runtime;
 GRANT EXECUTE ON FUNCTION geno_v2_session_can_read_audit(uuid, uuid, text)
     TO geno_v2_runtime;

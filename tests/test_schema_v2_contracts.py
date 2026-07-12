@@ -247,6 +247,11 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         self.assertIn("CREATE ROLE geno_v2_api_login", sql)
         self.assertIn("NOLOGIN NOSUPERUSER", sql)
         self.assertIn("ALTER ROLE geno_v2_api_login PASSWORD NULL", sql)
+        self.assertIn("ALTER ROLE geno_v2_api_login RESET ALL", sql)
+        self.assertIn(
+            "ALTER ROLE geno_v2_api_login IN DATABASE geno_v2 RESET ALL",
+            sql,
+        )
         self.assertIn("WITH ADMIN FALSE, INHERIT FALSE, SET TRUE", sql)
         self.assertIn("REVOKE CONNECT, TEMPORARY ON DATABASE geno_v2 FROM PUBLIC", sql)
         self.assertIn("GRANT CONNECT ON DATABASE geno_v2 TO geno_v2_api_login", sql)
@@ -255,10 +260,30 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
             sql,
         )
         self.assertIn("current_setting('app.session_token_hash', true)", sql)
+        self.assertIn("session_row.issued_at <= statement_timestamp()", sql)
         self.assertIn("DEFERRABLE INITIALLY DEFERRED", sql)
+        self.assertEqual(sql.count("CREATE CONSTRAINT TRIGGER"), 3)
+        self.assertIn("geno_v2_validate_auth_redemption_lineage", sql)
+        self.assertIn(
+            "attempt_row.token_fingerprint <> invitation_row.invite_token_hash",
+            sql,
+        )
+        self.assertIn("scope.value->'roles' ? invitation_row.role", sql)
+        self.assertIn("session_row.issued_at > invitation_row.expires_at", sql)
         self.assertIn("VALUES (true, false)", sql)
         self.assertIn("runtime session identity and scope snapshot are immutable", sql)
-        self.assertIn("GRANT SELECT ON runtime_sessions, project_members", sql)
+        self.assertIn(
+            "GRANT SELECT ON project_member_invitations, "
+            "auth_invitation_redemption_attempts",
+            sql,
+        )
+        self.assertIn("runtime_sessions, project_members TO geno_v2_authz_owner", sql)
+        self.assertIn("geno_v2_session_can_read_project_member", sql)
+        self.assertIn(
+            "USING (geno_v2_session_can_read_project_member("
+            "project_id, tenant_id, user_id))",
+            sql,
+        )
         self.assertNotIn("GRANT SELECT ON runtime_sessions TO geno_v2_runtime", sql)
         self.assertNotIn(
             "GRANT SELECT ON runtime_project_access_grants TO geno_v2_runtime",

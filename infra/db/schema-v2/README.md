@@ -50,6 +50,11 @@ It resolves actor, tenant, and project scope by looking up an active
 `runtime_sessions` row from the transaction-local SHA-256
 `app.session_token_hash`. Caller-supplied actor, tenant, project, or role GUCs
 remain ignored, and the resolver never returns the hash or sensitive auth rows.
+Invitation, redemption-attempt, and session lineage is closed by deferred
+database constraints: tenant, actor, project, token fingerprint, invited role,
+portal surface, policy, state, and issuance timeline must agree at commit.
+Project-member reads expose only the caller's row unless the resolved project
+scope contains `member.manage`.
 
 Invitation redemption, preflight counter consumption, session issuance and
 revocation commands, reauthentication queue mutation, and the write-control
@@ -62,7 +67,9 @@ member of `geno_v2_runtime`, with inheritance disabled and `SET` enabled. A
 deployment must not provision or wire this LOGIN during 0011. Gate tests use an
 installer-owned `SET ROLE` only to verify RLS logic; that is not production
 authentication. Neither runtime role may inherit or set the BYPASSRLS authz
-owner.
+owner. The baseline clears global and database-specific role settings for the
+placeholder; connection-pool checkout must still clear settings on existing
+backends before beginning a request transaction.
 
 The 0012 command boundary must add member/grant/project lifecycle session
 revocation and reauthentication triggers before it provides secret provisioning

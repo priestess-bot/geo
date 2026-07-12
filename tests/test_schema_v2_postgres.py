@@ -68,6 +68,7 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
             )
             for signature in (
                 "geno_v2_session_can_read_audit(uuid, uuid, text)",
+                "geno_v2_session_can_read_project_member(uuid, uuid, text)",
                 "geno_v2_session_can_read_tenant_member(uuid, text)",
                 "geno_v2_session_can_read_profile(text, text)",
                 "geno_v2_session_has_project_permission(uuid, uuid, text)",
@@ -76,6 +77,7 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 "geno_v2_resolve_session_context()",
                 "geno_v2_guard_runtime_session_update()",
                 "geno_v2_validate_runtime_session_snapshot()",
+                "geno_v2_validate_auth_redemption_lineage()",
                 "geno_v2_jsonb_text_set(jsonb)",
                 "geno_v2_reject_audit_event_mutation()",
                 "geno_v2_sync_tenant_status_grants()",
@@ -163,6 +165,15 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
     def test_dirty_public_namespace_fails_closed_but_required_extensions_are_allowed(self) -> None:
         with psycopg.connect(autocommit=True) as connection:
             self._drop_bootstrap_metadata(connection)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "ALTER ROLE geno_v2_api_login "
+                    "SET app.session_token_hash TO 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'"
+                )
+                cursor.execute(
+                    "ALTER ROLE geno_v2_api_login IN DATABASE geno_v2 "
+                    "SET app.actor_id TO 'forged@example.test'"
+                )
 
         extension_only_install = self._run_runner("install")
         self.assertEqual(
@@ -170,6 +181,20 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
             0,
             extension_only_install.stdout + extension_only_install.stderr,
         )
+        with psycopg.connect(autocommit=True) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT rolconfig FROM pg_roles WHERE rolname = 'geno_v2_api_login'"
+                )
+                self.assertIsNone(cursor.fetchone()[0])
+                cursor.execute(
+                    "SELECT count(*) FROM pg_db_role_setting "
+                    "WHERE setrole = ("
+                    "SELECT oid FROM pg_roles WHERE rolname = 'geno_v2_api_login'"
+                    ") AND setdatabase = ("
+                    "SELECT oid FROM pg_database WHERE datname = 'geno_v2')"
+                )
+                self.assertEqual(cursor.fetchone()[0], 0)
 
         with psycopg.connect(autocommit=True) as connection:
             self._drop_bootstrap_metadata(connection)
@@ -276,8 +301,13 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
     expired_session_hash: str
     revoked_session_id: UUID
     revoked_session_hash: str
+    future_session_id: UUID
+    future_session_hash: str
     cross_tenant_session_id: UUID
     cross_tenant_session_hash: str
+    viewer_actor: str
+    viewer_session_id: UUID
+    viewer_session_hash: str
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -294,6 +324,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
         cls.admin_b = f"admin-b-{unique}@example.test"
         cls.multi_actor = f"multi-{unique}@example.test"
         cls.actor_b = f"actor-b-{unique}@example.test"
+        cls.viewer_actor = f"viewer-{unique}@example.test"
         cls.admin_a_member_id = uuid4()
         cls.audit_global_a = uuid4()
         cls.audit_global_b = uuid4()
@@ -310,8 +341,14 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
         cls.revoked_session_hash = hashlib.sha256(
             f"revoked-session-{unique}".encode("utf-8")
         ).hexdigest()
+        cls.future_session_hash = hashlib.sha256(
+            f"future-session-{unique}".encode("utf-8")
+        ).hexdigest()
         cls.cross_tenant_session_hash = hashlib.sha256(
             f"cross-tenant-session-{unique}".encode("utf-8")
+        ).hexdigest()
+        cls.viewer_session_hash = hashlib.sha256(
+            f"viewer-session-{unique}".encode("utf-8")
         ).hexdigest()
 
         with psycopg.connect(autocommit=True) as connection:
@@ -374,8 +411,11 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                         ),
                     )
                 for project_id, tenant_id, user_id, role in (
+                    (cls.project_a1, cls.tenant_a, cls.admin_a, "analyst"),
                     (cls.project_a1, cls.tenant_a, cls.multi_actor, "project_owner"),
                     (cls.project_a2, cls.tenant_a, cls.multi_actor, "analyst"),
+                    (cls.project_a1, cls.tenant_a, cls.viewer_actor, "client_viewer"),
+                    (cls.project_b1, cls.tenant_b, cls.admin_b, "analyst"),
                     (cls.project_b1, cls.tenant_b, cls.actor_b, "project_owner"),
                 ):
                     cursor.execute(
@@ -412,62 +452,150 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
             expires_at: datetime,
             marker: str,
         ) -> UUID:
-            cursor.execute(
-                "SELECT geno_v2_permissions_for_role(%s)",
-                (canonical_role,),
-            )
-            role_permissions = sorted(cursor.fetchone()[0])
             sorted_project_ids = tuple(sorted(project_ids, key=str))
-            project_scopes = [
-                {
-                    "project_id": str(project_id),
-                    "roles": [canonical_role],
-                    "permissions": role_permissions,
-                    "portal_capabilities": ["portal.admin.access"],
-                    "scope_sources": [
-                        "tenant_role" if canonical_role == "tenant_admin" else "direct_member"
-                    ],
-                }
-                for project_id in sorted_project_ids
-            ]
+            requested_surface = "customer" if canonical_role == "client_viewer" else "admin"
+            invitation_role = "client_viewer" if canonical_role == "client_viewer" else "analyst"
+            project_scopes: list[dict[str, object]] = []
+            aggregate_roles = set(tenant_roles)
+            aggregate_permissions: set[str] = set()
+            for project_id in sorted_project_ids:
+                cursor.execute(
+                    "SELECT role_name FROM ("
+                    "SELECT role AS role_name FROM project_members "
+                    "WHERE project_id = %s AND tenant_id = %s "
+                    "AND user_id = %s AND status = 'active' UNION "
+                    "SELECT canonical_role FROM runtime_project_access_grants "
+                    "WHERE project_id = %s AND tenant_id = %s "
+                    "AND actor_id = %s AND status = 'active'"
+                    ") AS backed_roles ORDER BY role_name",
+                    (
+                        project_id,
+                        tenant_id,
+                        actor_id,
+                        project_id,
+                        tenant_id,
+                        actor_id,
+                    ),
+                )
+                project_roles = [row[0] for row in cursor.fetchall()]
+                cursor.execute(
+                    "SELECT DISTINCT permission FROM unnest(%s::text[]) AS role(role_name) "
+                    "CROSS JOIN LATERAL unnest("
+                    "geno_v2_permissions_for_role(role.role_name)) AS item(permission) "
+                    "ORDER BY permission",
+                    (project_roles,),
+                )
+                project_permissions = [row[0] for row in cursor.fetchall()]
+                cursor.execute(
+                    "SELECT EXISTS (SELECT 1 FROM project_members WHERE project_id = %s "
+                    "AND tenant_id = %s AND user_id = %s AND status = 'active'), "
+                    "EXISTS (SELECT 1 FROM runtime_project_access_grants "
+                    "WHERE project_id = %s AND tenant_id = %s "
+                    "AND actor_id = %s AND status = 'active')",
+                    (
+                        project_id,
+                        tenant_id,
+                        actor_id,
+                        project_id,
+                        tenant_id,
+                        actor_id,
+                    ),
+                )
+                has_direct_member, has_tenant_role = cursor.fetchone()
+                scope_sources = []
+                if has_direct_member:
+                    scope_sources.append("direct_member")
+                if has_tenant_role:
+                    scope_sources.append("tenant_role")
+                project_scopes.append(
+                    {
+                        "project_id": str(project_id),
+                        "roles": project_roles,
+                        "permissions": project_permissions,
+                        "portal_capabilities": sorted(
+                            {
+                                "portal.customer.access"
+                                if role == "client_viewer"
+                                else "portal.admin.access"
+                                for role in project_roles
+                            }
+                        ),
+                        "scope_sources": scope_sources,
+                    }
+                )
+                aggregate_roles.update(project_roles)
+                aggregate_permissions.update(project_permissions)
             invitation_id = uuid4()
+            history_attempt_id = uuid4()
             attempt_id = uuid4()
             session_id = uuid4()
-            first_project_id = sorted_project_ids[0]
+            first_project_id = project_ids[0]
+            current_time = datetime.now(UTC)
+            invitation_created_at = min(issued_at, current_time) - timedelta(seconds=1)
+            invitation_expires_at = max(
+                current_time + timedelta(days=2),
+                issued_at + timedelta(days=2),
+            )
+
             def digest(value: str) -> str:
                 return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
             cursor.execute(
                 "INSERT INTO project_member_invitations ("
                 "id, tenant_id, project_id, email, role, status, invite_token_hash, "
                 "audience, allowed_surfaces, policy_version, invited_by, "
-                "accepted_by_attempt_id, expires_at, accepted_at) "
-                "VALUES (%s, %s, %s, %s, 'analyst', 'accepted', %s, "
-                "'admin', ARRAY['admin'], 'auth_surface_policy_v1', 'behavior-test', "
-                "%s, %s, %s)",
+                "accepted_by_attempt_id, expires_at, accepted_at, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, 'accepted', %s, "
+                "%s, ARRAY[%s]::text[], 'auth_surface_policy_v1', 'behavior-test', "
+                "%s, %s, %s, %s)",
                 (
                     invitation_id,
                     tenant_id,
                     first_project_id,
                     actor_id,
+                    invitation_role,
                     digest(f"invite-{marker}"),
+                    requested_surface,
+                    requested_surface,
                     attempt_id,
-                    datetime.now(UTC) + timedelta(days=2),
+                    invitation_expires_at,
                     issued_at,
+                    invitation_created_at,
                 ),
             )
             cursor.execute(
                 "INSERT INTO auth_invitation_redemption_attempts ("
                 "id, tenant_id, project_id, invitation_id, requested_surface, "
-                "idempotency_key_hash, request_hash, token_fingerprint, session_id, status) "
-                "VALUES (%s, %s, %s, %s, 'admin', %s, %s, %s, %s, 'succeeded')",
+                "idempotency_key_hash, request_hash, token_fingerprint, status, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'failed', %s)",
+                (
+                    history_attempt_id,
+                    tenant_id,
+                    first_project_id,
+                    invitation_id,
+                    requested_surface,
+                    digest(f"history-idempotency-{marker}"),
+                    digest(f"history-request-{marker}"),
+                    digest(f"invite-{marker}"),
+                    invitation_created_at + timedelta(milliseconds=500),
+                ),
+            )
+            cursor.execute(
+                "INSERT INTO auth_invitation_redemption_attempts ("
+                "id, tenant_id, project_id, invitation_id, requested_surface, "
+                "idempotency_key_hash, request_hash, token_fingerprint, created_at, "
+                "session_id, status) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'succeeded')",
                 (
                     attempt_id,
                     tenant_id,
                     first_project_id,
                     invitation_id,
+                    requested_surface,
                     digest(f"idempotency-{marker}"),
                     digest(f"request-{marker}"),
-                    digest(f"fingerprint-{marker}"),
+                    digest(f"invite-{marker}"),
+                    issued_at,
                     session_id,
                 ),
             )
@@ -484,10 +612,8 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     actor_id,
                     tenant_id,
                     psycopg.types.json.Jsonb([str(value) for value in sorted_project_ids]),
-                    psycopg.types.json.Jsonb(
-                        sorted({*tenant_roles, canonical_role})
-                    ),
-                    psycopg.types.json.Jsonb(role_permissions),
+                    psycopg.types.json.Jsonb(sorted(aggregate_roles)),
+                    psycopg.types.json.Jsonb(sorted(aggregate_permissions)),
                     psycopg.types.json.Jsonb(list(tenant_roles)),
                     psycopg.types.json.Jsonb(project_scopes),
                     attempt_id,
@@ -535,6 +661,17 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     now + timedelta(days=1),
                 ),
                 (
+                    "future",
+                    cls.tenant_a,
+                    cls.admin_a,
+                    (cls.project_a1, cls.project_a2, cls.project_a3),
+                    "tenant_admin",
+                    ("tenant_admin",),
+                    cls.future_session_hash,
+                    now + timedelta(days=1),
+                    now + timedelta(days=2),
+                ),
+                (
                     "cross-tenant",
                     cls.tenant_b,
                     cls.admin_b,
@@ -542,6 +679,17 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     "tenant_admin",
                     ("tenant_admin",),
                     cls.cross_tenant_session_hash,
+                    now,
+                    now + timedelta(days=1),
+                ),
+                (
+                    "viewer",
+                    cls.tenant_a,
+                    cls.viewer_actor,
+                    (cls.project_a1,),
+                    "client_viewer",
+                    (),
+                    cls.viewer_session_hash,
                     now,
                     now + timedelta(days=1),
                 ),
@@ -565,7 +713,9 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
             cls.valid_session_id = inserted_ids["valid"]
             cls.expired_session_id = inserted_ids["expired"]
             cls.revoked_session_id = inserted_ids["revoked"]
+            cls.future_session_id = inserted_ids["future"]
             cls.cross_tenant_session_id = inserted_ids["cross-tenant"]
+            cls.viewer_session_id = inserted_ids["viewer"]
             with connection.cursor() as cursor:
                 cursor.execute(
                     "UPDATE runtime_sessions SET status = 'revoked', revoked_at = %s, "
@@ -652,6 +802,34 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 table_rows = cursor.fetchall()
                 self.assertEqual({row[0] for row in table_rows}, expected_tables)
                 self.assertTrue(all(row[1] and row[2] for row in table_rows))
+                cursor.execute(
+                    "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
+                    "WHERE conname = ANY(%s) ORDER BY conname",
+                    (
+                        [
+                            "auth_attempts_session_fkey",
+                            "runtime_sessions_redemption_attempt_fkey",
+                        ],
+                    ),
+                )
+                self.assertEqual(
+                    cursor.fetchall(),
+                    [
+                        (
+                            "auth_attempts_session_fkey",
+                            "FOREIGN KEY (session_id, tenant_id) REFERENCES "
+                            "runtime_sessions(id, tenant_id) ON UPDATE RESTRICT "
+                            "ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED",
+                        ),
+                        (
+                            "runtime_sessions_redemption_attempt_fkey",
+                            "FOREIGN KEY (redemption_attempt_id, tenant_id) REFERENCES "
+                            "auth_invitation_redemption_attempts(id, tenant_id) "
+                            "ON UPDATE RESTRICT ON DELETE RESTRICT "
+                            "DEFERRABLE INITIALLY DEFERRED",
+                        ),
+                    ],
+                )
 
                 cursor.execute(
                     "SELECT tablename, roles FROM pg_policies "
@@ -710,6 +888,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     "geno_v2_resolve_session_context",
                     "geno_v2_session_can_access_tenant",
                     "geno_v2_session_can_read_audit",
+                    "geno_v2_session_can_read_project_member",
                     "geno_v2_session_can_read_profile",
                     "geno_v2_session_can_read_tenant_member",
                     "geno_v2_session_has_project_permission",
@@ -737,6 +916,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                         "geno_v2_sync_tenant_member_project_grants",
                         "geno_v2_sync_tenant_status_grants",
                         "geno_v2_jsonb_text_set",
+                        "geno_v2_validate_auth_redemption_lineage",
                         "geno_v2_validate_runtime_session_snapshot",
                         "geno_v2_guard_runtime_session_update",
                         "geno_v2_resolve_session_context",
@@ -744,6 +924,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                         "geno_v2_session_has_tenant_permission",
                         "geno_v2_session_has_project_permission",
                         "geno_v2_session_can_read_profile",
+                        "geno_v2_session_can_read_project_member",
                         "geno_v2_session_can_read_tenant_member",
                         "geno_v2_session_can_read_audit",
                     },
@@ -756,12 +937,14 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                         "geno_v2_sync_project_tenant_grants",
                         "geno_v2_sync_tenant_member_project_grants",
                         "geno_v2_sync_tenant_status_grants",
+                        "geno_v2_validate_auth_redemption_lineage",
                         "geno_v2_validate_runtime_session_snapshot",
                         "geno_v2_resolve_session_context",
                         "geno_v2_session_can_access_tenant",
                         "geno_v2_session_has_tenant_permission",
                         "geno_v2_session_has_project_permission",
                         "geno_v2_session_can_read_profile",
+                        "geno_v2_session_can_read_project_member",
                         "geno_v2_session_can_read_tenant_member",
                         "geno_v2_session_can_read_audit",
                     },
@@ -798,10 +981,31 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 )
                 self.assertTrue(cursor.fetchone()[0])
                 cursor.execute(
+                    "SELECT rolconfig FROM pg_roles WHERE rolname = 'geno_v2_api_login'"
+                )
+                self.assertIsNone(cursor.fetchone()[0])
+                cursor.execute(
+                    "SELECT count(*) FROM pg_db_role_setting "
+                    "WHERE setrole = ("
+                    "SELECT oid FROM pg_roles WHERE rolname = 'geno_v2_api_login'"
+                    ")"
+                )
+                self.assertEqual(cursor.fetchone()[0], 0)
+                cursor.execute(
                     "SELECT has_table_privilege("
                     "'geno_v2_api_login', 'public.projects', 'SELECT')"
                 )
                 self.assertFalse(cursor.fetchone()[0])
+                cursor.execute(
+                    "SELECT has_table_privilege("
+                    "'geno_v2_authz_owner', 'public.project_member_invitations', 'SELECT'), "
+                    "has_table_privilege("
+                    "'geno_v2_authz_owner', "
+                    "'public.auth_invitation_redemption_attempts', 'SELECT'), "
+                    "has_table_privilege("
+                    "'geno_v2_authz_owner', 'public.runtime_sessions', 'SELECT')"
+                )
+                self.assertEqual(cursor.fetchone(), (True, True, True))
 
                 cursor.execute(
                     "SELECT privilege_type FROM pg_database, "
@@ -1106,6 +1310,16 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 )
                 cursor.execute("SELECT id FROM tenants")
                 self.assertEqual(cursor.fetchall(), [(self.tenant_a,)])
+                cursor.execute("SELECT user_id, project_id FROM project_members")
+                self.assertEqual(
+                    set(cursor.fetchall()),
+                    {
+                        (self.admin_a, self.project_a1),
+                        (self.multi_actor, self.project_a1),
+                        (self.multi_actor, self.project_a2),
+                        (self.viewer_actor, self.project_a1),
+                    },
+                )
                 cursor.execute("COMMIT")
 
                 self._begin_runtime_transaction(cursor)
@@ -1119,6 +1333,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     "f" * 64,
                     self.expired_session_hash,
                     self.revoked_session_hash,
+                    self.future_session_hash,
                 ):
                     with self.subTest(invalid_hash=invalid_hash):
                         self._begin_runtime_transaction(cursor)
@@ -1131,6 +1346,18 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                         cursor.execute("SELECT count(*) FROM projects")
                         self.assertEqual(cursor.fetchone()[0], 0)
                         cursor.execute("COMMIT")
+
+                self._begin_runtime_transaction(cursor)
+                cursor.execute(
+                    "SELECT set_config('app.session_token_hash', %s, true)",
+                    (self.viewer_session_hash,),
+                )
+                cursor.execute("SELECT user_id, project_id FROM project_members")
+                self.assertEqual(
+                    cursor.fetchall(),
+                    [(self.viewer_actor, self.project_a1)],
+                )
+                cursor.execute("COMMIT")
 
                 self._begin_runtime_transaction(cursor)
                 cursor.execute(
@@ -1177,6 +1404,19 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
     def test_07_session_snapshot_update_and_lineage_fail_closed(self) -> None:
         with psycopg.connect(autocommit=True) as connection:
             with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT count(*) FROM auth_invitation_redemption_attempts AS attempt "
+                    "JOIN project_member_invitations AS invitation "
+                    "ON invitation.id = attempt.invitation_id "
+                    "WHERE attempt.status = 'failed' AND invitation.status = 'accepted' "
+                    "AND invitation.accepted_by_attempt_id <> attempt.id"
+                )
+                self.assertGreaterEqual(cursor.fetchone()[0], 6)
+                cursor.execute(
+                    "SELECT status FROM runtime_sessions WHERE id = %s",
+                    (self.revoked_session_id,),
+                )
+                self.assertEqual(cursor.fetchone()[0], "revoked")
                 negative_session_inserts = (
                     (
                         "missing-project",
@@ -1245,9 +1485,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                             invitation_id,
                             hashlib.sha256(f"idem-{marker}".encode("utf-8")).hexdigest(),
                             hashlib.sha256(f"request-{marker}".encode("utf-8")).hexdigest(),
-                            hashlib.sha256(
-                                f"fingerprint-{marker}".encode("utf-8")
-                            ).hexdigest(),
+                            hashlib.sha256(f"invite-{marker}".encode("utf-8")).hexdigest(),
                             session_id,
                         ),
                     )
@@ -1316,7 +1554,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                         bad_invitation_id,
                         hashlib.sha256(f"idem-{marker}".encode("utf-8")).hexdigest(),
                         hashlib.sha256(f"request-{marker}".encode("utf-8")).hexdigest(),
-                        hashlib.sha256(f"fingerprint-{marker}".encode("utf-8")).hexdigest(),
+                        hashlib.sha256(f"invite-{marker}".encode("utf-8")).hexdigest(),
                     ),
                 )
                 cursor.execute(
@@ -1334,9 +1572,200 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                         self.valid_session_id,
                     ),
                 )
-                with self.assertRaises(psycopg.errors.ForeignKeyViolation):
+                with self.assertRaises(psycopg.IntegrityError):
                     connection.commit()
                 connection.rollback()
+
+    def test_08_auth_lineage_rejects_cross_scope_and_state_splicing(self) -> None:
+        attack_cases = (
+            {
+                "name": "cross-tenant",
+                "tenant_id": self.tenant_a,
+                "project_id": self.project_a1,
+                "email": self.admin_b,
+                "role": "analyst",
+                "surface": "admin",
+                "session_source_id": self.cross_tenant_session_id,
+                "error": "auth lineage session identity or policy mismatch",
+            },
+            {
+                "name": "actor",
+                "tenant_id": self.tenant_a,
+                "project_id": self.project_a1,
+                "email": self.multi_actor,
+                "role": "analyst",
+                "surface": "admin",
+                "session_source_id": self.valid_session_id,
+                "error": "auth lineage session identity or policy mismatch",
+            },
+            {
+                "name": "project",
+                "tenant_id": self.tenant_a,
+                "project_id": self.project_a2,
+                "email": self.viewer_actor,
+                "role": "client_viewer",
+                "surface": "customer",
+                "session_source_id": self.viewer_session_id,
+                "error": "auth lineage project or portal scope mismatch",
+            },
+            {
+                "name": "surface",
+                "tenant_id": self.tenant_a,
+                "project_id": self.project_a1,
+                "email": self.admin_a,
+                "role": "analyst",
+                "surface": "admin",
+                "attempt_surface": "customer",
+                "session_source_id": self.valid_session_id,
+                "error": "auth lineage requested surface is not allowed",
+            },
+            {
+                "name": "status",
+                "tenant_id": self.tenant_a,
+                "project_id": self.project_a1,
+                "email": self.admin_a,
+                "role": "analyst",
+                "surface": "admin",
+                "attempt_status": "preparing",
+                "session_source_id": None,
+                "error": "auth lineage accepted and succeeded state is not exact",
+            },
+            {
+                "name": "token",
+                "tenant_id": self.tenant_a,
+                "project_id": self.project_a1,
+                "email": self.admin_a,
+                "role": "analyst",
+                "surface": "admin",
+                "wrong_token": True,
+                "session_source_id": self.valid_session_id,
+                "error": "auth lineage invitation token fingerprint mismatch",
+            },
+            {
+                "name": "role",
+                "tenant_id": self.tenant_a,
+                "project_id": self.project_a1,
+                "email": self.admin_a,
+                "role": "reviewer",
+                "surface": "admin",
+                "session_source_id": self.valid_session_id,
+                "error": "auth lineage project or portal scope mismatch",
+            },
+            {
+                "name": "timeline",
+                "tenant_id": self.tenant_a,
+                "project_id": self.project_a1,
+                "email": self.admin_a,
+                "role": "analyst",
+                "surface": "admin",
+                "session_after_invitation_expiry": True,
+                "session_source_id": self.valid_session_id,
+                "error": "auth lineage issuance timeline is invalid",
+            },
+        )
+
+        for attack in attack_cases:
+            with self.subTest(attack=attack["name"]):
+                marker = uuid4().hex
+                invitation_id = uuid4()
+                attempt_id = uuid4()
+                session_id = uuid4()
+                token_hash = hashlib.sha256(
+                    f"lineage-token-{marker}".encode("utf-8")
+                ).hexdigest()
+                now = datetime.now(UTC)
+                invitation_created_at = now - timedelta(seconds=2)
+                attempt_created_at = now - timedelta(seconds=1)
+                invitation_expires_at = now + timedelta(days=1)
+                session_issued_at = now
+                session_expires_at = now + timedelta(days=1)
+                if attack.get("session_after_invitation_expiry"):
+                    session_issued_at = now + timedelta(days=2)
+                    session_expires_at = now + timedelta(days=3)
+                attempt_status = attack.get("attempt_status", "succeeded")
+                linked_session_id = session_id if attempt_status == "succeeded" else None
+                session_source_id = attack["session_source_id"]
+                audience = attack["surface"]
+                attempt_surface = attack.get("attempt_surface", audience)
+                token_fingerprint = (
+                    hashlib.sha256(f"wrong-token-{marker}".encode("utf-8")).hexdigest()
+                    if attack.get("wrong_token")
+                    else token_hash
+                )
+
+                with psycopg.connect() as connection:
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            "INSERT INTO project_member_invitations ("
+                            "id, tenant_id, project_id, email, role, status, "
+                            "invite_token_hash, audience, allowed_surfaces, invited_by, "
+                            "accepted_by_attempt_id, expires_at, accepted_at, created_at) "
+                            "VALUES (%s, %s, %s, %s, %s, 'accepted', %s, %s, "
+                            "ARRAY[%s]::text[], 'lineage-attack-test', %s, %s, %s, %s)",
+                            (
+                                invitation_id,
+                                attack["tenant_id"],
+                                attack["project_id"],
+                                attack["email"],
+                                attack["role"],
+                                token_hash,
+                                audience,
+                                audience,
+                                attempt_id,
+                                invitation_expires_at,
+                                now,
+                                invitation_created_at,
+                            ),
+                        )
+                        cursor.execute(
+                            "INSERT INTO auth_invitation_redemption_attempts ("
+                            "id, tenant_id, project_id, invitation_id, requested_surface, "
+                            "idempotency_key_hash, request_hash, token_fingerprint, "
+                            "session_id, status, created_at) "
+                            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                            (
+                                attempt_id,
+                                attack["tenant_id"],
+                                attack["project_id"],
+                                invitation_id,
+                                attempt_surface,
+                                hashlib.sha256(
+                                    f"lineage-idempotency-{marker}".encode("utf-8")
+                                ).hexdigest(),
+                                hashlib.sha256(
+                                    f"lineage-request-{marker}".encode("utf-8")
+                                ).hexdigest(),
+                                token_fingerprint,
+                                linked_session_id,
+                                attempt_status,
+                                attempt_created_at,
+                            ),
+                        )
+                        if session_source_id is not None:
+                            cursor.execute(
+                                "INSERT INTO runtime_sessions ("
+                                "id, session_token_hash, actor_id, tenant_id, project_ids, "
+                                "roles, permissions, tenant_roles, project_scopes, "
+                                "redemption_attempt_id, issued_by, issued_at, expires_at, "
+                                "metadata) SELECT %s, %s, actor_id, tenant_id, project_ids, "
+                                "roles, permissions, tenant_roles, project_scopes, %s, "
+                                "'lineage-attack-test', %s, %s, metadata "
+                                "FROM runtime_sessions WHERE id = %s",
+                                (
+                                    session_id,
+                                    hashlib.sha256(
+                                        f"lineage-session-{marker}".encode("utf-8")
+                                    ).hexdigest(),
+                                    attempt_id,
+                                    session_issued_at,
+                                    session_expires_at,
+                                    session_source_id,
+                                ),
+                            )
+                        with self.assertRaises(psycopg.errors.CheckViolation) as raised:
+                            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+                        self.assertIn(attack["error"], str(raised.exception))
+                        connection.rollback()
 
 
 @unittest.skipUnless(BEHAVIOR_TEST_ENABLED, "SCHEMA_V2_BEHAVIOR_TEST=1 is required")
