@@ -79,6 +79,13 @@ KNOWLEDGE_ARCHITECT_ROLE = "knowledge_architect"
 CONTENT_OPERATOR_ROLE = "content_operator"
 CLIENT_VIEWER_ROLE = "client_viewer"
 
+PORTAL_ADMIN_ACCESS = "portal.admin.access"
+PORTAL_CUSTOMER_ACCESS = "portal.customer.access"
+PORTAL_CAPABILITY_VOCABULARY: tuple[str, ...] = (
+    PORTAL_ADMIN_ACCESS,
+    PORTAL_CUSTOMER_ACCESS,
+)
+
 
 ROLE_ALIASES: Mapping[str, Role] = {
     "super_admin": SUPER_ADMIN_ROLE,
@@ -123,6 +130,7 @@ ROLE_PERMISSION_MATRIX: Mapping[Role, frozenset[Permission]] = {
             "project.update",
             "project.archive",
             "member.invite",
+            "member.manage",
             "prompt.import",
             "connector.read",
             "connector.manage",
@@ -256,6 +264,20 @@ def permissions_for_roles(roles: Iterable[str]) -> frozenset[Permission]:
     for role in roles:
         permissions.update(permissions_for_role(role))
     return frozenset(permissions)
+
+
+def portal_capabilities_for_role(role: str) -> frozenset[str]:
+    canonical = normalize_role(role)
+    if canonical == CLIENT_VIEWER_ROLE:
+        return frozenset({PORTAL_CUSTOMER_ACCESS})
+    return frozenset({PORTAL_ADMIN_ACCESS})
+
+
+def portal_capabilities_for_roles(roles: Iterable[str]) -> frozenset[str]:
+    capabilities: set[str] = set()
+    for role in roles:
+        capabilities.update(portal_capabilities_for_role(role))
+    return frozenset(capabilities)
 
 
 def permission_conditions(role: str, permission: str) -> tuple[str, ...]:

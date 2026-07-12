@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -23,6 +24,16 @@ from geno_core.models import (
     RuntimeSessionRevokeInput,
     RuntimeTenantMemberInput,
 )
+from geno_core.auth import (
+    AuthInvitationPreflightResult,
+    AuthInvitationRedeemResult,
+    AuthSessionV2Repository,
+    InvitationSurface,
+    assert_auth_writes_enabled,
+    build_session_scope_v2,
+    reset_auth_connection_context,
+)
+from geno_core.auth_delivery import AuthDeliveryKeyring, auth_session_cookie_secure
 from geno_core.rbac import normalize_role, permissions_for_roles
 from geno_core.security.secrets import encrypt_connector_secret
 
@@ -135,6 +146,11 @@ RUNTIME_SESSION_COLUMNS = (
     "metadata",
     "created_at",
     "updated_at",
+    "scope_version",
+    "authz_policy_version",
+    "tenant_roles",
+    "project_scopes",
+    "redemption_attempt_id",
 )
 TENANT_MEMBER_COLUMNS = (
     "id",
@@ -184,16 +200,20 @@ def _json_payload(value: object) -> object:
     return Jsonb(payload)
 
 
-def _uuid(value: str | None) -> object | None:
-    if value is None:
-        return None
-    try:
-        from psycopg.types import TypeInfo  # noqa: F401
-    except ModuleNotFoundError:
+def _json_array(value: object) -> list[object]:
+    if isinstance(value, list):
         return value
-    from uuid import UUID
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        return parsed if isinstance(parsed, list) else []
+    return []
 
-    return UUID(value)
+
+def _uuid(value: str | None) -> object | None:
+    return value
 
 
 def _row_dict(row: Any, columns: tuple[str, ...]) -> dict[str, Any]:
@@ -407,6 +427,7 @@ class RuntimeProjectAccessRepositoryMixin:
         return decrypt_connector_secret(encrypted_secret=str(row["encrypted_secret"]))
 
     def save_tenant_member(self, member: RuntimeTenantMemberInput) -> dict[str, Any]:
+        assert_auth_writes_enabled()
         tenant_id = member.tenant_id.strip()
         user_id = member.user_id.strip().lower()
         role = normalize_role(member.role)
@@ -488,15 +509,6 @@ class RuntimeProjectAccessRepositoryMixin:
             filters.append("tm.tenant_id = %s")
             params.append(_uuid(tenant_id))
         tenant_where = " AND ".join(filters)
-        project_filters = ["lower(pm.user_id) = %s"]
-        project_params: list[object] = [actor_id]
-        if tenant_id:
-            project_filters.append("p.tenant_id = %s")
-            project_params.append(_uuid(tenant_id))
-        if project_id:
-            project_filters.append("pm.project_id = %s")
-            project_params.append(_uuid(project_id))
-        project_where = " AND ".join(project_filters)
         with self.connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -509,17 +521,56 @@ class RuntimeProjectAccessRepositoryMixin:
             )
             tenant_rows = [_row_dict(row, ("tenant_id", "role")) for row in (cursor.fetchall() or ())]
             cursor.execute(
-                f"""
-                SELECT pm.project_id, pm.role, p.tenant_id
-                FROM project_members pm
-                JOIN projects p ON p.id = pm.project_id
-                WHERE {project_where}
-                ORDER BY pm.created_at ASC, pm.project_id ASC
+                """
+                WITH requested(actor_id, tenant_id, project_id) AS (
+                  VALUES (%s::text, %s::uuid, %s::uuid)
+                )
+                SELECT
+                  pm.project_id,
+                  pm.role,
+                  pm.tenant_id,
+                  ARRAY[]::text[] AS permissions,
+                  'direct_member'::text AS scope_source
+                FROM requested requested_scope
+                JOIN project_members pm
+                  ON lower(btrim(pm.user_id)) = requested_scope.actor_id
+                 AND pm.status = 'active'
+                 AND (requested_scope.tenant_id IS NULL OR pm.tenant_id = requested_scope.tenant_id)
+                 AND (requested_scope.project_id IS NULL OR pm.project_id = requested_scope.project_id)
+                -- Legacy query removed its JOIN projects p ON p.id = pm.project_id.
+                UNION ALL
+                SELECT
+                  grant_row.project_id,
+                  grant_row.canonical_role AS role,
+                  grant_row.tenant_id,
+                  grant_row.permissions,
+                  'tenant_role'::text AS scope_source
+                FROM requested requested_scope
+                JOIN runtime_project_access_grants grant_row
+                  ON lower(btrim(grant_row.actor_id)) = requested_scope.actor_id
+                 AND grant_row.status = 'active'
+                 AND (requested_scope.tenant_id IS NULL OR grant_row.tenant_id = requested_scope.tenant_id)
+                 AND (requested_scope.project_id IS NULL OR grant_row.project_id = requested_scope.project_id)
+                ORDER BY project_id, scope_source
                 """,
-                tuple(project_params),
+                (
+                    actor_id,
+                    _uuid(tenant_id) if tenant_id else None,
+                    _uuid(project_id) if project_id else None,
+                ),
             )
-            project_rows = [_row_dict(row, ("project_id", "role", "tenant_id")) for row in (cursor.fetchall() or ())]
-        if project_id and not project_rows:
+            project_rows = [
+                _row_dict(row, ("project_id", "role", "tenant_id", "permissions", "scope_source"))
+                for row in (cursor.fetchall() or ())
+            ]
+        visible_tenant_ids = {
+            str(row["tenant_id"])
+            for row in (*tenant_rows, *project_rows)
+            if row.get("tenant_id")
+        }
+        if tenant_id is None and len(visible_tenant_ids) > 1:
+            raise PermissionError("actor has access to multiple tenants; tenant_id is required")
+        if project_id and not any(str(row.get("project_id")) == project_id for row in project_rows):
             raise PermissionError("actor does not have access to project")
         if tenant_id and not tenant_rows and not project_rows:
             raise PermissionError("actor does not have access to tenant")
@@ -531,20 +582,37 @@ class RuntimeProjectAccessRepositoryMixin:
                     effective_tenant_id = str(value)
                     break
         tenant_roles = tuple(dict.fromkeys(normalize_role(str(row["role"])) for row in tenant_rows if row.get("role")))
-        project_roles = {
-            str(row["project_id"]): normalize_role(str(row["role"]))
+        direct_rows = [row for row in project_rows if row.get("scope_source") in {None, "direct_member"}]
+        grant_rows = [
+            {
+                "project_id": row.get("project_id"),
+                "canonical_role": row.get("role"),
+                "permissions": row.get("permissions") or (),
+            }
             for row in project_rows
-            if row.get("project_id") and row.get("role")
-        }
+            if row.get("scope_source") == "tenant_role"
+        ]
+        project_roles: dict[str, str] = {}
+        for row in project_rows:
+            if row.get("project_id") and row.get("role"):
+                project_roles.setdefault(str(row["project_id"]), normalize_role(str(row["role"])))
         roles = tuple(dict.fromkeys((*tenant_roles, *project_roles.values())))
         permissions = tuple(sorted(permissions_for_roles(roles))) if roles else ()
+        scope_v2 = build_session_scope_v2(
+            actor_id=actor_id,
+            tenant_id=effective_tenant_id or "",
+            tenant_roles=tenant_roles,
+            direct_memberships=direct_rows,
+            grants=grant_rows,
+        )
         return RuntimeMembershipScope(
             actor_id=actor_id,
             tenant_id=effective_tenant_id,
             tenant_roles=tenant_roles,
-            project_ids=tuple(project_roles.keys()),
+            project_ids=scope_v2.project_ids,
             project_roles=project_roles,
             permissions=permissions,
+            project_scopes=scope_v2.project_scopes,
         )
 
     def save_project_launch_config(self, config: RuntimeProjectLaunchConfigInput) -> RuntimeProjectLaunchConfig:
@@ -736,6 +804,7 @@ class RuntimeProjectAccessRepositoryMixin:
         )
 
     def create_runtime_session(self, session_input: RuntimeSessionInput) -> RuntimeSession:
+        assert_auth_writes_enabled()
         actor_id = session_input.actor_id.strip()
         actor_type = session_input.actor_type.strip().lower() or "user"
         issued_by = session_input.issued_by.strip() or "runtime-auth"
@@ -747,6 +816,15 @@ class RuntimeProjectAccessRepositoryMixin:
         project_ids = tuple(dict.fromkeys(item.strip() for item in session_input.project_ids if item.strip()))
         roles = tuple(dict.fromkeys(item.strip() for item in session_input.roles if item.strip()))
         permissions = tuple(dict.fromkeys(item.strip() for item in session_input.permissions if item.strip()))
+        tenant_roles = tuple(dict.fromkeys(item.strip() for item in session_input.tenant_roles if item.strip()))
+        project_scopes = tuple(session_input.project_scopes)
+        scope_version = session_input.scope_version.strip() or "runtime_session_scope_v1"
+        authz_policy_version = session_input.authz_policy_version.strip() if session_input.authz_policy_version else None
+        if scope_version != "runtime_session_scope_v2":
+            raise ValueError("active runtime_session_scope_v1 creation is disabled")
+        if not session_input.tenant_id or authz_policy_version != "auth_surface_policy_v1":
+            raise ValueError("scope-v2 session requires tenant_id and current authz_policy_version")
+        project_ids = tuple(scope.project_id for scope in project_scopes)
         metadata = _json_compatible(session_input.metadata or {})
         if not isinstance(metadata, dict):
             raise ValueError("metadata must be an object")
@@ -758,13 +836,15 @@ class RuntimeProjectAccessRepositoryMixin:
                 """
                 INSERT INTO runtime_sessions (
                   id, session_token_hash, actor_id, actor_type, tenant_id,
-                  project_ids, roles, permissions, auth_method, status,
-                  issued_by, expires_at, metadata
+                  project_ids, roles, permissions, tenant_roles, project_scopes,
+                  scope_version, authz_policy_version, redemption_attempt_id,
+                  auth_method, status, issued_by, expires_at, metadata
                 )
                 VALUES (
                   %s, %s, %s, %s, %s,
-                  %s, %s, %s, 'session', 'active',
-                  %s, now() + (%s * interval '1 second'), %s
+                  %s, %s, %s, %s, %s,
+                  %s, %s, %s,
+                  'session', 'active', %s, now() + (%s * interval '1 second'), %s
                 )
                 """,
                 (
@@ -776,6 +856,11 @@ class RuntimeProjectAccessRepositoryMixin:
                     _json_payload(list(project_ids)),
                     _json_payload(list(roles)),
                     _json_payload(list(permissions)),
+                    _json_payload(list(tenant_roles)),
+                    _json_payload([asdict(scope) for scope in project_scopes]),
+                    scope_version,
+                    authz_policy_version,
+                    _uuid(session_input.redemption_attempt_id) if session_input.redemption_attempt_id else None,
                     issued_by,
                     ttl_seconds,
                     _json_payload(metadata),
@@ -806,7 +891,7 @@ class RuntimeProjectAccessRepositoryMixin:
                     "project_ids": list(project_ids),
                 },
                 output_refs={"runtime_session_ids": [session_id], "session_token_hashes": [session_token_hash]},
-                method_version="runtime_session_v1",
+                method_version="runtime_session_v2" if scope_version == "runtime_session_scope_v2" else "runtime_session_v1",
                 reason=session_input.reason.strip() if session_input.reason else "runtime_session_create",
             )
             self.save_audit_events((audit_event,), cursor=cursor)
@@ -820,51 +905,94 @@ class RuntimeProjectAccessRepositoryMixin:
 
     def validate_runtime_session(self, raw_session_token: str) -> RuntimeSession:
         session_token_hash = _sha256_token_hash(raw_session_token, field_name="session_token")
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT {", ".join(RUNTIME_SESSION_COLUMNS)}
-                FROM runtime_sessions
-                WHERE session_token_hash = %s AND status = 'active'
-                LIMIT 1
-                """,
-                (session_token_hash,),
-            )
-            row = cursor.fetchone()
-            if not row:
-                raise ValueError("runtime session not found")
-            session = _row_dict(row, RUNTIME_SESSION_COLUMNS)
-            if _is_past_datetime(session.get("expires_at")):
+        reset_auth_connection_context(self.connection)
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                      set_config('app.rls_enabled', '1', true),
+                      set_config('app.actor_id', '', true),
+                      set_config('app.project_id', '', true),
+                      set_config('app.project_ids', '', true),
+                      set_config('app.tenant_id', '', true),
+                      set_config('geno.runtime_project_access_control', '1', true),
+                      set_config('geno.runtime_actor_id', '', true),
+                      set_config('geno.runtime_project_id', '', true),
+                      set_config('geno.runtime_tenant_id', '', true),
+                      set_config('geno.runtime_invitation_token_hash', '', true),
+                      set_config('geno.runtime_idempotency_key_hash', '', true),
+                      set_config('geno.runtime_requested_surface', '', true),
+                      set_config('geno.runtime_portal_token_hash', '', true),
+                      set_config('geno.runtime_session_token_hash', %s, true)
+                    """,
+                    (session_token_hash,),
+                )
+                cursor.execute(
+                    f"""
+                    SELECT {", ".join(RUNTIME_SESSION_COLUMNS)}
+                    FROM runtime_sessions
+                    WHERE session_token_hash = %s AND status = 'active'
+                    LIMIT 1
+                    """,
+                    (session_token_hash,),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    raise ValueError("runtime session not found")
+                session = _row_dict(row, RUNTIME_SESSION_COLUMNS)
+                if (
+                    session.get("scope_version") != "runtime_session_scope_v2"
+                    or session.get("authz_policy_version") != "auth_surface_policy_v1"
+                    or not session.get("tenant_id")
+                ):
+                    raise ValueError("runtime session scope-v2 authentication is required")
+                if _is_past_datetime(session.get("expires_at")):
+                    cursor.execute(
+                        """
+                        UPDATE runtime_sessions
+                        SET status = 'expired',
+                            updated_at = now()
+                        WHERE id = %s
+                        """,
+                        (_uuid(str(session["id"])),),
+                    )
+                    self.connection.commit()
+                    raise ValueError("runtime session expired")
                 cursor.execute(
                     """
                     UPDATE runtime_sessions
-                    SET status = 'expired',
+                    SET last_used_at = now(),
                         updated_at = now()
                     WHERE id = %s
                     """,
                     (_uuid(str(session["id"])),),
                 )
-                self.connection.commit()
-                raise ValueError("runtime session expired")
-            cursor.execute(
-                """
-                UPDATE runtime_sessions
-                SET last_used_at = now(),
-                    updated_at = now()
-                WHERE id = %s
-                """,
-                (_uuid(str(session["id"])),),
-            )
-        self.connection.commit()
-        public_session = {key: value for key, value in session.items() if key != "session_token_hash"}
-        return RuntimeSession(session=public_session, audit_events=(), raw_session_token=None)
+            self.connection.commit()
+            public_session = {key: value for key, value in session.items() if key != "session_token_hash"}
+            return RuntimeSession(session=public_session, audit_events=(), raw_session_token=None)
+        except Exception:
+            self.connection.rollback()
+            raise
 
     def revoke_runtime_session(self, revoke_input: RuntimeSessionRevokeInput) -> RuntimeSession:
         session_id = revoke_input.session_id.strip()
         revoked_by = revoke_input.revoked_by.strip() or "runtime-auth"
         if not session_id:
             raise ValueError("session_id is required")
+        reset_auth_connection_context(self.connection)
         with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                  set_config('app.rls_enabled', '1', true),
+                  set_config('app.actor_id', %s, true),
+                  set_config('geno.runtime_project_access_control', '1', true),
+                  set_config('geno.runtime_actor_id', %s, true),
+                  set_config('geno.runtime_session_token_hash', '', true)
+                """,
+                (revoked_by, revoked_by),
+            )
             cursor.execute(
                 f"""
                 SELECT {", ".join(RUNTIME_SESSION_COLUMNS)}
@@ -878,6 +1006,21 @@ class RuntimeProjectAccessRepositoryMixin:
             if not existing:
                 raise ValueError("runtime session not found")
             before = _row_dict(existing, RUNTIME_SESSION_COLUMNS)
+            tenant_id = str(before.get("tenant_id") or "").strip()
+            project_ids = tuple(
+                str(value).strip()
+                for value in _json_array(before.get("project_ids"))
+                if str(value).strip()
+            )
+            cursor.execute(
+                """
+                SELECT
+                  set_config('app.tenant_id', %s, true),
+                  set_config('app.project_ids', %s, true),
+                  set_config('geno.runtime_tenant_id', %s, true)
+                """,
+                (tenant_id, ",".join(project_ids), tenant_id),
+            )
             cursor.execute(
                 """
                 UPDATE runtime_sessions
@@ -906,7 +1049,7 @@ class RuntimeProjectAccessRepositoryMixin:
             after = _row_dict(cursor.fetchone(), RUNTIME_SESSION_COLUMNS)
             audit_event = build_audit_event(
                 event_type="runtime_session_revoked",
-                project_id="",
+                project_id=project_ids[0] if project_ids else "",
                 actor_type="user",
                 actor_id=revoked_by,
                 target_type="runtime_session",
@@ -922,6 +1065,98 @@ class RuntimeProjectAccessRepositoryMixin:
         self.connection.commit()
         public_after = {key: value for key, value in after.items() if key != "session_token_hash"}
         return RuntimeSession(session=public_after, audit_events=(asdict(audit_event),), raw_session_token=None)
+
+    def _auth_session_v2_repository(self, *, require_delivery_key: bool = True) -> AuthSessionV2Repository:
+        return AuthSessionV2Repository(
+            self.connection,
+            keyring=AuthDeliveryKeyring.from_env() if require_delivery_key else None,
+            cookie_secure=auth_session_cookie_secure(),
+            session_ttl_seconds=int(os.getenv("GENO_RUNTIME_SESSION_TTL_SECONDS", "604800")),
+        )
+
+    def preflight_auth_invitation(
+        self,
+        *,
+        invitation_id: str,
+        invite_token: str,
+        requested_surface: InvitationSurface,
+    ) -> AuthInvitationPreflightResult:
+        return self._auth_session_v2_repository(require_delivery_key=False).preflight(
+            invitation_id=invitation_id,
+            invite_token=invite_token,
+            requested_surface=requested_surface,
+        )
+
+    def consume_auth_preflight_rate_limit(
+        self,
+        *,
+        bucket_key: str,
+        limit: int,
+        window_seconds: int,
+    ) -> int:
+        normalized_key = bucket_key.strip()
+        if len(normalized_key) != 64:
+            raise ValueError("preflight rate-limit bucket_key must be a SHA-256 digest")
+        limit = int(limit)
+        if limit < 1 or limit > 5000:
+            raise ValueError("preflight rate-limit limit must be between 1 and 5000")
+        window_seconds = max(1, min(int(window_seconds), 3600))
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO auth_preflight_rate_limits(
+                      bucket_key, window_started_at, request_count, expires_at, updated_at
+                    )
+                    VALUES (%s, now(), 1, now() + (%s * interval '1 second'), now())
+                    ON CONFLICT (bucket_key) DO UPDATE SET
+                      window_started_at = CASE
+                        WHEN auth_preflight_rate_limits.expires_at <= now() THEN now()
+                        ELSE auth_preflight_rate_limits.window_started_at
+                      END,
+                      request_count = CASE
+                        WHEN auth_preflight_rate_limits.expires_at <= now() THEN 1
+                        ELSE auth_preflight_rate_limits.request_count + 1
+                      END,
+                      expires_at = CASE
+                        WHEN auth_preflight_rate_limits.expires_at <= now()
+                          THEN now() + (%s * interval '1 second')
+                        ELSE auth_preflight_rate_limits.expires_at
+                      END,
+                      updated_at = now()
+                    RETURNING request_count
+                    """,
+                    (normalized_key, window_seconds, window_seconds),
+                )
+                row = cursor.fetchone()
+                count = int(row.get("request_count") if isinstance(row, dict) else row[0])
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
+        return count
+
+    def redeem_auth_invitation_v2(
+        self,
+        *,
+        invitation_id: str,
+        invite_token: str,
+        requested_surface: InvitationSurface,
+        idempotency_key: str,
+    ) -> AuthInvitationRedeemResult:
+        return self._auth_session_v2_repository().redeem(
+            invitation_id=invitation_id,
+            invite_token=invite_token,
+            requested_surface=requested_surface,
+            idempotency_key=idempotency_key,
+        )
+
+    def confirm_auth_invitation_delivery(self, *, session_id: str, actor_id: str, tenant_id: str) -> bool:
+        return self._auth_session_v2_repository(require_delivery_key=False).confirm_delivery(
+            session_id=session_id,
+            actor_id=actor_id,
+            tenant_id=tenant_id,
+        )
 
     def create_customer_portal_token(
         self,

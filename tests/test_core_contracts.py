@@ -210,6 +210,7 @@ from geno_core.models import (
     RuntimeProjectMemberInvitationInput,
     RuntimeProjectMemberInvitationPage,
     RuntimeProjectMemberPage,
+    RuntimeProjectSessionScope,
     RuntimeProjectActionInput,
     RuntimeProjectUpdateInput,
     RuntimePromptPage,
@@ -521,7 +522,8 @@ class CoreContractsTest(unittest.TestCase):
             role="viewer",
             invitation_id="invitation-1",
             expires_at="2026-06-17T00:00:00+00:00",
-            accept_url="https://app.example.com/invite/accept?invitation_id=invitation-1&invite_token=token",
+            accept_url="https://app.example.com/invite/accept?invitation_id=invitation-1",
+            one_time_code="token",
             subject="Join GENO",
             message="Please join the workspace.",
         )
@@ -531,6 +533,10 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("Please join the workspace.", rendered.text)
         self.assertIn("Role: viewer", rendered.text)
         self.assertIn("Invitation ID: invitation-1", rendered.text)
+        self.assertIn("https://app.example.com/invite/accept?invitation_id=invitation-1", rendered.text)
+        self.assertIn("Enter this one-time code on that page:\ntoken", rendered.text)
+        self.assertNotIn("invite_token=", rendered.text)
+        self.assertNotIn("one-time link", rendered.text)
         self.assertEqual(rendered.subject_hash, runtime_email_body_hash("Join GENO"))
         self.assertEqual(rendered.body_hash, runtime_email_body_hash(rendered.text))
         self.assertRegex(rendered.template_hash, r"^[0-9a-f]{64}$")
@@ -5423,12 +5429,18 @@ class CoreContractsTest(unittest.TestCase):
                 "agency-owner",
                 "app.project_id",
                 project_id,
+                "app.project_ids",
+                "",
+                "app.tenant_id",
+                "",
                 "geno.runtime_project_access_control",
                 "1",
                 "geno.runtime_actor_id",
                 "agency-owner",
                 "geno.runtime_project_id",
                 project_id,
+                "geno.runtime_tenant_id",
+                "",
             ),
         )
 
@@ -5600,7 +5612,7 @@ class CoreContractsTest(unittest.TestCase):
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
         connection = RecordingConnection(
             result_sets=[
-                {"id": project_id},
+                {"id": project_id, "tenant_id": "b926f81f-037c-5f93-aeef-9397f9c5724b"},
                 None,
                 {
                     "id": "d83a98ab-57c1-52e8-90b9-8c488f263e48",
@@ -5631,7 +5643,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(connection.commit_count, 1)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("INSERT INTO project_members", executed_sql)
-        self.assertIn("ON CONFLICT (project_id, user_id) DO UPDATE", executed_sql)
+        self.assertIn("ON CONFLICT (project_id, (lower(btrim(user_id)))) DO UPDATE", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
 
     def test_postgres_repository_deletes_runtime_project_member_with_audit_event(self) -> None:
@@ -5703,7 +5715,7 @@ class CoreContractsTest(unittest.TestCase):
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
         connection = RecordingConnection(
             result_sets=[
-                {"id": project_id},
+                {"id": project_id, "tenant_id": "b926f81f-037c-5f93-aeef-9397f9c5724b"},
                 {
                     "id": "d83a98ab-57c1-52e8-90b9-8c488f263e48",
                     "project_id": project_id,
@@ -5895,9 +5907,19 @@ class CoreContractsTest(unittest.TestCase):
             RuntimeSessionInput(
                 actor_id="viewer@example.com",
                 tenant_id="cf58ebd1-6ba1-4549-a4ff-fc5f47d54a13",
-                project_ids=("6624961f-36ae-539b-9d48-51619b42e37e",),
-                roles=("viewer",),
+                roles=("client_viewer",),
                 permissions=("report.read",),
+                project_scopes=(
+                    RuntimeProjectSessionScope(
+                        project_id="6624961f-36ae-539b-9d48-51619b42e37e",
+                        roles=("client_viewer",),
+                        permissions=("report.read",),
+                        portal_capabilities=("portal.customer.access",),
+                        scope_sources=("direct_member",),
+                    ),
+                ),
+                scope_version="runtime_session_scope_v2",
+                authz_policy_version="auth_surface_policy_v1",
                 ttl_seconds=3600,
                 issued_by="runtime-auth",
                 metadata={"source": "test"},
@@ -5912,7 +5934,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertTrue(str(record.raw_session_token).startswith("geno-session-"))
         self.assertNotIn(str(record.raw_session_token), str(record.audit_events))
         self.assertEqual(record.audit_events[0]["event_type"], "runtime_session_created")
-        self.assertEqual(record.audit_events[0]["method_version"], "runtime_session_v1")
+        self.assertEqual(record.audit_events[0]["method_version"], "runtime_session_v2")
         self.assertEqual(connection.commit_count, 1)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("INSERT INTO runtime_sessions", executed_sql)
@@ -5930,7 +5952,7 @@ class CoreContractsTest(unittest.TestCase):
             "session_token_hash": session_hash,
             "actor_id": "viewer@example.com",
             "actor_type": "user",
-            "tenant_id": None,
+            "tenant_id": "cf58ebd1-6ba1-4549-a4ff-fc5f47d54a13",
             "project_ids": ["6624961f-36ae-539b-9d48-51619b42e37e"],
             "roles": ["viewer"],
             "permissions": ["report.read"],
@@ -5946,6 +5968,19 @@ class CoreContractsTest(unittest.TestCase):
             "metadata": {},
             "created_at": now,
             "updated_at": now,
+            "scope_version": "runtime_session_scope_v2",
+            "authz_policy_version": "auth_surface_policy_v1",
+            "tenant_roles": [],
+            "project_scopes": [
+                {
+                    "project_id": "6624961f-36ae-539b-9d48-51619b42e37e",
+                    "roles": ["client_viewer"],
+                    "permissions": ["report.read"],
+                    "portal_capabilities": ["portal.customer.access"],
+                    "scope_sources": ["direct_member"],
+                }
+            ],
+            "redemption_attempt_id": None,
         }
         connection = RecordingConnection(result_sets=[session_row])
 
@@ -5954,11 +5989,14 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(record.session["actor_id"], "viewer@example.com")
         self.assertIsNone(record.raw_session_token)
         self.assertNotIn("session_token_hash", record.session)
-        self.assertEqual(connection.commit_count, 1)
+        self.assertEqual(connection.commit_count, 2)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("WHERE session_token_hash = %s AND status = 'active'", executed_sql)
         self.assertIn("SET last_used_at = now()", executed_sql)
-        self.assertEqual(connection.calls[0][1], (session_hash,))
+        session_select_params = next(
+            params for sql, params in connection.calls if "WHERE session_token_hash = %s" in sql
+        )
+        self.assertEqual(session_select_params, (session_hash,))
 
     def test_postgres_repository_revokes_runtime_session_with_audit_event(self) -> None:
         now = datetime.now(UTC)
@@ -6004,7 +6042,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(record.audit_events[0]["event_type"], "runtime_session_revoked")
         self.assertEqual(record.audit_events[0]["actor_id"], "tenant-admin")
         self.assertEqual(record.audit_events[0]["method_version"], "runtime_session_v1")
-        self.assertEqual(connection.commit_count, 1)
+        self.assertEqual(connection.commit_count, 2)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FOR UPDATE", executed_sql)
         self.assertIn("UPDATE runtime_sessions", executed_sql)
@@ -6017,7 +6055,7 @@ class CoreContractsTest(unittest.TestCase):
         invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
         connection = RecordingConnection(
             result_sets=[
-                {"id": project_id},
+                {"id": project_id, "tenant_id": "b926f81f-037c-5f93-aeef-9397f9c5724b"},
                 None,
                 {
                     "id": invitation_id,
@@ -6064,7 +6102,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(connection.commit_count, 1)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("INSERT INTO project_member_invitations", executed_sql)
-        self.assertIn("ON CONFLICT (project_id, email, role, status) DO UPDATE", executed_sql)
+        self.assertIn("ON CONFLICT (project_id, (lower(btrim(email))))", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
         insert_params = next(params for sql, params in connection.calls if "INSERT INTO project_member_invitations" in sql)
         old_stable_id = uuid5(
@@ -6081,6 +6119,7 @@ class CoreContractsTest(unittest.TestCase):
         pending_invitation = {
             "id": invitation_id,
             "project_id": project_id,
+            "tenant_id": "b926f81f-037c-5f93-aeef-9397f9c5724b",
             "email": "viewer@example.com",
             "role": "viewer",
             "status": "pending",
@@ -6215,6 +6254,7 @@ class CoreContractsTest(unittest.TestCase):
         pending_invitation = {
             "id": invitation_id,
             "project_id": project_id,
+            "tenant_id": "b926f81f-037c-5f93-aeef-9397f9c5724b",
             "email": "viewer@example.com",
             "role": "viewer",
             "status": "pending",
@@ -6330,7 +6370,10 @@ class CoreContractsTest(unittest.TestCase):
                     project_id=project_id,
                     invitation_id=invitation_id,
                     invite_token=invite_token,
-                    accept_base_url="https://app.example.com/invite/accept",
+                    accept_base_url=(
+                        "https://app.example.com/invite/accept"
+                        "?campaign=legacy&invite_token=must-be-stripped#old-fragment"
+                    ),
                     sent_by="agency-owner",
                     smtp_env_prefix="GENO_TEST_SMTP",
                     subject="Join GENO",
@@ -6342,7 +6385,13 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(record.invitation["status"], "pending")
         self.assertEqual(record.audit_events[0]["event_type"], "project_member_invitation_email_sent")
         self.assertEqual(sent[0][2], ["viewer@example.com"])
-        self.assertIn(invite_token, sent[0][1].get_content())
+        sent_content = sent[0][1].get_content()
+        self.assertIn(f"Enter this one-time code on that page:\n{invite_token}", sent_content)
+        self.assertIn(f"?invitation_id={invitation_id}", sent_content)
+        self.assertNotIn("invite_token=", sent_content)
+        self.assertNotIn("campaign=legacy", sent_content)
+        self.assertNotIn("old-fragment", sent_content)
+        self.assertNotIn("one-time link", sent_content)
         self.assertEqual(sent[0][1]["Subject"], "Join GENO")
         self.assertEqual(sent[0][1]["X-GENO-Email-Template-Version"], PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION)
         self.assertNotIn(invite_token, str(record.audit_events))
@@ -6352,22 +6401,32 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("WHERE project_id = %s AND id = %s AND invite_token_hash = %s FOR UPDATE", executed_sql)
         self.assertIn("INSERT INTO audit_events", executed_sql)
         audit_params = next(params for sql, params in connection.calls if "INSERT INTO audit_events" in sql)
-        self.assertNotIn(invite_token, str(audit_params))
-        self.assertNotIn("https://app.example.com/invite/accept?", str(audit_params))
+        audit_input_refs = audit_params[9].obj
+        audit_output_refs = audit_params[10].obj
+        serialized_audit_refs = json.dumps([audit_input_refs, audit_output_refs], sort_keys=True)
+        self.assertNotIn(invite_token, serialized_audit_refs)
+        self.assertNotIn("https://app.example.com/invite/accept?", serialized_audit_refs)
+        accept_url = f"https://app.example.com/invite/accept?invitation_id={invitation_id}"
+        accept_url_hash = hashlib.sha256(accept_url.encode("utf-8")).hexdigest()
         rendered_email = render_project_member_invitation_email(
             role="viewer",
             invitation_id=invitation_id,
             expires_at=pending_invitation["expires_at"].isoformat(),
-            accept_url=f"https://app.example.com/invite/accept?invitation_id={invitation_id}&invite_token={invite_token}",
+            accept_url=accept_url,
+            one_time_code=invite_token,
             subject="Join GENO",
             message="Please join the workspace.",
         )
-        self.assertIn(PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION, str(audit_params))
-        self.assertIn("email_template_hashes", str(audit_params))
-        self.assertIn("email_subject_hashes", str(audit_params))
-        self.assertIn("email_body_hashes", str(audit_params))
-        self.assertIn(rendered_email.subject_hash, str(audit_params))
-        self.assertIn(rendered_email.body_hash, str(audit_params))
+        self.assertEqual(audit_params[11], "project_member_invitation_email_v2")
+        self.assertEqual(audit_input_refs["accept_url_hashes"], [accept_url_hash])
+        self.assertEqual(
+            audit_input_refs["email_template_versions"],
+            [PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION],
+        )
+        self.assertEqual(audit_input_refs["email_template_hashes"], [rendered_email.template_hash])
+        self.assertEqual(audit_input_refs["email_subject_hashes"], [rendered_email.subject_hash])
+        self.assertEqual(audit_input_refs["email_body_hashes"], [rendered_email.body_hash])
+        self.assertEqual(audit_output_refs["email_body_hashes"], [rendered_email.body_hash])
 
     def test_postgres_repository_rejects_invitation_email_for_non_pending_status(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)

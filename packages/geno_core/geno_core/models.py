@@ -103,6 +103,27 @@ class RuntimeMembershipScope:
     project_ids: tuple[str, ...]
     project_roles: dict[str, str]
     permissions: tuple[str, ...]
+    project_scopes: tuple["RuntimeProjectSessionScope", ...] = ()
+
+
+@dataclass(frozen=True)
+class RuntimeProjectSessionScope:
+    project_id: str
+    roles: tuple[str, ...]
+    permissions: tuple[str, ...]
+    portal_capabilities: tuple[str, ...]
+    scope_sources: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RuntimeSessionScopeV2:
+    actor_id: str
+    tenant_id: str
+    tenant_roles: tuple[str, ...]
+    project_scopes: tuple[RuntimeProjectSessionScope, ...]
+    project_ids: tuple[str, ...]
+    scope_version: str = "runtime_session_scope_v2"
+    authz_policy_version: str = "auth_surface_policy_v1"
 
 
 @dataclass(frozen=True)
@@ -1741,6 +1762,11 @@ class RuntimeSessionInput:
     project_ids: tuple[str, ...] = ()
     roles: tuple[str, ...] = ()
     permissions: tuple[str, ...] = ()
+    tenant_roles: tuple[str, ...] = ()
+    project_scopes: tuple[RuntimeProjectSessionScope, ...] = ()
+    scope_version: str = "runtime_session_scope_v1"
+    authz_policy_version: str | None = None
+    redemption_attempt_id: str | None = None
     ttl_seconds: int = 604800
     issued_by: str = "runtime-auth"
     metadata: dict[str, Any] = field(default_factory=dict)

@@ -31,7 +31,8 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import hashes
 
 from geno_api.access_logging import persist_runtime_http_access_log
-from geno_api.auth_context import AuthContext, auth_context_scope, build_anonymous_auth_context, build_user_auth_context
+from geno_api.auth_context import AuthContext, build_anonymous_auth_context, build_user_auth_context
+from geno_api.auth_routes import register_auth_routes
 from geno_api.ops_routes import register_ops_routes
 from geno_api.runtime_access_routes import register_runtime_access_routes
 from geno_api.runtime_metrics import (
@@ -49,6 +50,7 @@ from geno_core.collection_jobs import CollectionJobStore
 from geno_core.durable_jobs import JobStateConflictError
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.audit import build_audit_event
+from geno_core.auth_delivery import AuthDeliveryError, AuthDeliveryKeyring, auth_session_cookie_secure
 from geno_core.bootstrap import DEFAULT_AU_COMPETITORS, build_au_project_bootstrap, build_project_bootstrap
 from geno_core.collection import (
     build_manual_backfill_record,
@@ -127,15 +129,12 @@ from geno_core.models import (
     RuntimeProjectBrandLogoUpload,
     RuntimeProjectMemberDeleteInput,
     RuntimeProjectMemberInput,
-    RuntimeProjectMemberInvitationAcceptInput,
     RuntimeProjectMemberInvitationActionInput,
     RuntimeProjectMemberInvitationEmailInput,
     RuntimeProjectMemberInvitationInput,
     RuntimeProjectActionInput,
     RawEvidenceRecord,
     RuntimeProjectLaunchConfigInput,
-    RuntimeSessionInput,
-    RuntimeSessionRevokeInput,
     RuntimeProjectUpdateInput,
     RuntimePromptImportInput,
     RuntimePromptCandidateImportInput,
@@ -453,8 +452,10 @@ def dev_tools_enabled() -> bool:
 
 
 def runtime_session_cookie_secure() -> bool:
-    value = os.getenv(RUNTIME_SESSION_COOKIE_SECURE_ENV, "1").strip().lower()
-    return value in RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES
+    try:
+        return auth_session_cookie_secure()
+    except AuthDeliveryError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 def require_dev_tools_enabled() -> None:
@@ -479,8 +480,17 @@ def validate_production_runtime_security() -> None:
     auth_mode = runtime_auth_mode()
     if auth_mode == RUNTIME_AUTH_MODE_HEADER:
         errors.append(f"{RUNTIME_AUTH_MODE_ENV}=header is forbidden")
-    if auth_mode == RUNTIME_AUTH_MODE_SESSION and not runtime_session_cookie_secure():
-        errors.append(f"{RUNTIME_SESSION_COOKIE_SECURE_ENV}=1 is required for session auth")
+    try:
+        secure_cookie = auth_session_cookie_secure()
+    except AuthDeliveryError as exc:
+        errors.append(str(exc))
+        secure_cookie = False
+    if not secure_cookie:
+        errors.append(f"{RUNTIME_SESSION_COOKIE_SECURE_ENV}=1 is required")
+    try:
+        AuthDeliveryKeyring.from_env()
+    except AuthDeliveryError as exc:
+        errors.append(f"auth delivery keyring is invalid: {exc}")
     connector_key = os.getenv("GENO_CONNECTOR_SECRET_MASTER_KEY", "").strip()
     if not connector_key or connector_key == "geno-local-connector-secret-master-key":
         errors.append("GENO_CONNECTOR_SECRET_MASTER_KEY must be a non-default secret")
@@ -1254,6 +1264,14 @@ def build_auth_context_from_runtime_session(session_record: dict[str, Any]) -> A
         project_ids=_session_record_items(session_record, "project_ids"),
         roles=_session_record_items(session_record, "roles"),
         permissions=_session_record_items(session_record, "permissions"),
+        project_scopes=tuple(
+            dict(item)
+            for item in (session_record.get("project_scopes") or ())
+            if isinstance(item, dict)
+        ),
+        tenant_roles=_session_record_items(session_record, "tenant_roles"),
+        scope_version=str(session_record.get("scope_version") or "") or None,
+        authz_policy_version=str(session_record.get("authz_policy_version") or "") or None,
         session_id=str(session_record["id"]) if session_record.get("id") else None,
     )
 
@@ -1306,7 +1324,7 @@ def _clear_runtime_session_cookie(response: Response) -> None:
 
 
 def _runtime_session_csrf_exempt_path(path: str) -> bool:
-    return path == "/v1/auth/invitations/redeem"
+    return path in {"/v1/auth/invitations/preflight", "/v1/auth/invitations/redeem"}
 
 
 def _assert_runtime_session_csrf(request: Request) -> None:
@@ -1554,10 +1572,21 @@ def effective_runtime_actor_id(actor_id: str | None, fallback: str | None = None
     return "runtime-console"
 
 
-def _auth_context_role_allowed(context: AuthContext, allowed_roles: tuple[str, ...] | None) -> bool:
+def _auth_context_role_allowed(
+    context: AuthContext,
+    allowed_roles: tuple[str, ...] | None,
+    *,
+    project_id: str | None = None,
+) -> bool:
     if not allowed_roles:
         return True
     allowed = {normalize_role(role) for role in allowed_roles}
+    if project_id and context.project_scopes:
+        project_scope = context.project_scope(project_id)
+        if project_scope is None:
+            return False
+        scope_roles = project_scope.get("roles") or ()
+        return any(normalize_role(str(role)) in allowed for role in scope_roles)
     return any(normalize_role(role) in allowed for role in context.roles)
 
 
@@ -1571,7 +1600,7 @@ def _assert_auth_context_project_access(
         return False
     if project_id not in context.project_ids:
         raise HTTPException(status_code=403, detail="actor does not have access to project")
-    if not _auth_context_role_allowed(context, allowed_roles):
+    if not _auth_context_role_allowed(context, allowed_roles, project_id=project_id):
         allowed = ", ".join(allowed_roles or ())
         raise HTTPException(status_code=403, detail=f"actor role cannot perform this action; requires {allowed}")
     return True
@@ -1582,6 +1611,8 @@ def apply_runtime_project_db_context(
     *,
     actor_id: str | None,
     project_id: str | None = None,
+    tenant_id: str | None = None,
+    project_ids: tuple[str, ...] = (),
 ) -> None:
     if not runtime_project_access_control_enabled():
         return
@@ -1593,6 +1624,13 @@ def apply_runtime_project_db_context(
     set_context = getattr(repository, "set_runtime_project_access_context", None)
     if callable(set_context):
         try:
+            set_context(
+                actor_id=actor_id,
+                project_id=project_id.strip() if project_id else None,
+                tenant_id=tenant_id,
+                project_ids=project_ids,
+            )
+        except TypeError:
             set_context(actor_id=actor_id, project_id=project_id.strip() if project_id else None)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1631,6 +1669,8 @@ def assert_runtime_project_access(
             repository,
             actor_id=context.actor_id,
             project_id=normalized_project_id,
+            tenant_id=context.tenant_id,
+            project_ids=context.project_ids,
         )
         return
     get_project_member_role = getattr(repository, "get_project_member_role", None)
@@ -1802,6 +1842,22 @@ register_runtime_access_routes(
     require_runtime_actor_id=require_runtime_actor_id,
     assert_runtime_project_access=assert_runtime_project_access,
     runtime_project_access_control_enabled=runtime_project_access_control_enabled,
+    resolve_auth_context=build_runtime_auth_context,
+    apply_runtime_project_db_context=apply_runtime_project_db_context,
+    build_repository=lambda: build_repository_from_env(),
+    close_repository=lambda repository: close_repository_connection(repository),
+)
+
+register_auth_routes(
+    app,
+    build_repository=lambda: build_repository_from_env(),
+    close_repository=lambda repository: close_repository_connection(repository),
+    resolve_auth_context=build_runtime_auth_context,
+    runtime_actor_header=RUNTIME_ACTOR_HEADER,
+    session_cookie_name=RUNTIME_SESSION_COOKIE_NAME,
+    csrf_cookie_name=RUNTIME_CSRF_COOKIE_NAME,
+    csrf_header_name=RUNTIME_CSRF_HEADER,
+    cookie_secure=runtime_session_cookie_secure,
 )
 
 
@@ -2449,13 +2505,6 @@ class ProjectMemberInvitationActionRequest(BaseModel):
 
 
 class ProjectMemberInvitationAcceptRequest(BaseModel):
-    invitation_id: str = Field(min_length=1, max_length=80)
-    invite_token: str = Field(min_length=1, max_length=160)
-    accepted_by: str | None = Field(default=None, max_length=320)
-    reason: str | None = Field(default=None, max_length=500)
-
-
-class AuthInvitationRedeemRequest(BaseModel):
     invitation_id: str = Field(min_length=1, max_length=80)
     invite_token: str = Field(min_length=1, max_length=160)
     accepted_by: str | None = Field(default=None, max_length=320)
@@ -4339,41 +4388,6 @@ def create_runtime_au_dtc_project(
     )
 
 
-@app.get("/v1/projects/runtime")
-def runtime_projects(
-    project_id: str | None = None,
-    market_code: str | None = None,
-    status: str | None = None,
-    include_archived: bool = False,
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
-) -> dict[str, object]:
-    actor_id = require_runtime_actor_id(x_geno_actor_id)
-    try:
-        repository = build_repository_from_env()
-    except RuntimePersistenceError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    try:
-        apply_runtime_project_db_context(
-            repository,
-            actor_id=actor_id,
-            project_id=project_id,
-        )
-        page = repository.list_runtime_projects(
-            project_id=project_id,
-            market_code=market_code,
-            status=status,
-            include_archived=include_archived,
-            actor_id=actor_id if runtime_project_access_control_enabled() else None,
-            limit=limit,
-            offset=offset,
-        )
-        return asdict(page)
-    finally:
-        close_repository_connection(repository)
-
-
 @app.patch("/v1/projects/runtime")
 def update_runtime_project(
     payload: RuntimeProjectUpdateRequest,
@@ -5209,166 +5223,14 @@ def email_runtime_project_member_invitation(
         close_repository_connection(repository)
 
 
-@app.post("/v1/auth/invitations/redeem")
-def redeem_auth_invitation(
-    payload: AuthInvitationRedeemRequest,
-    response: Response,
-) -> dict[str, object]:
-    try:
-        repository = build_repository_from_env()
-    except RuntimePersistenceError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    try:
-        if runtime_project_access_control_enabled():
-            set_invitation_context = getattr(repository, "set_runtime_project_invitation_accept_context", None)
-            if not callable(set_invitation_context):
-                raise HTTPException(
-                    status_code=503,
-                    detail="runtime invitation redemption requires repository.set_runtime_project_invitation_accept_context",
-                )
-            try:
-                set_invitation_context(
-                    invite_token_hash=hashlib.sha256(payload.invite_token.strip().encode("utf-8")).hexdigest()
-                )
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-        try:
-            invitation = repository.accept_runtime_project_member_invitation(
-                RuntimeProjectMemberInvitationAcceptInput(
-                    invitation_id=payload.invitation_id.strip(),
-                    invite_token=payload.invite_token.strip(),
-                    accepted_by=None,
-                    reason=payload.reason.strip() if payload.reason else "auth_invitation_redeem",
-                )
-            )
-        except ValueError as exc:
-            message = str(exc)
-            if message == "project member invitation not found":
-                status_code = 404
-            elif message.startswith("cannot ") or message == "project member invitation expired":
-                status_code = 409
-            else:
-                status_code = 400
-            raise HTTPException(status_code=status_code, detail=message) from exc
-        accepted_invitation = invitation.invitation
-        member = accepted_invitation.get("member") if isinstance(accepted_invitation.get("member"), dict) else {}
-        actor_id = str(member.get("user_id") or accepted_invitation.get("email") or "").strip().lower()
-        project_id = str(accepted_invitation.get("project_id") or "").strip()
-        role = str(member.get("role") or accepted_invitation.get("role") or "viewer").strip().lower()
-        if not actor_id or not project_id:
-            raise HTTPException(status_code=500, detail="redeemed invitation did not return member scope")
-        try:
-            scope = repository.get_runtime_membership_scope(actor_id=actor_id, project_id=project_id)
-        except (AttributeError, PermissionError, ValueError):
-            scope = None
-        project_ids = scope.project_ids if scope else (project_id,)
-        roles = tuple(dict.fromkeys((*(scope.tenant_roles if scope else ()), *(scope.project_roles.values() if scope else (role,)))))
-        permissions = scope.permissions if scope else ()
-        session = repository.create_runtime_session(
-            RuntimeSessionInput(
-                actor_id=actor_id,
-                tenant_id=scope.tenant_id if scope else None,
-                project_ids=project_ids,
-                roles=roles,
-                permissions=permissions,
-                ttl_seconds=DEFAULT_RUNTIME_SESSION_TTL_SECONDS,
-                issued_by="auth.invitation.redeem",
-                metadata={"source": "invitation_redeem", "invitation_id": payload.invitation_id.strip()},
-                reason="auth_invitation_redeem",
-            )
-        )
-        if not session.raw_session_token:
-            raise HTTPException(status_code=500, detail="runtime session token was not generated")
-        _set_runtime_session_cookie(
-            response,
-            session.raw_session_token,
-            max_age=DEFAULT_RUNTIME_SESSION_TTL_SECONDS,
-        )
-        return {
-            "invitation": accepted_invitation,
-            "session": _public_session_payload(session.session),
-            "audit_events": [*invitation.audit_events, *session.audit_events],
-        }
-    finally:
-        close_repository_connection(repository)
-
-
-@app.get("/v1/auth/me")
-def runtime_auth_me(x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
-    context = build_runtime_auth_context(x_geno_actor_id)
-    return {"auth": auth_context_scope(context)}
-
-
-@app.post("/v1/auth/logout")
-def runtime_auth_logout(
-    response: Response,
-    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
-) -> dict[str, object]:
-    context = build_runtime_auth_context(x_geno_actor_id)
-    if context.session_id:
-        try:
-            repository = build_repository_from_env()
-        except RuntimePersistenceError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        try:
-            repository.revoke_runtime_session(
-                RuntimeSessionRevokeInput(
-                    session_id=context.session_id,
-                    revoked_by=context.actor_id or "runtime-auth",
-                    reason="auth_logout",
-                )
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        finally:
-            close_repository_connection(repository)
-    _clear_runtime_session_cookie(response)
-    return {"status": "logged_out"}
-
-
 @app.post("/v1/project-member-invitations/runtime/accept")
 def accept_runtime_project_member_invitation(
-    payload: ProjectMemberInvitationAcceptRequest,
+    _payload: ProjectMemberInvitationAcceptRequest,
 ) -> dict[str, object]:
-    try:
-        repository = build_repository_from_env()
-    except RuntimePersistenceError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    try:
-        if runtime_project_access_control_enabled():
-            set_invitation_context = getattr(repository, "set_runtime_project_invitation_accept_context", None)
-            if not callable(set_invitation_context):
-                raise HTTPException(
-                    status_code=503,
-                    detail="runtime invitation acceptance requires repository.set_runtime_project_invitation_accept_context",
-                )
-            try:
-                set_invitation_context(
-                    invite_token_hash=hashlib.sha256(payload.invite_token.strip().encode("utf-8")).hexdigest()
-                )
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-        try:
-            invitation = repository.accept_runtime_project_member_invitation(
-                RuntimeProjectMemberInvitationAcceptInput(
-                    invitation_id=payload.invitation_id.strip(),
-                    invite_token=payload.invite_token.strip(),
-                    accepted_by=effective_runtime_actor_id(None, payload.accepted_by),
-                    reason=payload.reason.strip() if payload.reason else None,
-                )
-            )
-        except ValueError as exc:
-            message = str(exc)
-            if message == "project member invitation not found":
-                status_code = 404
-            elif message.startswith("cannot ") or message == "project member invitation expired":
-                status_code = 409
-            else:
-                status_code = 400
-            raise HTTPException(status_code=status_code, detail=message) from exc
-        return asdict(invitation)
-    finally:
-        close_repository_connection(repository)
+    raise HTTPException(
+        status_code=410,
+        detail="legacy invitation redemption is retired; use /v1/auth/invitations/redeem",
+    )
 
 
 @app.get("/v1/entity-aliases/runtime")
