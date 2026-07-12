@@ -248,6 +248,15 @@ web-build:
 	npm --prefix apps/customer-web run build
 	npm --prefix apps/admin-web run build
 
+.PHONY: openapi-snapshot openapi-contracts
+
+openapi-snapshot:
+	PYTHONPATH=packages/geno_core:apps/api:. python3 scripts/export_openapi_snapshot.py export
+
+openapi-contracts:
+	PYTHONPATH=packages/geno_core:apps/api:. python3 scripts/export_openapi_snapshot.py verify
+	PYTHONPATH=packages/geno_core:apps/api:. python3 -m unittest -q tests.test_openapi_snapshot_contracts
+
 .PHONY: test-auth-core smoke-auth-session-v2 test-auth-web smoke-auth-surface-session
 
 test-auth-core:
@@ -452,7 +461,7 @@ production-v1-progress:
 production-v1-final-gate: lint typecheck test web-build db-smoke rls-smoke runtime-e2e security-smoke production-v1-e2e enablement-v1-e2e no-fixture-production-smoke no-secret-leak-smoke report-traceability-smoke customer-access-negative-smoke connector-real-smoke knowledge-pipeline-smoke knowledge-qdrant-smoke knowledge-heavy-components-smoke geo-production-full-pipeline-smoke promptfoo-knowledge-eval frontend-page-click-smoke frontend-knowledge-click-smoke full-project-lifecycle-smoke official-ui-contract-smoke development-board-truth-smoke ops-smoke backup-smoke docker-config docker-config-observability
 	git diff --check
 
-ci-local: quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e schema-v2-gate
+ci-local: quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e schema-v2-gate openapi-contracts
 
 api-preflight:
 	PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api --prompt-limit 1 --cities Sydney --sample-size 3 --require-ready-collectors --require-p0a-readiness --preflight-output-path $${GENO_API_PREFLIGHT_OUTPUT_PATH:-docs/runtime_preflight/api-preflight-latest.json}
