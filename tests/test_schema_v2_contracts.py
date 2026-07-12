@@ -101,6 +101,7 @@ class SchemaV2ManifestContractsTest(unittest.TestCase):
             [
                 "baseline/0000_extensions_roles.sql",
                 "baseline/0010_tenancy_project_rls.sql",
+                "baseline/0011_auth_session_context.sql",
             ],
         )
         self.assertEqual(manifest.migration_files, ())
@@ -173,7 +174,9 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
             "uuid_generate_v4",
             "CREATE ROLE geno_v2_runtime LOGIN",
             "CREATE ROLE geno_v2_authz_owner LOGIN",
-            "PASSWORD",
+            "PASSWORD '",
+            "CREATE ROLE geno_v2_api_login LOGIN",
+            "ALTER ROLE geno_v2_api_login LOGIN",
             "CONCURRENTLY",
             "quarantine",
             "FROM public.runtime_sessions",
@@ -197,7 +200,7 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         self.assertIn("CHECK (role IN ('super_admin', 'tenant_admin'))", sql)
         self.assertIn("'project_owner', 'analyst', 'reviewer'", sql)
         self.assertIn("pg_catalog.pg_auth_members", sql)
-        self.assertIn("must not participate in role memberships", sql)
+        self.assertIn("unauthorized role membership", sql)
         self.assertIn("ALTER TABLE audit_events FORCE ROW LEVEL SECURITY", sql)
         self.assertIn("CREATE TRIGGER tenant_members_sync_project_grants", sql)
         self.assertIn("CREATE TRIGGER projects_sync_tenant_grants", sql)
@@ -209,6 +212,83 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         self.assertIn("defines no runtime policies", readme)
         self.assertIn("session_token_hash", readme)
         self.assertIn("Gate 1 remains pending", readme)
+
+    def test_auth_context_accepts_only_session_hash_and_exposes_read_only_runtime(self) -> None:
+        sql = (SCHEMA_ROOT / "baseline/0011_auth_session_context.sql").read_text(
+            encoding="utf-8"
+        )
+
+        for table_name in (
+            "project_member_invitations",
+            "runtime_sessions",
+            "auth_invitation_redemption_attempts",
+            "auth_preflight_rate_limits",
+            "runtime_session_reauth_queue",
+            "auth_runtime_write_controls",
+        ):
+            with self.subTest(table_name=table_name):
+                self.assertIn(f"CREATE TABLE {table_name}", sql)
+                self.assertIn(f"ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY", sql)
+
+        for forbidden in (
+            "current_setting('app.actor_id",
+            "current_setting('app.tenant_id",
+            "current_setting('app.project_id",
+            "current_setting('app.project_ids",
+            "current_setting('app.roles",
+            "PASSWORD '",
+            "GRANT INSERT",
+            "GRANT UPDATE",
+            "GRANT DELETE",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, sql)
+
+        self.assertIn("CREATE ROLE geno_v2_api_login", sql)
+        self.assertIn("NOLOGIN NOSUPERUSER", sql)
+        self.assertIn("ALTER ROLE geno_v2_api_login PASSWORD NULL", sql)
+        self.assertIn("ALTER ROLE geno_v2_api_login RESET ALL", sql)
+        self.assertIn(
+            "ALTER ROLE geno_v2_api_login IN DATABASE geno_v2 RESET ALL",
+            sql,
+        )
+        self.assertIn("WITH ADMIN FALSE, INHERIT FALSE, SET TRUE", sql)
+        self.assertIn("REVOKE CONNECT, TEMPORARY ON DATABASE geno_v2 FROM PUBLIC", sql)
+        self.assertIn("GRANT CONNECT ON DATABASE geno_v2 TO geno_v2_api_login", sql)
+        self.assertIn(
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS",
+            sql,
+        )
+        self.assertIn("current_setting('app.session_token_hash', true)", sql)
+        self.assertIn("session_row.issued_at <= statement_timestamp()", sql)
+        self.assertIn("DEFERRABLE INITIALLY DEFERRED", sql)
+        self.assertEqual(sql.count("CREATE CONSTRAINT TRIGGER"), 3)
+        self.assertIn("geno_v2_validate_auth_redemption_lineage", sql)
+        self.assertIn(
+            "attempt_row.token_fingerprint <> invitation_row.invite_token_hash",
+            sql,
+        )
+        self.assertIn("scope.value->'roles' ? invitation_row.role", sql)
+        self.assertIn("session_row.issued_at > invitation_row.expires_at", sql)
+        self.assertIn("VALUES (true, false)", sql)
+        self.assertIn("runtime session identity and scope snapshot are immutable", sql)
+        self.assertIn(
+            "GRANT SELECT ON project_member_invitations, "
+            "auth_invitation_redemption_attempts",
+            sql,
+        )
+        self.assertIn("runtime_sessions, project_members TO geno_v2_authz_owner", sql)
+        self.assertIn("geno_v2_session_can_read_project_member", sql)
+        self.assertIn(
+            "USING (geno_v2_session_can_read_project_member("
+            "project_id, tenant_id, user_id))",
+            sql,
+        )
+        self.assertNotIn("GRANT SELECT ON runtime_sessions TO geno_v2_runtime", sql)
+        self.assertNotIn(
+            "GRANT SELECT ON runtime_project_access_grants TO geno_v2_runtime",
+            sql,
+        )
 
     def test_runner_uses_a_session_lock_and_transactional_ledger(self) -> None:
         runner = (ROOT / "scripts/schema_v2_runner.py").read_text(encoding="utf-8")
