@@ -1,0 +1,113 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    HF_HOME=/models/huggingface \
+    SENTENCE_TRANSFORMERS_HOME=/models/sentence-transformers \
+    TIKA_SERVER_JAR=file:///opt/tika/tika-server-standard.jar \
+    TIKA_LOG_PATH=/tmp/geo-tika \
+    MINERU_TOOLS_CONFIG_JSON=/opt/mineru/magic-pdf.json \
+    GEO_BGE_M3_MODEL=/models/bge-m3-pytorch \
+    NLTK_DATA=/opt/nltk_data
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      default-jre-headless \
+      fonts-dejavu-core \
+      libasound2 \
+      libatk-bridge2.0-0 \
+      libatk1.0-0 \
+      libcups2 \
+      libdbus-1-3 \
+      libdrm2 \
+      libgbm1 \
+      libglib2.0-0 \
+      libgl1 \
+      libgtk-3-0 \
+      libnspr4 \
+      libnss3 \
+      libx11-xcb1 \
+      libxcb-dri3-0 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxfixes3 \
+      libxkbcommon0 \
+      libxrandr2 \
+      poppler-utils \
+      procps \
+      tesseract-ocr \
+      tesseract-ocr-chi-sim \
+      tesseract-ocr-eng \
+      wget \
+      xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY apps/api/knowledge-heavy ./requirements
+COPY apps/api/knowledge-worker-requirements.txt ./requirements/knowledge-worker-requirements.txt
+COPY scripts/run_knowledge_heavy_components_smoke.py ./scripts/run_knowledge_heavy_components_smoke.py
+COPY scripts/run_knowledge_component.py ./scripts/run_knowledge_component.py
+
+RUN pip install --no-cache-dir -r /app/requirements/knowledge-worker-requirements.txt
+
+RUN mkdir -p /opt/mineru \
+    && cp /app/requirements/magic-pdf.json /opt/mineru/magic-pdf.json
+
+RUN python -m venv /opt/venvs/docling \
+    && /opt/venvs/docling/bin/pip install --upgrade pip setuptools wheel \
+    && /opt/venvs/docling/bin/pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.6.0 torchvision==0.21.0 \
+    && /opt/venvs/docling/bin/pip install --no-cache-dir -r /app/requirements/docling-requirements.txt
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential \
+    && python -m venv /opt/venvs/mineru \
+    && /opt/venvs/mineru/bin/pip install --upgrade pip setuptools wheel \
+    && /opt/venvs/mineru/bin/pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.4.1 torchvision==0.19.1 \
+    && /opt/venvs/mineru/bin/pip install --no-cache-dir -r /app/requirements/mineru-requirements.txt \
+    && apt-get purge -y --auto-remove build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv /opt/venvs/unstructured \
+    && /opt/venvs/unstructured/bin/pip install --upgrade pip setuptools wheel \
+    && /opt/venvs/unstructured/bin/pip install --no-cache-dir -r /app/requirements/unstructured-requirements.txt \
+    && mkdir -p /opt/nltk_data/tokenizers /opt/nltk_data/taggers \
+    && curl -fsSL --retry 5 --connect-timeout 20 --max-time 300 \
+      https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/tokenizers/punkt_tab.zip \
+      -o /tmp/punkt_tab.zip \
+    && curl -fsSL --retry 5 --connect-timeout 20 --max-time 300 \
+      https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/taggers/averaged_perceptron_tagger_eng.zip \
+      -o /tmp/averaged_perceptron_tagger_eng.zip \
+    && /opt/venvs/unstructured/bin/python -c "import zipfile; zipfile.ZipFile('/tmp/punkt_tab.zip').extractall('/opt/nltk_data/tokenizers'); zipfile.ZipFile('/tmp/averaged_perceptron_tagger_eng.zip').extractall('/opt/nltk_data/taggers')" \
+    && rm -f /tmp/punkt_tab.zip /tmp/averaged_perceptron_tagger_eng.zip
+
+RUN python -m venv /opt/venvs/markitdown \
+    && /opt/venvs/markitdown/bin/pip install --upgrade pip setuptools wheel \
+    && /opt/venvs/markitdown/bin/pip install --no-cache-dir -r /app/requirements/markitdown-requirements.txt
+
+RUN python -m venv /opt/venvs/tika \
+    && /opt/venvs/tika/bin/pip install --upgrade pip setuptools wheel \
+    && /opt/venvs/tika/bin/pip install --no-cache-dir -r /app/requirements/tika-requirements.txt \
+    && mkdir -p /opt/tika /tmp/geo-tika \
+    && curl -fsSL https://archive.apache.org/dist/tika/3.2.3/tika-server-standard-3.2.3.jar -o /opt/tika/tika-server-standard.jar
+
+RUN python -m venv /opt/venvs/crawl4ai \
+    && /opt/venvs/crawl4ai/bin/pip install --upgrade pip setuptools wheel \
+    && /opt/venvs/crawl4ai/bin/pip install --no-cache-dir -r /app/requirements/crawl4ai-requirements.txt \
+    && /opt/venvs/crawl4ai/bin/python -m playwright install chromium
+
+RUN python -m venv /opt/venvs/bge \
+    && /opt/venvs/bge/bin/pip install --upgrade pip setuptools wheel \
+    && /opt/venvs/bge/bin/pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.6.0 \
+    && /opt/venvs/bge/bin/pip install --no-cache-dir -r /app/requirements/bge-requirements.txt
+
+COPY packages/geno_core ./packages/geno_core
+COPY apps/api ./apps/api
+COPY workers ./workers
+
+ENV PYTHONPATH=/app:/app/packages/geno_core:/app/apps/api \
+    GEO_KNOWLEDGE_COMPONENT_RUNNER=/app/scripts/run_knowledge_component.py
+
+CMD ["python", "workers/knowledge_worker/run_knowledge_pipeline.py", "--loop-once"]

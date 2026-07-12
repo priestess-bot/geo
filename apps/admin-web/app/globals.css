@@ -780,6 +780,16 @@ textarea {
   align-items: start;
 }
 
+.threeCol {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.threeCol.compact {
+  align-items: start;
+}
+
 .noTopMargin {
   margin-top: 0;
 }
@@ -1130,6 +1140,58 @@ textarea {
   grid-template-columns: repeat(4, minmax(120px, 1fr));
 }
 
+.metricCard {
+  background: #ffffff;
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.metricCard span {
+  color: #5b6e7d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.metricCard strong {
+  color: #17232d;
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+
+.compactList {
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  display: grid;
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+.compactListItem {
+  background: #ffffff;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.compactListItem + .compactListItem {
+  border-top: 1px solid #d8e0e8;
+}
+
+.compactListItem strong,
+.compactListItem span {
+  overflow-wrap: anywhere;
+}
+
+.compactListItem span {
+  color: #5b6e7d;
+  font-size: 12px;
+}
+
 .stackedForms {
   display: grid;
   gap: 12px;
@@ -1162,6 +1224,217 @@ textarea {
   font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+.knowledgeDropzone {
+  background: #f7fafc;
+  border: 1px dashed #8ca4b3;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  min-height: 124px;
+  padding: 18px;
+}
+
+.knowledgeDropzone > span {
+  color: #173f5a;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.knowledgeDropzone > small {
+  color: #637482;
+  line-height: 1.45;
+}
+
+.knowledgeDropzone input[type="file"] {
+  background: #ffffff;
+  border: 1px solid #cbd8e0;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.knowledgeFileQueue {
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  display: grid;
+  overflow: hidden;
+}
+
+.knowledgeFileQueueRow {
+  align-items: start;
+  background: #ffffff;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px;
+}
+
+.knowledgeFileQueueRow + .knowledgeFileQueueRow {
+  border-top: 1px solid #d8e0e8;
+}
+
+.knowledgeFileQueueRow div:first-child {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.knowledgeFileQueueRow strong,
+.knowledgeFileQueueRow p,
+.knowledgeFileQueueRow small,
+.knowledgeFileQueueRow code {
+  overflow-wrap: anywhere;
+}
+
+.knowledgeFileQueueRow p,
+.knowledgeFileQueueRow small {
+  color: #637482;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.knowledgeFileQueueRow code {
+  color: #2d576d;
+  font-size: 11px;
+}
+
+.knowledgeFileQueueStatus {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.dangerPill {
+  background: #fff3f0;
+  border-color: #f1c1b8;
+  color: #8b2d1d;
+}
+
+.knowledgeArtifactGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.knowledgeArtifactSection {
+  min-width: 0;
+}
+
+.knowledgeArtifactSection h3 {
+  font-size: 16px;
+  margin-top: 4px;
+}
+
+.knowledgeArtifactRow {
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.knowledgeArtifactRow div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.knowledgeChunkWorkbench {
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: minmax(180px, 0.72fr) minmax(300px, 1.35fr) minmax(250px, 1fr);
+  margin-top: 14px;
+  min-height: 540px;
+  overflow: hidden;
+}
+
+.knowledgeChunkSources,
+.knowledgeChunkList,
+.knowledgeChunkEvidence {
+  align-content: start;
+  background: #ffffff;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.knowledgeChunkList,
+.knowledgeChunkEvidence {
+  border-left: 1px solid #d8e0e8;
+}
+
+.knowledgeChunkSources h3,
+.knowledgeChunkList h3,
+.knowledgeChunkEvidence h3 {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.knowledgeSourceItem,
+.knowledgeEvidenceBlock {
+  border-top: 1px solid #e4ebef;
+  display: grid;
+  gap: 4px;
+  padding-top: 9px;
+}
+
+.knowledgeSourceItem strong,
+.knowledgeSourceItem span,
+.knowledgeEvidenceBlock strong,
+.knowledgeEvidenceBlock p {
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.knowledgeSourceItem span,
+.knowledgeEvidenceBlock p {
+  color: #637482;
+  margin: 0;
+}
+
+.knowledgeChunkItem {
+  border: 1px solid #d8e0e8;
+  border-radius: 6px;
+  color: #17232d;
+  display: grid;
+  gap: 6px;
+  padding: 11px;
+  text-decoration: none;
+}
+
+.knowledgeChunkItem:hover,
+.knowledgeChunkItem.active {
+  background: #eef6f7;
+  border-color: #6aa2a3;
+}
+
+.knowledgeChunkItem strong,
+.knowledgeChunkItem p,
+.knowledgeChunkItem span {
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.knowledgeChunkItem span {
+  color: #637482;
+}
+
+.knowledgeEvidenceText {
+  background: #f7fafc;
+  border: 1px solid #d8e0e8;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.55;
+  max-height: 220px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding: 10px;
 }
 
 .knowledgeScore span,
@@ -1793,6 +2066,29 @@ pre {
   .twoCol {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .knowledgeArtifactGrid,
+  .knowledgeChunkWorkbench,
+  .knowledgeFileQueueRow,
+  .knowledgeArtifactRow {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .knowledgeChunkList,
+  .knowledgeChunkEvidence {
+    border-left: 0;
+    border-top: 1px solid #d8e0e8;
+  }
+
+  .knowledgeChunkWorkbench {
+    min-height: 0;
+  }
+
+  .knowledgeFileQueueStatus {
+    align-items: start;
+    justify-items: start;
   }
 
   .homeShell {

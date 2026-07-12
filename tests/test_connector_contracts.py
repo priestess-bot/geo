@@ -13,7 +13,8 @@ from geno_core.connector_contract import (
     ConnectorValidationError,
     RecordedConnectorHarness,
 )
-from geno_core.collectors import JsonHttpResponse
+from geno_core.collectors import DeepSeekChatCollector, JsonHttpResponse
+from geno_core.models import MarketProfile
 from geno_core.production_connectors import (
     GoogleManualBackfillConnectorBackend,
     OpenAIWebSearchConnectorBackend,
@@ -50,6 +51,52 @@ def _request(provider: str, prompt_id: str = "prompt-1") -> ConnectorRequest:
 
 
 class ConnectorContractTest(unittest.TestCase):
+    def test_deepseek_collector_uses_official_identity_without_fake_citations(self) -> None:
+        class FakeDeepSeekHttpClient:
+            def __init__(self) -> None:
+                self.requests: list[dict[str, object]] = []
+
+            def post_json(self, **kwargs: object) -> JsonHttpResponse:
+                self.requests.append(kwargs)
+                return JsonHttpResponse(
+                    status_code=200,
+                    payload={
+                        "id": "deepseek-response-1",
+                        "model": "deepseek-v4-flash",
+                        "choices": [{"message": {"content": "Northwind is a relevant outdoor brand."}}],
+                        "usage": {"prompt_tokens": 20, "completion_tokens": 9, "total_tokens": 29},
+                    },
+                )
+
+        http_client = FakeDeepSeekHttpClient()
+        collector = DeepSeekChatCollector(api_key="test-deepseek-key", http_client=http_client)
+        result = collector.collect(
+            prompt="Is Northwind recommended?",
+            market=MarketProfile(
+                market="United States",
+                market_code="US",
+                locale="en-US",
+                timezone="America/Los_Angeles",
+                currency="USD",
+                primary_language="English",
+                cities=["Seattle"],
+                source_types=[],
+                platforms=[],
+            ),
+            city="Seattle",
+            language="en-US",
+            device="desktop",
+        )
+
+        self.assertEqual(collector.id(), "deepseek.chat.api")
+        self.assertEqual(collector.capabilities()["platform"], "deepseek")
+        self.assertFalse(collector.capabilities()["supports_citation"])
+        self.assertEqual(result.model_or_surface, "deepseek-v4-flash")
+        self.assertEqual(result.citations, [])
+        self.assertTrue(result.answer_present)
+        self.assertIn("html_snapshot", result.evidence_asset_hashes or {})
+        self.assertNotIn("test-deepseek-key", json.dumps(result.raw_payload))
+
     def test_recorded_harness_supports_openai_perplexity_and_google_manual(self) -> None:
         harness = RecordedConnectorHarness(
             {

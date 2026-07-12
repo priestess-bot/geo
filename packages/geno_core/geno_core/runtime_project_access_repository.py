@@ -65,6 +65,27 @@ PROJECT_LAUNCH_CONFIG_COLUMNS = (
     "created_at",
     "updated_at",
 )
+
+
+def runtime_launch_config_ready(*, collection_mode: str, external_connectors: object) -> bool:
+    if collection_mode.strip().lower() == "manual":
+        return True
+    connectors = external_connectors
+    if isinstance(connectors, str):
+        try:
+            connectors = json.loads(connectors)
+        except json.JSONDecodeError:
+            return False
+    if not isinstance(connectors, dict):
+        return False
+    for value in connectors.values():
+        if not isinstance(value, dict):
+            continue
+        status = str(value.get("status") or "").strip().lower()
+        mode = str(value.get("mode") or "").strip().lower()
+        if mode != "disabled" and status in {"active", "ready", "manual_ready"}:
+            return True
+    return False
 RUNTIME_HTTP_ACCESS_LOG_COLUMNS = (
     "id",
     "request_id",
@@ -530,17 +551,17 @@ class RuntimeProjectAccessRepositoryMixin:
         project_id = config.project_id.strip()
         customer_email = config.customer_email.strip().lower()
         primary_domain = config.primary_domain.strip().lower()
-        config_version = config.config_version.strip() or "au_launch_config_v1"
+        config_version = config.config_version.strip() or "project_launch_config_v1"
         created_by = config.created_by.strip() or "runtime-console"
         updated_by = config.updated_by.strip() or created_by
-        status = config.status.strip().lower() or "draft"
+        requested_status = config.status.strip().lower() or "draft"
         if not project_id:
             raise ValueError("project_id is required")
         if not customer_email or "@" not in customer_email:
             raise ValueError("customer_email is required")
         if not primary_domain:
             raise ValueError("primary_domain is required")
-        if status not in {"draft", "ready", "active", "paused"}:
+        if requested_status not in {"draft", "ready", "active", "paused"}:
             raise ValueError("status must be draft, ready, active, or paused")
         competitor_domains = tuple(
             dict.fromkeys(domain.strip().lower() for domain in config.competitor_domains if domain.strip())
@@ -556,16 +577,35 @@ class RuntimeProjectAccessRepositoryMixin:
         if not isinstance(external_connectors, dict):
             raise ValueError("external_connectors must be an object")
         after_candidate = {
-            "locale": config.locale.strip() or "en-AU",
-            "country_code": config.country_code.strip().upper() or "AU",
-            "timezone": config.timezone.strip() or "Australia/Sydney",
+            "locale": config.locale.strip() or "en",
+            "country_code": config.country_code.strip().upper() or "GLOBAL",
+            "timezone": config.timezone.strip() or "UTC",
             "collection_mode": config.collection_mode.strip().lower() or "api",
-            "scoring_profile": config.scoring_profile.strip() or "au_visibility_v1",
+            "scoring_profile": config.scoring_profile.strip() or "visibility_v1.0",
         }
         with self.connection.cursor() as cursor:
-            cursor.execute("SELECT id FROM projects WHERE id = %s LIMIT 1", (_uuid(project_id),))
-            if not cursor.fetchone():
+            cursor.execute("SELECT id, status FROM projects WHERE id = %s LIMIT 1", (_uuid(project_id),))
+            project_row = cursor.fetchone()
+            if not project_row:
                 raise ValueError("project not found")
+            project_status_value = (
+                project_row.get("status")
+                if isinstance(project_row, dict)
+                else project_row[1]
+                if len(project_row) > 1
+                else "paused"
+            )
+            project_status = str(project_status_value or "paused").strip().lower()
+            config_ready = runtime_launch_config_ready(
+                collection_mode=after_candidate["collection_mode"],
+                external_connectors=external_connectors,
+            )
+            if project_status == "archived":
+                status = "paused"
+            elif project_status == "active" and config_ready:
+                status = "active"
+            else:
+                status = "ready" if config_ready else "draft"
             cursor.execute(
                 f"""
                 SELECT {", ".join(PROJECT_LAUNCH_CONFIG_COLUMNS)}
@@ -659,22 +699,34 @@ class RuntimeProjectAccessRepositoryMixin:
         self,
         *,
         project_id: str,
-        config_version: str = "au_launch_config_v1",
+        config_version: str | None = None,
     ) -> RuntimeProjectLaunchConfig | None:
         project_id = project_id.strip()
-        config_version = config_version.strip() or "au_launch_config_v1"
+        config_version = config_version.strip() if config_version else None
         if not project_id:
             raise ValueError("project_id is required")
         with self.connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT {", ".join(PROJECT_LAUNCH_CONFIG_COLUMNS)}
-                FROM project_launch_configs
-                WHERE project_id = %s AND config_version = %s
-                LIMIT 1
-                """,
-                (_uuid(project_id), config_version),
-            )
+            if config_version:
+                cursor.execute(
+                    f"""
+                    SELECT {", ".join(PROJECT_LAUNCH_CONFIG_COLUMNS)}
+                    FROM project_launch_configs
+                    WHERE project_id = %s AND config_version = %s
+                    LIMIT 1
+                    """,
+                    (_uuid(project_id), config_version),
+                )
+            else:
+                cursor.execute(
+                    f"""
+                    SELECT {", ".join(PROJECT_LAUNCH_CONFIG_COLUMNS)}
+                    FROM project_launch_configs
+                    WHERE project_id = %s
+                    ORDER BY updated_at DESC, created_at DESC
+                    LIMIT 1
+                    """,
+                    (_uuid(project_id),),
+                )
             row = cursor.fetchone()
         if not row:
             return None

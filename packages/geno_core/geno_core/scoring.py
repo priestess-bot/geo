@@ -103,6 +103,13 @@ SCORE_FORMULA_REGISTRY: dict[str, ScoreFormulaDefinition] = {
 }
 
 SCORE_WEIGHT_PROFILE_REGISTRY: dict[str, ScoreWeightProfileDefinition] = {
+    "visibility_v1.0": ScoreWeightProfileDefinition(
+        profile_key="visibility_v1.0",
+        name="GEO 可见度通用方案",
+        description="适用于通用市场项目，重点衡量品牌提及、推荐强度、本地相关性、引用质量和竞品相对位置。",
+        base_formula_version="visibility_v1.0",
+        weights=VISIBILITY_V1_0,
+    ),
     "au_visibility_v1": ScoreWeightProfileDefinition(
         profile_key="au_visibility_v1",
         name="AU GEO 可见度均衡方案",

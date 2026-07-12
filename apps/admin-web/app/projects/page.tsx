@@ -29,7 +29,7 @@ async function loadProjects(status: string): Promise<ProjectPage> {
   try {
     const response = await fetch(`${apiBase()}/v1/projects/runtime?${query.toString()}`, {
       cache: "no-store",
-      headers: actorHeaders()
+      headers: await actorHeaders()
     });
     if (!response.ok) {
       return { total_count: 0, records: [] };

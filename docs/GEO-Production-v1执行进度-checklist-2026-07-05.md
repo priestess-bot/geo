@@ -2,6 +2,8 @@
 
 生成日期：2026-07-05
 
+最后更新：2026-07-12
+
 对照规划：[GEO-Production-v1完整规划-2026-07-05.md](./GEO-Production-v1完整规划-2026-07-05.md)
 
 测试流程：[GEO-可复用测试流程-2026-07-06.md](./GEO-可复用测试流程-2026-07-06.md)
@@ -16,7 +18,7 @@
 | In progress | 已开始实现 |
 | Blocked | 被外部凭据、环境或上游任务阻塞 |
 | Verifying | 实现已完成，正在跑验收 |
-| Done | 代码、测试、证据和提交均完成 |
+| Done | 代码、测试和运行证据均完成；提交状态单独记录在 Commit 列 |
 | Deferred upgrade | 明确不属于本次 Production v1 完成门槛，只保留扩展边界 |
 
 ## 1. 本次完成门槛
@@ -26,9 +28,9 @@
 | C00 | 13 / 14 / 20 | 建立本 checklist 与 gate 骨架 | 无 | Done | `make test` | 本文件；`scripts/verify_production_v1_gate.py` | 待填 | 第一批工作包 |
 | C01 | 0 / 1 / 5 | 生产路径禁止 demo/fixture fallback | C00 | Done | `make no-fixture-production-smoke` | `scripts/verify_production_v1_gate.py`; focused unittest suite | 待填 | 生产默认路径改为真实 API/手工补录；fixture 端点仅开发工具开关可用 |
 | C02 | 13 / 15 | provider key、session token、invite token 不泄露 | C00 | Done | `python3 scripts/verify_production_v1_gate.py security-smoke`; focused auth/session tests | `scripts/verify_production_v1_gate.py`; `tests/test_api_contracts.py`; `apps/api/geno_api/main.py` | 待填 | security-smoke 已无 pending；Provider secret storage 专项仍在 W3-I00 |
-| C03 | 14 | Production v1 E2E 从空环境跑通 | C01-C18 | Done | `PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py production-v1-e2e` | `scripts/verify_runtime_e2e.py`; `scripts/verify_production_v1_gate.py`; `packages/geno_core/geno_core/action_plan.py`; `tests/test_core_contracts.py`; `docs/GEO-Production-v1执行进度-checklist-2026-07-05.md` | 待填 | 真实报告生产闭环 gate 已 23 pass / 0 pending；真实 provider 子集在 staging/production-internal 仍需外部 key |
+| C03 | 14 | Production v1 E2E 从空环境跑通 | C01-C18 | Done | `make full-project-lifecycle-smoke`; `PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py production-v1-e2e` | `tmp/full-project-lifecycle-smoke/latest.json` | 待填 | 2026-07-12 实跑 27/27；真实 DeepSeek 采集、分析、评分、报告 Markdown/PDF/CSV、发布/撤回、CRUD 和负向分支全部通过 |
 | C04 | 14 | Enablement v1 E2E 跑通 | C19-C21 | Done | `PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py enablement-v1-e2e` | `packages/geno_core/geno_core/knowledge.py`; `packages/geno_core/geno_core/repository.py`; `apps/api/geno_api/main.py`; `tests/test_core_contracts.py`; `tests/test_api_contracts.py`; `scripts/verify_production_v1_gate.py` | 待填 | KB/Content/Distribution 薄闭环 gate 已 20 pass / 0 pending；自动发布和额外平台保留为升级项 |
-| C05 | 20 | Final Gate 全部通过 | C01-C24 | Done | `make production-v1-final-gate` | `Makefile`; `scripts/verify_production_v1_gate.py`; Docker `db-smoke` / `runtime-e2e` 输出 | 待填 | 最终验收已通过 |
+| C05 | 20 | Final Gate 全部通过 | C01-C24 | Done | `make production-v1-final-gate` | `tmp/production-v1-final-gate.log`; `tmp/geo-knowledge-live-e2e-latest.json`; `tmp/frontend-page-click-smoke/latest.json`; `tmp/full-project-lifecycle-smoke/latest.json` | 待填 | 2026-07-12 完整统一门禁退出 0；1454 tests、两个 Next.js production build、DB/RLS/runtime、安全反验收、Qdrant、7 个重组件、真实知识流水线、Playwright、ops、backup、Compose config 和 `git diff --check` 全部通过 |
 
 ## 2. Foundation
 
@@ -112,3 +114,26 @@
 | U04 | 2.3 / 2.7 | 复杂组织级 SSO / SAML | Deferred upgrade | 本次保留 OIDC/JWKS 边界，复杂 SSO 后续升级 |
 | U05 | 2.3 / 2.7 | 多 SERP vendor 自动比较 | Deferred upgrade | 本次 Google browser/SERP 只做 Go/No-Go 决策 |
 | U06 | 2.3 / 2.7 | 高级统计显著性模型 | Deferred upgrade | 本次使用 versioned scoring formula |
+
+## 9. 知识库生产工作流实施 Checklist
+
+本节对照 [GEO-知识库解析与生成工作流规划-2026-07-08.md](./GEO-知识库解析与生成工作流规划-2026-07-08.md)。`Done` 必须同时具备当前代码、当前运行证据和提交；旧 artifact 只能证明当时版本，不替代当前总验收。
+
+| 编号 | 工作项 | 状态 | 当前实现或证据 | 尚需通过的门禁 |
+| --- | --- | --- | --- | --- |
+| K01 | Pipeline Run、Stage、独立 Job、状态机与版本化 migration | Done | 干净 PostgreSQL 90 张表、87 条 RLS policy；`db-smoke` 与 RLS smoke 通过 | 变更 migration 时重跑 |
+| K02 | GEO Adapter Output Contract 与 capability/fallback router | Done | live pipeline 与 7 组件 smoke 均通过统一输出契约 | adapter 升级时重跑 |
+| K03 | 文件、文本、CSV、URL、站点来源导入与预检 | Done | live E2E 覆盖多文件、direct API、重复对象、私网阻断、URL/站点抓取 | 新增格式时扩展样本 |
+| K04 | Docling / MinerU / Unstructured / MarkItDown / Tika / Crawl4AI / BGE-M3 组件本体 | Done | `/tmp/geo-knowledge-heavy-components-full.json` 7/7；Docling 离线模型初始化由约 296 秒降至约 12 秒 | 模型/组件版本变更时重跑 |
+| K05 | Parser、OCR、Table、Page Snapshot 与大产物对象存储 | Done | MinIO、PostgreSQL 与 parser artifact 在 live E2E 中通过 | 对象存储后端变更时重跑 |
+| K06 | Chunk 清洗、质量标记、版本化、禁用和可视化 | Done | disabled/stale 检索排除、rechunk superseded、前端筛选/Trace 点击均通过 | chunk profile 变更时重跑 |
+| K07 | BGE-M3、Qdrant payload、检索与 disabled/stale 排除 | Done | BGE-M3 1024 维；Qdrant 写入、项目隔离、状态过滤通过 | embedding model 变更时重跑 |
+| K08 | 品牌/竞品/市场/信源事实抽取、质检和正式事实 | Done | DeepSeek 抽取、人工审核、active-only generation gate 通过 | 抽取 schema 变更时重跑 |
+| K09 | Prompt 模板版本、来源范围、候选生成/审核/导入 | Done | 真实 DeepSeek 生成、编辑后批准、正式 Prompt 导入和前端生命周期通过 | 模板版本变更时重跑 |
+| K10 | GEO 文案生成、审核、导出及 Action/Report/Retest/Gap 关联 | Done | 文案生成、品牌确定性校验、citation refs、审核与 Markdown 导出通过 | 内容模板变更时重跑 |
+| K11 | `knowledge_trace_refs`、Quality Gate、accepted risk、审计 | Done | 追踪抽查、37 个 gate、跨项目阻断和审计事件通过 | gate 规则变更时重跑 |
+| K12 | 知识库导入、处理、Chunk、检索、看板、质检、Trace、Prompt、内容前端 | Done | `frontend-page-click-smoke` 72/72；`frontend-knowledge-lifecycle-smoke` 8/8 | 页面交互变更时同步 Playwright |
+| K13 | 36 项 full-pipeline 验收与 12 项运行契约检查 | Done | `tmp/geo-knowledge-live-e2e-latest.json`：2026-07-12，36/36 + 12/12，`failures=[]` | 生产链路变更时重跑 |
+| K14 | DeepSeek `deepseek-v4-flash` 真实调用 | Done | `tmp/connector-real-smoke/latest.json`：3/3；`tmp/promptfoo-knowledge-eval/latest.json`：3/3；live E2E 模型任务全部 succeeded | key/模型变更时重跑 |
+| K15 | 当前代码静态、Python、TypeScript、生产构建 | Done | Ruff、TypeScript、两个 Next.js production build、Python 1454 tests 通过 | 2026-07-12 最终统一 gate 已再次覆盖 |
+| K16 | `make geo-production-full-pipeline-smoke` 不带 skip 完整通过 | Done | 重组件、Qdrant、live E2E 真实产物已齐；聚合命令复用并校验证据 | 2026-07-12 最终统一 gate 已再次覆盖 |

@@ -753,6 +753,7 @@ class RuntimePromptCandidateReviewInput:
     reviewed_by: str = "runtime-console"
     decision: str = "prompt candidate reviewed"
     notes: str | None = None
+    edited_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1759,18 +1760,18 @@ class RuntimeProjectLaunchConfigInput:
     customer_email: str
     primary_domain: str
     competitor_domains: tuple[str, ...] = ()
-    locale: str = "en-AU"
-    country_code: str = "AU"
-    timezone: str = "Australia/Sydney"
+    locale: str = "en"
+    country_code: str = "GLOBAL"
+    timezone: str = "UTC"
     collection_mode: str = "api"
     schedule: dict[str, Any] = field(default_factory=dict)
     external_connectors: dict[str, Any] = field(default_factory=dict)
-    scoring_profile: str = "au_visibility_v1"
+    scoring_profile: str = "visibility_v1.0"
     status: str = "draft"
     metadata: dict[str, Any] = field(default_factory=dict)
     created_by: str = "runtime-console"
     updated_by: str = "runtime-console"
-    config_version: str = "au_launch_config_v1"
+    config_version: str = "project_launch_config_v1"
     reason: str | None = None
 
 

@@ -1,4 +1,4 @@
-import { latestScore, loadPortal, loadPortalRuntimeData, pct } from "./runtime";
+import { latestScore, loadPortalRuntimeData, loadSessionPortal, pct } from "./runtime";
 
 const modules = [
   ["visibility", "AI 可见度", "查看总分、触发率、提及率和建议率。"],
@@ -6,7 +6,7 @@ const modules = [
   ["evidence", "证据样本", "查看采集样本、引用和可复盘证据链。"],
   ["reports", "报告交付", "查看最近报告、导出状态和客户可见材料。"],
   ["actions", "下一步行动", "查看内容、信源和复测建议。"],
-  ["handoff", "交付包", "查看试点交付包准备状态。"],
+  ["handoff", "交付包", "查看正式交付材料和发布准备状态。"],
   ["traceability", "可解释性", "查看审计事件、方法版本和证据映射。"]
 ];
 
@@ -16,11 +16,11 @@ export default async function CustomerHome({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = (await searchParams) || {};
-  const token = Array.isArray(params.portal_token) ? params.portal_token[0] : params.portal_token;
   const invitationId = Array.isArray(params.invitation_id) ? params.invitation_id[0] : params.invitation_id;
   const inviteToken = Array.isArray(params.invite_token) ? params.invite_token[0] : params.invite_token;
-  const acceptedBy = Array.isArray(params.accepted_by) ? params.accepted_by[0] : params.accepted_by;
-  const data = await loadPortal({ portalToken: token, invitationId, inviteToken, acceptedBy });
+  const selectedProjectId = Array.isArray(params.project_id) ? params.project_id[0] : params.project_id;
+  const sessionData = await loadSessionPortal(selectedProjectId);
+  const data = sessionData;
   const bundle = data?.bundle;
   const project = bundle?.project?.project;
   const tenant = bundle?.project?.tenant;
@@ -30,41 +30,49 @@ export default async function CustomerHome({
   const runtime = projectId ? await loadPortalRuntimeData(projectId, actorId) : null;
   const score = runtime ? latestScore(runtime.scores) : undefined;
   const progressWidth = typeof score === "number" ? `${Math.max(3, Math.round(score * 100))}%` : "0%";
-  const continuationToken = token || data?.portal_token || "";
+  const authorizedProjects = sessionData?.authorized_projects || [];
+  const errorValue = Array.isArray(params.error) ? params.error[0] : params.error;
 
   return (
     <main className="shell">
       <section className="topbar">
         <div>
-          <p className="eyebrow">GENO AU 客户门户</p>
-          <h1>{project?.target_brand || "澳大利亚 GEO 项目工作台"}</h1>
+          <p className="eyebrow">GEO 客户门户</p>
+          <h1>{project?.target_brand || "GEO 项目工作台"}</h1>
           <p className="muted" style={{ marginTop: 8 }}>
-            {tenant?.name || "连接门户 token 后查看单个项目的可见度、信源、证据、报告与行动计划。"}
+            {tenant?.name || "登录后查看已授权项目的可见度、信源、证据、报告与行动计划。"}
           </p>
         </div>
-        <form className="tokenForm" action="/" method="get">
-          <label>
-            <span>门户 token</span>
-            <input name="portal_token" defaultValue={continuationToken || ""} placeholder="geno-portal-..." />
-          </label>
-          <button type="submit">打开项目</button>
-        </form>
+        {bundle ? (
+          <div className="actionRow">
+            {authorizedProjects.length > 1 ? (
+              <form className="tokenForm" action="/" method="get">
+                <label><span>授权项目</span><select name="project_id" defaultValue={projectId}>
+                  {authorizedProjects.map((record) => (
+                    <option value={record.project?.id} key={record.project?.id}>{record.project?.name || record.project?.target_brand || record.project?.id}</option>
+                  ))}
+                </select></label>
+                <button type="submit">切换</button>
+              </form>
+            ) : null}
+            <form method="post" action="/api/auth/logout"><button className="secondary" type="submit">退出登录</button></form>
+          </div>
+        ) : null}
       </section>
 
       {!bundle ? (
         <section className="emptyState">
-          <h2>等待连接客户项目</h2>
-          <p>请输入后台生成的门户 token，或使用邀请链接首次进入。此页面只展示绑定项目，不提供项目列表和内部排障信息。</p>
+          <h2>使用客户邀请登录</h2>
+          <p>邀请只用于首次兑换。成功后浏览器保存安全会话，不会在 URL 中继续携带 token。</p>
+          {errorValue ? <p className="muted errorText">{errorValue}</p> : null}
+          <form className="tokenForm" method="post" action="/api/auth/login">
+            <label><span>邀请 ID</span><input name="invitation_id" defaultValue={invitationId || ""} required /></label>
+            <label><span>一次性邀请 token</span><input name="invite_token" type="password" defaultValue={inviteToken || ""} required /></label>
+            <button type="submit">兑换邀请并登录</button>
+          </form>
         </section>
       ) : (
         <>
-          {data?.portal_token ? (
-            <section className="panel" style={{ marginTop: 18 }}>
-              <h2>门户 token 已生成</h2>
-              <p className="muted" style={{ marginTop: 8 }}>此 token 只显示一次，后续可用它直接打开客户门户。</p>
-              <p style={{ marginTop: 10 }}><code>{data.portal_token}</code></p>
-            </section>
-          ) : null}
           <section className="heroGrid">
             <div className="panel">
               <div className="scoreBand">
@@ -110,7 +118,7 @@ export default async function CustomerHome({
                 </div>
                 <div className="listItem">
                   <span className="muted">评分方法</span>
-                  <strong>{bundle.score_weight_config?.score_weight_config?.formula_version || "au_visibility_v1"}</strong>
+                  <strong>{bundle.score_weight_config?.score_weight_config?.formula_version || "visibility_v1.0"}</strong>
                 </div>
                 <div className="listItem">
                   <span className="muted">项目 ID</span>
@@ -124,7 +132,7 @@ export default async function CustomerHome({
             <h2>工作台模块</h2>
             <div className="moduleGrid">
               {modules.map(([id, title, description]) => (
-                <a className="moduleTile" href={`/portal/${id}?portal_token=${encodeURIComponent(continuationToken || "")}`} key={id}>
+                <a className="moduleTile" href={`/portal/${id}?project_id=${encodeURIComponent(projectId)}`} key={id}>
                   <span className="statusPill">{moduleCount(id, runtime)} 条</span>
                   <h3>{title}</h3>
                   <p className="muted">{description}</p>

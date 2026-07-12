@@ -1,20 +1,23 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 
 import {
+  acceptKnowledgeQualityRiskAction,
+  cancelCollectionAction,
   deleteMemberAction,
   backfillManualDistributionAction,
-  crawlKnowledgeDocumentAction,
-  createKnowledgeDocumentAction,
+  createKnowledgeMaintenanceRunAction,
+  createKnowledgeFactExtractionAction,
+  createKnowledgePipelineAction,
+  createKnowledgePromptGenerationAction,
+  disableKnowledgeChunkAction,
   createInvitationAction,
-  createPortalTokenAction,
   createFidelityCheckAction,
-  extractKnowledgeDocumentFactsAction,
-  generateKnowledgeApplicationAction,
+  generateKnowledgeContentAction,
   importApprovedPromptCandidatesAction,
   enqueueReportJobAction,
-  importKnowledgeFactsAction,
+  enqueueCollectionAction,
   importManualBackfillAction,
   importPromptsAction,
   invitationAction,
@@ -22,13 +25,15 @@ import {
   projectLifecycleAction,
   recordHumanReviewAction,
   revealConnectorSecretAction,
+  retryKnowledgePipelineStageAction,
   reviewKnowledgeFactAction,
+  reviewKnowledgeFactCandidateAction,
   reviewPromptCandidateAction,
-  revokePortalTokenAction,
   runFixtureE2EAction,
   saveBrandAssetAction,
   saveCompetitorEntityAction,
   saveLaunchConfigAction,
+  saveKnowledgePromptTemplateAction,
   saveMemberAction,
   savePromptAction,
   saveProjectAndBrandAction,
@@ -87,8 +92,59 @@ type PromptRecord = {
 
 type RuntimeListRecord = Record<string, unknown>;
 
+type KnowledgeFileInspection = {
+  file: File;
+  hash: string;
+  recommendation: string;
+  status: "checking" | "ready" | "blocked";
+  note: string;
+};
+
+const knowledgeFileSuffixes = new Set([
+  "pdf", "docx", "pptx", "xlsx", "csv", "txt", "md", "markdown", "html", "htm",
+  "png", "jpg", "jpeg", "webp", "tif", "tiff"
+]);
+
+function knowledgeFileRecommendation(file: File): string {
+  const suffix = file.name.split(".").pop()?.toLowerCase() || "";
+  if (["png", "jpg", "jpeg", "webp", "tif", "tiff"].includes(suffix)) return "MinerU / OCR";
+  if (["pdf", "docx", "pptx", "xlsx", "html", "htm"].includes(suffix)) return "Docling（必要时自动降级）";
+  return "MarkItDown（必要时自动降级）";
+}
+
+function formatFileSize(size: number): string {
+  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(2)} MB`;
+  if (size >= 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${size} B`;
+}
+
+async function inspectKnowledgeFile(file: File): Promise<KnowledgeFileInspection> {
+  const suffix = file.name.split(".").pop()?.toLowerCase() || "";
+  if (!knowledgeFileSuffixes.has(suffix)) {
+    return { file, hash: "", recommendation: "不支持", status: "blocked", note: "文件类型不在允许列表中" };
+  }
+  if (file.size <= 0 || file.size > 50 * 1024 * 1024) {
+    return { file, hash: "", recommendation: knowledgeFileRecommendation(file), status: "blocked", note: file.size <= 0 ? "空文件" : "超过 50 MB" };
+  }
+  let hash = "";
+  try {
+    const digest = await globalThis.crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    hash = Array.from(new Uint8Array(digest)).map((item) => item.toString(16).padStart(2, "0")).join("");
+  } catch {
+    hash = "浏览器未提供 SHA-256；服务端仍会校验";
+  }
+  return {
+    file,
+    hash,
+    recommendation: knowledgeFileRecommendation(file),
+    status: "ready",
+    note: "客户端预检通过；提交后执行服务端 secret、PII、加密和重复检测"
+  };
+}
+
 export type KnowledgeFactSearchResult = {
   fact?: Record<string, unknown>;
+  chunk?: Record<string, unknown>;
   score?: number;
   fallback_used?: boolean;
   embedding_model?: string;
@@ -195,7 +251,6 @@ export function ProjectStatusControls({
   category,
   competitorCount,
   connectorReady,
-  launchStatus,
   primaryDomain,
   projectId,
   promptCount,
@@ -205,7 +260,6 @@ export function ProjectStatusControls({
   category?: string;
   competitorCount: number;
   connectorReady: boolean;
-  launchStatus?: string;
   primaryDomain?: string;
   projectId: string;
   promptCount: number;
@@ -218,7 +272,6 @@ export function ProjectStatusControls({
     category,
     competitorCount,
     connectorReady,
-    launchStatus,
     primaryDomain,
     promptCount,
     targetBrand
@@ -270,7 +323,7 @@ export function FixtureE2EForm({ projectId }: { projectId: string }) {
     <form className="configForm" action={formAction}>
       <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
       <label><span>Prompt 数量</span><input {...hydrationControlProps} name="prompt_limit" type="number" min={1} max={10} defaultValue={1} required /></label>
-      <label><span>城市</span><input {...hydrationControlProps} name="cities" defaultValue="Sydney" required /></label>
+      <label><span>城市</span><input {...hydrationControlProps} name="cities" defaultValue="Global" required /></label>
       <label>
         <span>样本数</span>
         <select {...hydrationControlProps} name="sample_size" defaultValue="3">
@@ -283,6 +336,60 @@ export function FixtureE2EForm({ projectId }: { projectId: string }) {
       <div className="formActions">
         <button type="submit" disabled={pending}>{pending ? "运行中..." : "运行本地全流程测试"}</button>
       </div>
+      <ActionState state={state} />
+    </form>
+  );
+}
+
+export function CollectionJobPanel({
+  jobs,
+  projectId,
+  projectStatus
+}: {
+  jobs: PageResponse;
+  projectId: string;
+  projectStatus: string;
+}) {
+  const [state, formAction, pending] = useActionState(enqueueCollectionAction, initialState);
+  const canRun = projectStatus === "active";
+  return (
+    <div className="opsWorkbench">
+      <form className="configForm" action={formAction}>
+        <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
+        <label><span>Prompt 上限</span><input {...hydrationControlProps} name="prompt_limit" type="number" min={1} max={200} defaultValue={10} required /></label>
+        <label><span>每条 Prompt 样本数</span><input {...hydrationControlProps} name="sample_size" type="number" min={1} max={20} defaultValue={1} required /></label>
+        <label><span>城市</span><input {...hydrationControlProps} name="cities" placeholder="留空则使用启用 Prompt 的城市" /></label>
+        <div className="formActions">
+          <button type="submit" disabled={pending || !canRun}>{pending ? "入队中..." : "运行正式采集"}</button>
+        </div>
+        {!canRun ? <p className="notice error">项目必须处于运行中才能创建正式采集任务。</p> : null}
+        <ActionState state={state} />
+      </form>
+      <div className="summaryList">
+        {jobs.records.length ? jobs.records.map((job, index) => (
+          <div className="summaryListRow" key={`${stringValue(job.id) || "collection-job"}-${index}`}>
+            <div>
+              <strong>{shortValue(stringValue(job.id))} · {statusLabel(stringValue(job.status))}</strong>
+              <p className="muted">
+                Prompt {stringValue(job.prompt_limit) || "0"} · 样本 {stringValue(job.sample_size) || "0"} · 尝试 {stringValue(job.attempt_count) || "0"}/{stringValue(job.max_attempts) || "0"}
+              </p>
+              {stringValue(job.last_error_message) ? <p className="muted errorText">{shortValue(stringValue(job.last_error_message), 180)}</p> : null}
+            </div>
+            {stringValue(job.status) === "queued" ? <CollectionJobCancelForm jobId={stringValue(job.id)} projectId={projectId} /> : null}
+          </div>
+        )) : <p className="muted emptyState">暂无正式采集任务。</p>}
+      </div>
+    </div>
+  );
+}
+
+function CollectionJobCancelForm({ jobId, projectId }: { jobId: string; projectId: string }) {
+  const [state, formAction, pending] = useActionState(cancelCollectionAction, initialState);
+  return (
+    <form className="inlineForm compactForm" action={formAction}>
+      <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
+      <input {...hydrationControlProps} type="hidden" name="collection_job_id" value={jobId} />
+      <button className="danger" type="submit" disabled={pending}>{pending ? "取消中..." : "取消"}</button>
       <ActionState state={state} />
     </form>
   );
@@ -342,9 +449,9 @@ export function LaunchConfigForm({
   const openaiConnector = objectValue(connectors.openai);
   const perplexityConnector = objectValue(connectors.perplexity);
   const googleConnector = objectValue(connectors.google_ai_mode);
-  const scoringProfile = stringValue(launch.scoring_profile) || stringValue(scoreConfig?.formula_version) || "au_visibility_v1";
+  const scoringProfile = stringValue(launch.scoring_profile) || stringValue(scoreConfig?.formula_version) || "visibility_v1.0";
   const selectedProfile = profileRecords.find((profile) => stringValue(profile.profile_key) === scoringProfile)
-    || profileRecords.find((profile) => stringValue(profile.profile_key) === "au_visibility_v1")
+    || profileRecords.find((profile) => stringValue(profile.profile_key) === "visibility_v1.0")
     || {};
   const profileWeights = objectValue(selectedProfile.weights) || {};
   const selectedFormula = scoreFormulas.find((formula) => stringValue(formula.formula_version) === stringValue(selectedProfile.base_formula_version));
@@ -356,11 +463,12 @@ export function LaunchConfigForm({
       <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
       <input {...hydrationControlProps} type="hidden" name="provider" value="" />
       <input {...hydrationControlProps} type="hidden" name="competitor_domains_snapshot" value={competitorDomains} />
+      <input {...hydrationControlProps} type="hidden" name="status" value={stringValue(launch.status) || "draft"} />
       <label><span>客户邮箱</span><input {...hydrationControlProps} name="customer_email" type="email" defaultValue={stringValue(launch.customer_email)} required /></label>
       <label><span>主域名</span><input {...hydrationControlProps} name="primary_domain" defaultValue={stringValue(launch.primary_domain)} required /></label>
-      <label><span>Locale</span><input {...hydrationControlProps} name="locale" defaultValue={stringValue(launch.locale) || "en-AU"} required /></label>
-      <label><span>国家代码</span><input {...hydrationControlProps} name="country_code" defaultValue={stringValue(launch.country_code) || "AU"} required /></label>
-      <label><span>时区</span><input {...hydrationControlProps} name="timezone" defaultValue={stringValue(launch.timezone) || "Australia/Sydney"} required /></label>
+      <label><span>Locale</span><input {...hydrationControlProps} name="locale" defaultValue={stringValue(launch.locale) || "en"} required /></label>
+      <label><span>国家代码</span><input {...hydrationControlProps} name="country_code" defaultValue={stringValue(launch.country_code) || "GLOBAL"} required /></label>
+      <label><span>时区</span><input {...hydrationControlProps} name="timezone" defaultValue={stringValue(launch.timezone) || "UTC"} required /></label>
       <label>
         <span>采集模式</span>
         <select {...hydrationControlProps} name="collection_mode" defaultValue={stringValue(launch.collection_mode) || "api"}>
@@ -368,15 +476,7 @@ export function LaunchConfigForm({
           <option value="manual">手工补录</option>
         </select>
       </label>
-      <label>
-        <span>启动状态</span>
-        <select {...hydrationControlProps} name="status" defaultValue={stringValue(launch.status) || "draft"}>
-          <option value="draft">草稿</option>
-          <option value="ready">就绪</option>
-          <option value="active">运行中</option>
-          <option value="paused">已暂停</option>
-        </select>
-      </label>
+      <div className="readonlyField"><span>配置状态</span><strong>{statusLabel(stringValue(launch.status) || "draft")}</strong></div>
       <section className="wideField configBlock">
         <div className="sectionTitle">
           <div>
@@ -401,7 +501,7 @@ export function LaunchConfigForm({
           <strong>{stringValue(selectedProfile.description) || stringValue(selectedFormula?.description) || "未填写说明"}</strong>
         </div>
         <ScoreWeightEditor
-          baseFormulaVersion={stringValue(selectedProfile.base_formula_version) || "au_visibility_v1"}
+          baseFormulaVersion={stringValue(selectedProfile.base_formula_version) || "visibility_v1.0"}
           formAction={profileFormAction}
           pending={profilePending}
           projectId={projectId}
@@ -750,31 +850,6 @@ function InvitationActionForm({ invitationId, projectId }: { invitationId: strin
   );
 }
 
-export function TokenList({ tokens }: { tokens: RuntimeListRecord[] }) {
-  if (!tokens.length) {
-    return <p className="muted emptyState">暂无门户 token。raw token 创建后只显示一次。</p>;
-  }
-  return (
-    <div className="summaryList">
-      {tokens.map((record, index) => {
-        const token = objectValue(record.portal_token || record.token || record.customer_portal_token);
-        const tokenId = stringValue(token.id) || stringValue(record.id);
-        return (
-          <div className="summaryListRow" key={`${index}-${tokenId}`}>
-            <div>
-              <strong>{tokenId || "未知 token"}</strong>
-              <p className="muted">
-                {stringValue(token.member_user_id) || stringValue(record.member_user_id) || "未知用户"} · {statusLabel(stringValue(token.status) || stringValue(record.status))}
-              </p>
-              <p className="muted">创建时间：{stringValue(token.created_at) || stringValue(record.created_at) || "无"}</p>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 export function MemberList({ members }: { members: RuntimeListRecord[] }) {
   if (!members.length) {
     return <p className="muted emptyState">暂无成员记录。</p>;
@@ -818,8 +893,8 @@ export function PromptEditor({ projectId, prompt }: { projectId: string; prompt:
           <input {...hydrationControlProps} type="hidden" name="prompt_id" value={prompt.id || ""} />
           <label className="wideField"><span>Prompt 文本</span><textarea {...hydrationControlProps} name="text" defaultValue={prompt.text || ""} required /></label>
           <label><span>Intent</span><input {...hydrationControlProps} name="intent_type" defaultValue={prompt.intent_type || "brand_awareness"} required /></label>
-          <label><span>城市</span><input {...hydrationControlProps} name="city" defaultValue={prompt.city || "Sydney"} required /></label>
-          <label><span>语言</span><input {...hydrationControlProps} name="language" defaultValue={prompt.language || "en-AU"} required /></label>
+          <label><span>城市</span><input {...hydrationControlProps} name="city" defaultValue={prompt.city || "Global"} required /></label>
+          <label><span>语言</span><input {...hydrationControlProps} name="language" defaultValue={prompt.language || "en"} required /></label>
           <label><span>目标品牌</span><input {...hydrationControlProps} name="target_brand" defaultValue={prompt.target_brand || ""} required /></label>
           <label><span>优先级</span><input {...hydrationControlProps} name="priority" type="number" min={0} defaultValue={String(prompt.priority ?? 1)} required /></label>
           <label><span>Intent 权重</span><input {...hydrationControlProps} name="intent_weight" type="number" min={0.01} step={0.01} defaultValue={String(prompt.intent_weight ?? 1)} required /></label>
@@ -889,7 +964,7 @@ export function PromptImportForm({ projectId, promptLimit }: { projectId: string
         <textarea
           {...hydrationControlProps}
           name="csv_content"
-          placeholder={"text,intent_type,city,language,priority\nIs Koala visible in AI answers?,brand_awareness,Sydney,en-AU,10"}
+          placeholder={"text,intent_type,city,language,priority\nIs the brand visible in AI answers?,brand_awareness,Global,en,10"}
           required
         />
       </label>
@@ -901,57 +976,12 @@ export function PromptImportForm({ projectId, promptLimit }: { projectId: string
   );
 }
 
-export function KnowledgeFactImportForm({
-  defaultMarketCode,
-  projectId,
-  searchQuery
-}: {
-  defaultMarketCode: string;
-  projectId: string;
-  searchQuery: string;
-}) {
-  const [state, formAction, pending] = useActionState(importKnowledgeFactsAction, initialState);
-  return (
-    <form className="configForm singleColumn knowledgeImportForm" action={formAction}>
-      <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
-      <input {...hydrationControlProps} type="hidden" name="default_search_query" value={searchQuery || "shipping returns reviews"} />
-      {state.error ? <p className="muted errorText">{state.error}</p> : null}
-      <div className="twoCol compact noTopMargin">
-        <label>
-          <span>默认市场</span>
-          <input {...hydrationControlProps} name="default_market_code" defaultValue={defaultMarketCode || "AU"} required />
-        </label>
-        <label>
-          <span>最大导入行数</span>
-          <input {...hydrationControlProps} name="max_rows" type="number" min={1} max={200} defaultValue={100} />
-        </label>
-      </div>
-      <label>
-        <span>导入后检索词</span>
-        <input {...hydrationControlProps} name="search_after_import" defaultValue={searchQuery || "shipping returns reviews"} />
-      </label>
-      <label>
-        <span>CSV 内容</span>
-        <textarea
-          {...hydrationControlProps}
-          name="csv_content"
-          placeholder={"fact_type,subject,predicate,object_value,market_code,city,confidence,status\nreturns_policy,KoalaHome,has_policy,30 day returns for Australian customers,AU,Sydney,0.86,approved\nshipping_policy,KoalaHome,has_shipping,Free metro delivery over A$99,AU,,0.82,approved"}
-          required
-        />
-      </label>
-      <div className="formActions">
-        <button type="submit" disabled={pending}>{pending ? "导入中..." : "导入知识事实 CSV"}</button>
-      </div>
-      {!state.error ? <ActionState state={state} /> : null}
-    </form>
-  );
-}
-
 function knowledgeApplicationData(application: Record<string, unknown>) {
   return {
     documents: arrayValue(application.knowledge_documents),
     facts: arrayValue(application.knowledge_facts),
     jobs: arrayValue(application.generation_jobs),
+    promptTemplates: arrayValue(application.prompt_templates),
     promptCandidates: arrayValue(application.prompt_candidates),
     faqCandidates: arrayValue(application.faq_candidates),
     contentDrafts: arrayValue(application.content_drafts).map((item) => objectValue(objectValue(item).draft || item)),
@@ -960,18 +990,22 @@ function knowledgeApplicationData(application: Record<string, unknown>) {
 
 export function KnowledgeDocumentImportPanel({
   application,
+  defaultLocale,
   defaultMarketCode,
   importedCount,
-  projectId,
-  searchQuery
+  pipeline,
+  projectId
 }: {
   application: Record<string, unknown>;
+  defaultLocale: string;
   defaultMarketCode: string;
   importedCount: string;
+  pipeline: Record<string, { total_count: number; records: Record<string, unknown>[] }>;
   projectId: string;
-  searchQuery: string;
 }) {
   const { documents, jobs } = knowledgeApplicationData(application);
+  const pipelineRuns = pipeline.pipelineRuns?.records || [];
+  const importJobs = pipeline.importJobs?.records || [];
   return (
     <section className="detailPanel unframedPanel knowledgePanel">
       <div className="sectionTitle">
@@ -981,7 +1015,7 @@ export function KnowledgeDocumentImportPanel({
         </div>
       </div>
       <p className="muted formIntro">
-        导入工作流按 Unstructured 默认解析、Docling 复杂 PDF/表格 fallback、LlamaIndex 风格清洗切分入库来组织。当前已落地的运行态入口支持 URL、网页/Markdown/HTML 文本和 CSV；二进制 PDF/Office 文件进入后续解析 worker 后再开放直接上传。
+        所有来源统一进入生产 Pipeline。系统按文件能力矩阵选择 Docling、MinerU、Unstructured、Apache Tika 或 MarkItDown，URL 使用 Crawl4AI；随后完成 Chunk、BGE-M3、Qdrant、事实候选和质量门禁。
       </p>
       {importedCount ? (
         <div className="notice success">
@@ -989,34 +1023,45 @@ export function KnowledgeDocumentImportPanel({
         </div>
       ) : null}
       <div className="knowledgePipeline">
-        <div><span>1</span><strong>解析</strong><p>Unstructured 默认，Docling 处理复杂 PDF / 表格 / 版面。</p></div>
-        <div><span>2</span><strong>清洗</strong><p>去噪、标准化、切分、补元数据，避免脏内容进入事实库。</p></div>
-        <div><span>3</span><strong>抽取</strong><p>DeepSeek v4 Flash 生成候选事实，默认进入人工质检。</p></div>
-        <div><span>4</span><strong>入库</strong><p>只有已批准事实进入检索和 Prompt 生成上下文。</p></div>
+        <div><span>1</span><strong>来源预检</strong><p>阻断私有 URL、空文件和超限内容。</p></div>
+        <div><span>2</span><strong>解析/OCR/表格</strong><p>Docling、MinerU、Unstructured、Tika、MarkItDown 统一输出契约。</p></div>
+        <div><span>3</span><strong>Chunk + BGE-M3</strong><p>生成可视化 chunk，写入真实 Qdrant。</p></div>
+        <div><span>4</span><strong>事实/Prompt/文案</strong><p>DeepSeek v4 Flash 生成候选，必须人工审核和证据追踪。</p></div>
       </div>
+      <KnowledgePipelineCreateForm
+        defaultLocale={defaultLocale}
+        defaultMarketCode={defaultMarketCode}
+        projectId={projectId}
+      />
       <div className="twoCol compact">
-        <KnowledgeDocumentCreateForm projectId={projectId} />
-        <div className="detailPanel">
-          <p className="eyebrow">结构化事实</p>
-          <h3>CSV / 多行文本快速导入</h3>
-          <p className="muted">
-            必填列：fact_type、subject、predicate、object_value。可选列：market_code、city、confidence、status。
-          </p>
-          <KnowledgeFactImportForm defaultMarketCode={defaultMarketCode} projectId={projectId} searchQuery={searchQuery} />
-        </div>
-      </div>
-      <div className="twoCol compact">
-        <KnowledgeDocumentRunForm documents={documents} projectId={projectId} />
         <RecordList
-          title="知识来源"
-          emptyText="暂无知识来源。"
-          records={documents}
-          pick={(document) => [
-            stringValue(document.title) || stringValue(document.source_url) || shortValue(stringValue(document.id)),
-            `${statusLabel(stringValue(document.status))} · ${knowledgeSourceTypeLabel(stringValue(document.source_type))} · ${shortValue(stringValue(document.id))}`
+          title="最新 Pipeline"
+          emptyText="暂无 pipeline。"
+          records={pipelineRuns}
+          pick={(run) => [
+            `${knowledgePipelineRunTypeLabel(stringValue(run.run_type))} · ${shortValue(stringValue(run.id))}`,
+            `${statusLabel(stringValue(run.status))} · ${stringValue(run.entry_source) || "mixed"} · ${stringValue(run.updated_at) || "无更新时间"}`
+          ]}
+        />
+        <RecordList
+          title="导入任务"
+          emptyText="暂无导入任务。"
+          records={importJobs}
+          pick={(job) => [
+            `${knowledgeSourceTypeLabel(stringValue(job.source_mode))} · ${shortValue(stringValue(job.id))}`,
+            `${statusLabel(stringValue(job.status))} · attempts ${stringValue(job.attempt_count) || "0"}`
           ]}
         />
       </div>
+      <RecordList
+        title="知识来源资产"
+        emptyText="暂无知识来源资产。"
+        records={documents}
+        pick={(document) => [
+          stringValue(document.title) || stringValue(document.source_uri) || shortValue(stringValue(document.id)),
+          `${statusLabel(stringValue(document.status))} · ${knowledgeSourceTypeLabel(stringValue(document.asset_type))} · ${shortValue(stringValue(document.id))}`
+        ]}
+      />
       <RecordList
         title="最近解析/生成任务"
         emptyText="暂无解析或抽取任务。"
@@ -1030,6 +1075,157 @@ export function KnowledgeDocumentImportPanel({
   );
 }
 
+export function KnowledgePipelineCreateForm({
+  defaultLocale,
+  defaultMarketCode,
+  projectId
+}: {
+  defaultLocale: string;
+  defaultMarketCode: string;
+  projectId: string;
+}) {
+  const [state, formAction, pending] = useActionState(createKnowledgePipelineAction, initialState);
+  const [sourceMode, setSourceMode] = useState("pasted_text");
+  const [fileQueue, setFileQueue] = useState<KnowledgeFileInspection[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const updateFileQueue = async (files: File[]) => {
+    setFileQueue(files.map((file) => ({
+      file,
+      hash: "",
+      recommendation: knowledgeFileRecommendation(file),
+      status: "checking",
+      note: "正在计算文件指纹"
+    })));
+    setFileQueue(await Promise.all(files.map(inspectKnowledgeFile)));
+  };
+  const removeQueuedFile = (indexToRemove: number) => {
+    const input = fileInputRef.current;
+    if (!input) return;
+    const dataTransfer = new DataTransfer();
+    Array.from(input.files || []).forEach((file, index) => {
+      if (index !== indexToRemove) dataTransfer.items.add(file);
+    });
+    input.files = dataTransfer.files;
+    void updateFileQueue(Array.from(dataTransfer.files));
+  };
+  return (
+    <div className="detailPanel">
+      <p className="eyebrow">生产流水线</p>
+      <h3>创建完整知识库 Pipeline</h3>
+      <p className="muted">创建后会自动入队并启动：导入、解析、chunk、embedding、事实抽取、Prompt/文案生成和质量门禁会由 knowledge-worker 推进。</p>
+      <form className="configForm singleColumn" action={formAction}>
+        <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
+        <input {...hydrationControlProps} type="hidden" name="run_type" value="full_ingestion" />
+        {state.error ? <p className="muted errorText">{state.error}</p> : null}
+        <div className="twoCol compact noTopMargin">
+          <label>
+            <span>来源类型</span>
+            <select {...hydrationControlProps} name="source_mode" defaultValue="pasted_text" onChange={(event) => setSourceMode(event.target.value)}>
+              <option value="pasted_text">粘贴文本</option>
+              <option value="file">上传文件</option>
+              <option value="csv">CSV</option>
+              <option value="url">单个公网 URL</option>
+              <option value="url_batch">多个公网 URL</option>
+              <option value="site_crawl">站点深度抓取</option>
+              <option value="sitemap">Sitemap 抓取</option>
+            </select>
+          </label>
+          <div className="notice"><p>此入口固定创建完整导入。重新解析、切分、索引和事实刷新请在“处理任务”中从历史 Pipeline 创建版本化重跑。</p></div>
+        </div>
+        <div className="threeCol compact noTopMargin">
+          <label><span>市场</span><input {...hydrationControlProps} name="market_code" defaultValue={defaultMarketCode || "GLOBAL"} /></label>
+          <label><span>语言区域</span><input {...hydrationControlProps} name="locale" defaultValue={defaultLocale || "en"} /></label>
+          <label><span>城市</span><input {...hydrationControlProps} name="city" placeholder="可选，例如 Shanghai" /></label>
+        </div>
+        {["url", "url_batch", "site_crawl", "sitemap"].includes(sourceMode) ? (
+          <>
+            <label className="wideField">
+              <span>{sourceMode === "url" ? "URL" : sourceMode === "sitemap" ? "Sitemap URL" : "URL（每行一个）"}</span>
+              <textarea {...hydrationControlProps} name="source_urls" placeholder="https://example.com/faq" required />
+            </label>
+            <div className="threeCol compact noTopMargin">
+              <label><span>最大页面</span><input {...hydrationControlProps} type="number" name="max_pages" min={1} max={500} defaultValue={sourceMode === "url" ? 1 : 50} /></label>
+              <label><span>抓取深度</span><input {...hydrationControlProps} type="number" name="depth_limit" min={0} max={5} defaultValue={sourceMode === "site_crawl" ? 2 : 0} /></label>
+              <label><span>遵守 robots.txt</span><select {...hydrationControlProps} name="respect_robots" defaultValue="1"><option value="1">是</option><option value="0">否（仅经授权站点）</option></select></label>
+            </div>
+            <div className="twoCol compact noTopMargin">
+              <label><span>包含规则</span><textarea {...hydrationControlProps} name="include_patterns" placeholder="每行一个 glob，例如 https://example.com/help/*" /></label>
+              <label><span>排除规则</span><textarea {...hydrationControlProps} name="exclude_patterns" placeholder="每行一个 glob，例如 */login*" /></label>
+            </div>
+          </>
+        ) : sourceMode === "file" ? (
+          <>
+            <div className="twoCol compact noTopMargin">
+              <label>
+                <span>解析策略</span>
+                <select {...hydrationControlProps} name="adapter_engine" defaultValue="auto">
+                  <option value="auto">自动选择</option>
+                  <option value="docling">Docling</option>
+                  <option value="mineru">MinerU</option>
+                  <option value="unstructured">Unstructured</option>
+                  <option value="tika">Apache Tika</option>
+                  <option value="markitdown">MarkItDown</option>
+                </select>
+              </label>
+              <label><span>文件标题</span><input {...hydrationControlProps} name="title" defaultValue="知识库文件导入" /></label>
+            </div>
+            <label className="knowledgeDropzone">
+              <span>拖入或选择文件</span>
+              <small>单次最多 20 个，每个不超过 50 MB；服务端会再次执行安全预检和去重。</small>
+              <input
+                {...hydrationControlProps}
+                ref={fileInputRef}
+                type="file"
+                name="source_files"
+                multiple
+                required
+                accept=".pdf,.docx,.pptx,.xlsx,.csv,.txt,.md,.html,.htm,.png,.jpg,.jpeg,.webp,.tif,.tiff"
+                onChange={(event) => void updateFileQueue(Array.from(event.currentTarget.files || []))}
+              />
+            </label>
+            <div className="knowledgeFileQueue" aria-live="polite">
+              {fileQueue.map((inspection, index) => (
+                <div className="knowledgeFileQueueRow" key={`${inspection.file.name}-${inspection.file.size}-${inspection.file.lastModified}`}>
+                  <div>
+                    <strong>{inspection.file.name}</strong>
+                    <p>{formatFileSize(inspection.file.size)} · {inspection.file.type || "未知 MIME"} · {inspection.recommendation}</p>
+                    <small>{inspection.note}</small>
+                    {inspection.hash ? <code title={inspection.hash}>SHA-256 {inspection.hash.slice(0, 16)}...</code> : null}
+                  </div>
+                  <div className="knowledgeFileQueueStatus">
+                    <span className={`statusPill ${inspection.status === "blocked" ? "dangerPill" : ""}`}>
+                      {inspection.status === "checking" ? "检查中" : inspection.status === "ready" ? "待上传" : "已阻断"}
+                    </span>
+                    <button type="button" className="secondary" onClick={() => removeQueuedFile(index)} aria-label={`移除 ${inspection.file.name}`}>移除</button>
+                  </div>
+                </div>
+              ))}
+              {!fileQueue.length ? <p className="muted">尚未选择文件。</p> : null}
+            </div>
+          </>
+        ) : (
+          <>
+            <label><span>标题</span><input {...hydrationControlProps} name="title" defaultValue="知识库导入" /></label>
+            <label>
+              <span>{sourceMode === "csv" ? "CSV 内容" : "文本内容"}</span>
+              <textarea {...hydrationControlProps} name={sourceMode === "csv" ? "csv_content" : "source_text"} placeholder="粘贴产品、服务、FAQ、竞品或市场事实。" />
+            </label>
+          </>
+        )}
+        <div className="formActions">
+          <button
+            type="submit"
+            disabled={pending || (sourceMode === "file" && (fileQueue.length === 0 || fileQueue.some((file) => file.status !== "ready")))}
+          >
+            {pending ? "启动中..." : "创建并启动 Pipeline"}
+          </button>
+        </div>
+        {!state.error ? <ActionState state={state} /> : null}
+      </form>
+    </div>
+  );
+}
+
 export function KnowledgeDashboardPanel({
   application,
   searchPage
@@ -1038,7 +1234,7 @@ export function KnowledgeDashboardPanel({
   searchPage: { total_count?: number; embedding_model?: string };
 }) {
   const { documents, facts, jobs, promptCandidates, faqCandidates, contentDrafts } = knowledgeApplicationData(application);
-  const approvedFacts = facts.filter((fact) => stringValue(fact.status) === "approved");
+  const approvedFacts = facts.filter((fact) => stringValue(fact.status) === "active");
   const pendingFacts = facts.filter((fact) => ["pending_review", "pending"].includes(stringValue(fact.status) || stringValue(fact.review_status)));
   const failedJobs = jobs.filter((job) => stringValue(job.status) === "failed");
   return (
@@ -1063,7 +1259,7 @@ export function KnowledgeDashboardPanel({
           <h3>已批准知识索引</h3>
           <SummaryGrid rows={[
             ["最近检索匹配", String(searchPage.total_count || 0)],
-            ["Embedding", stringValue(searchPage.embedding_model) || "fixture-knowledge-embedding-v1"],
+            ["Embedding", stringValue(searchPage.embedding_model) || "BAAI/bge-m3"],
             ["失败任务", String(failedJobs.length)],
             ["Prompt 可用来源", approvedFacts.length ? "已具备" : "缺少已批准知识"]
           ]} />
@@ -1113,14 +1309,18 @@ export function KnowledgeDashboardPanel({
 
 export function KnowledgeQualityPanel({
   application,
+  pipeline,
   projectId
 }: {
   application: Record<string, unknown>;
+  pipeline?: Record<string, { total_count: number; records: Record<string, unknown>[] }>;
   projectId: string;
 }) {
   const { facts } = knowledgeApplicationData(application);
+  const factCandidates = pipeline?.factCandidates?.records || [];
+  const pendingCandidates = factCandidates.filter((fact) => stringValue(fact.status) === "pending_review");
   const pendingFacts = facts.filter((fact) => ["pending_review", "pending"].includes(stringValue(fact.status) || stringValue(fact.review_status)));
-  const approvedFacts = facts.filter((fact) => stringValue(fact.status) === "approved");
+  const approvedFacts = facts.filter((fact) => stringValue(fact.status) === "active");
   const lowConfidenceFacts = facts.filter((fact) => {
     const confidence = Number(stringValue(fact.confidence) || "1");
     return Number.isFinite(confidence) && confidence < 0.75;
@@ -1136,17 +1336,32 @@ export function KnowledgeQualityPanel({
       </div>
       <p className="muted formIntro">质检通过前，知识事实不会进入 Prompt 生成上下文。这里集中处理待审核、低置信度、重复和冲突事实。</p>
       <div className="metricGrid compact">
-        <MetricCard label="待审核" value={pendingFacts.length} />
+        <MetricCard label="待审核候选" value={pendingCandidates.length} />
+        <MetricCard label="旧事实待审核" value={pendingFacts.length} />
         <MetricCard label="已批准" value={approvedFacts.length} />
         <MetricCard label="低置信度" value={lowConfidenceFacts.length} />
         <MetricCard label="重复/冲突" value={conflictFacts.length} />
       </div>
       <div className="twoCol compact">
+        <KnowledgeFactCandidateReviewForm candidates={factCandidates} projectId={projectId} />
+        <EvidenceRecordList
+          title="Pipeline 候选事实"
+          emptyText="暂无 pipeline 候选事实。"
+          records={pendingCandidates.length ? pendingCandidates : factCandidates}
+          projectId={projectId}
+          pick={(fact) => [
+            `${stringValue(fact.fact_type) || "fact"} · ${shortValue(stringValue(fact.id))}`,
+            `${statusLabel(stringValue(fact.status))} · ${shortValue(stringValue(fact.object_value), 80)}`
+          ]}
+        />
+      </div>
+      <div className="twoCol compact">
         <KnowledgeFactReviewForm facts={facts} projectId={projectId} />
-        <RecordList
-          title="待审核事实"
-          emptyText="暂无待审核事实。"
+        <EvidenceRecordList
+          title="正式知识事实"
+          emptyText="暂无正式知识事实。"
           records={pendingFacts.length ? pendingFacts : facts}
+          projectId={projectId}
           pick={(fact) => [
             `${stringValue(fact.fact_type) || "fact"} · ${shortValue(stringValue(fact.id))}`,
             `${statusLabel(stringValue(fact.status) || stringValue(fact.review_status))} · ${shortValue(stringValue(fact.object_value), 80)}`
@@ -1177,6 +1392,281 @@ export function KnowledgeQualityPanel({
   );
 }
 
+export function KnowledgeQualityRiskAcceptForm({
+  gateRuns,
+  projectId
+}: {
+  gateRuns: RuntimeListRecord[];
+  projectId: string;
+}) {
+  const [state, formAction, pending] = useActionState(acceptKnowledgeQualityRiskAction, initialState);
+  const eligibleGateRuns = gateRuns.filter((gate) => {
+    const gateKey = stringValue(gate.gate_key);
+    return ["warning", "blocked"].includes(stringValue(gate.status)) && !["security_gate", "traceability_gate"].includes(gateKey);
+  });
+  return (
+    <form className="configForm singleColumn compactForm" action={formAction}>
+      <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
+      <p className="eyebrow">授权接受风险</p>
+      <h3>为非安全类门禁设置临时例外</h3>
+      <p className="muted">
+        仅项目管理员或内部运营人员可操作。安全门禁和证据追踪门禁不能接受风险；例外到期后需要重新处理问题。
+      </p>
+      {state.error ? <p className="muted errorText">{state.error}</p> : null}
+      <label>
+        <span>质量门禁</span>
+        <select {...hydrationControlProps} name="quality_gate_run_id" defaultValue="" required>
+          <option value="" disabled>选择阻断或警告门禁</option>
+          {eligibleGateRuns.map((gate) => (
+            <option key={stringValue(gate.id)} value={stringValue(gate.id)}>
+              {stringValue(gate.gate_key)} · {statusLabel(stringValue(gate.status))} · {shortValue(stringValue(gate.id))}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>例外到期时间</span>
+        <input {...hydrationControlProps} type="datetime-local" name="expires_at" required />
+      </label>
+      <label>
+        <span>接受原因</span>
+        <textarea {...hydrationControlProps} name="reason" rows={3} minLength={3} maxLength={1000} required placeholder="说明为什么可以临时接受、影响范围和后续处理责任。" />
+      </label>
+      <div className="formActions">
+        <button type="submit" disabled={pending || eligibleGateRuns.length === 0}>
+          {pending ? "提交中..." : "确认接受风险"}
+        </button>
+      </div>
+      {eligibleGateRuns.length === 0 ? <p className="muted">当前没有允许接受风险的门禁。</p> : null}
+      {!state.error ? <ActionState state={state} /> : null}
+    </form>
+  );
+}
+
+export function KnowledgeStageRetryForm({
+  projectId,
+  stages
+}: {
+  projectId: string;
+  stages: RuntimeListRecord[];
+}) {
+  const [state, formAction, pending] = useActionState(retryKnowledgePipelineStageAction, initialState);
+  const retryable = stages.filter((stage) => ["failed", "blocked"].includes(stringValue(stage.status)));
+  return (
+    <form className="configForm singleColumn compactForm" action={formAction}>
+      <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
+      <p className="eyebrow">失败恢复</p>
+      <h3>重试自动处理阶段</h3>
+      <label>
+        <span>失败阶段</span>
+        <select {...hydrationControlProps} name="pipeline_stage_id" defaultValue="" required>
+          <option value="" disabled>选择失败或阻断阶段</option>
+          {retryable.map((stage) => (
+            <option key={stringValue(stage.id)} value={stringValue(stage.id)}>
+              {stringValue(stage.stage_key)} · {statusLabel(stringValue(stage.status))}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="formActions">
+        <button type="submit" disabled={pending || retryable.length === 0}>{pending ? "重新入队中..." : "重试阶段"}</button>
+      </div>
+      {retryable.length === 0 ? <p className="muted">当前没有可自动重试的失败阶段。</p> : null}
+      <ActionState state={state} />
+    </form>
+  );
+}
+
+export function KnowledgeMaintenanceRunForm({
+  projectId,
+  runs
+}: {
+  projectId: string;
+  runs: RuntimeListRecord[];
+}) {
+  const [state, formAction, pending] = useActionState(createKnowledgeMaintenanceRunAction, initialState);
+  const sourceRuns = runs.filter((run) => !["draft", "ready", "queued"].includes(stringValue(run.status)));
+  return (
+    <form className="configForm singleColumn compactForm" action={formAction}>
+      <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
+      <input {...hydrationControlProps} type="hidden" name="market_code" value="GLOBAL" />
+      <input {...hydrationControlProps} type="hidden" name="locale" value="en" />
+      <p className="eyebrow">版本化重跑</p>
+      <h3>重新解析、切分、索引或抽取</h3>
+      <label>
+        <span>来源 Pipeline</span>
+        <select {...hydrationControlProps} name="source_pipeline_run_id" defaultValue="" required>
+          <option value="" disabled>选择历史 Pipeline</option>
+          {sourceRuns.map((run) => <option key={stringValue(run.id)} value={stringValue(run.id)}>{shortValue(stringValue(run.id))} · {knowledgePipelineRunTypeLabel(stringValue(run.run_type))} · {statusLabel(stringValue(run.status))}</option>)}
+        </select>
+      </label>
+      <label>
+        <span>重跑类型</span>
+        <select {...hydrationControlProps} name="run_type" defaultValue="reparse">
+          <option value="reparse">重新解析</option>
+          <option value="rechunk">重新切分</option>
+          <option value="reindex">重新索引</option>
+          <option value="fact_refresh">重新抽取事实</option>
+          <option value="full_rebuild">完整重建</option>
+        </select>
+      </label>
+      <input {...hydrationControlProps} type="hidden" name="adapter_engine" value="auto" />
+      <input {...hydrationControlProps} type="hidden" name="chunk_profile_version" value="geo_chunk_profile_v1" />
+      <input {...hydrationControlProps} type="hidden" name="cleaner_profile_version" value="geo_cleaner_v1" />
+      <div className="notice"><p>重跑会创建新版本；旧 Parser Run、Chunk、事实候选、Prompt 候选和文案草稿不会被静默覆盖。</p></div>
+      <div className="formActions"><button type="submit" disabled={pending || sourceRuns.length === 0}>{pending ? "创建中..." : "创建重跑任务"}</button></div>
+      <ActionState state={state} />
+    </form>
+  );
+}
+
+export function KnowledgeChunkControlForm({
+  chunks,
+  projectId
+}: {
+  chunks: RuntimeListRecord[];
+  projectId: string;
+}) {
+  const [state, formAction, pending] = useActionState(disableKnowledgeChunkAction, initialState);
+  const activeChunks = chunks.filter((chunk) => stringValue(chunk.status) === "active");
+  return (
+    <form className="configForm singleColumn compactForm" action={formAction}>
+      <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
+      <p className="eyebrow">Chunk 生命周期</p>
+      <h3>禁用不应进入检索与生成的片段</h3>
+      <label>
+        <span>Chunk</span>
+        <select {...hydrationControlProps} name="knowledge_chunk_id" defaultValue="" required>
+          <option value="" disabled>选择运行中的 Chunk</option>
+          {activeChunks.map((chunk) => (
+            <option key={stringValue(chunk.id)} value={stringValue(chunk.id)}>
+              {shortValue(stringValue(chunk.id))} · {shortValue(stringValue(chunk.text), 70)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label><span>禁用原因</span><textarea {...hydrationControlProps} name="reason" minLength={3} required /></label>
+      <div className="formActions">
+        <button className="danger" type="submit" disabled={pending || activeChunks.length === 0}>{pending ? "禁用中..." : "禁用 Chunk"}</button>
+      </div>
+      <ActionState state={state} />
+    </form>
+  );
+}
+
+export function KnowledgeFactExtractionForm({
+  assets,
+  importJobs,
+  projectId,
+  runs
+}: {
+  assets: RuntimeListRecord[];
+  importJobs: RuntimeListRecord[];
+  projectId: string;
+  runs: RuntimeListRecord[];
+}) {
+  const [state, formAction, pending] = useActionState(createKnowledgeFactExtractionAction, initialState);
+  const sourceRuns = runs.filter((run) => !["draft", "ready", "queued", "failed", "cancelled"].includes(stringValue(run.status)));
+  return (
+    <form className="configForm singleColumn compactForm" action={formAction}>
+      <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
+      <p className="eyebrow">事实抽取</p>
+      <h3>从可检索 Chunk 生成事实候选</h3>
+      <label>
+        <span>来源 Pipeline</span>
+        <select {...hydrationControlProps} name="source_pipeline_run_id" defaultValue="" required>
+          <option value="" disabled>选择已产生 Chunk 的 Pipeline</option>
+          {sourceRuns.map((run) => (
+            <option key={stringValue(run.id)} value={stringValue(run.id)}>
+              {shortValue(stringValue(run.id))} · {knowledgePipelineRunTypeLabel(stringValue(run.run_type))} · {statusLabel(stringValue(run.status))}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="twoCol compact noTopMargin">
+        <label>
+          <span>限定导入任务</span>
+          <select {...hydrationControlProps} name="import_job_id" defaultValue="">
+            <option value="">全部导入任务</option>
+            {importJobs.map((job) => <option key={stringValue(job.id)} value={stringValue(job.id)}>{shortValue(stringValue(job.id))} · {knowledgeSourceTypeLabel(stringValue(job.source_mode))}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>限定来源资产</span>
+          <select {...hydrationControlProps} name="source_asset_id" defaultValue="">
+            <option value="">全部来源资产</option>
+            {assets.map((asset) => <option key={stringValue(asset.id)} value={stringValue(asset.id)}>{stringValue(asset.filename) || stringValue(asset.title) || shortValue(stringValue(asset.id))}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="twoCol compact noTopMargin">
+        <label><span>Chunk 类型</span><select {...hydrationControlProps} name="chunk_type" defaultValue=""><option value="">全部</option><option value="text">正文</option><option value="table">表格</option><option value="mixed">混合</option></select></label>
+        <label><span>质量标记</span><input {...hydrationControlProps} name="quality_flag" placeholder="可选，例如 chunk_duplicate" /></label>
+      </div>
+      <label><span>事实类型</span><textarea {...hydrationControlProps} name="fact_kinds" defaultValue={"brand\ncompetitor\nmarket\nsource"} /></label>
+      <label><span>最多候选数</span><input {...hydrationControlProps} name="max_facts" type="number" min={1} max={200} defaultValue={20} /></label>
+      <div className="notice"><p>只读取 active 且已写入 BGE-M3/Qdrant 的 Chunk。输出进入候选审核，不会直接成为生成可用事实。</p></div>
+      <div className="formActions"><button type="submit" disabled={pending || sourceRuns.length === 0}>{pending ? "创建中..." : "开始事实抽取"}</button></div>
+      <ActionState state={state} />
+    </form>
+  );
+}
+
+export function KnowledgeContentGenerationForm({ projectId }: { projectId: string }) {
+  const [state, formAction, pending] = useActionState(generateKnowledgeContentAction, initialState);
+  return (
+    <form className="configForm singleColumn" action={formAction}>
+      <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
+      <p className="eyebrow">GEO 文案生成</p>
+      <h3>从 active 事实生成带证据的草稿</h3>
+      <div className="twoCol compact noTopMargin">
+        <label>
+          <span>文案类型</span>
+          <select {...hydrationControlProps} name="content_type" defaultValue="faq">
+            <option value="faq">FAQ</option>
+            <option value="product_paragraph">产品说明</option>
+            <option value="category_paragraph">品类说明</option>
+            <option value="competitor_comparison">竞品比较</option>
+            <option value="local_guide">本地指南</option>
+            <option value="citation_friendly_explanation">引用友好说明</option>
+            <option value="customer_service_qa">客服问答</option>
+            <option value="evidence_brief">证据补强 Brief</option>
+          </select>
+        </label>
+        <label>
+          <span>目标渠道</span>
+          <select {...hydrationControlProps} name="target_platform" defaultValue="website">
+            <option value="website">网站</option>
+            <option value="help_center">帮助中心</option>
+            <option value="product_page">产品页</option>
+            <option value="editorial">编辑内容</option>
+          </select>
+        </label>
+      </div>
+      <div className="threeCol compact noTopMargin">
+        <label><span>城市</span><input {...hydrationControlProps} name="target_city" placeholder="可选" /></label>
+        <label><span>语气</span><select {...hydrationControlProps} name="tone" defaultValue="clear"><option value="clear">清晰客观</option><option value="professional">专业</option><option value="concise">简洁</option></select></label>
+        <label><span>最少引用</span><input {...hydrationControlProps} name="required_citations" type="number" min={1} max={20} defaultValue={1} /></label>
+      </div>
+      <div className="twoCol compact noTopMargin">
+        <label><span>目标受众</span><input {...hydrationControlProps} name="target_audience" defaultValue="正在比较产品和服务的客户" required /></label>
+        <label><span>关联行动计划 ID</span><input {...hydrationControlProps} name="source_action_id" placeholder="可选；用于 Action Plan 到文案的追踪" /></label>
+      </div>
+      <div className="threeCol compact noTopMargin">
+        <label><span>关联报告 ID</span><input {...hydrationControlProps} name="source_report_id" placeholder="可选" /></label>
+        <label><span>关联复测 ID</span><input {...hydrationControlProps} name="source_retest_id" placeholder="可选" /></label>
+        <label><span>信源缺口类型</span><input {...hydrationControlProps} name="source_gap_type" placeholder="可选，例如 weak_citation" /></label>
+      </div>
+      <label><span>禁止生成的声明</span><textarea {...hydrationControlProps} name="forbidden_claims" placeholder="每行一条；用于限制法律、价格、医疗或未经批准的声明" /></label>
+      <input {...hydrationControlProps} type="hidden" name="model" value="deepseek-v4-flash" />
+      <input {...hydrationControlProps} type="hidden" name="template_version" value="geo_content_draft_v1" />
+      <div className="notice"><p>仅 `active` 正式事实和对应 active Chunk 可进入上下文。生成草稿默认等待人工审核，不能直接发布。</p></div>
+      <div className="formActions"><button type="submit" disabled={pending}>{pending ? "创建中..." : "生成 GEO 文案"}</button></div>
+      <ActionState state={state} />
+    </form>
+  );
+}
+
 export function PromptGenerationPanel({
   application,
   projectId
@@ -1184,8 +1674,8 @@ export function PromptGenerationPanel({
   application: Record<string, unknown>;
   projectId: string;
 }) {
-  const { facts, jobs, promptCandidates } = knowledgeApplicationData(application);
-  const approvedFacts = facts.filter((fact) => stringValue(fact.status) === "approved");
+  const { documents, facts, jobs, promptCandidates, promptTemplates } = knowledgeApplicationData(application);
+  const approvedFacts = facts.filter((fact) => stringValue(fact.status) === "active");
   const promptJobs = jobs.filter((job) => ["prompt_candidates", "all"].includes(stringValue(job.job_type)));
   return (
     <section className="detailPanel unframedPanel">
@@ -1201,17 +1691,17 @@ export function PromptGenerationPanel({
         <MetricCard label="知识来源策略" value="仅已批准知识" />
         <MetricCard label="生成任务" value={promptJobs.length} />
         <MetricCard label="待审核候选" value={promptCandidates.filter((candidate) => stringValue(candidate.review_status) === "pending_review").length} />
-        <MetricCard label="已批准候选" value={promptCandidates.filter((candidate) => stringValue(candidate.review_status) === "approved").length} />
+        <MetricCard label="已批准候选" value={promptCandidates.filter((candidate) => ["approved", "edited_approved"].includes(stringValue(candidate.review_status))).length} />
       </div>
       <div className="twoCol compact">
-        <KnowledgeApplicationGenerateForm projectId={projectId} />
+        <KnowledgePromptGenerationForm assets={documents} projectId={projectId} templates={promptTemplates} />
         <RecordList
           title="已批准知识输入"
           emptyText="暂无已批准知识。请先到知识库质检中批准事实。"
           records={approvedFacts}
           pick={(fact) => [
             `${stringValue(fact.fact_type) || "fact"} · ${stringValue(fact.subject) || "未知主体"}`,
-            `${stringValue(fact.market_code) || "AU"} · ${stringValue(fact.city) || "global"} · ${shortValue(stringValue(fact.object_value), 80)}`
+            `${stringValue(fact.market_code) || "GLOBAL"} · ${stringValue(fact.city) || "global"} · ${shortValue(stringValue(fact.object_value), 80)}`
           ]}
         />
       </div>
@@ -1248,10 +1738,11 @@ export function PromptCandidatePanel({
         <PromptCandidateReviewForm candidates={promptCandidates} projectId={projectId} />
         <PromptCandidateImportForm candidates={promptCandidates} projectId={projectId} />
       </div>
-      <RecordList
+      <EvidenceRecordList
         title="Prompt 候选"
         emptyText="暂无 Prompt 候选。请先使用 Prompt 生成。"
         records={promptCandidates}
+        projectId={projectId}
         pick={(candidate) => [
           stringValue(candidate.text) || shortValue(stringValue(candidate.id)),
           `${statusLabel(stringValue(candidate.review_status))} · ${stringValue(candidate.intent_type)} · ${stringValue(candidate.duplicate_state) || "unique"} · facts ${arrayValue(candidate.source_knowledge_fact_ids).length}`
@@ -1261,8 +1752,38 @@ export function PromptCandidatePanel({
   );
 }
 
-export function PromptTemplatePanel({ application }: { application: Record<string, unknown> }) {
-  const { jobs } = knowledgeApplicationData(application);
+function KnowledgePromptTemplateForm({ projectId }: { projectId: string }) {
+  const [state, formAction, pending] = useActionState(saveKnowledgePromptTemplateAction, initialState);
+  return (
+    <form className="configForm singleColumn" action={formAction}>
+      <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
+      <p className="eyebrow">全局模板版本</p>
+      <h3>新增或更新 Prompt 生成模板</h3>
+      <div className="twoCol compact noTopMargin">
+        <label><span>模板 Key</span><input {...hydrationControlProps} name="template_key" placeholder="custom_brand_questions_v1" pattern="[a-z][a-z0-9_]{2,159}" required /></label>
+        <label><span>版本</span><input {...hydrationControlProps} name="template_version" defaultValue="v1" required /></label>
+      </div>
+      <div className="twoCol compact noTopMargin">
+        <label><span>模板名称</span><input {...hydrationControlProps} name="name" required /></label>
+        <label><span>生命周期</span><select {...hydrationControlProps} name="status" defaultValue="draft"><option value="draft">草稿</option><option value="published">已发布</option><option value="archived">已归档</option></select></label>
+      </div>
+      <label><span>用途说明</span><textarea {...hydrationControlProps} name="description" rows={3} placeholder="说明适用场景、Intent 和限制。" /></label>
+      <label><span>模板正文</span><textarea {...hydrationControlProps} name="template_body" minLength={20} rows={6} required /></label>
+      <label><span>System Prompt</span><textarea {...hydrationControlProps} name="system_prompt" minLength={20} rows={6} placeholder="为空时使用模板正文。" /></label>
+      <label><span>User Prompt 模板</span><textarea {...hydrationControlProps} name="user_prompt_template" minLength={20} rows={6} placeholder="可引用 project、brand、competitors、approved_facts、active_chunks 等输入。" /></label>
+      <label><span>输入变量</span><textarea {...hydrationControlProps} name="input_variables" defaultValue={"project\nbrand\ncompetitors\nmarket\napproved_facts\nactive_chunks\nexisting_prompts"} /></label>
+      <label><span>输出 Schema（JSON 对象）</span><textarea {...hydrationControlProps} name="output_schema" rows={8} defaultValue={'{"prompt_candidates":[{"text":"string","intent_type":"string","city":"string|null","source_fact_ids":["uuid"],"source_chunk_ids":["uuid"],"rationale":"string","risk_flags":["string"]}]}'} required /></label>
+      <label><span>模型配置（JSON 对象）</span><textarea {...hydrationControlProps} name="model_config" rows={4} defaultValue={'{"model":"deepseek-v4-flash","response_format":"json_object","temperature":0.2}'} required /></label>
+      <label><span>评估样例（JSON 数组）</span><textarea {...hydrationControlProps} name="evaluation_set" rows={4} defaultValue="[]" /></label>
+      <div className="notice"><p>发布版本不可原地改写。修改已发布版本时必须创建新版本，历史任务继续引用原模板和模型配置。</p></div>
+      <div className="formActions"><button type="submit" disabled={pending}>{pending ? "保存中..." : "保存模板版本"}</button></div>
+      <ActionState state={state} />
+    </form>
+  );
+}
+
+export function PromptTemplatePanel({ application, projectId }: { application: Record<string, unknown>; projectId: string }) {
+  const { jobs, promptTemplates } = knowledgeApplicationData(application);
   return (
     <section className="detailPanel unframedPanel">
       <div className="sectionTitle">
@@ -1271,30 +1792,36 @@ export function PromptTemplatePanel({ application }: { application: Record<strin
           <h2>本地模板库与 Langfuse 兼容字段</h2>
         </div>
       </div>
-      <p className="muted formIntro">这里管理的是“生成提问 Prompt 的提示词模板”，不是正式采集 Prompt。当前采用内置已发布模板，字段设计兼容 Langfuse 的 name、version、label、config、metadata 和 trace 关系。</p>
-      <div className="templateGrid">
-        {promptGenerationTemplates().map((template) => (
-          <div className="templateCard" key={template.id}>
+      <p className="muted formIntro">这里管理的是“生成提问 Prompt 的提示词模板”，不是正式采集 Prompt。模板跨项目复用并按版本冻结，历史任务不会被新版本静默覆盖。</p>
+      <div className="twoCol compact">
+        <KnowledgePromptTemplateForm projectId={projectId} />
+        <div className="templateGrid">
+        {effectivePromptTemplates(promptTemplates).map((template) => (
+          <div className="templateCard" key={stringValue(template.id)}>
             <div className="sectionTitle compactTitle">
               <div>
-                <p className="eyebrow">{template.id}</p>
-                <h3>{template.name}</h3>
+                <p className="eyebrow">{stringValue(template.template_key) || stringValue(template.id)}</p>
+                <h3>{stringValue(template.name)}</h3>
               </div>
-              <span className="statusPill">{template.version}</span>
+              <span className="statusPill">{stringValue(template.template_version) || stringValue(template.version)}</span>
             </div>
-            <p>{template.description}</p>
+            <p>{stringValue(template.description) || shortValue(stringValue(template.template_body), 180)}</p>
             <SummaryGrid rows={[
-              ["状态", "已发布"],
-              ["Langfuse label", template.langfuseLabel],
-              ["知识策略", "仅已批准知识"],
-              ["输出结构", "JSON PromptCandidate[]"]
+              ["状态", statusLabel(stringValue(template.status) || "draft")],
+              ["创建者", stringValue(template.created_by) || "system"],
+              ["知识策略", "仅 active 正式事实 + embedded Chunk"],
+              ["输出结构", Object.keys(objectValue(template.output_schema)).length ? "已定义 JSON Schema" : "未定义"]
             ]} />
             <details className="historyPanel">
               <summary>查看模板规则</summary>
-              <pre>{template.rules}</pre>
+              <pre>{stringValue(template.system_prompt) || stringValue(template.template_body)}</pre>
             </details>
           </div>
         ))}
+        {!effectivePromptTemplates(promptTemplates).length ? (
+          <div className="notice"><p>数据库中没有 Prompt 生成模板。请创建并发布第一个模板版本；系统不会用前端假数据替代。</p></div>
+        ) : null}
+        </div>
       </div>
       <RecordList
         title="模板使用记录"
@@ -1354,98 +1881,6 @@ export function PromptImportHistoryPanel({
   );
 }
 
-function KnowledgeDocumentCreateForm({ projectId }: { projectId: string }) {
-  const [state, formAction, pending] = useActionState(createKnowledgeDocumentAction, initialState);
-  return (
-    <form className="configForm singleColumn" action={formAction}>
-      <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
-      <p className="eyebrow">知识来源</p>
-      <h3>导入 URL / 文本 / CSV</h3>
-      <label>
-        <span>来源类型</span>
-        <select {...hydrationControlProps} name="source_type" defaultValue="url">
-          <option value="url">公网 URL · crawl4ai/网页解析</option>
-          <option value="web_text">粘贴文本 · Unstructured 文本管道</option>
-          <option value="csv">CSV 文本 · 结构化事实</option>
-        </select>
-      </label>
-      <label><span>URL</span><input {...hydrationControlProps} name="source_url" placeholder="https://example.com/page" /></label>
-      <label><span>标题</span><input {...hydrationControlProps} name="title" placeholder="可选" /></label>
-      <label><span>文本内容</span><textarea {...hydrationControlProps} name="raw_text" placeholder="非 URL 来源可粘贴正文、Markdown、HTML 转文本或 CSV 内容。PDF/Office 请先抽取文本，后续由 Docling/Unstructured worker 直接接入。" /></label>
-      <div className="notice">
-        <p>解析策略：Auto = Unstructured 默认；复杂 PDF/表格使用 Docling fallback；清洗、切分、去重按 LlamaIndex IngestionPipeline 思路执行。</p>
-      </div>
-      <div className="formActions">
-        <button type="submit" disabled={pending}>{pending ? "导入中..." : "导入知识来源"}</button>
-      </div>
-      <ActionState state={state} />
-    </form>
-  );
-}
-
-function KnowledgeDocumentRunForm({ documents, projectId }: { documents: RuntimeListRecord[]; projectId: string }) {
-  const [crawlState, crawlAction, crawlPending] = useActionState(crawlKnowledgeDocumentAction, initialState);
-  const [extractState, extractAction, extractPending] = useActionState(extractKnowledgeDocumentFactsAction, initialState);
-  const firstDocumentId = stringValue(documents[0]?.id);
-  return (
-    <div className="stackedForms">
-      <form className="configForm singleColumn" action={crawlAction}>
-        <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
-        <p className="eyebrow">抓取</p>
-        <h3>运行网页抓取</h3>
-        <KnowledgeDocumentSelect documents={documents} defaultValue={firstDocumentId} />
-        <div className="twoCol compact noTopMargin">
-          <label><span>最大页数</span><input {...hydrationControlProps} name="max_pages" type="number" min={1} max={20} defaultValue={3} /></label>
-          <label><span>超时秒数</span><input {...hydrationControlProps} name="timeout_seconds" type="number" min={1} max={120} defaultValue={20} /></label>
-        </div>
-        <input {...hydrationControlProps} name="max_bytes" type="hidden" value="2000000" />
-        <div className="formActions">
-          <button type="submit" disabled={crawlPending || !documents.length}>{crawlPending ? "抓取中..." : "抓取 URL"}</button>
-        </div>
-        <ActionState state={crawlState} />
-      </form>
-      <form className="configForm singleColumn" action={extractAction}>
-        <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
-        <p className="eyebrow">抽取</p>
-        <h3>抽取知识事实</h3>
-        <KnowledgeDocumentSelect documents={documents} defaultValue={firstDocumentId} />
-        <div className="twoCol compact noTopMargin">
-          <label><span>最大事实数</span><input {...hydrationControlProps} name="max_facts" type="number" min={1} max={50} defaultValue={20} /></label>
-          <label><span>模型</span><input {...hydrationControlProps} name="model" defaultValue="deepseek-v4-flash" /></label>
-        </div>
-        <label><span>Secret ref</span><input {...hydrationControlProps} name="secret_ref" placeholder="connector-secret:..." /></label>
-        <label>
-          <span>自动通过</span>
-          <select {...hydrationControlProps} name="auto_approve" defaultValue="0">
-            <option value="0">进入待审核</option>
-            <option value="1">直接批准</option>
-          </select>
-        </label>
-        <div className="formActions">
-          <button type="submit" disabled={extractPending || !documents.length}>{extractPending ? "抽取中..." : "抽取事实"}</button>
-        </div>
-        <ActionState state={extractState} />
-      </form>
-    </div>
-  );
-}
-
-function KnowledgeDocumentSelect({ documents, defaultValue }: { documents: RuntimeListRecord[]; defaultValue: string }) {
-  return (
-    <label>
-      <span>知识来源</span>
-      <select {...hydrationControlProps} name="knowledge_document_id" defaultValue={defaultValue} required>
-        {documents.map((document, index) => (
-          <option value={stringValue(document.id)} key={`${index}-${stringValue(document.id)}`}>
-            {shortValue(stringValue(document.id))} · {stringValue(document.title) || stringValue(document.source_url) || "未命名来源"}
-          </option>
-        ))}
-        {!documents.length ? <option value="">暂无知识来源</option> : null}
-      </select>
-    </label>
-  );
-}
-
 function KnowledgeFactReviewForm({ facts, projectId }: { facts: RuntimeListRecord[]; projectId: string }) {
   const [state, formAction, pending] = useActionState(reviewKnowledgeFactAction, initialState);
   return (
@@ -1483,63 +1918,127 @@ function KnowledgeFactReviewForm({ facts, projectId }: { facts: RuntimeListRecor
   );
 }
 
-function KnowledgeApplicationGenerateForm({ projectId }: { projectId: string }) {
-  const [state, formAction, pending] = useActionState(generateKnowledgeApplicationAction, initialState);
+function KnowledgeFactCandidateReviewForm({ candidates, projectId }: { candidates: RuntimeListRecord[]; projectId: string }) {
+  const [state, formAction, pending] = useActionState(reviewKnowledgeFactCandidateAction, initialState);
+  return (
+    <form className="configForm singleColumn" action={formAction}>
+      <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
+      <p className="eyebrow">候选事实审核</p>
+      <h3>批准 Pipeline 抽取事实</h3>
+      <label>
+        <span>候选事实</span>
+        <select {...hydrationControlProps} name="fact_candidate_id" defaultValue={stringValue(candidates[0]?.id)} required>
+          {candidates.map((fact, index) => (
+            <option value={stringValue(fact.id)} key={`${index}-${stringValue(fact.id)}`}>
+              {shortValue(stringValue(fact.id))} · {stringValue(fact.fact_type)} · {shortValue(stringValue(fact.object_value), 40)}
+            </option>
+          ))}
+          {!candidates.length ? <option value="">暂无候选事实</option> : null}
+        </select>
+      </label>
+      <label>
+        <span>审核状态</span>
+        <select {...hydrationControlProps} name="review_status" defaultValue="approved">
+          <option value="approved">批准并写入正式事实</option>
+          <option value="rejected">拒绝</option>
+          <option value="needs_reextract">要求重新抽取</option>
+          <option value="merged">合并到已有正式事实</option>
+          <option value="superseded">标记为已替代</option>
+          <option value="forbidden">禁止使用</option>
+          <option value="archived">归档</option>
+        </select>
+      </label>
+      <label><span>合并目标事实 ID</span><input {...hydrationControlProps} name="merged_into_fact_id" placeholder="仅选择“合并”时必填" /></label>
+      <label><span>决策说明</span><input {...hydrationControlProps} name="decision" defaultValue="fact candidate approved for generation" /></label>
+      <label><span>备注</span><textarea {...hydrationControlProps} name="notes" /></label>
+      <div className="formActions">
+        <button type="submit" disabled={pending || !candidates.length}>{pending ? "保存中..." : "保存候选审核"}</button>
+      </div>
+      <ActionState state={state} />
+    </form>
+  );
+}
+
+function KnowledgePromptGenerationForm({
+  assets,
+  projectId,
+  templates
+}: {
+  assets: RuntimeListRecord[];
+  projectId: string;
+  templates: RuntimeListRecord[];
+}) {
+  const [state, formAction, pending] = useActionState(createKnowledgePromptGenerationAction, initialState);
+  const publishedTemplates = effectivePromptTemplates(templates).filter((template) => stringValue(template.status) === "published");
   return (
     <form className="configForm singleColumn" action={formAction}>
       <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
       <p className="eyebrow">生成</p>
       <h3>生成提问 Prompt 候选</h3>
-      <input {...hydrationControlProps} type="hidden" name="knowledge_source_policy" value="approved_only" />
       <div className="twoCol compact noTopMargin">
         <label>
           <span>生成模板</span>
-          <select {...hydrationControlProps} name="prompt_template_id" defaultValue="brand_visibility_prompt_v1">
-            {promptGenerationTemplates().map((template) => (
-              <option value={template.id} key={template.id}>{template.name}</option>
+          <select {...hydrationControlProps} name="prompt_template_id" defaultValue="" required>
+            <option value="" disabled>选择已发布模板版本</option>
+            {publishedTemplates.map((template) => (
+              <option
+                value={`${stringValue(template.template_key)}::${stringValue(template.template_version) || "v1"}`}
+                key={`${stringValue(template.template_key)}-${stringValue(template.template_version)}`}
+              >
+                {stringValue(template.name)} · {stringValue(template.template_version) || "v1"}
+              </option>
             ))}
           </select>
         </label>
+        <div className="notice"><p>只允许选择已发布的不可变模板版本；没有已发布模板时请先到“生成模板”发布一个版本。</p></div>
+      </div>
+      <div className="twoCol compact noTopMargin">
         <label>
-          <span>模板版本</span>
-          <select {...hydrationControlProps} name="prompt_template_version" defaultValue="v1">
-            <option value="v1">v1 · 已发布</option>
+          <span>目标平台</span>
+          <select {...hydrationControlProps} name="target_platform" defaultValue="chatgpt">
+            <option value="chatgpt">ChatGPT</option>
+            <option value="perplexity">Perplexity</option>
+            <option value="google_ai_mode">Google AI Mode</option>
+            <option value="platform_neutral">平台中立</option>
           </select>
+        </label>
+        <label>
+          <span>生成数量</span>
+          <input {...hydrationControlProps} name="quantity" type="number" min={1} max={50} defaultValue={10} />
         </label>
       </div>
       <div className="twoCol compact noTopMargin">
         <label>
-          <span>生成类型</span>
-          <select {...hydrationControlProps} name="generation_type" defaultValue="prompt_candidates">
-            <option value="prompt_candidates">仅 Prompt</option>
-            <option value="all">文案 + FAQ + Prompt</option>
+          <span>Intent</span>
+          <select {...hydrationControlProps} name="intent_type" defaultValue="brand_visibility">
+            <option value="brand_visibility">品牌可见性</option>
+            <option value="competitor_comparison">竞品比较</option>
+            <option value="purchase_decision">购买决策</option>
+            <option value="local_city">本地城市</option>
+            <option value="citation_gap">信源缺口</option>
           </select>
         </label>
-        <label>
-          <span>覆盖目标</span>
-          <select {...hydrationControlProps} name="content_type" defaultValue="faq">
-            <option value="faq">FAQ / 购买决策</option>
-            <option value="comparison">竞品比较</option>
-            <option value="selling_points">品牌卖点</option>
-          </select>
-        </label>
+        <label><span>城市</span><input {...hydrationControlProps} name="city" placeholder="可选，例如 Shanghai" /></label>
       </div>
-      <div className="twoCol compact noTopMargin">
-        <label><span>目标平台</span><input {...hydrationControlProps} name="target_platform" defaultValue="chatgpt" /></label>
-        <label><span>生成数量</span><input {...hydrationControlProps} name="quantity" type="number" min={1} max={50} defaultValue={10} /></label>
-      </div>
-      <div className="twoCol compact noTopMargin">
-        <label><span>Intent</span><input {...hydrationControlProps} name="intent_type" placeholder="可选" /></label>
-        <label><span>城市</span><input {...hydrationControlProps} name="city" placeholder="可选，例如 Sydney" /></label>
-      </div>
-      <label><span>竞品</span><input {...hydrationControlProps} name="competitor" placeholder="可选，例如 BrightNest" /></label>
-      <label><span>Secret ref</span><input {...hydrationControlProps} name="secret_ref" placeholder="留空则读取 deepseek_api_key.txt / 环境变量" /></label>
-      <label><span>模型</span><input {...hydrationControlProps} name="model" defaultValue="deepseek-v4-flash" /></label>
+      <details className="historyPanel">
+        <summary>限定生成使用的知识范围</summary>
+        <div className="twoCol compact">
+          <label><span>事实类型</span><select {...hydrationControlProps} name="source_fact_kind" defaultValue=""><option value="">全部正式事实</option><option value="brand">品牌事实</option><option value="competitor">竞品事实</option><option value="market">市场事实</option><option value="source">信源事实</option></select></label>
+          <label><span>竞品主体</span><input {...hydrationControlProps} name="competitor" placeholder="可选；按事实主体匹配" /></label>
+          <label><span>事实市场</span><input {...hydrationControlProps} name="source_market_code" placeholder="可选，例如 AU" /></label>
+          <label><span>事实城市</span><input {...hydrationControlProps} name="source_city" placeholder="可选" /></label>
+          <label><span>来源资产</span><select {...hydrationControlProps} name="source_asset_id" defaultValue=""><option value="">全部来源资产</option>{assets.map((asset) => <option key={stringValue(asset.id)} value={stringValue(asset.id)}>{stringValue(asset.filename) || stringValue(asset.title) || shortValue(stringValue(asset.id))}</option>)}</select></label>
+          <label><span>Chunk 类型</span><select {...hydrationControlProps} name="source_chunk_type" defaultValue=""><option value="">全部类型</option><option value="text">正文</option><option value="table">表格</option><option value="mixed">混合</option></select></label>
+          <label><span>Chunk 质量标记</span><input {...hydrationControlProps} name="source_quality_flag" placeholder="可选" /></label>
+          <label><span>Chunk 包含文本</span><input {...hydrationControlProps} name="source_chunk_query" placeholder="可选" /></label>
+        </div>
+      </details>
+      <input {...hydrationControlProps} type="hidden" name="model" value="deepseek-v4-flash" />
       <div className="notice">
-        <p>输出结构：PromptCandidate JSON，包括 prompt_text、intent_type、city、source_fact_ids、rationale、duplicate_state。候选必须审核后才能导入正式 Prompt。</p>
+        <p>模型固定为 DeepSeek v4 Flash。输出包含 Prompt、Intent、城市、事实与 Chunk 证据引用；候选必须审核后才能导入正式 Prompt。</p>
       </div>
       <div className="formActions">
-        <button type="submit" disabled={pending}>{pending ? "生成中..." : "生成 Prompt 候选"}</button>
+        <button type="submit" disabled={pending || publishedTemplates.length === 0}>{pending ? "生成中..." : "生成 Prompt 候选"}</button>
       </div>
       <ActionState state={state} />
     </form>
@@ -1564,13 +2063,16 @@ function PromptCandidateReviewForm({ candidates, projectId }: { candidates: Runt
           {!candidates.length ? <option value="">暂无候选</option> : null}
         </select>
       </label>
+      <label><span>编辑后的 Prompt</span><textarea {...hydrationControlProps} name="edited_text" minLength={3} placeholder="仅选择“编辑后批准”时必填；其他状态留空。" /></label>
       <label>
         <span>状态</span>
         <select {...hydrationControlProps} name="review_status" defaultValue="approved">
           <option value="approved">批准</option>
+          <option value="edited_approved">编辑后批准</option>
           <option value="rejected">拒绝</option>
           <option value="pending_review">退回复核</option>
           <option value="archived">归档</option>
+          <option value="superseded">标记为已替代</option>
         </select>
       </label>
       <label><span>决策说明</span><input {...hydrationControlProps} name="decision" defaultValue="prompt candidate approved" /></label>
@@ -1586,7 +2088,7 @@ function PromptCandidateReviewForm({ candidates, projectId }: { candidates: Runt
 function PromptCandidateImportForm({ candidates, projectId }: { candidates: RuntimeListRecord[]; projectId: string }) {
   const [state, formAction, pending] = useActionState(importApprovedPromptCandidatesAction, initialState);
   const approvedIds = candidates
-    .filter((candidate) => stringValue(candidate.review_status) === "approved")
+    .filter((candidate) => ["approved", "edited_approved"].includes(stringValue(candidate.review_status)))
     .map((candidate) => stringValue(candidate.id))
     .filter(Boolean)
     .join("\n");
@@ -1600,31 +2102,6 @@ function PromptCandidateImportForm({ candidates, projectId }: { candidates: Runt
       <div className="formActions">
         <button type="submit" disabled={pending}>{pending ? "导入中..." : "导入 Prompt"}</button>
       </div>
-      <ActionState state={state} />
-    </form>
-  );
-}
-
-export function TokenCreateForm({ projectId }: { projectId: string }) {
-  const [state, formAction, pending] = useActionState(createPortalTokenAction, initialState);
-  return (
-    <form className="inlineForm" action={formAction}>
-      <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
-      <label><span>客户查看者用户 ID / 邮箱</span><input {...hydrationControlProps} name="member_user_id" placeholder="customer@example.com" required /></label>
-      <label><span>邀请 ID</span><input {...hydrationControlProps} name="invitation_id" placeholder="可选" /></label>
-      <button type="submit" disabled={pending}>{pending ? "生成中..." : "生成 token"}</button>
-      <ActionState state={state} />
-    </form>
-  );
-}
-
-export function TokenRevokeForm({ projectId }: { projectId: string }) {
-  const [state, formAction, pending] = useActionState(revokePortalTokenAction, initialState);
-  return (
-    <form className="inlineForm" action={formAction}>
-      <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
-      <label><span>token id</span><input {...hydrationControlProps} name="token_id" placeholder="customer_portal_token id" required /></label>
-      <button type="submit" disabled={pending}>{pending ? "撤销中..." : "撤销 token"}</button>
       <ActionState state={state} />
     </form>
   );
@@ -2009,24 +2486,47 @@ function ActionRecommendationForm({ projectId, actions }: { projectId: string; a
   );
 }
 
-export function ContentWorkbenchPanel({ content, projectId }: { content: PageResponse; projectId: string }) {
+export function ContentWorkbenchPanel({
+  content,
+  contentDrafts,
+  contentGenerationJobs,
+  projectId
+}: {
+  content: PageResponse;
+  contentDrafts: RuntimeListRecord[];
+  contentGenerationJobs: RuntimeListRecord[];
+  projectId: string;
+}) {
   const engines = content.records;
-  const drafts = engines.flatMap((record) => Array.isArray(record.content_drafts) ? record.content_drafts.map((item) => objectValue(objectValue(item).draft || item)) : []);
+  const drafts = contentDrafts.map((item) => objectValue(objectValue(item).draft || item));
   const distributions = engines.flatMap((record) => Array.isArray(record.manual_distribution_records) ? record.manual_distribution_records.map((item) => objectValue(item)) : []);
   return (
     <div className="opsWorkbench">
       <div className="twoCol compact">
+        <KnowledgeContentGenerationForm projectId={projectId} />
         <ContentDraftReviewForm drafts={drafts} projectId={projectId} />
-        <ManualDistributionBackfillForm distributions={distributions} projectId={projectId} />
       </div>
       <div className="twoCol compact">
+        <ManualDistributionBackfillForm distributions={distributions} projectId={projectId} />
         <RecordList
+          title="GEO 文案生成任务"
+          emptyText="暂无生成任务。"
+          records={contentGenerationJobs}
+          pick={(job) => [
+            `${stringValue(job.content_type) || "content"} · ${shortValue(stringValue(job.id))}`,
+            `${statusLabel(stringValue(job.status))} · ${stringValue(job.model) || "deepseek-v4-flash"} · generated ${stringValue(job.generated_count) || "0"}`
+          ]}
+        />
+      </div>
+      <div className="twoCol compact">
+        <EvidenceRecordList
           title="内容草稿"
           emptyText="暂无内容草稿。"
           records={drafts}
+          projectId={projectId}
           pick={(draft) => [
             stringValue(draft.title) || shortValue(stringValue(draft.id)),
-            `${statusLabel(stringValue(draft.review_status))} · ${stringValue(draft.content_type)} · ${stringValue(draft.target_platform)}`
+            `${statusLabel(stringValue(draft.status) || stringValue(draft.review_status))} · ${stringValue(draft.content_type)} · ${stringValue(draft.target_platform)}`
           ]}
         />
         <RecordList
@@ -2038,6 +2538,29 @@ export function ContentWorkbenchPanel({ content, projectId }: { content: PageRes
             `${statusLabel(stringValue(record.status))} · ${stringValue(record.target_url) || "等待 URL 回填"}`
           ]}
         />
+      </div>
+      <div className="detailPanel">
+        <p className="eyebrow">已批准文案导出</p>
+        <h3>Markdown 交付</h3>
+        <div className="recordList">
+          {drafts.filter((draft) => ["approved", "exported", "published"].includes(stringValue(draft.status))).map((draft) => (
+            <div className="recordRow" key={`export-${stringValue(draft.id)}`}>
+              <div>
+                <strong>{stringValue(draft.title) || shortValue(stringValue(draft.id))}</strong>
+                <p className="muted">{statusLabel(stringValue(draft.status))} · 证据引用 {arrayValue(draft.citation_refs).length}</p>
+              </div>
+              <a
+                className="button secondary"
+                href={`/api/knowledge/content-draft?project_id=${encodeURIComponent(projectId)}&content_draft_id=${encodeURIComponent(stringValue(draft.id))}`}
+              >
+                导出 Markdown
+              </a>
+            </div>
+          ))}
+          {!drafts.some((draft) => ["approved", "exported", "published"].includes(stringValue(draft.status))) ? (
+            <p className="muted">暂无可导出的已批准文案。</p>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -2065,9 +2588,10 @@ function ContentDraftReviewForm({ drafts, projectId }: { drafts: RuntimeListReco
         <span>审核状态</span>
         <select {...hydrationControlProps} name="review_status" defaultValue="approved">
           <option value="approved">已通过</option>
-          <option value="needs_changes">需要修改</option>
+          <option value="needs_revision">需要修改</option>
           <option value="rejected">已拒绝</option>
           <option value="pending_human_review">退回复核</option>
+          <option value="archived">归档</option>
         </select>
       </label>
       <label><span>决策说明</span><input {...hydrationControlProps} name="decision" defaultValue="content draft approved for distribution" /></label>
@@ -2296,6 +2820,49 @@ function RecordList({
   );
 }
 
+function EvidenceRecordList({
+  emptyText,
+  pick,
+  projectId,
+  records,
+  title
+}: {
+  emptyText: string;
+  pick: (record: RuntimeListRecord) => [string, string];
+  projectId: string;
+  records: RuntimeListRecord[];
+  title: string;
+}) {
+  return (
+    <div className="detailPanel">
+      <p className="eyebrow">{title}</p>
+      <h3>{records.length} 条</h3>
+      {records.length ? (
+        <div className="summaryList">
+          {records.slice(0, 12).map((record, index) => {
+            const [label, description] = pick(record);
+            const chunkId = String(arrayValue(record.source_chunk_ids)[0] || "");
+            return (
+              <div className="summaryListRow" key={`${index}-${label}-${description}`}>
+                <div>
+                  <strong>{label || "未命名"}</strong>
+                  <p className="muted">{description || "无详情"}</p>
+                  <p className="muted">证据 Chunk：{arrayValue(record.source_chunk_ids).length} · 来源资产：{arrayValue(record.source_asset_ids).length}</p>
+                </div>
+                {chunkId ? (
+                  <a className="button secondary" href={`/projects/${projectId}?tab=knowledge&knowledge_tab=trace&trace_chunk_id=${encodeURIComponent(chunkId)}`}>
+                    查看证据链
+                  </a>
+                ) : <span className="statusPill dangerPill">缺少证据</span>}
+              </div>
+            );
+          })}
+        </div>
+      ) : <p className="muted emptyState">{emptyText}</p>}
+    </div>
+  );
+}
+
 function ActionState({ state }: { state: ProjectActionState }) {
   if (state.error) {
     return <p className="muted errorText">{state.error}</p>;
@@ -2316,7 +2883,6 @@ function ActionState({ state }: { state: ProjectActionState }) {
           ))}
         </div>
       ) : null}
-      {state.rawToken ? <p>raw portal token：<code>{state.rawToken}</code></p> : null}
       {state.rawInviteToken ? <p>raw invite token：<code>{state.rawInviteToken}</code></p> : null}
       {state.inviteUrl ? <a className="button secondary" href={state.inviteUrl}>打开客户邀请入口</a> : null}
     </div>
@@ -2424,45 +2990,17 @@ function connectorModeOptions(provider: string): Array<{ value: string; label: s
   ];
 }
 
-function promptGenerationTemplates(): Array<{
-  id: string;
-  name: string;
-  version: string;
-  langfuseLabel: string;
-  description: string;
-  rules: string;
-}> {
-  return [
-    {
-      id: "brand_visibility_prompt_v1",
-      name: "品牌可见性 Prompt 生成模板",
-      version: "v1",
-      langfuseLabel: "production",
-      description: "围绕品牌是否被 AI 回答提及、推荐和引用来生成可采集问题。",
-      rules: "Use only approved knowledge facts. Generate diverse customer questions. Return JSON prompt_candidates with text, intent_type, city, source_fact_ids, rationale, and duplicate risk."
-    },
-    {
-      id: "competitor_comparison_prompt_v1",
-      name: "竞品比较 Prompt 生成模板",
-      version: "v1",
-      langfuseLabel: "production",
-      description: "围绕目标品牌与竞品的选择、差异和推荐顺序生成比较型问题。",
-      rules: "Ground every prompt in approved facts and project competitors. Avoid unsupported claims. Mark competitor_comparison intent where the question asks brand-vs-competitor choices."
-    },
-    {
-      id: "faq_purchase_prompt_v1",
-      name: "FAQ / 购买决策 Prompt 生成模板",
-      version: "v1",
-      langfuseLabel: "production",
-      description: "围绕配送、退换、价格、服务、评价和购买顾虑生成 FAQ 型提问 Prompt。",
-      rules: "Prefer high-intent purchase questions. Include local market/city when available. Link every candidate to source_fact_ids and keep review_status pending_review."
-    }
-  ];
+function effectivePromptTemplates(templates: RuntimeListRecord[]): RuntimeListRecord[] {
+  return templates;
 }
 
 function knowledgeSourceTypeLabel(value: string): string {
   const labels: Record<string, string> = {
     csv: "CSV 文本",
+    pasted_text: "粘贴文本",
+    file: "上传文件",
+    url_batch: "URL 批量",
+    site_crawl: "站点抓取",
     url: "公网 URL",
     web_text: "网页/正文文本",
     pdf: "PDF",
@@ -2482,6 +3020,20 @@ function knowledgeJobTypeLabel(value: string): string {
     all: "综合生成"
   };
   return labels[value] || value || "知识任务";
+}
+
+function knowledgePipelineRunTypeLabel(value: string): string {
+  const labels: Record<string, string> = {
+    full_ingestion: "完整导入",
+    reparse: "重新解析",
+    rechunk: "重新切分",
+    reindex: "重新索引",
+    fact_refresh: "刷新事实",
+    prompt_generation: "生成 Prompt",
+    content_generation: "生成 GEO 文案",
+    full_rebuild: "完整重建"
+  };
+  return labels[value] || value || "Pipeline";
 }
 
 function connectorModelOptions(provider: string, mode: string): Array<{ value: string; label: string }> {
@@ -2593,7 +3145,6 @@ function activationBlockers(input: {
   category?: string;
   competitorCount: number;
   connectorReady: boolean;
-  launchStatus?: string;
   primaryDomain?: string;
   promptCount: number;
   targetBrand?: string;
@@ -2616,9 +3167,6 @@ function activationBlockers(input: {
   }
   if (!input.connectorReady) {
     blockers.push("至少 1 个连接器需要配置或通过测试");
-  }
-  if (!["ready", "active"].includes(String(input.launchStatus || "").toLowerCase())) {
-    blockers.push("启动配置需为就绪或运行中");
   }
   return blockers;
 }

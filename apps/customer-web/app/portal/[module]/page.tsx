@@ -1,4 +1,4 @@
-import { latestScore, loadPortal, loadPortalRuntimeData, pct, type PortalBundle, type PortalRuntimeData } from "../../runtime";
+import { latestScore, loadPortalRuntimeData, loadSessionPortal, pct, type PortalBundle, type PortalRuntimeData } from "../../runtime";
 
 const moduleMeta: Record<string, { title: string; intro: string }> = {
   visibility: { title: "AI 可见度", intro: "汇总项目当前在 AI 搜索和搜索增强结果中的出现、提及和推荐表现。" },
@@ -119,7 +119,7 @@ function RecordList({
   );
 }
 
-function panelFor(moduleId: string, bundle: PortalBundle, runtime: PortalRuntimeData | null, portalToken?: string) {
+function panelFor(moduleId: string, bundle: PortalBundle, runtime: PortalRuntimeData | null) {
   const project = bundle.project?.project;
   const competitors = bundle.project?.competitors || [];
   if (moduleId === "visibility") {
@@ -272,9 +272,9 @@ function panelFor(moduleId: string, bundle: PortalBundle, runtime: PortalRuntime
                   <p className="muted">{reportId || "报告 id 待确认"}</p>
                   {reportId ? (
                     <div className="actionRow">
-                      <a className="button secondary" href={artifactHref(reportId, "markdown", portalToken)}>Markdown</a>
-                      <a className="button secondary" href={artifactHref(reportId, "csv", portalToken)}>CSV</a>
-                      <a className="button secondary" href={artifactHref(reportId, "pdf", portalToken)}>PDF</a>
+                      <a className="button secondary" href={artifactHref(reportId, "markdown")}>Markdown</a>
+                      <a className="button secondary" href={artifactHref(reportId, "csv")}>CSV</a>
+                      <a className="button secondary" href={artifactHref(reportId, "pdf")}>PDF</a>
                     </div>
                   ) : null}
                 </div>
@@ -361,11 +361,8 @@ function panelFor(moduleId: string, bundle: PortalBundle, runtime: PortalRuntime
   );
 }
 
-function artifactHref(reportId: string, type: string, portalToken?: string): string {
+function artifactHref(reportId: string, type: string): string {
   const params = new URLSearchParams({ report_export_id: reportId, type });
-  if (portalToken) {
-    params.set("portal_token", portalToken);
-  }
   return `/api/report-artifact?${params.toString()}`;
 }
 
@@ -378,8 +375,8 @@ export default async function PortalModule({
 }) {
   const { module } = await params;
   const query = (await searchParams) || {};
-  const token = Array.isArray(query.portal_token) ? query.portal_token[0] : query.portal_token;
-  const data = await loadPortal({ portalToken: token });
+  const projectQuery = Array.isArray(query.project_id) ? query.project_id[0] : query.project_id;
+  const data = await loadSessionPortal(projectQuery);
   const meta = moduleMeta[module] || { title: "项目详情", intro: "查看项目详情。" };
   const projectId = data?.bundle?.project?.project?.id || data?.bundle?.access?.project_id || "";
   const actorId = data?.bundle?.access?.member_user_id;
@@ -393,15 +390,15 @@ export default async function PortalModule({
           <h1>{meta.title}</h1>
           <p className="muted" style={{ marginTop: 8 }}>{meta.intro}</p>
         </div>
-        <a className="button secondary" href={`/?portal_token=${encodeURIComponent(token || "")}`}>返回仪表盘</a>
+        <a className="button secondary" href={`/?project_id=${encodeURIComponent(projectId)}`}>返回仪表盘</a>
       </div>
       {!data?.bundle ? (
         <section className="emptyState">
           <h2>无法读取项目</h2>
-          <p>请确认门户 token 是否有效，或由后台重新生成客户门户 token。</p>
+          <p>请先使用有效邀请登录，并确认当前账号已获项目访问权限。</p>
         </section>
       ) : (
-        panelFor(module, data.bundle, runtime, token)
+        panelFor(module, data.bundle, runtime)
       )}
     </main>
   );

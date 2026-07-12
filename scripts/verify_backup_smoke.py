@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import hashlib
 import json
-import tempfile
 from pathlib import Path
 
 
@@ -19,41 +17,35 @@ def _require(name: str, condition: bool, detail: str) -> dict[str, str]:
     return {"name": name, "status": "pass", "detail": detail}
 
 
-def _round_trip_manifest() -> dict[str, str]:
-    with tempfile.TemporaryDirectory(prefix="geno-backup-smoke-") as root:
-        base = Path(root)
-        postgres_dump = base / "postgres.dump"
-        object_payload = base / "report.pdf"
-        manifest_path = base / "manifest.json"
-        postgres_dump.write_text("pg_dump custom archive placeholder\n", encoding="utf-8")
-        object_payload.write_bytes(b"%PDF-1.4\nbackup-smoke\n%%EOF\n")
-        manifest = {
-            "postgres_dump_sha256": hashlib.sha256(postgres_dump.read_bytes()).hexdigest(),
-            "object_payload_sha256": hashlib.sha256(object_payload.read_bytes()).hexdigest(),
-        }
-        manifest_path.write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
-        restored = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if restored != manifest:
-            raise AssertionError("backup manifest round trip mismatch")
-        return manifest
-
-
 def build_backup_smoke_report() -> dict[str, object]:
     compose = _read("infra/docker-compose.yml")
     makefile = _read("Makefile")
-    migration = _read("infra/db/migrations/up/0020_action_recommendation_contract.sql")
-    manifest = _round_trip_manifest()
+    migration = _read("infra/db/migrations/up/0024_market_neutral_defaults.sql")
     checks = [
         _require("postgres_volume", "postgres_data:" in compose, "Postgres named volume is configured"),
         _require("minio_volume", "minio_data:" in compose, "MinIO named volume is configured"),
         _require("report_object_store", "OBJECT_STORE_BUCKET: geno-reports" in compose, "Report/evidence bucket is wired"),
-        _require("incremental_migration_in_compose", "0020_action_recommendation_contract.sql" in compose, "Latest additive migration runs in docker startup"),
-        _require("migration_is_additive", "ADD COLUMN IF NOT EXISTS" in migration and "CREATE INDEX IF NOT EXISTS" in migration, "Latest migration is expand-only"),
-        _require("backup_make_target", "backup-smoke:" in makefile and "scripts/verify_backup_smoke.py" in makefile, "Makefile runs executable backup smoke"),
-        _require("postgres_manifest_round_trip", bool(manifest["postgres_dump_sha256"]), "Postgres backup manifest hash round trips"),
-        _require("object_manifest_round_trip", bool(manifest["object_payload_sha256"]), "Object storage backup manifest hash round trips"),
+        _require("incremental_migration_in_compose", "0024_market_neutral_defaults.sql" in compose, "Latest additive migration runs in docker startup"),
+        _require("migration_has_no_destructive_schema_change", "DROP TABLE" not in migration and "DROP COLUMN" not in migration, "Latest migration has no destructive schema changes"),
+        _require("migration_archives_deduplicated_rows", "knowledge_trace_refs_dedup_archive" in migration and "INSERT INTO knowledge_trace_refs_dedup_archive" in migration, "Trace rows are archived before deduplication"),
+        _require("postgres_runtime_restore", "backup-postgres-smoke:" in compose and "pg_dump" in compose and "pg_restore" in compose, "Postgres smoke performs a real dump and restore"),
+        _require("postgres_runtime_comparison", "source_tables" in compose and "restored_projects" in compose, "Restored schema and project counts are compared"),
+        _require(
+            "object_runtime_restore",
+            "backup-object-smoke:" in compose
+            and "mc rm" in compose
+            and 'test "$$source_sha" = "$$restored_sha"' in compose,
+            "Object smoke deletes and restores a real object with matching SHA-256",
+        ),
+        _require("backup_make_target", "--profile backup-smoke" in makefile and "backup-postgres-smoke" in makefile and "backup-object-smoke" in makefile, "Makefile runs both runtime restore smokes"),
     ]
-    return {"status": "pass", "checks": checks, "summary": {"pass": len(checks), "fail": 0}}
+    return {
+        "status": "pass",
+        "scope": "configuration_contract",
+        "checks": checks,
+        "summary": {"pass": len(checks), "fail": 0},
+        "runtime_requirement": "make backup-smoke must also complete both Docker restore services",
+    }
 
 
 def main() -> int:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Any
 from uuid import uuid4
 
@@ -66,6 +67,17 @@ EXPECTED_TABLES = (
     "entity_alias_candidate_reviews",
     "runtime_sessions",
 )
+
+
+def _connect_with_retry(database_url: str, *, timeout_seconds: float = 30.0):
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        try:
+            return psycopg.connect(database_url)
+        except psycopg.OperationalError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.5)
 
 CRITICAL_COLUMNS = {
     "report_exports": ("method_disclosure", "markdown_url", "pdf_url", "csv_url"),
@@ -564,7 +576,7 @@ def _assert_runtime_rls_isolation(admin_url: str, runtime_url: str) -> dict[str,
 def _run() -> dict[str, Any]:
     admin_url = _database_url("DATABASE_URL")
     runtime_url = os.environ.get("RUNTIME_DATABASE_URL", "").strip() or admin_url
-    with psycopg.connect(admin_url) as connection:
+    with _connect_with_retry(admin_url) as connection:
         return {
             "status": "passed",
             "extensions": _assert_extensions(connection),

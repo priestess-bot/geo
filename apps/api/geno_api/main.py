@@ -7,6 +7,7 @@ import hmac
 import io
 import json
 import logging
+import email
 import os
 import re
 import secrets
@@ -44,9 +45,10 @@ from geno_core.action_plan import (
     build_retest_comparison_audit_event,
     compare_retest_windows,
 )
+from geno_core.collection_jobs import CollectionJobStore
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.audit import build_audit_event
-from geno_core.bootstrap import DEFAULT_AU_COMPETITORS, build_au_project_bootstrap
+from geno_core.bootstrap import DEFAULT_AU_COMPETITORS, build_au_project_bootstrap, build_project_bootstrap
 from geno_core.collection import (
     build_manual_backfill_record,
     build_p0a_collection_plan,
@@ -75,7 +77,21 @@ from geno_core.knowledge import (
     build_manual_distribution_records,
     search_knowledge_facts,
 )
-from geno_core.knowledge_application import load_deepseek_api_key
+from geno_core.knowledge_application import load_deepseek_api_key, normalize_knowledge_url
+from geno_core.knowledge_pipeline import (
+    DEFAULT_EMBEDDING_DIMENSION,
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_EMBEDDING_MODEL_VERSION,
+    DEFAULT_QDRANT_COLLECTION,
+    KnowledgeImportCreateInput,
+    KnowledgePipelineCreateInput,
+    QdrantKnowledgeStore,
+    archive_knowledge_source_asset,
+    close_knowledge_repository,
+    connect_knowledge_pipeline_repository,
+    precheck_knowledge_source,
+    source_config_text,
+)
 from geno_core.market import build_au_market_profile
 from geno_core.models import (
     CollectionFailureRecord,
@@ -151,6 +167,7 @@ from geno_core.runtime import (
     close_runtime_postgres_pool,
 )
 from geno_core.scoring import get_score_formula, list_score_formulas, normalize_score_weights
+from geno_core.task_queue import dispatch_background_task, task_queue_broker_url, task_queue_enabled
 from geno_core.traceability import build_traceability_bundle
 from geno_core.email_preferences import (
     RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
@@ -325,7 +342,7 @@ from scripts.build_au_p0b_google_playwright_env_report import (
     build_google_playwright_env_report,
 )
 
-app = FastAPI(title="GENO SaaS AU API", version="0.1.0")
+app = FastAPI(title="GEO Production API", version="1.0.0")
 register_ops_routes(app)
 
 
@@ -334,6 +351,7 @@ def close_runtime_resources() -> None:
     close_runtime_postgres_pool()
 
 RUNTIME_PROJECT_ACCESS_CONTROL_ENV = "GENO_RUNTIME_PROJECT_ACCESS_CONTROL"
+DEPLOYMENT_ENVIRONMENT_ENV = "GENO_DEPLOYMENT_ENVIRONMENT"
 RUNTIME_ACTOR_HEADER = "X-GENO-Actor-Id"
 RUNTIME_AUTH_MODE_ENV = "GENO_RUNTIME_AUTH_MODE"
 RUNTIME_AUTH_MODE_HEADER = "header"
@@ -395,6 +413,7 @@ RUNTIME_NOTIFICATION_EMAIL_POSTMARK_BASIC_USERNAME_ENV = "GENO_NOTIFICATION_EMAI
 RUNTIME_NOTIFICATION_EMAIL_POSTMARK_BASIC_PASSWORD_ENV = "GENO_NOTIFICATION_EMAIL_POSTMARK_BASIC_PASSWORD"
 RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV = "GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET"
 PROJECT_MANAGE_ROLES = ("owner", "admin")
+KNOWLEDGE_RISK_ACCEPT_ROLES = ("owner", "admin", "project_admin", "internal_operator", "compliance_reviewer")
 PROJECT_ANALYZE_ROLES = ("owner", "admin", "analyst")
 CUSTOMER_PORTAL_REPORT_READY_STATUS = "client_ready"
 CUSTOMER_PORTAL_ROLES = {"viewer", "client_viewer"}
@@ -447,6 +466,42 @@ def runtime_auth_mode() -> str:
     if mode not in RUNTIME_AUTH_MODES:
         raise HTTPException(status_code=503, detail=f"{RUNTIME_AUTH_MODE_ENV} must be header, jwt, jwks, or session")
     return mode
+
+
+def validate_production_runtime_security() -> None:
+    deployment = os.getenv(DEPLOYMENT_ENVIRONMENT_ENV, "development").strip().lower() or "development"
+    if deployment not in {"production", "prod"}:
+        return
+    errors: list[str] = []
+    if not runtime_project_access_control_enabled():
+        errors.append(f"{RUNTIME_PROJECT_ACCESS_CONTROL_ENV}=1 is required")
+    auth_mode = runtime_auth_mode()
+    if auth_mode == RUNTIME_AUTH_MODE_HEADER:
+        errors.append(f"{RUNTIME_AUTH_MODE_ENV}=header is forbidden")
+    if auth_mode == RUNTIME_AUTH_MODE_SESSION and not runtime_session_cookie_secure():
+        errors.append(f"{RUNTIME_SESSION_COOKIE_SECURE_ENV}=1 is required for session auth")
+    connector_key = os.getenv("GENO_CONNECTOR_SECRET_MASTER_KEY", "").strip()
+    if not connector_key or connector_key == "geno-local-connector-secret-master-key":
+        errors.append("GENO_CONNECTOR_SECRET_MASTER_KEY must be a non-default secret")
+    if not os.getenv(REPORT_ARTIFACT_SIGNING_SECRET_ENV, "").strip():
+        errors.append(f"{REPORT_ARTIFACT_SIGNING_SECRET_ENV} is required")
+    if not os.getenv("GENO_PDF_RENDERER_URL", "").strip():
+        errors.append("GENO_PDF_RENDERER_URL is required")
+    if os.getenv("GENO_REPORT_PDF_RENDERER_REQUIRED", "").strip().lower() not in RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES:
+        errors.append("GENO_REPORT_PDF_RENDERER_REQUIRED=1 is required")
+    if not task_queue_enabled():
+        errors.append("GENO_TASK_QUEUE_ENABLED=1 is required")
+    if not task_queue_broker_url():
+        errors.append("GENO_TASK_QUEUE_BROKER_URL is required")
+    if dev_tools_enabled():
+        errors.append(f"{DEV_TOOLS_ENABLED_ENV} must be disabled")
+    if errors:
+        raise RuntimeError("unsafe Production runtime configuration: " + "; ".join(errors))
+
+
+@app.on_event("startup")
+def validate_production_startup() -> None:
+    validate_production_runtime_security()
 
 
 def _runtime_jwt_secret() -> str:
@@ -1490,6 +1545,14 @@ def require_runtime_actor_id(x_geno_actor_id: str | None = None) -> str | None:
     return build_runtime_auth_context(x_geno_actor_id).actor_id
 
 
+def effective_runtime_actor_id(actor_id: str | None, fallback: str | None = None) -> str:
+    for candidate in (actor_id, fallback, os.getenv("GENO_RUNTIME_DEFAULT_ACTOR_ID"), "runtime-console"):
+        normalized = str(candidate or "").strip()
+        if normalized:
+            return normalized
+    return "runtime-console"
+
+
 def _auth_context_role_allowed(context: AuthContext, allowed_roles: tuple[str, ...] | None) -> bool:
     if not allowed_roles:
         return True
@@ -1835,7 +1898,7 @@ class RuntimeKnowledgeFactImportRequest(BaseModel):
     csv_content: str = Field(min_length=1, max_length=120000)
     imported_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     max_rows: int = Field(default=100, ge=1, le=200)
-    default_market_code: str = Field(default="AU", min_length=1, max_length=20)
+    default_market_code: str = Field(default="GLOBAL", min_length=1, max_length=20)
 
 
 class RuntimePromptUpdateRequest(BaseModel):
@@ -2224,10 +2287,21 @@ class EntityAliasAssignmentEscalationRequest(BaseModel):
 
 
 class RuntimeProjectCreateRequest(BaseModel):
-    tenant_name: str = Field(default="Design Partner AU", min_length=1, max_length=160)
-    project_name: str = Field(default="AU DTC Evidence Pilot", min_length=1, max_length=160)
+    tenant_name: str = Field(default="Customer Organization", min_length=1, max_length=160)
+    project_name: str = Field(default="Brand GEO Project", min_length=1, max_length=160)
     target_brand: str = Field(default="Customer Brand", min_length=1, max_length=160)
-    category: str = Field(default="DTC ecommerce products", min_length=1, max_length=200)
+    category: str = Field(default="Products and services", min_length=1, max_length=200)
+    market_code: str = Field(default="GLOBAL", min_length=2, max_length=12)
+    market_name: str = Field(default="Global", min_length=1, max_length=120)
+    locale: str = Field(default="en", min_length=1, max_length=40)
+    timezone: str = Field(default="UTC", min_length=1, max_length=120)
+    currency: str = Field(default="USD", min_length=3, max_length=8)
+    primary_language: str = Field(default="English", min_length=1, max_length=80)
+    cities: list[str] = Field(default_factory=list, max_length=50)
+    industry_code: str = Field(default="general", min_length=1, max_length=80)
+    industry_name: str = Field(default="General", min_length=1, max_length=160)
+    prompt_version: str = Field(default="project_prompts_v1", min_length=1, max_length=120)
+    score_formula_version: str = Field(default="visibility_v1.0", min_length=1, max_length=120)
     competitors: list[str] = Field(default_factory=list, max_length=5)
     brand_official_domains: list[str] = Field(default_factory=list, max_length=5)
     brand_parent_company: str | None = Field(default=None, max_length=160)
@@ -2465,6 +2539,13 @@ class RuntimeKnowledgeFactReviewRequest(BaseModel):
     reviewed_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     decision: str = Field(default="knowledge fact reviewed", min_length=1, max_length=500)
     notes: str | None = Field(default=None, max_length=1000)
+    merged_into_fact_id: str | None = Field(default=None, max_length=80)
+
+
+class RuntimeKnowledgeQualityRiskAcceptRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    reason: str = Field(min_length=1, max_length=1000)
+    expires_at: datetime
 
 
 class RuntimeKnowledgeApplicationGenerateRequest(BaseModel):
@@ -2486,12 +2567,107 @@ class RuntimeKnowledgeApplicationGenerateRequest(BaseModel):
     knowledge_source_policy: str = Field(default="approved_only", min_length=1, max_length=80)
 
 
+class RuntimeKnowledgePipelineRunRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    run_type: str = Field(default="full_ingestion", min_length=1, max_length=80)
+    entry_source: str = Field(default="mixed", min_length=1, max_length=40)
+    market_code: str = Field(default="GLOBAL", min_length=1, max_length=20)
+    locale: str = Field(default="en", min_length=1, max_length=40)
+    city: str | None = Field(default=None, max_length=120)
+    created_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class RuntimeKnowledgeImportJobRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    pipeline_run_id: str = Field(min_length=1)
+    source_mode: str = Field(min_length=1, max_length=40)
+    requested_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    source_config: dict[str, object] = Field(default_factory=dict)
+    priority: int = Field(default=0, ge=-1000, le=1000)
+
+
+class RuntimeKnowledgeUrlSeedsRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    urls: list[str] = Field(min_length=1, max_length=100)
+    crawl_mode: str = Field(default="single_url", pattern="^(single_url|url_batch|site_depth|sitemap)$")
+    crawl_depth: int = Field(default=0, ge=0, le=5)
+    max_pages: int = Field(default=10, ge=1, le=500)
+    include_patterns: list[str] = Field(default_factory=list, max_length=100)
+    exclude_patterns: list[str] = Field(default_factory=list, max_length=100)
+    respect_robots: bool = True
+
+
+class RuntimeKnowledgeChunkDisableRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class RuntimeKnowledgeFactExtractionJobRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    source_pipeline_run_id: str = Field(min_length=1)
+    import_job_id: str | None = Field(default=None, max_length=80)
+    fact_kinds: list[str] = Field(default_factory=lambda: ["brand", "competitor", "market", "source"], max_length=20)
+    max_facts: int = Field(default=20, ge=1, le=200)
+    model: str = Field(default="deepseek-v4-flash", min_length=1, max_length=120)
+    prompt_version: str = Field(default="knowledge_fact_extraction_v1", min_length=1, max_length=120)
+    chunk_filter: dict[str, object] = Field(default_factory=dict)
+
+
+class RuntimeKnowledgePromptGenerationJobRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    template_key: str = Field(default="brand_visibility_prompt_v1", min_length=1, max_length=160)
+    template_version: str = Field(default="v1", min_length=1, max_length=80)
+    target_platform: str = Field(default="chatgpt", min_length=1, max_length=80)
+    intent_type: str = Field(default="brand_visibility", min_length=1, max_length=120)
+    city: str | None = Field(default=None, max_length=120)
+    requested_count: int = Field(default=10, ge=1, le=50)
+    model: str = Field(default="deepseek-v4-flash", min_length=1, max_length=120)
+    source_fact_filter: dict[str, object] = Field(default_factory=dict)
+    source_chunk_filter: dict[str, object] = Field(default_factory=dict)
+
+
+class RuntimeKnowledgePromptTemplateRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    template_key: str = Field(min_length=3, max_length=160)
+    template_version: str = Field(default="v1", min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=200)
+    template_body: str = Field(min_length=20, max_length=20000)
+    status: str = Field(default="draft", pattern="^(draft|published|archived)$")
+    description: str = Field(default="", max_length=1000)
+    system_prompt: str | None = Field(default=None, max_length=20000)
+    user_prompt_template: str | None = Field(default=None, max_length=20000)
+    input_variables: list[str] = Field(default_factory=list, max_length=100)
+    output_schema: dict[str, object] = Field(default_factory=dict)
+    model_config_payload: dict[str, object] = Field(default_factory=dict, alias="model_config")
+    evaluation_set: list[dict[str, object]] = Field(default_factory=list, max_length=100)
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class RuntimeKnowledgeContentGenerationJobRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    content_type: str = Field(default="faq", min_length=1, max_length=80)
+    target_platform: str = Field(default="website", min_length=1, max_length=80)
+    target_city: str | None = Field(default=None, max_length=120)
+    target_audience: str = Field(default="general customer", min_length=1, max_length=300)
+    source_action_id: str | None = Field(default=None, max_length=80)
+    source_report_id: str | None = Field(default=None, max_length=80)
+    source_retest_id: str | None = Field(default=None, max_length=80)
+    source_gap_type: str | None = Field(default=None, max_length=120)
+    tone: str = Field(default="clear", min_length=1, max_length=80)
+    required_citations: int = Field(default=1, ge=1, le=20)
+    forbidden_claims: list[str] = Field(default_factory=list, max_length=100)
+    model: str = Field(default="deepseek-v4-flash", min_length=1, max_length=120)
+    template_version: str = Field(default="geo_content_draft_v1", min_length=1, max_length=120)
+
+
 class RuntimePromptCandidateReviewRequest(BaseModel):
     project_id: str = Field(min_length=1)
     review_status: str = Field(min_length=1, max_length=80)
     reviewed_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     decision: str = Field(default="prompt candidate reviewed", min_length=1, max_length=500)
     notes: str | None = Field(default=None, max_length=1000)
+    edited_text: str | None = Field(default=None, min_length=3, max_length=5000)
 
 
 class RuntimePromptCandidateImportRequest(BaseModel):
@@ -2550,10 +2726,20 @@ class RuntimeReportExportJobStatusRequest(BaseModel):
 class RuntimeFixtureCollectionRequest(BaseModel):
     project_id: str = Field(min_length=1)
     prompt_limit: int = Field(default=1, ge=1, le=10)
-    cities: list[str] = Field(default_factory=lambda: ["Sydney"], min_length=1, max_length=5)
+    cities: list[str] = Field(default_factory=lambda: ["Global"], min_length=1, max_length=20)
     sample_size: int = Field(default=3, ge=1, le=3)
     persist_analysis: bool = True
-    score_formula_version: str = Field(default="au_visibility_v1", min_length=1, max_length=120)
+    score_formula_version: str = Field(default="visibility_v1.0", min_length=1, max_length=120)
+    requested_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeCollectionJobRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    prompt_limit: int = Field(default=10, ge=1, le=200)
+    sample_size: int = Field(default=1, ge=1, le=20)
+    cities: list[str] = Field(default_factory=list, max_length=20)
+    max_attempts: int = Field(default=3, ge=1, le=10)
     requested_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     reason: str | None = Field(default=None, max_length=500)
 
@@ -3958,21 +4144,26 @@ def au_dtc_project_bootstrap() -> dict[str, object]:
     return asdict(build_au_project_bootstrap())
 
 
-@app.post("/v1/projects/runtime/au/dtc-ecommerce")
-def create_runtime_au_dtc_project(
-    payload: RuntimeProjectCreateRequest | None = None,
-    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+def _create_runtime_project_response(
+    request: RuntimeProjectCreateRequest,
+    *,
+    actor_id: str | None,
+    au_market_profile: bool,
 ) -> dict[str, object]:
-    request = payload or RuntimeProjectCreateRequest()
-    actor_id = require_runtime_actor_id(x_geno_actor_id)
     owner_user_id = actor_id if runtime_project_access_control_enabled() and actor_id else request.owner_user_id.strip()
     competitors = tuple(item.strip() for item in request.competitors if item.strip())
-    if not competitors:
+    if not competitors and au_market_profile:
         competitors = DEFAULT_AU_COMPETITORS
+    if not competitors:
+        raise HTTPException(status_code=400, detail="competitors must contain 1-5 entries")
     brand_official_domains = tuple(item.strip() for item in request.brand_official_domains if item.strip())
+    if not brand_official_domains and not au_market_profile:
+        raise HTTPException(status_code=400, detail="brand_official_domains must contain a primary domain")
     primary_domain = brand_official_domains[0] if brand_official_domains else "example.com"
     customer_email = request.customer_email.strip().lower() if request.customer_email else "customer@example.com"
     customer_email_supplied = bool(request.customer_email and request.customer_email.strip())
+    if not customer_email_supplied and not au_market_profile:
+        raise HTTPException(status_code=400, detail="customer_email is required")
     if customer_email_supplied and "@" not in customer_email:
         raise HTTPException(status_code=400, detail="customer_email must be a valid email address")
     launch_status = request.launch_status.strip().lower()
@@ -3980,19 +4171,50 @@ def create_runtime_au_dtc_project(
         raise HTTPException(status_code=400, detail="launch_status must be draft, ready, active, or paused")
     brand_product_lines = tuple(item.strip() for item in request.brand_product_lines if item.strip())
     competitor_domains = tuple(item.strip().lower() for item in request.competitor_domains if item.strip())
+    competitor_official_domains = {
+        competitor: (competitor_domains[index],)
+        for index, competitor in enumerate(competitors)
+        if index < len(competitor_domains) and competitor_domains[index]
+    }
     try:
-        bootstrap = build_au_project_bootstrap(
-            tenant_name=request.tenant_name.strip(),
-            project_name=request.project_name.strip(),
-            target_brand=request.target_brand.strip(),
-            category=request.category.strip(),
-            competitors=competitors,
-            brand_official_domains=brand_official_domains,
-            brand_parent_company=request.brand_parent_company.strip() if request.brand_parent_company else None,
-            brand_product_lines=brand_product_lines,
-            owner_user_id=owner_user_id,
-        )
+        if au_market_profile:
+            bootstrap = build_au_project_bootstrap(
+                tenant_name=request.tenant_name.strip(),
+                project_name=request.project_name.strip(),
+                target_brand=request.target_brand.strip(),
+                category=request.category.strip(),
+                competitors=competitors,
+                brand_official_domains=brand_official_domains,
+                brand_parent_company=request.brand_parent_company.strip() if request.brand_parent_company else None,
+                brand_product_lines=brand_product_lines,
+                competitor_official_domains=competitor_official_domains,
+                owner_user_id=owner_user_id,
+            )
+        else:
+            bootstrap = build_project_bootstrap(
+                tenant_name=request.tenant_name.strip(),
+                project_name=request.project_name.strip(),
+                target_brand=request.target_brand.strip(),
+                category=request.category.strip(),
+                market_code=request.market_code.strip(),
+                market_name=request.market_name.strip(),
+                locale=request.locale.strip(),
+                timezone=request.timezone.strip(),
+                currency=request.currency.strip(),
+                primary_language=request.primary_language.strip(),
+                cities=tuple(request.cities),
+                industry_code=request.industry_code.strip(),
+                industry_name=request.industry_name.strip(),
+                prompt_version=request.prompt_version.strip(),
+                competitors=competitors,
+                brand_official_domains=brand_official_domains,
+                brand_parent_company=request.brand_parent_company.strip() if request.brand_parent_company else None,
+                brand_product_lines=brand_product_lines,
+                competitor_official_domains=competitor_official_domains,
+                owner_user_id=owner_user_id,
+            )
         bootstrap = replace(bootstrap, project=replace(bootstrap.project, status="paused"))
+        score_formula = get_score_formula("au_visibility_v1" if au_market_profile else request.score_formula_version)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
@@ -4014,13 +4236,22 @@ def create_runtime_au_dtc_project(
                     customer_email=customer_email,
                     primary_domain=primary_domain,
                     competitor_domains=competitor_domains,
+                    locale=bootstrap.market_profile.locale,
+                    country_code=bootstrap.market_profile.market_code,
+                    timezone=bootstrap.market_profile.timezone,
                     collection_mode=request.collection_mode.strip(),
                     schedule=request.schedule,
                     external_connectors=request.external_connectors,
+                    scoring_profile=score_formula.formula_version,
                     status=launch_status,
                     created_by=owner_user_id,
                     updated_by=owner_user_id,
-                    metadata={"created_from": "runtime_project_create"},
+                    config_version="au_launch_config_v1" if au_market_profile else "project_launch_config_v1",
+                    metadata={
+                        "created_from": "runtime_project_create",
+                        "market_code": bootstrap.project.market_code,
+                        "industry_code": bootstrap.project.industry_code,
+                    },
                     reason="runtime_project_create_launch_config",
                 )
             )
@@ -4031,7 +4262,7 @@ def create_runtime_au_dtc_project(
                     project_id=bootstrap.project.id,
                     client_name=request.target_brand.strip(),
                     prepared_by=owner_user_id,
-                    footer_text=f"{request.target_brand.strip()} AU GEO visibility report",
+                    footer_text=f"{request.target_brand.strip()} GEO visibility report",
                     updated_by=owner_user_id,
                 )
             )
@@ -4040,10 +4271,10 @@ def create_runtime_au_dtc_project(
             score_weight_config = repository.save_score_weight_config(
                 RuntimeScoreWeightConfigInput(
                     project_id=bootstrap.project.id,
-                    formula_version="au_visibility_v1",
-                    weights=dict(get_score_formula("au_visibility_v1").weights),
+                    formula_version=score_formula.formula_version,
+                    weights=dict(score_formula.weights),
                     updated_by=owner_user_id,
-                    notes="Default AU launch scoring profile",
+                    notes=f"Default {bootstrap.project.market_code} launch scoring profile",
                 )
             )
         customer_invitation: dict[str, object] | None = None
@@ -4081,6 +4312,30 @@ def create_runtime_au_dtc_project(
         }
     finally:
         close_repository_connection(repository)
+
+
+@app.post("/v1/projects/runtime")
+def create_runtime_project(
+    payload: RuntimeProjectCreateRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    return _create_runtime_project_response(
+        payload,
+        actor_id=require_runtime_actor_id(x_geno_actor_id),
+        au_market_profile=False,
+    )
+
+
+@app.post("/v1/projects/runtime/au/dtc-ecommerce")
+def create_runtime_au_dtc_project(
+    payload: RuntimeProjectCreateRequest | None = None,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    return _create_runtime_project_response(
+        payload or RuntimeProjectCreateRequest(),
+        actor_id=require_runtime_actor_id(x_geno_actor_id),
+        au_market_profile=True,
+    )
 
 
 @app.get("/v1/projects/runtime")
@@ -4135,6 +4390,11 @@ def update_runtime_project(
             actor_id=actor_id,
             allowed_roles=PROJECT_MANAGE_ROLES,
         )
+        if payload.status is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="project status can only be changed through /v1/projects/runtime/action",
+            )
         try:
             project = repository.update_runtime_project(
                 RuntimeProjectUpdateInput(
@@ -4183,10 +4443,17 @@ def action_runtime_project(
                 )
             )
         except ValueError as exc:
-            conflict_messages = {"project already archived", "project is not archived"}
+            conflict_messages = {
+                "project already active",
+                "project already archived",
+                "project already paused",
+                "project is not archived",
+                "archived project cannot be paused",
+                "archived project cannot be started",
+            }
             if str(exc) == "project not found":
                 status_code = 404
-            elif str(exc) in conflict_messages:
+            elif str(exc) in conflict_messages or str(exc).startswith("project cannot start:"):
                 status_code = 409
             else:
                 status_code = 400
@@ -4969,7 +5236,7 @@ def redeem_auth_invitation(
                 RuntimeProjectMemberInvitationAcceptInput(
                     invitation_id=payload.invitation_id.strip(),
                     invite_token=payload.invite_token.strip(),
-                    accepted_by=payload.accepted_by.strip() if payload.accepted_by else None,
+                    accepted_by=None,
                     reason=payload.reason.strip() if payload.reason else "auth_invitation_redeem",
                 )
             )
@@ -5085,7 +5352,7 @@ def accept_runtime_project_member_invitation(
                 RuntimeProjectMemberInvitationAcceptInput(
                     invitation_id=payload.invitation_id.strip(),
                     invite_token=payload.invite_token.strip(),
-                    accepted_by=payload.accepted_by.strip() if payload.accepted_by else None,
+                    accepted_by=effective_runtime_actor_id(None, payload.accepted_by),
                     reason=payload.reason.strip() if payload.reason else None,
                 )
             )
@@ -5432,7 +5699,7 @@ def review_runtime_entity_alias_candidate(
         )
         try:
             record = repository.record_entity_alias_candidate_review(
-                _entity_alias_candidate_review_input(payload)
+                _entity_alias_candidate_review_input(payload, reviewed_by=actor_id)
             )
         except ValueError as exc:
             status_code = 404 if str(exc) in {"project not found", "entity not found"} else 400
@@ -5500,12 +5767,12 @@ def review_runtime_entity_alias_candidates_batch(
                 tuple(
                     _entity_alias_candidate_review_input(
                         review,
-                        reviewed_by=payload.reviewed_by,
+                        reviewed_by=effective_runtime_actor_id(actor_id, payload.reviewed_by),
                         notes=payload.notes,
                     )
                     for review in payload.reviews
                 ),
-                reviewed_by=payload.reviewed_by.strip(),
+                reviewed_by=effective_runtime_actor_id(actor_id, payload.reviewed_by),
                 notes=payload.notes.strip() if payload.notes else None,
                 continue_on_error=payload.continue_on_error,
             )
@@ -6054,7 +6321,7 @@ def update_runtime_prompt(
                 intent_weight=payload.intent_weight,
                 prompt_version=payload.prompt_version.strip(),
                 status=payload.status.strip(),
-                updated_by=payload.updated_by.strip(),
+                updated_by=effective_runtime_actor_id(actor_id, payload.updated_by),
                 reason=payload.reason,
             )
         )
@@ -6087,7 +6354,7 @@ def import_runtime_prompts_csv(
             RuntimePromptImportInput(
                 project_id=payload.project_id.strip(),
                 csv_content=payload.csv_content,
-                imported_by=payload.imported_by.strip(),
+                imported_by=effective_runtime_actor_id(actor_id, payload.imported_by),
                 max_rows=payload.max_rows,
             )
         )
@@ -6132,7 +6399,7 @@ async def import_runtime_prompts_file(
             RuntimePromptImportInput(
                 project_id=project_id.strip(),
                 csv_content=csv_content,
-                imported_by=imported_by.strip(),
+                imported_by=effective_runtime_actor_id(actor_id, imported_by),
                 max_rows=max_rows,
                 source_filename=filename.strip(),
                 source_format=source_format,
@@ -6274,6 +6541,85 @@ def runtime_evidence_asset_download(
                 "X-GENO-Evidence-Asset-Proxy": "true",
             },
         )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/collection-jobs/runtime")
+def enqueue_runtime_collection_job(
+    payload: RuntimeCollectionJobRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    repository = build_repository_from_env()
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        job = CollectionJobStore(repository).enqueue(
+            project_id=payload.project_id.strip(),
+            requested_by=effective_runtime_actor_id(actor_id, payload.requested_by),
+            prompt_limit=payload.prompt_limit,
+            sample_size=payload.sample_size,
+            cities=tuple(payload.cities),
+            max_attempts=payload.max_attempts,
+        )
+        return {"collection_job": job, "queue_dispatch": _dispatch_runtime_task("collection")}
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 409 if "must be running" in str(exc) else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/collection-jobs/runtime")
+def list_runtime_collection_jobs(
+    project_id: str = Query(min_length=1),
+    status: str | None = Query(default=None, max_length=40),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    repository = build_repository_from_env()
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        return CollectionJobStore(repository).list(
+            project_id=project_id.strip(),
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/collection-jobs/runtime/{job_id}/cancel")
+def cancel_runtime_collection_job(
+    job_id: str,
+    project_id: str = Query(min_length=1),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    repository = build_repository_from_env()
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        return {
+            "collection_job": CollectionJobStore(repository).cancel(
+                project_id=project_id.strip(),
+                job_id=job_id.strip(),
+            )
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     finally:
         close_repository_connection(repository)
 
@@ -6502,7 +6848,12 @@ def runtime_manual_backfill(
             actor_id=actor_id,
             allowed_roles=PROJECT_ANALYZE_ROLES,
         )
-        record = _build_runtime_manual_backfill_record(payload, prompt)
+        record = _build_runtime_manual_backfill_record(
+            payload.model_copy(
+                update={"submitted_by": effective_runtime_actor_id(actor_id, payload.submitted_by)}
+            ),
+            prompt,
+        )
         repository.save_raw_evidence_records((record,))
         return {
             "answer_run_id": record.answer_run.id,
@@ -6528,7 +6879,7 @@ def runtime_manual_backfill_csv_import(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         project_id = payload.project_id.strip()
-        submitted_by = payload.submitted_by.strip()
+        submitted_by = effective_runtime_actor_id(actor_id, payload.submitted_by)
         notes = payload.notes.strip() if payload.notes else None
         assert_runtime_project_access(
             repository,
@@ -6536,7 +6887,9 @@ def runtime_manual_backfill_csv_import(
             actor_id=actor_id,
             allowed_roles=PROJECT_ANALYZE_ROLES,
         )
-        parsed_rows = _parse_manual_backfill_csv_import(payload)
+        parsed_rows = _parse_manual_backfill_csv_import(
+            payload.model_copy(update={"submitted_by": submitted_by})
+        )
         records = []
         for row_number, item in parsed_rows:
             prompt = repository.get_runtime_prompt(item.prompt_question_id)
@@ -6636,7 +6989,7 @@ def save_runtime_saved_view(
                 sort=payload.sort,
                 query_path=payload.query_path,
                 export_path=payload.export_path,
-                created_by=payload.created_by,
+                created_by=actor_id,
             )
         )
         return asdict(saved_view)
@@ -6690,7 +7043,7 @@ def save_runtime_project_brand_kit(
                 primary_color=payload.primary_color.strip() if payload.primary_color else None,
                 secondary_color=payload.secondary_color.strip() if payload.secondary_color else None,
                 footer_text=payload.footer_text.strip() if payload.footer_text else None,
-                updated_by=payload.updated_by.strip(),
+                updated_by=actor_id,
             )
         )
         return asdict(brand_kit)
@@ -7006,7 +7359,7 @@ def save_runtime_score_weight_config(
                 project_id=payload.project_id.strip(),
                 formula_version=payload.formula_version.strip(),
                 weights=weights,
-                updated_by=payload.updated_by.strip(),
+                updated_by=actor_id,
                 notes=payload.notes.strip() if payload.notes else None,
             )
         )
@@ -7203,7 +7556,7 @@ def record_runtime_human_review(
                 target_id=payload.target_id.strip(),
                 review_status=payload.review_status.strip(),
                 decision=payload.decision.strip(),
-                reviewer_id=payload.reviewer_id.strip(),
+                reviewer_id=actor_id,
                 notes=payload.notes.strip() if payload.notes else None,
                 payload=payload.payload,
             )
@@ -7581,7 +7934,7 @@ def create_runtime_fidelity_check(
         check = repository.create_runtime_fidelity_check(
             project_id=payload.project_id.strip(),
             report_export_id=payload.report_export_id.strip() if payload.report_export_id else None,
-            checked_by=payload.checked_by.strip(),
+            checked_by=effective_runtime_actor_id(actor_id, payload.checked_by),
         )
         return asdict(check)
     except ValueError as exc:
@@ -8739,7 +9092,7 @@ def enqueue_runtime_report_export_job(
                 reason=payload.reason,
             )
         )
-        return asdict(job)
+        return {**asdict(job), "queue_dispatch": _dispatch_runtime_task("report")}
     except ValueError as exc:
         status_code = 404 if str(exc) in {"project not found", "report_export not found"} else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
@@ -9137,7 +9490,8 @@ def runtime_knowledge_fact_search(
         close_repository_connection(repository)
 
 
-@app.patch("/v1/content-drafts/runtime/{content_draft_id}/review")
+@app.patch("/v1/knowledge/content-drafts/runtime/{content_draft_id}/review")
+@app.patch("/v1/content-drafts/runtime/{content_draft_id}/review", deprecated=True)
 def review_runtime_content_draft(
     content_draft_id: str,
     payload: RuntimeContentDraftReviewRequest,
@@ -9170,7 +9524,9 @@ def review_runtime_content_draft(
         except ValueError as exc:
             status_code = 404 if str(exc) == "content draft not found" else 400
             raise HTTPException(status_code=status_code, detail=str(exc)) from exc
-        return _runtime_record_payload(record)
+        response = _runtime_record_payload(record)
+        response["pipeline_states"] = _refresh_knowledge_pipeline_states(payload.project_id.strip(), actor_id)
+        return response
     finally:
         close_repository_connection(repository)
 
@@ -9233,7 +9589,7 @@ def import_runtime_knowledge_facts_csv(
             RuntimeKnowledgeFactImportInput(
                 project_id=payload.project_id.strip(),
                 csv_content=payload.csv_content,
-                imported_by=payload.imported_by.strip(),
+                imported_by=actor_id,
                 max_rows=payload.max_rows,
                 default_market_code=payload.default_market_code.strip(),
             )
@@ -9274,6 +9630,1269 @@ def runtime_knowledge_application(
         return asdict(page)
     finally:
         close_repository_connection(repository)
+
+
+def _build_knowledge_pipeline_repository(project_id: str, actor_id: str | None) -> Any:
+    repository = connect_knowledge_pipeline_repository()
+    repository.set_runtime_scope(
+        actor_id=effective_runtime_actor_id(actor_id),
+        project_id=project_id,
+    )
+    return repository
+
+
+def _dispatch_runtime_task(task_name: str) -> dict[str, object]:
+    try:
+        return dispatch_background_task(task_name).to_dict()
+    except RuntimeError as exc:
+        # PostgreSQL job rows are durable; the recovery dispatcher retries
+        # delivery after transient Valkey outages.
+        return {
+            "task_name": task_name,
+            "status": "recovery_pending",
+            "message_id": None,
+            "broker_url_configured": bool(task_queue_broker_url()),
+            "error": str(exc),
+        }
+
+
+def _refresh_knowledge_pipeline_states(project_id: str, actor_id: str | None) -> tuple[dict[str, object], ...]:
+    if not os.getenv("DATABASE_URL", "").strip():
+        return ()
+    repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+    try:
+        return tuple(repository.refresh_project_pipeline_states(project_id=project_id))
+    finally:
+        close_knowledge_repository(repository)
+
+
+@app.post("/v1/knowledge/pipeline-runs/runtime")
+def create_runtime_knowledge_pipeline_run(
+    payload: RuntimeKnowledgePipelineRunRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        run = knowledge_repository.create_pipeline_run(
+            KnowledgePipelineCreateInput(
+                project_id=payload.project_id.strip(),
+                run_type=payload.run_type.strip(),
+                entry_source=payload.entry_source.strip(),
+                market_code=payload.market_code.strip(),
+                locale=payload.locale.strip(),
+                city=payload.city.strip() if payload.city else None,
+                created_by=actor_id or payload.created_by.strip(),
+                metadata=dict(payload.metadata),
+            )
+        )
+        return {"knowledge_pipeline_run": run}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/pipeline-runs/runtime/{pipeline_run_id}/start")
+def start_runtime_knowledge_pipeline_run(
+    pipeline_run_id: str,
+    project_id: str = Query(min_length=1),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        run = knowledge_repository.start_pipeline_run(pipeline_run_id.strip())
+        return {"knowledge_pipeline_run": run, "queue_dispatch": _dispatch_runtime_task("knowledge")}
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/pipeline-runs/runtime")
+def list_runtime_knowledge_pipeline_runs(
+    project_id: str = Query(min_length=1),
+    run_type: str | None = Query(default=None, max_length=80),
+    status: str | None = Query(default=None, max_length=80),
+    entry_source: str | None = Query(default=None, max_length=80),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.list_pipeline_runs(
+            project_id=project_id.strip(),
+            limit=limit,
+            offset=offset,
+            filters={"run_type": run_type, "status": status, "entry_source": entry_source},
+        )
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/pipeline-runs/runtime/{pipeline_run_id}")
+def get_runtime_knowledge_pipeline_run(
+    pipeline_run_id: str,
+    project_id: str = Query(min_length=1),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.get_pipeline_run_detail(
+            project_id=project_id.strip(), pipeline_run_id=pipeline_run_id.strip()
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/pipeline-runs/runtime/{pipeline_run_id}/stages")
+def list_runtime_knowledge_pipeline_stages(
+    pipeline_run_id: str,
+    project_id: str = Query(min_length=1),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.list_pipeline_stages(pipeline_run_id.strip())
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/pipeline-runs/runtime/{pipeline_run_id}/jobs")
+def list_runtime_knowledge_pipeline_jobs(
+    pipeline_run_id: str,
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.list_pipeline_jobs(
+            pipeline_run_id=pipeline_run_id.strip(),
+            project_id=project_id.strip(),
+            limit=limit,
+            offset=offset,
+        )
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/pipeline-stages/runtime/{stage_id}/retry")
+def retry_runtime_knowledge_pipeline_stage(
+    stage_id: str,
+    project_id: str = Query(min_length=1),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        result = knowledge_repository.retry_pipeline_stage(
+            project_id=project_id.strip(),
+            stage_id=stage_id.strip(),
+            retried_by=effective_runtime_actor_id(actor_id),
+        )
+        result["queue_dispatch"] = _dispatch_runtime_task("knowledge")
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 409, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/import-jobs/runtime")
+def create_runtime_knowledge_import_job(
+    payload: RuntimeKnowledgeImportJobRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        job = knowledge_repository.create_import_job(
+            KnowledgeImportCreateInput(
+                project_id=payload.project_id.strip(),
+                pipeline_run_id=payload.pipeline_run_id.strip(),
+                source_mode=payload.source_mode.strip(),
+                requested_by=actor_id or payload.requested_by.strip(),
+                source_config=dict(payload.source_config),
+                priority=payload.priority,
+            )
+        )
+        if payload.source_mode in {"pasted_text", "csv"}:
+            source_text = source_config_text(dict(payload.source_config))
+            filename = "knowledge.csv" if payload.source_mode == "csv" else "knowledge.txt"
+            source_precheck = precheck_knowledge_source(
+                filename=filename,
+                content=source_text.encode("utf-8"),
+                content_type="text/csv" if payload.source_mode == "csv" else "text/plain",
+            )
+            knowledge_repository.record_import_precheck(
+                project_id=payload.project_id.strip(),
+                pipeline_run_id=payload.pipeline_run_id.strip(),
+                import_job_id=str(job["id"]),
+                checked_by=effective_runtime_actor_id(actor_id),
+                result=source_precheck,
+            )
+            if not bool(source_precheck.get("accepted")):
+                raise HTTPException(
+                    status_code=422,
+                    detail={"message": "knowledge text source precheck failed", "precheck": source_precheck},
+                )
+        return {"knowledge_import_job": job}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/import-jobs/runtime/{import_job_id}/enqueue")
+def enqueue_runtime_knowledge_import_job(
+    import_job_id: str,
+    project_id: str = Query(min_length=1),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        job = knowledge_repository.enqueue_import_job(import_job_id.strip())
+        return {"knowledge_import_job": job, "queue_dispatch": _dispatch_runtime_task("knowledge")}
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/import-jobs/runtime/{import_job_id}/urls")
+def add_runtime_knowledge_import_urls(
+    import_job_id: str,
+    payload: RuntimeKnowledgeUrlSeedsRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=payload.project_id,
+            actor_id=effective_runtime_actor_id(actor_id),
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        normalized_urls: list[str] = []
+        for url in payload.urls:
+            try:
+                normalized_urls.append(normalize_knowledge_url(url))
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"knowledge URL rejected: {url}: {exc}") from exc
+        normalized_urls = list(dict.fromkeys(normalized_urls))
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        import_job = knowledge_repository.configure_import_urls(
+            project_id=payload.project_id.strip(),
+            import_job_id=import_job_id.strip(),
+            actor_id=actor_id,
+            source_mode=(
+                "site_crawl"
+                if payload.crawl_mode in {"site_depth", "sitemap"}
+                else ("url_batch" if payload.crawl_mode == "url_batch" or len(normalized_urls) > 1 else "url")
+            ),
+            source_config={
+                "urls": normalized_urls,
+                "crawl_mode": payload.crawl_mode,
+                "depth_limit": payload.crawl_depth,
+                "max_pages": payload.max_pages,
+                "include_patterns": payload.include_patterns,
+                "exclude_patterns": payload.exclude_patterns,
+                "respect_robots": payload.respect_robots,
+            },
+        )
+        knowledge_repository.record_import_precheck(
+            project_id=payload.project_id.strip(),
+            pipeline_run_id=str(import_job.get("pipeline_run_id") or ""),
+            import_job_id=import_job_id.strip(),
+            checked_by=effective_runtime_actor_id(actor_id),
+            result={
+                "accepted": True,
+                "filename": "url-seeds.json",
+                "content_type": "application/json",
+                "byte_size": len(json.dumps(normalized_urls).encode("utf-8")),
+                "content_hash": hashlib.sha256(json.dumps(normalized_urls, sort_keys=True).encode("utf-8")).hexdigest(),
+                "requires_ocr": False,
+                "table_dense": False,
+                "recommended_adapter": "crawl4ai",
+                "findings": [],
+                "normalized_urls": normalized_urls,
+            },
+        )
+        return {
+            "knowledge_import_job": import_job,
+            "normalized_urls": normalized_urls,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/import-jobs/runtime/{import_job_id}/files")
+async def upload_runtime_knowledge_import_file(
+    import_job_id: str,
+    request: Request,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    form = await _parse_multipart_form(request)
+    fields = {key: value.decode("utf-8", errors="ignore").strip() for key, value in form["fields"].items()}
+    uploaded = form["files"].get("file")
+    if uploaded is None:
+        raise HTTPException(status_code=400, detail="knowledge file field 'file' is required")
+    project_id = fields.get("project_id", "")
+    pipeline_run_id = fields.get("pipeline_run_id", "")
+    market_code = fields.get("market_code", "GLOBAL")
+    locale = fields.get("locale", "en")
+    city = fields.get("city") or None
+    adapter_engine = fields.get("adapter_engine", "auto")
+    defer_start = fields.get("defer_start", "0").lower() in {"1", "true", "yes"}
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        content = uploaded["content"]
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        precheck = precheck_knowledge_source(
+            filename=uploaded["filename"] or "knowledge-source",
+            content=content,
+            content_type=uploaded["content_type"] or "application/octet-stream",
+        )
+        precheck["allow_partial"] = defer_start
+        duplicate = knowledge_repository.find_source_asset_by_hash(
+            project_id=project_id.strip(),
+            digest=str(precheck["content_hash"]),
+        )
+        if duplicate:
+            precheck["duplicate_of_asset_id"] = str(duplicate["id"])
+            precheck["findings"] = [
+                *list(precheck.get("findings") or []),
+                {
+                    "code": "duplicate_file",
+                    "severity": "warning",
+                    "message": "The same file content already exists; its stored object will be reused for this pipeline run.",
+                },
+            ]
+        knowledge_repository.record_import_precheck(
+            project_id=project_id.strip(),
+            pipeline_run_id=pipeline_run_id.strip(),
+            import_job_id=import_job_id.strip(),
+            checked_by=effective_runtime_actor_id(actor_id),
+            result=precheck,
+        )
+        if not bool(precheck["accepted"]):
+            raise HTTPException(status_code=422, detail={"message": "knowledge source precheck failed", "precheck": precheck})
+        selected_parser = adapter_engine.strip() or str(precheck["recommended_adapter"])
+        if duplicate:
+            asset = knowledge_repository.reuse_source_asset(
+                existing_asset_id=str(duplicate["id"]),
+                project_id=project_id.strip(),
+                pipeline_run_id=pipeline_run_id.strip(),
+                import_job_id=import_job_id.strip(),
+                title=uploaded["filename"] or "知识库文件",
+                created_by=effective_runtime_actor_id(actor_id),
+                market_code=market_code.strip() or "GLOBAL",
+                locale=locale.strip() or "en",
+                city=city.strip() if city else None,
+                parser_engine=selected_parser,
+                precheck_result=precheck,
+            )
+        else:
+            store = build_object_store_from_env()
+            stored = archive_knowledge_source_asset(
+                project_id=project_id.strip(),
+                pipeline_run_id=pipeline_run_id.strip(),
+                import_job_id=import_job_id.strip(),
+                filename=uploaded["filename"] or "knowledge-source",
+                content=content,
+                content_type=uploaded["content_type"] or "application/octet-stream",
+                store=store,
+            )
+            asset = knowledge_repository.create_asset_from_stored_object(
+                project_id=project_id.strip(),
+                pipeline_run_id=pipeline_run_id.strip(),
+                import_job_id=import_job_id.strip(),
+                asset_type="uploaded_file",
+                stored=stored,
+                title=uploaded["filename"] or "知识库文件",
+                source_uri=uploaded["filename"] or None,
+                created_by=effective_runtime_actor_id(actor_id),
+                market_code=market_code.strip() or "GLOBAL",
+                locale=locale.strip() or "en",
+                city=city.strip() if city else None,
+                metadata={
+                    "byte_size": len(content),
+                    "filename": uploaded["filename"] or "knowledge-source",
+                    "adapter_engine": selected_parser,
+                },
+                filename=uploaded["filename"] or "knowledge-source",
+                parser_engine=selected_parser,
+                parser_version="geo-parser-adapter-v1",
+                precheck_result=precheck,
+            )
+        with knowledge_repository.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO knowledge_parser_runs (
+                  project_id, pipeline_run_id, import_job_id, source_asset_id,
+                  adapter_engine, adapter_version
+                ) VALUES (%s::uuid, %s::uuid, %s::uuid, %s::uuid, %s, 'geo-parser-adapter-v1')
+                RETURNING id
+                """,
+                (project_id.strip(), pipeline_run_id.strip(), import_job_id.strip(), asset["id"], selected_parser),
+            )
+            parser_run_id = str(cursor.fetchone()[0])
+            if defer_start:
+                cursor.execute(
+                    """
+                    UPDATE knowledge_import_jobs
+                    SET status = 'ready', updated_at = now()
+                    WHERE id = %s::uuid AND project_id = %s::uuid AND status IN ('draft', 'ready')
+                    """,
+                    (import_job_id.strip(), project_id.strip()),
+                )
+            knowledge_repository.connection.commit()
+        if defer_start:
+            import_job = knowledge_repository.get_import_job(
+                project_id=project_id.strip(), import_job_id=import_job_id.strip()
+            )
+            run = knowledge_repository.get_pipeline_run(pipeline_run_id.strip())
+            queue_dispatch: dict[str, object] = {"status": "deferred", "reason": "multi_file_batch"}
+        else:
+            import_job = knowledge_repository.enqueue_import_job(import_job_id.strip())
+            run = knowledge_repository.start_pipeline_run(pipeline_run_id.strip())
+            queue_dispatch = _dispatch_runtime_task("knowledge")
+        return {
+            "knowledge_source_asset": asset,
+            "knowledge_parser_run": {"id": parser_run_id, "status": "queued"},
+            "knowledge_import_job": import_job,
+            "knowledge_pipeline_run": run,
+            "queue_dispatch": queue_dispatch,
+        }
+    except ObjectStoreError as exc:
+        raise HTTPException(status_code=502, detail=f"knowledge object store upload failed: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+async def _parse_multipart_form(request: Request) -> dict[str, dict[str, Any]]:
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" not in content_type:
+        raise HTTPException(status_code=415, detail="multipart/form-data is required")
+    body = await request.body()
+    header_blob = f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8")
+    message = email.message_from_bytes(header_blob + body)
+    fields: dict[str, bytes] = {}
+    files: dict[str, dict[str, Any]] = {}
+    if not message.is_multipart():
+        raise HTTPException(status_code=400, detail="invalid multipart payload")
+    for part in message.walk():
+        if part.is_multipart():
+            continue
+        disposition = part.get("content-disposition", "")
+        if "form-data" not in disposition:
+            continue
+        name = part.get_param("name", header="content-disposition")
+        if not name:
+            continue
+        payload = part.get_payload(decode=True) or b""
+        filename = part.get_filename()
+        if filename is None:
+            fields[str(name)] = payload
+        else:
+            files[str(name)] = {
+                "filename": filename,
+                "content": payload,
+                "content_type": part.get_content_type() or "application/octet-stream",
+            }
+    return {"fields": fields, "files": files}
+
+
+def _knowledge_table_page(
+    *,
+    project_id: str,
+    actor_id: str | None,
+    table_key: str,
+    limit: int,
+    offset: int,
+    filters: dict[str, str | None] | None = None,
+    quality_flag: str | None = None,
+    query: str | None = None,
+) -> dict[str, object]:
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        if table_key == "quality_findings":
+            return knowledge_repository.list_quality_findings(project_id=project_id, limit=limit, offset=offset, filters=filters)
+        if table_key == "source_assets":
+            return knowledge_repository.list_source_assets(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "approved_facts":
+            return knowledge_repository.list_approved_facts(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "fact_extraction_jobs":
+            return knowledge_repository.list_fact_extraction_jobs(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "prompt_generation_jobs":
+            return knowledge_repository.list_prompt_generation_jobs(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "content_generation_jobs":
+            return knowledge_repository.list_content_generation_jobs(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "quality_gate_runs":
+            return knowledge_repository.list_quality_gate_runs(project_id=project_id, limit=limit, offset=offset, filters=filters)
+        if table_key == "trace_refs":
+            return knowledge_repository.list_trace_refs(project_id=project_id, limit=limit, offset=offset, filters=filters)
+        if table_key == "chunks":
+            return knowledge_repository.list_chunks(
+                project_id=project_id, limit=limit, offset=offset,
+                filters=filters, quality_flag=quality_flag, query=query,
+            )
+        if table_key == "parser_runs":
+            return knowledge_repository.list_parser_runs(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "blocks":
+            return knowledge_repository.list_blocks(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "tables":
+            return knowledge_repository.list_tables(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "ocr_spans":
+            return knowledge_repository.list_ocr_spans(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "page_snapshots":
+            return knowledge_repository.list_page_snapshots(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "fact_candidates":
+            return knowledge_repository.list_fact_candidates(project_id=project_id, limit=limit, offset=offset, filters=filters)
+        if table_key == "prompt_candidates":
+            return knowledge_repository.list_prompt_candidates(project_id=project_id, limit=limit, offset=offset, filters=filters)
+        if table_key == "content_drafts":
+            return knowledge_repository.list_content_drafts(project_id=project_id, limit=limit, offset=offset, filters=filters)
+        raise HTTPException(status_code=400, detail="unsupported knowledge table")
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/import-jobs/runtime")
+def list_runtime_knowledge_import_jobs(
+    project_id: str = Query(min_length=1),
+    status: str | None = Query(default=None, max_length=80),
+    source_mode: str | None = Query(default=None, max_length=80),
+    created_by: str | None = Query(default=None, max_length=160),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.list_import_jobs(
+            project_id=project_id.strip(), limit=limit, offset=offset,
+            filters={"status": status, "source_mode": source_mode, "created_by": created_by},
+        )
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/import-jobs/runtime/{import_job_id}")
+def get_runtime_knowledge_import_job(
+    import_job_id: str,
+    project_id: str = Query(min_length=1),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.get_import_job_detail(
+            project_id=project_id.strip(), import_job_id=import_job_id.strip()
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/source-assets/runtime")
+def list_runtime_knowledge_source_assets(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="source_assets", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/source-assets/runtime/{source_asset_id}/download")
+def download_runtime_knowledge_source_asset(
+    source_asset_id: str,
+    project_id: str = Query(min_length=1),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        asset = knowledge_repository.get_source_asset(
+            project_id=project_id.strip(), source_asset_id=source_asset_id.strip()
+        )
+        object_uri = str(asset.get("object_uri") or "").strip()
+        if object_uri:
+            _bucket, key = parse_s3_uri(object_uri)
+            stored = build_object_store_from_env().get_object(
+                key=key,
+                expected_hash=str(asset.get("content_hash") or "") or None,
+            )
+            content = stored.content
+        else:
+            metadata = dict(asset.get("metadata") or {})
+            content = str(metadata.get("text_body") or metadata.get("text_preview") or "").encode("utf-8")
+        filename = re.sub(r"[^A-Za-z0-9._-]+", "-", str(asset.get("filename") or asset.get("title") or source_asset_id)).strip("-") or "knowledge-asset"
+        return Response(
+            content=content,
+            media_type=str(asset.get("content_type") or "application/octet-stream"),
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-GEO-Knowledge-Asset-Id": str(asset["id"]),
+                "X-GEO-Knowledge-Content-Hash": str(asset.get("content_hash") or ""),
+            },
+        )
+    except ObjectStoreError as exc:
+        raise HTTPException(status_code=502, detail=f"knowledge asset storage read failed: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/parser-runs/runtime")
+def list_runtime_knowledge_parser_runs(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="parser_runs", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/blocks/runtime")
+def list_runtime_knowledge_blocks(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="blocks", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/tables/runtime")
+def list_runtime_knowledge_tables(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="tables", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/ocr-spans/runtime")
+def list_runtime_knowledge_ocr_spans(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="ocr_spans", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/page-snapshots/runtime")
+def list_runtime_knowledge_page_snapshots(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="page_snapshots", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/approved-facts/runtime")
+def list_runtime_knowledge_approved_facts(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="approved_facts", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/fact-extraction-jobs/runtime")
+def list_runtime_knowledge_fact_extraction_jobs(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="fact_extraction_jobs", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/prompt-generation-jobs/runtime")
+def list_runtime_knowledge_prompt_generation_jobs(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="prompt_generation_jobs", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/prompt-generation-templates/runtime")
+def list_runtime_knowledge_prompt_generation_templates(
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.list_prompt_generation_templates(limit=limit, offset=offset)
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/prompt-generation-templates/runtime")
+def save_runtime_knowledge_prompt_generation_template(
+    payload: RuntimeKnowledgePromptTemplateRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        template = knowledge_repository.create_prompt_generation_template(
+            project_id=payload.project_id.strip(),
+            template_key=payload.template_key,
+            template_version=payload.template_version,
+            name=payload.name,
+            template_body=payload.template_body,
+            status=payload.status,
+            description=payload.description,
+            system_prompt=payload.system_prompt,
+            user_prompt_template=payload.user_prompt_template,
+            input_variables=payload.input_variables,
+            output_schema=dict(payload.output_schema),
+            model_config=dict(payload.model_config_payload),
+            evaluation_set=payload.evaluation_set,
+            created_by=effective_runtime_actor_id(actor_id),
+            metadata=dict(payload.metadata),
+        )
+        return {"prompt_generation_template": template}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/content-generation-jobs/runtime")
+def list_runtime_knowledge_content_generation_jobs(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="content_generation_jobs", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/quality-findings/runtime")
+def list_runtime_knowledge_quality_findings(project_id: str = Query(min_length=1), pipeline_run_id: str | None = None, target_type: str | None = None, severity: str | None = None, status: str | None = None, limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="quality_findings", limit=limit, offset=offset, filters={"pipeline_run_id": pipeline_run_id, "target_type": target_type, "severity": severity, "status": status})
+
+
+@app.get("/v1/knowledge/quality-gate-runs/runtime")
+def list_runtime_knowledge_quality_gate_runs(project_id: str = Query(min_length=1), pipeline_run_id: str | None = None, stage_id: str | None = None, gate_key: str | None = None, status: str | None = None, limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="quality_gate_runs", limit=limit, offset=offset, filters={"pipeline_run_id": pipeline_run_id, "stage_id": stage_id, "gate_key": gate_key, "status": status})
+
+
+@app.post("/v1/knowledge/quality-gate-runs/runtime/{gate_run_id}/accept-risk")
+def accept_runtime_knowledge_quality_gate_risk(
+    gate_run_id: str,
+    payload: RuntimeKnowledgeQualityRiskAcceptRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=KNOWLEDGE_RISK_ACCEPT_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id.strip(), actor_id)
+        return knowledge_repository.accept_quality_gate_risk(
+            project_id=payload.project_id.strip(),
+            gate_run_id=gate_run_id.strip(),
+            accepted_by=effective_runtime_actor_id(actor_id),
+            reason=payload.reason.strip(),
+            expires_at=payload.expires_at,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/trace-refs/runtime")
+def list_runtime_knowledge_trace_refs(project_id: str = Query(min_length=1), pipeline_run_id: str | None = None, source_type: str | None = None, source_id: str | None = None, target_type: str | None = None, target_id: str | None = None, limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="trace_refs", limit=limit, offset=offset, filters={"pipeline_run_id": pipeline_run_id, "source_type": source_type, "source_id": source_id, "target_type": target_type, "target_id": target_id})
+
+
+@app.get("/v1/knowledge/chunks/runtime")
+def list_runtime_knowledge_chunks(project_id: str = Query(min_length=1), import_job_id: str | None = None, source_asset_id: str | None = None, chunk_type: str | None = None, status: str | None = None, embedding_status: str | None = None, quality_flag: str | None = None, market_code: str | None = None, city: str | None = None, query: str | None = None, limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="chunks", limit=limit, offset=offset, filters={"import_job_id": import_job_id, "source_asset_id": source_asset_id, "chunk_type": chunk_type, "status": status, "embedding_status": embedding_status, "market_code": market_code, "city": city}, quality_flag=quality_flag, query=query)
+
+
+@app.get("/v1/knowledge/chunks/runtime/{chunk_id}/trace")
+def get_runtime_knowledge_chunk_trace(
+    chunk_id: str,
+    project_id: str = Query(min_length=1),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.get_chunk_trace(project_id=project_id.strip(), chunk_id=chunk_id.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/chunks/runtime/{chunk_id}/disable")
+def disable_runtime_knowledge_chunk(
+    chunk_id: str,
+    payload: RuntimeKnowledgeChunkDisableRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        return knowledge_repository.disable_chunk(
+            project_id=payload.project_id.strip(),
+            chunk_id=chunk_id.strip(),
+            disabled_by=effective_runtime_actor_id(actor_id),
+            reason=payload.reason.strip(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 400, detail=str(exc)) from exc
+    except (httpx.HTTPError, RuntimeError) as exc:
+        raise HTTPException(status_code=502, detail=f"knowledge chunk disabled but Qdrant synchronization failed: {exc}") from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/chunks/runtime/search")
+def search_runtime_knowledge_chunks(
+    project_id: str = Query(min_length=1),
+    query: str = Query(min_length=1, max_length=2000),
+    market_code: str | None = Query(default=None, max_length=20),
+    city: str | None = Query(default=None, max_length=120),
+    limit: int = Query(default=10, ge=1, le=50),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        embedding_url = os.getenv("KNOWLEDGE_EMBEDDING_API_URL", "").strip().rstrip("/")
+        if not embedding_url:
+            raise HTTPException(status_code=503, detail="KNOWLEDGE_EMBEDDING_API_URL is required")
+        try:
+            embedding_response = httpx.post(
+                f"{embedding_url}/v1/embeddings",
+                json={"texts": [query.strip()]},
+                timeout=60,
+            )
+            embedding_response.raise_for_status()
+            embedding_payload = embedding_response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise HTTPException(status_code=503, detail=f"knowledge embedding service unavailable: {exc}") from exc
+        vectors = embedding_payload.get("vectors") or []
+        vector = vectors[0] if vectors else []
+        if len(vector) != DEFAULT_EMBEDDING_DIMENSION:
+            raise HTTPException(status_code=503, detail="knowledge embedding service returned an invalid dimension")
+        backend = str(embedding_payload.get("backend") or "")
+        if "deterministic" in backend:
+            raise HTTPException(status_code=503, detail="deterministic embedding fallback is forbidden")
+        store = QdrantKnowledgeStore(
+            url=os.getenv("QDRANT_URL"),
+            collection=os.getenv("QDRANT_COLLECTION", DEFAULT_QDRANT_COLLECTION),
+        )
+        filters = {
+            "market_code": market_code.strip().upper() if market_code else None,
+            "city": city.strip() if city else None,
+        }
+        try:
+            hits = store.search(
+                vector=[float(value) for value in vector],
+                project_id=project_id,
+                limit=limit,
+                filters=filters,
+            )
+        except (httpx.HTTPError, RuntimeError) as exc:
+            raise HTTPException(status_code=503, detail=f"knowledge vector search unavailable: {exc}") from exc
+        ordered_chunk_ids = [str((hit.get("payload") or {}).get("chunk_id") or "") for hit in hits]
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        chunks = knowledge_repository.get_chunks_by_ids(project_id=project_id, chunk_ids=ordered_chunk_ids)
+        chunks_by_id = {str(chunk.get("id")): chunk for chunk in chunks}
+        records = [
+            {
+                "chunk": chunks_by_id[chunk_id],
+                "score": float(hit.get("score") or 0.0),
+                "qdrant_point_id": str(hit.get("id") or ""),
+                "embedding_model": DEFAULT_EMBEDDING_MODEL,
+                "embedding_model_version": DEFAULT_EMBEDDING_MODEL_VERSION,
+                "embedding_backend": backend,
+            }
+            for hit, chunk_id in zip(hits, ordered_chunk_ids, strict=True)
+            if chunk_id in chunks_by_id
+        ]
+        return {
+            "total_count": len(records),
+            "limit": limit,
+            "offset": 0,
+            "query": query.strip(),
+            "market_code": market_code.strip().upper() if market_code else None,
+            "city": city.strip() if city else None,
+            "embedding_model": DEFAULT_EMBEDDING_MODEL,
+            "embedding_model_version": DEFAULT_EMBEDDING_MODEL_VERSION,
+            "embedding_backend": backend,
+            "records": records,
+        }
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/fact-candidates/runtime")
+def list_runtime_knowledge_fact_candidates(project_id: str = Query(min_length=1), pipeline_run_id: str | None = None, fact_kind: str | None = None, status: str | None = None, market_code: str | None = None, city: str | None = None, limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="fact_candidates", limit=limit, offset=offset, filters={"pipeline_run_id": pipeline_run_id, "fact_kind": fact_kind, "status": status, "market_code": market_code, "city": city})
+
+
+@app.post("/v1/knowledge/fact-extraction-jobs/runtime")
+def create_runtime_knowledge_fact_extraction_job(
+    payload: RuntimeKnowledgeFactExtractionJobRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        knowledge_repository.get_pipeline_run(payload.source_pipeline_run_id.strip())
+        run = knowledge_repository.create_pipeline_run(
+            KnowledgePipelineCreateInput(
+                project_id=payload.project_id.strip(),
+                run_type="fact_refresh",
+                entry_source="mixed",
+                created_by=effective_runtime_actor_id(actor_id),
+                metadata={
+                    "source_pipeline_run_id": payload.source_pipeline_run_id.strip(),
+                    "import_job_id": payload.import_job_id.strip() if payload.import_job_id else None,
+                    "fact_kinds": [value.strip() for value in payload.fact_kinds if value.strip()],
+                    "max_facts": payload.max_facts,
+                    "model": payload.model.strip(),
+                    "prompt_version": payload.prompt_version.strip(),
+                    "chunk_filter": dict(payload.chunk_filter),
+                },
+            )
+        )
+        knowledge_repository.start_pipeline_run(str(run["id"]))
+        jobs = knowledge_repository.list_pipeline_jobs(
+            pipeline_run_id=str(run["id"]), project_id=payload.project_id.strip(), limit=10, offset=0
+        )
+        records = list((jobs.get("job_groups") or {}).get("fact_extraction_jobs", {}).get("records") or [])
+        return {
+            "knowledge_pipeline_run": knowledge_repository.get_pipeline_run(str(run["id"])),
+            "fact_extraction_job": records[0] if records else None,
+            "queue_dispatch": _dispatch_runtime_task("knowledge"),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/prompt-generation-jobs/runtime")
+def create_runtime_knowledge_prompt_generation_job(
+    payload: RuntimeKnowledgePromptGenerationJobRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        if knowledge_repository.list_approved_facts(project_id=payload.project_id.strip(), limit=1, offset=0)["total_count"] <= 0:
+            raise ValueError("no active approved facts are available for Prompt generation")
+        knowledge_repository.get_published_prompt_generation_template(
+            template_key=payload.template_key,
+            template_version=payload.template_version,
+        )
+        run = knowledge_repository.create_pipeline_run(
+            KnowledgePipelineCreateInput(
+                project_id=payload.project_id.strip(),
+                run_type="prompt_generation",
+                entry_source="mixed",
+                city=payload.city.strip() if payload.city else None,
+                created_by=effective_runtime_actor_id(actor_id),
+                metadata={
+                    "template_key": payload.template_key.strip(),
+                    "template_version": payload.template_version.strip(),
+                    "target_platform": payload.target_platform.strip(),
+                    "intent_type": payload.intent_type.strip(),
+                    "city": payload.city.strip() if payload.city else None,
+                    "requested_count": payload.requested_count,
+                    "model": payload.model.strip(),
+                    "source_fact_filter": dict(payload.source_fact_filter),
+                    "source_chunk_filter": dict(payload.source_chunk_filter),
+                },
+            )
+        )
+        knowledge_repository.start_pipeline_run(str(run["id"]))
+        jobs = knowledge_repository.list_pipeline_jobs(
+            pipeline_run_id=str(run["id"]), project_id=payload.project_id.strip(), limit=10, offset=0
+        )
+        records = list((jobs.get("job_groups") or {}).get("prompt_generation_jobs", {}).get("records") or [])
+        if not records:
+            raise ValueError("no active approved facts are available for Prompt generation")
+        return {
+            "knowledge_pipeline_run": knowledge_repository.get_pipeline_run(str(run["id"])),
+            "prompt_generation_job": records[0],
+            "queue_dispatch": _dispatch_runtime_task("knowledge"),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=409 if "approved facts" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/content-generation-jobs/runtime")
+def create_runtime_knowledge_content_generation_job(
+    payload: RuntimeKnowledgeContentGenerationJobRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        if knowledge_repository.list_approved_facts(project_id=payload.project_id.strip(), limit=1, offset=0)["total_count"] <= 0:
+            raise ValueError("no active approved facts are available for content generation")
+        run = knowledge_repository.create_pipeline_run(
+            KnowledgePipelineCreateInput(
+                project_id=payload.project_id.strip(),
+                run_type="content_generation",
+                entry_source="mixed",
+                city=payload.target_city.strip() if payload.target_city else None,
+                created_by=effective_runtime_actor_id(actor_id),
+                metadata={
+                    "content_type": payload.content_type.strip(),
+                    "target_platform": payload.target_platform.strip(),
+                    "target_city": payload.target_city.strip() if payload.target_city else None,
+                    "target_audience": payload.target_audience.strip(),
+                    "source_action_id": payload.source_action_id.strip() if payload.source_action_id else None,
+                    "source_report_id": payload.source_report_id.strip() if payload.source_report_id else None,
+                    "source_retest_id": payload.source_retest_id.strip() if payload.source_retest_id else None,
+                    "source_gap_type": payload.source_gap_type.strip() if payload.source_gap_type else None,
+                    "tone": payload.tone.strip(),
+                    "required_citations": payload.required_citations,
+                    "forbidden_claims": [value.strip() for value in payload.forbidden_claims if value.strip()],
+                    "model": payload.model.strip(),
+                    "template_version": payload.template_version.strip(),
+                },
+            )
+        )
+        knowledge_repository.start_pipeline_run(str(run["id"]))
+        jobs = knowledge_repository.list_pipeline_jobs(
+            pipeline_run_id=str(run["id"]), project_id=payload.project_id.strip(), limit=10, offset=0
+        )
+        records = list((jobs.get("job_groups") or {}).get("content_generation_jobs", {}).get("records") or [])
+        if not records:
+            raise ValueError("no active approved facts are available for content generation")
+        return {
+            "knowledge_pipeline_run": knowledge_repository.get_pipeline_run(str(run["id"])),
+            "content_generation_job": records[0],
+            "queue_dispatch": _dispatch_runtime_task("knowledge"),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=409 if "approved facts" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.patch("/v1/knowledge/fact-candidates/runtime/{fact_candidate_id}/review")
+def review_runtime_knowledge_fact_candidate(
+    fact_candidate_id: str,
+    payload: RuntimeKnowledgeFactReviewRequest,
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id.strip(), actor_id)
+        result = knowledge_repository.review_fact_candidate(
+            project_id=payload.project_id.strip(),
+            fact_candidate_id=fact_candidate_id.strip(),
+            review_status=payload.review_status.strip(),
+            reviewed_by=actor_id or payload.reviewed_by.strip(),
+            notes=payload.notes.strip() if payload.notes else None,
+            merged_into_fact_id=payload.merged_into_fact_id.strip() if payload.merged_into_fact_id else None,
+        )
+        result["queue_dispatch"] = _dispatch_runtime_task("knowledge")
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/prompt-candidates/runtime")
+def list_runtime_knowledge_prompt_candidates(project_id: str = Query(min_length=1), pipeline_run_id: str | None = None, target_platform: str | None = None, intent_type: str | None = None, status: str | None = None, limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="prompt_candidates", limit=limit, offset=offset, filters={"pipeline_run_id": pipeline_run_id, "target_platform": target_platform, "intent_type": intent_type, "status": status})
+
+
+@app.get("/v1/knowledge/content-drafts/runtime")
+def list_runtime_knowledge_content_drafts(project_id: str = Query(min_length=1), pipeline_run_id: str | None = None, content_type: str | None = None, status: str | None = None, target_city: str | None = None, limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geno_actor_id), table_key="content_drafts", limit=limit, offset=offset, filters={"pipeline_run_id": pipeline_run_id, "content_type": content_type, "status": status, "target_city": target_city})
+
+
+@app.post("/v1/knowledge/content-drafts/runtime/{content_draft_id}/export.md")
+def export_runtime_knowledge_content_draft(
+    content_draft_id: str,
+    project_id: str = Query(min_length=1),
+    x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        draft = knowledge_repository.export_content_draft(
+            project_id=project_id.strip(), content_draft_id=content_draft_id.strip(), exported_by=actor_id
+        )
+        filename = re.sub(r"[^A-Za-z0-9._-]+", "-", str(draft.get("title") or "geo-content")).strip("-")
+        return Response(
+            content=str(draft.get("draft_markdown") or ""),
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename or "geo-content"}.md"'},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 409, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
 
 
 @app.post("/v1/knowledge-documents/runtime")
@@ -9395,6 +11014,7 @@ def review_runtime_knowledge_fact(
                     reviewed_by=actor_id or payload.reviewed_by.strip(),
                     decision=payload.decision.strip(),
                     notes=payload.notes.strip() if payload.notes else None,
+                    edited_text=payload.edited_text.strip() if payload.edited_text else None,
                 )
             )
         except ValueError as exc:
@@ -9445,7 +11065,8 @@ def generate_runtime_knowledge_application(
         close_repository_connection(repository)
 
 
-@app.patch("/v1/prompt-candidates/runtime/{prompt_candidate_id}/review")
+@app.patch("/v1/knowledge/prompt-candidates/runtime/{prompt_candidate_id}/review")
+@app.patch("/v1/prompt-candidates/runtime/{prompt_candidate_id}/review", deprecated=True)
 def review_runtime_prompt_candidate(
     prompt_candidate_id: str,
     payload: RuntimePromptCandidateReviewRequest,
@@ -9459,7 +11080,7 @@ def review_runtime_prompt_candidate(
     try:
         assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
         try:
-            return repository.review_runtime_prompt_candidate(
+            result = repository.review_runtime_prompt_candidate(
                 RuntimePromptCandidateReviewInput(
                     project_id=payload.project_id.strip(),
                     prompt_candidate_id=prompt_candidate_id.strip(),
@@ -9467,8 +11088,11 @@ def review_runtime_prompt_candidate(
                     reviewed_by=actor_id or payload.reviewed_by.strip(),
                     decision=payload.decision.strip(),
                     notes=payload.notes.strip() if payload.notes else None,
+                    edited_text=payload.edited_text.strip() if payload.edited_text else None,
                 )
             )
+            result["pipeline_states"] = _refresh_knowledge_pipeline_states(payload.project_id.strip(), actor_id)
+            return result
         except ValueError as exc:
             status_code = 404 if str(exc) == "prompt candidate not found" else 400
             raise HTTPException(status_code=status_code, detail=str(exc)) from exc
@@ -9476,7 +11100,8 @@ def review_runtime_prompt_candidate(
         close_repository_connection(repository)
 
 
-@app.post("/v1/prompt-candidates/runtime/import-approved")
+@app.post("/v1/knowledge/prompt-candidates/runtime/import-approved")
+@app.post("/v1/prompt-candidates/runtime/import-approved", deprecated=True)
 def import_runtime_approved_prompt_candidates(
     payload: RuntimePromptCandidateImportRequest,
     x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
@@ -9500,7 +11125,9 @@ def import_runtime_approved_prompt_candidates(
         except ValueError as exc:
             status_code = 404 if str(exc) == "project not found" else 400
             raise HTTPException(status_code=status_code, detail=str(exc)) from exc
-        return asdict(result)
+        response = asdict(result)
+        response["pipeline_states"] = _refresh_knowledge_pipeline_states(payload.project_id.strip(), actor_id)
+        return response
     finally:
         close_repository_connection(repository)
 
@@ -10432,6 +12059,40 @@ def contracts() -> dict[str, list[str]]:
             "/v1/manual-distribution-records/runtime/{distribution_record_id}/backfill",
             "/v1/knowledge-facts/runtime/search",
             "/v1/knowledge-facts/runtime/import.csv",
+            "/v1/knowledge/pipeline-runs/runtime",
+            "/v1/knowledge/pipeline-runs/runtime/{pipeline_run_id}/start",
+            "/v1/knowledge/pipeline-runs/runtime/{pipeline_run_id}/stages",
+            "/v1/knowledge/pipeline-runs/runtime/{pipeline_run_id}/jobs",
+            "/v1/knowledge/pipeline-stages/runtime/{stage_id}/retry",
+            "/v1/knowledge/import-jobs/runtime",
+            "/v1/knowledge/import-jobs/runtime/{import_job_id}/enqueue",
+            "/v1/knowledge/import-jobs/runtime/{import_job_id}/files",
+            "/v1/knowledge/import-jobs/runtime/{import_job_id}/urls",
+            "/v1/knowledge/source-assets/runtime",
+            "/v1/knowledge/source-assets/runtime/{source_asset_id}/download",
+            "/v1/knowledge/parser-runs/runtime",
+            "/v1/knowledge/blocks/runtime",
+            "/v1/knowledge/tables/runtime",
+            "/v1/knowledge/ocr-spans/runtime",
+            "/v1/knowledge/page-snapshots/runtime",
+            "/v1/knowledge/chunks/runtime",
+            "/v1/knowledge/chunks/runtime/{chunk_id}/trace",
+            "/v1/knowledge/chunks/runtime/{chunk_id}/disable",
+            "/v1/knowledge/quality-findings/runtime",
+            "/v1/knowledge/quality-gate-runs/runtime",
+            "/v1/knowledge/trace-refs/runtime",
+            "/v1/knowledge/fact-extraction-jobs/runtime",
+            "/v1/knowledge/fact-candidates/runtime",
+            "/v1/knowledge/fact-candidates/runtime/{fact_candidate_id}/review",
+            "/v1/knowledge/approved-facts/runtime",
+            "/v1/knowledge/prompt-generation-templates/runtime",
+            "/v1/knowledge/prompt-generation-jobs/runtime",
+            "/v1/knowledge/prompt-candidates/runtime",
+            "/v1/knowledge/prompt-candidates/runtime/import-approved",
+            "/v1/knowledge/content-generation-jobs/runtime",
+            "/v1/knowledge/content-drafts/runtime",
+            "/v1/knowledge/content-drafts/runtime/{content_draft_id}/review",
+            "/v1/knowledge/content-drafts/runtime/{content_draft_id}/export.md",
             "/v1/traceability/runtime",
             "/v1/traceability/runtime/export.csv",
             "/ready",

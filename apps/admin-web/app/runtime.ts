@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+
 type RuntimeRequestOptions = {
   method?: string;
   body?: unknown;
@@ -35,11 +37,26 @@ export function customerInvitationUrl(invitationId: string, inviteToken: string)
   return url.toString();
 }
 
-export function actorHeaders(extra?: HeadersInit): HeadersInit {
-  return {
-    "X-GENO-Actor-Id": adminActorId(),
-    ...(extra || {})
-  };
+export async function actorHeaders(extra?: HeadersInit): Promise<HeadersInit> {
+  const cookieStore = await cookies();
+  const sessionToken = cookieStore.get("GENO_RUNTIME_SESSION")?.value || "";
+  const csrfToken = cookieStore.get("GENO_CSRF_TOKEN")?.value || "";
+  if (sessionToken) {
+    return {
+      "X-GENO-Session-Token": sessionToken,
+      ...(csrfToken
+        ? {
+            "X-GENO-CSRF-Token": csrfToken,
+            Cookie: `GENO_CSRF_TOKEN=${encodeURIComponent(csrfToken)}`
+          }
+        : {}),
+      ...(extra || {})
+    };
+  }
+  if ((process.env.GENO_RUNTIME_AUTH_MODE || "header") === "session") {
+    return { ...(extra || {}) };
+  }
+  return { "X-GENO-Actor-Id": adminActorId(), ...(extra || {}) };
 }
 
 function runtimeUrl(path: string, query?: RuntimeRequestOptions["query"]): string {
@@ -54,8 +71,8 @@ function runtimeUrl(path: string, query?: RuntimeRequestOptions["query"]): strin
 
 export async function runtimeRequest<T>(path: string, options: RuntimeRequestOptions = {}): Promise<RuntimeResult<T>> {
   const headers: HeadersInit = options.body
-    ? actorHeaders({ "Content-Type": "application/json" })
-    : actorHeaders();
+    ? await actorHeaders({ "Content-Type": "application/json" })
+    : await actorHeaders();
   try {
     const response = await fetch(runtimeUrl(path, options.query), {
       method: options.method || "GET",

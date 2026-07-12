@@ -380,6 +380,7 @@ def deepseek_extract_knowledge_facts(
     category: str,
     market_code: str,
     max_facts: int,
+    requested_fact_kinds: tuple[str, ...] = ("brand", "competitor", "market", "source"),
     model: str = DEEPSEEK_DEFAULT_MODEL,
     endpoint: str = DEEPSEEK_DEFAULT_ENDPOINT,
     timeout_seconds: float = 45.0,
@@ -393,14 +394,23 @@ def deepseek_extract_knowledge_facts(
         http_post=http_post,
         system_prompt=(
             "You extract reviewable GEO knowledge facts. Return strict JSON only. "
-            "Do not invent facts. Use short claims grounded in the supplied document."
+            "Do not invent facts. Use short claims grounded in the supplied document. "
+            "When the source supports them, cover every requested fact_kind at least once."
         ),
         user_payload={
             "task": "extract_knowledge_facts",
             "schema": {
                 "facts": [
                     {
-                        "fact_type": "shipping_policy|returns_policy|pricing|review_proof|support_policy|brand_claim",
+                        "fact_kind": "brand|competitor|market|source",
+                        "fact_type": (
+                            "brand_identity|product_line|selling_point|shipping_policy|returns_policy|pricing_policy|"
+                            "warranty|customer_support|review_source|certification|local_market_claim|"
+                            "competitor_identity|competitor_product_line|competitor_selling_point|competitor_pricing|"
+                            "competitor_channel|competitor_review_source|competitor_weakness|comparison_dimension|"
+                            "market_requirement|city_context|local_policy|consumer_concern|seasonality|language_variant|"
+                            "source_authority|source_type|publication_date|citation_availability|source_gap"
+                        ),
                         "subject": "brand or entity",
                         "predicate": "short predicate",
                         "object_value": "one grounded claim",
@@ -413,6 +423,9 @@ def deepseek_extract_knowledge_facts(
             "category": category,
             "market_code": market_code,
             "max_facts": max(1, min(max_facts, 50)),
+            "requested_fact_kinds": [
+                value for value in requested_fact_kinds if value in {"brand", "competitor", "market", "source"}
+            ],
             "document_text": raw_text[:12000],
         },
     )
@@ -437,6 +450,11 @@ def deepseek_generate_knowledge_application(
     city: str | None,
     competitor: str | None,
     quantity: int,
+    template_instruction: str | None = None,
+    output_schema: dict[str, Any] | None = None,
+    target_audience: str | None = None,
+    forbidden_claims: tuple[str, ...] = (),
+    target_action: dict[str, Any] | None = None,
     model: str = DEEPSEEK_DEFAULT_MODEL,
     endpoint: str = DEEPSEEK_DEFAULT_ENDPOINT,
     timeout_seconds: float = 60.0,
@@ -450,11 +468,12 @@ def deepseek_generate_knowledge_application(
         http_post=http_post,
         system_prompt=(
             "You generate GEO content assets from approved knowledge. Return strict JSON only. "
-            "Every claim must be supported by the provided fact ids. Do not expose secrets."
+            "Every claim must be supported by the provided fact ids. Do not expose secrets. "
+            + (template_instruction or "")
         ),
         user_payload={
             "task": "generate_geo_knowledge_application",
-            "schema": {
+            "schema": output_schema or {
                 "content_markdown": "grounded draft markdown",
                 "faq_candidates": [{"question": "string", "answer_markdown": "string"}],
                 "prompt_candidates": [{"text": "string"}],
@@ -468,6 +487,9 @@ def deepseek_generate_knowledge_application(
             "intent_type": intent_type,
             "city": city,
             "competitor": competitor,
+            "target_audience": target_audience,
+            "forbidden_claims": list(forbidden_claims),
+            "target_action": target_action or {},
             "quantity": max(1, min(quantity, 50)),
             "approved_facts": [schema_guard_payload(fact) for fact in facts[:50]],
             "existing_prompts": [schema_guard_payload(prompt) for prompt in prompts[:50]],
@@ -532,35 +554,49 @@ def _deepseek_chat_json(
     if not normalized_key:
         raise ValueError("deepseek api key is required")
     poster = http_post or _default_http_post
-    response = poster(
-        endpoint,
-        headers={"Authorization": f"Bearer {normalized_key}", "Content-Type": "application/json"},
-        payload={
+    request_payload = {
             "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False, sort_keys=True)},
             ],
             "temperature": 0,
-            "max_tokens": 2400,
+            "max_tokens": 4096,
             "response_format": {"type": "json_object"},
-        },
-        timeout_seconds=timeout_seconds,
-    )
-    status_code = int(response.get("status_code") or 0)
-    body = bytes(response.get("body") or b"")
-    text = body.decode(str(response.get("charset") or "utf-8"), errors="replace")
-    if status_code < 200 or status_code >= 300:
-        raise ValueError(f"deepseek request failed with status {status_code}")
-    try:
-        payload = json.loads(text)
-    except ValueError as exc:
-        raise ValueError("deepseek response is not valid JSON") from exc
-    content = _deepseek_message_content(payload)
-    try:
-        return _parse_json_object(content)
-    except ValueError as exc:
-        raise ValueError("deepseek response content is not a JSON object") from exc
+        }
+    last_content_error: ValueError | None = None
+    for attempt in range(2):
+        if attempt:
+            request_payload["messages"] = [
+                {
+                    "role": "system",
+                    "content": system_prompt
+                    + " The previous response was invalid. Return exactly one complete JSON object with no prose or fences.",
+                },
+                {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False, sort_keys=True)},
+            ]
+        response = poster(
+            endpoint,
+            headers={"Authorization": f"Bearer {normalized_key}", "Content-Type": "application/json"},
+            payload=request_payload,
+            timeout_seconds=timeout_seconds,
+        )
+        status_code = int(response.get("status_code") or 0)
+        body = bytes(response.get("body") or b"")
+        text = body.decode(str(response.get("charset") or "utf-8"), errors="replace")
+        if status_code < 200 or status_code >= 300:
+            raise ValueError(f"deepseek request failed with status {status_code}")
+        try:
+            payload = json.loads(text)
+        except ValueError as exc:
+            last_content_error = ValueError("deepseek response is not valid JSON")
+            last_content_error.__cause__ = exc
+            continue
+        try:
+            return _parse_json_object(_deepseek_message_content(payload))
+        except ValueError as exc:
+            last_content_error = exc
+    raise ValueError("deepseek response content is not a JSON object after retry") from last_content_error
 
 
 def _deepseek_message_content(payload: dict[str, Any]) -> str:

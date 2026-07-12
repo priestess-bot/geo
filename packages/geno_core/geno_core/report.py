@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import os
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import UTC, datetime
 from io import StringIO
 from typing import Any, Mapping
+
+import httpx
 from uuid import uuid5, NAMESPACE_URL
 
 from geno_core.audit import build_audit_event, hash_payload
@@ -141,7 +144,7 @@ class MarkdownCsvReportExporter:
             methodology=methodology,
         )
         csv_content = _build_csv_evidence(records)
-        pdf_content = render_markdown_pdf(markdown)
+        pdf_content = render_markdown_pdf(markdown, title="GEO Evidence Report")
         audit_event = build_audit_event(
             event_type="report_export_created",
             project_id=project_id,
@@ -169,7 +172,7 @@ class MarkdownCsvReportExporter:
             },
             output_refs={"report_export_ids": [report_id]},
             method_version=self.exporter_id,
-            reason="M5 evidence report export snapshot",
+            reason="Production evidence report export snapshot",
         )
         return EvidenceReport(
             report_export=report_export,
@@ -190,7 +193,7 @@ def _build_markdown_report(
     methodology: dict[str, object],
 ) -> str:
     lines = [
-        "# GENO AU Evidence Report",
+        "# GEO Evidence Report",
         "",
         f"- Report version: {report_export.report_version}",
         f"- Market: {report_export.market_code}",
@@ -614,12 +617,36 @@ def _wrap_pdf_line(value: str, *, width: int = 92) -> list[str]:
     return lines
 
 
-def render_markdown_pdf(markdown: str) -> bytes:
+def render_markdown_pdf(markdown: str, *, title: str = "GEO Evidence Report") -> bytes:
+    renderer_url = os.getenv("GENO_PDF_RENDERER_URL", "").strip().rstrip("/")
+    production_required = (
+        os.getenv("GENO_REPORT_PDF_RENDERER_REQUIRED", "false").strip().lower() in {"1", "true", "yes"}
+        or os.getenv("GENO_DEPLOYMENT_ENVIRONMENT", "development").strip().lower() == "production"
+    )
+    if renderer_url:
+        try:
+            response = httpx.post(
+                f"{renderer_url}/v1/render",
+                json={"markdown": markdown, "title": title},
+                timeout=120,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"Playwright PDF renderer is unavailable: {exc}") from exc
+        if not response.content.startswith(b"%PDF-"):
+            raise RuntimeError("Playwright PDF renderer returned non-PDF content")
+        return response.content
+    if production_required:
+        raise RuntimeError("GENO_PDF_RENDERER_URL is required for production PDF generation")
+    return _render_minimal_test_pdf(markdown)
+
+
+def _render_minimal_test_pdf(markdown: str) -> bytes:
     text_lines: list[str] = []
     for line in markdown.splitlines():
         text_lines.extend(_wrap_pdf_line(line))
     if not text_lines:
-        text_lines = ["GENO AU Evidence Report"]
+        text_lines = ["GEO Evidence Report"]
 
     max_lines_per_page = 52
     pages = [

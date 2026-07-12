@@ -66,6 +66,7 @@ def _worker_env() -> dict[str, str]:
     env.setdefault("OBJECT_STORE_ACCESS_KEY", "minio")
     env.setdefault("OBJECT_STORE_SECRET_KEY", "minio123")
     env.setdefault("OBJECT_STORE_REGION", "us-east-1")
+    env.setdefault("GENO_DEEPSEEK_API_KEY_FILE", str(ROOT / "deepseek_api_key.txt"))
     env.setdefault("PYTHONPATH", "packages/geno_core:apps/api")
     return env
 
@@ -91,10 +92,10 @@ def _docker_worker_container() -> str | None:
     return next((name for name in names if name.endswith("-api-1") or name == "api"), None)
 
 
-def _run_fixture_worker(project_id: str) -> dict[str, Any]:
+def _run_deepseek_worker(project_id: str) -> dict[str, Any]:
     worker_args = [
         "--mode",
-        "fixture",
+        "deepseek",
         "--project-id",
         project_id,
         "--prompt-limit",
@@ -105,6 +106,8 @@ def _run_fixture_worker(project_id: str) -> dict[str, Any]:
         "1",
         "--persist",
         "--persist-analysis",
+        "--score-formula-version",
+        "visibility_v1.0",
     ]
     local_command = [sys.executable, str(ROOT / "workers/collector_worker/run_collection_slice.py"), *worker_args]
     result = subprocess.run(local_command, cwd=ROOT, env=_worker_env(), check=False, capture_output=True, text=True)
@@ -112,25 +115,46 @@ def _run_fixture_worker(project_id: str) -> dict[str, Any]:
     if result.returncode != 0 and "psycopg is required" in result.stderr:
         container = _docker_worker_container()
         if container:
+            key_path = Path(_worker_env()["GENO_DEEPSEEK_API_KEY_FILE"])
+            if not key_path.is_file():
+                raise SmokeFailure(f"DeepSeek API key file is missing: {key_path}")
+            api_key = key_path.read_text(encoding="utf-8").strip()
+            if not api_key:
+                raise SmokeFailure(f"DeepSeek API key file is empty: {key_path}")
             docker_command = [
                 "docker",
                 "exec",
+                "-i",
                 container,
-                "python",
-                "workers/collector_worker/run_collection_slice.py",
+                "sh",
+                "-c",
+                (
+                    'IFS= read -r DEEPSEEK_API_KEY; export DEEPSEEK_API_KEY; '
+                    'exec python workers/collector_worker/run_collection_slice.py "$@"'
+                ),
+                "sh",
                 *worker_args,
             ]
-            result = subprocess.run(docker_command, cwd=ROOT, check=False, capture_output=True, text=True)
+            result = subprocess.run(
+                docker_command,
+                cwd=ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+                input=f"{api_key}\n",
+            )
+            if api_key in result.stdout or api_key in result.stderr:
+                raise SmokeFailure("DeepSeek collection worker leaked the API key")
             runner = f"docker:{container}"
     if result.returncode != 0:
         raise SmokeFailure(
-            "fixture worker failed "
+            "DeepSeek collection worker failed "
             f"(runner={runner}, exit={result.returncode}, stderr={result.stderr.strip()[:1200]}, stdout={result.stdout.strip()[:1200]})"
         )
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        raise SmokeFailure(f"fixture worker emitted invalid json (runner={runner}): {result.stdout[:1200]}") from exc
+        raise SmokeFailure(f"DeepSeek worker emitted invalid json (runner={runner}): {result.stdout[:1200]}") from exc
     payload["worker_runner"] = runner
     return payload
 
@@ -290,6 +314,17 @@ def _create_project_payload(stamp: str) -> dict[str, Any]:
         "project_name": f"{brand} Production Flow",
         "target_brand": brand,
         "category": "DTC home and wellness products",
+        "market_code": "AU",
+        "market_name": "Australia",
+        "locale": "en-AU",
+        "timezone": "Australia/Sydney",
+        "currency": "AUD",
+        "primary_language": "English",
+        "cities": ["Sydney", "Melbourne"],
+        "industry_code": "dtc_ecommerce",
+        "industry_name": "DTC / e-commerce",
+        "prompt_version": "project_prompts_v1",
+        "score_formula_version": "visibility_v1.0",
         "competitors": ["BrightNest", "KoalaLab", "HarbourHome"],
         "brand_official_domains": [f"{brand.lower()}.example.com"],
         "brand_parent_company": "Lifecycle Smoke Holdings",
@@ -301,8 +336,7 @@ def _create_project_payload(stamp: str) -> dict[str, Any]:
         "launch_status": "ready",
         "schedule": {"frequency": "weekly", "timezone": "Australia/Sydney", "prompt_limit": 10},
         "external_connectors": {
-            "openai": {"enabled": True, "config_ref": "full-lifecycle-openai"},
-            "perplexity": {"enabled": True, "config_ref": "full-lifecycle-perplexity"},
+            "deepseek": {"enabled": True, "mode": "official_api", "model": "deepseek-v4-flash"},
             "google_manual": {"enabled": True, "access_method": "manual_backfill"},
         },
         "create_customer_invitation": True,
@@ -323,8 +357,8 @@ def _knowledge_csv(brand: str) -> str:
     return "\n".join(
         [
             "fact_type,subject,predicate,object_value,market_code,city,confidence,status",
-            f"customer_support,{brand},supports_market,AU customer support and recyclable packaging,AU,Sydney,0.92,approved",
-            f"warranty,{brand},publishes_policy,Warranty details for home wellness products,AU,Melbourne,0.88,approved",
+            f"customer_support,{brand},supports_market,AU customer support and recyclable packaging,AU,Sydney,0.92,active",
+            f"warranty,{brand},publishes_policy,Warranty details for home wellness products,AU,Melbourne,0.88,active",
         ]
     )
 
@@ -348,7 +382,7 @@ def _run(
     output_dir: Path,
     *,
     skip_secret_step: bool = False,
-    skip_fixture_step: bool = False,
+    skip_collection_step: bool = False,
 ) -> dict[str, Any]:
     started_at = datetime.now(UTC).isoformat()
     stamp = _now_stamp()
@@ -368,7 +402,7 @@ def _run(
 
         def create_project() -> tuple[str, dict[str, Any]]:
             payload = _create_project_payload(stamp)
-            response = _request(client, "POST", "/v1/projects/runtime/au/dtc-ecommerce", json=payload)
+            response = _request(client, "POST", "/v1/projects/runtime", json=payload)
             data = response.json()
             project_id = str(data["project_id"])
             context["project_id"] = project_id
@@ -382,7 +416,7 @@ def _run(
                 raise SmokeFailure(f"create project did not return initial customer invitation: {data}")
             if payload["create_customer_invitation"] and not context["initial_invite_token"]:
                 raise SmokeFailure(f"create project did not return one-time initial invite token: {data}")
-            if data.get("prompt_count", 0) < 1 or data.get("competitor_count", 0) < 3:
+            if data.get("prompt_count") != 0 or data.get("competitor_count", 0) < 3:
                 raise SmokeFailure(f"unexpected bootstrap counts: {data}")
             return f"created project {project_id}", {
                 "project_id": project_id,
@@ -420,7 +454,6 @@ def _run(
                     "project_id": project_id,
                     "name": updated_name,
                     "category": "DTC healthy home products",
-                    "status": "configured",
                     "updated_by": ADMIN_ACTOR_ID,
                     "reason": "full_project_lifecycle_smoke_update",
                 },
@@ -432,29 +465,43 @@ def _run(
 
         _record_step(steps, "update_project", update_project)
 
+        def negative_start_before_ready() -> tuple[str, dict[str, Any]]:
+            response = _request(
+                client,
+                "POST",
+                "/v1/projects/runtime/action",
+                expected={409},
+                json={"project_id": project_id, "action": "start", "updated_by": ADMIN_ACTOR_ID},
+            )
+            detail = _compact_error(response)
+            if "project cannot start" not in detail:
+                raise SmokeFailure(f"start-before-ready did not return readiness blockers: {detail}")
+            return "start blocked until project prerequisites are ready", {
+                "status_code": response.status_code,
+                "detail": detail,
+            }
+
+        _record_step(steps, "negative_start_before_ready", negative_start_before_ready)
+
         def project_status_action_flow() -> tuple[str, dict[str, Any]]:
             activated = _request(
                 client,
-                "PATCH",
-                "/v1/projects/runtime",
+                "POST",
+                "/v1/projects/runtime/action",
                 json={
                     "project_id": project_id,
-                    "name": f"{brand} Updated Flow",
-                    "category": "DTC healthy home products",
-                    "status": "active",
+                    "action": "start",
                     "updated_by": ADMIN_ACTOR_ID,
                     "reason": "full_project_lifecycle_smoke_activate",
                 },
             ).json()
             paused = _request(
                 client,
-                "PATCH",
-                "/v1/projects/runtime",
+                "POST",
+                "/v1/projects/runtime/action",
                 json={
                     "project_id": project_id,
-                    "name": f"{brand} Updated Flow",
-                    "category": "DTC healthy home products",
-                    "status": "paused",
+                    "action": "pause",
                     "updated_by": ADMIN_ACTOR_ID,
                     "reason": "full_project_lifecycle_smoke_pause",
                 },
@@ -481,8 +528,6 @@ def _run(
             if statuses != expected:
                 raise SmokeFailure(f"project status action flow mismatch: {statuses}")
             return "project status activate/pause/archive/restore checked", statuses
-
-        _record_step(steps, "project_status_action_flow", project_status_action_flow)
 
         def lifecycle_actions() -> tuple[str, dict[str, Any]]:
             archived = _request(
@@ -609,7 +654,7 @@ def _run(
                 json={
                     "project_id": project_id,
                     "provider": "openai",
-                    "mode": "official_api",
+                    "mode": "deepseek_fallback",
                     "model": "deepseek-v4-flash",
                     "raw_secret": TEST_SECRET,
                     "tested_by": ADMIN_ACTOR_ID,
@@ -644,7 +689,7 @@ def _run(
                         "perplexity": {"status": "not_configured", "mode": "official_api", "model": "sonar"},
                         "google_ai_mode": {"status": "manual_ready", "mode": "manual_backfill", "model": "google_ai_mode"},
                     },
-                    "scoring_profile": "au_visibility_v1",
+                    "scoring_profile": "visibility_v1.0",
                     "status": "ready",
                     "created_by": ADMIN_ACTOR_ID,
                     "updated_by": ADMIN_ACTOR_ID,
@@ -664,6 +709,8 @@ def _run(
             openai = connectors.get("openai") if isinstance(connectors.get("openai"), dict) else {}
             if openai.get("status") != "active" or openai.get("secret_ref") != secret_ref:
                 raise SmokeFailure(f"launch config did not persist tested connector state: {fetched}")
+            if launch_config.get("status") != "ready":
+                raise SmokeFailure(f"launch config readiness was not derived from tested connector: {fetched}")
             return "connector test saved masked secret and launch config state", {
                 "provider": connector_test.get("provider"),
                 "status": connector_test.get("status"),
@@ -788,6 +835,7 @@ def _run(
             }
 
         _record_step(steps, "prompt_import_update_export", prompt_import_and_update)
+        _record_step(steps, "project_status_action_flow", project_status_action_flow)
 
         def invalid_prompt_import() -> tuple[str, dict[str, Any]]:
             response = _request(
@@ -916,20 +964,25 @@ def _run(
 
         _record_step(steps, "negative_manual_backfill_missing_prompt", invalid_manual_backfill)
 
-        def fixture_collection() -> tuple[str, dict[str, Any]]:
-            if skip_fixture_step:
-                return "fixture collection step skipped by explicit debug flag", {"skipped": True}
-            data = _run_fixture_worker(project_id)
+        def deepseek_collection() -> tuple[str, dict[str, Any]]:
+            if skip_collection_step:
+                return "DeepSeek collection step skipped by explicit debug flag", {"skipped": True}
+            data = _run_deepseek_worker(project_id)
             if int(data.get("success_count", 0)) < 1:
-                raise SmokeFailure(f"fixture collection produced no successes: {data}")
-            return "fixture collection persisted analysis", {
+                raise SmokeFailure(f"DeepSeek collection produced no successes: {data}")
+            return "real DeepSeek collection persisted evidence and analysis", {
                 "record_count": data.get("record_count"),
                 "success_count": data.get("success_count"),
                 "failure_count": data.get("failure_count"),
                 "worker_runner": data.get("worker_runner"),
             }
 
-        _record_step(steps, "fixture_collection_analysis_scoring", fixture_collection, critical=not skip_fixture_step)
+        _record_step(
+            steps,
+            "deepseek_collection_analysis_scoring",
+            deepseek_collection,
+            critical=not skip_collection_step,
+        )
 
         def runtime_outputs() -> tuple[str, dict[str, Any]]:
             endpoints = {
@@ -1121,7 +1174,7 @@ def _run(
             data = _request(
                 client,
                 "PATCH",
-                f"/v1/content-drafts/runtime/{content_draft_id}/review",
+                f"/v1/knowledge/content-drafts/runtime/{content_draft_id}/review",
                 json={
                     "project_id": project_id,
                     "review_status": "approved",
@@ -1174,7 +1227,7 @@ def _run(
             payload["project_name"] = f"{brand} Isolated Negative"
             payload["target_brand"] = f"{brand}Isolated"
             payload["customer_email"] = f"isolated+{stamp}@example.com"
-            other = _request(client, "POST", "/v1/projects/runtime/au/dtc-ecommerce", json=payload).json()
+            other = _request(client, "POST", "/v1/projects/runtime", json=payload).json()
             other_project_id = str(other["project_id"])
             prompt_id = str(context["prompt_id"])
             response = _request(
@@ -1199,6 +1252,7 @@ def _run(
 
     failed = [step for step in steps if step.status == "fail"]
     report = {
+        "run_id": f"full-lifecycle-{stamp}",
         "status": "failed" if failed else "passed",
         "started_at": started_at,
         "finished_at": datetime.now(UTC).isoformat(),
@@ -1226,9 +1280,9 @@ def main() -> int:
         help="Debug only: skip connector secret storage so later lifecycle branches can be explored.",
     )
     parser.add_argument(
-        "--skip-fixture-step",
+        "--skip-collection-step",
         action="store_true",
-        help="Debug only: skip developer-only fixture collection so later lifecycle branches can be explored.",
+        help="Debug only: skip real DeepSeek collection so later lifecycle branches can be explored.",
     )
     args = parser.parse_args()
 
@@ -1239,11 +1293,12 @@ def main() -> int:
             api_base=api_base,
             output_dir=output_dir,
             skip_secret_step=args.skip_secret_step,
-            skip_fixture_step=args.skip_fixture_step,
+            skip_collection_step=args.skip_collection_step,
         )
     except Exception as exc:  # noqa: BLE001 - CLI must emit a durable failure artifact.
         output_dir.mkdir(parents=True, exist_ok=True)
         report = {
+            "run_id": f"full-lifecycle-failed-{_now_stamp()}",
             "status": "failed",
             "started_at": datetime.now(UTC).isoformat(),
             "finished_at": datetime.now(UTC).isoformat(),

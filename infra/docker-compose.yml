@@ -27,6 +27,15 @@ services:
       - -c
       - |
         set -eu
+        until psql -h postgres -U geno -d geno -tAc "SELECT 1" >/dev/null 2>&1; do
+          sleep 1
+        done
+        # The official Postgres entrypoint briefly exposes its temporary init
+        # server before restarting into the final server on a fresh volume.
+        sleep 5
+        until psql -h postgres -U geno -d geno -tAc "SELECT 1" >/dev/null 2>&1; do
+          sleep 1
+        done
         if [ "$(psql -h postgres -U geno -d geno -tAc "SELECT to_regprocedure('geno_runtime_can_access_project(uuid)') IS NOT NULL")" != "t" ]; then
           psql -h postgres -U geno -d geno -v ON_ERROR_STOP=1 -f /migrations/up/0010_runtime_project_rls.sql
         fi
@@ -42,7 +51,13 @@ services:
           /migrations/up/0019_evidence_asset_metadata.sql \
           /migrations/up/0020_action_recommendation_contract.sql \
           /migrations/up/0021_knowledge_application.sql \
-          /migrations/up/0022_score_profile_cleanup.sql
+          /migrations/up/0022_score_profile_cleanup.sql \
+          /migrations/up/0023_knowledge_pipeline_orchestration.sql \
+          /migrations/up/0024_market_neutral_defaults.sql \
+          /migrations/up/0025_global_auth_audit.sql \
+          /migrations/up/0026_collection_jobs.sql \
+          /migrations/up/0027_knowledge_pipeline_consolidation.sql \
+          /migrations/up/0028_knowledge_pipeline_production_contract.sql
         do
           psql -h postgres -U geno -d geno -v ON_ERROR_STOP=1 -f "$$file"
         done
@@ -61,6 +76,48 @@ services:
       - "${GENO_MINIO_CONSOLE_HOST_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.4
+    ports:
+      - "${GENO_QDRANT_HTTP_HOST_PORT:-6333}:6333"
+      - "${GENO_QDRANT_GRPC_HOST_PORT:-6334}:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+
+  valkey:
+    image: valkey/valkey:8.0.2-alpine
+    command:
+      - valkey-server
+      - --appendonly
+      - "yes"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test:
+        - CMD
+        - valkey-cli
+        - ping
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  report-pdf-renderer:
+    image: ${GENO_PDF_RENDERER_IMAGE:-geno-pdf-renderer:local}
+    build:
+      context: ..
+      dockerfile: workers/report_export_worker/Dockerfile.renderer
+    environment:
+      GENO_DEPLOYMENT_ENVIRONMENT: ${GENO_DEPLOYMENT_ENVIRONMENT:-development}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8200/health', timeout=5).read()
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
   litellm:
     image: docker.litellm.ai/berriai/litellm:main-latest
@@ -94,10 +151,21 @@ services:
       OBJECT_STORE_ACCESS_KEY: minio
       OBJECT_STORE_SECRET_KEY: minio123
       OBJECT_STORE_REGION: us-east-1
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-geo_knowledge_chunks_bge_m3_v1}
+      KNOWLEDGE_EMBEDDING_API_URL: http://knowledge-embedding-api:8100
+      GENO_PDF_RENDERER_URL: http://report-pdf-renderer:8200
+      GENO_REPORT_PDF_RENDERER_REQUIRED: ${GENO_REPORT_PDF_RENDERER_REQUIRED:-1}
+      GENO_TASK_QUEUE_ENABLED: ${GENO_TASK_QUEUE_ENABLED:-1}
+      GENO_TASK_QUEUE_REQUIRED: ${GENO_TASK_QUEUE_REQUIRED:-1}
+      GENO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geno-local}
       GENO_CONNECTOR_SECRET_MASTER_KEY: ${GENO_CONNECTOR_SECRET_MASTER_KEY:-geno-local-connector-secret-master-key}
       GENO_RUNTIME_PROJECT_ACCESS_CONTROL: ${GENO_RUNTIME_PROJECT_ACCESS_CONTROL:-1}
+      GENO_RUNTIME_AUTH_MODE: ${GENO_RUNTIME_AUTH_MODE:-header}
+      GENO_RUNTIME_SESSION_COOKIE_SECURE: ${GENO_RUNTIME_SESSION_COOKIE_SECURE:-0}
+      GENO_DEPLOYMENT_ENVIRONMENT: ${GENO_DEPLOYMENT_ENVIRONMENT:-development}
       GENO_DEV_TOOLS_ENABLED: ${GENO_DEV_TOOLS_ENABLED:-0}
       GENO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL:-}
       GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET:-}
@@ -118,6 +186,14 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      qdrant:
+        condition: service_started
+      knowledge-embedding-api:
+        condition: service_healthy
+      report-pdf-renderer:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
 
   prometheus:
     image: prom/prometheus:v3.0.1
@@ -151,6 +227,28 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       prometheus:
+        condition: service_started
+
+  ops-runtime-smoke:
+    image: ${GENO_API_IMAGE:-geno-api:local}
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    profiles:
+      - ops-smoke
+    environment:
+      GENO_OPS_SMOKE_API_BASE_URL: http://api:${GENO_API_CONTAINER_PORT:-8000}
+      GENO_OPS_SMOKE_PROMETHEUS_BASE_URL: http://prometheus:9090
+      GENO_OPS_SMOKE_GRAFANA_BASE_URL: http://grafana:3000
+    command:
+      - python
+      - scripts/run_ops_runtime_smoke.py
+    depends_on:
+      api:
+        condition: service_started
+      prometheus:
+        condition: service_started
+      grafana:
         condition: service_started
 
   collector-worker:
@@ -323,6 +421,8 @@ services:
       GENO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS: ${GENO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS:-3}
       GENO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS: ${GENO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS:-300}
       GENO_REPORT_EXPORT_WORKER_LEASE_SECONDS: ${GENO_REPORT_EXPORT_WORKER_LEASE_SECONDS:-900}
+      GENO_PDF_RENDERER_URL: http://report-pdf-renderer:8200
+      GENO_REPORT_PDF_RENDERER_REQUIRED: ${GENO_REPORT_PDF_RENDERER_REQUIRED:-1}
     command:
       - python
       - workers/report_export_worker/run_report_export_jobs.py
@@ -339,6 +439,197 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      report-pdf-renderer:
+        condition: service_healthy
+
+  knowledge-worker:
+    image: ${GENO_KNOWLEDGE_WORKER_IMAGE:-geno-knowledge-worker:local}
+    build:
+      context: ..
+      dockerfile: workers/knowledge_worker/Dockerfile.heavy
+    profiles:
+      - knowledge
+    environment:
+      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_ACCESS_KEY: minio
+      OBJECT_STORE_SECRET_KEY: minio123
+      OBJECT_STORE_REGION: us-east-1
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-geo_knowledge_chunks_bge_m3_v1}
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      GEO_BGE_M3_MODEL: ${GEO_BGE_M3_MODEL:-/models/bge-m3-pytorch}
+      GEO_KNOWLEDGE_COMPONENT_RUNNER: /app/scripts/run_knowledge_component.py
+      GEO_ALLOW_CRAWLER_FALLBACK: ${GEO_ALLOW_CRAWLER_FALLBACK:-false}
+      GENO_KNOWLEDGE_REQUIRE_REAL_MODEL: ${GENO_KNOWLEDGE_REQUIRE_REAL_MODEL:-true}
+      GENO_KNOWLEDGE_REQUIRE_OBJECT_STORE: ${GENO_KNOWLEDGE_REQUIRE_OBJECT_STORE:-true}
+      GENO_KNOWLEDGE_REQUIRE_QDRANT: ${GENO_KNOWLEDGE_REQUIRE_QDRANT:-true}
+      GENO_DEEPSEEK_API_KEY_FILE: ${GENO_DEEPSEEK_API_KEY_FILE:-/run/secrets/deepseek_api_key}
+      GENO_KNOWLEDGE_WORKER_MAX_JOBS: ${GENO_KNOWLEDGE_WORKER_MAX_JOBS:-1}
+      GENO_KNOWLEDGE_WORKER_LEASE_SECONDS: ${GENO_KNOWLEDGE_WORKER_LEASE_SECONDS:-600}
+      GENO_KNOWLEDGE_WORKER_POLL_SECONDS: ${GENO_KNOWLEDGE_WORKER_POLL_SECONDS:-2.0}
+    command:
+      - python
+      - workers/knowledge_worker/run_knowledge_pipeline.py
+      - --max-jobs
+      - ${GENO_KNOWLEDGE_WORKER_MAX_JOBS:-1}
+      - --lease-seconds
+      - ${GENO_KNOWLEDGE_WORKER_LEASE_SECONDS:-600}
+    volumes:
+      - ../deepseek_api_key.txt:/run/secrets/deepseek_api_key:ro
+      - ../.cache/models:/models:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+      minio:
+        condition: service_started
+      qdrant:
+        condition: service_started
+
+  knowledge-embedding-api:
+    image: ${GENO_KNOWLEDGE_WORKER_IMAGE:-geno-knowledge-worker:local}
+    build:
+      context: ..
+      dockerfile: workers/knowledge_worker/Dockerfile.heavy
+    environment:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      GEO_BGE_M3_MODEL: /models/bge-m3-pytorch
+      GEO_KNOWLEDGE_COMPONENT_RUNNER: /app/scripts/run_knowledge_component.py
+    command:
+      - uvicorn
+      - workers.knowledge_worker.embedding_api:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8100"
+    volumes:
+      - ../.cache/models:/models:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8100/health', timeout=5).read()
+      interval: 15s
+      timeout: 10s
+      retries: 20
+
+  task-worker-runtime:
+    image: ${GENO_API_IMAGE:-geno-api:local}
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_ACCESS_KEY: minio
+      OBJECT_STORE_SECRET_KEY: minio123
+      OBJECT_STORE_REGION: us-east-1
+      GENO_PDF_RENDERER_URL: http://report-pdf-renderer:8200
+      GENO_REPORT_PDF_RENDERER_REQUIRED: "1"
+      GENO_TASK_QUEUE_ENABLED: "1"
+      GENO_TASK_QUEUE_REQUIRED: "1"
+      GENO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+    command:
+      - dramatiq
+      - workers.task_queue.tasks
+      - --queues
+      - collection,report
+      - --processes
+      - "1"
+      - --threads
+      - "2"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      report-pdf-renderer:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+
+  task-worker-knowledge:
+    image: ${GENO_KNOWLEDGE_WORKER_IMAGE:-geno-knowledge-worker:local}
+    build:
+      context: ..
+      dockerfile: workers/knowledge_worker/Dockerfile.heavy
+    environment:
+      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_ACCESS_KEY: minio
+      OBJECT_STORE_SECRET_KEY: minio123
+      OBJECT_STORE_REGION: us-east-1
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-geo_knowledge_chunks_bge_m3_v1}
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      GEO_BGE_M3_MODEL: ${GEO_BGE_M3_MODEL:-/models/bge-m3-pytorch}
+      GEO_KNOWLEDGE_COMPONENT_RUNNER: /app/scripts/run_knowledge_component.py
+      GEO_ALLOW_CRAWLER_FALLBACK: ${GEO_ALLOW_CRAWLER_FALLBACK:-false}
+      GENO_KNOWLEDGE_REQUIRE_REAL_MODEL: ${GENO_KNOWLEDGE_REQUIRE_REAL_MODEL:-true}
+      GENO_KNOWLEDGE_REQUIRE_OBJECT_STORE: ${GENO_KNOWLEDGE_REQUIRE_OBJECT_STORE:-true}
+      GENO_KNOWLEDGE_REQUIRE_QDRANT: ${GENO_KNOWLEDGE_REQUIRE_QDRANT:-true}
+      GENO_DEEPSEEK_API_KEY_FILE: ${GENO_DEEPSEEK_API_KEY_FILE:-/run/secrets/deepseek_api_key}
+      GENO_KNOWLEDGE_WORKER_MAX_JOBS: ${GENO_KNOWLEDGE_WORKER_MAX_JOBS:-25}
+      GENO_KNOWLEDGE_WORKER_LEASE_SECONDS: ${GENO_KNOWLEDGE_WORKER_LEASE_SECONDS:-600}
+      GENO_TASK_QUEUE_ENABLED: "1"
+      GENO_TASK_QUEUE_REQUIRED: "1"
+      GENO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+    command:
+      - dramatiq
+      - workers.task_queue.tasks
+      - --queues
+      - knowledge
+      - --processes
+      - "1"
+      - --threads
+      - "1"
+    volumes:
+      - ../deepseek_api_key.txt:/run/secrets/deepseek_api_key:ro
+      - ../.cache/models:/models:ro
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      valkey:
+        condition: service_healthy
+
+  task-recovery-dispatcher:
+    image: ${GENO_API_IMAGE:-geno-api:local}
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    environment:
+      GENO_TASK_QUEUE_ENABLED: "1"
+      GENO_TASK_QUEUE_REQUIRED: "1"
+      GENO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+    command:
+      - python
+      - workers/task_queue/run_recovery_dispatcher.py
+      - --interval-seconds
+      - ${GENO_TASK_RECOVERY_INTERVAL_SECONDS:-30}
+    depends_on:
+      task-worker-runtime:
+        condition: service_started
+      task-worker-knowledge:
+        condition: service_started
+      valkey:
+        condition: service_healthy
 
   notification-delivery-worker:
     build:
@@ -522,6 +813,70 @@ services:
       postgres:
         condition: service_healthy
 
+  backup-postgres-smoke:
+    image: pgvector/pgvector:pg16
+    profiles:
+      - backup-smoke
+    environment:
+      PGPASSWORD: geno
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        restore_db="geno_restore_smoke"
+        dump_path="/tmp/geno-backup-smoke.dump"
+        trap 'dropdb -h postgres -U geno --if-exists "$$restore_db" >/dev/null 2>&1 || true' EXIT
+        dropdb -h postgres -U geno --if-exists "$$restore_db"
+        pg_dump -h postgres -U geno -d geno --format=custom --file="$$dump_path"
+        createdb -h postgres -U geno "$$restore_db"
+        pg_restore -h postgres -U geno -d "$$restore_db" --no-owner --no-privileges --exit-on-error "$$dump_path"
+        source_tables="$$(psql -h postgres -U geno -d geno -tAc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
+        restored_tables="$$(psql -h postgres -U geno -d "$$restore_db" -tAc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
+        source_projects="$$(psql -h postgres -U geno -d geno -tAc "SELECT count(*) FROM projects")"
+        restored_projects="$$(psql -h postgres -U geno -d "$$restore_db" -tAc "SELECT count(*) FROM projects")"
+        test "$$source_tables" = "$$restored_tables"
+        test "$$source_projects" = "$$restored_projects"
+        test "$$(stat -c %s "$$dump_path")" -gt 0
+        echo "postgres backup/restore smoke passed: tables=$$restored_tables projects=$$restored_projects sha256=$$(sha256sum "$$dump_path" | cut -d' ' -f1)"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+
+  backup-object-smoke:
+    image: ${GENO_MINIO_MC_IMAGE:-minio/mc:RELEASE.2025-02-21T16-00-46Z}
+    profiles:
+      - backup-smoke
+    entrypoint:
+      - /bin/sh
+      - -c
+    command:
+      - |
+        set -eu
+        source_bucket="geno-reports"
+        backup_bucket="geno-backups"
+        object_key="backup-smoke/object-$$(date +%s).txt"
+        printf 'geo object backup restore smoke\n' >/tmp/source-object
+        until mc alias set local http://minio:9000 minio minio123 >/dev/null 2>&1; do
+          sleep 1
+        done
+        mc mb --ignore-existing "local/$$source_bucket"
+        mc mb --ignore-existing "local/$$backup_bucket"
+        mc cp /tmp/source-object "local/$$source_bucket/$$object_key"
+        mc cp "local/$$source_bucket/$$object_key" "local/$$backup_bucket/$$object_key"
+        mc rm "local/$$source_bucket/$$object_key"
+        mc cp "local/$$backup_bucket/$$object_key" "local/$$source_bucket/$$object_key"
+        mc cp "local/$$source_bucket/$$object_key" /tmp/restored-object
+        source_sha="$$(sha256sum /tmp/source-object | cut -d' ' -f1)"
+        restored_sha="$$(sha256sum /tmp/restored-object | cut -d' ' -f1)"
+        test "$$source_sha" = "$$restored_sha"
+        mc rm "local/$$source_bucket/$$object_key"
+        mc rm "local/$$backup_bucket/$$object_key"
+        echo "object backup/restore smoke passed: sha256=$$restored_sha"
+    depends_on:
+      minio:
+        condition: service_started
+
   customer-web:
     build:
       context: ..
@@ -529,6 +884,8 @@ services:
     environment:
       API_INTERNAL_BASE_URL: http://api:${GENO_API_CONTAINER_PORT:-8000}
       NEXT_PUBLIC_API_BASE_URL: http://localhost:${GENO_API_HOST_PORT:-8000}
+      GENO_RUNTIME_AUTH_MODE: ${GENO_RUNTIME_AUTH_MODE:-header}
+      GENO_RUNTIME_SESSION_COOKIE_SECURE: ${GENO_RUNTIME_SESSION_COOKIE_SECURE:-0}
       PORT: ${GENO_CUSTOMER_WEB_CONTAINER_PORT:-3000}
     command:
       - npm
@@ -555,6 +912,8 @@ services:
       NEXT_PUBLIC_CUSTOMER_WEB_BASE_URL: http://localhost:${GENO_CUSTOMER_WEB_HOST_PORT:-3000}
       GENO_ADMIN_ACTOR_ID: ${GENO_ADMIN_ACTOR_ID:-runtime-console}
       GENO_ADMIN_DEV_TOOLS_ENABLED: ${GENO_ADMIN_DEV_TOOLS_ENABLED:-0}
+      GENO_RUNTIME_AUTH_MODE: ${GENO_RUNTIME_AUTH_MODE:-header}
+      GENO_RUNTIME_SESSION_COOKIE_SECURE: ${GENO_RUNTIME_SESSION_COOKIE_SECURE:-0}
       PORT: ${GENO_ADMIN_WEB_CONTAINER_PORT:-3000}
     command:
       - npm
@@ -598,3 +957,5 @@ volumes:
   minio_data:
   prometheus_data:
   grafana_data:
+  qdrant_storage:
+  valkey_data:

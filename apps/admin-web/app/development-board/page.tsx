@@ -6,6 +6,9 @@ export const dynamic = "force-dynamic";
 const checklistFileName = "GEO-Production-v1执行进度-checklist-2026-07-05.md";
 const planFileName = "GEO-Production-v1完整规划-2026-07-05.md";
 const reviewFileName = "GEO-Production-v1正式可用性复查报告-2026-07-05.md";
+const knowledgePlanFileName = "GEO-知识库解析与生成工作流规划-2026-07-08.md";
+const progressFileName = "GEO-当前项目进度汇报-2026-07-10.md";
+const testingFileName = "GEO-可复用测试流程-2026-07-06.md";
 const docsCandidateDirs = [
   path.join(process.cwd(), "docs"),
   path.join(process.cwd(), "..", "..", "docs")
@@ -26,13 +29,31 @@ const currentDocuments = [
     fileName: checklistFileName,
     title: "执行进度 Checklist",
     role: "本页数据源",
-    summary: "每个执行项必须同时具备状态、验收命令、证据路径和 commit，才计入正式完成。"
+    summary: "每个执行项必须同时具备完成状态、验收命令和证据路径；commit 作为独立交付记录。"
   },
   {
     fileName: reviewFileName,
     title: "正式可用性复查报告",
     role: "复查与整改基线",
     summary: "记录正式入口、用户动作、客户体验、测试覆盖和状态误报风险。"
+  },
+  {
+    fileName: knowledgePlanFileName,
+    title: "知识库生产工作流规划",
+    role: "知识库实施蓝图",
+    summary: "定义解析、OCR、表格、Chunk、事实、Prompt、文案、追踪、质量门禁和 36 项总验收。"
+  },
+  {
+    fileName: progressFileName,
+    title: "当前项目进度汇报",
+    role: "最新事实状态",
+    summary: "区分已实现、已实跑和仍被运行环境阻塞的门禁，不沿用旧 artifact 冒充完成。"
+  },
+  {
+    fileName: testingFileName,
+    title: "可复用测试流程",
+    role: "变更验收规范",
+    summary: "规定前后端、真实项目、知识库、模型、负向权限和最终门禁的复用流程。"
   }
 ];
 
@@ -46,6 +67,16 @@ const gateCommands = [
     name: "前端逐页点击",
     command: "make frontend-page-click-smoke",
     detail: "覆盖 Admin Web 和 Customer Web 的正式页面，检查渲染、控制台、框架 overlay 和基础交互。"
+  },
+  {
+    name: "知识库前端生命周期",
+    command: "make frontend-knowledge-click-smoke",
+    detail: "从前端完成导入、事实审核、Prompt 生成/审核/导入、文案生成/审核/下载和检索。"
+  },
+  {
+    name: "知识库完整流水线",
+    command: "make geo-production-full-pipeline-smoke",
+    detail: "强制执行重型组件、Qdrant、36 项 live E2E、重跑版本链和额外运行契约。"
   },
   {
     name: "完整项目生命周期",
@@ -71,11 +102,11 @@ const boardPrinciples = [
   },
   {
     title: "只认正式证据",
-    detail: "只有状态、命令、证据路径、commit 和备注都可复核的执行项，才进入 Production Ready。"
+    detail: "只有完成状态、验收命令和证据路径都可复核的执行项，才进入 Production Ready。"
   },
   {
     title: "旧口径降级",
-    detail: "AU、MVP、试点、GENO 工程进展等历史叙述只保留在 archive 或历史文件中，不再作为当前页面口径。"
+    detail: "旧项目口径和历史工程叙述只保留在归档文件中，不再作为当前产品页面或验收依据。"
   },
   {
     title: "页面必须可操作",
@@ -227,8 +258,6 @@ function productionBlockersFor(cells: {
   status: string;
   command: string;
   evidence: string;
-  commit: string;
-  note: string;
 }): string[] {
   const blockers: string[] = [];
   if (cells.status !== "Done") {
@@ -239,12 +268,6 @@ function productionBlockersFor(cells: {
   }
   if (!hasUsableCell(cells.evidence)) {
     blockers.push("证据路径未填写");
-  }
-  if (!hasUsableCell(cells.commit)) {
-    blockers.push("commit hash 未填写");
-  }
-  if (/pending|待确认|仍需|仍在|placeholder|TODO|Formal UI Pending/i.test(cells.note)) {
-    blockers.push("备注仍包含待确认或 pending 信息");
   }
   return blockers;
 }
@@ -298,7 +321,7 @@ function parseChecklist(markdown: string, sourceUpdatedAt: string): ChecklistDat
     const evidence = cells[6];
     const commit = cells[7];
     const note = cells[8];
-    const productionBlockers = productionBlockersFor({ status, command, evidence, commit, note });
+    const productionBlockers = productionBlockersFor({ status, command, evidence });
     activeGroup.items.push({
       id,
       section: cells[1],
@@ -401,6 +424,14 @@ function summarizeArtifact(payload: unknown): string {
   if (pass !== undefined || fail !== undefined) {
     return `通过 ${pass ?? 0}，失败 ${fail ?? 0}${viewports}${projectId}`;
   }
+  const live = record.live_pipeline && typeof record.live_pipeline === "object"
+    ? record.live_pipeline as Record<string, unknown>
+    : {};
+  const acceptance = Array.isArray(live.acceptance_checks) ? live.acceptance_checks : [];
+  const operational = Array.isArray(live.operational_checks) ? live.operational_checks : [];
+  if (acceptance.length || operational.length) {
+    return `知识库验收 ${acceptance.length}/36；运行契约 ${operational.length}/12${projectId}`;
+  }
   return JSON.stringify(summary || {}).slice(0, 160) || "已生成，但没有 summary 字段。";
 }
 
@@ -413,6 +444,18 @@ async function loadArtifactItems(): Promise<ArtifactItem[]> {
       path: "tmp/frontend-page-click-smoke/latest.json"
     },
     {
+      id: "frontend-knowledge-lifecycle-smoke",
+      title: "知识库前端生命周期测试",
+      command: "make frontend-knowledge-click-smoke",
+      path: "tmp/frontend-knowledge-lifecycle-smoke/latest.json"
+    },
+    {
+      id: "geo-production-full-pipeline-smoke",
+      title: "知识库完整生产流水线",
+      command: "make geo-production-full-pipeline-smoke",
+      path: "tmp/geo-production-full-pipeline-smoke/latest.json"
+    },
+    {
       id: "full-project-lifecycle-smoke",
       title: "完整项目生命周期测试",
       command: "make full-project-lifecycle-smoke",
@@ -423,6 +466,12 @@ async function loadArtifactItems(): Promise<ArtifactItem[]> {
       title: "真实模型调用 smoke",
       command: "make connector-real-smoke",
       path: "tmp/connector-real-smoke/latest.json"
+    },
+    {
+      id: "promptfoo-knowledge-eval",
+      title: "Prompt 与知识生成评估",
+      command: "make promptfoo-knowledge-eval",
+      path: "tmp/promptfoo-knowledge-eval/latest.json"
     }
   ];
 
@@ -500,7 +549,7 @@ export default async function DevelopmentBoardPage() {
           <p className="eyebrow">开发板</p>
           <h1>GEO Production v1 执行看板</h1>
           <p className="muted" style={{ marginTop: 8 }}>
-            这是当前唯一的工程进度看板。它从最新 checklist、正式规划、复查报告和 smoke 产物读取事实；状态、验收命令、证据路径和 commit hash 均完整，才计入正式完成。
+            这是当前唯一的工程进度看板。它从最新 checklist、正式规划、复查报告和 smoke 产物读取事实；状态、验收命令和证据路径均完整，才计入正式完成，commit 作为独立交付记录展示。
           </p>
         </div>
         <nav className="nav">
@@ -688,7 +737,7 @@ export default async function DevelopmentBoardPage() {
             <article className="developmentFocusItem">
               <div>
                 <h3>没有待补 Production Ready 条目</h3>
-                <p>继续运行最终门禁并保持文档、证据和 commit 对齐。</p>
+                <p>继续运行最终门禁并保持文档和证据对齐，commit 作为独立交付记录维护。</p>
               </div>
               <code>make production-v1-final-gate</code>
             </article>

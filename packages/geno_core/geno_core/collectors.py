@@ -1407,6 +1407,124 @@ class PerplexitySonarCollector:
         return self.parse_response(response.payload)
 
 
+class DeepSeekChatCollector:
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        model: str = "deepseek-v4-flash",
+        endpoint: str = "https://api.deepseek.com/chat/completions",
+        http_client: JsonHttpClient | None = None,
+        timeout_seconds: float = 45.0,
+    ) -> None:
+        self._api_key = api_key if api_key is not None else self._load_api_key()
+        self._model = model
+        self._endpoint = endpoint
+        self._http_client = http_client or JsonHttpClient()
+        self._timeout_seconds = timeout_seconds
+        self.vendor_cost = float(os.getenv("DEEPSEEK_VENDOR_COST_PER_REQUEST") or "0")
+
+    @staticmethod
+    def _load_api_key() -> str | None:
+        direct = os.getenv("DEEPSEEK_API_KEY", "").strip()
+        if direct:
+            return direct
+        key_path = os.getenv("GENO_DEEPSEEK_API_KEY_FILE", "").strip()
+        if not key_path:
+            return None
+        try:
+            return Path(key_path).read_text(encoding="utf-8").strip() or None
+        except OSError:
+            return None
+
+    def id(self) -> str:
+        return "deepseek.chat.api"
+
+    def capabilities(self) -> dict[str, object]:
+        return {
+            "platform": "deepseek",
+            "surface": "chat_completions",
+            "supports_geo": True,
+            "supports_citation": False,
+            "supports_screenshot": False,
+            "supports_html_snapshot": True,
+            "access_method": "official_api",
+        }
+
+    def health(self) -> str:
+        return "ready" if self._api_key else "not_configured"
+
+    def build_payload(self, *, prompt: str, market: MarketProfile, city: str, language: str) -> dict[str, object]:
+        return {
+            "model": self._model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        f"Answer for {market.market} ({market.market_code}), city={city}, language={language}. "
+                        "Give a direct answer. Do not invent citations or claim live web access."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0,
+            "max_tokens": 640,
+        }
+
+    def parse_response(self, payload: dict[str, object]) -> RawCollectResult:
+        choices = payload.get("choices")
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            raise ValueError("DeepSeek response missing choices")
+        message = choices[0].get("message")
+        if not isinstance(message, dict):
+            raise ValueError("DeepSeek response missing message")
+        answer_text = str(message.get("content") or message.get("reasoning_content") or "").strip()
+        snapshot_payload, snapshot_url, snapshot_hash = _api_snapshot_payload(
+            collector_backend_id=self.id(),
+            payload=payload,
+            answer_text=answer_text,
+            citation_count=0,
+        )
+        return RawCollectResult(
+            answer_present=bool(answer_text),
+            surface_triggered=True,
+            answer_text=answer_text,
+            citations=[],
+            screenshot_url=None,
+            html_snapshot_url=snapshot_url,
+            raw_payload=snapshot_payload,
+            model_or_surface=self._model,
+            account_state=None,
+            collector_version="deepseek-chat-api-v1",
+            evidence_asset_hashes={"html_snapshot": snapshot_hash},
+        )
+
+    def collect(
+        self,
+        *,
+        prompt: str,
+        market: MarketProfile,
+        city: str,
+        language: str,
+        device: str,
+    ) -> RawCollectResult:
+        if not self._api_key:
+            raise CollectorConfigurationError("DEEPSEEK_API_KEY or GENO_DEEPSEEK_API_KEY_FILE is required")
+        response = self._http_client.post_json(
+            url=self._endpoint,
+            headers={"Authorization": f"Bearer {self._api_key}"},
+            payload=self.build_payload(prompt=prompt, market=market, city=city, language=language),
+            timeout_seconds=self._timeout_seconds,
+        )
+        if response.status_code >= 400:
+            raise CollectorProviderError(
+                "DeepSeek provider request failed",
+                status_code=response.status_code,
+                payload=response.payload,
+            )
+        return self.parse_response(response.payload)
+
+
 class OpenAIWebSearchCollector:
     def __init__(
         self,
