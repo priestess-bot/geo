@@ -102,6 +102,7 @@ class SchemaV2ManifestContractsTest(unittest.TestCase):
                 "baseline/0000_extensions_roles.sql",
                 "baseline/0010_tenancy_project_rls.sql",
                 "baseline/0011_auth_session_context.sql",
+                "baseline/0012_auth_state_guards.sql",
             ],
         )
         self.assertEqual(manifest.migration_files, ())
@@ -289,6 +290,63 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
             "GRANT SELECT ON runtime_project_access_grants TO geno_v2_runtime",
             sql,
         )
+
+    def test_auth_state_guards_revoke_without_opening_runtime_commands(self) -> None:
+        sql = (SCHEMA_ROOT / "baseline/0012_auth_state_guards.sql").read_text(
+            encoding="utf-8"
+        )
+
+        for function_name in (
+            "geno_v2_guard_project_member_invitation_state",
+            "geno_v2_guard_auth_redemption_attempt_state",
+            "geno_v2_guard_runtime_session_update",
+            "geno_v2_guard_runtime_reauth_state",
+            "geno_v2_guard_auth_write_control_state",
+            "geno_v2_guard_auth_preflight_rate_limit_state",
+            "geno_v2_require_auth_writes_enabled",
+            "geno_v2_revoke_affected_sessions",
+            "geno_v2_lock_runtime_session_authz_sources",
+            "geno_v2_revoke_sessions_for_authz_change",
+        ):
+            with self.subTest(function_name=function_name):
+                self.assertIn(f"FUNCTION {function_name}", sql)
+
+        self.assertIn(
+            "BEFORE INSERT OR UPDATE OR DELETE ON project_member_invitations", sql
+        )
+        self.assertIn(
+            "BEFORE INSERT OR UPDATE OR DELETE ON auth_invitation_redemption_attempts",
+            sql,
+        )
+        self.assertIn("BEFORE UPDATE OR DELETE ON runtime_sessions", sql)
+        self.assertIn(
+            "BEFORE INSERT OR UPDATE OR DELETE ON runtime_session_reauth_queue", sql
+        )
+        self.assertIn("BEFORE UPDATE OR DELETE ON auth_runtime_write_controls", sql)
+        reauth_guard = sql.split(
+            "CREATE FUNCTION geno_v2_guard_runtime_reauth_state()", 1
+        )[1].split("$guard_reauth$;", 1)[0]
+        session_guard = sql.split(
+            "CREATE OR REPLACE FUNCTION geno_v2_guard_runtime_session_update()", 1
+        )[1].split("$guard_session_update$;", 1)[0]
+        self.assertIn("IF TG_OP = 'INSERT'", reauth_guard)
+        self.assertIn("NEW.status <> 'pending'", reauth_guard)
+        self.assertNotIn("runtime reauthentication must be inserted pending", session_guard)
+        self.assertIn("FOR SHARE", sql)
+        self.assertIn("auth_attempts_confirmation_requires_erasure", sql)
+        self.assertIn("octet_length(delivery_ciphertext) BETWEEN 1 AND 16384", sql)
+        self.assertIn("octet_length(delivery_nonce) = 12", sql)
+        self.assertIn("delivery_expires_at > created_at", sql)
+        self.assertIn("NEW.delivery_expires_at <= statement_timestamp()", sql)
+        self.assertIn("auth_preflight_guard_state", sql)
+        self.assertIn("ON CONFLICT (session_id) DO NOTHING", sql)
+        self.assertIn("WHERE session_row.status = 'active'", sql)
+        self.assertIn("GRANT UPDATE (status, revoked_at, revoked_by", sql)
+        self.assertIn("GRANT INSERT ON runtime_session_reauth_queue", sql)
+        self.assertIn("GRANT SELECT ON auth_runtime_write_controls", sql)
+        self.assertNotIn("TO geno_v2_runtime", sql)
+        self.assertNotIn("CREATE POLICY", sql)
+        self.assertNotIn("LOGIN", sql.replace("NOLOGIN", ""))
 
     def test_runner_uses_a_session_lock_and_transactional_ledger(self) -> None:
         runner = (ROOT / "scripts/schema_v2_runner.py").read_text(encoding="utf-8")
