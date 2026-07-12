@@ -1,0 +1,1 @@
+{"Rules":[{"ID":"geno-reports-lifecycle-v1","Filter":{"Prefix":""},"NoncurrentVersionExpiration":{"NoncurrentDays":30},"Status":"Enabled"}]}

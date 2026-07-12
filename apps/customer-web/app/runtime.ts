@@ -1,11 +1,20 @@
 import { cookies } from "next/headers";
 
+import {
+  isRuntimeAuthMeResponse,
+  parseAuthError,
+  type AuthErrorEnvelope,
+  type RuntimeAuthMeResponse
+} from "./_auth/contracts";
+import { resolveCounterpartPortalUrl } from "./_auth/portalUrl";
+
 type RuntimeRequestOptions = {
   method?: string;
   body?: unknown;
   query?: Record<string, string | number | undefined | null>;
   cache?: RequestCache;
   actorId?: string;
+  includeCsrfProof?: boolean;
 };
 
 export type RuntimePage<T = Record<string, unknown>> = {
@@ -42,8 +51,15 @@ export type AuthorizedProject = {
 };
 
 export type SessionPortalResponse = PortalAccessResponse & {
+  authenticated: boolean;
   authorized_projects: AuthorizedProject[];
+  selection_status: "selected" | "fallback" | "empty";
+  error?: AuthErrorEnvelope;
 };
+
+export type RuntimeResult<T> =
+  | { ok: true; data: T; status: number }
+  | { ok: false; error: AuthErrorEnvelope; status?: number };
 
 export type PortalRuntimeData = {
   scores: RuntimePage;
@@ -54,20 +70,48 @@ export type PortalRuntimeData = {
   reportJobs: RuntimePage;
   actions: RuntimePage;
   traceability: Record<string, unknown> | null;
+  errors: Array<{ resource: string; error: AuthErrorEnvelope }>;
 };
+
+type RuntimePageLoad = {
+  page: RuntimePage;
+  failure?: { resource: string; error: AuthErrorEnvelope };
+};
+
+const SURFACE_PROJECT_PAGE_SIZE = 200;
+const MAX_AUTHORIZED_PROJECTS = 5000;
 
 export function apiBase(): string {
   return process.env.API_INTERNAL_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://api:8000";
 }
 
-async function actorHeaders(actorId?: string, extra?: HeadersInit): Promise<HeadersInit> {
+export function adminWebBaseUrl(): string {
+  return resolveCounterpartPortalUrl({
+    configuredValue: process.env.ADMIN_WEB_BASE_URL,
+    developmentFallback: "http://localhost:3001/login",
+    environmentName: "ADMIN_WEB_BASE_URL",
+    nodeEnv: process.env.NODE_ENV,
+    publicDevelopmentValue: process.env.NEXT_PUBLIC_ADMIN_WEB_BASE_URL
+  });
+}
+
+export async function hasRuntimeSession(): Promise<boolean> {
+  const cookieStore = await cookies();
+  return Boolean(cookieStore.get("GENO_RUNTIME_SESSION")?.value);
+}
+
+async function actorHeaders(
+  actorId?: string,
+  extra?: HeadersInit,
+  includeCsrfProof = true
+): Promise<HeadersInit> {
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get("GENO_RUNTIME_SESSION")?.value || "";
   const csrfToken = cookieStore.get("GENO_CSRF_TOKEN")?.value || "";
   if (sessionToken) {
     return {
       "X-GENO-Session-Token": sessionToken,
-      ...(csrfToken
+      ...(csrfToken && includeCsrfProof
         ? {
             "X-GENO-CSRF-Token": csrfToken,
             Cookie: `GENO_CSRF_TOKEN=${encodeURIComponent(csrfToken)}`
@@ -95,39 +139,86 @@ function runtimeUrl(path: string, query?: RuntimeRequestOptions["query"]): strin
   return url.toString();
 }
 
-export async function runtimeRequest<T>(path: string, options: RuntimeRequestOptions = {}): Promise<T | null> {
+export async function runtimeRequest<T>(path: string, options: RuntimeRequestOptions = {}): Promise<RuntimeResult<T>> {
   try {
     const headers = options.body
-      ? await actorHeaders(options.actorId, { "Content-Type": "application/json" })
-      : await actorHeaders(options.actorId);
+      ? await actorHeaders(options.actorId, { "Content-Type": "application/json" }, options.includeCsrfProof)
+      : await actorHeaders(options.actorId, undefined, options.includeCsrfProof);
     const response = await fetch(runtimeUrl(path, options.query), {
       method: options.method || "GET",
       headers,
       body: options.body ? JSON.stringify(options.body) : undefined,
       cache: options.cache || "no-store"
     });
+    const contentType = response.headers.get("content-type") || "";
+    const payload = contentType.includes("application/json") ? await response.json().catch(() => undefined) : undefined;
     if (!response.ok) {
-      return null;
+      return {
+        ok: false,
+        error: parseAuthError(payload, "auth_request_failed", `Runtime request failed with ${response.status}`),
+        status: response.status
+      };
     }
-    return (await response.json()) as T;
+    return { ok: true, data: payload as T, status: response.status };
   } catch {
-    return null;
+    return {
+      ok: false,
+      error: {
+        code: "auth_upstream_unavailable",
+        detail: "Runtime API unavailable",
+        correlation_id: ""
+      }
+    };
   }
 }
 
-export async function loadSessionPortal(projectId?: string): Promise<SessionPortalResponse | null> {
-  const authResponse = await runtimeRequest<{ auth?: { actor_id?: string; project_ids?: string[] } }>("/v1/auth/me");
-  if (!authResponse?.auth?.actor_id) {
-    return null;
-  }
-  const projectPage = await runtimeRequest<RuntimePage<AuthorizedProject>>("/v1/projects/runtime", {
-    query: { limit: 100 }
+export async function loadSessionPortal(projectId?: string): Promise<SessionPortalResponse> {
+  const authResponse = await runtimeRequest<RuntimeAuthMeResponse>("/v1/auth/me", {
+    includeCsrfProof: false
   });
-  const authorizedProjects = projectPage?.records || [];
-  const selected = authorizedProjects.find((record) => record.project?.id === projectId) || authorizedProjects[0];
+  if (!authResponse.ok) {
+    return {
+      authenticated: false,
+      authorized_projects: [],
+      selection_status: "empty",
+      ...(authResponse.status === 401 ? {} : { error: authResponse.error })
+    };
+  }
+  if (!isRuntimeAuthMeResponse(authResponse.data)) {
+    return {
+      authenticated: false,
+      authorized_projects: [],
+      selection_status: "empty",
+      error: {
+        code: "auth_session_delivery_invalid",
+        detail: "The authentication service returned an invalid session scope.",
+        correlation_id: ""
+      }
+    };
+  }
+  const auth = authResponse.data.auth ?? authResponse.data.session;
+  const actorId = auth?.actor_id || "";
+  const projectPage = await loadAllCustomerProjects();
+  if (!projectPage.ok) {
+    return {
+      authenticated: true,
+      authorized_projects: [],
+      selection_status: "empty",
+      error: projectPage.error,
+      bundle: { access: { member_user_id: actorId } }
+    };
+  }
+  const authorizedProjects = projectPage.data;
+  const requested = projectId ? authorizedProjects.find((record) => record.project?.id === projectId) : undefined;
+  const selected = requested || authorizedProjects[0];
   const selectedProjectId = selected?.project?.id || "";
   if (!selectedProjectId) {
-    return { authorized_projects: authorizedProjects, bundle: { access: { member_user_id: authResponse.auth.actor_id } } };
+    return {
+      authenticated: true,
+      authorized_projects: authorizedProjects,
+      selection_status: "empty",
+      bundle: { access: { member_user_id: actorId } }
+    };
   }
   const [launch, scoreWeight, lifecycleEvents, auditEvents] = await Promise.all([
     runtimeRequest<Record<string, unknown>>("/v1/project-launch-configs/runtime", { query: { project_id: selectedProjectId } }),
@@ -136,15 +227,68 @@ export async function loadSessionPortal(projectId?: string): Promise<SessionPort
     runtimeRequest<RuntimePage>("/v1/audit-events/runtime", { query: { project_id: selectedProjectId, limit: 50 } })
   ]);
   return {
+    authenticated: true,
     authorized_projects: authorizedProjects,
+    selection_status: projectId && !requested ? "fallback" : "selected",
     bundle: {
-      access: { project_id: selectedProjectId, member_user_id: authResponse.auth.actor_id },
+      access: { project_id: selectedProjectId, member_user_id: actorId },
       project: selected,
-      launch_config: launch,
-      score_weight_config: scoreWeight,
-      lifecycle_events: lifecycleEvents || { total_count: 0, records: [] },
-      audit_events: auditEvents || { total_count: 0, records: [] }
+      launch_config: launch.ok ? launch.data : null,
+      score_weight_config: scoreWeight.ok ? scoreWeight.data : null,
+      lifecycle_events: lifecycleEvents.ok ? lifecycleEvents.data : { total_count: 0, records: [] },
+      audit_events: auditEvents.ok ? auditEvents.data : { total_count: 0, records: [] }
     }
+  };
+}
+
+async function loadAllCustomerProjects(): Promise<RuntimeResult<AuthorizedProject[]>> {
+  const records: AuthorizedProject[] = [];
+  const projectIds = new Set<string>();
+  let expectedTotal: number | null = null;
+  let offset = 0;
+  while (expectedTotal === null || records.length < expectedTotal) {
+    const page = await runtimeRequest<RuntimePage<AuthorizedProject>>("/v1/projects/runtime", {
+      query: { limit: SURFACE_PROJECT_PAGE_SIZE, offset, surface: "customer" }
+    });
+    if (!page.ok) {
+      return page;
+    }
+    const totalCount = page.data.total_count;
+    if (!Number.isInteger(totalCount) || totalCount < 0 || totalCount > MAX_AUTHORIZED_PROJECTS) {
+      return projectPaginationFailure("The customer project scope count is invalid.");
+    }
+    if (expectedTotal === null) {
+      expectedTotal = totalCount;
+    } else if (expectedTotal !== totalCount) {
+      return projectPaginationFailure("The customer project scope changed while it was loading.");
+    }
+    if (!Array.isArray(page.data.records) || page.data.records.length > SURFACE_PROJECT_PAGE_SIZE) {
+      return projectPaginationFailure("The customer project page is invalid.");
+    }
+    if (page.data.records.length === 0 && records.length < expectedTotal) {
+      return projectPaginationFailure("The customer project list ended before its declared total.");
+    }
+    for (const record of page.data.records) {
+      const recordProjectId = record?.project?.id;
+      if (!recordProjectId || projectIds.has(recordProjectId)) {
+        return projectPaginationFailure("The customer project list contains an invalid or duplicate project.");
+      }
+      projectIds.add(recordProjectId);
+      records.push(record);
+    }
+    if (records.length > expectedTotal) {
+      return projectPaginationFailure("The customer project list exceeds its declared total.");
+    }
+    offset = records.length;
+  }
+  return { ok: true, data: records, status: 200 };
+}
+
+function projectPaginationFailure(detail: string): RuntimeResult<AuthorizedProject[]> {
+  return {
+    ok: false,
+    error: { code: "auth_request_failed", detail, correlation_id: "" },
+    status: 502
   };
 }
 
@@ -153,13 +297,17 @@ async function loadPage(
   projectId: string,
   actorId?: string,
   extra?: Record<string, string | number>
-): Promise<RuntimePage> {
-  return (
-    (await runtimeRequest<RuntimePage>(path, {
-      actorId,
-      query: { project_id: projectId, limit: 10, ...(extra || {}) }
-    })) || { total_count: 0, records: [] }
-  );
+): Promise<RuntimePageLoad> {
+  const response = await runtimeRequest<RuntimePage>(path, {
+    actorId,
+    query: { project_id: projectId, limit: 10, ...(extra || {}) }
+  });
+  return response.ok
+    ? { page: response.data }
+    : {
+        page: { total_count: 0, records: [] },
+        failure: { resource: path, error: response.error }
+      };
 }
 
 export async function loadPortalRuntimeData(projectId: string, actorId?: string): Promise<PortalRuntimeData> {
@@ -173,7 +321,27 @@ export async function loadPortalRuntimeData(projectId: string, actorId?: string)
     loadPage("/v1/action-plans/runtime", projectId, actorId),
     runtimeRequest<Record<string, unknown>>("/v1/traceability/runtime", { actorId, query: { project_id: projectId } })
   ]);
-  return { scores, evidence, collectionRuns, graphs, reports, reportJobs, actions, traceability };
+  const errors = [
+    scores.failure,
+    evidence.failure,
+    collectionRuns.failure,
+    graphs.failure,
+    reports.failure,
+    reportJobs.failure,
+    actions.failure,
+    ...(traceability.ok ? [] : [{ resource: "/v1/traceability/runtime", error: traceability.error }])
+  ].filter((failure): failure is { resource: string; error: AuthErrorEnvelope } => Boolean(failure));
+  return {
+    scores: scores.page,
+    evidence: evidence.page,
+    collectionRuns: collectionRuns.page,
+    graphs: graphs.page,
+    reports: reports.page,
+    reportJobs: reportJobs.page,
+    actions: actions.page,
+    traceability: traceability.ok ? traceability.data : null,
+    errors
+  };
 }
 
 export function latestScore(scores: RuntimePage): number | undefined {

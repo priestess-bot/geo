@@ -27,6 +27,7 @@ from cryptography.hazmat.primitives import hashes
 
 from geno_api.access_logging import persist_runtime_http_access_log
 from geno_api.main import app, close_runtime_resources, reset_runtime_auth_caches, reset_runtime_metrics
+from geno_core.durable_jobs import JobStateConflictError
 from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
 from geno_core.email_preferences import sign_runtime_notification_email_preference_token
 from geno_core.webhook_signing import (
@@ -5135,12 +5136,9 @@ class ApiContractsTest(unittest.TestCase):
                 },
             )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["invitation"]["status"], "accepted")
-        self.assertEqual(response.json()["invitation"]["member"]["user_id"], "viewer@example.com")
-        self.assertEqual(response.json()["audit_events"][1]["event_type"], "project_member_invitation_accepted")
-        self.assertEqual(fake_repository.invitation.invite_token, "geno-invite-token")
-        self.assertEqual(fake_repository.invitation.accepted_by, "viewer@example.com")
+        self.assertEqual(response.status_code, 410)
+        self.assertIn("/v1/auth/invitations/redeem", response.json()["detail"])
+        self.assertFalse(hasattr(fake_repository, "invitation"))
 
     def test_runtime_project_member_invitation_accept_endpoint_sets_token_context_when_access_control_enabled(
         self,
@@ -5168,11 +5166,8 @@ class ApiContractsTest(unittest.TestCase):
                 },
             )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            fake_repository.context_kwargs["invite_token_hash"],
-            hashlib.sha256("geno-invite-token".encode("utf-8")).hexdigest(),
-        )
+        self.assertEqual(response.status_code, 410)
+        self.assertFalse(hasattr(fake_repository, "context_kwargs"))
 
     def test_runtime_project_member_invitation_accept_endpoint_returns_conflict_for_expired_invitation(self) -> None:
         class FakeRepository:
@@ -5190,8 +5185,27 @@ class ApiContractsTest(unittest.TestCase):
                 },
             )
 
-        self.assertEqual(response.status_code, 409)
-        self.assertIn("expired", response.json()["detail"])
+        self.assertEqual(response.status_code, 410)
+        self.assertIn("retired", response.json()["detail"])
+
+    def test_auth_invitation_preflight_rejects_malformed_invitation_id_before_repository(self) -> None:
+        class FakeRepository:
+            def preflight(self, **_kwargs: object) -> object:
+                raise AssertionError("malformed invitation_id must be rejected by request validation")
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/auth/invitations/preflight",
+                json={
+                    "invitation_id": "21a98a17-7930-5504-a6fa-not-a-uuid",
+                    "invite_token": "geno-invite-token",
+                    "requested_surface": "customer",
+                },
+            )
+
+        self.assertEqual(response.status_code, 422)
 
     def test_auth_invitation_redeem_creates_session_cookie_without_returning_raw_token(self) -> None:
         class Scope:
@@ -5249,21 +5263,9 @@ class ApiContractsTest(unittest.TestCase):
                 },
             )
 
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-        self.assertEqual(payload["invitation"]["status"], "accepted")
-        self.assertEqual(payload["session"]["actor_id"], "viewer@example.com")
-        self.assertNotIn("raw_session_token", response.text)
-        self.assertNotIn("geno-session-secret", response.text)
-        set_cookie_headers = "\n".join(response.headers.get_list("set-cookie"))
-        self.assertIn("GENO_RUNTIME_SESSION=geno-session-secret", set_cookie_headers)
-        self.assertIn("GENO_CSRF_TOKEN=", set_cookie_headers)
-        self.assertIn("HttpOnly", set_cookie_headers)
-        self.assertIn("SameSite=lax", set_cookie_headers)
-        self.assertEqual(fake_repository.invitation.invite_token, "geno-invite-token")
-        self.assertEqual(fake_repository.scope_kwargs["actor_id"], "viewer@example.com")
-        self.assertEqual(fake_repository.session_input.ttl_seconds, 604800)
-        self.assertEqual(fake_repository.session_input.permissions, ("report.read", "report.download"))
+        self.assertEqual(response.status_code, 422)
+        self.assertNotIn("set-cookie", response.headers)
+        self.assertFalse(hasattr(fake_repository, "invitation"))
 
     def test_auth_invitation_redeem_sets_invitation_context_when_access_control_enabled(self) -> None:
         class FakeRepository:
@@ -5308,11 +5310,8 @@ class ApiContractsTest(unittest.TestCase):
                 },
             )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            fake_repository.context_kwargs["invite_token_hash"],
-            hashlib.sha256("geno-invite-token".encode("utf-8")).hexdigest(),
-        )
+        self.assertEqual(response.status_code, 422)
+        self.assertFalse(hasattr(fake_repository, "context_kwargs"))
 
     def test_auth_invitation_redeem_rejects_reused_or_expired_token(self) -> None:
         class FakeRepository:
@@ -5330,11 +5329,13 @@ class ApiContractsTest(unittest.TestCase):
                 },
             )
 
-        self.assertEqual(response.status_code, 409)
-        self.assertIn("cannot accept", response.json()["detail"])
+        self.assertEqual(response.status_code, 422)
 
     def test_auth_me_returns_session_scope(self) -> None:
         class FakeRepository:
+            def __init__(self) -> None:
+                self.confirmations: list[dict[str, object]] = []
+
             def validate_runtime_session(self, raw_session_token: str) -> RuntimeSession:
                 self.raw_session_token = raw_session_token
                 return RuntimeSession(
@@ -5345,9 +5346,25 @@ class ApiContractsTest(unittest.TestCase):
                         "project_ids": ["project-1"],
                         "roles": ["viewer"],
                         "permissions": ["report.read"],
+                        "tenant_roles": [],
+                        "project_scopes": [
+                            {
+                                "project_id": "project-1",
+                                "roles": ["client_viewer"],
+                                "permissions": ["report.read"],
+                                "portal_capabilities": ["portal.customer.access"],
+                                "scope_sources": ["direct_member"],
+                            }
+                        ],
+                        "scope_version": "runtime_session_scope_v2",
+                        "authz_policy_version": "auth_surface_policy_v1",
                     },
                     audit_events=(),
                 )
+
+            def confirm_auth_invitation_delivery(self, **kwargs: object) -> bool:
+                self.confirmations.append(kwargs)
+                return True
 
         fake_repository = FakeRepository()
         with patch.dict(
@@ -5360,9 +5377,38 @@ class ApiContractsTest(unittest.TestCase):
             response = self.client.get("/v1/auth/me", headers={"X-GENO-Session-Token": "raw-session-token"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["auth"]["actor_id"], "viewer@example.com")
-        self.assertEqual(response.json()["auth"]["project_ids"], ["project-1"])
+        self.assertEqual(response.json()["session"]["actor_id"], "viewer@example.com")
+        self.assertEqual(response.json()["session"]["project_ids"], ["project-1"])
         self.assertEqual(fake_repository.raw_session_token, "raw-session-token")
+        self.assertEqual(fake_repository.confirmations, [])
+
+        with patch.dict(
+            "os.environ",
+            {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1", "GENO_RUNTIME_AUTH_MODE": "session"},
+            clear=False,
+        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            confirmed = self.client.get(
+                "/v1/auth/me",
+                headers={
+                    "X-GENO-Session-Token": "raw-session-token",
+                    "X-GENO-CSRF-Token": "csrf-token",
+                },
+                cookies={"GENO_CSRF_TOKEN": "csrf-token"},
+            )
+
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertEqual(
+            fake_repository.confirmations,
+            [
+                {
+                    "session_id": "session-1",
+                    "actor_id": "viewer@example.com",
+                    "tenant_id": "tenant-1",
+                }
+            ],
+        )
 
     def test_auth_logout_revokes_session_and_clears_cookie(self) -> None:
         class FakeRepository:
@@ -12339,6 +12385,36 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/external-dependency-handoff/au", payload["persistence"])
         self.assertIn("/v1/external-dependency-clearance/au", payload["persistence"])
         self.assertIn("/metrics", payload["persistence"])
+
+    def test_terminal_collection_job_cancel_maps_state_conflict_to_409(self) -> None:
+        with patch("geno_api.main.build_repository_from_env", return_value=object()), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch("geno_api.main.assert_runtime_project_access"), patch(
+            "geno_api.main.CollectionJobStore"
+        ) as store_class:
+            store_class.return_value.cancel.side_effect = JobStateConflictError(
+                "cannot cancel terminal durable job in status succeeded"
+            )
+            response = self.client.post(
+                "/v1/collection-jobs/runtime/job-1/cancel?project_id=project-1",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("terminal durable job", response.json()["detail"])
+
+    def test_missing_collection_job_cancel_remains_404(self) -> None:
+        with patch("geno_api.main.build_repository_from_env", return_value=object()), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch("geno_api.main.assert_runtime_project_access"), patch(
+            "geno_api.main.CollectionJobStore"
+        ) as store_class:
+            store_class.return_value.cancel.side_effect = ValueError("durable job not found")
+            response = self.client.post(
+                "/v1/collection-jobs/runtime/missing/cancel?project_id=project-1",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"], "durable job not found")
 
 
 if __name__ == "__main__":

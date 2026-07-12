@@ -216,7 +216,9 @@ docker-down-auto-ports:
 bootstrap-admin-session:
 	@test -n "$${GENO_BOOTSTRAP_ADMIN_ID:-}" || (echo "GENO_BOOTSTRAP_ADMIN_ID is required" >&2; exit 1)
 	docker compose -p geno-auto --env-file tmp/docker-compose.auto-ports.env -f infra/docker-compose.yml exec -T api \
-		python scripts/bootstrap_admin_session.py --actor-id "$${GENO_BOOTSTRAP_ADMIN_ID}"
+		python scripts/bootstrap_admin_session.py --actor-id "$${GENO_BOOTSTRAP_ADMIN_ID}" \
+		$${GENO_BOOTSTRAP_TENANT_ID:+--tenant-id "$${GENO_BOOTSTRAP_TENANT_ID}"} \
+		$${GENO_BOOTSTRAP_PROJECT_ID:+--project-id "$${GENO_BOOTSTRAP_PROJECT_ID}"}
 
 lint-python:
 	python3 -m ruff check apps/api packages workers scripts tests
@@ -240,6 +242,29 @@ test:
 web-build:
 	npm --prefix apps/customer-web run build
 	npm --prefix apps/admin-web run build
+
+.PHONY: test-auth-core smoke-auth-session-v2 test-auth-web smoke-auth-surface-session
+
+test-auth-core:
+	PYTHONPATH=packages/geno_core:apps/api:. python3 -m pytest -q \
+		tests/test_auth_session_v2_contracts.py \
+		tests/test_auth_redemption_repository.py \
+		tests/test_auth_context_contracts.py \
+		tests/test_production_runtime_contracts.py \
+		tests/test_api_contracts.py::ApiContractsTest::test_auth_invitation_preflight_rejects_malformed_invitation_id_before_repository
+
+smoke-auth-session-v2:
+	AUTH_E2E_DATABASE_URL="$${AUTH_E2E_DATABASE_URL:?required}" \
+		AUTH_E2E_APP_DATABASE_URL="$${AUTH_E2E_APP_DATABASE_URL:?required}" \
+		PYTHONPATH=packages/geno_core:apps/api:. python3 scripts/run_auth_session_v2_e2e.py
+
+test-auth-web:
+	PYTHONPATH=packages/geno_core:apps/api:. python3 -m pytest -q tests/test_auth_web_contracts.py
+	npm --prefix apps/admin-web run typecheck
+	npm --prefix apps/customer-web run typecheck
+
+smoke-auth-surface-session:
+	PYTHONPATH=packages/geno_core:apps/api:. python3 scripts/run_auth_surface_session_e2e.py --contract-only
 
 docker-config:
 	docker compose -f infra/docker-compose.yml config
@@ -376,6 +401,23 @@ backup-smoke:
 	docker compose -p geno-backup-smoke -f infra/docker-compose.yml --profile backup-smoke run --rm backup-postgres-smoke; \
 	docker compose -p geno-backup-smoke -f infra/docker-compose.yml --profile backup-smoke run --rm backup-object-smoke
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py backup-smoke
+
+.PHONY: test-durable-leases smoke-durable-lease-recovery
+
+test-durable-leases:
+	GENO_DURABLE_JOB_TEST_DATABASE_URL="$${GENO_DURABLE_JOB_TEST_DATABASE_URL:?required}" \
+		PYTHONPATH=packages/geno_core:apps/api:. python3 -m pytest -q \
+		tests/test_durable_job_lease_contracts.py \
+		tests/test_durable_job_lease_postgres.py \
+		tests/test_api_contracts.py::ApiContractsTest::test_terminal_collection_job_cancel_maps_state_conflict_to_409 \
+		tests/test_api_contracts.py::ApiContractsTest::test_missing_collection_job_cancel_remains_404
+
+smoke-durable-lease-recovery:
+	PYTHONPATH=packages/geno_core:apps/api:. python3 scripts/verify_durable_job_lease_recovery.py \
+		--database-url "$${GENO_DURABLE_JOB_TEST_DATABASE_URL:?required}" \
+		--compose-project "$${COMPOSE_PROJECT_NAME:-geo-durable-leases}" \
+		--artifact-path tmp/durable-job-lease-recovery/latest.json \
+		--run-actor-kill-tests
 
 production-v1-progress:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py checklist --allow-pending

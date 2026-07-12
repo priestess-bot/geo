@@ -7,5 +7,6 @@ COPY apps/customer-web/package-lock.json ./package-lock.json
 RUN npm ci
 
 COPY apps/customer-web ./
+RUN npm run build
 
 CMD ["npm", "run", "dev"]

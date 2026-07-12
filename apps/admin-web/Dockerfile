@@ -8,5 +8,6 @@ RUN npm ci
 
 COPY apps/admin-web ./
 COPY docs ./docs
+RUN npm run build
 
 CMD ["npm", "run", "dev"]

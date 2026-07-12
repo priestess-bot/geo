@@ -378,8 +378,8 @@ export default async function PortalModule({
   const projectQuery = Array.isArray(query.project_id) ? query.project_id[0] : query.project_id;
   const data = await loadSessionPortal(projectQuery);
   const meta = moduleMeta[module] || { title: "项目详情", intro: "查看项目详情。" };
-  const projectId = data?.bundle?.project?.project?.id || data?.bundle?.access?.project_id || "";
-  const actorId = data?.bundle?.access?.member_user_id;
+  const projectId = data.bundle?.project?.project?.id || data.bundle?.access?.project_id || "";
+  const actorId = data.bundle?.access?.member_user_id;
   const runtime = projectId ? await loadPortalRuntimeData(projectId, actorId) : null;
 
   return (
@@ -390,12 +390,28 @@ export default async function PortalModule({
           <h1>{meta.title}</h1>
           <p className="muted" style={{ marginTop: 8 }}>{meta.intro}</p>
         </div>
-        <a className="button secondary" href={`/?project_id=${encodeURIComponent(projectId)}`}>返回仪表盘</a>
+        <a className="button secondary" href={projectId ? `/?project_id=${encodeURIComponent(projectId)}` : "/"}>返回仪表盘</a>
       </div>
-      {!data?.bundle ? (
+      {data.selection_status === "fallback" ? (
+        <section aria-live="polite" className="panel" role="status" style={{ marginBottom: 16 }}>
+          <p>原项目已不可用，已切换到另一个授权项目。</p>
+        </section>
+      ) : null}
+      {runtime?.errors.length ? (
+        <section aria-live="polite" className="panel" role="status" style={{ marginBottom: 16 }}>
+          <h2>部分数据暂时不可用</h2>
+          {runtime.errors.slice(0, 3).map(({ resource, error }) => (
+            <p className="muted" key={resource} style={{ marginTop: 8 }}>
+              {error.detail}{error.correlation_id ? ` · 关联 ID：${error.correlation_id}` : ""}
+            </p>
+          ))}
+        </section>
+      ) : null}
+      {!data.authenticated || !projectId || !data.bundle ? (
         <section className="emptyState">
           <h2>无法读取项目</h2>
-          <p>请先使用有效邀请登录，并确认当前账号已获项目访问权限。</p>
+          <p>{data.error?.detail || "请先使用有效邀请登录，并确认当前账号已获项目访问权限。"}</p>
+          {data.error?.correlation_id ? <p className="muted">关联 ID：{data.error.correlation_id}</p> : null}
         </section>
       ) : (
         panelFor(module, data.bundle, runtime)

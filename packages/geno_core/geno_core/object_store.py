@@ -13,7 +13,12 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, unquote, urlsplit
 from urllib.request import Request, urlopen
 
-from geno_core.models import EvidenceAsset, RawEvidenceRecord, RuntimeEvidenceAssetInput, RuntimeReportArtifact
+from geno_core.models import (
+    EvidenceAsset,
+    RawEvidenceRecord,
+    RuntimeEvidenceAssetInput,
+    RuntimeReportArtifact,
+)
 
 
 RequestFn = Callable[[str, str, Mapping[str, str], bytes], tuple[int, Mapping[str, str], bytes]]
@@ -59,6 +64,7 @@ class S3CompatibleObjectStore:
         access_key: str,
         secret_key: str,
         region: str = "us-east-1",
+        auto_create_bucket: bool = True,
         requester: RequestFn | None = None,
     ) -> None:
         if not endpoint:
@@ -66,27 +72,33 @@ class S3CompatibleObjectStore:
         if not bucket:
             raise ObjectStoreError("OBJECT_STORE_BUCKET is required")
         if not access_key or not secret_key:
-            raise ObjectStoreError("OBJECT_STORE_ACCESS_KEY and OBJECT_STORE_SECRET_KEY are required")
+            raise ObjectStoreError(
+                "OBJECT_STORE_ACCESS_KEY and OBJECT_STORE_SECRET_KEY are required"
+            )
         self.endpoint = endpoint.rstrip("/")
         self.bucket = bucket
         self.access_key = access_key
         self.secret_key = secret_key
         self.region = region
+        self.auto_create_bucket = auto_create_bucket
         self._requester = requester or _default_requester
         self._bucket_ready = False
 
     def ensure_bucket(self) -> None:
         if self._bucket_ready:
             return
+        method = "PUT" if self.auto_create_bucket else "HEAD"
         status, _headers, body = self._signed_request(
-            method="PUT",
+            method=method,
             bucket=self.bucket,
             key=None,
             body=b"",
-            content_type="application/octet-stream",
+            content_type="application/octet-stream" if self.auto_create_bucket else None,
         )
-        if status not in {200, 201, 204, 409}:
-            raise ObjectStoreError(f"Bucket create failed: status={status} body={body[:200]!r}")
+        accepted_statuses = {200, 201, 204, 409} if self.auto_create_bucket else {200, 204}
+        if status not in accepted_statuses:
+            action = "create" if self.auto_create_bucket else "readiness HEAD"
+            raise ObjectStoreError(f"Bucket {action} failed: status={status} body={body[:200]!r}")
         self._bucket_ready = True
 
     def put_s3_uri(
@@ -99,8 +111,12 @@ class S3CompatibleObjectStore:
     ) -> StoredObject:
         bucket, key = parse_s3_uri(uri)
         if bucket != self.bucket:
-            raise ObjectStoreError(f"S3 URI bucket {bucket!r} does not match configured bucket {self.bucket!r}")
-        return self.put_object(key=key, content=content, content_type=content_type, expected_hash=expected_hash)
+            raise ObjectStoreError(
+                f"S3 URI bucket {bucket!r} does not match configured bucket {self.bucket!r}"
+            )
+        return self.put_object(
+            key=key, content=content, content_type=content_type, expected_hash=expected_hash
+        )
 
     def put_object(
         self,
@@ -125,7 +141,9 @@ class S3CompatibleObjectStore:
             content_type=content_type,
         )
         if status not in {200, 201, 204}:
-            raise ObjectStoreError(f"Object upload failed: key={key} status={status} body={body[:200]!r}")
+            raise ObjectStoreError(
+                f"Object upload failed: key={key} status={status} body={body[:200]!r}"
+            )
         etag = _header(headers, "etag")
         return StoredObject(
             uri=f"s3://{self.bucket}/{key}",
@@ -139,7 +157,9 @@ class S3CompatibleObjectStore:
     def get_s3_uri(self, *, uri: str, expected_hash: str | None = None) -> RetrievedObject:
         bucket, key = parse_s3_uri(uri)
         if bucket != self.bucket:
-            raise ObjectStoreError(f"S3 URI bucket {bucket!r} does not match configured bucket {self.bucket!r}")
+            raise ObjectStoreError(
+                f"S3 URI bucket {bucket!r} does not match configured bucket {self.bucket!r}"
+            )
         return self.get_object(key=key, expected_hash=expected_hash)
 
     def get_object(self, *, key: str, expected_hash: str | None = None) -> RetrievedObject:
@@ -151,7 +171,9 @@ class S3CompatibleObjectStore:
             content_type=None,
         )
         if status != 200:
-            raise ObjectStoreError(f"Object download failed: key={key} status={status} body={body[:200]!r}")
+            raise ObjectStoreError(
+                f"Object download failed: key={key} status={status} body={body[:200]!r}"
+            )
         content_hash = hashlib.sha256(body).hexdigest()
         if expected_hash and not hmac.compare_digest(content_hash, expected_hash):
             raise ObjectStoreError(
@@ -200,7 +222,9 @@ class S3CompatibleObjectStore:
         if content_type is not None:
             headers["content-type"] = content_type
         signed_header_names = sorted(headers)
-        canonical_headers = "".join(f"{name}:{headers[name].strip()}\n" for name in signed_header_names)
+        canonical_headers = "".join(
+            f"{name}:{headers[name].strip()}\n" for name in signed_header_names
+        )
         signed_headers = ";".join(signed_header_names)
         canonical_request = "\n".join(
             [
@@ -221,7 +245,9 @@ class S3CompatibleObjectStore:
                 hashlib.sha256(canonical_request.encode("utf-8")).hexdigest(),
             ]
         )
-        signature = _signature_key(self.secret_key, date_stamp, self.region).hex_digest(string_to_sign)
+        signature = _signature_key(self.secret_key, date_stamp, self.region).hex_digest(
+            string_to_sign
+        )
         request_headers = {
             **headers,
             "authorization": (
@@ -242,7 +268,9 @@ class _SigningKey:
 
 
 def _signature_key(secret_key: str, date_stamp: str, region: str) -> _SigningKey:
-    key_date = hmac.new(("AWS4" + secret_key).encode("utf-8"), date_stamp.encode("utf-8"), hashlib.sha256).digest()
+    key_date = hmac.new(
+        ("AWS4" + secret_key).encode("utf-8"), date_stamp.encode("utf-8"), hashlib.sha256
+    ).digest()
     key_region = hmac.new(key_date, region.encode("utf-8"), hashlib.sha256).digest()
     key_service = hmac.new(key_region, b"s3", hashlib.sha256).digest()
     key_signing = hmac.new(key_service, b"aws4_request", hashlib.sha256).digest()
@@ -280,7 +308,9 @@ def _header(headers: Mapping[str, str], name: str) -> str | None:
     return None
 
 
-def archive_report_artifacts(report: Any, store: S3CompatibleObjectStore) -> tuple[StoredObject, ...]:
+def archive_report_artifacts(
+    report: Any, store: S3CompatibleObjectStore
+) -> tuple[StoredObject, ...]:
     report_export = report.report_export
     artifacts = [
         (report_export.markdown_url, report.markdown, "text/markdown; charset=utf-8"),
@@ -306,9 +336,14 @@ def archive_runtime_report_artifact(
     report_export_id = str(report_export.get("id") or "").strip()
     if not report_export_id:
         raise ObjectStoreError("report_export id is required")
-    content_hash = artifact.content_hash or hashlib.sha256(
-        artifact.content.encode("utf-8") if isinstance(artifact.content, str) else artifact.content
-    ).hexdigest()
+    content_hash = (
+        artifact.content_hash
+        or hashlib.sha256(
+            artifact.content.encode("utf-8")
+            if isinstance(artifact.content, str)
+            else artifact.content
+        ).hexdigest()
+    )
     key = "/".join(
         [
             "report-artifacts",
@@ -390,7 +425,9 @@ def archive_project_brand_logo(
     if not content:
         raise ObjectStoreError("Brand logo payload is empty")
     safe_filename = _safe_asset_filename(filename)
-    normalized_content_type = _brand_logo_content_type(filename=safe_filename, content_type=content_type)
+    normalized_content_type = _brand_logo_content_type(
+        filename=safe_filename, content_type=content_type
+    )
     content_hash = hashlib.sha256(content).hexdigest()
     key = f"brand-assets/{project_id.strip()}/logo-{content_hash[:12]}-{safe_filename}"
     return store.put_object(key=key, content=content, content_type=normalized_content_type)
@@ -406,12 +443,16 @@ def archive_api_snapshot_assets(
     for record in records:
         updated_assets: list[EvidenceAsset] = []
         for asset in record.evidence_assets:
-            if asset.asset_type != "html_snapshot" or not asset.url.startswith("geno-api-snapshot://"):
+            if asset.asset_type != "html_snapshot" or not asset.url.startswith(
+                "geno-api-snapshot://"
+            ):
                 updated_assets.append(asset)
                 continue
             content = _render_api_snapshot_html(record=record, asset=asset)
             key = f"evidence/{record.answer_run.project_id}/{record.answer_run.id}/{asset.id}.html"
-            stored = store.put_object(key=key, content=content, content_type="text/html; charset=utf-8")
+            stored = store.put_object(
+                key=key, content=content, content_type="text/html; charset=utf-8"
+            )
             stored_objects.append(stored)
             updated_assets.append(replace(asset, url=stored.uri, content_hash=stored.content_hash))
         archived_records.append(replace(record, evidence_assets=tuple(updated_assets)))
@@ -433,7 +474,9 @@ def archive_browser_capture_assets(
                 continue
             content = _read_file_uri(asset.url)
             suffix = _browser_asset_suffix(asset)
-            key = f"evidence/{record.answer_run.project_id}/{record.answer_run.id}/{asset.id}{suffix}"
+            key = (
+                f"evidence/{record.answer_run.project_id}/{record.answer_run.id}/{asset.id}{suffix}"
+            )
             stored = store.put_object(
                 key=key,
                 content=content,
@@ -515,16 +558,16 @@ def _render_api_snapshot_html(*, record: RawEvidenceRecord, asset: EvidenceAsset
     snapshot = record.raw_answer.raw_payload.get("_geno_api_snapshot")
     snapshot_meta = snapshot if isinstance(snapshot, dict) else {}
     citations = "\n".join(
-        f"<li><a href=\"{html.escape(citation.url, quote=True)}\">{html.escape(citation.url)}</a></li>"
+        f'<li><a href="{html.escape(citation.url, quote=True)}">{html.escape(citation.url)}</a></li>'
         for citation in record.citations
     )
     payload_json = html.escape(_stable_json(record.raw_answer.raw_payload))
     return "\n".join(
         [
             "<!doctype html>",
-            "<html lang=\"en\">",
+            '<html lang="en">',
             "<head>",
-            "  <meta charset=\"utf-8\">",
+            '  <meta charset="utf-8">',
             f"  <title>GENO API Snapshot {html.escape(record.answer_run.id)}</title>",
             "</head>",
             "<body>",
