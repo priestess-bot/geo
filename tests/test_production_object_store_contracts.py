@@ -21,6 +21,7 @@ from scripts.verify_production_object_store import (
     build_full_artifact,
     load_merged_compose,
     validate_backup_receipt,
+    validate_consumer_receipt,
     validate_encryption_receipt,
     validate_snapshot_receipt,
     verify_merged_compose,
@@ -207,8 +208,27 @@ class ProductionObjectStoreComposeTests(unittest.TestCase):
         self.assertIn("formal_backup_delete_denied", smoke)
         self.assertIn("cross_run_delete_denied", smoke)
 
+    def test_policy_only_receipt_is_explicitly_shared_identity(self) -> None:
+        smoke = (ROOT / "infra/minio/application-roundtrip-smoke.sh").read_text(encoding="utf-8")
+        self.assertIn("production-object-store-shared-identity-roundtrip-v1", smoke)
+        self.assertIn("shared_identity_policy_only", smoke)
+        self.assertNotIn("consumer_roundtrips", smoke)
+        for service_name in APPLICATION_CONSUMERS:
+            self.assertNotIn(service_name, smoke)
+
 
 class ProductionObjectStoreReceiptTests(unittest.TestCase):
+    def test_full_verifier_rejects_shared_identity_receipt(self) -> None:
+        shared_receipt = {
+            "schema_version": "production-object-store-shared-identity-roundtrip-v1",
+            "verification_scope": "shared_identity_policy_only",
+            "credential_fingerprint": "a" * 64,
+            "consumer_roundtrips": {},
+            "verified_at": "2026-07-12T08:00:00Z",
+        }
+        with self.assertRaisesRegex(ProductionObjectStoreVerificationError, "shared-identity"):
+            validate_consumer_receipt(shared_receipt)
+
     def test_encryption_and_snapshot_receipts_are_behavioral(self) -> None:
         encryption = {
             "volume_id": "vol-encrypted-1",
@@ -338,10 +358,20 @@ class ProductionObjectStoreReceiptTests(unittest.TestCase):
                 },
                 "consumer_roundtrip": {
                     "schema_version": "production-object-store-consumer-roundtrip-v1",
+                    "verification_scope": "compose_service_native_builder",
                     "credential_fingerprint": application_fingerprint,
                     "consumer_roundtrips": {
-                        name: {"status": "pass", "sha256": "7" * 64}
-                        for name in APPLICATION_CONSUMERS
+                        name: {
+                            "status": "pass",
+                            "service_name": name,
+                            "container_id": f"container-{index}",
+                            "sha256": "7" * 64,
+                            "credential_fingerprint": application_fingerprint,
+                            "execution_path": "geno_core.runtime.build_object_store_from_env",
+                            "credential_source": "OBJECT_STORE_ACCESS_KEY_FILE",
+                            "auto_create_bucket": False,
+                        }
+                        for index, name in enumerate(APPLICATION_CONSUMERS)
                     },
                     "verified_at": "2026-07-12T08:20:00Z",
                 },

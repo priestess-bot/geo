@@ -14,11 +14,53 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from verify_production_object_store import APPLICATION_CONSUMERS
+
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_COMPOSE = ROOT / "infra/docker-compose.yml"
 PRODUCTION_COMPOSE = ROOT / "infra/docker-compose.production.yml"
 MC_IMAGE = "minio/mc:RELEASE.2025-02-21T16-00-46Z"
+NATIVE_CONSUMER_PROBE = """
+import hashlib
+import json
+import os
+import socket
+
+from geno_core.runtime import build_object_store_from_env
+
+consumer = os.environ["OBJECT_STORE_CONSUMER_NAME"]
+run_id = os.environ["OBJECT_STORE_SMOKE_RUN_ID"]
+if os.environ.get("OBJECT_STORE_ACCESS_KEY") or os.environ.get("OBJECT_STORE_SECRET_KEY"):
+    raise RuntimeError("native consumer received direct object-store credentials")
+if not os.environ.get("OBJECT_STORE_ACCESS_KEY_FILE") or not os.environ.get("OBJECT_STORE_SECRET_KEY_FILE"):
+    raise RuntimeError("native consumer is missing file-backed object-store credentials")
+store = build_object_store_from_env()
+if store.auto_create_bucket:
+    raise RuntimeError("native consumer bucket auto-creation is enabled")
+payload = f"geno native consumer={consumer} run={run_id}\\n".encode("utf-8")
+content_hash = hashlib.sha256(payload).hexdigest()
+key = f"production-readiness/{run_id}/native/{consumer}.txt"
+stored = store.put_object(
+    key=key,
+    content=payload,
+    content_type="text/plain; charset=utf-8",
+    expected_hash=content_hash,
+)
+if not store.head_object(key=key):
+    raise RuntimeError("native consumer HEAD object failed")
+restored = store.get_object(key=key, expected_hash=stored.content_hash)
+print(json.dumps({
+    "status": "pass",
+    "service_name": consumer,
+    "container_id": socket.gethostname(),
+    "sha256": restored.content_hash,
+    "credential_fingerprint": hashlib.sha256(store.access_key.encode("utf-8")).hexdigest(),
+    "execution_path": "geno_core.runtime.build_object_store_from_env",
+    "credential_source": "OBJECT_STORE_ACCESS_KEY_FILE",
+    "auto_create_bucket": store.auto_create_bucket,
+}, sort_keys=True))
+"""
 
 
 class ProductionObjectStoreSmokeError(RuntimeError):
@@ -108,6 +150,78 @@ def _read_receipt_volume(
     return payload
 
 
+def _parse_last_json_object(output: str, *, service_name: str) -> dict[str, Any]:
+    for line in reversed(output.splitlines()):
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    raise ProductionObjectStoreSmokeError(
+        f"Native object-store probe for {service_name} did not return JSON"
+    )
+
+
+def _run_native_consumer_roundtrips(
+    *,
+    project_name: str,
+    run_id: str,
+    env: dict[str, str],
+    secret_values: tuple[str, ...],
+) -> dict[str, Any]:
+    _run(
+        _compose_command(project_name, "build", *APPLICATION_CONSUMERS),
+        env=env,
+        secret_values=secret_values,
+    )
+    roundtrips: dict[str, dict[str, Any]] = {}
+    for service_name in APPLICATION_CONSUMERS:
+        output = _run(
+            _compose_command(
+                project_name,
+                "run",
+                "--rm",
+                "--no-deps",
+                "--entrypoint",
+                "python",
+                "-e",
+                f"OBJECT_STORE_CONSUMER_NAME={service_name}",
+                "-e",
+                f"OBJECT_STORE_SMOKE_RUN_ID={run_id}",
+                service_name,
+                "-c",
+                NATIVE_CONSUMER_PROBE,
+            ),
+            env=env,
+            secret_values=secret_values,
+        )
+        result = _parse_last_json_object(output, service_name=service_name)
+        if result.get("status") != "pass" or result.get("service_name") != service_name:
+            raise ProductionObjectStoreSmokeError(
+                f"Native object-store probe for {service_name} returned an invalid result"
+            )
+        roundtrips[service_name] = result
+
+    fingerprints = {str(result.get("credential_fingerprint")) for result in roundtrips.values()}
+    container_ids = {str(result.get("container_id")) for result in roundtrips.values()}
+    if len(fingerprints) != 1:
+        raise ProductionObjectStoreSmokeError(
+            "Native consumer images did not use one application credential fingerprint"
+        )
+    if len(container_ids) != len(APPLICATION_CONSUMERS):
+        raise ProductionObjectStoreSmokeError(
+            "Native consumer evidence did not come from distinct service containers"
+        )
+    return {
+        "schema_version": "production-object-store-consumer-roundtrip-v1",
+        "verification_scope": "compose_service_native_builder",
+        "credential_fingerprint": fingerprints.pop(),
+        "consumer_roundtrips": roundtrips,
+        "verified_at": _utc_now(),
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run an isolated non-default MinIO policy/restore smoke"
@@ -118,6 +232,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--minio-console-port", type=int, default=0)
     parser.add_argument("--volume-name")
     parser.add_argument("--policy-only", action="store_true")
+    parser.add_argument(
+        "--native-consumers",
+        action="store_true",
+        help="Also build and probe every Compose consumer image when using --policy-only.",
+    )
     parser.add_argument("--encryption-volume-receipt")
     parser.add_argument("--snapshot-restore-receipt")
     parser.add_argument(
@@ -272,21 +391,38 @@ def main(argv: list[str] | None = None) -> int:
             env=env,
             secret_values=secret_values,
         )
-        consumer_receipt = _read_receipt_volume(
-            args.project_name, "consumer-roundtrip.json", env=env, secrets_=secret_values
+        shared_identity_receipt = _read_receipt_volume(
+            args.project_name,
+            "shared-identity-roundtrip.json",
+            env=env,
+            secrets_=secret_values,
         )
+        consumer_receipt = None
+        if args.native_consumers or not args.policy_only:
+            consumer_receipt = _run_native_consumer_roundtrips(
+                project_name=args.project_name,
+                run_id=run_id,
+                env=env,
+                secret_values=secret_values,
+            )
         receipt_paths = {
             "bootstrap": artifact_dir / "bootstrap.json",
             "backup_restore": artifact_dir / "backup-restore.json",
-            "consumer_roundtrip": artifact_dir / "consumer-roundtrip.json",
+            "shared_identity": artifact_dir / "shared-identity-roundtrip.json",
         }
         for name, payload in (
             ("bootstrap", bootstrap_receipt),
             ("backup_restore", backup_receipt),
-            ("consumer_roundtrip", consumer_receipt),
+            ("shared_identity", shared_identity_receipt),
         ):
             receipt_paths[name].write_text(
                 json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+            )
+        if consumer_receipt is not None:
+            receipt_paths["consumer_roundtrip"] = artifact_dir / "consumer-roundtrip.json"
+            receipt_paths["consumer_roundtrip"].write_text(
+                json.dumps(consumer_receipt, sort_keys=True, indent=2) + "\n",
+                encoding="utf-8",
             )
 
         _run(
@@ -318,11 +454,16 @@ def main(argv: list[str] | None = None) -> int:
             raise ProductionObjectStoreSmokeError("Raw secret found in MinIO logs")
 
         if args.policy_only:
+            scope = (
+                "policy_and_native_consumer_images_on_unencrypted_test_volume"
+                if consumer_receipt is not None
+                else "shared_identity_policy_only_unencrypted_test_volume"
+            )
             print(
                 json.dumps(
                     {
                         "status": "pass",
-                        "scope": "policy_only_unencrypted_test_volume",
+                        "scope": scope,
                         "run_id": run_id,
                         "receipts": {name: str(path) for name, path in receipt_paths.items()},
                         "secret_leak_count": 0,

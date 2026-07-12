@@ -31,6 +31,7 @@ APPLICATION_CONSUMERS = (
 )
 OBJECT_STORE_CALLER_SERVICE_MAP = {
     "apps/api/geno_api/main.py": frozenset({"api"}),
+    "scripts/run_production_object_store_smoke.py": frozenset(APPLICATION_CONSUMERS),
     "scripts/verify_runtime_e2e.py": frozenset({"runtime-e2e"}),
     "workers/collector_worker/run_collection_slice.py": frozenset(
         {"collector-worker", "collector-worker-litellm"}
@@ -537,16 +538,32 @@ def validate_ephemeral_cleanup_receipt(payload: dict[str, Any]) -> None:
 
 
 def validate_consumer_receipt(payload: dict[str, Any]) -> None:
+    if payload.get("schema_version") != "production-object-store-consumer-roundtrip-v1":
+        raise ProductionObjectStoreVerificationError(
+            "consumer_roundtrip_receipt: shared-identity or unsupported receipt schema"
+        )
     _require_fields(
         payload,
-        {"schema_version", "credential_fingerprint", "consumer_roundtrips", "verified_at"},
+        {
+            "schema_version",
+            "verification_scope",
+            "credential_fingerprint",
+            "consumer_roundtrips",
+            "verified_at",
+        },
         name="consumer_roundtrip_receipt",
     )
+    if payload.get("verification_scope") != "compose_service_native_builder":
+        raise ProductionObjectStoreVerificationError(
+            "consumer_roundtrip_receipt: full Gate requires Compose service native-builder evidence"
+        )
     roundtrips = payload["consumer_roundtrips"]
     if not isinstance(roundtrips, dict) or set(roundtrips) != set(APPLICATION_CONSUMERS):
         raise ProductionObjectStoreVerificationError(
             "consumer_roundtrip_receipt: inventory mismatch"
         )
+    container_ids: set[str] = set()
+    fingerprints: set[str] = set()
     for name, result in roundtrips.items():
         if not isinstance(result, dict) or result.get("status") != "pass":
             raise ProductionObjectStoreVerificationError(
@@ -556,9 +573,41 @@ def validate_consumer_receipt(payload: dict[str, Any]) -> None:
             raise ProductionObjectStoreVerificationError(
                 f"consumer_roundtrip_receipt: {name} hash invalid"
             )
+        if result.get("service_name") != name:
+            raise ProductionObjectStoreVerificationError(
+                f"consumer_roundtrip_receipt: {name} service binding mismatch"
+            )
+        if result.get("execution_path") != "geno_core.runtime.build_object_store_from_env":
+            raise ProductionObjectStoreVerificationError(
+                f"consumer_roundtrip_receipt: {name} did not use the native builder"
+            )
+        if result.get("credential_source") != "OBJECT_STORE_ACCESS_KEY_FILE":
+            raise ProductionObjectStoreVerificationError(
+                f"consumer_roundtrip_receipt: {name} did not use file-backed credentials"
+            )
+        if result.get("auto_create_bucket") is not False:
+            raise ProductionObjectStoreVerificationError(
+                f"consumer_roundtrip_receipt: {name} auto-create was not disabled"
+            )
+        container_id = str(result.get("container_id") or "")
+        fingerprint = str(result.get("credential_fingerprint") or "")
+        if not container_id or not SHA256_RE.fullmatch(fingerprint):
+            raise ProductionObjectStoreVerificationError(
+                f"consumer_roundtrip_receipt: {name} container/fingerprint evidence invalid"
+            )
+        container_ids.add(container_id)
+        fingerprints.add(fingerprint)
     if not SHA256_RE.fullmatch(str(payload["credential_fingerprint"])):
         raise ProductionObjectStoreVerificationError(
             "consumer_roundtrip_receipt: invalid fingerprint"
+        )
+    if len(container_ids) != len(APPLICATION_CONSUMERS):
+        raise ProductionObjectStoreVerificationError(
+            "consumer_roundtrip_receipt: evidence must come from nine distinct service containers"
+        )
+    if fingerprints != {str(payload["credential_fingerprint"])}:
+        raise ProductionObjectStoreVerificationError(
+            "consumer_roundtrip_receipt: consumer credential fingerprints differ"
         )
     _validate_timestamp(payload["verified_at"], name="consumer_roundtrip_receipt.verified_at")
 

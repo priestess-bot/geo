@@ -19,37 +19,20 @@ fingerprint_file=/tmp/geno-application-roundtrip/access-key
 printf '%s' "$access_key" > "$fingerprint_file"
 set -- $(sha256sum "$fingerprint_file")
 credential_fingerprint="$1"
-receipt="${OBJECT_STORE_RECEIPT_DIR:-/receipts}/consumer-roundtrip.json"
-printf '{"schema_version":"production-object-store-consumer-roundtrip-v1","credential_fingerprint":"%s","consumer_roundtrips":{' "$credential_fingerprint" > "$receipt"
-
-separator=""
-for consumer in \
-  api \
-  browser-fidelity-scheduler \
-  collector-worker \
-  collector-worker-litellm \
-  knowledge-worker \
-  report-export-worker \
-  runtime-e2e \
-  task-worker-knowledge \
-  task-worker-runtime
-do
-  payload="/tmp/geno-application-roundtrip/$consumer.txt"
-  restored="/tmp/geno-application-roundtrip/$consumer-restored.txt"
-  key="production-readiness/$run_id/$consumer.txt"
-  printf 'geno object-store consumer=%s run=%s\n' "$consumer" "$run_id" > "$payload"
-  set -- $(sha256sum "$payload")
-  source_hash="$1"
-  mc cp "$payload" "application/$bucket/$key" >/dev/null
-  mc stat "application/$bucket/$key" >/dev/null
-  mc cp "application/$bucket/$key" "$restored" >/dev/null
-  set -- $(sha256sum "$restored")
-  restored_hash="$1"
-  test "$source_hash" = "$restored_hash"
-  printf '%s"%s":{"status":"pass","sha256":"%s","execution_path":"minio-mc-file-secret"}' "$separator" "$consumer" "$restored_hash" >> "$receipt"
-  separator=,
-done
+receipt="${OBJECT_STORE_RECEIPT_DIR:-/receipts}/shared-identity-roundtrip.json"
+payload=/tmp/geno-application-roundtrip/shared-identity.txt
+restored=/tmp/geno-application-roundtrip/shared-identity-restored.txt
+key="production-readiness/$run_id/shared-identity.txt"
+printf 'geno shared application identity policy run=%s\n' "$run_id" > "$payload"
+set -- $(sha256sum "$payload")
+source_hash="$1"
+mc cp "$payload" "application/$bucket/$key" >/dev/null
+mc stat "application/$bucket/$key" >/dev/null
+mc cp "application/$bucket/$key" "$restored" >/dev/null
+set -- $(sha256sum "$restored")
+restored_hash="$1"
+test "$source_hash" = "$restored_hash"
 
 verified_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-printf '},"verified_at":"%s"}\n' "$verified_at" >> "$receipt"
-echo "Application consumer roundtrips passed: receipt=$receipt"
+printf '{"schema_version":"production-object-store-shared-identity-roundtrip-v1","verification_scope":"shared_identity_policy_only","credential_fingerprint":"%s","status":"pass","sha256":"%s","execution_path":"minio-mc-file-secret","verified_at":"%s"}\n' "$credential_fingerprint" "$restored_hash" "$verified_at" > "$receipt"
+echo "Shared application identity roundtrip passed: receipt=$receipt"
