@@ -253,13 +253,25 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
 
     def test_makefile_exposes_contract_and_fresh_install_entrypoints(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
         self.assertIn("schema-v2-contracts:", makefile)
         self.assertIn("schema-v2-fresh-install:", makefile)
+        self.assertIn(
+            "schema-v2-gate: schema-v2-contracts schema-v2-config schema-v2-fresh-install",
+            makefile,
+        )
         self.assertEqual(makefile.count("run --rm schema-v2-install"), 2)
         self.assertEqual(makefile.count("run --rm schema-v2-verify"), 2)
         self.assertIn("run --rm schema-v2-behavior-test", makefile)
         self.assertIn("down --remove-orphans -v", makefile)
+        ci_local = makefile.split("\nci-local:", 1)[1].split("\n", 1)[0]
+        self.assertIn("schema-v2-gate", ci_local)
+        ordinary_test = makefile.split("\ntest:\n", 1)[1].split("\n\n", 1)[0]
+        self.assertNotIn("schema-v2-fresh-install", ordinary_test)
+        self.assertIn("run: make db-smoke", workflow)
+        self.assertIn("run: make schema-v2-config", workflow)
+        self.assertIn("run: make schema-v2-fresh-install", workflow)
 
 
 if __name__ == "__main__":
