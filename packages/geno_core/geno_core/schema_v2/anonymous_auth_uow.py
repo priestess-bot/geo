@@ -9,8 +9,15 @@ from enum import Enum
 from typing import Callable, Sequence, TypeVar
 from uuid import UUID
 
+from geno_core.auth_delivery import (
+    AuthDeliveryError,
+    AuthDeliveryKeyring,
+    FrozenAuthDelivery,
+    build_frozen_auth_delivery,
+)
 from geno_core.schema_v2.session_uow import (
     SchemaV2ResolvedProjectScope,
+    SchemaV2RawSessionTokenError,
     SchemaV2SessionAuthorizationError,
     SchemaV2SessionCleanupTelemetry,
     SchemaV2SessionConnection,
@@ -22,6 +29,7 @@ from geno_core.schema_v2.session_uow import (
     _parse_project_scope,
     _string_tuple,
     _uuid_tuple,
+    hash_raw_session_token,
 )
 
 
@@ -105,13 +113,13 @@ class SchemaV2AnonymousAuthCommitOutcomeUnknownError(SchemaV2AnonymousAuthUnitOf
 
 class SchemaV2AnonymousAuthRollbackError(SchemaV2AnonymousAuthUnitOfWorkError):
     retryable = False
-    requires_idempotency_recovery = False
+    requires_idempotency_recovery = True
     transaction_outcome = "unknown"
 
     def __init__(self) -> None:
         super().__init__(
             "anonymous_auth_rollback_failed",
-            "Schema v2 anonymous auth rollback could not be confirmed",
+            "Schema v2 anonymous auth rollback is unconfirmed; recover by request key",
         )
 
 
@@ -202,37 +210,72 @@ class SchemaV2SourceIdentityHmac:
 
 
 @dataclass(frozen=True, init=False)
-class SchemaV2DeliveryCiphertext:
-    _value: bytes = field(repr=False)
+class SchemaV2EncryptedAuthDelivery:
+    _attempt_id: UUID = field(repr=False)
+    _ciphertext: bytes = field(repr=False)
+    _key_id: str = field(repr=False)
+    _nonce: bytes = field(repr=False)
+    _session_expires_at: datetime = field(repr=False)
+    _keyring: AuthDeliveryKeyring = field(repr=False, compare=False)
 
-    def __init__(self, value: bytes, *, _factory_key: object | None = None) -> None:
-        if _factory_key is not _OPAQUE_FACTORY_KEY or not (
-            1 <= len(value) <= MAX_DELIVERY_CIPHERTEXT_LENGTH
-        ):
+    def __init__(
+        self,
+        *,
+        attempt_id: UUID,
+        ciphertext: bytes,
+        key_id: str,
+        nonce: bytes,
+        session_expires_at: datetime,
+        keyring: AuthDeliveryKeyring,
+        _factory_key: object | None = None,
+    ) -> None:
+        if _factory_key is not _OPAQUE_FACTORY_KEY:
             raise SchemaV2AnonymousAuthInputError()
-        object.__setattr__(self, "_value", value)
+        _validate_encrypted_delivery_parts(ciphertext, key_id, nonce)
+        object.__setattr__(self, "_attempt_id", attempt_id)
+        object.__setattr__(self, "_ciphertext", ciphertext)
+        object.__setattr__(self, "_key_id", key_id)
+        object.__setattr__(self, "_nonce", nonce)
+        object.__setattr__(self, "_session_expires_at", session_expires_at)
+        object.__setattr__(self, "_keyring", keyring)
 
-    def as_bytes(self) -> bytes:
-        return self._value
+    def decrypt(self) -> FrozenAuthDelivery:
+        try:
+            return self._keyring.decrypt(
+                ciphertext=self._ciphertext,
+                key_id=self._key_id,
+                nonce=self._nonce,
+                attempt_id=str(self._attempt_id),
+            )
+        except AuthDeliveryError:
+            raise SchemaV2AnonymousAuthResultError() from None
 
     def __repr__(self) -> str:
-        return "SchemaV2DeliveryCiphertext([redacted])"
+        return "SchemaV2EncryptedAuthDelivery([redacted])"
 
 
 @dataclass(frozen=True, init=False)
-class SchemaV2DeliveryNonce:
-    _value: bytes = field(repr=False)
+class SchemaV2RedemptionMaterial:
+    _session_token_hash: SchemaV2SessionTokenHash = field(repr=False)
+    _encrypted_delivery: SchemaV2EncryptedAuthDelivery = field(repr=False)
+    _session_expires_at: datetime = field(repr=False)
 
-    def __init__(self, value: bytes, *, _factory_key: object | None = None) -> None:
-        if _factory_key is not _OPAQUE_FACTORY_KEY or len(value) != 12:
+    def __init__(
+        self,
+        *,
+        session_token_hash: SchemaV2SessionTokenHash,
+        encrypted_delivery: SchemaV2EncryptedAuthDelivery,
+        session_expires_at: datetime,
+        _factory_key: object | None = None,
+    ) -> None:
+        if _factory_key is not _OPAQUE_FACTORY_KEY:
             raise SchemaV2AnonymousAuthInputError()
-        object.__setattr__(self, "_value", value)
-
-    def as_bytes(self) -> bytes:
-        return self._value
+        object.__setattr__(self, "_session_token_hash", session_token_hash)
+        object.__setattr__(self, "_encrypted_delivery", encrypted_delivery)
+        object.__setattr__(self, "_session_expires_at", session_expires_at)
 
     def __repr__(self) -> str:
-        return "SchemaV2DeliveryNonce([redacted])"
+        return "SchemaV2RedemptionMaterial([redacted])"
 
 
 def hash_raw_invitation_token(raw_invitation_token: str) -> SchemaV2InvitationTokenHash:
@@ -294,16 +337,97 @@ def hmac_source_identity(
     return SchemaV2SourceIdentityHmac(digest, _factory_key=_OPAQUE_FACTORY_KEY)
 
 
-def protect_delivery_ciphertext(value: bytes) -> SchemaV2DeliveryCiphertext:
-    if type(value) is not bytes:
+def _encrypt_auth_delivery_for_redeem(
+    delivery: FrozenAuthDelivery,
+    *,
+    attempt_id: UUID,
+    keyring: AuthDeliveryKeyring,
+) -> SchemaV2EncryptedAuthDelivery:
+    _require_uuid(attempt_id)
+    if type(delivery) is not FrozenAuthDelivery or type(keyring) is not AuthDeliveryKeyring:
         raise SchemaV2AnonymousAuthInputError()
-    return SchemaV2DeliveryCiphertext(value, _factory_key=_OPAQUE_FACTORY_KEY)
+    session_expires_at = _aware_datetime(delivery.absolute_session_expires_at)
+    try:
+        encrypted = keyring.encrypt(delivery, attempt_id=str(attempt_id))
+        _validate_encrypted_delivery_parts(
+            encrypted.ciphertext,
+            encrypted.key_id,
+            encrypted.nonce,
+        )
+        verified = keyring.decrypt(
+            ciphertext=encrypted.ciphertext,
+            key_id=encrypted.key_id,
+            nonce=encrypted.nonce,
+            attempt_id=str(attempt_id),
+        )
+    except (AuthDeliveryError, SchemaV2AnonymousAuthInputError):
+        raise SchemaV2AnonymousAuthInputError(
+            "auth delivery could not be sealed for redemption"
+        ) from None
+    if verified != delivery:
+        raise SchemaV2AnonymousAuthInputError("auth delivery could not be sealed for redemption")
+    return SchemaV2EncryptedAuthDelivery(
+        attempt_id=attempt_id,
+        ciphertext=encrypted.ciphertext,
+        key_id=encrypted.key_id,
+        nonce=encrypted.nonce,
+        session_expires_at=session_expires_at,
+        keyring=keyring,
+        _factory_key=_OPAQUE_FACTORY_KEY,
+    )
 
 
-def protect_delivery_nonce(value: bytes) -> SchemaV2DeliveryNonce:
-    if type(value) is not bytes:
+def build_redemption_material(
+    raw_session_token: str,
+    raw_csrf_token: str,
+    *,
+    session_cookie_name: str,
+    csrf_cookie_name: str,
+    session_expires_at: datetime,
+    secure: bool,
+    attempt_id: UUID,
+    keyring: AuthDeliveryKeyring,
+) -> SchemaV2RedemptionMaterial:
+    _require_uuid(attempt_id)
+    normalized_expiry = _aware_datetime(session_expires_at)
+    if (
+        type(raw_csrf_token) is not str
+        or not raw_csrf_token
+        or len(raw_csrf_token) > 4096
+        or type(session_cookie_name) is not str
+        or type(csrf_cookie_name) is not str
+        or type(secure) is not bool
+    ):
         raise SchemaV2AnonymousAuthInputError()
-    return SchemaV2DeliveryNonce(value, _factory_key=_OPAQUE_FACTORY_KEY)
+    try:
+        session_token_hash = hash_raw_session_token(raw_session_token)
+        delivery = build_frozen_auth_delivery(
+            session_cookie_name=session_cookie_name,
+            session_token=raw_session_token,
+            csrf_cookie_name=csrf_cookie_name,
+            csrf_token=raw_csrf_token,
+            session_expires_at=normalized_expiry,
+            secure=secure,
+        )
+        encrypted_delivery = _encrypt_auth_delivery_for_redeem(
+            delivery,
+            attempt_id=attempt_id,
+            keyring=keyring,
+        )
+    except (
+        AuthDeliveryError,
+        SchemaV2AnonymousAuthInputError,
+        SchemaV2RawSessionTokenError,
+    ):
+        raise SchemaV2AnonymousAuthInputError("redemption material could not be created") from None
+    if encrypted_delivery._session_expires_at != normalized_expiry:
+        raise SchemaV2AnonymousAuthInputError("redemption material could not be created")
+    return SchemaV2RedemptionMaterial(
+        session_token_hash=session_token_hash,
+        encrypted_delivery=encrypted_delivery,
+        session_expires_at=normalized_expiry,
+        _factory_key=_OPAQUE_FACTORY_KEY,
+    )
 
 
 @dataclass(frozen=True)
@@ -335,9 +459,7 @@ class SchemaV2AnonymousAuthRedeemResult:
     result_code: SchemaV2RedeemResultCode
     attempt_id: UUID | None
     session: SchemaV2AnonymousAuthSession | None
-    delivery_ciphertext: SchemaV2DeliveryCiphertext | None
-    delivery_key_id: str | None
-    delivery_nonce: SchemaV2DeliveryNonce | None
+    encrypted_delivery: SchemaV2EncryptedAuthDelivery | None
     delivery_expires_at: datetime | None
     replay_count: int | None
     recommended_surface: SchemaV2InvitationSurface | None
@@ -419,11 +541,7 @@ class SchemaV2AnonymousAuthUnitOfWork:
         invitation_token_hash: SchemaV2InvitationTokenHash,
         requested_surface: SchemaV2InvitationSurface,
         idempotency_key_hash: SchemaV2IdempotencyKeyHash,
-        session_token_hash: SchemaV2SessionTokenHash,
-        session_expires_at: datetime,
-        delivery_ciphertext: SchemaV2DeliveryCiphertext,
-        delivery_key_id: str,
-        delivery_nonce: SchemaV2DeliveryNonce,
+        redemption_material: SchemaV2RedemptionMaterial,
         delivery_expires_at: datetime,
     ) -> SchemaV2AnonymousAuthRedeemResult:
         for value in (attempt_id, session_id, invitation_id):
@@ -431,15 +549,18 @@ class SchemaV2AnonymousAuthUnitOfWork:
         _require_exact_type(invitation_token_hash, SchemaV2InvitationTokenHash)
         _require_exact_type(requested_surface, SchemaV2InvitationSurface)
         _require_exact_type(idempotency_key_hash, SchemaV2IdempotencyKeyHash)
-        _require_exact_type(session_token_hash, SchemaV2SessionTokenHash)
-        _require_exact_type(delivery_ciphertext, SchemaV2DeliveryCiphertext)
-        _require_exact_type(delivery_nonce, SchemaV2DeliveryNonce)
-        if type(delivery_key_id) is not str or not DELIVERY_KEY_ID_PATTERN.fullmatch(
-            delivery_key_id
-        ):
-            raise SchemaV2AnonymousAuthInputError("delivery key id is invalid")
-        normalized_session_expiry = _aware_datetime(session_expires_at)
+        _require_exact_type(redemption_material, SchemaV2RedemptionMaterial)
+        encrypted_delivery = redemption_material._encrypted_delivery
+        if encrypted_delivery._attempt_id != attempt_id:
+            raise SchemaV2AnonymousAuthInputError(
+                "encrypted delivery is bound to a different redemption attempt"
+            )
+        normalized_session_expiry = redemption_material._session_expires_at
         normalized_delivery_expiry = _aware_datetime(delivery_expires_at)
+        if encrypted_delivery._session_expires_at != normalized_session_expiry:
+            raise SchemaV2AnonymousAuthInputError(
+                "encrypted delivery session expiry does not match redemption"
+            )
         if normalized_delivery_expiry > normalized_session_expiry:
             raise SchemaV2AnonymousAuthInputError("delivery expiry cannot exceed session expiry")
 
@@ -450,11 +571,11 @@ class SchemaV2AnonymousAuthUnitOfWork:
             invitation_token_hash._value,
             requested_surface.value,
             idempotency_key_hash._value,
-            session_token_hash._value,
+            redemption_material._session_token_hash._value,
             normalized_session_expiry,
-            delivery_ciphertext._value,
-            delivery_key_id,
-            delivery_nonce._value,
+            encrypted_delivery._ciphertext,
+            encrypted_delivery._key_id,
+            encrypted_delivery._nonce,
             normalized_delivery_expiry,
         )
         return self._execute_exact(
@@ -474,9 +595,7 @@ class SchemaV2AnonymousAuthUnitOfWork:
                 expected_attempt_id=attempt_id,
                 expected_session_id=session_id,
                 expected_surface=requested_surface,
-                expected_ciphertext=delivery_ciphertext,
-                expected_key_id=delivery_key_id,
-                expected_nonce=delivery_nonce,
+                expected_encrypted_delivery=encrypted_delivery,
                 expected_delivery_expiry=normalized_delivery_expiry,
             ),
         )
@@ -514,11 +633,15 @@ class SchemaV2AnonymousAuthUnitOfWork:
         try:
             self._connection.commit()
         except Exception:
+            rollback_failed = False
             try:
                 self._connection.rollback()
             except Exception:
-                pass
+                rollback_failed = True
             self._transaction_outcome = "unknown"
+            if rollback_failed:
+                self._discard_unconfirmed_transaction()
+                raise SchemaV2AnonymousAuthCommitOutcomeUnknownError() from None
             self._finalize(force_discard=True)
             raise SchemaV2AnonymousAuthCommitOutcomeUnknownError() from None
 
@@ -549,14 +672,15 @@ class SchemaV2AnonymousAuthUnitOfWork:
         self._state = _AnonymousAuthState.ACTIVE
 
     def _abort_failed_call(self) -> bool:
-        rollback_failed = False
         try:
             self._connection.rollback()
         except Exception:
-            rollback_failed = True
-        self._transaction_outcome = "unknown" if rollback_failed else "rolled_back"
+            self._transaction_outcome = "unknown"
+            self._discard_unconfirmed_transaction()
+            return True
+        self._transaction_outcome = "rolled_back"
         cleanup_failed = not self._reset_session_state()
-        should_discard = rollback_failed or cleanup_failed
+        should_discard = cleanup_failed
         if should_discard:
             self._discard_connection()
         self._cleanup_telemetry = SchemaV2SessionCleanupTelemetry(
@@ -565,12 +689,21 @@ class SchemaV2AnonymousAuthUnitOfWork:
         )
         self._release_connection()
         self._state = _AnonymousAuthState.BROKEN if should_discard else _AnonymousAuthState.FINISHED
-        if cleanup_failed and not rollback_failed:
+        if cleanup_failed:
             raise SchemaV2AnonymousAuthUnitOfWorkError(
                 "anonymous_auth_connection_cleanup_failed",
                 "Schema v2 anonymous auth connection could not be cleaned",
             ) from None
-        return rollback_failed
+        return False
+
+    def _discard_unconfirmed_transaction(self) -> None:
+        self._discard_connection()
+        self._cleanup_telemetry = SchemaV2SessionCleanupTelemetry(
+            status="not_attempted_unconfirmed_transaction",
+            connection_discarded=True,
+        )
+        self._release_connection()
+        self._state = _AnonymousAuthState.BROKEN
 
     def _finalize(self, *, force_discard: bool) -> None:
         cleanup_succeeded = self._reset_session_state()
@@ -705,9 +838,7 @@ def _parse_redeem_rows(
     expected_attempt_id: UUID,
     expected_session_id: UUID,
     expected_surface: SchemaV2InvitationSurface,
-    expected_ciphertext: SchemaV2DeliveryCiphertext,
-    expected_key_id: str,
-    expected_nonce: SchemaV2DeliveryNonce,
+    expected_encrypted_delivery: SchemaV2EncryptedAuthDelivery,
     expected_delivery_expiry: datetime,
 ) -> SchemaV2AnonymousAuthRedeemResult:
     row = _strict_row(rows, 15)
@@ -727,9 +858,13 @@ def _parse_redeem_rows(
             raise SchemaV2AnonymousAuthResultError()
         attempt_id = _canonical_uuid(row[1])
         session = _parse_redeem_session(row)
-        ciphertext = _ciphertext_from_database(row[8])
-        key_id = _delivery_key_id_from_database(row[9])
-        nonce = _nonce_from_database(row[10])
+        encrypted_delivery = _encrypted_delivery_from_database(
+            ciphertext=row[8],
+            key_id=row[9],
+            nonce=row[10],
+            attempt_id=attempt_id,
+            keyring=expected_encrypted_delivery._keyring,
+        )
         delivery_expiry = _aware_datetime_result(row[11])
         replay_count = _nonnegative_int(row[12])
         if result_code is SchemaV2RedeemResultCode.SUCCEEDED:
@@ -737,9 +872,17 @@ def _parse_redeem_rows(
                 attempt_id != expected_attempt_id
                 or session.session_id != expected_session_id
                 or replay_count != 0
-                or not hmac.compare_digest(ciphertext.as_bytes(), expected_ciphertext.as_bytes())
-                or key_id != expected_key_id
-                or not hmac.compare_digest(nonce.as_bytes(), expected_nonce.as_bytes())
+                or not hmac.compare_digest(
+                    encrypted_delivery._ciphertext,
+                    expected_encrypted_delivery._ciphertext,
+                )
+                or encrypted_delivery._key_id != expected_encrypted_delivery._key_id
+                or not hmac.compare_digest(
+                    encrypted_delivery._nonce,
+                    expected_encrypted_delivery._nonce,
+                )
+                or encrypted_delivery._session_expires_at
+                != expected_encrypted_delivery._session_expires_at
                 or delivery_expiry != expected_delivery_expiry
             ):
                 raise SchemaV2AnonymousAuthResultError()
@@ -749,9 +892,7 @@ def _parse_redeem_rows(
             result_code=result_code,
             attempt_id=attempt_id,
             session=session,
-            delivery_ciphertext=ciphertext,
-            delivery_key_id=key_id,
-            delivery_nonce=nonce,
+            encrypted_delivery=encrypted_delivery,
             delivery_expires_at=delivery_expiry,
             replay_count=replay_count,
             recommended_surface=None,
@@ -810,9 +951,7 @@ def _empty_redeem_result(
         result_code=result_code,
         attempt_id=None,
         session=None,
-        delivery_ciphertext=None,
-        delivery_key_id=None,
-        delivery_nonce=None,
+        encrypted_delivery=None,
         delivery_expires_at=None,
         replay_count=None,
         recommended_surface=recommended_surface,
@@ -912,24 +1051,51 @@ def _database_bytes(value: object) -> bytes:
     raise SchemaV2AnonymousAuthResultError()
 
 
-def _ciphertext_from_database(value: object) -> SchemaV2DeliveryCiphertext:
+def _validate_encrypted_delivery_parts(
+    ciphertext: object,
+    key_id: object,
+    nonce: object,
+) -> None:
+    if type(ciphertext) is not bytes or not (
+        1 <= len(ciphertext) <= MAX_DELIVERY_CIPHERTEXT_LENGTH
+    ):
+        raise SchemaV2AnonymousAuthInputError()
+    if type(key_id) is not str or not DELIVERY_KEY_ID_PATTERN.fullmatch(key_id):
+        raise SchemaV2AnonymousAuthInputError()
+    if type(nonce) is not bytes or len(nonce) != 12:
+        raise SchemaV2AnonymousAuthInputError()
+
+
+def _encrypted_delivery_from_database(
+    *,
+    ciphertext: object,
+    key_id: object,
+    nonce: object,
+    attempt_id: UUID,
+    keyring: AuthDeliveryKeyring,
+) -> SchemaV2EncryptedAuthDelivery:
+    resolved_ciphertext = _database_bytes(ciphertext)
+    resolved_nonce = _database_bytes(nonce)
     try:
-        return protect_delivery_ciphertext(_database_bytes(value))
-    except SchemaV2AnonymousAuthInputError:
-        raise SchemaV2AnonymousAuthResultError() from None
-
-
-def _nonce_from_database(value: object) -> SchemaV2DeliveryNonce:
-    try:
-        return protect_delivery_nonce(_database_bytes(value))
-    except SchemaV2AnonymousAuthInputError:
-        raise SchemaV2AnonymousAuthResultError() from None
-
-
-def _delivery_key_id_from_database(value: object) -> str:
-    if type(value) is not str or not DELIVERY_KEY_ID_PATTERN.fullmatch(value):
+        _validate_encrypted_delivery_parts(resolved_ciphertext, key_id, resolved_nonce)
+        delivery = keyring.decrypt(
+            ciphertext=resolved_ciphertext,
+            key_id=key_id,
+            nonce=resolved_nonce,
+            attempt_id=str(attempt_id),
+        )
+        session_expires_at = _aware_datetime(delivery.absolute_session_expires_at)
+    except (AuthDeliveryError, SchemaV2AnonymousAuthInputError):
         raise SchemaV2AnonymousAuthResultError()
-    return value
+    return SchemaV2EncryptedAuthDelivery(
+        attempt_id=attempt_id,
+        ciphertext=resolved_ciphertext,
+        key_id=key_id,
+        nonce=resolved_nonce,
+        session_expires_at=session_expires_at,
+        keyring=keyring,
+        _factory_key=_OPAQUE_FACTORY_KEY,
+    )
 
 
 def _stable_command_error_code(exc: BaseException) -> str | None:
@@ -954,19 +1120,18 @@ __all__ = [
     "SchemaV2AnonymousAuthSession",
     "SchemaV2AnonymousAuthUnitOfWork",
     "SchemaV2AnonymousAuthUnitOfWorkError",
-    "SchemaV2DeliveryCiphertext",
-    "SchemaV2DeliveryNonce",
+    "SchemaV2EncryptedAuthDelivery",
     "SchemaV2IdempotencyKeyHash",
     "SchemaV2InvitationSurface",
     "SchemaV2InvitationTokenHash",
     "SchemaV2PreflightResultCode",
     "SchemaV2RedeemResultCode",
+    "SchemaV2RedemptionMaterial",
     "SchemaV2SourceIdentityHmac",
     "SchemaV2SourceIdentityHmacKey",
     "build_source_identity_hmac_key",
+    "build_redemption_material",
     "hash_raw_idempotency_key",
     "hash_raw_invitation_token",
     "hmac_source_identity",
-    "protect_delivery_ciphertext",
-    "protect_delivery_nonce",
 ]

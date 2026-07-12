@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import UUID
 
+from geno_core.auth_delivery import AuthDeliveryError, AuthDeliveryKeyring
 from geno_core.runtime import RuntimePostgresConnectionPool
 from geno_core.schema_v2.anonymous_auth_uow import (
     SchemaV2AnonymousAuthCommitOutcomeUnknownError,
@@ -19,21 +20,20 @@ from geno_core.schema_v2.anonymous_auth_uow import (
     SchemaV2AnonymousAuthRollbackError,
     SchemaV2AnonymousAuthUnitOfWork,
     SchemaV2AnonymousAuthUnitOfWorkError,
-    SchemaV2DeliveryCiphertext,
-    SchemaV2DeliveryNonce,
+    SchemaV2EncryptedAuthDelivery,
     SchemaV2IdempotencyKeyHash,
     SchemaV2InvitationSurface,
     SchemaV2InvitationTokenHash,
     SchemaV2PreflightResultCode,
     SchemaV2RedeemResultCode,
+    SchemaV2RedemptionMaterial,
     SchemaV2SourceIdentityHmac,
     SchemaV2SourceIdentityHmacKey,
+    build_redemption_material,
     build_source_identity_hmac_key,
     hash_raw_idempotency_key,
     hash_raw_invitation_token,
     hmac_source_identity,
-    protect_delivery_ciphertext,
-    protect_delivery_nonce,
 )
 from geno_core.schema_v2.session_uow import (
     SchemaV2ApiSessionUnitOfWork,
@@ -52,11 +52,11 @@ OLD_ATTEMPT_ID = UUID("77777777-7777-4777-8777-777777777777")
 OLD_SESSION_ID = UUID("88888888-8888-4888-8888-888888888888")
 RAW_INVITATION_TOKEN = "raw-invitation-token-with-32-bytes"
 RAW_IDEMPOTENCY_KEY = "opaque-idempotency-key"
-RAW_SESSION_TOKEN = "raw-session-token"
+RAW_SESSION_TOKEN = "raw-session-token-for-cookie"
+RAW_CSRF_TOKEN = "raw-csrf-token-for-cookie"
 RAW_SOURCE_IDENTITY = "203.0.113.41"
 RAW_SOURCE_KEY = b"source-fingerprint-key-material!"
-RAW_CIPHERTEXT = b"encrypted-cookie-delivery"
-RAW_NONCE = b"0123456789ab"
+DELIVERY_KEY = b"d" * 32
 NOW = datetime(2026, 7, 13, 2, 0, tzinfo=UTC)
 DELIVERY_EXPIRY = NOW + timedelta(minutes=10)
 SESSION_EXPIRY = NOW + timedelta(hours=8)
@@ -90,6 +90,7 @@ def compatible_preflight_row() -> tuple[object, ...]:
 
 
 def successful_redeem_row(
+    encrypted_delivery: SchemaV2EncryptedAuthDelivery,
     *,
     result_code: str = "succeeded",
     attempt_id: UUID = ATTEMPT_ID,
@@ -105,9 +106,9 @@ def successful_redeem_row(
         [str(PROJECT_ID)],
         [],
         project_scope(),
-        RAW_CIPHERTEXT,
-        "delivery-key-v1",
-        RAW_NONCE,
+        encrypted_delivery._ciphertext,
+        encrypted_delivery._key_id,
+        encrypted_delivery._nonce,
         DELIVERY_EXPIRY,
         replay_count,
         None,
@@ -160,7 +161,7 @@ class FakeCursor:
             if self.connection.database_error is not None:
                 raise self.connection.database_error
             raise RuntimeError(
-                f"database error containing {RAW_INVITATION_TOKEN} {RAW_CIPHERTEXT!r}"
+                f"database error containing {RAW_INVITATION_TOKEN} {RAW_SESSION_TOKEN}"
             )
 
     def fetchall(self) -> list[tuple[object, ...]]:
@@ -223,13 +224,35 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
         self.invitation_hash = hash_raw_invitation_token(RAW_INVITATION_TOKEN)
         self.idempotency_hash = hash_raw_idempotency_key(RAW_IDEMPOTENCY_KEY)
         self.session_hash = hash_raw_session_token(RAW_SESSION_TOKEN)
+        self.delivery_keyring = AuthDeliveryKeyring(
+            active_key_id="delivery-key-v1",
+            keys={"delivery-key-v1": DELIVERY_KEY},
+        )
+        self.redemption_material = build_redemption_material(
+            RAW_SESSION_TOKEN,
+            RAW_CSRF_TOKEN,
+            session_cookie_name="geno-session",
+            csrf_cookie_name="geno-csrf",
+            session_expires_at=SESSION_EXPIRY,
+            secure=True,
+            attempt_id=ATTEMPT_ID,
+            keyring=self.delivery_keyring,
+        )
+        self.old_redemption_material = build_redemption_material(
+            "old-raw-session-token-for-cookie",
+            "old-raw-csrf-token-for-cookie",
+            session_cookie_name="geno-session",
+            csrf_cookie_name="geno-csrf",
+            session_expires_at=SESSION_EXPIRY,
+            secure=True,
+            attempt_id=OLD_ATTEMPT_ID,
+            keyring=self.delivery_keyring,
+        )
         self.source_key = build_source_identity_hmac_key(RAW_SOURCE_KEY)
         self.source_hmac = hmac_source_identity(
             RAW_SOURCE_IDENTITY,
             server_key=self.source_key,
         )
-        self.ciphertext = protect_delivery_ciphertext(RAW_CIPHERTEXT)
-        self.nonce = protect_delivery_nonce(RAW_NONCE)
 
     def _preflight(
         self,
@@ -247,6 +270,7 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
         connection: FakeConnection,
         *,
         unit_of_work: SchemaV2AnonymousAuthUnitOfWork | None = None,
+        redemption_material: SchemaV2RedemptionMaterial | None = None,
     ):
         active_uow = unit_of_work or SchemaV2AnonymousAuthUnitOfWork(connection)
         return active_uow.redeem(
@@ -256,11 +280,7 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
             invitation_token_hash=self.invitation_hash,
             requested_surface=SchemaV2InvitationSurface.ADMIN,
             idempotency_key_hash=self.idempotency_hash,
-            session_token_hash=self.session_hash,
-            session_expires_at=SESSION_EXPIRY,
-            delivery_ciphertext=self.ciphertext,
-            delivery_key_id="delivery-key-v1",
-            delivery_nonce=self.nonce,
+            redemption_material=redemption_material or self.redemption_material,
             delivery_expires_at=DELIVERY_EXPIRY,
         )
 
@@ -278,8 +298,12 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
             (self.idempotency_hash, RAW_IDEMPOTENCY_KEY, idempotency_digest),
             (self.source_hmac, RAW_SOURCE_IDENTITY, source_digest),
             (self.source_key, RAW_SOURCE_KEY.decode(), RAW_SOURCE_KEY.hex()),
-            (self.ciphertext, RAW_CIPHERTEXT.decode(), RAW_CIPHERTEXT.hex()),
-            (self.nonce, RAW_NONCE.decode(), RAW_NONCE.hex()),
+            (self.redemption_material, RAW_SESSION_TOKEN, RAW_CSRF_TOKEN),
+            (
+                self.redemption_material._encrypted_delivery,
+                RAW_SESSION_TOKEN,
+                RAW_CSRF_TOKEN,
+            ),
         ):
             with self.subTest(value_type=type(value).__name__):
                 self.assertNotIn(raw, repr(value))
@@ -291,11 +315,20 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
         self.assertIs(type(self.idempotency_hash), SchemaV2IdempotencyKeyHash)
         self.assertIs(type(self.source_hmac), SchemaV2SourceIdentityHmac)
         self.assertIs(type(self.source_key), SchemaV2SourceIdentityHmacKey)
-        self.assertIs(type(self.ciphertext), SchemaV2DeliveryCiphertext)
-        self.assertIs(type(self.nonce), SchemaV2DeliveryNonce)
+        self.assertIs(type(self.redemption_material), SchemaV2RedemptionMaterial)
+        self.assertIs(
+            type(self.redemption_material._encrypted_delivery),
+            SchemaV2EncryptedAuthDelivery,
+        )
         self.assertIs(type(self.session_hash), SchemaV2SessionTokenHash)
-        self.assertEqual(self.ciphertext.as_bytes(), RAW_CIPHERTEXT)
-        self.assertEqual(self.nonce.as_bytes(), RAW_NONCE)
+        self.assertEqual(
+            self.redemption_material._session_token_hash,
+            self.session_hash,
+        )
+        decrypted = self.redemption_material._encrypted_delivery.decrypt()
+        self.assertEqual(decrypted.absolute_session_expires_at, SESSION_EXPIRY)
+        self.assertIn(f"geno-session={RAW_SESSION_TOKEN}", decrypted.cookie_headers[0])
+        self.assertIn(f"geno-csrf={RAW_CSRF_TOKEN}", decrypted.cookie_headers[1])
 
         invalid_factories = (
             lambda: hash_raw_invitation_token(""),
@@ -304,9 +337,22 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
             lambda: hash_raw_idempotency_key("short"),
             lambda: build_source_identity_hmac_key(b"too-short"),
             lambda: hmac_source_identity(" source", server_key=self.source_key),
-            lambda: protect_delivery_ciphertext(b""),
-            lambda: protect_delivery_nonce(b"short"),
             lambda: SchemaV2InvitationTokenHash(invitation_digest),
+            lambda: SchemaV2RedemptionMaterial(
+                session_token_hash=self.session_hash,
+                encrypted_delivery=self.redemption_material._encrypted_delivery,
+                session_expires_at=SESSION_EXPIRY,
+            ),
+            lambda: build_redemption_material(
+                "",
+                RAW_CSRF_TOKEN,
+                session_cookie_name="geno-session",
+                csrf_cookie_name="geno-csrf",
+                session_expires_at=SESSION_EXPIRY,
+                secure=True,
+                attempt_id=ATTEMPT_ID,
+                keyring=self.delivery_keyring,
+            ),
         )
         for factory in invalid_factories:
             with self.subTest(factory=repr(factory)):
@@ -319,6 +365,34 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
                     RAW_SOURCE_KEY.decode(),
                 ):
                     self.assertNotIn(secret, str(raised.exception))
+
+    def test_redemption_material_binds_token_hash_cookie_expiry_and_attempt_aad(self) -> None:
+        encrypted = self.redemption_material._encrypted_delivery
+        self.assertEqual(
+            self.redemption_material._session_token_hash,
+            hash_raw_session_token(RAW_SESSION_TOKEN),
+        )
+        self.assertEqual(self.redemption_material._session_expires_at, SESSION_EXPIRY)
+        delivery = encrypted.decrypt()
+        self.assertEqual(delivery.absolute_session_expires_at, SESSION_EXPIRY)
+        self.assertIn(f"geno-session={RAW_SESSION_TOKEN}", delivery.cookie_headers[0])
+        with self.assertRaises(AuthDeliveryError):
+            self.delivery_keyring.decrypt(
+                ciphertext=encrypted._ciphertext,
+                key_id=encrypted._key_id,
+                nonce=encrypted._nonce,
+                attempt_id=str(OLD_ATTEMPT_ID),
+            )
+
+        connection = FakeConnection(
+            [successful_redeem_row(self.old_redemption_material._encrypted_delivery)]
+        )
+        with self.assertRaises(SchemaV2AnonymousAuthInputError):
+            self._redeem(
+                connection,
+                redemption_material=self.old_redemption_material,
+            )
+        self.assertEqual(connection.calls, [])
 
     def test_preflight_uses_only_exact_function_and_cleans_transaction(self) -> None:
         connection = FakeConnection([compatible_preflight_row()])
@@ -361,6 +435,7 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
             hmac.new(RAW_SOURCE_KEY, RAW_SOURCE_IDENTITY.encode(), hashlib.sha256).hexdigest(),
         )
         sql = "\n".join(statement for statement, _params in connection.calls)
+        self.assertEqual(sql.count("geno_v2_preflight_auth_invitation"), 1)
         for forbidden in (
             "geno_v2_resolve_session_context",
             "runtime_sessions",
@@ -450,7 +525,8 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
                 self.assertEqual(connection.info.transaction_status.name, "IDLE")
 
     def test_redeem_uses_exact_function_and_redacts_delivery_result(self) -> None:
-        connection = FakeConnection([successful_redeem_row()])
+        input_delivery = self.redemption_material._encrypted_delivery
+        connection = FakeConnection([successful_redeem_row(input_delivery)])
         uow = SchemaV2AnonymousAuthUnitOfWork(connection)
         result = self._redeem(connection, unit_of_work=uow)
 
@@ -459,17 +535,27 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
         self.assertIsNotNone(result.session)
         self.assertEqual(result.session.session_id, SESSION_ID)  # type: ignore[union-attr]
         self.assertEqual(result.session.project_ids, (PROJECT_ID,))  # type: ignore[union-attr]
-        self.assertEqual(result.delivery_ciphertext.as_bytes(), RAW_CIPHERTEXT)  # type: ignore[union-attr]
-        self.assertEqual(result.delivery_nonce.as_bytes(), RAW_NONCE)  # type: ignore[union-attr]
-        self.assertNotIn(RAW_CIPHERTEXT.decode(), repr(result))
-        self.assertNotIn(RAW_NONCE.decode(), repr(result))
+        self.assertIsNotNone(result.encrypted_delivery)
+        decrypted = result.encrypted_delivery.decrypt()  # type: ignore[union-attr]
+        self.assertIn(f"geno-session={RAW_SESSION_TOKEN}", decrypted.cookie_headers[0])
+        self.assertNotIn(RAW_SESSION_TOKEN, repr(result))
+        self.assertNotIn(RAW_CSRF_TOKEN, repr(result))
 
         statement, params = connection.calls[3]
         self.assertIn("FROM public.geno_v2_redeem_auth_invitation(", statement)
+        self.assertEqual(
+            sum(
+                "geno_v2_redeem_auth_invitation" in call_statement
+                for call_statement, _params in connection.calls
+            ),
+            1,
+        )
         self.assertEqual(len(params), 12)
         self.assertEqual(params[:3], (ATTEMPT_ID, SESSION_ID, INVITATION_ID))
-        self.assertEqual(params[8], RAW_CIPHERTEXT)
-        self.assertEqual(params[10], RAW_NONCE)
+        self.assertEqual(params[6], hashlib.sha256(RAW_SESSION_TOKEN.encode()).hexdigest())
+        self.assertEqual(params[7], SESSION_EXPIRY)
+        self.assertEqual(params[8], input_delivery._ciphertext)
+        self.assertEqual(params[10], input_delivery._nonce)
         self.assertNotIn(RAW_INVITATION_TOKEN, repr(params))
         self.assertNotIn(RAW_IDEMPOTENCY_KEY, repr(params))
         self.assertNotIn(RAW_SESSION_TOKEN, repr(params))
@@ -477,7 +563,9 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
         self.assertEqual(connection.info.transaction_status.name, "IDLE")
 
     def test_redeem_replay_and_failure_rows_enforce_column_coherence(self) -> None:
+        input_delivery = self.redemption_material._encrypted_delivery
         replay = successful_redeem_row(
+            self.old_redemption_material._encrypted_delivery,
             result_code="replayed",
             attempt_id=OLD_ATTEMPT_ID,
             session_id=OLD_SESSION_ID,
@@ -520,20 +608,24 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
             with self.subTest(result_code=row[0]):
                 result = self._redeem(FakeConnection([row]))
                 self.assertEqual(result.result_code.value, row[0])
-                self.assertIsNone(result.delivery_ciphertext)
-                self.assertIsNone(result.delivery_nonce)
+                self.assertIsNone(result.encrypted_delivery)
 
-        malformed = list(successful_redeem_row())
+        malformed = list(successful_redeem_row(input_delivery))
         malformed[10] = b"bad"
         malformed_replay = list(replay)
         malformed_replay[12] = 4
+        wrong_aad_replay = list(replay)
+        wrong_aad_replay[8] = input_delivery._ciphertext
+        wrong_aad_replay[9] = input_delivery._key_id
+        wrong_aad_replay[10] = input_delivery._nonce
         leaked_failure = list(invalid)
-        leaked_failure[8] = RAW_CIPHERTEXT
+        leaked_failure[8] = input_delivery._ciphertext
         leaked_identity = list(session_unavailable)
         leaked_identity[1] = OLD_ATTEMPT_ID
         for row in (
             tuple(malformed),
             tuple(malformed_replay),
+            tuple(wrong_aad_replay),
             tuple(leaked_failure),
             tuple(leaked_identity),
         ):
@@ -557,18 +649,24 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
         self.assertEqual(database_failure.rollback_count, 1)
         self.assertEqual(database_failure.commit_count, 1)
 
-        rollback_failure = FakeConnection(
-            [compatible_preflight_row()],
-            fail_on_sql="geno_v2_preflight_auth_invitation",
-            fail_rollback=True,
-        )
+        malformed_result = list(compatible_preflight_row())
+        malformed_result[3] = None
+        rollback_failure = FakeConnection([tuple(malformed_result)], fail_rollback=True)
         with self.assertRaises(SchemaV2AnonymousAuthRollbackError) as raised:
             self._preflight(rollback_failure)
         self.assertEqual(raised.exception.transaction_outcome, "unknown")
+        self.assertTrue(raised.exception.requires_idempotency_recovery)
         self.assertEqual(rollback_failure.close_count, 1)
+        self.assertEqual(rollback_failure.commit_count, 0)
+        self.assertFalse(
+            any(
+                event.startswith("SQL:RESET") or event == "COMMIT"
+                for event in rollback_failure.events
+            )
+        )
 
         commit_failure = FakeConnection(
-            [successful_redeem_row()],
+            [successful_redeem_row(self.redemption_material._encrypted_delivery)],
             fail_commit_calls={1},
         )
         uow = SchemaV2AnonymousAuthUnitOfWork(commit_failure)
@@ -580,17 +678,24 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
                 invitation_token_hash=self.invitation_hash,
                 requested_surface=SchemaV2InvitationSurface.ADMIN,
                 idempotency_key_hash=self.idempotency_hash,
-                session_token_hash=self.session_hash,
-                session_expires_at=SESSION_EXPIRY,
-                delivery_ciphertext=self.ciphertext,
-                delivery_key_id="delivery-key-v1",
-                delivery_nonce=self.nonce,
+                redemption_material=self.redemption_material,
                 delivery_expires_at=DELIVERY_EXPIRY,
             )
         self.assertTrue(raised.exception.requires_idempotency_recovery)
         self.assertEqual(uow.transaction_outcome, "unknown")
         self.assertFalse(uow.connection_reusable)
         self.assertEqual(commit_failure.close_count, 1)
+
+        unconfirmed_commit = FakeConnection(
+            [successful_redeem_row(self.redemption_material._encrypted_delivery)],
+            fail_commit_calls={1},
+            fail_rollback=True,
+        )
+        with self.assertRaises(SchemaV2AnonymousAuthCommitOutcomeUnknownError):
+            self._redeem(unconfirmed_commit)
+        self.assertEqual(unconfirmed_commit.commit_count, 1)
+        self.assertEqual(unconfirmed_commit.close_count, 1)
+        self.assertFalse(any(event.startswith("SQL:RESET") for event in unconfirmed_commit.events))
 
         cleanup_failure = FakeConnection(
             [compatible_preflight_row()],
