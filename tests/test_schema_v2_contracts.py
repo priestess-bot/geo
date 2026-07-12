@@ -577,6 +577,7 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
         installer = services["schema-v2-install"]
         verifier = services["schema-v2-verify"]
         behavior_test = services["schema-v2-behavior-test"]
+        session_uow_behavior_test = services["schema-v2-session-uow-behavior-test"]
 
         self.assertEqual(database["environment"]["POSTGRES_DB"], "geno_v2")
         self.assertEqual(database["environment"]["POSTGRES_USER"], COMPOSE_USER)
@@ -588,7 +589,7 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
             "PGUSER": COMPOSE_USER,
             "PGPASSWORD": COMPOSE_PASSWORD,
         }
-        for service in (installer, verifier, behavior_test):
+        for service in (installer, verifier, behavior_test, session_uow_behavior_test):
             for key, expected_value in expected_pg_environment.items():
                 self.assertEqual(service["environment"][key], expected_value)
             self.assertNotIn("SCHEMA_V2_DATABASE_URL", service["environment"])
@@ -605,6 +606,18 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
         )
         self.assertTrue(
             any(volume["target"] == "/schema-v2" and volume["read_only"] for volume in installer["volumes"])
+        )
+        self.assertEqual(
+            session_uow_behavior_test["command"],
+            ["python", "/app/tests/test_schema_v2_session_uow_postgres.py"],
+        )
+        self.assertEqual(session_uow_behavior_test["environment"]["SCHEMA_V2_BEHAVIOR_TEST"], "1")
+        self.assertTrue(
+            any(
+                volume["target"] == "/app/tests/test_schema_v2_session_uow_postgres.py"
+                and volume["read_only"]
+                for volume in session_uow_behavior_test["volumes"]
+            )
         )
         self.assertNotIn("infra/db/migrations/up", rendered)
         self.assertNotIn("/docker-entrypoint-initdb.d", rendered)
@@ -625,6 +638,7 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
         self.assertEqual(makefile.count("run --rm schema-v2-install"), 2)
         self.assertEqual(makefile.count("run --rm schema-v2-verify"), 2)
         self.assertIn("run --rm schema-v2-behavior-test", makefile)
+        self.assertIn("run --rm schema-v2-session-uow-behavior-test", makefile)
         self.assertIn("down --remove-orphans -v", makefile)
         ci_local = makefile.split("\nci-local:", 1)[1].split("\n", 1)[0]
         self.assertIn("schema-v2-gate", ci_local)
