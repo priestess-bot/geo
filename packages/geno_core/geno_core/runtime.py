@@ -193,19 +193,22 @@ class RuntimePostgresConnectionPool:
         self._available: queue.LifoQueue[DbConnection] = queue.LifoQueue(maxsize=max_size)
         self._lock = threading.Lock()
         self._created = 0
+        self._closed = False
         self._connection_states: dict[int, tuple[DbConnection, str]] = {}
 
     def acquire(self) -> _PooledDbConnection:
+        self._require_open()
         try:
             connection = self._available.get_nowait()
         except queue.Empty:
             pass
         else:
-            if not self._transition_connection(connection, "available", "checked_out"):
-                raise RuntimePersistenceError("Runtime PostgreSQL pool state is inconsistent")
+            self._checkout_available(connection)
             return _PooledDbConnection(self, connection)
 
         with self._lock:
+            if self._closed:
+                raise RuntimePersistenceError("Runtime PostgreSQL pool is closed")
             if self._created < self.max_size:
                 self._created += 1
                 should_create = True
@@ -219,14 +222,23 @@ class RuntimePostgresConnectionPool:
                 with self._lock:
                     self._created -= 1
                 raise
+            close_connection = False
             with self._lock:
                 existing = self._connection_states.get(id(connection))
                 if existing is not None:
                     self._created -= 1
+                    close_connection = False
                     duplicate_connection = True
+                elif self._closed:
+                    self._created -= 1
+                    close_connection = True
+                    duplicate_connection = False
                 else:
                     self._connection_states[id(connection)] = (connection, "checked_out")
                     duplicate_connection = False
+            if close_connection:
+                self._close_connection_safely(connection)
+                raise RuntimePersistenceError("Runtime PostgreSQL pool is closed")
             if duplicate_connection:
                 raise RuntimePersistenceError(
                     "PostgreSQL connector returned a connection already owned by the runtime pool"
@@ -236,26 +248,22 @@ class RuntimePostgresConnectionPool:
         try:
             connection = self._available.get(timeout=self.timeout_seconds)
         except queue.Empty as exc:
+            with self._lock:
+                if self._closed:
+                    raise RuntimePersistenceError("Runtime PostgreSQL pool is closed") from exc
             raise RuntimePersistenceError(
                 f"Timed out waiting for PostgreSQL connection from runtime pool after {self.timeout_seconds:g}s"
             ) from exc
-        if not self._transition_connection(connection, "available", "checked_out"):
-            raise RuntimePersistenceError("Runtime PostgreSQL pool state is inconsistent")
+        self._checkout_available(connection)
         return _PooledDbConnection(self, connection)
 
     def release(self, connection: DbConnection) -> None:
-        if not self._transition_connection(connection, "checked_out", "resetting"):
+        if not self._begin_reset_or_retire(connection):
             return
         if not self._reset_connection(connection):
             self.discard(connection)
             return
-        if not self._transition_connection(connection, "resetting", "available"):
-            self.discard(connection)
-            return
-        try:
-            self._available.put_nowait(connection)
-        except queue.Full:
-            self.discard(connection)
+        self._return_available_or_retire(connection)
 
     def discard(self, connection: DbConnection) -> None:
         if not self._retire_connection(connection):
@@ -266,6 +274,8 @@ class RuntimePostgresConnectionPool:
             pass
 
     def closeall(self) -> None:
+        with self._lock:
+            self._closed = True
         while True:
             try:
                 connection = self._available.get_nowait()
@@ -273,19 +283,74 @@ class RuntimePostgresConnectionPool:
                 break
             self.discard(connection)
 
-    def _transition_connection(
-        self,
-        connection: DbConnection,
-        expected: str,
-        target: str,
-    ) -> bool:
-        connection_id = id(connection)
+    def _require_open(self) -> None:
         with self._lock:
+            if self._closed:
+                raise RuntimePersistenceError("Runtime PostgreSQL pool is closed")
+
+    def _checkout_available(self, connection: DbConnection) -> None:
+        close_connection = False
+        inconsistent = False
+        with self._lock:
+            connection_id = id(connection)
             record = self._connection_states.get(connection_id)
-            if record is None or record[0] is not connection or record[1] != expected:
+            if record is None or record[0] is not connection or record[1] != "available":
+                inconsistent = True
+            elif self._closed:
+                del self._connection_states[connection_id]
+                self._created -= 1
+                close_connection = True
+            else:
+                self._connection_states[connection_id] = (connection, "checked_out")
+        if close_connection:
+            self._close_connection_safely(connection)
+            raise RuntimePersistenceError("Runtime PostgreSQL pool is closed")
+        if inconsistent:
+            raise RuntimePersistenceError("Runtime PostgreSQL pool state is inconsistent")
+
+    def _begin_reset_or_retire(self, connection: DbConnection) -> bool:
+        close_connection = False
+        with self._lock:
+            connection_id = id(connection)
+            record = self._connection_states.get(connection_id)
+            if record is None or record[0] is not connection or record[1] != "checked_out":
                 return False
-            self._connection_states[connection_id] = (connection, target)
-            return True
+            if self._closed:
+                del self._connection_states[connection_id]
+                self._created -= 1
+                close_connection = True
+            else:
+                self._connection_states[connection_id] = (connection, "resetting")
+        if close_connection:
+            self._close_connection_safely(connection)
+            return False
+        return True
+
+    def _return_available_or_retire(self, connection: DbConnection) -> None:
+        close_connection = False
+        inconsistent = False
+        with self._lock:
+            connection_id = id(connection)
+            record = self._connection_states.get(connection_id)
+            if record is None or record[0] is not connection or record[1] != "resetting":
+                inconsistent = True
+            elif self._closed:
+                del self._connection_states[connection_id]
+                self._created -= 1
+                close_connection = True
+            else:
+                try:
+                    self._available.put_nowait(connection)
+                except queue.Full:
+                    del self._connection_states[connection_id]
+                    self._created -= 1
+                    close_connection = True
+                else:
+                    self._connection_states[connection_id] = (connection, "available")
+        if close_connection:
+            self._close_connection_safely(connection)
+        elif inconsistent:
+            self.discard(connection)
 
     def _retire_connection(self, connection: DbConnection) -> bool:
         connection_id = id(connection)
@@ -342,6 +407,13 @@ class RuntimePostgresConnectionPool:
         close = getattr(connection, "close", None)
         if callable(close):
             close()
+
+    @classmethod
+    def _close_connection_safely(cls, connection: DbConnection) -> None:
+        try:
+            cls._close_connection(connection)
+        except Exception:
+            pass
 
 
 def _connection_transaction_is_idle(connection: DbConnection) -> bool:

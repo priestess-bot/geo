@@ -523,9 +523,9 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
                 self.assertEqual(pool._created, 0)
                 self.assertEqual(pool._available.qsize(), 0)
 
-                replacement = pool.acquire()
-                self.assertEqual(len(connections), 2)
-                replacement.invalidate()
+                with self.assertRaises(RuntimePersistenceError):
+                    pool.acquire()
+                self.assertEqual(len(connections), 1)
                 self.assertEqual(pool._created, 0)
 
     def test_connector_cannot_return_an_already_owned_connection(self) -> None:
@@ -544,6 +544,118 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
         first.invalidate()
         self.assertEqual(connection.close_count, 1)
         self.assertEqual(pool._created, 0)
+
+    def test_pool_close_retires_connection_finishing_concurrent_reset(self) -> None:
+        reset_started = threading.Event()
+        allow_reset = threading.Event()
+
+        class BlockingResetConnection(FakeConnection):
+            def rollback(self) -> None:
+                reset_started.set()
+                if not allow_reset.wait(timeout=2):
+                    raise RuntimeError("test reset release timed out")
+                super().rollback()
+
+        connection = BlockingResetConnection()
+        pool = RuntimePostgresConnectionPool(
+            database_url="configured",
+            connector=lambda _database_url: connection,
+            max_size=1,
+            timeout_seconds=0,
+        )
+        borrowed = pool.acquire()
+        release_thread = threading.Thread(target=borrowed.close)
+        release_thread.start()
+        self.assertTrue(reset_started.wait(timeout=2))
+
+        pool.closeall()
+        allow_reset.set()
+        release_thread.join(timeout=2)
+
+        self.assertFalse(release_thread.is_alive())
+        self.assertEqual(connection.close_count, 1)
+        self.assertEqual(pool._created, 0)
+        self.assertEqual(pool._available.qsize(), 0)
+        with self.assertRaises(RuntimePersistenceError):
+            pool.acquire()
+
+    def test_pool_close_retires_connection_created_concurrently(self) -> None:
+        connector_started = threading.Event()
+        allow_connector = threading.Event()
+        connection = FakeConnection()
+        errors: list[BaseException] = []
+
+        def connector(_database_url: str) -> FakeConnection:
+            connector_started.set()
+            if not allow_connector.wait(timeout=2):
+                raise RuntimeError("test connector release timed out")
+            return connection
+
+        pool = RuntimePostgresConnectionPool(
+            database_url="configured",
+            connector=connector,
+            max_size=1,
+            timeout_seconds=0,
+        )
+
+        def acquire() -> None:
+            try:
+                pool.acquire()
+            except BaseException as exc:
+                errors.append(exc)
+
+        acquire_thread = threading.Thread(target=acquire)
+        acquire_thread.start()
+        self.assertTrue(connector_started.wait(timeout=2))
+
+        pool.closeall()
+        allow_connector.set()
+        acquire_thread.join(timeout=2)
+
+        self.assertFalse(acquire_thread.is_alive())
+        self.assertEqual(len(errors), 1)
+        self.assertIsInstance(errors[0], RuntimePersistenceError)
+        self.assertEqual(str(errors[0]), "Runtime PostgreSQL pool is closed")
+        self.assertEqual(connection.close_count, 1)
+        self.assertEqual(pool._created, 0)
+        self.assertEqual(pool._available.qsize(), 0)
+
+    def test_pool_close_is_idempotent_and_checked_out_return_is_retired(self) -> None:
+        connection = FakeConnection()
+        pool = RuntimePostgresConnectionPool(
+            database_url="configured",
+            connector=lambda _database_url: connection,
+            max_size=1,
+            timeout_seconds=0,
+        )
+        borrowed = pool.acquire()
+        barrier = threading.Barrier(3)
+        errors: list[BaseException] = []
+
+        def close_pool() -> None:
+            try:
+                barrier.wait()
+                pool.closeall()
+            except BaseException as exc:
+                errors.append(exc)
+
+        close_threads = [threading.Thread(target=close_pool) for _ in range(2)]
+        for thread in close_threads:
+            thread.start()
+        barrier.wait()
+        for thread in close_threads:
+            thread.join(timeout=2)
+
+        borrowed.close()
+        pool.closeall()
+
+        self.assertTrue(all(not thread.is_alive() for thread in close_threads))
+        self.assertEqual(errors, [])
+        self.assertEqual(connection.close_count, 1)
+        self.assertEqual(pool._created, 0)
+        self.assertEqual(pool._available.qsize(), 0)
+        with self.assertRaises(RuntimePersistenceError):
+            pool.acquire()
 
 
 if __name__ == "__main__":
