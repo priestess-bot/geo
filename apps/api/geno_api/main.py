@@ -165,6 +165,7 @@ from geno_core.runtime import (
     build_repository_from_env,
     close_repository_connection,
     close_runtime_postgres_pool,
+    validate_runtime_schema_compatibility,
 )
 from geno_core.scoring import get_score_formula, list_score_formulas, normalize_score_weights
 from geno_core.task_queue import dispatch_background_task, task_queue_broker_url, task_queue_enabled
@@ -513,6 +514,7 @@ def validate_production_runtime_security() -> None:
 @app.on_event("startup")
 def validate_production_startup() -> None:
     validate_production_runtime_security()
+    validate_runtime_schema_compatibility()
 
 
 def _runtime_jwt_secret() -> str:

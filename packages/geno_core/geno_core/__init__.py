@@ -116,6 +116,12 @@ from geno_core.runtime import (
     runtime_database_diagnostic,
     runtime_object_store_diagnostic,
     runtime_auth_diagnostic,
+    validate_runtime_schema_compatibility,
+)
+from geno_core.schema_compatibility import (
+    SchemaCompatibilityError,
+    SchemaCompatibilityMetadata,
+    SchemaCompatibilityResult,
 )
 from geno_core.object_store import archive_api_snapshot_assets, archive_browser_capture_assets, archive_project_brand_logo
 from geno_core.scoring import (
@@ -249,10 +255,14 @@ __all__ = [
     "RuntimeNotificationWebhookSignatureVerification",
     "RuntimeComponentDiagnostic",
     "RuntimeDiagnostics",
+    "SchemaCompatibilityError",
+    "SchemaCompatibilityMetadata",
+    "SchemaCompatibilityResult",
     "build_runtime_diagnostics",
     "runtime_database_diagnostic",
     "runtime_object_store_diagnostic",
     "runtime_auth_diagnostic",
+    "validate_runtime_schema_compatibility",
     "RegistryScoringFormula",
     "list_score_formulas",
     "list_score_weight_profiles",
