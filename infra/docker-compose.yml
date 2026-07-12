@@ -58,7 +58,8 @@ services:
           /migrations/up/0026_collection_jobs.sql \
           /migrations/up/0027_knowledge_pipeline_consolidation.sql \
           /migrations/up/0028_knowledge_pipeline_production_contract.sql \
-          /migrations/up/0029_durable_job_lease_recovery.sql
+          /migrations/up/0029_durable_job_lease_recovery.sql \
+          /migrations/up/0030_auth_session_scope_v2.sql
         do
           psql -h postgres -U geno -d geno -v ON_ERROR_STOP=1 -f "$$file"
         done
