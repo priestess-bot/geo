@@ -16,6 +16,7 @@ from scripts.schema_v2_runner import (
     EXPECTED_SCHEMA_GENERATION,
     SchemaV2Error,
     _acquire_advisory_lock,
+    _connect_deadline_seconds,
     _connect_with_retry,
     _nonnegative_finite_seconds,
     _unexpected_public_objects,
@@ -66,8 +67,25 @@ class _NeverConnectDriver:
         pass
 
     @classmethod
-    def connect(cls) -> None:
+    def connect(cls, *, connect_timeout: int) -> None:
         raise AssertionError("timeout validation must run before connect")
+
+
+class _ConvergingConnectDriver:
+    class OperationalError(Exception):
+        pass
+
+    def __init__(self, clock: list[float]) -> None:
+        self.clock = clock
+        self.connect_timeouts: list[int] = []
+        self.result = object()
+
+    def connect(self, *, connect_timeout: int) -> object:
+        self.connect_timeouts.append(connect_timeout)
+        if len(self.connect_timeouts) < 3:
+            self.clock[0] += 2.0
+            raise self.OperationalError("simulated black-hole timeout")
+        return self.result
 
 
 class SchemaV2ManifestContractsTest(unittest.TestCase):
@@ -223,9 +241,18 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
                         _TryLockCursor([True]),
                         timeout_seconds=invalid,
                     )
-                with self.assertRaisesRegex(SchemaV2Error, "finite and non-negative"):
+        for invalid_connect_timeout in (
+            float("nan"),
+            float("inf"),
+            float("-inf"),
+            -0.1,
+            0.0,
+            1.999,
+        ):
+            with self.subTest(invalid_connect_timeout=invalid_connect_timeout):
+                with self.assertRaisesRegex(SchemaV2Error, "finite and at least 2 seconds"):
                     _connect_with_retry(
-                        timeout_seconds=invalid,
+                        timeout_seconds=invalid_connect_timeout,
                         driver=_NeverConnectDriver,
                     )
 
@@ -242,6 +269,45 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
                     "finite non-negative number",
                 ):
                     _nonnegative_finite_seconds(raw)
+        for raw in ("nan", "inf", "-inf", "-0.1", "0", "1.999", "not-a-number"):
+            with self.subTest(connect_raw=raw):
+                with self.assertRaisesRegex(
+                    argparse.ArgumentTypeError,
+                    "finite and at least 2 seconds",
+                ):
+                    _connect_deadline_seconds(raw)
+
+        # Lock timeout zero remains a valid single non-blocking attempt.
+        self.assertEqual(_nonnegative_finite_seconds("0"), 0.0)
+
+    def test_each_libpq_connect_attempt_uses_the_rounded_remaining_deadline(self) -> None:
+        clock = [0.0]
+        driver = _ConvergingConnectDriver(clock)
+
+        result = _connect_with_retry(
+            timeout_seconds=8.0,
+            driver=driver,
+            retry_interval_seconds=0.5,
+            monotonic=lambda: clock[0],
+            sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        )
+
+        self.assertIs(result, driver.result)
+        self.assertEqual(driver.connect_timeouts, [8, 6, 3])
+        self.assertTrue(all(timeout >= 2 for timeout in driver.connect_timeouts))
+
+        minimum_clock = [0.0]
+        minimum_driver = _ConvergingConnectDriver(minimum_clock)
+        with self.assertRaises(_ConvergingConnectDriver.OperationalError):
+            _connect_with_retry(
+                timeout_seconds=2.0,
+                driver=minimum_driver,
+                monotonic=lambda: minimum_clock[0],
+                sleep=lambda seconds: minimum_clock.__setitem__(
+                    0, minimum_clock[0] + seconds
+                ),
+            )
+        self.assertEqual(minimum_driver.connect_timeouts, [2])
 
     def test_structured_pg_environment_is_required_and_database_is_fixed(self) -> None:
         environment = {
@@ -282,7 +348,7 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
                 "--schema-root",
                 "infra/db/schema-v2",
                 "--connect-timeout-seconds",
-                "0",
+                "2",
             ],
             cwd=ROOT,
             env=environment,
@@ -309,11 +375,26 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
             "PGUSER": "timeout-test",
             "PGPASSWORD": "timeout-test-marker",
         }
-        for variable in (
-            "SCHEMA_V2_CONNECT_TIMEOUT_SECONDS",
-            "SCHEMA_V2_LOCK_TIMEOUT_SECONDS",
-        ):
-            for invalid in ("nan", "inf", "-inf", "-0.1", "not-a-number"):
+        invalid_by_variable = {
+            "SCHEMA_V2_CONNECT_TIMEOUT_SECONDS": (
+                "nan",
+                "inf",
+                "-inf",
+                "-0.1",
+                "0",
+                "1.999",
+                "not-a-number",
+            ),
+            "SCHEMA_V2_LOCK_TIMEOUT_SECONDS": (
+                "nan",
+                "inf",
+                "-inf",
+                "-0.1",
+                "not-a-number",
+            ),
+        }
+        for variable, invalid_values in invalid_by_variable.items():
+            for invalid in invalid_values:
                 with self.subTest(variable=variable, invalid=invalid):
                     result = subprocess.run(
                         [
@@ -331,7 +412,12 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
                         timeout=5,
                     )
                     self.assertEqual(result.returncode, 2)
-                    self.assertIn("must be a finite non-negative number", result.stderr)
+                    expected_error = (
+                        "must be finite and at least 2 seconds"
+                        if variable == "SCHEMA_V2_CONNECT_TIMEOUT_SECONDS"
+                        else "must be a finite non-negative number"
+                    )
+                    self.assertIn(expected_error, result.stderr)
                     self.assertNotIn("Traceback", result.stderr)
 
 

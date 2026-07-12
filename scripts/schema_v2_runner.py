@@ -18,6 +18,7 @@ EXPECTED_DATABASE_NAME = "geno_v2"
 MANIFEST_VERSION = 1
 ADVISORY_LOCK_NAME = "geno:schema-v2:install"
 ADVISORY_LOCK_POLL_INTERVAL_SECONDS = 0.1
+LIBPQ_MIN_CONNECT_TIMEOUT_SECONDS = 2
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 VERSION_RE = re.compile(r"^(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)(?:[-+].*)?$")
 REQUIRED_PG_ENVIRONMENT = ("PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD")
@@ -190,6 +191,18 @@ def _nonnegative_finite_seconds(raw_value: str) -> float:
         raise argparse.ArgumentTypeError("must be a finite non-negative number") from exc
     if not math.isfinite(value) or value < 0:
         raise argparse.ArgumentTypeError("must be a finite non-negative number")
+    return value
+
+
+def _connect_deadline_seconds(raw_value: str) -> float:
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "must be finite and at least 2 seconds"
+        ) from exc
+    if not math.isfinite(value) or value < LIBPQ_MIN_CONNECT_TIMEOUT_SECONDS:
+        raise argparse.ArgumentTypeError("must be finite and at least 2 seconds")
     return value
 
 
@@ -599,20 +612,50 @@ def _verify_with_cursor(cursor: Any, manifest: SchemaManifest) -> None:
     _verify_ledger(cursor, manifest, require_all_migrations=True)
 
 
-def _connect_with_retry(*, timeout_seconds: float, driver: Any) -> Any:
-    if not math.isfinite(timeout_seconds) or timeout_seconds < 0:
-        raise SchemaV2Error("database connect timeout must be finite and non-negative")
-    deadline = time.monotonic() + timeout_seconds
+def _connect_with_retry(
+    *,
+    timeout_seconds: float,
+    driver: Any,
+    retry_interval_seconds: float = 0.5,
+    monotonic: Any = time.monotonic,
+    sleep: Any = time.sleep,
+) -> Any:
+    if not math.isfinite(timeout_seconds) or timeout_seconds < LIBPQ_MIN_CONNECT_TIMEOUT_SECONDS:
+        raise SchemaV2Error("database connect timeout must be finite and at least 2 seconds")
+    if not math.isfinite(retry_interval_seconds) or retry_interval_seconds <= 0:
+        raise SchemaV2Error("database retry interval must be finite and positive")
+
+    deadline = monotonic() + timeout_seconds
+    last_error: Exception | None = None
     while True:
+        remaining_seconds = deadline - monotonic()
+        if remaining_seconds <= 0:
+            if last_error is not None:
+                raise last_error
+            raise SchemaV2Error("database connect deadline expired before the first attempt")
+        if last_error is not None and remaining_seconds <= LIBPQ_MIN_CONNECT_TIMEOUT_SECONDS:
+            raise last_error
+        per_attempt_timeout = max(
+            LIBPQ_MIN_CONNECT_TIMEOUT_SECONDS,
+            math.ceil(remaining_seconds),
+        )
         try:
             # libpq reads PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD directly.
-            # No raw credential is assembled into a URI or command-line value.
-            return driver.connect()
-        except driver.OperationalError:
-            remaining_seconds = deadline - time.monotonic()
-            if remaining_seconds <= 0:
+            # The explicit per-attempt timeout prevents one black-hole connect
+            # from bypassing the overall retry deadline. libpq has a two-second
+            # minimum, so another attempt is not started below that remainder.
+            return driver.connect(connect_timeout=per_attempt_timeout)
+        except driver.OperationalError as exc:
+            last_error = exc
+            remaining_seconds = deadline - monotonic()
+            if remaining_seconds <= LIBPQ_MIN_CONNECT_TIMEOUT_SECONDS:
                 raise
-            time.sleep(min(0.5, remaining_seconds))
+            sleep(
+                min(
+                    retry_interval_seconds,
+                    remaining_seconds - LIBPQ_MIN_CONNECT_TIMEOUT_SECONDS,
+                )
+            )
 
 
 def run_database_command(
@@ -707,8 +750,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--app-commit", default=os.getenv("GENO_APP_COMMIT", "development"))
     parser.add_argument(
         "--connect-timeout-seconds",
-        type=_nonnegative_finite_seconds,
+        type=_connect_deadline_seconds,
         default=os.getenv("SCHEMA_V2_CONNECT_TIMEOUT_SECONDS", "30"),
+        help="overall retry deadline; must be finite and at least libpq's 2-second minimum",
     )
     parser.add_argument(
         "--lock-timeout-seconds",

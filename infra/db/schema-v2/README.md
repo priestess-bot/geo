@@ -26,6 +26,12 @@ then acquires the session-level advisory lock `geno:schema-v2:install` with a
 bounded deadline while it installs or verifies the ledger. Each SQL file and
 its ledger row are committed in the same transaction.
 
+`SCHEMA_V2_CONNECT_TIMEOUT_SECONDS` is an overall retry deadline and must be at
+least two seconds, which is libpq's minimum effective `connect_timeout`. Every
+connection attempt receives the rounded-up remaining deadline explicitly; no
+new attempt starts once less than two seconds remain. The advisory-lock timeout
+is separate and may be zero for a single non-blocking acquisition attempt.
+
 During pre-cutover development, changing the baseline requires deleting the
 disposable `geno_v2` volume and performing a fresh install. After the baseline
 is released, never edit a listed baseline file; add an ordered file under
