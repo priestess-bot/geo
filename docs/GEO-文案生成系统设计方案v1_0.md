@@ -1,5 +1,8 @@
 # GEO 文案生成系统设计方案 v1.0-r4
 
+> **已废止：** 本文仅保留为设计审查历史。实现、测试和上线必须以
+> `docs/GEO-文案生成系统最终设计方案v2_0.md` 为唯一基线。
+
 > - 文档状态：Draft for Review
 > - 文档 Owner：批准前必须由项目负责人指定
 > - 必需评审：Product、Engineering、Security、Delivery
