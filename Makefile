@@ -6,6 +6,9 @@ KNOWLEDGE_WORKER_IMAGE ?= geno-knowledge-worker:local
 KNOWLEDGE_HEAVY_REBUILD ?= 0
 SCHEMA_V2_COMPOSE_PROJECT ?= geno-schema-v2-fresh
 SCHEMA_V2_COMPOSE = docker compose -p $(SCHEMA_V2_COMPOSE_PROJECT) -f infra/docker-compose.schema-v2.yml
+SCHEMA_V2_POSTGRES_USER ?= geno_v2_installer
+SCHEMA_V2_POSTGRES_PASSWORD ?= $(shell python3 -c 'import secrets; print(secrets.token_urlsafe(36))')
+export SCHEMA_V2_POSTGRES_USER SCHEMA_V2_POSTGRES_PASSWORD
 
 .PHONY: knowledge-worker-runtime-image
 
@@ -296,6 +299,8 @@ schema-v2-fresh-install:
 	$(SCHEMA_V2_COMPOSE) up -d postgres-v2; \
 	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-install; \
 	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-install; \
+	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-verify; \
+	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-behavior-test; \
 	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-verify
 
 api-image:

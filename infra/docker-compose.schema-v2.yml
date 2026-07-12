@@ -2,9 +2,9 @@ services:
   postgres-v2:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_DB: ${SCHEMA_V2_POSTGRES_DB:-geno_v2}
-      POSTGRES_USER: ${SCHEMA_V2_POSTGRES_USER:-geno_v2}
-      POSTGRES_PASSWORD: ${SCHEMA_V2_POSTGRES_PASSWORD:-geno_v2_local}
+      POSTGRES_DB: geno_v2
+      POSTGRES_USER: ${SCHEMA_V2_POSTGRES_USER:?SCHEMA_V2_POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${SCHEMA_V2_POSTGRES_PASSWORD:?SCHEMA_V2_POSTGRES_PASSWORD is required}
     healthcheck:
       test:
         - CMD-SHELL
@@ -21,7 +21,7 @@ services:
       context: ..
       dockerfile: apps/api/Dockerfile
     environment:
-      SCHEMA_V2_DATABASE_URL: ${SCHEMA_V2_DATABASE_URL:-postgresql://geno_v2:geno_v2_local@postgres-v2:5432/geno_v2}
+      SCHEMA_V2_DATABASE_URL: postgresql://${SCHEMA_V2_POSTGRES_USER:?SCHEMA_V2_POSTGRES_USER is required}:${SCHEMA_V2_POSTGRES_PASSWORD:?SCHEMA_V2_POSTGRES_PASSWORD is required}@postgres-v2:5432/geno_v2
       GENO_APP_VERSION: ${GENO_APP_VERSION:-0.1.0}
       GENO_APP_COMMIT: ${GENO_APP_COMMIT:-development}
     command:
@@ -39,7 +39,7 @@ services:
   schema-v2-verify:
     image: ${SCHEMA_V2_RUNNER_IMAGE:-geno-schema-v2-runner:local}
     environment:
-      SCHEMA_V2_DATABASE_URL: ${SCHEMA_V2_DATABASE_URL:-postgresql://geno_v2:geno_v2_local@postgres-v2:5432/geno_v2}
+      SCHEMA_V2_DATABASE_URL: postgresql://${SCHEMA_V2_POSTGRES_USER:?SCHEMA_V2_POSTGRES_USER is required}:${SCHEMA_V2_POSTGRES_PASSWORD:?SCHEMA_V2_POSTGRES_PASSWORD is required}@postgres-v2:5432/geno_v2
       GENO_APP_VERSION: ${GENO_APP_VERSION:-0.1.0}
       GENO_APP_COMMIT: ${GENO_APP_COMMIT:-development}
     command:
@@ -50,6 +50,22 @@ services:
       - /schema-v2
     volumes:
       - ./db/schema-v2:/schema-v2:ro
+    depends_on:
+      postgres-v2:
+        condition: service_healthy
+
+  schema-v2-behavior-test:
+    image: ${SCHEMA_V2_RUNNER_IMAGE:-geno-schema-v2-runner:local}
+    environment:
+      SCHEMA_V2_TEST_DATABASE_URL: postgresql://${SCHEMA_V2_POSTGRES_USER:?SCHEMA_V2_POSTGRES_USER is required}:${SCHEMA_V2_POSTGRES_PASSWORD:?SCHEMA_V2_POSTGRES_PASSWORD is required}@postgres-v2:5432/geno_v2
+      GENO_APP_VERSION: ${GENO_APP_VERSION:-0.1.0}
+      GENO_APP_COMMIT: ${GENO_APP_COMMIT:-development}
+    command:
+      - python
+      - /app/tests/test_schema_v2_postgres.py
+    volumes:
+      - ./db/schema-v2:/schema-v2:ro
+      - ../tests/test_schema_v2_postgres.py:/app/tests/test_schema_v2_postgres.py:ro
     depends_on:
       postgres-v2:
         condition: service_healthy

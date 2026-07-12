@@ -13,8 +13,10 @@ from typing import Any, Iterable, Sequence
 
 
 EXPECTED_SCHEMA_GENERATION = 2
+EXPECTED_DATABASE_NAME = "geno_v2"
 MANIFEST_VERSION = 1
 ADVISORY_LOCK_NAME = "geno:schema-v2:install"
+ADVISORY_LOCK_POLL_INTERVAL_SECONDS = 0.1
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 VERSION_RE = re.compile(r"^(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)(?:[-+].*)?$")
 
@@ -136,6 +138,10 @@ def load_manifest(schema_root: Path) -> SchemaManifest:
         baseline_files=baseline_files,
         migration_files=migration_files,
     )
+    if manifest.database_name != EXPECTED_DATABASE_NAME:
+        raise SchemaV2Error(
+            f"database_name must remain fixed at {EXPECTED_DATABASE_NAME!r}"
+        )
     if not SHA256_RE.fullmatch(manifest.baseline_hash):
         raise SchemaV2Error("baseline_hash must be a lowercase SHA-256 digest")
     calculated_baseline_hash = compute_baseline_hash(manifest.baseline_files)
@@ -194,17 +200,150 @@ def _verify_database_identity(cursor: Any, *, expected_database_name: str) -> No
         )
 
 
-def _assert_clean_public_schema(cursor: Any) -> None:
+def _unexpected_public_objects(cursor: Any) -> list[str]:
     cursor.execute(
-        "SELECT tablename FROM pg_catalog.pg_tables "
-        "WHERE schemaname = 'public' ORDER BY tablename"
-    )
-    existing_tables = [str(row[0]) for row in cursor.fetchall()]
-    if existing_tables:
-        raise SchemaV2Error(
-            "refusing to initialize Schema v2 in a non-empty public schema: "
-            f"{existing_tables}"
+        """
+        WITH unexpected_relations AS (
+            SELECT
+                CASE relation.relkind
+                    WHEN 'r' THEN 'table'
+                    WHEN 'p' THEN 'partitioned_table'
+                    WHEN 'v' THEN 'view'
+                    WHEN 'm' THEN 'materialized_view'
+                    WHEN 'S' THEN 'sequence'
+                    WHEN 'f' THEN 'foreign_table'
+                    WHEN 'c' THEN 'composite_type'
+                    WHEN 'i' THEN 'index'
+                    WHEN 'I' THEN 'partitioned_index'
+                    ELSE 'relation'
+                END AS object_kind,
+                format('%I.%I', namespace.nspname, relation.relname) AS object_identity
+            FROM pg_catalog.pg_class AS relation
+            JOIN pg_catalog.pg_namespace AS namespace
+              ON namespace.oid = relation.relnamespace
+            WHERE namespace.nspname = 'public'
+              AND relation.relkind IN ('r', 'p', 'v', 'm', 'S', 'f', 'c', 'i', 'I')
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM pg_catalog.pg_depend AS dependency
+                  WHERE dependency.classid = 'pg_catalog.pg_class'::regclass
+                    AND dependency.objid = relation.oid
+                    AND dependency.refclassid = 'pg_catalog.pg_extension'::regclass
+                    AND dependency.deptype = 'e'
+              )
+        ),
+        unexpected_routines AS (
+            SELECT
+                CASE routine.prokind
+                    WHEN 'p' THEN 'procedure'
+                    WHEN 'a' THEN 'aggregate'
+                    WHEN 'w' THEN 'window_function'
+                    ELSE 'function'
+                END AS object_kind,
+                routine.oid::regprocedure::text AS object_identity
+            FROM pg_catalog.pg_proc AS routine
+            JOIN pg_catalog.pg_namespace AS namespace
+              ON namespace.oid = routine.pronamespace
+            WHERE namespace.nspname = 'public'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM pg_catalog.pg_depend AS dependency
+                  WHERE dependency.classid = 'pg_catalog.pg_proc'::regclass
+                    AND dependency.objid = routine.oid
+                    AND dependency.refclassid = 'pg_catalog.pg_extension'::regclass
+                    AND dependency.deptype = 'e'
+              )
+        ),
+        unexpected_types AS (
+            SELECT
+                CASE type_entry.typtype
+                    WHEN 'e' THEN 'enum_type'
+                    WHEN 'd' THEN 'domain_type'
+                    WHEN 'r' THEN 'range_type'
+                    WHEN 'm' THEN 'multirange_type'
+                    ELSE 'base_type'
+                END AS object_kind,
+                format('%I.%I', namespace.nspname, type_entry.typname) AS object_identity
+            FROM pg_catalog.pg_type AS type_entry
+            JOIN pg_catalog.pg_namespace AS namespace
+              ON namespace.oid = type_entry.typnamespace
+            WHERE namespace.nspname = 'public'
+              AND type_entry.typrelid = 0
+              AND (
+                  type_entry.typtype IN ('e', 'd', 'r', 'm')
+                  OR (
+                      type_entry.typtype = 'b'
+                      AND type_entry.typelem = 0
+                  )
+              )
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM pg_catalog.pg_depend AS dependency
+                  WHERE dependency.classid = 'pg_catalog.pg_type'::regclass
+                    AND dependency.objid = type_entry.oid
+                    AND dependency.refclassid = 'pg_catalog.pg_extension'::regclass
+                    AND dependency.deptype = 'e'
+              )
+        ),
+        unexpected_extensions AS (
+            SELECT
+                'extension'::text AS object_kind,
+                extension.extname::text AS object_identity
+            FROM pg_catalog.pg_extension AS extension
+            WHERE extension.extname NOT IN ('plpgsql', 'pgcrypto', 'vector')
         )
+        SELECT object_kind, object_identity FROM unexpected_relations
+        UNION ALL
+        SELECT object_kind, object_identity FROM unexpected_routines
+        UNION ALL
+        SELECT object_kind, object_identity FROM unexpected_types
+        UNION ALL
+        SELECT object_kind, object_identity FROM unexpected_extensions
+        ORDER BY object_kind, object_identity
+        """
+    )
+    return [f"{row[0]}:{row[1]}" for row in cursor.fetchall()]
+
+
+def _assert_clean_public_schema(cursor: Any) -> None:
+    unexpected_objects = _unexpected_public_objects(cursor)
+    if unexpected_objects:
+        raise SchemaV2Error(
+            "refusing to initialize Schema v2 with unexpected public objects: "
+            f"{unexpected_objects}"
+        )
+
+
+def _acquire_advisory_lock(
+    cursor: Any,
+    *,
+    timeout_seconds: float,
+    poll_interval_seconds: float = ADVISORY_LOCK_POLL_INTERVAL_SECONDS,
+    monotonic: Any = time.monotonic,
+    sleep: Any = time.sleep,
+) -> None:
+    if timeout_seconds < 0:
+        raise SchemaV2Error("advisory lock timeout must be non-negative")
+    if poll_interval_seconds <= 0:
+        raise SchemaV2Error("advisory lock poll interval must be positive")
+
+    deadline = monotonic() + timeout_seconds
+    while True:
+        cursor.execute(
+            "SELECT pg_try_advisory_lock(hashtextextended(%s, 0))",
+            (ADVISORY_LOCK_NAME,),
+        )
+        row = cursor.fetchone()
+        if row is not None and bool(row[0]):
+            return
+
+        remaining_seconds = deadline - monotonic()
+        if remaining_seconds <= 0:
+            raise SchemaV2Error(
+                "timed out acquiring Schema v2 advisory lock "
+                f"after {timeout_seconds:.3f} seconds"
+            )
+        sleep(min(poll_interval_seconds, remaining_seconds))
 
 
 def _read_sql(schema_root: Path, item: ManifestFile) -> str:
@@ -337,6 +476,7 @@ def run_database_command(
     app_version: str,
     app_commit: str,
     connect_timeout_seconds: float,
+    lock_timeout_seconds: float,
 ) -> None:
     manifest = load_manifest(schema_root)
     ensure_app_compatible(
@@ -367,9 +507,9 @@ def run_database_command(
                     cursor,
                     expected_database_name=manifest.database_name,
                 )
-                cursor.execute(
-                    "SELECT pg_advisory_lock(hashtextextended(%s, 0))",
-                    (ADVISORY_LOCK_NAME,),
+                _acquire_advisory_lock(
+                    cursor,
+                    timeout_seconds=lock_timeout_seconds,
                 )
             try:
                 with connection.transaction():
@@ -414,6 +554,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--app-version", default=os.getenv("GENO_APP_VERSION", "0.1.0"))
     parser.add_argument("--app-commit", default=os.getenv("GENO_APP_COMMIT", "development"))
     parser.add_argument("--connect-timeout-seconds", type=float, default=30.0)
+    parser.add_argument(
+        "--lock-timeout-seconds",
+        type=float,
+        default=float(os.getenv("SCHEMA_V2_LOCK_TIMEOUT_SECONDS", "30")),
+    )
     return parser
 
 
@@ -430,6 +575,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             app_version=args.app_version,
             app_commit=args.app_commit,
             connect_timeout_seconds=args.connect_timeout_seconds,
+            lock_timeout_seconds=args.lock_timeout_seconds,
         )
     except (SchemaV2Error, OSError) as exc:
         print(f"schema-v2 error: {exc}", file=sys.stderr)
