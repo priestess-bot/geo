@@ -51,7 +51,9 @@ export function readRuntimeResponseMetadata(
   payload?: unknown
 ): RuntimeResponseMetadata {
   const record = objectRecord(payload);
-  const payloadCorrelationId = nonEmptyString(record?.correlation_id);
+  const errorRecord = runtimeErrorRecord(payload);
+  const payloadCorrelationId = nonEmptyString(record?.correlation_id)
+    || nonEmptyString(errorRecord?.correlation_id);
   const headerCorrelationId = nonEmptyString(headers.get("X-Correlation-ID"));
   const requestId = nonEmptyString(headers.get("X-GENO-Request-Id"))
     || nonEmptyString(headers.get("X-Request-Id"));
@@ -69,8 +71,9 @@ export function parseRuntimeError(
   status: number,
   response: RuntimeResponseMetadata
 ): RuntimeErrorEnvelope {
-  const record = objectRecord(payload);
+  const record = runtimeErrorRecord(payload);
   const rawDetail = record?.detail;
+  const explicitDetails = record?.details;
   const detail = nonEmptyString(rawDetail)
     || nonEmptyString(typeof payload === "string" ? payload : undefined)
     || `Runtime request failed with ${status}`;
@@ -84,7 +87,11 @@ export function parseRuntimeError(
     detail,
     correlation_id: correlationId,
     ...(retryable === undefined ? {} : { retryable }),
-    ...(rawDetail !== undefined && typeof rawDetail !== "string" ? { details: rawDetail } : {})
+    ...(explicitDetails !== undefined
+      ? { details: explicitDetails }
+      : rawDetail !== undefined && typeof rawDetail !== "string"
+        ? { details: rawDetail }
+        : {})
   };
 }
 
@@ -155,6 +162,14 @@ function objectRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : undefined;
+}
+
+function runtimeErrorRecord(payload: unknown): Record<string, unknown> | undefined {
+  const record = objectRecord(payload);
+  if (!record || nonEmptyString(record.code) || typeof record.detail === "string") {
+    return record;
+  }
+  return objectRecord(record.detail) || record;
 }
 
 function nonEmptyString(value: unknown): string | undefined {

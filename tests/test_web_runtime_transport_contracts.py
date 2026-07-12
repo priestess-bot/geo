@@ -93,7 +93,8 @@ async function main() {
       code: "content_hash_mismatch",
       detail: "The asset head changed.",
       correlation_id: "operation-2",
-      retryable: false
+      retryable: false,
+      details: { expected_hash: "hash-v3" }
     }), {
       status: 412,
       headers: { "Content-Type": "application/problem+json", ETag: '"head-v3"' }
@@ -104,7 +105,58 @@ async function main() {
   assert(conflict.error.detail === "The asset head changed.", "error detail was lost");
   assert(conflict.error.correlation_id === "operation-2", "error correlation ID was lost");
   assert(conflict.error.retryable === false, "retryability was lost");
+  assert(conflict.error.details.expected_hash === "hash-v3", "top-level error details were lost");
   assert(conflict.response.etag === '"head-v3"', "failure ETag was not preserved");
+
+  const nestedConflict = await contract.performRuntimeHttpRequest(
+    "https://api.example.test/assets/asset-1/versions",
+    { method: "POST" },
+    async () => new Response(JSON.stringify({
+      detail: {
+        code: "base_version_not_current",
+        detail: "The requested base version is no longer current.",
+        correlation_id: "operation-nested",
+        retryable: true,
+        details: { current_version_id: "version-3" }
+      }
+    }), {
+      status: 409,
+      headers: { "Content-Type": "application/json", "X-GENO-Request-Id": "request-nested" }
+    })
+  );
+  assert(!nestedConflict.ok && nestedConflict.status === 409, "nested error was not a failure");
+  assert(nestedConflict.error.code === "base_version_not_current", "nested error code was lost");
+  assert(
+    nestedConflict.error.detail === "The requested base version is no longer current.",
+    "nested error detail was lost"
+  );
+  assert(
+    nestedConflict.error.correlation_id === "operation-nested",
+    "nested error correlation ID was lost"
+  );
+  assert(nestedConflict.error.retryable === true, "nested retryability was lost");
+  assert(
+    nestedConflict.error.details.current_version_id === "version-3",
+    "nested error details were lost"
+  );
+  assert(
+    nestedConflict.response.correlationId === "operation-nested",
+    "nested response correlation ID was lost"
+  );
+  assert(nestedConflict.response.requestId === "request-nested", "nested response request ID was lost");
+
+  const stringDetail = await contract.performRuntimeHttpRequest(
+    "https://api.example.test/assets/asset-1",
+    { method: "GET" },
+    async () => new Response(JSON.stringify({ detail: "Asset not found." }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" }
+    })
+  );
+  assert(!stringDetail.ok, "string detail response was not a failure");
+  assert(stringDetail.error.code === "runtime_http_404", "string detail fallback code changed");
+  assert(stringDetail.error.detail === "Asset not found.", "string detail behavior changed");
+  assert(stringDetail.error.details === undefined, "string detail was duplicated into details");
 
   const noContent = await contract.performRuntimeHttpRequest(
     "https://api.example.test/jobs/job-1",
