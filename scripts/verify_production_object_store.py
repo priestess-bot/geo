@@ -123,6 +123,11 @@ def _config_only_env() -> dict[str, str]:
         {
             "GENO_CONNECTOR_SECRET_MASTER_KEY": "config-only-connector-sentinel",
             "GENO_REPORT_ARTIFACT_SIGNING_SECRET": "config-only-signing-sentinel",
+            "GENO_AUTH_DELIVERY_MASTER_KEY_SECRET_FILE": "/run/geno-config-only/auth-delivery-master-key",
+            "GENO_AUTH_DELIVERY_KEY_ID": "config-only-auth-delivery-key",
+            "GENO_AUTH_RECOVERY_COOKIE_SECRET_FILE": "/run/geno-config-only/auth-recovery-cookie",
+            "ADMIN_WEB_BASE_URL": "https://admin.config-only.example/login",
+            "CUSTOMER_WEB_BASE_URL": "https://customer.config-only.example/",
             "GENO_MINIO_ENCRYPTED_VOLUME_NAME": "geno-config-only-encrypted-minio",
             "OBJECT_STORE_BACKUP_PREFIX": "production/config-only/",
             "OBJECT_STORE_BACKUP_SMOKE_PREFIX": "smoke/config-only-run/",

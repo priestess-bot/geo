@@ -86,10 +86,26 @@ services:
       GENO_RUNTIME_SESSION_COOKIE_SECURE: "1"
       GENO_DEV_TOOLS_ENABLED: "0"
       GENO_CONNECTOR_SECRET_MASTER_KEY: ${GENO_CONNECTOR_SECRET_MASTER_KEY:?set GENO_CONNECTOR_SECRET_MASTER_KEY}
+      GENO_AUTH_DELIVERY_MASTER_KEY: ""
+      GENO_AUTH_DELIVERY_MASTER_KEY_FILE: /run/secrets/auth_delivery_master_key
+      GENO_AUTH_DELIVERY_KEY_ID: ${GENO_AUTH_DELIVERY_KEY_ID:?set GENO_AUTH_DELIVERY_KEY_ID}
+      GENO_AUTH_DELIVERY_PREVIOUS_KEYS: ""
+      GENO_AUTH_DELIVERY_PREVIOUS_KEYS_FILE: ${GENO_AUTH_DELIVERY_PREVIOUS_KEYS_FILE:-}
+      GENO_AUTH_DELIVERY_RECOVERY_TTL_SECONDS: ${GENO_AUTH_DELIVERY_RECOVERY_TTL_SECONDS:-600}
+      GENO_AUTH_DELIVERY_MAX_REPLAY: ${GENO_AUTH_DELIVERY_MAX_REPLAY:-5}
+      GENO_AUTH_PREFLIGHT_RATE_LIMIT: ${GENO_AUTH_PREFLIGHT_RATE_LIMIT:-20}
+      GENO_AUTH_PREFLIGHT_RATE_WINDOW_SECONDS: ${GENO_AUTH_PREFLIGHT_RATE_WINDOW_SECONDS:-60}
+      AUTH_WRITES_ENABLED: ${AUTH_WRITES_ENABLED:-1}
       GENO_REPORT_ARTIFACT_SIGNING_SECRET: ${GENO_REPORT_ARTIFACT_SIGNING_SECRET:?set GENO_REPORT_ARTIFACT_SIGNING_SECRET}
       GENO_PDF_RENDERER_URL: http://report-pdf-renderer:8200
       GENO_REPORT_PDF_RENDERER_REQUIRED: "1"
-    secrets: *object-store-application-secrets
+    secrets:
+      - source: object_store_application_access_key
+        target: object_store_application_access_key
+      - source: object_store_application_secret_key
+        target: object_store_application_secret_key
+      - source: auth_delivery_master_key
+        target: auth_delivery_master_key
     depends_on:
       minio-bootstrap:
         condition: service_completed_successfully
@@ -181,11 +197,43 @@ services:
       GENO_RUNTIME_AUTH_MODE: session
       GENO_RUNTIME_SESSION_COOKIE_SECURE: "1"
       GENO_ADMIN_DEV_TOOLS_ENABLED: "0"
+      GENO_AUTH_RECOVERY_COOKIE_SECRET: ""
+      GENO_AUTH_RECOVERY_COOKIE_SECRET_FILE: /run/secrets/auth_recovery_cookie
+      ADMIN_WEB_BASE_URL: ${ADMIN_WEB_BASE_URL:?set ADMIN_WEB_BASE_URL}
+      CUSTOMER_WEB_BASE_URL: ${CUSTOMER_WEB_BASE_URL:?set CUSTOMER_WEB_BASE_URL}
+    command:
+      - npm
+      - run
+      - start
+      - --
+      - -H
+      - 0.0.0.0
+      - -p
+      - "${GENO_ADMIN_WEB_CONTAINER_PORT:-3000}"
+    secrets:
+      - source: auth_recovery_cookie
+        target: auth_recovery_cookie
 
   customer-web:
     environment:
       GENO_RUNTIME_AUTH_MODE: session
       GENO_RUNTIME_SESSION_COOKIE_SECURE: "1"
+      GENO_AUTH_RECOVERY_COOKIE_SECRET: ""
+      GENO_AUTH_RECOVERY_COOKIE_SECRET_FILE: /run/secrets/auth_recovery_cookie
+      ADMIN_WEB_BASE_URL: ${ADMIN_WEB_BASE_URL:?set ADMIN_WEB_BASE_URL}
+      CUSTOMER_WEB_BASE_URL: ${CUSTOMER_WEB_BASE_URL:?set CUSTOMER_WEB_BASE_URL}
+    command:
+      - npm
+      - run
+      - start
+      - --
+      - -H
+      - 0.0.0.0
+      - -p
+      - "${GENO_CUSTOMER_WEB_CONTAINER_PORT:-3000}"
+    secrets:
+      - source: auth_recovery_cookie
+        target: auth_recovery_cookie
 
 volumes:
   minio_data:
@@ -213,3 +261,7 @@ secrets:
     file: ${GENO_OBJECT_STORE_RETENTION_ACCESS_KEY_SECRET_FILE:?set GENO_OBJECT_STORE_RETENTION_ACCESS_KEY_SECRET_FILE}
   object_store_retention_secret_key:
     file: ${GENO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE:?set GENO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE}
+  auth_delivery_master_key:
+    file: ${GENO_AUTH_DELIVERY_MASTER_KEY_SECRET_FILE:?set GENO_AUTH_DELIVERY_MASTER_KEY_SECRET_FILE}
+  auth_recovery_cookie:
+    file: ${GENO_AUTH_RECOVERY_COOKIE_SECRET_FILE:?set GENO_AUTH_RECOVERY_COOKIE_SECRET_FILE}
