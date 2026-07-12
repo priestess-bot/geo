@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from html.parser import HTMLParser
@@ -17,6 +18,24 @@ from uuid import NAMESPACE_URL, uuid5
 
 import httpx
 
+from geno_core.durable_jobs import (
+    KNOWLEDGE_JOB_TABLES,
+    ClaimMode,
+    ClaimOutcome,
+    LeaseFencedConnection,
+    LeaseClaim,
+    LeaseGuard,
+    acknowledge_durable_cancel,
+    begin_durable_finalizing,
+    claim_durable_job,
+    complete_durable_job,
+    durable_job_spec,
+    expire_durable_finalizing_lease,
+    fail_durable_job,
+    next_fair_table_order,
+    record_recovery_pass,
+    request_durable_cancel,
+)
 from geno_core.object_store import S3CompatibleObjectStore, StoredObject
 
 PIPELINE_STAGE_KEYS = (
@@ -39,16 +58,7 @@ PIPELINE_STAGE_KEYS = (
     "publish_or_export",
 )
 
-JOB_TABLES = (
-    "knowledge_import_jobs",
-    "crawl_jobs",
-    "knowledge_parser_runs",
-    "chunk_jobs",
-    "embedding_jobs",
-    "fact_extraction_jobs",
-    "prompt_generation_jobs",
-    "content_generation_jobs",
-)
+JOB_TABLES = KNOWLEDGE_JOB_TABLES
 
 KNOWLEDGE_TABLE_FILTERS: dict[str, dict[str, str]] = {
     "knowledge_import_jobs": {
@@ -157,6 +167,13 @@ KNOWLEDGE_UUID_FILTER_KEYS = {
     "parser_run_id",
     "stage_id",
 }
+
+
+def _public_job_record(record: dict[str, Any]) -> dict[str, Any]:
+    public = dict(record)
+    public.pop("lease_token", None)
+    public.pop("finalize_descriptor", None)
+    return public
 
 DEFAULT_QDRANT_COLLECTION = "geo_knowledge_chunks_bge_m3_v1"
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
@@ -941,8 +958,9 @@ def archive_knowledge_source_asset(
 
 
 class KnowledgePipelineRepository:
-    def __init__(self, connection: Any) -> None:
+    def __init__(self, connection: Any, *, database_url: str | None = None) -> None:
         self.connection = connection
+        self.database_url = database_url
 
     def _record_audit(
         self,
@@ -1476,7 +1494,7 @@ class KnowledgePipelineRepository:
                     "total_count": total_count,
                     "limit": limit,
                     "offset": offset,
-                    "records": tuple(dict(row) for row in cursor.fetchall()),
+                    "records": tuple(_public_job_record(dict(row)) for row in cursor.fetchall()),
                 }
         return {"pipeline_run_id": pipeline_run_id, "job_groups": groups}
 
@@ -1815,7 +1833,7 @@ class KnowledgePipelineRepository:
             job = dict(cursor.fetchone() or {})
         if not job:
             raise ValueError("knowledge import job not found")
-        return job
+        return _public_job_record(job)
 
     def get_import_job_detail(self, *, project_id: str, import_job_id: str) -> dict[str, Any]:
         job = self.get_import_job(project_id=project_id, import_job_id=import_job_id)
@@ -2310,7 +2328,10 @@ class KnowledgePipelineRepository:
                 f"SELECT {select_sql} FROM {table} t{join_sql} WHERE {where_sql} ORDER BY t.created_at DESC LIMIT %s OFFSET %s",
                 (*params, limit, offset),
             )
-            return {"total_count": total, "limit": limit, "offset": offset, "records": tuple(dict(row) for row in cursor.fetchall())}
+            records = tuple(dict(row) for row in cursor.fetchall())
+            if table in JOB_TABLES:
+                records = tuple(_public_job_record(record) for record in records)
+            return {"total_count": total, "limit": limit, "offset": offset, "records": records}
 
     def _status_summary(
         self,
@@ -2444,16 +2465,17 @@ class KnowledgePipelineRepository:
                     UPDATE {table}
                     SET status = 'queued', next_run_at = now(),
                         locked_by = null, locked_at = null, lease_expires_at = null,
-                        heartbeat_at = null, last_error_code = null, last_error_message = null,
+                        heartbeat_at = null, lease_token = null,
+                        last_error_code = null, last_error_message = null,
                         completed_at = null, updated_at = now()
                     WHERE pipeline_run_id = %s::uuid
-                      AND status IN ('failed', 'partial_succeeded')
+                      AND status = 'retry_wait'
                     """,
                     (stage["pipeline_run_id"],),
                 )
                 requeued += max(0, cursor.rowcount)
             if requeued <= 0:
-                raise ValueError("knowledge pipeline stage has no retryable failed jobs")
+                raise ValueError("knowledge pipeline stage has no retry_wait jobs")
             cursor.execute(
                 """
                 UPDATE knowledge_pipeline_stages
@@ -3207,8 +3229,8 @@ class KnowledgePipelineRepository:
                 for table in JOB_TABLES:
                     cursor.execute(
                         f"SELECT count(*) AS total, "
-                        f"count(*) FILTER (WHERE status IN ('queued', 'running', 'ready', 'draft')) AS pending, "
-                        f"count(*) FILTER (WHERE status = 'failed') AS failed, "
+                        f"count(*) FILTER (WHERE status IN ('queued', 'retry_wait', 'running', 'finalizing', 'ready', 'draft')) AS pending, "
+                        f"count(*) FILTER (WHERE status IN ('failed', 'dead_letter')) AS failed, "
                         f"count(*) FILTER (WHERE status = 'partial_succeeded') AS partial "
                         f"FROM {table} WHERE pipeline_run_id = %s::uuid",
                         (pipeline_run_id,),
@@ -3361,99 +3383,156 @@ class KnowledgePipelineRepository:
             self.connection.commit()
         return tuple(refreshed)
 
-    def claim_job(self, table: str, *, worker_id: str, lease_seconds: int) -> dict[str, Any] | None:
-        from psycopg.rows import dict_row
+    def claim_job_outcome(
+        self,
+        table: str,
+        *,
+        worker_id: str,
+        lease_seconds: int,
+        mode: ClaimMode = "any",
+    ) -> ClaimOutcome:
+        return claim_durable_job(
+            self.connection,
+            durable_job_spec(table),
+            worker_id=worker_id,
+            lease_seconds=lease_seconds,
+            mode=mode,
+        )
 
-        if table not in JOB_TABLES:
-            raise ValueError("unsupported job table")
-        with self.connection.cursor(row_factory=dict_row) as cursor:
-            cursor.execute("BEGIN")
-            cursor.execute(
-                f"""
-                SELECT id
-                FROM {table}
-                WHERE status = 'queued'
-                  AND next_run_at <= now()
-                ORDER BY priority DESC, created_at ASC
-                LIMIT 1
-                FOR UPDATE SKIP LOCKED
-                """
-            )
-            row = cursor.fetchone()
-            if not row:
-                self.connection.rollback()
-                return None
-            cursor.execute(
-                f"""
-                UPDATE {table}
-                SET status = 'running',
-                    locked_by = %s,
-                    locked_at = now(),
-                    lease_expires_at = now() + (%s || ' seconds')::interval,
-                    heartbeat_at = now(),
-                    attempt_count = attempt_count + 1,
-                    started_at = COALESCE(started_at, now()),
-                    updated_at = now()
-                WHERE id = %s::uuid
-                RETURNING *
-                """,
-                (worker_id, lease_seconds, row["id"]),
-            )
-            claimed = dict(cursor.fetchone() or {})
-            self.connection.commit()
-            return claimed
+    def claim_job(
+        self,
+        table: str,
+        *,
+        worker_id: str,
+        lease_seconds: int,
+        mode: ClaimMode = "any",
+    ) -> LeaseClaim | None:
+        return self.claim_job_outcome(
+            table, worker_id=worker_id, lease_seconds=lease_seconds, mode=mode
+        ).claim
 
-    def complete_job(self, table: str, job_id: str, *, status: str, summary: dict[str, Any] | None = None) -> None:
-        if table not in JOB_TABLES:
-            raise ValueError("unsupported job table")
-        summary_column = "summary" if table == "knowledge_quality_gate_runs" else "result_summary"
-        with self.connection.cursor() as cursor:
-            if table in {"knowledge_import_jobs", "crawl_jobs", "chunk_jobs", "embedding_jobs"}:
-                cursor.execute(
-                    f"""
-                    UPDATE {table}
-                    SET status = %s, {summary_column} = %s::jsonb, completed_at = now(),
-                        locked_by = null, locked_at = null, lease_expires_at = null, heartbeat_at = null,
-                        updated_at = now()
-                    WHERE id = %s::uuid
-                    """,
-                    (status, json.dumps(summary or {}, ensure_ascii=False), job_id),
-                )
-            else:
-                cursor.execute(
-                    f"""
-                    UPDATE {table}
-                    SET status = %s, completed_at = now(),
-                        locked_by = null, locked_at = null, lease_expires_at = null, heartbeat_at = null,
-                        updated_at = now()
-                    WHERE id = %s::uuid
-                    """,
-                    (status, job_id),
-                )
-            self.connection.commit()
+    def complete_job(
+        self,
+        claim: LeaseClaim,
+        *,
+        status: str,
+        summary: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return complete_durable_job(self.connection, claim, status=status, result=summary)
 
-    def fail_job(self, table: str, job_id: str, *, error_code: str, error_message: str, retry_seconds: int = 120) -> None:
-        if table not in JOB_TABLES:
-            raise ValueError("unsupported job table")
+    def fail_job(
+        self,
+        claim: LeaseClaim,
+        *,
+        error_code: str,
+        error_message: str,
+        retry_seconds: int = 120,
+        retryable: bool = True,
+    ) -> dict[str, Any]:
         self.connection.rollback()
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                UPDATE {table}
-                SET status = CASE WHEN attempt_count >= max_attempts THEN 'failed' ELSE 'queued' END,
-                    last_error_code = %s,
-                    last_error_message = %s,
-                    next_run_at = now() + (%s || ' seconds')::interval,
-                    locked_by = null,
-                    locked_at = null,
-                    lease_expires_at = null,
-                    heartbeat_at = null,
-                    updated_at = now()
-                WHERE id = %s::uuid
-                """,
-                (error_code, error_message[:2000], retry_seconds, job_id),
-            )
-            self.connection.commit()
+        return fail_durable_job(
+            self.connection,
+            claim,
+            error_code=error_code,
+            error_message=error_message,
+            retryable=retryable,
+            retry_seconds=retry_seconds,
+        )
+
+    def begin_job_finalizing(
+        self, claim: LeaseClaim, *, descriptor: dict[str, Any]
+    ) -> dict[str, Any]:
+        return begin_durable_finalizing(self.connection, claim, descriptor=descriptor)
+
+    def expire_job_finalizing(
+        self,
+        claim: LeaseClaim,
+        *,
+        error_code: str,
+        error_message: str,
+    ) -> dict[str, Any]:
+        self.connection.rollback()
+        return expire_durable_finalizing_lease(
+            self.connection,
+            claim,
+            error_code=error_code,
+            error_message=error_message,
+        )
+
+    def acknowledge_job_cancel(self, claim: LeaseClaim) -> dict[str, Any]:
+        self.connection.rollback()
+        return acknowledge_durable_cancel(self.connection, claim)
+
+    def cancel_job(self, table: str, *, project_id: str, job_id: str) -> dict[str, Any]:
+        from uuid import UUID
+
+        cancelled = request_durable_cancel(
+            self.connection,
+            durable_job_spec(table),
+            project_id=UUID(project_id),
+            job_id=UUID(job_id),
+        )
+        return _public_job_record(cancelled)
+
+    def next_job_table_order(self, *, queue_name: str, worker_id: str) -> tuple[str, ...]:
+        if queue_name not in {"knowledge_fresh", "knowledge_recovery"}:
+            raise ValueError("unsupported Knowledge fair queue")
+        return next_fair_table_order(
+            self.connection,
+            queue_name=queue_name,
+            tables=JOB_TABLES,
+            worker_id=worker_id,
+        )
+
+    def record_recovery_pass(self, *, worker_id: str, slots_used: int) -> None:
+        record_recovery_pass(
+            self.connection,
+            queue_name="knowledge_recovery",
+            worker_id=worker_id,
+            slots_used=slots_used,
+        )
+
+    def lease_guard(self, claim: LeaseClaim, *, lease_seconds: int) -> LeaseGuard:
+        import psycopg
+
+        database_url = self.database_url or os.getenv("DATABASE_URL", "").strip()
+        if not database_url:
+            raise RuntimeError("DATABASE_URL is required for the independent LeaseGuard connection")
+
+        def initialize_scope(connection: Any, worker_id: str) -> None:
+            KnowledgePipelineRepository(connection).set_maintenance_scope(worker_id=worker_id)
+
+        return LeaseGuard(
+            claim,
+            lease_seconds=lease_seconds,
+            connection_factory=lambda: psycopg.connect(database_url),
+            scope_initializer=initialize_scope,
+        )
+
+    @contextmanager
+    def fence_job_commits(self, claim: LeaseClaim, *, lease_seconds: int):
+        raw_connection = self.connection
+        if isinstance(raw_connection, LeaseFencedConnection):
+            raise RuntimeError("nested durable handler commit fence is not supported")
+        fenced = LeaseFencedConnection(raw_connection, claim, lease_seconds=lease_seconds)
+        self.connection = fenced
+        try:
+            yield fenced
+        except BaseException:
+            fenced.rollback()
+            raise
+        else:
+            if (
+                fenced.commits_deferred
+                and not fenced.terminal_completed
+                and not fenced.finalizing_committed
+            ):
+                fenced.rollback()
+                raise RuntimeError("durable handler exited without atomic terminal completion")
+            if not fenced.commits_deferred:
+                fenced.commit()
+        finally:
+            self.connection = raw_connection
 
     def run_ready_pipeline_once(self, *, worker_id: str) -> dict[str, Any] | None:
         from psycopg.rows import dict_row
@@ -3516,6 +3595,7 @@ class KnowledgePipelineRepository:
         market_code: str = "GLOBAL",
         locale: str = "en",
         city: str | None = None,
+        asset_id: str | None = None,
     ) -> dict[str, Any]:
         from psycopg.rows import dict_row
 
@@ -3523,13 +3603,15 @@ class KnowledgePipelineRepository:
             cursor.execute(
                 """
                 INSERT INTO knowledge_source_assets (
-                  project_id, pipeline_run_id, import_job_id, crawl_job_id, asset_type, status, source_uri, title,
+                  id, project_id, pipeline_run_id, import_job_id, crawl_job_id, asset_type, status, source_uri, title,
                   content_type, content_hash, byte_size, market_code, locale, city, metadata, created_by
-                ) VALUES (%s::uuid, %s::uuid, %s::uuid, %s::uuid, %s, 'accepted', %s, %s, 'text/plain',
+                ) VALUES (COALESCE(%s::uuid, uuid_generate_v4()), %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s, 'accepted', %s, %s, 'text/plain',
                           %s, %s, %s, %s, %s, %s::jsonb, %s)
+                ON CONFLICT (id) DO UPDATE SET updated_at = knowledge_source_assets.updated_at
                 RETURNING *
                 """,
                 (
+                    asset_id,
                     project_id,
                     pipeline_run_id,
                     import_job_id,
@@ -3571,6 +3653,7 @@ class KnowledgePipelineRepository:
         parser_version: str | None = None,
         precheck_result: dict[str, Any] | None = None,
         duplicate_of_asset_id: str | None = None,
+        asset_id: str | None = None,
     ) -> dict[str, Any]:
         from psycopg.rows import dict_row
 
@@ -3578,17 +3661,19 @@ class KnowledgePipelineRepository:
             cursor.execute(
                 """
                 INSERT INTO knowledge_source_assets (
-                  project_id, pipeline_run_id, import_job_id, crawl_job_id, asset_type, status, source_uri,
+                  id, project_id, pipeline_run_id, import_job_id, crawl_job_id, asset_type, status, source_uri,
                   object_uri, title, content_type, content_hash, byte_size, market_code,
                   locale, city, metadata, created_by, filename, parser_engine, parser_version,
                   precheck_result, duplicate_of_asset_id
-                ) VALUES (%s::uuid, %s::uuid, %s::uuid, %s::uuid, %s, 'uploaded', %s,
+                ) VALUES (COALESCE(%s::uuid, uuid_generate_v4()), %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s, 'uploaded', %s,
                           %s, %s, %s, %s, %s, %s,
                           %s, %s, %s::jsonb, %s, %s, %s, %s,
                           %s::jsonb, %s::uuid)
+                ON CONFLICT (id) DO UPDATE SET updated_at = knowledge_source_assets.updated_at
                 RETURNING *
                 """,
                 (
+                    asset_id,
                     project_id,
                     pipeline_run_id,
                     import_job_id,
@@ -3742,16 +3827,21 @@ class KnowledgePipelineRepository:
             object_uri = stored.uri
             storage_metadata.update({"object_store_key": stored.key, "etag": stored.etag})
         with self.connection.cursor(row_factory=dict_row) as cursor:
+            artifact_id = stable_pipeline_id(
+                "parser-artifact", parser_run_id, asset_type, title, hashlib.sha256(payload).hexdigest()
+            )
             cursor.execute(
                 """
                 INSERT INTO knowledge_source_assets (
-                  project_id, pipeline_run_id, import_job_id, asset_type, status, source_uri,
+                  id, project_id, pipeline_run_id, import_job_id, asset_type, status, source_uri,
                   object_uri, title, content_type, content_hash, byte_size, metadata, created_by
-                ) VALUES (%s::uuid, %s::uuid, %s::uuid, %s, 'processed', null,
+                ) VALUES (%s::uuid, %s::uuid, %s::uuid, %s::uuid, %s, 'processed', null,
                           %s, %s, %s, %s, %s, %s::jsonb, 'knowledge-parser-worker')
+                ON CONFLICT (id) DO UPDATE SET updated_at = knowledge_source_assets.updated_at
                 RETURNING *
                 """,
                 (
+                    artifact_id,
                     project_id,
                     pipeline_run_id,
                     import_job_id,
@@ -3776,7 +3866,7 @@ def connect_knowledge_pipeline_repository(database_url: str | None = None) -> Kn
     if not url:
         raise RuntimeError("DATABASE_URL is required")
     connection = psycopg.connect(url)
-    return KnowledgePipelineRepository(connection)
+    return KnowledgePipelineRepository(connection, database_url=url)
 
 
 def close_knowledge_repository(repository: KnowledgePipelineRepository) -> None:

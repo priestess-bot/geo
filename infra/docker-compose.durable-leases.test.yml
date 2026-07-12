@@ -1,0 +1,58 @@
+services:
+  db-migrate:
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        until psql -h postgres -U geno -d geno -tAc "SELECT 1" >/dev/null 2>&1; do
+          sleep 1
+        done
+        sleep 5
+        psql -h postgres -U geno -d geno -v ON_ERROR_STOP=1 \
+          -f /migrations/up/0029_durable_job_lease_recovery.sql
+
+  task-worker-runtime:
+    environment:
+      GENO_DEPLOYMENT_ENVIRONMENT: test
+      GENO_COLLECTION_JOB_LEASE_SECONDS: "6"
+      GENO_COLLECTION_JOB_TIMEOUT_SECONDS: "30"
+      GENO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS: "1"
+      GENO_COLLECTION_RETRY_BACKOFF_SECONDS: "1"
+      GENO_DURABLE_JOB_AFTER_CLAIM_FAILPOINT: collection_jobs
+      GENO_DURABLE_JOB_AFTER_CLAIM_FAILPOINT_ATTEMPT: "1"
+      GENO_DURABLE_JOB_AFTER_CLAIM_PAUSE_SECONDS: "60"
+      GENO_COLLECTION_TEST_CHILD_SECONDS: "15"
+    command:
+      - dramatiq
+      - workers.task_queue.tasks
+      - --queues
+      - collection
+      - report
+      - --processes
+      - "1"
+      - --threads
+      - "2"
+
+  task-worker-knowledge:
+    environment:
+      GENO_DEPLOYMENT_ENVIRONMENT: test
+      GENO_KNOWLEDGE_WORKER_LEASE_SECONDS: "6"
+      GENO_KNOWLEDGE_WORKER_MAX_JOBS: "1"
+      GENO_KNOWLEDGE_DRAMATIQ_DRAIN_CYCLES: "1"
+      GENO_KNOWLEDGE_REQUIRE_REAL_MODEL: "false"
+      GENO_KNOWLEDGE_REQUIRE_OBJECT_STORE: "false"
+      GENO_KNOWLEDGE_REQUIRE_QDRANT: "false"
+      GENO_DURABLE_JOB_AFTER_CLAIM_FAILPOINT: knowledge_import_jobs
+      GENO_DURABLE_JOB_AFTER_CLAIM_FAILPOINT_ATTEMPT: "1"
+      GENO_DURABLE_JOB_AFTER_CLAIM_PAUSE_SECONDS: "60"
+
+  task-recovery-dispatcher:
+    environment:
+      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      GENO_DEPLOYMENT_ENVIRONMENT: test
+    command:
+      - python
+      - workers/task_queue/run_recovery_dispatcher.py
+      - --interval-seconds
+      - "3"

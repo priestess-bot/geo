@@ -27,6 +27,7 @@ from cryptography.hazmat.primitives import hashes
 
 from geno_api.access_logging import persist_runtime_http_access_log
 from geno_api.main import app, close_runtime_resources, reset_runtime_auth_caches, reset_runtime_metrics
+from geno_core.durable_jobs import JobStateConflictError
 from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
 from geno_core.email_preferences import sign_runtime_notification_email_preference_token
 from geno_core.webhook_signing import (
@@ -12339,6 +12340,36 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/external-dependency-handoff/au", payload["persistence"])
         self.assertIn("/v1/external-dependency-clearance/au", payload["persistence"])
         self.assertIn("/metrics", payload["persistence"])
+
+    def test_terminal_collection_job_cancel_maps_state_conflict_to_409(self) -> None:
+        with patch("geno_api.main.build_repository_from_env", return_value=object()), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch("geno_api.main.assert_runtime_project_access"), patch(
+            "geno_api.main.CollectionJobStore"
+        ) as store_class:
+            store_class.return_value.cancel.side_effect = JobStateConflictError(
+                "cannot cancel terminal durable job in status succeeded"
+            )
+            response = self.client.post(
+                "/v1/collection-jobs/runtime/job-1/cancel?project_id=project-1",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("terminal durable job", response.json()["detail"])
+
+    def test_missing_collection_job_cancel_remains_404(self) -> None:
+        with patch("geno_api.main.build_repository_from_env", return_value=object()), patch(
+            "geno_api.main.close_repository_connection"
+        ), patch("geno_api.main.assert_runtime_project_access"), patch(
+            "geno_api.main.CollectionJobStore"
+        ) as store_class:
+            store_class.return_value.cancel.side_effect = ValueError("durable job not found")
+            response = self.client.post(
+                "/v1/collection-jobs/runtime/missing/cancel?project_id=project-1",
+                headers={"X-GENO-Actor-Id": "agency-owner"},
+            )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"], "durable job not found")
 
 
 if __name__ == "__main__":

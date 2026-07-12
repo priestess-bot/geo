@@ -1,11 +1,24 @@
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime, timedelta
+import os
 from typing import Any
 from uuid import UUID
 
 from geno_core.audit import build_audit_event
+from geno_core.durable_jobs import (
+    ClaimMode,
+    ClaimOutcome,
+    LeaseClaim,
+    LeaseGuard,
+    acknowledge_durable_cancel,
+    begin_durable_finalizing,
+    claim_durable_job,
+    complete_durable_job,
+    durable_job_spec,
+    fail_durable_job,
+    record_recovery_pass,
+    request_durable_cancel,
+)
 
 
 COLLECTION_JOB_COLUMNS = (
@@ -23,6 +36,12 @@ COLLECTION_JOB_COLUMNS = (
     "locked_by",
     "locked_at",
     "lease_expires_at",
+    "heartbeat_at",
+    "lease_reclaimed_count",
+    "last_reclaimed_at",
+    "last_reclaimed_from",
+    "dead_lettered_at",
+    "cancel_requested_at",
     "result_summary",
     "last_error_code",
     "last_error_message",
@@ -150,97 +169,118 @@ class CollectionJobStore:
             records = [_row(item) for item in cursor.fetchall()]
         return {"total_count": total_count, "limit": limit, "offset": offset, "records": records}
 
-    def claim_next(self, *, worker_id: str, lease_seconds: int = 3600) -> dict[str, Any] | None:
-        with self.connection.cursor() as cursor:
-            cursor.execute("BEGIN")
-            cursor.execute(
-                """
-                SELECT id
-                FROM collection_jobs
-                WHERE status = 'queued' AND next_attempt_at <= now()
-                ORDER BY created_at ASC
-                LIMIT 1
-                FOR UPDATE SKIP LOCKED
-                """
-            )
-            candidate = cursor.fetchone()
-            if not candidate:
-                self.connection.rollback()
-                return None
-            job_id = candidate[0] if not isinstance(candidate, dict) else candidate["id"]
-            cursor.execute(
-                f"""
-                UPDATE collection_jobs
-                SET status = 'running', locked_by = %s, locked_at = now(),
-                    lease_expires_at = now() + (%s || ' seconds')::interval,
-                    attempt_count = attempt_count + 1,
-                    started_at = COALESCE(started_at, now()), updated_at = now()
-                WHERE id = %s
-                RETURNING {", ".join(COLLECTION_JOB_COLUMNS)}
-                """,
-                (worker_id, max(1, lease_seconds), job_id),
-            )
-            job = _row(cursor.fetchone())
-            self.connection.commit()
-            return job
+    def claim_next_outcome(
+        self,
+        *,
+        worker_id: str,
+        lease_seconds: int = 3600,
+        mode: ClaimMode = "any",
+    ) -> ClaimOutcome:
+        return claim_durable_job(
+            self.connection,
+            durable_job_spec("collection_jobs"),
+            worker_id=worker_id,
+            lease_seconds=lease_seconds,
+            mode=mode,
+        )
 
-    def complete(self, *, job: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    def claim_next(
+        self,
+        *,
+        worker_id: str,
+        lease_seconds: int = 3600,
+        mode: ClaimMode = "any",
+    ) -> LeaseClaim | None:
+        return self.claim_next_outcome(
+            worker_id=worker_id, lease_seconds=lease_seconds, mode=mode
+        ).claim
+
+    def complete(self, *, claim: LeaseClaim, result: dict[str, Any]) -> dict[str, Any]:
         failure_count = int(result.get("failure_count") or 0)
         success_count = int(result.get("success_count") or 0)
         status = "partial_succeeded" if failure_count and success_count else "succeeded"
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                UPDATE collection_jobs
-                SET status = %s, result_summary = %s::jsonb, completed_at = now(),
-                    locked_by = null, locked_at = null, lease_expires_at = null,
-                    last_error_code = null, last_error_message = null, updated_at = now()
-                WHERE id = %s
-                RETURNING {", ".join(COLLECTION_JOB_COLUMNS)}
-                """,
-                (status, json.dumps(result, ensure_ascii=False, default=str), job["id"]),
-            )
-            updated = _row(cursor.fetchone())
-        self.connection.commit()
-        return updated
+        return complete_durable_job(
+            self.connection, claim, status=status, result=result
+        )
 
-    def fail(self, *, job: dict[str, Any], error_code: str, error_message: str, retry_seconds: int = 120) -> dict[str, Any]:
-        attempt_count = int(job.get("attempt_count") or 0)
-        max_attempts = int(job.get("max_attempts") or 3)
-        status = "dead_letter" if attempt_count >= max_attempts else "queued"
-        next_attempt = datetime.now(UTC) + timedelta(seconds=max(1, retry_seconds))
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                UPDATE collection_jobs
-                SET status = %s, next_attempt_at = %s,
-                    last_error_code = %s, last_error_message = %s,
-                    locked_by = null, locked_at = null, lease_expires_at = null,
-                    completed_at = CASE WHEN %s = 'dead_letter' THEN now() ELSE null END,
-                    updated_at = now()
-                WHERE id = %s
-                RETURNING {", ".join(COLLECTION_JOB_COLUMNS)}
-                """,
-                (status, next_attempt, error_code, error_message[:2000], status, job["id"]),
-            )
-            updated = _row(cursor.fetchone())
-        self.connection.commit()
-        return updated
+    def begin_finalizing(self, *, claim: LeaseClaim, result: dict[str, Any]) -> dict[str, Any]:
+        failure_count = int(result.get("failure_count") or 0)
+        success_count = int(result.get("success_count") or 0)
+        terminal_status = "partial_succeeded" if failure_count and success_count else "succeeded"
+        return begin_durable_finalizing(
+            self.connection,
+            claim,
+            descriptor={
+                "descriptor_version": "durable_artifact_finalize_v1",
+                "terminal_status": terminal_status,
+                "result": result,
+            },
+        )
+
+    def fail(
+        self,
+        *,
+        claim: LeaseClaim,
+        error_code: str,
+        error_message: str,
+        retry_seconds: int = 120,
+        retryable: bool = True,
+    ) -> dict[str, Any]:
+        self.connection.rollback()
+        return fail_durable_job(
+            self.connection,
+            claim,
+            error_code=error_code,
+            error_message=error_message,
+            retry_seconds=retry_seconds,
+            retryable=retryable,
+        )
 
     def cancel(self, *, project_id: str, job_id: str) -> dict[str, Any]:
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                UPDATE collection_jobs
-                SET status = 'cancelled', cancelled_at = now(), completed_at = now(), updated_at = now()
-                WHERE id = %s AND project_id = %s AND status = 'queued'
-                RETURNING {", ".join(COLLECTION_JOB_COLUMNS)}
-                """,
-                (_uuid(job_id), _uuid(project_id)),
-            )
-            updated = _row(cursor.fetchone())
-        if not updated:
-            self.connection.rollback()
-            raise ValueError("queued collection job not found")
-        self.connection.commit()
-        return updated
+        cancelled = request_durable_cancel(
+            self.connection,
+            durable_job_spec("collection_jobs"),
+            project_id=_uuid(project_id),
+            job_id=_uuid(job_id),
+        )
+        cancelled.pop("lease_token", None)
+        cancelled.pop("finalize_descriptor", None)
+        return cancelled
+
+    def acknowledge_cancel(self, claim: LeaseClaim) -> dict[str, Any]:
+        self.connection.rollback()
+        return acknowledge_durable_cancel(self.connection, claim)
+
+    def record_recovery_pass(self, *, worker_id: str, slots_used: int) -> None:
+        record_recovery_pass(
+            self.connection,
+            queue_name="collection_recovery",
+            worker_id=worker_id,
+            slots_used=slots_used,
+        )
+
+    def lease_guard(self, claim: LeaseClaim, *, lease_seconds: int) -> LeaseGuard:
+        import psycopg
+
+        database_url = os.getenv("DATABASE_URL", "").strip()
+        if not database_url:
+            raise RuntimeError("DATABASE_URL is required for the independent LeaseGuard connection")
+
+        def initialize_scope(connection: Any, worker_id: str) -> None:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT set_config('app.rls_enabled', 'false', false)")
+                cursor.execute("SELECT set_config('geno.runtime_project_access_control', 'false', false)")
+                cursor.execute("SELECT set_config('app.actor_id', %s, false)", (worker_id,))
+                cursor.execute("SELECT set_config('geno.runtime_actor_id', %s, false)", (worker_id,))
+                cursor.execute("SELECT set_config('app.project_id', '', false)")
+                cursor.execute("SELECT set_config('geno.runtime_project_id', '', false)")
+                cursor.execute("SELECT set_config('app.project_ids', '', false)")
+                cursor.execute("SELECT set_config('app.roles', 'system,worker', false)")
+            connection.commit()
+
+        return LeaseGuard(
+            claim,
+            lease_seconds=lease_seconds,
+            connection_factory=lambda: psycopg.connect(database_url),
+            scope_initializer=initialize_scope,
+        )

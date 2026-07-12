@@ -46,6 +46,7 @@ from geno_core.action_plan import (
     compare_retest_windows,
 )
 from geno_core.collection_jobs import CollectionJobStore
+from geno_core.durable_jobs import JobStateConflictError
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.audit import build_audit_event
 from geno_core.bootstrap import DEFAULT_AU_COMPETITORS, build_au_project_bootstrap, build_project_bootstrap
@@ -6618,6 +6619,8 @@ def cancel_runtime_collection_job(
                 job_id=job_id.strip(),
             )
         }
+    except JobStateConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     finally:
