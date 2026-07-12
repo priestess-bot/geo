@@ -145,22 +145,30 @@ class _PooledDbConnection:
         self._pool = pool
         self._connection = connection
         self._released = False
+        self._release_lock = threading.Lock()
 
     def __getattr__(self, name: str) -> object:
         return getattr(self._connection, name)
 
     def close(self) -> None:
-        if self._released:
+        connection = self._take_connection()
+        if connection is None:
             return
-        self._released = True
-        self._pool.release(self._connection)
+        self._pool.release(connection)
 
     def invalidate(self) -> None:
         """Discard a connection whose request-scoped cleanup could not be proven."""
-        if self._released:
+        connection = self._take_connection()
+        if connection is None:
             return
-        self._released = True
-        self._pool.discard(self._connection)
+        self._pool.discard(connection)
+
+    def _take_connection(self) -> DbConnection | None:
+        with self._release_lock:
+            if self._released:
+                return None
+            self._released = True
+            return self._connection
 
 
 class RuntimePostgresConnectionPool:
@@ -185,12 +193,17 @@ class RuntimePostgresConnectionPool:
         self._available: queue.LifoQueue[DbConnection] = queue.LifoQueue(maxsize=max_size)
         self._lock = threading.Lock()
         self._created = 0
+        self._connection_states: dict[int, tuple[DbConnection, str]] = {}
 
     def acquire(self) -> _PooledDbConnection:
         try:
-            return _PooledDbConnection(self, self._available.get_nowait())
+            connection = self._available.get_nowait()
         except queue.Empty:
             pass
+        else:
+            if not self._transition_connection(connection, "available", "checked_out"):
+                raise RuntimePersistenceError("Runtime PostgreSQL pool state is inconsistent")
+            return _PooledDbConnection(self, connection)
 
         with self._lock:
             if self._created < self.max_size:
@@ -201,11 +214,24 @@ class RuntimePostgresConnectionPool:
 
         if should_create:
             try:
-                return _PooledDbConnection(self, self._connector(self.database_url))
+                connection = self._connector(self.database_url)
             except Exception:
                 with self._lock:
                     self._created -= 1
                 raise
+            with self._lock:
+                existing = self._connection_states.get(id(connection))
+                if existing is not None:
+                    self._created -= 1
+                    duplicate_connection = True
+                else:
+                    self._connection_states[id(connection)] = (connection, "checked_out")
+                    duplicate_connection = False
+            if duplicate_connection:
+                raise RuntimePersistenceError(
+                    "PostgreSQL connector returned a connection already owned by the runtime pool"
+                )
+            return _PooledDbConnection(self, connection)
 
         try:
             connection = self._available.get(timeout=self.timeout_seconds)
@@ -213,10 +239,17 @@ class RuntimePostgresConnectionPool:
             raise RuntimePersistenceError(
                 f"Timed out waiting for PostgreSQL connection from runtime pool after {self.timeout_seconds:g}s"
             ) from exc
+        if not self._transition_connection(connection, "available", "checked_out"):
+            raise RuntimePersistenceError("Runtime PostgreSQL pool state is inconsistent")
         return _PooledDbConnection(self, connection)
 
     def release(self, connection: DbConnection) -> None:
+        if not self._transition_connection(connection, "checked_out", "resetting"):
+            return
         if not self._reset_connection(connection):
+            self.discard(connection)
+            return
+        if not self._transition_connection(connection, "resetting", "available"):
             self.discard(connection)
             return
         try:
@@ -225,11 +258,12 @@ class RuntimePostgresConnectionPool:
             self.discard(connection)
 
     def discard(self, connection: DbConnection) -> None:
+        if not self._retire_connection(connection):
+            return
         try:
             self._close_connection(connection)
-        finally:
-            with self._lock:
-                self._created -= 1
+        except Exception:
+            pass
 
     def closeall(self) -> None:
         while True:
@@ -237,9 +271,31 @@ class RuntimePostgresConnectionPool:
                 connection = self._available.get_nowait()
             except queue.Empty:
                 break
-            self._close_connection(connection)
-            with self._lock:
-                self._created -= 1
+            self.discard(connection)
+
+    def _transition_connection(
+        self,
+        connection: DbConnection,
+        expected: str,
+        target: str,
+    ) -> bool:
+        connection_id = id(connection)
+        with self._lock:
+            record = self._connection_states.get(connection_id)
+            if record is None or record[0] is not connection or record[1] != expected:
+                return False
+            self._connection_states[connection_id] = (connection, target)
+            return True
+
+    def _retire_connection(self, connection: DbConnection) -> bool:
+        connection_id = id(connection)
+        with self._lock:
+            record = self._connection_states.get(connection_id)
+            if record is None or record[0] is not connection:
+                return False
+            del self._connection_states[connection_id]
+            self._created -= 1
+            return True
 
     @staticmethod
     def _reset_connection(connection: DbConnection) -> bool:
@@ -292,7 +348,7 @@ def _connection_transaction_is_idle(connection: DbConnection) -> bool:
     info = getattr(connection, "info", None)
     status = getattr(info, "transaction_status", None)
     if status is None:
-        return True
+        return False
     status_name = getattr(status, "name", None)
     if status_name is not None:
         return status_name == "IDLE"

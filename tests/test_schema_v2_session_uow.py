@@ -1,22 +1,30 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import inspect
+import threading
 import unittest
 from types import SimpleNamespace
 from uuid import UUID
 
-from geno_core.runtime import RuntimePostgresConnectionPool
+from geno_core.runtime import RuntimePersistenceError, RuntimePostgresConnectionPool
 from geno_core.schema_v2.session_uow import (
     SchemaV2ApiSessionUnitOfWork,
+    SchemaV2RawSessionTokenError,
     SchemaV2SessionAuthorizationError,
+    SchemaV2SessionCommitOutcomeUnknownError,
     SchemaV2SessionLifecycleError,
+    SchemaV2SessionTokenHash,
     SchemaV2SessionTokenHashError,
     SchemaV2SessionUnitOfWorkError,
+    hash_raw_session_token,
 )
 
 
-SESSION_HASH = "a" * 64
+RAW_SESSION_TOKEN = "unit-test-session-token"
+SESSION_HASH = hashlib.sha256(RAW_SESSION_TOKEN.encode("utf-8")).hexdigest()
+SESSION_TOKEN_HASH = hash_raw_session_token(RAW_SESSION_TOKEN)
 SESSION_ID = UUID("11111111-1111-4111-8111-111111111111")
 TENANT_ID = UUID("22222222-2222-4222-8222-222222222222")
 PROJECT_ID = UUID("33333333-3333-4333-8333-333333333333")
@@ -135,7 +143,7 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
         connection = FakeConnection()
         uow = SchemaV2ApiSessionUnitOfWork(
             connection,
-            session_token_hash=SESSION_HASH,
+            session_token_hash=SESSION_TOKEN_HASH,
         )
 
         with uow as active:
@@ -166,6 +174,9 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
         self.assertEqual(connection.calls[2][1], (SESSION_HASH,))
         self.assertEqual(connection.commit_count, 2)
         self.assertEqual(connection.rollback_count, 0)
+        self.assertEqual(uow.transaction_outcome, "committed")
+        self.assertEqual(uow.cleanup_telemetry.status, "succeeded")
+        self.assertFalse(uow.cleanup_telemetry.connection_discarded)
         self.assertEqual(connection.info.transaction_status.name, "IDLE")
         self.assertTrue(uow.connection_reusable)
         with self.assertRaises(SchemaV2SessionLifecycleError):
@@ -185,7 +196,7 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
 
     def test_body_exception_rolls_back_then_commits_reset_without_masking_exception(self) -> None:
         connection = FakeConnection()
-        uow = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_HASH)
+        uow = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_TOKEN_HASH)
         marker = ValueError("request failed")
 
         with self.assertRaises(ValueError) as raised:
@@ -195,34 +206,38 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
         self.assertIs(raised.exception, marker)
         self.assertEqual(connection.rollback_count, 1)
         self.assertEqual(connection.commit_count, 1)
+        self.assertEqual(uow.transaction_outcome, "rolled_back")
+        self.assertEqual(uow.cleanup_telemetry.status, "succeeded")
         self.assertEqual(connection.info.transaction_status.name, "IDLE")
         self.assertEqual(
             connection.events[-4:],
             ["ROLLBACK", "SQL:RESET ALL", "SQL:RESET ROLE", "COMMIT"],
         )
 
-    def test_input_contract_rejects_raw_or_noncanonical_values_before_database_access(self) -> None:
+    def test_hash_boundary_is_opaque_and_uow_rejects_direct_strings(self) -> None:
         parameters = inspect.signature(SchemaV2ApiSessionUnitOfWork).parameters
         self.assertEqual(set(parameters), {"connection", "session_token_hash"})
-        for invalid in (
-            "raw-session-token",
-            "",
-            "A" * 64,
-            "a" * 63,
-            "a" * 65,
-            123,
-            None,
-        ):
-            with self.subTest(invalid_type=type(invalid).__name__):
-                connection = FakeConnection()
-                with self.assertRaises(SchemaV2SessionTokenHashError) as raised:
-                    SchemaV2ApiSessionUnitOfWork(
-                        connection,
-                        session_token_hash=invalid,  # type: ignore[arg-type]
-                    )
-                if invalid not in ("", None):
-                    self.assertNotIn(str(invalid), str(raised.exception))
-                self.assertEqual(connection.calls, [])
+        value = hash_raw_session_token(RAW_SESSION_TOKEN)
+        self.assertIs(type(value), SchemaV2SessionTokenHash)
+        self.assertNotIn(RAW_SESSION_TOKEN, repr(value))
+        self.assertNotIn(SESSION_HASH, repr(value))
+
+        with self.assertRaises(SchemaV2SessionTokenHashError):
+            SchemaV2SessionTokenHash(SESSION_HASH)
+        connection = FakeConnection()
+        with self.assertRaises(SchemaV2SessionTokenHashError):
+            SchemaV2ApiSessionUnitOfWork(
+                connection,
+                session_token_hash=SESSION_HASH,  # type: ignore[arg-type]
+            )
+        self.assertEqual(connection.calls, [])
+
+        for invalid_raw in ("", 123, None, "x" * 4097):
+            with self.subTest(invalid_type=type(invalid_raw).__name__):
+                with self.assertRaises(SchemaV2RawSessionTokenError) as raised:
+                    hash_raw_session_token(invalid_raw)  # type: ignore[arg-type]
+                if invalid_raw not in ("", None):
+                    self.assertNotIn(str(invalid_raw), str(raised.exception))
 
     def test_missing_duplicate_or_malformed_resolver_projection_fails_closed(self) -> None:
         malformed = list(resolver_row())
@@ -247,7 +262,7 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
                 with self.assertRaises(SchemaV2SessionAuthorizationError) as raised:
                     with SchemaV2ApiSessionUnitOfWork(
                         connection,
-                        session_token_hash=SESSION_HASH,
+                        session_token_hash=SESSION_TOKEN_HASH,
                     ):
                         self.fail("invalid resolver context must not enter")
                 self.assertNotIn(SESSION_HASH, str(raised.exception))
@@ -261,7 +276,7 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
         with self.assertRaises(SchemaV2SessionUnitOfWorkError) as raised:
             with SchemaV2ApiSessionUnitOfWork(
                 connection,
-                session_token_hash=SESSION_HASH,
+                session_token_hash=SESSION_TOKEN_HASH,
             ):
                 self.fail("database failure must not enter")
 
@@ -274,26 +289,48 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
 
     def test_cleanup_failure_discards_connection_and_marks_it_unusable(self) -> None:
         connection = FakeConnection(fail_on_sql="RESET ALL")
-        uow = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_HASH)
+        uow = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_TOKEN_HASH)
 
-        with self.assertRaises(SchemaV2SessionUnitOfWorkError) as raised:
-            with uow:
-                pass
+        with uow:
+            pass
 
-        self.assertEqual(raised.exception.code, "session_connection_cleanup_failed")
+        self.assertEqual(uow.transaction_outcome, "committed")
+        self.assertEqual(uow.cleanup_telemetry.status, "failed")
+        self.assertTrue(uow.cleanup_telemetry.connection_discarded)
         self.assertFalse(uow.connection_reusable)
         self.assertEqual(connection.close_count, 1)
         self.assertEqual(connection.commit_count, 1)
 
+    def test_body_exception_is_preserved_when_cleanup_fails_after_rollback(self) -> None:
+        connection = FakeConnection(fail_on_sql="RESET ALL")
+        uow = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_TOKEN_HASH)
+        marker = ValueError("body failure")
+
+        with self.assertRaises(ValueError) as raised:
+            with uow:
+                raise marker
+
+        self.assertIs(raised.exception, marker)
+        self.assertEqual(uow.transaction_outcome, "rolled_back")
+        self.assertEqual(uow.cleanup_telemetry.status, "failed")
+        self.assertTrue(uow.cleanup_telemetry.connection_discarded)
+        self.assertEqual(connection.close_count, 1)
+
     def test_commit_failure_rolls_back_cleans_and_discards_unknown_outcome_connection(self) -> None:
         connection = FakeConnection(fail_commit_calls={1})
-        uow = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_HASH)
+        uow = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_TOKEN_HASH)
 
-        with self.assertRaises(SchemaV2SessionUnitOfWorkError) as raised:
+        with self.assertRaises(SchemaV2SessionCommitOutcomeUnknownError) as raised:
             with uow:
                 pass
 
-        self.assertEqual(raised.exception.code, "session_transaction_completion_failed")
+        self.assertEqual(raised.exception.code, "session_commit_outcome_unknown")
+        self.assertFalse(raised.exception.retryable)
+        self.assertTrue(raised.exception.requires_idempotency_recovery)
+        self.assertEqual(raised.exception.transaction_outcome, "unknown")
+        self.assertEqual(uow.transaction_outcome, "unknown")
+        self.assertEqual(uow.cleanup_telemetry.status, "succeeded")
+        self.assertTrue(uow.cleanup_telemetry.connection_discarded)
         self.assertFalse(uow.connection_reusable)
         self.assertEqual(connection.rollback_count, 1)
         self.assertEqual(connection.commit_count, 2)
@@ -301,21 +338,24 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
 
     def test_cleanup_transaction_commit_failure_discards_connection(self) -> None:
         connection = FakeConnection(fail_commit_calls={2})
-        uow = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_HASH)
+        uow = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_TOKEN_HASH)
 
-        with self.assertRaises(SchemaV2SessionUnitOfWorkError) as raised:
-            with uow:
-                pass
+        with uow:
+            pass
 
-        self.assertEqual(raised.exception.code, "session_connection_cleanup_failed")
+        self.assertEqual(uow.transaction_outcome, "committed")
+        self.assertEqual(uow.cleanup_telemetry.status, "failed")
         self.assertFalse(uow.connection_reusable)
         self.assertEqual(connection.commit_count, 2)
         self.assertEqual(connection.close_count, 1)
 
     def test_repeated_and_nested_unit_of_work_entry_is_rejected(self) -> None:
         connection = FakeConnection()
-        first = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_HASH)
-        nested = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash="b" * 64)
+        first = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_TOKEN_HASH)
+        nested = SchemaV2ApiSessionUnitOfWork(
+            connection,
+            session_token_hash=hash_raw_session_token("nested-token"),
+        )
 
         first.__enter__()
         try:
@@ -331,7 +371,7 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
 
     def test_nonidle_connection_is_rejected_without_mutating_external_transaction(self) -> None:
         connection = FakeConnection(transaction_status=NamedTransactionStatus("INTRANS"))
-        uow = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_HASH)
+        uow = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_TOKEN_HASH)
 
         with self.assertRaises(SchemaV2SessionLifecycleError):
             uow.__enter__()
@@ -340,24 +380,47 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
         self.assertEqual(connection.commit_count, 0)
         self.assertEqual(connection.rollback_count, 0)
 
+    def test_missing_transaction_status_fails_closed_for_uow_and_pool_checkin(self) -> None:
+        connection = FakeConnection()
+        del connection.info
+        uow = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_TOKEN_HASH)
+        with self.assertRaises(SchemaV2SessionLifecycleError):
+            uow.__enter__()
+        self.assertEqual(connection.calls, [])
+
+        connections = [connection]
+
+        def connector(_database_url: str) -> FakeConnection:
+            return connections[-1]
+
+        pool = RuntimePostgresConnectionPool(
+            database_url="configured",
+            connector=connector,
+            max_size=1,
+            timeout_seconds=0,
+        )
+        pool.acquire().close()
+        self.assertEqual(connection.close_count, 1)
+        self.assertEqual(pool._created, 0)
+
     def test_autocommit_connection_is_rejected_before_database_access(self) -> None:
         connection = FakeConnection(autocommit=True)
         with self.assertRaises(SchemaV2SessionLifecycleError):
             SchemaV2ApiSessionUnitOfWork(
                 connection,
-                session_token_hash=SESSION_HASH,
+                session_token_hash=SESSION_TOKEN_HASH,
             )
         self.assertEqual(connection.calls, [])
 
     def test_nonidle_status_after_cleanup_commit_discards_connection(self) -> None:
         connection = FakeConnection(nonidle_commit_calls={2})
-        uow = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_HASH)
+        uow = SchemaV2ApiSessionUnitOfWork(connection, session_token_hash=SESSION_TOKEN_HASH)
 
-        with self.assertRaises(SchemaV2SessionUnitOfWorkError) as raised:
-            with uow:
-                pass
+        with uow:
+            pass
 
-        self.assertEqual(raised.exception.code, "session_connection_cleanup_failed")
+        self.assertEqual(uow.transaction_outcome, "committed")
+        self.assertEqual(uow.cleanup_telemetry.status, "failed")
         self.assertFalse(uow.connection_reusable)
         self.assertEqual(connection.close_count, 1)
 
@@ -379,12 +442,14 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
             timeout_seconds=0,
         )
         borrowed = pool.acquire()
-        with self.assertRaises(SchemaV2SessionUnitOfWorkError):
-            with SchemaV2ApiSessionUnitOfWork(
-                borrowed,  # type: ignore[arg-type]
-                session_token_hash=SESSION_HASH,
-            ):
-                pass
+        uow = SchemaV2ApiSessionUnitOfWork(
+            borrowed,  # type: ignore[arg-type]
+            session_token_hash=SESSION_TOKEN_HASH,
+        )
+        with uow:
+            pass
+        self.assertEqual(uow.cleanup_telemetry.status, "failed")
+        self.assertTrue(uow.cleanup_telemetry.connection_discarded)
         self.assertEqual(connections[0].close_count, 1)
 
         replacement = pool.acquire()
@@ -413,6 +478,72 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
         replacement = pool.acquire()
         self.assertEqual(len(connections), 2)
         replacement.invalidate()
+
+    def test_pooled_wrapper_close_and_invalidate_are_atomic(self) -> None:
+        for actions in (("close", "invalidate"), ("close", "close")):
+            with self.subTest(actions=actions):
+                connections: list[FakeConnection] = []
+
+                def connector(_database_url: str) -> FakeConnection:
+                    connection = FakeConnection()
+                    connections.append(connection)
+                    return connection
+
+                pool = RuntimePostgresConnectionPool(
+                    database_url="configured",
+                    connector=connector,
+                    max_size=1,
+                    timeout_seconds=0,
+                )
+                borrowed = pool.acquire()
+                barrier = threading.Barrier(3)
+                errors: list[BaseException] = []
+
+                def release(action: str) -> None:
+                    try:
+                        barrier.wait()
+                        getattr(borrowed, action)()
+                    except BaseException as exc:
+                        errors.append(exc)
+
+                threads = [
+                    threading.Thread(target=release, args=(action,))
+                    for action in actions
+                ]
+                for thread in threads:
+                    thread.start()
+                barrier.wait()
+                for thread in threads:
+                    thread.join(timeout=2)
+
+                self.assertTrue(all(not thread.is_alive() for thread in threads))
+                self.assertEqual(errors, [])
+                pool.closeall()
+                self.assertEqual(connections[0].close_count, 1)
+                self.assertEqual(pool._created, 0)
+                self.assertEqual(pool._available.qsize(), 0)
+
+                replacement = pool.acquire()
+                self.assertEqual(len(connections), 2)
+                replacement.invalidate()
+                self.assertEqual(pool._created, 0)
+
+    def test_connector_cannot_return_an_already_owned_connection(self) -> None:
+        connection = FakeConnection()
+        pool = RuntimePostgresConnectionPool(
+            database_url="configured",
+            connector=lambda _database_url: connection,
+            max_size=2,
+            timeout_seconds=0,
+        )
+        first = pool.acquire()
+        with self.assertRaises(RuntimePersistenceError):
+            pool.acquire()
+        self.assertEqual(pool._created, 1)
+        self.assertEqual(connection.close_count, 0)
+        first.invalidate()
+        self.assertEqual(connection.close_count, 1)
+        self.assertEqual(pool._created, 0)
 
 
 if __name__ == "__main__":
