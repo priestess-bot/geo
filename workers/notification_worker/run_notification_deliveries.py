@@ -16,7 +16,11 @@ from geno_core.email_delivery import (
 )
 from geno_core.models import RuntimeNotificationDeliveryStatusInput
 from geno_core.repository import PostgresEvidenceRepository
-from geno_core.runtime import build_repository_from_env, close_repository_connection
+from geno_core.runtime import (
+    build_repository_from_env,
+    close_repository_connection,
+    validate_runtime_schema_compatibility,
+)
 from geno_core.webhook_signing import (
     RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER,
     RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER,
@@ -377,6 +381,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    validate_runtime_schema_compatibility()
     max_deliveries = max(1, args.max_deliveries)
     repository: PostgresEvidenceRepository | None = None
     results: list[dict[str, Any]] = []

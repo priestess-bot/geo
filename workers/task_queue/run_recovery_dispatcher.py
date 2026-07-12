@@ -9,6 +9,7 @@ from geno_core.knowledge_pipeline import (
     close_knowledge_repository,
     connect_knowledge_pipeline_repository,
 )
+from geno_core.runtime import validate_runtime_schema_compatibility
 from geno_core.task_queue import dispatch_background_task
 
 
@@ -28,6 +29,7 @@ def main() -> int:
     parser.add_argument("--interval-seconds", type=float, default=30.0)
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
+    validate_runtime_schema_compatibility()
     while True:
         receipts = [
             dispatch_background_task(task_name).to_dict()

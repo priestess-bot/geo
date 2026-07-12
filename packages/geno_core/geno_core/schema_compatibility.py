@@ -13,6 +13,7 @@ SCHEMA_EXPECTED_BASELINE_HASH_ENV = "GENO_SCHEMA_V2_EXPECTED_BASELINE_HASH"
 SCHEMA_APP_VERSION_ENV = "GENO_APP_VERSION"
 SCHEMA_DATABASE_URL_ENV = "DATABASE_URL"
 EXPECTED_SCHEMA_GENERATION = 2
+DEFAULT_SCHEMA_CONNECT_TIMEOUT_SECONDS = 5
 
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _FALSE_VALUES = frozenset({"", "0", "false", "no", "off"})
@@ -260,7 +261,10 @@ def _default_connector(database_url: str) -> SchemaCompatibilityConnection:
             "schema_database_driver_unavailable",
             "PostgreSQL support is required for the Schema v2 compatibility check",
         ) from None
-    return psycopg.connect(database_url)
+    return psycopg.connect(
+        database_url,
+        connect_timeout=DEFAULT_SCHEMA_CONNECT_TIMEOUT_SECONDS,
+    )
 
 
 def check_schema_compatibility_from_env(
@@ -328,6 +332,7 @@ def check_schema_compatibility_from_env(
 
 __all__ = [
     "EXPECTED_SCHEMA_GENERATION",
+    "DEFAULT_SCHEMA_CONNECT_TIMEOUT_SECONDS",
     "SCHEMA_APP_VERSION_ENV",
     "SCHEMA_COMPATIBILITY_ENABLED_ENV",
     "SCHEMA_DATABASE_URL_ENV",

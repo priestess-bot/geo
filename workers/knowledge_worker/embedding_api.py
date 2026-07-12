@@ -12,10 +12,16 @@ from geno_core.knowledge_pipeline import (
     DEFAULT_EMBEDDING_MODEL_VERSION,
     LocalBgeM3Embedder,
 )
+from geno_core.runtime import validate_runtime_schema_compatibility
 
 
 app = FastAPI(title="GEO Knowledge Embedding API", version="1.0.0")
 _embedder: LocalBgeM3Embedder | None = None
+
+
+@app.on_event("startup")
+def validate_schema_compatibility_on_startup() -> None:
+    validate_runtime_schema_compatibility()
 
 
 class EmbeddingRequest(BaseModel):
