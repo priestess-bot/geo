@@ -2,6 +2,7 @@
 -- This is a clean baseline: it contains no Schema v1 compatibility or data repair.
 
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+REVOKE USAGE ON SCHEMA public FROM PUBLIC;
 
 DO $roles$
 BEGIN
@@ -24,10 +25,28 @@ BEGIN
             NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
             NOREPLICATION BYPASSRLS;
     END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_auth_members AS membership
+        WHERE membership.roleid IN (
+                SELECT role_entry.oid
+                FROM pg_catalog.pg_roles AS role_entry
+                WHERE role_entry.rolname IN ('geno_v2_runtime', 'geno_v2_authz_owner')
+            )
+           OR membership.member IN (
+                SELECT role_entry.oid
+                FROM pg_catalog.pg_roles AS role_entry
+                WHERE role_entry.rolname IN ('geno_v2_runtime', 'geno_v2_authz_owner')
+            )
+    ) THEN
+        RAISE EXCEPTION
+            'Schema v2 boundary roles must not participate in role memberships';
+    END IF;
 END
 $roles$;
 
-GRANT USAGE ON SCHEMA public TO geno_v2_runtime, geno_v2_authz_owner;
+GRANT USAGE ON SCHEMA public TO geno_v2_authz_owner;
 
 CREATE TABLE market_profiles (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -278,13 +297,15 @@ CREATE TABLE audit_events (
     method_version text,
     reason text,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT audit_events_tenant_fkey
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+        ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT audit_events_project_tenant_fkey
         FOREIGN KEY (project_id, tenant_id) REFERENCES projects(id, tenant_id)
         ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT audit_events_id_project_unique UNIQUE (id, project_id),
     CONSTRAINT audit_events_scope_pair
-        CHECK ((project_id IS NULL AND tenant_id IS NULL)
-            OR (project_id IS NOT NULL AND tenant_id IS NOT NULL)),
+        CHECK (project_id IS NULL OR tenant_id IS NOT NULL),
     CONSTRAINT audit_events_event_type_nonempty CHECK (btrim(event_type) <> ''),
     CONSTRAINT audit_events_actor_type_canonical
         CHECK (actor_type IN ('user', 'system', 'worker', 'service')),
@@ -317,210 +338,12 @@ CREATE INDEX runtime_grants_project_idx
     ON runtime_project_access_grants (project_id, tenant_id, status);
 CREATE INDEX audit_events_project_created_idx
     ON audit_events (project_id, created_at DESC) WHERE project_id IS NOT NULL;
+CREATE INDEX audit_events_tenant_created_idx
+    ON audit_events (tenant_id, created_at DESC)
+    WHERE tenant_id IS NOT NULL AND project_id IS NULL;
 CREATE INDEX audit_events_global_actor_created_idx
-    ON audit_events (actor_id, created_at DESC) WHERE project_id IS NULL;
-
-CREATE FUNCTION geno_v2_runtime_actor_id()
-RETURNS text
-LANGUAGE sql
-STABLE
-SET search_path = pg_catalog
-AS $actor$
-    SELECT nullif(lower(btrim(current_setting('app.actor_id', true))), '');
-$actor$;
-
-CREATE FUNCTION geno_v2_runtime_tenant_id()
-RETURNS uuid
-LANGUAGE plpgsql
-STABLE
-SET search_path = pg_catalog
-AS $tenant$
-DECLARE
-    raw_value text;
-BEGIN
-    raw_value := nullif(btrim(current_setting('app.tenant_id', true)), '');
-    IF raw_value IS NULL THEN
-        RETURN NULL;
-    END IF;
-    RETURN raw_value::uuid;
-EXCEPTION WHEN invalid_text_representation THEN
-    RETURN NULL;
-END;
-$tenant$;
-
-CREATE FUNCTION geno_v2_runtime_project_id()
-RETURNS uuid
-LANGUAGE plpgsql
-STABLE
-SET search_path = pg_catalog
-AS $project$
-DECLARE
-    raw_value text;
-BEGIN
-    raw_value := nullif(btrim(current_setting('app.project_id', true)), '');
-    IF raw_value IS NULL THEN
-        RETURN NULL;
-    END IF;
-    RETURN raw_value::uuid;
-EXCEPTION WHEN invalid_text_representation THEN
-    RETURN NULL;
-END;
-$project$;
-
-CREATE FUNCTION geno_v2_runtime_project_ids()
-RETURNS uuid[]
-LANGUAGE plpgsql
-STABLE
-SET search_path = pg_catalog
-AS $projects$
-DECLARE
-    raw_value text;
-    raw_parts text[];
-    result uuid[];
-BEGIN
-    raw_value := nullif(btrim(current_setting('app.project_ids', true)), '');
-    IF raw_value IS NULL THEN
-        RETURN ARRAY[]::uuid[];
-    END IF;
-    raw_parts := regexp_split_to_array(raw_value, '\s*,\s*');
-    IF cardinality(raw_parts) = 0 OR '' = ANY(raw_parts) THEN
-        RETURN ARRAY[]::uuid[];
-    END IF;
-    SELECT coalesce(array_agg(DISTINCT raw_part::uuid ORDER BY raw_part::uuid), ARRAY[]::uuid[])
-    INTO result
-    FROM unnest(raw_parts) AS scoped(raw_part);
-    RETURN result;
-EXCEPTION WHEN invalid_text_representation THEN
-    RETURN ARRAY[]::uuid[];
-END;
-$projects$;
-
-CREATE FUNCTION geno_v2_runtime_scope_contains(row_project_id uuid)
-RETURNS boolean
-LANGUAGE plpgsql
-STABLE
-SET search_path = pg_catalog
-AS $scope$
-DECLARE
-    single_project_id uuid;
-    project_ids uuid[];
-BEGIN
-    IF row_project_id IS NULL THEN
-        RETURN false;
-    END IF;
-    single_project_id := public.geno_v2_runtime_project_id();
-    project_ids := public.geno_v2_runtime_project_ids();
-    IF single_project_id IS NOT NULL THEN
-        RETURN row_project_id = single_project_id
-            AND (cardinality(project_ids) = 0 OR row_project_id = ANY(project_ids));
-    END IF;
-    RETURN cardinality(project_ids) > 0 AND row_project_id = ANY(project_ids);
-END;
-$scope$;
-
-CREATE FUNCTION geno_v2_authz_has_tenant_permission(
-    row_tenant_id uuid,
-    required_permission text
-)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = pg_catalog
-AS $tenant_permission$
-    SELECT row_tenant_id IS NOT NULL
-        AND row_tenant_id = public.geno_v2_runtime_tenant_id()
-        AND public.geno_v2_runtime_actor_id() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM public.tenant_members AS member
-            WHERE member.tenant_id = row_tenant_id
-              AND member.user_id = public.geno_v2_runtime_actor_id()
-              AND member.status = 'active'
-              AND public.geno_v2_role_has_permission(member.role, required_permission)
-        );
-$tenant_permission$;
-
-CREATE FUNCTION geno_v2_authz_has_project_permission(
-    row_project_id uuid,
-    row_tenant_id uuid,
-    required_permission text DEFAULT 'project.read'
-)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = pg_catalog
-AS $project_permission$
-    SELECT row_project_id IS NOT NULL
-        AND row_tenant_id IS NOT NULL
-        AND row_tenant_id = public.geno_v2_runtime_tenant_id()
-        AND public.geno_v2_runtime_actor_id() IS NOT NULL
-        AND public.geno_v2_runtime_scope_contains(row_project_id)
-        AND (
-            EXISTS (
-                SELECT 1
-                FROM public.project_members AS member
-                WHERE member.project_id = row_project_id
-                  AND member.tenant_id = row_tenant_id
-                  AND member.user_id = public.geno_v2_runtime_actor_id()
-                  AND member.status = 'active'
-                  AND public.geno_v2_role_has_permission(member.role, required_permission)
-            )
-            OR EXISTS (
-                SELECT 1
-                FROM public.runtime_project_access_grants AS grant_row
-                WHERE grant_row.project_id = row_project_id
-                  AND grant_row.tenant_id = row_tenant_id
-                  AND grant_row.actor_id = public.geno_v2_runtime_actor_id()
-                  AND grant_row.status = 'active'
-                  AND required_permission = ANY(grant_row.permissions)
-            )
-        );
-$project_permission$;
-
-CREATE FUNCTION geno_v2_authz_can_access_tenant(row_tenant_id uuid)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = pg_catalog
-AS $tenant_access$
-    SELECT public.geno_v2_authz_has_tenant_permission(row_tenant_id, 'tenant.read')
-        OR EXISTS (
-            SELECT 1
-            FROM public.projects AS project_row
-            WHERE project_row.tenant_id = row_tenant_id
-              AND public.geno_v2_authz_has_project_permission(
-                  project_row.id,
-                  project_row.tenant_id,
-                  'project.read'
-              )
-        );
-$tenant_access$;
-
-CREATE FUNCTION geno_v2_authz_can_read_profile(
-    row_market_code text,
-    row_industry_code text DEFAULT NULL
-)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = pg_catalog
-AS $profile_access$
-    SELECT EXISTS (
-        SELECT 1
-        FROM public.projects AS project_row
-        WHERE project_row.market_code = row_market_code
-          AND (row_industry_code IS NULL OR project_row.industry_code = row_industry_code)
-          AND public.geno_v2_authz_has_project_permission(
-              project_row.id,
-              project_row.tenant_id,
-              'project.read'
-          )
-    );
-$profile_access$;
+    ON audit_events (actor_id, created_at DESC)
+    WHERE tenant_id IS NULL AND project_id IS NULL;
 
 CREATE FUNCTION geno_v2_sync_tenant_member_project_grants()
 RETURNS trigger
@@ -551,7 +374,9 @@ BEGIN
             public.geno_v2_permissions_for_role(NEW.role),
             'active'
         FROM public.projects AS project_row
+        JOIN public.tenants AS tenant_row ON tenant_row.id = project_row.tenant_id
         WHERE project_row.tenant_id = NEW.tenant_id
+          AND tenant_row.status = 'active'
           AND project_row.status <> 'archived';
     END IF;
     RETURN coalesce(NEW, OLD);
@@ -569,7 +394,14 @@ BEGIN
     WHERE project_id = coalesce(NEW.id, OLD.id)
       AND source_type = 'tenant_role';
 
-    IF TG_OP <> 'DELETE' AND NEW.status <> 'archived' THEN
+    IF TG_OP <> 'DELETE'
+       AND NEW.status <> 'archived'
+       AND EXISTS (
+            SELECT 1
+            FROM public.tenants AS tenant_row
+            WHERE tenant_row.id = NEW.tenant_id
+              AND tenant_row.status = 'active'
+       ) THEN
         INSERT INTO public.runtime_project_access_grants (
             tenant_id, project_id, actor_id, source_type, source_id,
             canonical_role, permission_set_version, permissions, status
@@ -593,23 +425,63 @@ BEGIN
 END;
 $sync_project$;
 
+CREATE FUNCTION geno_v2_sync_tenant_status_grants()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog
+AS $sync_tenant_status$
+BEGIN
+    DELETE FROM public.runtime_project_access_grants
+    WHERE tenant_id = NEW.id
+      AND source_type = 'tenant_role';
+
+    IF NEW.status = 'active' THEN
+        INSERT INTO public.runtime_project_access_grants (
+            tenant_id, project_id, actor_id, source_type, source_id,
+            canonical_role, permission_set_version, permissions, status
+        )
+        SELECT
+            NEW.id,
+            project_row.id,
+            member.user_id,
+            'tenant_role',
+            member.id,
+            member.role,
+            'authz_permissions_v2',
+            public.geno_v2_permissions_for_role(member.role),
+            'active'
+        FROM public.projects AS project_row
+        JOIN public.tenant_members AS member
+          ON member.tenant_id = project_row.tenant_id
+        WHERE project_row.tenant_id = NEW.id
+          AND project_row.status <> 'archived'
+          AND member.status = 'active'
+          AND member.role IN ('super_admin', 'tenant_admin');
+    END IF;
+    RETURN NEW;
+END;
+$sync_tenant_status$;
+
+CREATE FUNCTION geno_v2_reject_audit_event_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog
+AS $audit_immutable$
+BEGIN
+    RAISE EXCEPTION 'audit_events rows are immutable' USING ERRCODE = '55000';
+END;
+$audit_immutable$;
+
 ALTER FUNCTION geno_v2_permissions_for_role(text) OWNER TO geno_v2_authz_owner;
 ALTER FUNCTION geno_v2_role_has_permission(text, text) OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_runtime_actor_id() OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_runtime_tenant_id() OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_runtime_project_id() OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_runtime_project_ids() OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_runtime_scope_contains(uuid) OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_authz_has_tenant_permission(uuid, text) OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_authz_has_project_permission(uuid, uuid, text)
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_authz_can_access_tenant(uuid) OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_authz_can_read_profile(text, text) OWNER TO geno_v2_authz_owner;
 ALTER FUNCTION geno_v2_sync_tenant_member_project_grants()
     OWNER TO geno_v2_authz_owner;
 ALTER FUNCTION geno_v2_sync_project_tenant_grants() OWNER TO geno_v2_authz_owner;
+ALTER FUNCTION geno_v2_sync_tenant_status_grants() OWNER TO geno_v2_authz_owner;
+ALTER FUNCTION geno_v2_reject_audit_event_mutation() OWNER TO geno_v2_authz_owner;
 
-GRANT SELECT ON projects, tenant_members, project_members, runtime_project_access_grants
+GRANT SELECT ON tenants, projects, tenant_members, runtime_project_access_grants
     TO geno_v2_authz_owner;
 GRANT INSERT, DELETE ON runtime_project_access_grants TO geno_v2_authz_owner;
 
@@ -620,6 +492,14 @@ FOR EACH ROW EXECUTE FUNCTION geno_v2_sync_tenant_member_project_grants();
 CREATE TRIGGER projects_sync_tenant_grants
 AFTER INSERT OR UPDATE OF tenant_id, status OR DELETE ON projects
 FOR EACH ROW EXECUTE FUNCTION geno_v2_sync_project_tenant_grants();
+
+CREATE TRIGGER tenants_sync_status_grants
+AFTER UPDATE OF status ON tenants
+FOR EACH ROW EXECUTE FUNCTION geno_v2_sync_tenant_status_grants();
+
+CREATE TRIGGER audit_events_immutable
+BEFORE UPDATE OR DELETE ON audit_events
+FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_audit_event_mutation();
 
 ALTER TABLE market_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE market_profiles FORCE ROW LEVEL SECURITY;
@@ -638,149 +518,16 @@ ALTER TABLE runtime_project_access_grants FORCE ROW LEVEL SECURITY;
 ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_events FORCE ROW LEVEL SECURITY;
 
-CREATE POLICY market_profiles_runtime_select ON market_profiles
-FOR SELECT TO geno_v2_runtime
-USING (geno_v2_authz_can_read_profile(market_code, NULL));
-
-CREATE POLICY industry_profiles_runtime_select ON industry_profiles
-FOR SELECT TO geno_v2_runtime
-USING (geno_v2_authz_can_read_profile(market_code, industry_code));
-
-CREATE POLICY tenants_runtime_select ON tenants
-FOR SELECT TO geno_v2_runtime
-USING (geno_v2_authz_can_access_tenant(id));
-
-CREATE POLICY tenants_runtime_update ON tenants
-FOR UPDATE TO geno_v2_runtime
-USING (geno_v2_authz_has_tenant_permission(id, 'tenant.update'))
-WITH CHECK (geno_v2_authz_has_tenant_permission(id, 'tenant.update'));
-
-CREATE POLICY projects_runtime_select ON projects
-FOR SELECT TO geno_v2_runtime
-USING (geno_v2_authz_has_project_permission(id, tenant_id, 'project.read'));
-
-CREATE POLICY projects_runtime_insert ON projects
-FOR INSERT TO geno_v2_runtime
-WITH CHECK (
-    tenant_id = geno_v2_runtime_tenant_id()
-    AND status IN ('active', 'paused')
-    AND geno_v2_authz_has_tenant_permission(tenant_id, 'project.create')
-);
-
-CREATE POLICY projects_runtime_update ON projects
-FOR UPDATE TO geno_v2_runtime
-USING (geno_v2_authz_has_project_permission(id, tenant_id, 'project.update'))
-WITH CHECK (geno_v2_authz_has_project_permission(id, tenant_id, 'project.update'));
-
-CREATE POLICY tenant_members_runtime_select ON tenant_members
-FOR SELECT TO geno_v2_runtime
-USING (
-    tenant_id = geno_v2_runtime_tenant_id()
-    AND (
-        user_id = geno_v2_runtime_actor_id()
-        OR geno_v2_authz_has_tenant_permission(tenant_id, 'member.manage')
-    )
-);
-
-CREATE POLICY tenant_members_runtime_insert ON tenant_members
-FOR INSERT TO geno_v2_runtime
-WITH CHECK (geno_v2_authz_has_tenant_permission(tenant_id, 'member.manage'));
-
-CREATE POLICY tenant_members_runtime_update ON tenant_members
-FOR UPDATE TO geno_v2_runtime
-USING (geno_v2_authz_has_tenant_permission(tenant_id, 'member.manage'))
-WITH CHECK (geno_v2_authz_has_tenant_permission(tenant_id, 'member.manage'));
-
-CREATE POLICY tenant_members_runtime_delete ON tenant_members
-FOR DELETE TO geno_v2_runtime
-USING (geno_v2_authz_has_tenant_permission(tenant_id, 'member.manage'));
-
-CREATE POLICY project_members_runtime_select ON project_members
-FOR SELECT TO geno_v2_runtime
-USING (geno_v2_authz_has_project_permission(project_id, tenant_id, 'project.read'));
-
-CREATE POLICY project_members_runtime_insert ON project_members
-FOR INSERT TO geno_v2_runtime
-WITH CHECK (geno_v2_authz_has_project_permission(project_id, tenant_id, 'member.manage'));
-
-CREATE POLICY project_members_runtime_update ON project_members
-FOR UPDATE TO geno_v2_runtime
-USING (geno_v2_authz_has_project_permission(project_id, tenant_id, 'member.manage'))
-WITH CHECK (geno_v2_authz_has_project_permission(project_id, tenant_id, 'member.manage'));
-
-CREATE POLICY project_members_runtime_delete ON project_members
-FOR DELETE TO geno_v2_runtime
-USING (geno_v2_authz_has_project_permission(project_id, tenant_id, 'member.manage'));
-
-CREATE POLICY runtime_grants_runtime_select ON runtime_project_access_grants
-FOR SELECT TO geno_v2_runtime
-USING (
-    tenant_id = geno_v2_runtime_tenant_id()
-    AND actor_id = geno_v2_runtime_actor_id()
-    AND geno_v2_runtime_scope_contains(project_id)
-);
-
-CREATE POLICY audit_events_runtime_select ON audit_events
-FOR SELECT TO geno_v2_runtime
-USING (
-    (project_id IS NULL AND actor_id = geno_v2_runtime_actor_id())
-    OR (
-        project_id IS NOT NULL
-        AND geno_v2_authz_has_project_permission(project_id, tenant_id, 'audit.read')
-    )
-);
-
-CREATE POLICY audit_events_runtime_insert ON audit_events
-FOR INSERT TO geno_v2_runtime
-WITH CHECK (
-    actor_id = geno_v2_runtime_actor_id()
-    AND (
-        (project_id IS NULL AND tenant_id IS NULL)
-        OR (
-            project_id IS NOT NULL
-            AND geno_v2_authz_has_project_permission(project_id, tenant_id, 'project.read')
-        )
-    )
-);
-
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
 
-GRANT SELECT ON market_profiles, industry_profiles TO geno_v2_runtime;
-GRANT SELECT ON tenants TO geno_v2_runtime;
-GRANT UPDATE (name, slug, status, updated_at) ON tenants TO geno_v2_runtime;
-GRANT SELECT, INSERT ON projects TO geno_v2_runtime;
-GRANT UPDATE (
-    name, market_code, industry_code, target_brand, category,
-    prompt_version, status, updated_at
-) ON projects TO geno_v2_runtime;
-GRANT SELECT, INSERT, DELETE ON tenant_members TO geno_v2_runtime;
-GRANT UPDATE (user_id, role, status, invited_by, updated_at)
-    ON tenant_members TO geno_v2_runtime;
-GRANT SELECT, INSERT, DELETE ON project_members TO geno_v2_runtime;
-GRANT UPDATE (user_id, role, status, invited_by, updated_at)
-    ON project_members TO geno_v2_runtime;
-GRANT SELECT ON runtime_project_access_grants TO geno_v2_runtime;
-GRANT SELECT, INSERT ON audit_events TO geno_v2_runtime;
-
-GRANT EXECUTE ON FUNCTION geno_v2_runtime_actor_id() TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_runtime_tenant_id() TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_runtime_project_id() TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_runtime_project_ids() TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_runtime_scope_contains(uuid) TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_authz_has_tenant_permission(uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_authz_has_project_permission(uuid, uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_authz_can_access_tenant(uuid) TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_authz_can_read_profile(text, text)
-    TO geno_v2_runtime;
-
 COMMENT ON ROLE geno_v2_runtime IS
-    'NOLOGIN runtime group role; all domain access is constrained by forced RLS.';
+    'NOLOGIN sealed role with no access until session-backed RLS is installed by 0011.';
 COMMENT ON ROLE geno_v2_authz_owner IS
-    'NOLOGIN owner for narrowly scoped SECURITY DEFINER authorization functions.';
+    'NOLOGIN owner for narrowly scoped projection-maintenance trigger functions.';
 COMMENT ON TABLE runtime_project_access_grants IS
     'Derived active project grants for canonical tenant roles; only sync triggers may write.';
-COMMENT ON FUNCTION geno_v2_runtime_project_ids() IS
-    'Parses comma-delimited project scope; missing or malformed values fail closed.';
+COMMENT ON TABLE projects IS
+    'Runtime access intentionally remains sealed until 0011 verifies a secret session token.';
+COMMENT ON TABLE audit_events IS
+    'Immutable global, tenant, or project audit records; runtime access is deferred to 0011.';

@@ -54,6 +54,8 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 "market_profiles, tenants CASCADE"
             )
             for signature in (
+                "geno_v2_reject_audit_event_mutation()",
+                "geno_v2_sync_tenant_status_grants()",
                 "geno_v2_sync_project_tenant_grants()",
                 "geno_v2_sync_tenant_member_project_grants()",
                 "geno_v2_authz_can_read_profile(text, text)",
@@ -173,6 +175,58 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
             restored = self._run_runner("install")
             self.assertEqual(restored.returncode, 0, restored.stdout + restored.stderr)
 
+    def test_role_memberships_block_install_in_both_directions(self) -> None:
+        probe_role = "geno_v2_membership_probe"
+        with psycopg.connect(autocommit=True) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(f"DROP ROLE IF EXISTS {probe_role}")
+                cursor.execute(f"CREATE ROLE {probe_role} NOLOGIN")
+
+        membership_pairs = (
+            (
+                f"GRANT geno_v2_runtime TO {probe_role}",
+                f"REVOKE geno_v2_runtime FROM {probe_role}",
+            ),
+            (
+                f"GRANT {probe_role} TO geno_v2_authz_owner",
+                f"REVOKE {probe_role} FROM geno_v2_authz_owner",
+            ),
+        )
+        try:
+            for grant_statement, revoke_statement in membership_pairs:
+                with self.subTest(grant=grant_statement):
+                    with psycopg.connect(autocommit=True) as connection:
+                        self._drop_bootstrap_metadata(connection)
+                        with connection.cursor() as cursor:
+                            cursor.execute(grant_statement)
+
+                    blocked = self._run_runner("install")
+                    self.assertEqual(
+                        blocked.returncode,
+                        2,
+                        blocked.stdout + blocked.stderr,
+                    )
+                    self.assertEqual(
+                        blocked.stderr,
+                        "schema-v2 error: database operation failed\n",
+                    )
+
+                    with psycopg.connect(autocommit=True) as connection:
+                        with connection.cursor() as cursor:
+                            cursor.execute(revoke_statement)
+                    restored = self._run_runner("install")
+                    self.assertEqual(
+                        restored.returncode,
+                        0,
+                        restored.stdout + restored.stderr,
+                    )
+        finally:
+            with psycopg.connect(autocommit=True) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(f"REVOKE geno_v2_runtime FROM {probe_role}")
+                    cursor.execute(f"REVOKE {probe_role} FROM geno_v2_authz_owner")
+                    cursor.execute(f"DROP ROLE IF EXISTS {probe_role}")
+
 
 @unittest.skipUnless(BEHAVIOR_TEST_ENABLED, "SCHEMA_V2_BEHAVIOR_TEST=1 is required")
 class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
@@ -189,6 +243,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
     admin_a_member_id: UUID
     audit_global_a: UUID
     audit_global_b: UUID
+    audit_tenant_a: UUID
     audit_project_a1: UUID
     audit_project_a3: UUID
     audit_project_b1: UUID
@@ -211,6 +266,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
         cls.admin_a_member_id = uuid4()
         cls.audit_global_a = uuid4()
         cls.audit_global_b = uuid4()
+        cls.audit_tenant_a = uuid4()
         cls.audit_project_a1 = uuid4()
         cls.audit_project_a3 = uuid4()
         cls.audit_project_b1 = uuid4()
@@ -287,6 +343,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 for event_id, tenant_id, project_id, actor_id, target_id in (
                     (cls.audit_global_a, None, None, cls.admin_a, "global-a"),
                     (cls.audit_global_b, None, None, cls.admin_b, "global-b"),
+                    (cls.audit_tenant_a, cls.tenant_a, None, cls.admin_a, "tenant-a"),
                     (cls.audit_project_a1, cls.tenant_a, cls.project_a1, cls.multi_actor, "a1"),
                     (cls.audit_project_a3, cls.tenant_a, cls.project_a3, cls.admin_a, "a3"),
                     (cls.audit_project_b1, cls.tenant_b, cls.project_b1, cls.actor_b, "b1"),
@@ -299,16 +356,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                         (event_id, tenant_id, project_id, actor_id, target_id),
                     )
 
-    def _set_runtime_scope(
-        self,
-        cursor: psycopg.Cursor[object],
-        *,
-        actor_id: str,
-        tenant_id: UUID | str,
-        project_ids: tuple[UUID | str, ...] = (),
-        project_id: UUID | str | None = None,
-        roles: str = "",
-    ) -> None:
+    def _set_forged_runtime_context(self, cursor: psycopg.Cursor[object]) -> None:
         cursor.execute("RESET ROLE")
         cursor.execute("RESET ALL")
         cursor.execute(
@@ -318,11 +366,11 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
             "set_config('app.project_ids', %s, false), "
             "set_config('app.roles', %s, false)",
             (
-                actor_id,
-                str(tenant_id),
-                "" if project_id is None else str(project_id),
-                ",".join(str(value) for value in project_ids),
-                roles,
+                self.admin_a,
+                str(self.tenant_a),
+                str(self.project_a1),
+                ",".join(str(value) for value in (self.project_a1, self.project_a2)),
+                "super_admin,system,worker",
             ),
         )
         cursor.execute("SET ROLE geno_v2_runtime")
@@ -370,16 +418,11 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 self.assertTrue(all(row[1] and row[2] for row in table_rows))
 
                 cursor.execute(
-                    "SELECT tablename, roles FROM pg_policies "
+                    "SELECT tablename FROM pg_policies "
                     "WHERE schemaname = 'public' AND tablename = ANY(%s)",
                     (list(expected_tables),),
                 )
-                policies = cursor.fetchall()
-                self.assertTrue(policies)
-                self.assertTrue(
-                    all(row[1] == ["geno_v2_runtime"] for row in policies),
-                    policies,
-                )
+                self.assertEqual(cursor.fetchall(), [])
 
                 cursor.execute(
                     "SELECT EXISTS ("
@@ -398,16 +441,71 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 )
                 self.assertFalse(cursor.fetchone()[0])
 
+                for table_name in expected_tables:
+                    with self.subTest(runtime_table_acl=table_name):
+                        cursor.execute(
+                            "SELECT "
+                            "has_table_privilege('geno_v2_runtime', %s, 'SELECT'), "
+                            "has_table_privilege('geno_v2_runtime', %s, 'INSERT'), "
+                            "has_table_privilege('geno_v2_runtime', %s, 'UPDATE'), "
+                            "has_table_privilege('geno_v2_runtime', %s, 'DELETE')",
+                            tuple(f"public.{table_name}" for _ in range(4)),
+                        )
+                        self.assertEqual(cursor.fetchone(), (False, False, False, False))
+
                 cursor.execute(
-                    "SELECT "
-                    "has_table_privilege('geno_v2_runtime', 'projects', 'SELECT'), "
-                    "has_column_privilege('geno_v2_runtime', 'projects', 'status', 'UPDATE'), "
-                    "has_column_privilege('geno_v2_runtime', 'projects', 'id', 'UPDATE'), "
-                    "has_table_privilege('geno_v2_runtime', "
-                    "'runtime_project_access_grants', 'INSERT'), "
-                    "has_table_privilege('geno_v2_runtime', 'audit_events', 'UPDATE')"
+                    "SELECT has_schema_privilege('geno_v2_runtime', 'public', 'USAGE')"
                 )
-                self.assertEqual(cursor.fetchone(), (True, True, False, False, False))
+                self.assertFalse(cursor.fetchone()[0])
+                cursor.execute(
+                    "SELECT proname, "
+                    "has_function_privilege('geno_v2_runtime', pg_proc.oid, 'EXECUTE') "
+                    "FROM pg_proc JOIN pg_namespace ON pg_namespace.oid = pronamespace "
+                    "WHERE nspname = 'public' AND proname LIKE 'geno_v2_%' "
+                    "ORDER BY proname"
+                )
+                function_acl_rows = cursor.fetchall()
+                self.assertEqual(len(function_acl_rows), 6)
+                self.assertTrue(all(not row[1] for row in function_acl_rows))
+
+                cursor.execute(
+                    "SELECT proname, pg_get_userbyid(proowner), prosecdef, proconfig "
+                    "FROM pg_proc JOIN pg_namespace ON pg_namespace.oid = pronamespace "
+                    "WHERE nspname = 'public' AND proname LIKE 'geno_v2_%' "
+                    "ORDER BY proname"
+                )
+                function_rows = cursor.fetchall()
+                self.assertEqual(
+                    {row[0] for row in function_rows},
+                    {
+                        "geno_v2_permissions_for_role",
+                        "geno_v2_reject_audit_event_mutation",
+                        "geno_v2_role_has_permission",
+                        "geno_v2_sync_project_tenant_grants",
+                        "geno_v2_sync_tenant_member_project_grants",
+                        "geno_v2_sync_tenant_status_grants",
+                    },
+                )
+                self.assertTrue(all(row[1] == "geno_v2_authz_owner" for row in function_rows))
+                security_definer_functions = {row[0] for row in function_rows if row[2]}
+                self.assertEqual(
+                    security_definer_functions,
+                    {
+                        "geno_v2_sync_project_tenant_grants",
+                        "geno_v2_sync_tenant_member_project_grants",
+                        "geno_v2_sync_tenant_status_grants",
+                    },
+                )
+                self.assertTrue(all(row[3] == ["search_path=pg_catalog"] for row in function_rows))
+
+                cursor.execute(
+                    "SELECT count(*) FROM pg_auth_members WHERE roleid IN ("
+                    "SELECT oid FROM pg_roles WHERE rolname IN "
+                    "('geno_v2_runtime', 'geno_v2_authz_owner')) OR member IN ("
+                    "SELECT oid FROM pg_roles WHERE rolname IN "
+                    "('geno_v2_runtime', 'geno_v2_authz_owner'))"
+                )
+                self.assertEqual(cursor.fetchone()[0], 0)
 
     def test_02_composite_foreign_keys_and_canonical_values_reject_bad_rows(self) -> None:
         with psycopg.connect(autocommit=True) as connection:
@@ -436,69 +534,30 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                         (self.tenant_a, self.project_a1),
                     )
 
-    def test_03_authorized_multi_project_scope_and_forged_gucs_fail_closed(self) -> None:
+    def test_03_forged_gucs_cannot_unlock_any_runtime_table_or_function(self) -> None:
+        expected_tables = (
+            "market_profiles",
+            "industry_profiles",
+            "tenants",
+            "projects",
+            "tenant_members",
+            "project_members",
+            "runtime_project_access_grants",
+            "audit_events",
+        )
         with psycopg.connect(autocommit=True) as connection:
             with connection.cursor() as cursor:
-                self._set_runtime_scope(
-                    cursor,
-                    actor_id=self.multi_actor,
-                    tenant_id=self.tenant_a,
-                    project_ids=(self.project_a1, self.project_a2),
-                )
-                cursor.execute("SELECT id FROM projects ORDER BY id")
-                self.assertEqual(
-                    {row[0] for row in cursor.fetchall()},
-                    {self.project_a1, self.project_a2},
-                )
+                self._set_forged_runtime_context(cursor)
+                for table_name in expected_tables:
+                    with self.subTest(table_name=table_name):
+                        with self.assertRaises(psycopg.errors.InsufficientPrivilege):
+                            cursor.execute(f"SELECT * FROM public.{table_name} LIMIT 1")
 
-                self._set_runtime_scope(
-                    cursor,
-                    actor_id=self.multi_actor,
-                    tenant_id=self.tenant_a,
-                    project_ids=(self.project_a1, self.project_a3),
-                    roles="super_admin,system",
-                )
-                cursor.execute("SELECT id FROM projects ORDER BY id")
-                self.assertEqual([row[0] for row in cursor.fetchall()], [self.project_a1])
-
-                self._set_runtime_scope(
-                    cursor,
-                    actor_id=self.multi_actor,
-                    tenant_id=self.tenant_b,
-                    project_ids=(self.project_b1,),
-                    roles="super_admin",
-                )
-                cursor.execute("SELECT id FROM projects")
-                self.assertEqual(cursor.fetchall(), [])
-
-                self._set_runtime_scope(
-                    cursor,
-                    actor_id=self.multi_actor,
-                    tenant_id=self.tenant_a,
-                    project_ids=("not-a-uuid",),
-                    roles="super_admin",
-                )
-                cursor.execute("SELECT id FROM projects")
-                self.assertEqual(cursor.fetchall(), [])
-
-                self._set_runtime_scope(
-                    cursor,
-                    actor_id=self.multi_actor,
-                    tenant_id=self.tenant_a,
-                    roles="super_admin",
-                )
-                cursor.execute("SELECT id FROM projects")
-                self.assertEqual(cursor.fetchall(), [])
-
-                self._set_runtime_scope(
-                    cursor,
-                    actor_id="",
-                    tenant_id=self.tenant_a,
-                    project_ids=(self.project_a1,),
-                    roles="super_admin",
-                )
-                cursor.execute("SELECT id FROM projects")
-                self.assertEqual(cursor.fetchall(), [])
+                with self.assertRaises(psycopg.errors.InsufficientPrivilege):
+                    cursor.execute(
+                        "SELECT public.geno_v2_permissions_for_role('super_admin')"
+                    )
+                self._reset_role(cursor)
 
     def test_04_tenant_grants_sync_for_members_and_project_lifecycle(self) -> None:
         with psycopg.connect(autocommit=True) as connection:
@@ -538,6 +597,40 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 self.assertEqual(cursor.fetchone()[0], 3)
 
                 cursor.execute(
+                    "UPDATE tenants SET status = 'disabled' WHERE id = %s",
+                    (self.tenant_a,),
+                )
+                cursor.execute(
+                    "SELECT count(*) FROM runtime_project_access_grants WHERE tenant_id = %s",
+                    (self.tenant_a,),
+                )
+                self.assertEqual(cursor.fetchone()[0], 0)
+
+                cursor.execute(
+                    "UPDATE tenant_members SET role = role WHERE id = %s",
+                    (self.admin_a_member_id,),
+                )
+                cursor.execute(
+                    "UPDATE projects SET status = 'paused' WHERE id = %s",
+                    (self.project_a3,),
+                )
+                cursor.execute(
+                    "SELECT count(*) FROM runtime_project_access_grants WHERE tenant_id = %s",
+                    (self.tenant_a,),
+                )
+                self.assertEqual(cursor.fetchone()[0], 0)
+
+                cursor.execute(
+                    "UPDATE tenants SET status = 'active' WHERE id = %s",
+                    (self.tenant_a,),
+                )
+                cursor.execute(
+                    "SELECT count(*) FROM runtime_project_access_grants WHERE source_id = %s",
+                    (self.admin_a_member_id,),
+                )
+                self.assertEqual(cursor.fetchone()[0], 3)
+
+                cursor.execute(
                     "UPDATE projects SET status = 'archived' WHERE id = %s",
                     (self.project_a3,),
                 )
@@ -559,57 +652,58 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 )
                 self.assertEqual(cursor.fetchone()[0], 1)
 
-    def test_05_audit_global_and_project_rows_are_isolated(self) -> None:
+    def test_05_audit_supports_three_scopes_and_is_immutable(self) -> None:
         with psycopg.connect(autocommit=True) as connection:
             with connection.cursor() as cursor:
-                self._set_runtime_scope(
-                    cursor,
-                    actor_id=self.admin_a,
-                    tenant_id=self.tenant_a,
-                    project_ids=(self.project_a1,),
+                cursor.execute(
+                    "SELECT id, tenant_id, project_id FROM audit_events "
+                    "WHERE id = ANY(%s) ORDER BY id",
+                    (
+                        [
+                            self.audit_global_a,
+                            self.audit_tenant_a,
+                            self.audit_project_a1,
+                        ],
+                    ),
                 )
-                cursor.execute("SELECT id FROM audit_events ORDER BY id")
+                rows = cursor.fetchall()
                 self.assertEqual(
-                    {row[0] for row in cursor.fetchall()},
-                    {self.audit_global_a, self.audit_project_a1},
+                    {(row[1], row[2]) for row in rows},
+                    {
+                        (None, None),
+                        (self.tenant_a, None),
+                        (self.tenant_a, self.project_a1),
+                    },
                 )
 
-                with self.assertRaises(psycopg.errors.InsufficientPrivilege):
+                with self.assertRaises(psycopg.errors.CheckViolation):
                     cursor.execute(
                         "INSERT INTO audit_events "
-                        "(event_type, actor_type, actor_id, target_type, target_id) "
-                        "VALUES ('forged', 'user', %s, 'test', 'forged')",
-                        (self.admin_b,),
+                        "(tenant_id, project_id, event_type, actor_type, actor_id, "
+                        "target_type, target_id) "
+                        "VALUES (NULL, %s, 'bad.scope', 'system', 'test', 'test', 'bad')",
+                        (self.project_a1,),
                     )
 
-                cursor.execute(
-                    "INSERT INTO audit_events "
-                    "(event_type, actor_type, actor_id, target_type, target_id) "
-                    "VALUES ('own.global', 'user', %s, 'test', 'own')",
-                    (self.admin_a,),
-                )
-                cursor.execute(
-                    "SELECT count(*) FROM audit_events "
-                    "WHERE project_id IS NULL AND actor_id = %s",
-                    (self.admin_a,),
-                )
-                self.assertEqual(cursor.fetchone()[0], 2)
-
-                with self.assertRaises(psycopg.errors.InsufficientPrivilege):
+                with self.assertRaises(psycopg.errors.ForeignKeyViolation):
                     cursor.execute(
-                        "INSERT INTO runtime_project_access_grants "
-                        "(tenant_id, project_id, actor_id, source_type, source_id, "
-                        "canonical_role, permissions) VALUES "
-                        "(%s, %s, %s, 'tenant_role', %s, 'tenant_admin', ARRAY[]::text[])",
-                        (
-                            self.tenant_a,
-                            self.project_a1,
-                            self.admin_a,
-                            self.admin_a_member_id,
-                        ),
+                        "INSERT INTO audit_events "
+                        "(tenant_id, event_type, actor_type, actor_id, target_type, target_id) "
+                        "VALUES (%s, 'bad.tenant', 'system', 'test', 'test', 'bad')",
+                        (uuid4(),),
                     )
 
-                self._reset_role(cursor)
+                for statement in (
+                    "UPDATE audit_events SET reason = 'changed' WHERE id = %s",
+                    "DELETE FROM audit_events WHERE id = %s",
+                ):
+                    with self.subTest(statement=statement):
+                        with self.assertRaises(
+                            psycopg.errors.ObjectNotInPrerequisiteState
+                        ) as raised:
+                            cursor.execute(statement, (self.audit_global_a,))
+                        self.assertEqual(raised.exception.sqlstate, "55000")
+                        self.assertIn("audit_events rows are immutable", str(raised.exception))
 
 
 if __name__ == "__main__":

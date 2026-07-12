@@ -3,7 +3,7 @@
   "schema_generation": 2,
   "database_name": "geno_v2",
   "baseline_version": "2.0.0-b2",
-  "baseline_hash": "d040f7c3dc25c134648b9cac4b1dd4cf587dcb3dd25336bd571761f45a49518b",
+  "baseline_hash": "df4d7243f0f31b5f0a30cb0989be239ef2eb8f316b5e5577d781de48bd882064",
   "minimum_app_version": "0.1.0",
   "baseline_files": [
     {
@@ -12,7 +12,7 @@
     },
     {
       "path": "baseline/0010_tenancy_project_rls.sql",
-      "sha256": "6bed63a0382a175113924c1643f379032e0d39b430bc7c8acfc39806411ae4bb"
+      "sha256": "d535b8f520b764c59e7f7c15347dc918fd78a0a8bb0fece2de3e2c09cf3021c1"
     }
   ],
   "migration_files": []

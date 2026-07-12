@@ -178,6 +178,10 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
             "quarantine",
             "FROM public.runtime_sessions",
             "FROM public.project_member_invitations",
+            "current_setting('app.",
+            "CREATE POLICY",
+            "GRANT SELECT ON market_profiles",
+            "GRANT EXECUTE ON FUNCTION",
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, sql)
@@ -192,10 +196,19 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         self.assertIn("REFERENCES projects(id, tenant_id)", sql)
         self.assertIn("CHECK (role IN ('super_admin', 'tenant_admin'))", sql)
         self.assertIn("'project_owner', 'analyst', 'reviewer'", sql)
-        self.assertIn("TO geno_v2_runtime", sql)
+        self.assertIn("pg_catalog.pg_auth_members", sql)
+        self.assertIn("must not participate in role memberships", sql)
         self.assertIn("ALTER TABLE audit_events FORCE ROW LEVEL SECURITY", sql)
         self.assertIn("CREATE TRIGGER tenant_members_sync_project_grants", sql)
         self.assertIn("CREATE TRIGGER projects_sync_tenant_grants", sql)
+        self.assertIn("CREATE TRIGGER tenants_sync_status_grants", sql)
+        self.assertIn("CREATE TRIGGER audit_events_immutable", sql)
+        self.assertIn("FOREIGN KEY (tenant_id) REFERENCES tenants(id)", sql)
+
+        readme = (SCHEMA_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("defines no runtime policies", readme)
+        self.assertIn("session_token_hash", readme)
+        self.assertIn("Gate 1 remains pending", readme)
 
     def test_runner_uses_a_session_lock_and_transactional_ledger(self) -> None:
         runner = (ROOT / "scripts/schema_v2_runner.py").read_text(encoding="utf-8")
