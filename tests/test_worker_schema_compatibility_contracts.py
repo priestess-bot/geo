@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import importlib
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -103,11 +104,39 @@ class WorkerSchemaCompatibilityContractsTest(unittest.TestCase):
                 self.assertEqual(module_level_calls, [])
 
     def test_dramatiq_worker_validates_before_worker_boot(self) -> None:
-        source = (ROOT / "workers/task_queue/tasks.py").read_text(encoding="utf-8")
-        self.assertIn("class SchemaCompatibilityMiddleware(dramatiq.Middleware):", source)
-        self.assertIn("def before_worker_boot(", source)
-        self.assertIn("validate_runtime_schema_compatibility()", source)
-        self.assertIn("broker.add_middleware(SchemaCompatibilityMiddleware())", source)
+        from dramatiq.brokers.stub import StubBroker
+        from dramatiq.middleware import MiddlewareError
+
+        task_module = importlib.import_module("workers.task_queue.tasks")
+        broker = StubBroker(middleware=[])
+        broker.add_middleware(task_module.SchemaCompatibilityMiddleware())
+        schema_error = RuntimeError("database_url=postgresql://user:SECRET@db/geno_v2")
+
+        with (
+            patch.object(
+                task_module,
+                "validate_runtime_schema_compatibility",
+                side_effect=schema_error,
+            ),
+            self.assertRaisesRegex(
+                MiddlewareError,
+                "^Schema v2 compatibility check failed$",
+            ) as raised,
+        ):
+            broker.emit_before("worker_boot", object())
+
+        self.assertNotIn("SECRET", str(raised.exception))
+
+    def test_pdf_renderer_image_contains_the_shared_guard_and_driver(self) -> None:
+        dockerfile = (
+            ROOT / "workers/report_export_worker/Dockerfile.renderer"
+        ).read_text(encoding="utf-8")
+        requirements = (ROOT / "apps/api/requirements.txt").read_text(encoding="utf-8")
+        self.assertIn("COPY apps/api/requirements.txt ./api-requirements.txt", dockerfile)
+        self.assertIn("pip install --no-cache-dir -r api-requirements.txt", dockerfile)
+        self.assertIn("COPY packages/geno_core ./packages/geno_core", dockerfile)
+        self.assertIn("PYTHONPATH=/app:/app/packages/geno_core", dockerfile)
+        self.assertIn("psycopg[binary]", requirements)
 
     def test_default_connector_uses_a_bounded_timeout_without_rewriting_the_dsn(self) -> None:
         calls: list[tuple[tuple[object, ...], dict[str, object]]] = []

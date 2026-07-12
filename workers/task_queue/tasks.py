@@ -12,6 +12,7 @@ from typing import Any
 
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
+from dramatiq.middleware import MiddlewareError
 
 from geno_core.collection_jobs import CollectionJobStore
 from geno_core.durable_jobs import (
@@ -40,7 +41,10 @@ broker = RedisBroker(url=BROKER_URL)
 class SchemaCompatibilityMiddleware(dramatiq.Middleware):
     def before_worker_boot(self, broker: object, worker: object) -> None:
         del broker, worker
-        validate_runtime_schema_compatibility()
+        try:
+            validate_runtime_schema_compatibility()
+        except Exception:
+            raise MiddlewareError("Schema v2 compatibility check failed") from None
 
 
 broker.add_middleware(SchemaCompatibilityMiddleware())

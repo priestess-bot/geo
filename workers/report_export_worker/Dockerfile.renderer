@@ -6,15 +6,16 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir \
-    bleach==6.2.0 \
-    fastapi==0.115.6 \
-    markdown==3.8.2 \
-    playwright==1.53.0 \
-    uvicorn[standard]==0.34.0
+COPY apps/api/requirements.txt ./api-requirements.txt
 
+RUN pip install --no-cache-dir -r api-requirements.txt \
+    bleach==6.2.0 \
+    markdown==3.8.2 \
+    playwright==1.53.0
+
+COPY packages/geno_core ./packages/geno_core
 COPY workers ./workers
 
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app:/app/packages/geno_core
 
 CMD ["uvicorn", "workers.report_export_worker.pdf_renderer_api:app", "--host", "0.0.0.0", "--port", "8200"]
