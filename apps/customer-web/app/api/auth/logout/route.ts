@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { apiBase } from "../../../runtime";
+import { clearRecoveryCookie } from "../../../_auth/recovery";
 
 export async function POST(request: NextRequest) {
   const sessionToken = request.cookies.get("GENO_RUNTIME_SESSION")?.value || "";
@@ -19,5 +20,6 @@ export async function POST(request: NextRequest) {
   const response = NextResponse.redirect(new URL("/", request.url), 303);
   response.cookies.delete("GENO_RUNTIME_SESSION");
   response.cookies.delete("GENO_CSRF_TOKEN");
+  clearRecoveryCookie(response, "customer");
   return response;
 }

@@ -1,45 +1,104 @@
+import { randomUUID } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 
+import { parseAuthError, type AuthErrorEnvelope } from "../../../_auth/contracts";
+import {
+  hasCompleteSessionDelivery,
+  invitationRequest,
+  isCompleteInvitationRequest,
+  readJsonResponse,
+  readRedemptionRecovery,
+  recoveryCookieName,
+  upstreamSetCookies,
+  validateRecoveryConfiguration
+} from "../../../_auth/recovery";
 import { apiBase } from "../../../runtime";
 
-function upstreamCookies(headers: Headers): string[] {
-  const enhanced = headers as Headers & { getSetCookie?: () => string[] };
-  const values = enhanced.getSetCookie?.() || [];
-  if (values.length) {
-    return values;
-  }
-  const combined = headers.get("set-cookie");
-  return combined ? combined.split(/,(?=\s*GENO_)/).map((value) => value.trim()) : [];
-}
-
-function redirectWithError(request: NextRequest, message: string) {
-  const url = new URL("/", request.url);
-  url.searchParams.set("error", message);
-  return NextResponse.redirect(url, 303);
-}
+const SURFACE = "customer" as const;
+const LANDING = "/";
 
 export async function POST(request: NextRequest) {
-  const form = await request.formData();
-  const invitationId = String(form.get("invitation_id") || "").trim();
-  const inviteToken = String(form.get("invite_token") || "").trim();
-  if (!invitationId || !inviteToken) {
-    return redirectWithError(request, "请同时填写邀请 ID 和一次性邀请 token。");
+  const body = await request.json().catch(() => undefined) as {
+    invitation_id?: unknown;
+    invite_token?: unknown;
+  } | undefined;
+  const redeemRequest = invitationRequest(
+    typeof body?.invitation_id === "string" ? body.invitation_id : "",
+    typeof body?.invite_token === "string" ? body.invite_token : "",
+    SURFACE
+  );
+  if (!isCompleteInvitationRequest(redeemRequest)) {
+    return errorResponse({
+      code: "auth_invalid_request",
+      detail: "Invitation ID and one-time token are required.",
+      correlation_id: randomUUID()
+    }, 400);
   }
-  const upstream = await fetch(new URL("/v1/auth/invitations/redeem", apiBase()), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ invitation_id: invitationId, invite_token: inviteToken, reason: "customer_web_login" }),
-    cache: "no-store"
-  });
-  const payload = upstream.headers.get("content-type")?.includes("application/json")
-    ? await upstream.json() as Record<string, unknown>
-    : {};
+  try {
+    validateRecoveryConfiguration();
+  } catch {
+    return errorResponse({
+      code: "auth_recovery_unavailable",
+      detail: "Secure login recovery is unavailable.",
+      correlation_id: randomUUID()
+    }, 503);
+  }
+
+  const recovery = readRedemptionRecovery(
+    request.cookies.get(recoveryCookieName(SURFACE))?.value,
+    redeemRequest
+  );
+  if (!recovery) {
+    return errorResponse({
+      code: "redeem_prepare_required",
+      detail: "Prepare this invitation before redeeming it.",
+      correlation_id: randomUUID()
+    }, 428);
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(new URL("/v1/auth/invitations/redeem", apiBase()), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": recovery.key
+      },
+      body: JSON.stringify(redeemRequest),
+      cache: "no-store"
+    });
+  } catch {
+    return errorResponse({
+      code: "auth_upstream_unavailable",
+      detail: "The authentication service is temporarily unavailable. Retry this login to recover the same session.",
+      correlation_id: randomUUID()
+    }, 502);
+  }
+
+  const payload = await readJsonResponse(upstream);
   if (!upstream.ok) {
-    return redirectWithError(request, String(payload.detail || "邀请无法兑换。"));
+    return errorResponse(
+      parseAuthError(payload, "auth_request_failed", "Invitation redemption failed.", randomUUID()),
+      upstream.status
+    );
   }
-  const response = NextResponse.redirect(new URL("/", request.url), 303);
-  for (const cookie of upstreamCookies(upstream.headers)) {
+  const sessionCookies = upstreamSetCookies(upstream.headers);
+  if (!hasCompleteSessionDelivery(sessionCookies)) {
+    return errorResponse({
+      code: "auth_session_delivery_invalid",
+      detail: "The authentication service did not return a complete session delivery.",
+      correlation_id: randomUUID()
+    }, 502);
+  }
+
+  const response = NextResponse.redirect(new URL(LANDING, request.url), 303);
+  response.headers.set("Cache-Control", "no-store");
+  for (const cookie of sessionCookies) {
     response.headers.append("set-cookie", cookie);
   }
   return response;
+}
+
+function errorResponse(error: AuthErrorEnvelope, status: number) {
+  return NextResponse.json(error, { status, headers: { "Cache-Control": "no-store" } });
 }

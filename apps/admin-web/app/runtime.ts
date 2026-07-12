@@ -30,11 +30,15 @@ export function adminDevToolsEnabled(): boolean {
   return String(process.env.GENO_ADMIN_DEV_TOOLS_ENABLED || "").trim().toLowerCase() === "1";
 }
 
-export function customerInvitationUrl(invitationId: string, inviteToken: string): string {
+export function customerInvitationUrl(invitationId: string, _inviteToken?: string): string {
   const url = new URL("/", customerWebBaseUrl());
   url.searchParams.set("invitation_id", invitationId);
-  url.searchParams.set("invite_token", inviteToken);
   return url.toString();
+}
+
+export async function hasRuntimeSession(): Promise<boolean> {
+  const cookieStore = await cookies();
+  return Boolean(cookieStore.get("GENO_RUNTIME_SESSION")?.value);
 }
 
 export async function actorHeaders(extra?: HeadersInit): Promise<HeadersInit> {

@@ -8,8 +8,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
   const login = new URL("/login", request.url);
-  login.searchParams.set("next", request.nextUrl.pathname);
-  return NextResponse.redirect(login);
+  return NextResponse.redirect(login, 303);
 }
 
 export const config = {

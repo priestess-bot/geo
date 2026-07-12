@@ -174,7 +174,8 @@ const operationTabs = [
 
 async function loadProject(projectId: string): Promise<RuntimeProject | null> {
   try {
-    const response = await fetch(`${apiBase()}/v1/projects/runtime?project_id=${encodeURIComponent(projectId)}`, {
+    const query = new URLSearchParams({ project_id: projectId, surface: "admin" });
+    const response = await fetch(`${apiBase()}/v1/projects/runtime?${query.toString()}`, {
       cache: "no-store",
       headers: await actorHeaders()
     });
@@ -446,6 +447,19 @@ export default async function ProjectDetailPage({
     loadProject(projectId),
     loadLaunchConfig(projectId)
   ]);
+  if (!record) {
+    return (
+      <main className="shell">
+        <section className="topbar">
+          <div>
+            <h1>项目不可用</h1>
+            <p className="muted" style={{ marginTop: 8 }}>项目不存在、已撤回，或当前会话没有管理权限。</p>
+          </div>
+          <nav className="nav"><a className="button secondary" href="/projects">返回项目列表</a></nav>
+        </section>
+      </main>
+    );
+  }
   const launch = launchConfig?.launch_config || {};
   const scoringProfile = stringValue(launch, "scoring_profile") || "visibility_v1.0";
 
