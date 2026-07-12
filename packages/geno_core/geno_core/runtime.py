@@ -33,18 +33,12 @@ RUNTIME_OIDC_DISCOVERY_URL_ENV = "GENO_RUNTIME_OIDC_DISCOVERY_URL"
 RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV = "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS"
 RUNTIME_JWKS_STALE_IF_ERROR_SECONDS_ENV = "GENO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS"
 RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV = "GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS"
-RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS_ENV = (
-    "GENO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS"
-)
+RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS_ENV = "GENO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS"
 RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV = "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS"
 RUNTIME_JWT_ISSUER_ENV = "GENO_RUNTIME_JWT_ISSUER"
 RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL_ENV = "GENO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL"
-RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV = (
-    "GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET"
-)
-RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS_ENV = (
-    "GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS"
-)
+RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV = "GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET"
+RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS_ENV = "GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS"
 OBJECT_STORE_AUTO_CREATE_BUCKET_ENV = "OBJECT_STORE_AUTO_CREATE_BUCKET"
 OBJECT_STORE_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 OBJECT_STORE_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
@@ -70,10 +64,7 @@ class RuntimeDiagnostics:
 
 
 def _pool_enabled(runtime_env: Mapping[str, str]) -> bool:
-    return (
-        runtime_env.get(RUNTIME_DB_POOL_ENABLED_ENV, "").strip().lower()
-        in RUNTIME_DB_POOL_ENABLED_VALUES
-    )
+    return runtime_env.get(RUNTIME_DB_POOL_ENABLED_ENV, "").strip().lower() in RUNTIME_DB_POOL_ENABLED_VALUES
 
 
 def _positive_int_from_env(runtime_env: Mapping[str, str], key: str, default: int) -> int:
@@ -163,13 +154,9 @@ class RuntimePostgresConnectionPool:
         timeout_seconds: float = DEFAULT_RUNTIME_DB_POOL_TIMEOUT_SECONDS,
     ) -> None:
         if max_size < 1:
-            raise RuntimePersistenceError(
-                f"{RUNTIME_DB_POOL_MAX_SIZE_ENV} must be a positive integer"
-            )
+            raise RuntimePersistenceError(f"{RUNTIME_DB_POOL_MAX_SIZE_ENV} must be a positive integer")
         if timeout_seconds < 0:
-            raise RuntimePersistenceError(
-                f"{RUNTIME_DB_POOL_TIMEOUT_SECONDS_ENV} must be a non-negative number"
-            )
+            raise RuntimePersistenceError(f"{RUNTIME_DB_POOL_TIMEOUT_SECONDS_ENV} must be a non-negative number")
         self.database_url = database_url
         self.max_size = max_size
         self.timeout_seconds = timeout_seconds
@@ -291,9 +278,7 @@ def _runtime_postgres_pool_from_env(
     database_url = env.get("DATABASE_URL", "").strip()
     if not database_url:
         raise RuntimePersistenceError("DATABASE_URL is required when persistence is enabled")
-    max_size = _positive_int_from_env(
-        env, RUNTIME_DB_POOL_MAX_SIZE_ENV, DEFAULT_RUNTIME_DB_POOL_MAX_SIZE
-    )
+    max_size = _positive_int_from_env(env, RUNTIME_DB_POOL_MAX_SIZE_ENV, DEFAULT_RUNTIME_DB_POOL_MAX_SIZE)
     timeout_seconds = _non_negative_float_from_env(
         env,
         RUNTIME_DB_POOL_TIMEOUT_SECONDS_ENV,
@@ -348,19 +333,13 @@ def build_repository_from_env(
     runtime_env = os.environ if env is None else env
     try:
         preference_token_ttl_seconds = int(
-            runtime_env.get(
-                RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS_ENV, "2592000"
-            ).strip()
+            runtime_env.get(RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS_ENV, "2592000").strip()
             or "2592000"
         )
     except ValueError as exc:
-        raise RuntimePersistenceError(
-            f"{RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS_ENV} must be an integer"
-        ) from exc
+        raise RuntimePersistenceError(f"{RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS_ENV} must be an integer") from exc
     repository_kwargs = {
-        "email_preference_base_url": runtime_env.get(
-            RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL_ENV, ""
-        ).strip(),
+        "email_preference_base_url": runtime_env.get(RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL_ENV, "").strip(),
         "email_preference_token_secret": runtime_env.get(
             RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV,
             "",
@@ -372,9 +351,7 @@ def build_repository_from_env(
             _runtime_postgres_pool_from_env(runtime_env, connector=connector).acquire(),
             **repository_kwargs,
         )
-    return PostgresEvidenceRepository(
-        connect_postgres_from_env(env, connector=connector), **repository_kwargs
-    )
+    return PostgresEvidenceRepository(connect_postgres_from_env(env, connector=connector), **repository_kwargs)
 
 
 def _object_store_secret_from_env(env: Mapping[str, str], name: str) -> str:
@@ -537,15 +514,11 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
     oidc_discovery_url_valid = False
     if oidc_discovery_url:
         parsed_url = urlparse(oidc_discovery_url)
-        oidc_discovery_url_valid = parsed_url.scheme in {"http", "https"} and bool(
-            parsed_url.netloc
-        )
+        oidc_discovery_url_valid = parsed_url.scheme in {"http", "https"} and bool(parsed_url.netloc)
     jwt_issuer_url_valid = False
     if jwt_issuer:
         parsed_issuer = urlparse(jwt_issuer)
-        jwt_issuer_url_valid = parsed_issuer.scheme in {"http", "https"} and bool(
-            parsed_issuer.netloc
-        )
+        jwt_issuer_url_valid = parsed_issuer.scheme in {"http", "https"} and bool(parsed_issuer.netloc)
     jwks_key_count: int | None = None
     if jwks_json:
         try:
@@ -561,14 +534,9 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
         "jwks_json": "configured" if jwks_json else "missing",
         "jwks_url": "configured" if jwks_url else "missing",
         "jwks_url_network_check": "not_run",
-        "jwks_stale_if_error_seconds": runtime_env.get(
-            RUNTIME_JWKS_STALE_IF_ERROR_SECONDS_ENV, "0"
-        ).strip()
-        or "0",
+        "jwks_stale_if_error_seconds": runtime_env.get(RUNTIME_JWKS_STALE_IF_ERROR_SECONDS_ENV, "0").strip() or "0",
         "oidc_discovery_url": "configured" if oidc_discovery_url else "missing",
-        "oidc_discovery_source": "explicit"
-        if oidc_discovery_url
-        else ("jwt_issuer" if jwt_issuer else "missing"),
+        "oidc_discovery_source": "explicit" if oidc_discovery_url else ("jwt_issuer" if jwt_issuer else "missing"),
         "oidc_discovery_network_check": "not_run",
         "oidc_discovery_stale_if_error_seconds": runtime_env.get(
             RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS_ENV,
@@ -622,12 +590,8 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
         try:
             _non_negative_float_from_env(runtime_env, RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV, 300.0)
             _non_negative_float_from_env(runtime_env, RUNTIME_JWKS_STALE_IF_ERROR_SECONDS_ENV, 0.0)
-            _non_negative_float_from_env(
-                runtime_env, RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV, 300.0
-            )
-            _non_negative_float_from_env(
-                runtime_env, RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS_ENV, 0.0
-            )
+            _non_negative_float_from_env(runtime_env, RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV, 300.0)
+            _non_negative_float_from_env(runtime_env, RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS_ENV, 0.0)
             _positive_float_from_env(runtime_env, RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV, 2.0)
         except RuntimePersistenceError as exc:
             return RuntimeComponentDiagnostic(
@@ -636,13 +600,7 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
                 detail=str(exc),
                 metadata=metadata,
             )
-    if (
-        auth_mode == "jwks"
-        and not jwks_json
-        and not jwks_url
-        and not oidc_discovery_url
-        and jwt_issuer
-    ):
+    if auth_mode == "jwks" and not jwks_json and not jwks_url and not oidc_discovery_url and jwt_issuer:
         if not jwt_issuer_url_valid:
             return RuntimeComponentDiagnostic(
                 name="runtime_auth",
@@ -653,12 +611,8 @@ def runtime_auth_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComp
         try:
             _non_negative_float_from_env(runtime_env, RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV, 300.0)
             _non_negative_float_from_env(runtime_env, RUNTIME_JWKS_STALE_IF_ERROR_SECONDS_ENV, 0.0)
-            _non_negative_float_from_env(
-                runtime_env, RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV, 300.0
-            )
-            _non_negative_float_from_env(
-                runtime_env, RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS_ENV, 0.0
-            )
+            _non_negative_float_from_env(runtime_env, RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV, 300.0)
+            _non_negative_float_from_env(runtime_env, RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS_ENV, 0.0)
             _positive_float_from_env(runtime_env, RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV, 2.0)
         except RuntimePersistenceError as exc:
             return RuntimeComponentDiagnostic(
