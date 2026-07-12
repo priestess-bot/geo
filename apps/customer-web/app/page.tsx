@@ -1,4 +1,15 @@
-import { latestScore, loadPortalRuntimeData, loadSessionPortal, pct } from "./runtime";
+import { InvitationLoginForm } from "./_auth/InvitationLoginForm";
+import { SessionDeliveryConfirm } from "./_auth/SessionDeliveryConfirm";
+import {
+  adminWebBaseUrl,
+  hasRuntimeSession,
+  latestScore,
+  loadPortalRuntimeData,
+  loadSessionPortal,
+  pct
+} from "./runtime";
+
+// The invite_token value stays in InvitationLoginForm memory and is never read from URL state.
 
 const modules = [
   ["visibility", "AI 可见度", "查看总分、触发率、提及率和建议率。"],
@@ -17,9 +28,11 @@ export default async function CustomerHome({
 }) {
   const params = (await searchParams) || {};
   const invitationId = Array.isArray(params.invitation_id) ? params.invitation_id[0] : params.invitation_id;
-  const inviteToken = Array.isArray(params.invite_token) ? params.invite_token[0] : params.invite_token;
   const selectedProjectId = Array.isArray(params.project_id) ? params.project_id[0] : params.project_id;
-  const sessionData = await loadSessionPortal(selectedProjectId);
+  const [sessionData, runtimeSession] = await Promise.all([
+    loadSessionPortal(selectedProjectId),
+    hasRuntimeSession()
+  ]);
   const data = sessionData;
   const bundle = data?.bundle;
   const project = bundle?.project?.project;
@@ -31,10 +44,11 @@ export default async function CustomerHome({
   const score = runtime ? latestScore(runtime.scores) : undefined;
   const progressWidth = typeof score === "number" ? `${Math.max(3, Math.round(score * 100))}%` : "0%";
   const authorizedProjects = sessionData?.authorized_projects || [];
-  const errorValue = Array.isArray(params.error) ? params.error[0] : params.error;
+  const authenticated = sessionData.authenticated;
 
   return (
     <main className="shell">
+      <SessionDeliveryConfirm active={runtimeSession && authenticated} />
       <section className="topbar">
         <div>
           <p className="eyebrow">GEO 客户门户</p>
@@ -43,7 +57,7 @@ export default async function CustomerHome({
             {tenant?.name || "登录后查看已授权项目的可见度、信源、证据、报告与行动计划。"}
           </p>
         </div>
-        {bundle ? (
+        {authenticated ? (
           <div className="actionRow">
             {authorizedProjects.length > 1 ? (
               <form className="tokenForm" action="/" method="get">
@@ -60,19 +74,49 @@ export default async function CustomerHome({
         ) : null}
       </section>
 
-      {!bundle ? (
+      {!authenticated ? (
         <section className="emptyState">
           <h2>使用客户邀请登录</h2>
           <p>邀请只用于首次兑换。成功后浏览器保存安全会话，不会在 URL 中继续携带 token。</p>
-          {errorValue ? <p className="muted errorText">{errorValue}</p> : null}
-          <form className="tokenForm" method="post" action="/api/auth/login">
-            <label><span>邀请 ID</span><input name="invitation_id" defaultValue={invitationId || ""} required /></label>
-            <label><span>一次性邀请 token</span><input name="invite_token" type="password" defaultValue={inviteToken || ""} required /></label>
-            <button type="submit">兑换邀请并登录</button>
-          </form>
+          {invitationId ? (
+            <p className="muted">请输入邮件中单独提供的一次性邀请 code；如未收到，请联系项目方重发邀请。</p>
+          ) : null}
+          {sessionData.error ? (
+            <div aria-live="polite" role="alert" style={{ color: "#9b2f20", marginTop: 12 }}>
+              <p>{sessionData.error.detail}</p>
+              {sessionData.error.correlation_id ? <p className="muted">关联 ID：{sessionData.error.correlation_id}</p> : null}
+            </div>
+          ) : null}
+          <InvitationLoginForm
+            initialInvitationId={invitationId || ""}
+            landingPath="/"
+            recommendedSurfaceUrls={{ admin: adminWebBaseUrl(), customer: "/" }}
+            surface="customer"
+          />
+        </section>
+      ) : !projectId ? (
+        <section className="emptyState">
+          <h2>{sessionData.error ? "项目加载失败" : "暂无授权项目"}</h2>
+          <p>{sessionData.error?.detail || "当前会话没有客户门户可见的项目。"}</p>
+          {sessionData.error?.correlation_id ? <p className="muted">关联 ID：{sessionData.error.correlation_id}</p> : null}
         </section>
       ) : (
         <>
+          {sessionData.selection_status === "fallback" ? (
+            <section aria-live="polite" className="panel" role="status" style={{ marginTop: 16 }}>
+              <p>原项目已不可用，已切换到另一个授权项目。</p>
+            </section>
+          ) : null}
+          {runtime?.errors.length ? (
+            <section aria-live="polite" className="panel" role="status" style={{ marginTop: 16 }}>
+              <h2>部分数据暂时不可用</h2>
+              {runtime.errors.slice(0, 3).map(({ resource, error }) => (
+                <p className="muted" key={resource} style={{ marginTop: 8 }}>
+                  {error.detail}{error.correlation_id ? ` · 关联 ID：${error.correlation_id}` : ""}
+                </p>
+              ))}
+            </section>
+          ) : null}
           <section className="heroGrid">
             <div className="panel">
               <div className="scoreBand">
@@ -93,15 +137,15 @@ export default async function CustomerHome({
               <div className="metricGrid">
                 <div className="metric">
                   <span className="muted">提示问题</span>
-                  <strong>{bundle.project?.prompt_count ?? 0}</strong>
+                  <strong>{bundle?.project?.prompt_count ?? 0}</strong>
                 </div>
                 <div className="metric">
                   <span className="muted">竞品数量</span>
-                  <strong>{bundle.project?.competitors?.length ?? 0}</strong>
+                  <strong>{bundle?.project?.competitors?.length ?? 0}</strong>
                 </div>
                 <div className="metric">
                   <span className="muted">审计事件</span>
-                  <strong>{bundle.audit_events?.total_count ?? 0}</strong>
+                  <strong>{bundle?.audit_events?.total_count ?? 0}</strong>
                 </div>
                 <div className="metric">
                   <span className="muted">报告</span>
@@ -118,7 +162,7 @@ export default async function CustomerHome({
                 </div>
                 <div className="listItem">
                   <span className="muted">评分方法</span>
-                  <strong>{bundle.score_weight_config?.score_weight_config?.formula_version || "visibility_v1.0"}</strong>
+                  <strong>{bundle?.score_weight_config?.score_weight_config?.formula_version || "visibility_v1.0"}</strong>
                 </div>
                 <div className="listItem">
                   <span className="muted">项目 ID</span>

@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
 
+import { resolveCounterpartPortalUrl } from "./_auth/portalUrl";
+
 type RuntimeRequestOptions = {
   method?: string;
   body?: unknown;
@@ -23,18 +25,28 @@ export function adminActorId(): string {
 }
 
 export function customerWebBaseUrl(): string {
-  return process.env.CUSTOMER_WEB_BASE_URL || process.env.NEXT_PUBLIC_CUSTOMER_WEB_BASE_URL || "http://localhost:3000";
+  return resolveCounterpartPortalUrl({
+    configuredValue: process.env.CUSTOMER_WEB_BASE_URL,
+    developmentFallback: "http://localhost:3000/",
+    environmentName: "CUSTOMER_WEB_BASE_URL",
+    nodeEnv: process.env.NODE_ENV,
+    publicDevelopmentValue: process.env.NEXT_PUBLIC_CUSTOMER_WEB_BASE_URL
+  });
 }
 
 export function adminDevToolsEnabled(): boolean {
   return String(process.env.GENO_ADMIN_DEV_TOOLS_ENABLED || "").trim().toLowerCase() === "1";
 }
 
-export function customerInvitationUrl(invitationId: string, inviteToken: string): string {
+export function customerInvitationUrl(invitationId: string, _inviteToken?: string): string {
   const url = new URL("/", customerWebBaseUrl());
   url.searchParams.set("invitation_id", invitationId);
-  url.searchParams.set("invite_token", inviteToken);
   return url.toString();
+}
+
+export async function hasRuntimeSession(): Promise<boolean> {
+  const cookieStore = await cookies();
+  return Boolean(cookieStore.get("GENO_RUNTIME_SESSION")?.value);
 }
 
 export async function actorHeaders(extra?: HeadersInit): Promise<HeadersInit> {

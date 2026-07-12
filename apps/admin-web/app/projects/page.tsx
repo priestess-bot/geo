@@ -1,5 +1,8 @@
+import { redirect } from "next/navigation";
+
 import { ProjectLifecycleForm } from "./[project_id]/ProjectActions";
-import { actorHeaders, apiBase } from "../runtime";
+import { SessionDeliveryConfirm } from "../_auth/SessionDeliveryConfirm";
+import { actorHeaders, apiBase, hasRuntimeSession } from "../runtime";
 import { projectStatusLabel } from "./status";
 
 type RuntimeProject = {
@@ -12,12 +15,20 @@ type RuntimeProject = {
 type ProjectPage = {
   total_count: number;
   records: RuntimeProject[];
+  error?: string;
+  correlation_id?: string;
+  status?: number;
 };
 
 const hydrationControlProps = { suppressHydrationWarning: true };
+const PROJECT_PAGE_SIZE = 50;
 
-async function loadProjects(status: string): Promise<ProjectPage> {
-  const query = new URLSearchParams({ limit: "50" });
+async function loadProjects(status: string, offset: number): Promise<ProjectPage> {
+  const query = new URLSearchParams({
+    limit: String(PROJECT_PAGE_SIZE),
+    offset: String(offset),
+    surface: "admin"
+  });
   if (status === "all") {
     query.set("include_archived", "true");
   } else if (status === "archived") {
@@ -32,19 +43,43 @@ async function loadProjects(status: string): Promise<ProjectPage> {
       headers: await actorHeaders()
     });
     if (!response.ok) {
-      return { total_count: 0, records: [] };
+      const payload = await response.json().catch(() => undefined) as {
+        detail?: unknown;
+        correlation_id?: unknown;
+      } | undefined;
+      return {
+        total_count: 0,
+        records: [],
+        error: typeof payload?.detail === "string" ? payload.detail : `项目加载失败（${response.status}）`,
+        correlation_id: typeof payload?.correlation_id === "string" ? payload.correlation_id : undefined,
+        status: response.status
+      };
     }
     return (await response.json()) as ProjectPage;
   } catch {
-    return { total_count: 0, records: [] };
+    return { total_count: 0, records: [], error: "项目服务暂时不可用，请稍后重试。" };
   }
 }
 
-export default async function ProjectsPage({ searchParams }: { searchParams?: Promise<{ status?: string; q?: string }> }) {
+export default async function ProjectsPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ status?: string; q?: string; offset?: string }>;
+}) {
   const params = await searchParams;
   const status = params?.status || "";
   const query = (params?.q || "").trim().toLowerCase();
-  const page = await loadProjects(status);
+  const offset = Math.max(0, Math.floor(Number(params?.offset || 0) || 0));
+  const [page, runtimeSession] = await Promise.all([loadProjects(status, offset), hasRuntimeSession()]);
+  if (page.status === 401) {
+    redirect("/login");
+  }
+  if (!page.error && offset > 0 && (page.total_count === 0 || offset >= page.total_count)) {
+    const lastOffset = page.total_count > 0
+      ? Math.floor((page.total_count - 1) / PROJECT_PAGE_SIZE) * PROJECT_PAGE_SIZE
+      : 0;
+    redirect(projectPageHref(params, lastOffset));
+  }
   const records = query
     ? page.records.filter((record) => {
         const haystack = [
@@ -59,6 +94,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams?: Pr
     : page.records;
   return (
     <main className="shell">
+      <SessionDeliveryConfirm active={runtimeSession} />
       <section className="topbar">
         <div>
           <h1>项目列表</h1>
@@ -114,12 +150,47 @@ export default async function ProjectsPage({ searchParams }: { searchParams?: Pr
         ))}
       </section>
 
-      {records.length === 0 ? (
+      {!page.error && page.total_count > 0 ? (
+        <nav aria-label="项目分页" className="actionRow" style={{ alignItems: "center", marginTop: 14 }}>
+          <span className="muted">
+            {offset + 1}-{Math.min(offset + page.records.length, page.total_count)} / {page.total_count}
+          </span>
+          {offset > 0 ? (
+            <a className="button secondary" href={projectPageHref(params, Math.max(0, offset - PROJECT_PAGE_SIZE))}>上一页</a>
+          ) : null}
+          {offset + page.records.length < page.total_count ? (
+            <a className="button secondary" href={projectPageHref(params, offset + page.records.length)}>下一页</a>
+          ) : null}
+        </nav>
+      ) : null}
+
+      {page.error ? (
+        <section className="notice error" aria-live="polite" role="alert" style={{ marginTop: 18 }}>
+          <p>{page.error}</p>
+          {page.correlation_id ? <p className="muted">关联 ID：{page.correlation_id}</p> : null}
+        </section>
+      ) : null}
+
+      {records.length === 0 && !page.error ? (
         <section className="panel" style={{ marginTop: 18 }}>
-          <h2>暂无项目或 API 未连接</h2>
-          <p className="muted" style={{ marginTop: 8 }}>请先使用“新建项目”向导创建第一个澳大利亚 GEO 项目。</p>
+          <h2>暂无可管理项目</h2>
+          <p className="muted" style={{ marginTop: 8 }}>
+            {query ? "当前页没有匹配项目。" : "当前会话没有此入口可见的项目。"}
+          </p>
         </section>
       ) : null}
     </main>
   );
+}
+
+function projectPageHref(
+  params: { status?: string; q?: string; offset?: string } | undefined,
+  offset: number
+): string {
+  const query = new URLSearchParams();
+  if (params?.status) query.set("status", params.status);
+  if (params?.q) query.set("q", params.q);
+  if (offset > 0) query.set("offset", String(offset));
+  const suffix = query.toString();
+  return suffix ? `/projects?${suffix}` : "/projects";
 }

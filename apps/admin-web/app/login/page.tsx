@@ -1,38 +1,28 @@
+import { InvitationLoginForm } from "../_auth/InvitationLoginForm";
+import { customerWebBaseUrl } from "../runtime";
+
 export default async function AdminLoginPage({
   searchParams
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = (await searchParams) || {};
-  const errorValue = Array.isArray(params.error) ? params.error[0] : params.error;
+  const invitationId = Array.isArray(params.invitation_id) ? params.invitation_id[0] : params.invitation_id;
   return (
     <main className="pageShell authPage">
       <section className="detailPanel authPanel">
         <p className="eyebrow">GEO 项目管理台</p>
         <h1>内部用户登录</h1>
-        <p className="muted">使用管理员邀请完成首次登录；已有 bootstrap session 时可直接建立本机安全会话。</p>
-        {errorValue ? <p className="notice errorText">{errorValue}</p> : null}
-        <form className="configForm singleColumn" method="post" action="/api/auth/login">
-          <label>
-            <span>邀请 ID</span>
-            <input name="invitation_id" autoComplete="off" />
-          </label>
-          <label>
-            <span>一次性邀请 token</span>
-            <input name="invite_token" type="password" autoComplete="one-time-code" />
-          </label>
-          <div className="formActions"><button type="submit">兑换邀请并登录</button></div>
-        </form>
-        <details className="detailPanel compactForm">
-          <summary>使用初始化 session</summary>
-          <form className="configForm singleColumn" method="post" action="/api/auth/login">
-            <label>
-              <span>Bootstrap session token</span>
-              <input name="session_token" type="password" autoComplete="off" required />
-            </label>
-            <div className="formActions"><button type="submit">建立管理会话</button></div>
-          </form>
-        </details>
+        <p className="muted">使用管理台邀请完成登录。</p>
+        {invitationId ? (
+          <p className="muted">请输入邮件中单独提供的一次性邀请 code；如未收到，请联系管理员重发邀请。</p>
+        ) : null}
+        <InvitationLoginForm
+          initialInvitationId={invitationId || ""}
+          landingPath="/projects"
+          recommendedSurfaceUrls={{ admin: "/login", customer: customerWebBaseUrl() }}
+          surface="admin"
+        />
       </section>
     </main>
   );
