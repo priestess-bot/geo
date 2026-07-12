@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import asdict, dataclass, is_dataclass
-from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -50,6 +49,20 @@ LEGACY_AUDIT_ACTOR_TYPE_MAP: dict[str, AuditActorType] = {
     "service": "service",
 }
 TENANT_SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+BOOTSTRAP_AUDIT_EVENT_TYPE = "project_bootstrap_created"
+BOOTSTRAP_AUDIT_OUTPUT_REF_KEYS = frozenset(
+    ("competitor_entity_ids", "prompt_question_ids")
+)
+AUDIT_SENSITIVE_REF_KEY_PARTS = frozenset(
+    (
+        "authorization",
+        "cookie",
+        "credential",
+        "password",
+        "secret",
+        "token",
+    )
+)
 
 
 class SchemaV2TenancySeedValidationError(ValueError):
@@ -117,7 +130,6 @@ class SchemaV2TenantSeed:
     name: str
     slug: str
     status: TenantStatus
-    created_at: datetime
 
 
 @dataclass(frozen=True)
@@ -131,7 +143,6 @@ class SchemaV2ProjectSeed:
     category: str
     prompt_version: str
     status: ProjectStatus
-    created_at: datetime
 
 
 @dataclass(frozen=True)
@@ -143,7 +154,6 @@ class SchemaV2ProjectMemberSeed:
     role: ProjectMemberRole
     status: MemberStatus
     invited_by: str | None
-    created_at: datetime
 
 
 @dataclass(frozen=True)
@@ -162,7 +172,6 @@ class SchemaV2AuditEventSeed:
     output_refs: CanonicalJsonObject
     method_version: str | None
     reason: str | None
-    created_at: datetime
 
 
 @dataclass(frozen=True)
@@ -209,40 +218,67 @@ def translate_project_bootstrap_to_v2_seed(
         prefix = f"project_members[{index}]"
         if _uuid(member.project_id, f"{prefix}.project_id") != project_id:
             _invalid("scope_mismatch", f"{prefix}.project_id", "member project must match bootstrap project")
+        canonical_user_id = _canonical_user_id(member.user_id, f"{prefix}.user_id")
         member_seeds.append(
             SchemaV2ProjectMemberSeed(
-                id=_uuid(member.id, f"{prefix}.id"),
+                id=_stable_uuid("project-member", str(project_id), canonical_user_id),
                 tenant_id=tenant_id,
                 project_id=project_id,
-                user_id=_canonical_user_id(member.user_id, f"{prefix}.user_id"),
+                user_id=canonical_user_id,
                 role=_project_member_role(member.role, f"{prefix}.role"),
                 status="active",
                 invited_by=None,
-                created_at=_datetime(member.created_at, f"{prefix}.created_at"),
             )
         )
+    canonical_member_users = frozenset(member.user_id for member in member_seeds)
     audit_seeds: list[SchemaV2AuditEventSeed] = []
     for index, event in enumerate(bootstrap.audit_events):
         prefix = f"audit_events[{index}]"
         if _uuid(event.project_id, f"{prefix}.project_id") != project_id:
             _invalid("scope_mismatch", f"{prefix}.project_id", "audit project must match bootstrap project")
+        event_type = _nonempty(event.event_type, f"{prefix}.event_type")
+        actor_type = _audit_actor_type(event.actor_type, f"{prefix}.actor_type")
+        actor_id = (
+            _canonical_user_id(event.actor_id, f"{prefix}.actor_id")
+            if actor_type == "user"
+            else _nonempty(event.actor_id, f"{prefix}.actor_id")
+        )
+        if actor_type == "user" and actor_id not in canonical_member_users:
+            _invalid(
+                "audit_actor_not_member",
+                f"{prefix}.actor_id",
+                "user bootstrap audit actor must be a canonical project member",
+            )
+        input_refs = CanonicalJsonObject.from_value(event.input_refs)
+        output_refs = CanonicalJsonObject.from_value(event.output_refs)
+        _validate_bootstrap_audit_contract(
+            event_type=event_type,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            target_type=event.target_type,
+            target_id=event.target_id,
+            project_id=project_id,
+            member_user_ids=canonical_member_users,
+            input_refs=input_refs,
+            output_refs=output_refs,
+            prefix=prefix,
+        )
         audit_seeds.append(
             SchemaV2AuditEventSeed(
                 id=_uuid(event.id, f"{prefix}.id"),
                 tenant_id=tenant_id,
                 project_id=project_id,
-                event_type=_nonempty(event.event_type, f"{prefix}.event_type"),
-                actor_type=_audit_actor_type(event.actor_type, f"{prefix}.actor_type"),
-                actor_id=_nonempty(event.actor_id, f"{prefix}.actor_id"),
+                event_type=event_type,
+                actor_type=actor_type,
+                actor_id=actor_id,
                 target_type=_nonempty(event.target_type, f"{prefix}.target_type"),
                 target_id=_nonempty(event.target_id, f"{prefix}.target_id"),
                 before_hash=event.before_hash,
                 after_hash=event.after_hash,
-                input_refs=CanonicalJsonObject.from_value(event.input_refs),
-                output_refs=CanonicalJsonObject.from_value(event.output_refs),
+                input_refs=input_refs,
+                output_refs=output_refs,
                 method_version=_optional_nonempty(event.method_version, f"{prefix}.method_version"),
                 reason=_optional_trimmed(event.reason),
-                created_at=_datetime(event.created_at, f"{prefix}.created_at"),
             )
         )
 
@@ -263,7 +299,6 @@ def translate_project_bootstrap_to_v2_seed(
             name=_nonempty(bootstrap.tenant.name, "tenant.name"),
             slug=_tenant_slug(bootstrap.tenant.slug),
             status=resolved_tenant_status,
-            created_at=_datetime(bootstrap.tenant.created_at, "tenant.created_at"),
         ),
         project=SchemaV2ProjectSeed(
             id=project_id,
@@ -278,7 +313,6 @@ def translate_project_bootstrap_to_v2_seed(
                 "project.prompt_version",
             ),
             status=resolved_project_status,
-            created_at=_datetime(bootstrap.project.created_at, "project.created_at"),
         ),
         project_members=tuple(member_seeds),
         audit_events=tuple(audit_seeds),
@@ -289,6 +323,20 @@ def translate_project_bootstrap_to_v2_seed(
 
 def validate_v2_tenancy_seed(seed: SchemaV2TenancySeed) -> None:
     """Fail closed on values or cross-scope references rejected by sealed 0010."""
+
+    _require_exact_type(seed, SchemaV2TenancySeed, "seed")
+    _require_exact_type(seed.market_profile, SchemaV2MarketProfileSeed, "market_profile")
+    _require_exact_type(seed.industry_profile, SchemaV2IndustryProfileSeed, "industry_profile")
+    _require_exact_type(seed.tenant, SchemaV2TenantSeed, "tenant")
+    _require_exact_type(seed.project, SchemaV2ProjectSeed, "project")
+    if type(seed.project_members) is not tuple:
+        _invalid("invalid_dto_type", "project_members", "project_members must be a tuple")
+    if type(seed.audit_events) is not tuple:
+        _invalid("invalid_dto_type", "audit_events", "audit_events must be a tuple")
+    for index, member in enumerate(seed.project_members):
+        _require_exact_type(member, SchemaV2ProjectMemberSeed, f"project_members[{index}]")
+    for index, event in enumerate(seed.audit_events):
+        _require_exact_type(event, SchemaV2AuditEventSeed, f"audit_events[{index}]")
 
     _require_uuid(seed.market_profile.id, "market_profile.id")
     _canonical_text(seed.market_profile.market_code, "market_profile.market_code")
@@ -305,7 +353,6 @@ def validate_v2_tenancy_seed(seed: SchemaV2TenancySeed) -> None:
         _invalid("noncanonical_value", "tenant.slug", "tenant.slug must be canonical")
     if seed.tenant.status != _status(seed.tenant.status, TENANT_STATUSES, "tenant.status"):
         _invalid("noncanonical_value", "tenant.status", "tenant.status must be canonical")
-    _datetime(seed.tenant.created_at, "tenant.created_at")
     _nonempty(seed.project.name, "project.name")
     _canonical_text(seed.project.market_code, "project.market_code")
     _canonical_text(seed.project.industry_code, "project.industry_code")
@@ -314,7 +361,6 @@ def validate_v2_tenancy_seed(seed: SchemaV2TenancySeed) -> None:
     _nonempty(seed.project.prompt_version, "project.prompt_version")
     if seed.project.status != _status(seed.project.status, PROJECT_STATUSES, "project.status"):
         _invalid("noncanonical_value", "project.status", "project.status must be canonical")
-    _datetime(seed.project.created_at, "project.created_at")
 
     if seed.industry_profile.market_code != seed.market_profile.market_code:
         _invalid("scope_mismatch", "industry_profile.market_code", "market codes must match")
@@ -331,6 +377,7 @@ def validate_v2_tenancy_seed(seed: SchemaV2TenancySeed) -> None:
 
     member_ids: set[UUID] = set()
     member_users: set[str] = set()
+    active_owner_count = 0
     for index, member in enumerate(seed.project_members):
         prefix = f"project_members[{index}]"
         _require_uuid(member.id, f"{prefix}.id")
@@ -338,17 +385,31 @@ def validate_v2_tenancy_seed(seed: SchemaV2TenancySeed) -> None:
             _invalid("scope_mismatch", prefix, "member scope must match seed project and tenant")
         if member.user_id != _canonical_user_id(member.user_id, f"{prefix}.user_id"):
             _invalid("noncanonical_value", f"{prefix}.user_id", "user_id must be canonical")
+        expected_member_id = _stable_uuid("project-member", str(seed.project.id), member.user_id)
+        if member.id != expected_member_id:
+            _invalid(
+                "noncanonical_member_id",
+                f"{prefix}.id",
+                "member id must be derived from project id and canonical user id",
+            )
         if member.role != _status(member.role, PROJECT_MEMBER_ROLES, f"{prefix}.role"):
             _invalid("noncanonical_value", f"{prefix}.role", "member role must be canonical")
         if member.status != _status(member.status, PROJECT_MEMBER_STATUSES, f"{prefix}.status"):
             _invalid("noncanonical_value", f"{prefix}.status", "member status must be canonical")
-        _datetime(member.created_at, f"{prefix}.created_at")
         if member.invited_by is not None:
             _nonempty(member.invited_by, f"{prefix}.invited_by")
         if member.id in member_ids or member.user_id in member_users:
             _invalid("duplicate_member", prefix, "member ids and canonical user ids must be unique")
         member_ids.add(member.id)
         member_users.add(member.user_id)
+        if member.role == "project_owner" and member.status == "active":
+            active_owner_count += 1
+    if active_owner_count == 0:
+        _invalid(
+            "missing_active_project_owner",
+            "project_members",
+            "a tenancy seed requires an active project_owner",
+        )
 
     audit_ids: set[UUID] = set()
     for index, event in enumerate(seed.audit_events):
@@ -356,19 +417,30 @@ def validate_v2_tenancy_seed(seed: SchemaV2TenancySeed) -> None:
         _require_uuid(event.id, f"{prefix}.id")
         if event.tenant_id != seed.tenant.id or event.project_id != seed.project.id:
             _invalid("scope_mismatch", prefix, "audit scope must match seed project and tenant")
-        _nonempty(event.event_type, f"{prefix}.event_type")
+        event_type = _nonempty(event.event_type, f"{prefix}.event_type")
         if event.actor_type != _audit_actor_type(event.actor_type, f"{prefix}.actor_type"):
             _invalid("noncanonical_value", f"{prefix}.actor_type", "actor type must be canonical")
-        _nonempty(event.actor_id, f"{prefix}.actor_id")
-        _nonempty(event.target_type, f"{prefix}.target_type")
-        _nonempty(event.target_id, f"{prefix}.target_id")
+        actor_id = _nonempty(event.actor_id, f"{prefix}.actor_id")
+        target_type = _nonempty(event.target_type, f"{prefix}.target_type")
+        target_id = _nonempty(event.target_id, f"{prefix}.target_id")
         _sha256_or_none(event.before_hash, f"{prefix}.before_hash")
         _sha256_or_none(event.after_hash, f"{prefix}.after_hash")
         _require_json_object(event.input_refs, f"{prefix}.input_refs")
         _require_json_object(event.output_refs, f"{prefix}.output_refs")
         _optional_nonempty(event.method_version, f"{prefix}.method_version")
         _optional_text(event.reason, f"{prefix}.reason")
-        _datetime(event.created_at, f"{prefix}.created_at")
+        _validate_bootstrap_audit_contract(
+            event_type=event_type,
+            actor_type=event.actor_type,
+            actor_id=actor_id,
+            target_type=target_type,
+            target_id=target_id,
+            project_id=seed.project.id,
+            member_user_ids=frozenset(member_users),
+            input_refs=event.input_refs,
+            output_refs=event.output_refs,
+            prefix=prefix,
+        )
         if event.id in audit_ids:
             _invalid("duplicate_audit", f"{prefix}.id", "audit ids must be unique")
         audit_ids.add(event.id)
@@ -443,9 +515,18 @@ def _canonical_user_id(value: object, field: str) -> str:
 
 
 def _require_json_object(value: object, field: str) -> CanonicalJsonObject:
-    if not isinstance(value, CanonicalJsonObject):
+    if type(value) is not CanonicalJsonObject:
         _invalid("invalid_json_object", field, f"{field} must be a CanonicalJsonObject")
     return value
+
+
+def _require_exact_type(value: object, expected_type: type[object], field: str) -> None:
+    if type(value) is not expected_type:
+        _invalid(
+            "invalid_dto_type",
+            field,
+            f"{field} must be an exact {expected_type.__name__} instance",
+        )
 
 
 def _tenant_slug(value: object) -> str:
@@ -486,12 +567,6 @@ def _audit_actor_type(value: object, field: str) -> AuditActorType:
         ) from exc
 
 
-def _datetime(value: object, field: str) -> datetime:
-    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
-        _invalid("invalid_datetime", field, f"{field} must be timezone-aware")
-    return value.astimezone(UTC)
-
-
 def _sha256_or_none(value: object, field: str) -> None:
     if value is not None and (not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)):
         _invalid("invalid_sha256", field, f"{field} must be a lowercase SHA-256 hash")
@@ -499,6 +574,90 @@ def _sha256_or_none(value: object, field: str) -> None:
 
 def _invalid(code: str, field: str, detail: str) -> None:
     raise SchemaV2TenancySeedValidationError(code, field, detail)
+
+
+def _validate_bootstrap_audit_contract(
+    *,
+    event_type: str,
+    actor_type: str,
+    actor_id: str,
+    target_type: object,
+    target_id: object,
+    project_id: UUID,
+    member_user_ids: frozenset[str],
+    input_refs: CanonicalJsonObject,
+    output_refs: CanonicalJsonObject,
+    prefix: str,
+) -> None:
+    if event_type != BOOTSTRAP_AUDIT_EVENT_TYPE:
+        _invalid(
+            "unsupported_audit_event",
+            f"{prefix}.event_type",
+            "tenancy seeds only accept project_bootstrap_created audit events",
+        )
+    if target_type != "project" or target_id != str(project_id):
+        _invalid(
+            "audit_target_mismatch",
+            f"{prefix}.target_id",
+            "bootstrap audit target must be the exact seed project",
+        )
+    if actor_type == "user":
+        canonical_actor_id = _canonical_user_id(actor_id, f"{prefix}.actor_id")
+        if actor_id != canonical_actor_id or actor_id not in member_user_ids:
+            _invalid(
+                "audit_actor_not_member",
+                f"{prefix}.actor_id",
+                "user bootstrap audit actor must be a canonical project member",
+            )
+
+    input_value = input_refs.to_dict()
+    output_value = output_refs.to_dict()
+    _reject_sensitive_audit_ref_keys(input_value, f"{prefix}.input_refs")
+    _reject_sensitive_audit_ref_keys(output_value, f"{prefix}.output_refs")
+    if input_value:
+        _invalid(
+            "bootstrap_audit_input_refs_not_empty",
+            f"{prefix}.input_refs",
+            "bootstrap audit input_refs must be empty",
+        )
+    unsupported_keys = sorted(set(output_value) - BOOTSTRAP_AUDIT_OUTPUT_REF_KEYS)
+    if unsupported_keys:
+        _invalid(
+            "unsupported_audit_ref",
+            f"{prefix}.output_refs",
+            "bootstrap audit output_refs contains unsupported keys",
+        )
+    for key, values in output_value.items():
+        if type(values) is not list:
+            _invalid(
+                "invalid_audit_ref",
+                f"{prefix}.output_refs.{key}",
+                "bootstrap audit output refs must be UUID lists",
+            )
+        for value in values:
+            field = f"{prefix}.output_refs.{key}"
+            if not isinstance(value, str) or value != str(_uuid(value, field)):
+                _invalid(
+                    "invalid_uuid",
+                    field,
+                    "bootstrap audit output refs must use canonical UUID strings",
+                )
+
+
+def _reject_sensitive_audit_ref_keys(value: object, field: str) -> None:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            normalized_key = str(key).strip().lower().replace("-", "_")
+            if any(part in normalized_key for part in AUDIT_SENSITIVE_REF_KEY_PARTS):
+                _invalid(
+                    "sensitive_audit_ref",
+                    field,
+                    "audit refs must not persist credential or session material",
+                )
+            _reject_sensitive_audit_ref_keys(nested, field)
+    elif isinstance(value, list):
+        for nested in value:
+            _reject_sensitive_audit_ref_keys(nested, field)
 
 
 __all__ = [

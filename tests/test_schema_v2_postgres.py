@@ -4,10 +4,18 @@ import os
 import subprocess
 import sys
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import psycopg
+
+from geno_core.bootstrap import build_project_bootstrap
+from geno_core.repositories.schema_v2_tenancy_repository import (
+    PrivilegedSchemaV2TenancyRepository,
+    SchemaV2TenancySeedConflictError,
+)
+from geno_core.schema_v2.tenancy_seed import translate_project_bootstrap_to_v2_seed
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -704,6 +712,97 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                             cursor.execute(statement, (self.audit_global_a,))
                         self.assertEqual(raised.exception.sqlstate, "55000")
                         self.assertIn("audit_events rows are immutable", str(raised.exception))
+
+
+@unittest.skipUnless(BEHAVIOR_TEST_ENABLED, "SCHEMA_V2_BEHAVIOR_TEST=1 is required")
+class SchemaV2TenancySeedAdapterPostgresBehaviorTest(unittest.TestCase):
+    def test_logical_rebuild_replays_and_conflicts_remain_atomic(self) -> None:
+        unique = uuid4().hex
+
+        def build(owner_user_id: str):
+            return build_project_bootstrap(
+                tenant_name=f"Seed Tenant {unique}",
+                project_name=f"Seed Project {unique}",
+                target_brand="Seed Brand",
+                category="Seed Category",
+                market_code=f"SEED-{unique}",
+                market_name="Seed Market",
+                locale="en-AU",
+                timezone="Australia/Sydney",
+                currency="AUD",
+                primary_language="English",
+                industry_code=f"seed_{unique}",
+                industry_name="Seed Industry",
+                competitors=("Seed Competitor",),
+                owner_user_id=owner_user_id,
+            )
+
+        first_bootstrap = build("Owner@Example.TEST")
+        replay_bootstrap = build("owner@example.test")
+        self.assertNotEqual(first_bootstrap.members[0].id, replay_bootstrap.members[0].id)
+        self.assertNotEqual(first_bootstrap.project.created_at, replay_bootstrap.project.created_at)
+
+        first_seed = translate_project_bootstrap_to_v2_seed(first_bootstrap)
+        replay_seed = translate_project_bootstrap_to_v2_seed(replay_bootstrap)
+        self.assertEqual(first_seed, replay_seed)
+
+        with psycopg.connect() as connection:
+            PrivilegedSchemaV2TenancyRepository(connection).save(first_seed)
+        created_at_query = (
+            "SELECT "
+            "(SELECT created_at FROM tenants WHERE id = %s), "
+            "(SELECT created_at FROM projects WHERE id = %s), "
+            "(SELECT created_at FROM project_members WHERE id = %s), "
+            "(SELECT created_at FROM audit_events WHERE id = %s)"
+        )
+        identity_params = (
+            first_seed.tenant.id,
+            first_seed.project.id,
+            first_seed.project_members[0].id,
+            first_seed.audit_events[0].id,
+        )
+        with psycopg.connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(created_at_query, identity_params)
+                first_created_at = cursor.fetchone()
+
+        with psycopg.connect() as connection:
+            PrivilegedSchemaV2TenancyRepository(connection).save(replay_seed)
+            with connection.cursor() as cursor:
+                cursor.execute(created_at_query, identity_params)
+                self.assertEqual(cursor.fetchone(), first_created_at)
+                cursor.execute(
+                    "SELECT user_id, role FROM project_members WHERE id = %s",
+                    (first_seed.project_members[0].id,),
+                )
+                self.assertEqual(cursor.fetchone(), ("owner@example.test", "project_owner"))
+                cursor.execute(
+                    "SELECT actor_id FROM audit_events WHERE id = %s",
+                    (first_seed.audit_events[0].id,),
+                )
+                self.assertEqual(cursor.fetchone(), ("owner@example.test",))
+
+        conflicting_seed = replace(
+            replay_seed,
+            project=replace(replay_seed.project, status="active"),
+        )
+        with psycopg.connect() as connection:
+            with self.assertRaises(SchemaV2TenancySeedConflictError):
+                PrivilegedSchemaV2TenancyRepository(connection).save(conflicting_seed)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT status FROM projects WHERE id = %s",
+                    (first_seed.project.id,),
+                )
+                self.assertEqual(cursor.fetchone(), ("paused",))
+
+        with psycopg.connect(autocommit=True) as connection:
+            with connection.cursor() as cursor:
+                with self.assertRaises(psycopg.errors.ObjectNotInPrerequisiteState):
+                    cursor.execute(
+                        "UPDATE audit_events SET reason = 'changed' WHERE id = %s",
+                        (first_seed.audit_events[0].id,),
+                    )
 
 
 if __name__ == "__main__":

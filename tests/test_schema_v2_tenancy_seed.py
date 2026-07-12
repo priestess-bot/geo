@@ -113,7 +113,7 @@ def persisted_rows(seed: SchemaV2TenancySeed) -> list[tuple[object, ...]]:
             industry.industry_code,
             industry.payload.to_dict(),
         ),
-        (tenant.id, tenant.name, tenant.slug, tenant.status, tenant.created_at),
+        (tenant.id, tenant.name, tenant.slug, tenant.status),
         (
             project.id,
             project.tenant_id,
@@ -124,7 +124,6 @@ def persisted_rows(seed: SchemaV2TenancySeed) -> list[tuple[object, ...]]:
             project.category,
             project.prompt_version,
             project.status,
-            project.created_at,
         ),
     ]
     rows.extend(
@@ -136,7 +135,6 @@ def persisted_rows(seed: SchemaV2TenancySeed) -> list[tuple[object, ...]]:
             member.role,
             member.status,
             member.invited_by,
-            member.created_at,
         )
         for member in seed.project_members
     )
@@ -156,7 +154,6 @@ def persisted_rows(seed: SchemaV2TenancySeed) -> list[tuple[object, ...]]:
             event.output_refs.to_dict(),
             event.method_version,
             event.reason,
-            event.created_at,
         )
         for event in seed.audit_events
     )
@@ -176,6 +173,7 @@ class SchemaV2TenancyTranslatorTest(unittest.TestCase):
         self.assertEqual(seed.project_members[0].role, "project_owner")
         self.assertEqual(seed.audit_events[0].tenant_id, seed.tenant.id)
         self.assertEqual(seed.audit_events[0].project_id, seed.project.id)
+        self.assertEqual(seed.audit_events[0].actor_id, seed.project_members[0].user_id)
         self.assertEqual(seed.market_profile.payload.to_dict()["market_code"], "AU")
         with self.assertRaises(dataclasses.FrozenInstanceError):
             seed.tenant.status = "disabled"  # type: ignore[misc]
@@ -191,14 +189,31 @@ class SchemaV2TenancyTranslatorTest(unittest.TestCase):
         for source_role, target_role in expected.items():
             with self.subTest(source_role=source_role):
                 member = replace(source.members[0], role=source_role)
+                members = (member,)
+                translated_index = 0
+                if target_role != "project_owner":
+                    member = replace(
+                        member,
+                        id=str(uuid4()),
+                        user_id=f"{source_role}@example.com",
+                    )
+                    members = (source.members[0], member)
+                    translated_index = 1
                 translated = translate_project_bootstrap_to_v2_seed(
-                    replace(source, members=(member,))
+                    replace(source, members=members)
                 )
-                self.assertEqual(translated.project_members[0].role, target_role)
+                self.assertEqual(translated.project_members[translated_index].role, target_role)
 
-        invalid_member = replace(source.members[0], role="billing_admin")
+        invalid_member = replace(
+            source.members[0],
+            id=str(uuid4()),
+            user_id="invalid@example.com",
+            role="billing_admin",
+        )
         with self.assertRaises(SchemaV2TenancySeedValidationError) as raised:
-            translate_project_bootstrap_to_v2_seed(replace(source, members=(invalid_member,)))
+            translate_project_bootstrap_to_v2_seed(
+                replace(source, members=(source.members[0], invalid_member))
+            )
         self.assertEqual(raised.exception.code, "unsupported_role")
 
     def test_statuses_must_be_supported_by_sealed_0010(self) -> None:
@@ -246,6 +261,107 @@ class SchemaV2TenancyTranslatorTest(unittest.TestCase):
         with self.assertRaises(SchemaV2TenancySeedValidationError) as raised:
             validate_v2_tenancy_seed(replace(seed, project=invalid_project))
         self.assertEqual(raised.exception.code, "noncanonical_value")
+
+    def test_independent_rebuilds_share_canonical_identity_and_audit_lineage(self) -> None:
+        first = translate_project_bootstrap_to_v2_seed(
+            bootstrap(owner_user_id=" Owner@Example.COM ")
+        )
+        second = translate_project_bootstrap_to_v2_seed(
+            bootstrap(owner_user_id="owner@example.com")
+        )
+
+        self.assertEqual(first, second)
+        self.assertEqual(first.project_members[0].id, second.project_members[0].id)
+        self.assertEqual(first.project_members[0].user_id, "owner@example.com")
+        self.assertEqual(first.audit_events[0].actor_id, "owner@example.com")
+        self.assertEqual(first.audit_events[0].input_refs.to_dict(), {})
+        self.assertEqual(
+            set(first.audit_events[0].output_refs.to_dict()),
+            {"competitor_entity_ids"},
+        )
+
+    def test_validator_requires_exact_frozen_dto_graph(self) -> None:
+        seed = translate_project_bootstrap_to_v2_seed(bootstrap())
+        invalid_values = (
+            (object(), "seed"),
+            (replace(seed, tenant=object()), "tenant"),  # type: ignore[arg-type]
+            (
+                replace(seed, project_members=list(seed.project_members)),  # type: ignore[arg-type]
+                "project_members",
+            ),
+            (
+                replace(seed, audit_events=list(seed.audit_events)),  # type: ignore[arg-type]
+                "audit_events",
+            ),
+            (
+                replace(seed, project_members=(object(),)),  # type: ignore[arg-type]
+                "project_members[0]",
+            ),
+        )
+        for invalid_seed, expected_field in invalid_values:
+            with self.subTest(expected_field=expected_field):
+                with self.assertRaises(SchemaV2TenancySeedValidationError) as raised:
+                    validate_v2_tenancy_seed(invalid_seed)  # type: ignore[arg-type]
+                self.assertEqual(raised.exception.code, "invalid_dto_type")
+                self.assertEqual(raised.exception.field, expected_field)
+
+    def test_validator_requires_an_active_project_owner(self) -> None:
+        seed = translate_project_bootstrap_to_v2_seed(bootstrap())
+        analyst = replace(seed.project_members[0], role="analyst")
+        with self.assertRaises(SchemaV2TenancySeedValidationError) as raised:
+            validate_v2_tenancy_seed(replace(seed, project_members=(analyst,)))
+        self.assertEqual(raised.exception.code, "missing_active_project_owner")
+
+        disabled_owner = replace(seed.project_members[0], status="disabled")
+        with self.assertRaises(SchemaV2TenancySeedValidationError) as disabled_error:
+            validate_v2_tenancy_seed(replace(seed, project_members=(disabled_owner,)))
+        self.assertEqual(disabled_error.exception.code, "missing_active_project_owner")
+
+    def test_validator_requires_member_id_from_canonical_identity(self) -> None:
+        seed = translate_project_bootstrap_to_v2_seed(bootstrap())
+        invalid_member = replace(seed.project_members[0], id=uuid4())
+        with self.assertRaises(SchemaV2TenancySeedValidationError) as raised:
+            validate_v2_tenancy_seed(replace(seed, project_members=(invalid_member,)))
+        self.assertEqual(raised.exception.code, "noncanonical_member_id")
+
+    def test_bootstrap_audit_contract_rejects_secrets_and_broken_lineage(self) -> None:
+        source = bootstrap()
+        invalid_events = (
+            (
+                replace(source.audit_events[0], input_refs={"session_token": ["raw"]}),
+                "sensitive_audit_ref",
+            ),
+            (
+                replace(source.audit_events[0], output_refs={"password_hash": ["raw"]}),
+                "sensitive_audit_ref",
+            ),
+            (
+                replace(source.audit_events[0], output_refs={"other_ids": [str(uuid4())]}),
+                "unsupported_audit_ref",
+            ),
+            (
+                replace(
+                    source.audit_events[0],
+                    output_refs={"competitor_entity_ids": ["not-a-uuid"]},
+                ),
+                "invalid_uuid",
+            ),
+            (
+                replace(source.audit_events[0], target_id=str(uuid4())),
+                "audit_target_mismatch",
+            ),
+            (
+                replace(source.audit_events[0], actor_id="other@example.com"),
+                "audit_actor_not_member",
+            ),
+        )
+        for event, expected_code in invalid_events:
+            with self.subTest(expected_code=expected_code):
+                with self.assertRaises(SchemaV2TenancySeedValidationError) as raised:
+                    translate_project_bootstrap_to_v2_seed(
+                        replace(source, audit_events=(event,))
+                    )
+                self.assertEqual(raised.exception.code, expected_code)
 
     def test_validator_covers_all_direct_dto_database_fields(self) -> None:
         seed = translate_project_bootstrap_to_v2_seed(bootstrap())
@@ -347,21 +463,27 @@ class SchemaV2TenancyRepositoryTest(unittest.TestCase):
         self.assertEqual(connection.commit_count, 1)
         self.assertEqual(connection.rollback_count, 0)
         sql = "\n".join(cursor.statements).upper()
+        self.assertNotIn("CREATED_AT", sql)
         self.assertNotIn("UPDATE PUBLIC.AUDIT_EVENTS", sql)
         self.assertNotIn("SET ROLE", sql)
         self.assertNotIn("SET_CONFIG", sql)
         self.assertNotIn("APP.", sql)
 
-    def test_same_seed_is_idempotent_without_updates(self) -> None:
-        seed = translate_project_bootstrap_to_v2_seed(bootstrap())
-        rows = persisted_rows(seed)
+    def test_independently_rebuilt_seed_is_idempotent_without_updates(self) -> None:
+        first_seed = translate_project_bootstrap_to_v2_seed(
+            bootstrap(owner_user_id="Owner@Example.com")
+        )
+        replay_seed = translate_project_bootstrap_to_v2_seed(
+            bootstrap(owner_user_id="owner@example.COM")
+        )
+        rows = persisted_rows(first_seed)
         cursor = FakeCursor(
             insert_results=[None] * len(rows),
             select_results=[[row] for row in rows],
         )
         connection = FakeConnection(cursor)
 
-        PrivilegedSchemaV2TenancyRepository(connection).save(seed)
+        PrivilegedSchemaV2TenancyRepository(connection).save(replay_seed)
 
         self.assertEqual(connection.commit_count, 1)
         self.assertEqual(connection.rollback_count, 0)

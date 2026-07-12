@@ -124,20 +124,20 @@ class PrivilegedSchemaV2TenancyRepository:
 
     def _save_tenant(self, cursor: SchemaV2SeedCursor, seed: SchemaV2TenancySeed) -> None:
         row = seed.tenant
-        expected = (row.id, row.name, row.slug, row.status, row.created_at)
+        expected = (row.id, row.name, row.slug, row.status)
         _insert_or_match(
             cursor,
             entity="tenant",
             identity=f"id={row.id}",
             insert_sql="""
-                INSERT INTO public.tenants (id, name, slug, status, created_at)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO public.tenants (id, name, slug, status)
+                VALUES (%s, %s, %s, %s)
                 ON CONFLICT DO NOTHING
                 RETURNING 1
             """,
             insert_params=expected,
             select_sql="""
-                SELECT id, name, slug, status, created_at
+                SELECT id, name, slug, status
                 FROM public.tenants
                 WHERE id = %s OR slug = %s
                 ORDER BY id
@@ -158,7 +158,6 @@ class PrivilegedSchemaV2TenancyRepository:
             row.category,
             row.prompt_version,
             row.status,
-            row.created_at,
         )
         _insert_or_match(
             cursor,
@@ -167,15 +166,15 @@ class PrivilegedSchemaV2TenancyRepository:
             insert_sql="""
                 INSERT INTO public.projects (
                     id, tenant_id, name, market_code, industry_code, target_brand,
-                    category, prompt_version, status, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    category, prompt_version, status
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING
                 RETURNING 1
             """,
             insert_params=expected,
             select_sql="""
                 SELECT id, tenant_id, name, market_code, industry_code, target_brand,
-                       category, prompt_version, status, created_at
+                       category, prompt_version, status
                 FROM public.projects
                 WHERE id = %s
             """,
@@ -196,7 +195,6 @@ class PrivilegedSchemaV2TenancyRepository:
             row.role,
             row.status,
             row.invited_by,
-            row.created_at,
         )
         _insert_or_match(
             cursor,
@@ -204,14 +202,14 @@ class PrivilegedSchemaV2TenancyRepository:
             identity=f"project_id={row.project_id},user_id={row.user_id}",
             insert_sql="""
                 INSERT INTO public.project_members (
-                    id, tenant_id, project_id, user_id, role, status, invited_by, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    id, tenant_id, project_id, user_id, role, status, invited_by
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING
                 RETURNING 1
             """,
             insert_params=expected,
             select_sql="""
-                SELECT id, tenant_id, project_id, user_id, role, status, invited_by, created_at
+                SELECT id, tenant_id, project_id, user_id, role, status, invited_by
                 FROM public.project_members
                 WHERE id = %s OR (project_id = %s AND user_id = %s)
                 ORDER BY id
@@ -240,7 +238,6 @@ class PrivilegedSchemaV2TenancyRepository:
             row.output_refs,
             row.method_version,
             row.reason,
-            row.created_at,
         )
         _insert_or_match(
             cursor,
@@ -250,8 +247,8 @@ class PrivilegedSchemaV2TenancyRepository:
                 INSERT INTO public.audit_events (
                     id, tenant_id, project_id, event_type, actor_type, actor_id,
                     target_type, target_id, before_hash, after_hash, input_refs,
-                    output_refs, method_version, reason, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    output_refs, method_version, reason
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING
                 RETURNING 1
             """,
@@ -264,7 +261,7 @@ class PrivilegedSchemaV2TenancyRepository:
             select_sql="""
                 SELECT id, tenant_id, project_id, event_type, actor_type, actor_id,
                        target_type, target_id, before_hash, after_hash, input_refs,
-                       output_refs, method_version, reason, created_at
+                       output_refs, method_version, reason
                 FROM public.audit_events
                 WHERE id = %s
             """,
