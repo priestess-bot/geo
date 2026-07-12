@@ -4,15 +4,15 @@ import hashlib
 from collections.abc import Callable
 from dataclasses import asdict
 from fastapi import APIRouter, FastAPI, Header, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from geno_core.models import (
     RuntimeCustomerPortalTokenActionInput,
     RuntimeCustomerPortalTokenInput,
     RuntimeProjectLaunchConfigInput,
-    RuntimeProjectMemberInvitationAcceptInput,
 )
 from geno_core.runtime import RuntimePersistenceError, build_repository_from_env, close_repository_connection
+from geno_core.auth import AUTH_SURFACE_POLICY_VERSION, RUNTIME_SESSION_SCOPE_VERSION, InvitationSurface
 
 
 class ProjectLaunchConfigRequest(BaseModel):
@@ -52,10 +52,9 @@ class CustomerPortalTokenRevokeRequest(BaseModel):
 
 
 class CustomerPortalAccessRequest(BaseModel):
-    portal_token: str | None = Field(default=None, max_length=200)
-    invitation_id: str | None = Field(default=None, max_length=80)
-    invite_token: str | None = Field(default=None, max_length=200)
-    accepted_by: str | None = Field(default=None, max_length=320)
+    model_config = ConfigDict(extra="forbid")
+
+    portal_token: str = Field(min_length=1, max_length=200)
 
 
 def register_runtime_access_routes(
@@ -66,8 +65,104 @@ def register_runtime_access_routes(
     require_runtime_actor_id: Callable[[str | None], str | None],
     assert_runtime_project_access: Callable[..., None],
     runtime_project_access_control_enabled: Callable[[], bool],
+    resolve_auth_context: Callable[[str | None], object] | None = None,
+    apply_runtime_project_db_context: Callable[..., None] | None = None,
+    build_repository: Callable[[], object] = build_repository_from_env,
+    close_repository: Callable[[object], None] = close_repository_connection,
 ) -> None:
     router = APIRouter()
+
+    @router.get("/v1/projects/runtime")
+    def runtime_projects_with_surface_projection(
+        surface: InvitationSurface | None = Query(default=None),
+        project_id: str | None = None,
+        market_code: str | None = None,
+        status: str | None = None,
+        include_archived: bool = False,
+        limit: int = Query(default=50, ge=1, le=200),
+        offset: int = Query(default=0, ge=0),
+        x_geno_actor_id: str | None = Header(default=None, alias=runtime_actor_header),
+    ) -> dict[str, object]:
+        actor_id = require_runtime_actor_id(x_geno_actor_id)
+        context = resolve_auth_context(x_geno_actor_id) if callable(resolve_auth_context) else None
+        try:
+            repository = build_repository()
+        except RuntimePersistenceError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        try:
+            project_ids: tuple[str, ...] = tuple(getattr(context, "project_ids", ()) or ())
+            tenant_id = getattr(context, "tenant_id", None)
+            if surface is not None:
+                if (
+                    getattr(context, "scope_version", None) != RUNTIME_SESSION_SCOPE_VERSION
+                    or getattr(context, "authz_policy_version", None) != AUTH_SURFACE_POLICY_VERSION
+                ):
+                    raise HTTPException(status_code=401, detail="surface projection requires a scope-v2 session")
+                scopes = tuple(getattr(context, "project_scopes", ()) or ())
+                capability = "portal.admin.access" if surface is InvitationSurface.ADMIN else "portal.customer.access"
+                project_ids = tuple(
+                    str(scope.get("project_id"))
+                    for scope in scopes
+                    if isinstance(scope, dict)
+                    and capability in tuple(scope.get("portal_capabilities") or ())
+                    and scope.get("project_id")
+                )
+                if not project_ids:
+                    return {
+                        "total_count": 0,
+                        "limit": limit,
+                        "offset": offset,
+                        "records": [],
+                    }
+            if callable(apply_runtime_project_db_context):
+                apply_runtime_project_db_context(
+                    repository,
+                    actor_id=getattr(context, "actor_id", actor_id),
+                    project_id=project_id,
+                    tenant_id=tenant_id,
+                    project_ids=project_ids,
+                )
+            if surface is not None:
+                records: list[dict[str, object]] = []
+                for scoped_project_id in project_ids:
+                    if project_id and scoped_project_id != project_id:
+                        continue
+                    scoped_page = repository.list_runtime_projects(
+                        project_id=scoped_project_id,
+                        market_code=market_code,
+                        status=status,
+                        include_archived=include_archived,
+                        actor_id=None,
+                        limit=1,
+                        offset=0,
+                    )
+                    records.extend(asdict(record) for record in scoped_page.records)
+                records.sort(
+                    key=lambda record: (
+                        str((record.get("project") or {}).get("created_at") or ""),
+                        str((record.get("project") or {}).get("id") or ""),
+                    ),
+                    reverse=True,
+                )
+                return {
+                    "total_count": len(records),
+                    "limit": limit,
+                    "offset": offset,
+                    "records": records[offset : offset + limit],
+                }
+            page = repository.list_runtime_projects(
+                project_id=project_id,
+                market_code=market_code,
+                status=status,
+                include_archived=include_archived,
+                actor_id=None if project_ids else actor_id,
+                limit=limit,
+                offset=offset,
+            )
+            payload = asdict(page)
+            return payload
+        finally:
+            close_repository(repository)
 
     @router.get("/v1/project-launch-configs/runtime")
     def runtime_project_launch_config(
@@ -239,21 +334,11 @@ def register_runtime_access_routes(
         except RuntimePersistenceError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         try:
-            if payload.portal_token:
-                return _customer_portal_access_with_portal_token(
-                    repository,
-                    portal_token=payload.portal_token,
-                    runtime_project_access_control_enabled=runtime_project_access_control_enabled,
-                )
-            if payload.invitation_id and payload.invite_token:
-                return _customer_portal_access_with_invitation(
-                    repository,
-                    invitation_id=payload.invitation_id,
-                    invite_token=payload.invite_token,
-                    accepted_by=payload.accepted_by,
-                    runtime_project_access_control_enabled=runtime_project_access_control_enabled,
-                )
-            raise HTTPException(status_code=400, detail="portal_token or invitation_id + invite_token is required")
+            return _customer_portal_access_with_portal_token(
+                repository,
+                portal_token=payload.portal_token,
+                runtime_project_access_control_enabled=runtime_project_access_control_enabled,
+            )
         finally:
             close_repository_connection(repository)
 
@@ -286,59 +371,6 @@ def _customer_portal_access_with_portal_token(
     return {
         "portal_token": None,
         "portal_token_record": asdict(token),
-        "bundle": _customer_portal_bundle(repository, project_id=project_id, member_user_id=member_user_id),
-    }
-
-
-def _customer_portal_access_with_invitation(
-    repository: object,
-    *,
-    invitation_id: str,
-    invite_token: str,
-    accepted_by: str | None,
-    runtime_project_access_control_enabled: Callable[[], bool],
-) -> dict[str, object]:
-    if runtime_project_access_control_enabled():
-        set_invitation_context = getattr(repository, "set_runtime_project_invitation_accept_context", None)
-        if not callable(set_invitation_context):
-            raise HTTPException(
-                status_code=503,
-                detail="runtime invitation acceptance requires repository.set_runtime_project_invitation_accept_context",
-            )
-        set_invitation_context(invite_token_hash=hashlib.sha256(invite_token.strip().encode("utf-8")).hexdigest())
-    try:
-        accepted = repository.accept_runtime_project_member_invitation(
-            RuntimeProjectMemberInvitationAcceptInput(
-                invitation_id=invitation_id.strip(),
-                invite_token=invite_token.strip(),
-                accepted_by=accepted_by.strip() if accepted_by else None,
-                reason="customer_portal_first_access",
-            )
-        )
-        invitation = accepted.invitation
-        member = invitation.get("member") if isinstance(invitation.get("member"), dict) else {}
-        project_id = str(invitation["project_id"])
-        member_user_id = str((member or {}).get("user_id") or invitation["email"]).strip().lower()
-        if runtime_project_access_control_enabled():
-            repository.set_runtime_project_access_context(actor_id=member_user_id, project_id=project_id)
-        token = repository.create_customer_portal_token(
-            RuntimeCustomerPortalTokenInput(
-                project_id=project_id,
-                member_user_id=member_user_id,
-                invitation_id=str(invitation["id"]),
-                issued_by=member_user_id,
-                metadata={"created_from": "customer_portal_invitation_accept"},
-                reason="customer_portal_first_access",
-            )
-        )
-    except ValueError as exc:
-        message = str(exc)
-        status_code = 404 if message == "project member invitation not found" else 409
-        raise HTTPException(status_code=status_code, detail=message) from exc
-    return {
-        "portal_token": token.raw_token,
-        "portal_token_record": asdict(token),
-        "accepted_invitation": asdict(accepted),
         "bundle": _customer_portal_bundle(repository, project_id=project_id, member_user_id=member_user_id),
     }
 

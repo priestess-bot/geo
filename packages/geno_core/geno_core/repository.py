@@ -13,6 +13,7 @@ from urllib.parse import urlencode, unquote, urlparse
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from geno_core.audit import build_audit_event
+from geno_core.auth import assert_auth_writes_enabled, surface_for_role
 from geno_core.email_delivery import (
     render_project_member_invitation_email,
     render_runtime_notification_email,
@@ -3322,6 +3323,9 @@ PROJECT_MEMBER_COLUMNS = (
     "user_id",
     "role",
     "created_at",
+    "tenant_id",
+    "status",
+    "updated_at",
 )
 PROJECT_MEMBER_INVITATION_COLUMNS = (
     "id",
@@ -3337,6 +3341,11 @@ PROJECT_MEMBER_INVITATION_COLUMNS = (
     "metadata",
     "created_at",
     "updated_at",
+    "tenant_id",
+    "audience",
+    "allowed_surfaces",
+    "policy_version",
+    "accepted_by_attempt_id",
 )
 BRAND_ENTITY_COLUMNS = (
     "id",
@@ -4098,15 +4107,27 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             return self.resolve_connector_secret(secret_ref=secret_ref)
         return load_deepseek_api_key()
 
-    def set_runtime_project_access_context(self, *, actor_id: str, project_id: str | None = None) -> None:
+    def set_runtime_project_access_context(
+        self,
+        *,
+        actor_id: str,
+        project_id: str | None = None,
+        tenant_id: str | None = None,
+        project_ids: tuple[str, ...] = (),
+    ) -> None:
         actor_id = actor_id.strip()
         project_id = project_id.strip() if project_id else ""
+        tenant_id = tenant_id.strip() if tenant_id else ""
+        project_ids_value = ",".join(item.strip() for item in project_ids if item.strip())
         if not actor_id:
             raise ValueError("actor_id is required")
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false),
+                  set_config(%s, %s, false),
                   set_config(%s, %s, false),
                   set_config(%s, %s, false),
                   set_config(%s, %s, false),
@@ -4121,12 +4142,18 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                     actor_id,
                     "app.project_id",
                     project_id,
+                    "app.project_ids",
+                    project_ids_value,
+                    "app.tenant_id",
+                    tenant_id,
                     "geno.runtime_project_access_control",
                     "1",
                     "geno.runtime_actor_id",
                     actor_id,
                     "geno.runtime_project_id",
                     project_id,
+                    "geno.runtime_tenant_id",
+                    tenant_id,
                 ),
             )
 
@@ -5185,8 +5212,9 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         )
 
     def save_runtime_project_member(self, member: RuntimeProjectMemberInput) -> RuntimeProjectMember:
+        assert_auth_writes_enabled()
         project_id = member.project_id.strip()
-        user_id = member.user_id.strip()
+        user_id = member.user_id.strip().lower()
         role = member.role.strip().lower()
         updated_by = member.updated_by.strip() or "runtime-console"
         if not project_id:
@@ -5205,20 +5233,23 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id
+                SELECT id, tenant_id
                 FROM projects
                 WHERE id = %s
                 LIMIT 1
                 """,
                 (_uuid(project_id),),
             )
-            if not cursor.fetchone():
+            project_row = cursor.fetchone()
+            if not project_row:
                 raise ValueError("project not found")
+            project = _row_dict(project_row, ("id", "tenant_id"))
+            tenant_id = str(project["tenant_id"])
             cursor.execute(
                 f"""
                 SELECT {", ".join(PROJECT_MEMBER_COLUMNS)}
                 FROM project_members
-                WHERE project_id = %s AND user_id = %s
+                WHERE project_id = %s AND lower(btrim(user_id)) = %s
                 LIMIT 1
                 """,
                 (_uuid(project_id), user_id),
@@ -5229,12 +5260,26 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                 self._assert_not_last_project_owner(cursor=cursor, project_id=project_id, user_id=user_id)
             cursor.execute(
                 """
-                INSERT INTO project_members (id, project_id, user_id, role)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (project_id, user_id) DO UPDATE SET
-                  role = EXCLUDED.role
+                INSERT INTO project_members (
+                  id, project_id, tenant_id, user_id, role, status, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, 'active', now())
+                ON CONFLICT (project_id, (lower(btrim(user_id)))) DO UPDATE SET
+                  role = EXCLUDED.role,
+                  tenant_id = EXCLUDED.tenant_id,
+                  status = 'active',
+                  updated_at = now()
                 """,
-                (_uuid(member_id), _uuid(project_id), user_id, role),
+                (_uuid(member_id), _uuid(project_id), _uuid(tenant_id), user_id, role),
+            )
+            cursor.execute(
+                """
+                UPDATE runtime_sessions
+                SET status = 'revoked', revoked_at = now(), revoked_by = %s,
+                    revoke_reason = 'membership_changed', updated_at = now()
+                WHERE tenant_id = %s AND lower(btrim(actor_id)) = %s AND status = 'active'
+                """,
+                (updated_by, _uuid(tenant_id), user_id),
             )
             audit_event = build_audit_event(
                 event_type="project_member_saved",
@@ -5363,6 +5408,7 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         self,
         invitation: RuntimeProjectMemberInvitationInput,
     ) -> RuntimeProjectMemberInvitation:
+        assert_auth_writes_enabled()
         project_id = invitation.project_id.strip()
         email = invitation.email.strip().lower()
         role = invitation.role.strip().lower()
@@ -5382,23 +5428,28 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id
+                SELECT id, tenant_id
                 FROM projects
                 WHERE id = %s
                 LIMIT 1
                 """,
                 (_uuid(project_id),),
             )
-            if not cursor.fetchone():
+            project_row = cursor.fetchone()
+            if not project_row:
                 raise ValueError("project not found")
+            project = _row_dict(project_row, ("id", "tenant_id"))
+            tenant_id = str(project["tenant_id"])
+            requested_surface = surface_for_role(role).value
+            audience = requested_surface
             cursor.execute(
                 f"""
                 SELECT {", ".join(PROJECT_MEMBER_INVITATION_COLUMNS)}
                 FROM project_member_invitations
-                WHERE project_id = %s AND email = %s AND role = %s AND status = %s
+                WHERE project_id = %s AND lower(btrim(email)) = %s AND status = %s
                 LIMIT 1
                 """,
-                (_uuid(project_id), email, role, status),
+                (_uuid(project_id), email, status),
             )
             existing = cursor.fetchone()
             before = _row_dict(existing, PROJECT_MEMBER_INVITATION_COLUMNS) if existing else None
@@ -5406,20 +5457,26 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             cursor.execute(
                 """
                 INSERT INTO project_member_invitations (
-                  id, project_id, email, role, status, invite_token_hash, invited_by,
-                  expires_at, metadata
+                  id, project_id, tenant_id, email, role, status, invite_token_hash, invited_by,
+                  expires_at, metadata, audience, allowed_surfaces, policy_version
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (project_id, email, role, status) DO UPDATE SET
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (project_id, (lower(btrim(email)))) WHERE status = 'pending' DO UPDATE SET
                   invite_token_hash = EXCLUDED.invite_token_hash,
                   invited_by = EXCLUDED.invited_by,
                   expires_at = EXCLUDED.expires_at,
                   metadata = EXCLUDED.metadata,
+                  role = EXCLUDED.role,
+                  tenant_id = EXCLUDED.tenant_id,
+                  audience = EXCLUDED.audience,
+                  allowed_surfaces = EXCLUDED.allowed_surfaces,
+                  policy_version = EXCLUDED.policy_version,
                   updated_at = now()
                 """,
                 (
                     _uuid(invitation_id),
                     _uuid(project_id),
+                    _uuid(tenant_id),
                     email,
                     role,
                     status,
@@ -5427,16 +5484,19 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                     invited_by,
                     _datetime(invitation.expires_at),
                     _json_payload(metadata),
+                    audience,
+                    [requested_surface],
+                    "auth_surface_policy_v1",
                 ),
             )
             cursor.execute(
                 f"""
                 SELECT {", ".join(PROJECT_MEMBER_INVITATION_COLUMNS)}
                 FROM project_member_invitations
-                WHERE project_id = %s AND email = %s AND role = %s AND status = %s
+                WHERE project_id = %s AND lower(btrim(email)) = %s AND status = %s
                 LIMIT 1
                 """,
-                (_uuid(project_id), email, role, status),
+                (_uuid(project_id), email, status),
             )
             saved_row = cursor.fetchone()
             saved_invitation = _row_dict(saved_row, PROJECT_MEMBER_INVITATION_COLUMNS)
@@ -5476,6 +5536,7 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         self,
         action_input: RuntimeProjectMemberInvitationActionInput,
     ) -> RuntimeProjectMemberInvitation:
+        assert_auth_writes_enabled()
         project_id = action_input.project_id.strip()
         invitation_id = action_input.invitation_id.strip()
         action = action_input.action.strip().lower()
@@ -5575,6 +5636,7 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         self,
         invitation_input: RuntimeProjectMemberInvitationAcceptInput,
     ) -> RuntimeProjectMemberInvitation:
+        assert_auth_writes_enabled()
         invitation_id = invitation_input.invitation_id.strip()
         invite_token = invitation_input.invite_token.strip()
         if not invitation_id:
@@ -5602,6 +5664,7 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             if expires_at and expires_at <= datetime.now(UTC):
                 raise ValueError("project member invitation expired")
             project_id = str(before_invitation["project_id"])
+            tenant_id = str(before_invitation["tenant_id"])
             email = str(before_invitation["email"]).strip().lower()
             role = str(before_invitation["role"]).strip().lower()
             accepted_by = (invitation_input.accepted_by or "").strip() or email
@@ -5610,7 +5673,7 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                 f"""
                 SELECT {", ".join(PROJECT_MEMBER_COLUMNS)}
                 FROM project_members
-                WHERE project_id = %s AND user_id = %s
+                WHERE project_id = %s AND lower(btrim(user_id)) = %s
                 LIMIT 1
                 """,
                 (_uuid(project_id), email),
@@ -5620,27 +5683,38 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             cursor.execute(
                 """
                 SELECT
-                  set_config(%s, %s, false),
-                  set_config(%s, %s, false),
-                  set_config(%s, %s, false)
+                  set_config(%s, %s, true),
+                  set_config(%s, %s, true),
+                  set_config(%s, %s, true),
+                  set_config(%s, %s, true),
+                  set_config(%s, %s, true)
                 """,
                 (
                     "geno.runtime_actor_id",
                     email,
                     "geno.runtime_project_id",
                     project_id,
+                    "app.tenant_id",
+                    tenant_id,
+                    "geno.runtime_tenant_id",
+                    tenant_id,
                     "geno.runtime_invitation_token_hash",
                     invite_token_hash,
                 ),
             )
             cursor.execute(
                 """
-                INSERT INTO project_members (id, project_id, user_id, role)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (project_id, user_id) DO UPDATE SET
-                  role = EXCLUDED.role
+                INSERT INTO project_members (
+                  id, project_id, tenant_id, user_id, role, status, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, 'active', now())
+                ON CONFLICT (project_id, (lower(btrim(user_id)))) DO UPDATE SET
+                  role = EXCLUDED.role,
+                  tenant_id = EXCLUDED.tenant_id,
+                  status = 'active',
+                  updated_at = now()
                 """,
-                (_uuid(member_id), _uuid(project_id), email, role),
+                (_uuid(member_id), _uuid(project_id), _uuid(tenant_id), email, role),
             )
             cursor.execute(
                 """
@@ -5769,13 +5843,17 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             project_id = str(invitation["project_id"])
             email = str(invitation["email"]).strip().lower()
             role = str(invitation["role"]).strip().lower()
-            accept_url = f"{accept_base_url.rstrip('/')}?{urlencode({'invitation_id': invitation_id, 'invite_token': invite_token})}"
+            accept_url = parsed_base_url._replace(
+                query=urlencode({"invitation_id": invitation_id}),
+                fragment="",
+            ).geturl()
             accept_url_hash = hashlib.sha256(accept_url.encode("utf-8")).hexdigest()
             rendered_email = render_project_member_invitation_email(
                 role=role,
                 invitation_id=invitation_id,
                 expires_at=expires_at.isoformat() if expires_at else "not set",
                 accept_url=accept_url,
+                one_time_code=invite_token,
                 subject=email_input.subject,
                 message=email_input.message,
             )
@@ -5844,7 +5922,7 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                     "email_subject_hashes": [rendered_email.subject_hash],
                     "email_body_hashes": [rendered_email.body_hash],
                 },
-                method_version="project_member_invitation_email_v1",
+                method_version="project_member_invitation_email_v2",
                 reason=email_input.reason.strip()
                 if email_input.reason
                 else "runtime_project_member_invitation_email_sent",
@@ -5865,6 +5943,7 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         return RuntimeProjectMemberInvitation(invitation=invitation, audit_events=tuple(audit_events))
 
     def delete_runtime_project_member(self, member: RuntimeProjectMemberDeleteInput) -> RuntimeProjectMember:
+        assert_auth_writes_enabled()
         project_id = member.project_id.strip()
         user_id = member.user_id.strip()
         deleted_by = member.deleted_by.strip() or "runtime-console"

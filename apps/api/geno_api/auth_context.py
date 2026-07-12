@@ -21,6 +21,10 @@ class AuthContext:
     project_ids: tuple[str, ...]
     roles: tuple[str, ...]
     permissions: tuple[str, ...]
+    project_scopes: tuple[dict[str, object], ...]
+    tenant_roles: tuple[str, ...]
+    scope_version: str | None
+    authz_policy_version: str | None
     session_id: str | None
     request_id: str | None
     ip_hash: str | None
@@ -35,6 +39,17 @@ class AuthContext:
     @property
     def is_system_actor(self) -> bool:
         return self.actor_type in {"system", "service"}
+
+    def project_scope(self, project_id: str) -> dict[str, object] | None:
+        normalized = project_id.strip()
+        return next(
+            (
+                scope
+                for scope in self.project_scopes
+                if str(scope.get("project_id") or "").strip() == normalized
+            ),
+            None,
+        )
 
 
 def hash_context_value(value: str | None) -> str | None:
@@ -58,6 +73,10 @@ def build_anonymous_auth_context(*, auth_method: AuthMethod = "anonymous", reque
         project_ids=(),
         roles=(),
         permissions=(),
+        project_scopes=(),
+        tenant_roles=(),
+        scope_version=None,
+        authz_policy_version=None,
         session_id=None,
         request_id=request_id.strip() if request_id else None,
         ip_hash=None,
@@ -74,6 +93,10 @@ def build_user_auth_context(
     project_ids: tuple[str, ...] | list[str] | None = None,
     roles: tuple[str, ...] | list[str] | None = None,
     permissions: tuple[str, ...] | list[str] | None = None,
+    project_scopes: tuple[dict[str, object], ...] | list[dict[str, object]] | None = None,
+    tenant_roles: tuple[str, ...] | list[str] | None = None,
+    scope_version: str | None = None,
+    authz_policy_version: str | None = None,
     session_id: str | None = None,
     request_id: str | None = None,
     client_host: str | None = None,
@@ -91,6 +114,10 @@ def build_user_auth_context(
         project_ids=_normalize_items(project_ids),
         roles=_normalize_items(roles),
         permissions=_normalize_items(permissions),
+        project_scopes=tuple(dict(scope) for scope in (project_scopes or ())),
+        tenant_roles=_normalize_items(tenant_roles),
+        scope_version=scope_version.strip() if scope_version else None,
+        authz_policy_version=authz_policy_version.strip() if authz_policy_version else None,
         session_id=session_id.strip() if session_id else None,
         request_id=request_id.strip() if request_id else None,
         ip_hash=hash_context_value(client_host),
@@ -130,6 +157,10 @@ def build_system_auth_context(
         project_ids=normalized_project_ids,
         roles=_normalize_items(roles),
         permissions=normalized_permissions,
+        project_scopes=(),
+        tenant_roles=(),
+        scope_version=None,
+        authz_policy_version=None,
         session_id=None,
         request_id=request_id.strip() if request_id else None,
         ip_hash=None,
@@ -147,6 +178,10 @@ def auth_context_scope(context: AuthContext) -> dict[str, object]:
         "project_ids": context.project_ids,
         "roles": context.roles,
         "permissions": context.permissions,
+        "project_scopes": context.project_scopes,
+        "tenant_roles": context.tenant_roles,
+        "scope_version": context.scope_version,
+        "authz_policy_version": context.authz_policy_version,
         "session_id": context.session_id,
         "auth_method": context.auth_method,
         "is_system_actor": context.is_system_actor,

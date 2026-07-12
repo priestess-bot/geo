@@ -21,17 +21,20 @@ Target: {target_type}
 {target_line}Notification ID: {notification_id}
 Project ID: {project_id}
 Subscription ID: {subscription_id}{control_footer}"""
-PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION = "project_member_invitation_email_template_v1"
+PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION = "project_member_invitation_email_template_v2"
 PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE = """{custom_message}
 
 Role: {role}
 Invitation ID: {invitation_id}
 Expires at: {expires_at}
 
-Open this invitation link to accept:
+Open the invitation page:
 {accept_url}
 
-This one-time link should not be forwarded."""
+Enter this one-time code on that page:
+{one_time_code}
+
+This code should not be forwarded or shared."""
 
 
 @dataclass(frozen=True)
@@ -71,6 +74,7 @@ def render_project_member_invitation_email(
     invitation_id: str,
     expires_at: str,
     accept_url: str,
+    one_time_code: str,
     subject: str | None = None,
     message: str | None = None,
 ) -> RuntimeEmailTemplateRenderResult:
@@ -82,6 +86,7 @@ def render_project_member_invitation_email(
         invitation_id=invitation_id,
         expires_at=expires_at,
         accept_url=accept_url,
+        one_time_code=one_time_code,
     )
     return RuntimeEmailTemplateRenderResult(
         subject=rendered_subject,
