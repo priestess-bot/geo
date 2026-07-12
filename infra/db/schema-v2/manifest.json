@@ -1,0 +1,15 @@
+{
+  "manifest_version": 1,
+  "schema_generation": 2,
+  "database_name": "geno_v2",
+  "baseline_version": "2.0.0-b1",
+  "baseline_hash": "fe6fe9f01a771effa48d5404f207972a1fb850b196ca5c6b8c0c5225c8437b97",
+  "minimum_app_version": "0.1.0",
+  "baseline_files": [
+    {
+      "path": "baseline/0000_extensions_roles.sql",
+      "sha256": "90d9512b55094c6744f0d8a3f26192a73bd016154930952aad7b43e39c262ca2"
+    }
+  ],
+  "migration_files": []
+}
