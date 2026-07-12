@@ -1,6 +1,85 @@
+x-object-store-application-environment: &object-store-application-environment
+  OBJECT_STORE_ENDPOINT: http://minio:9000
+  OBJECT_STORE_BUCKET: geno-reports
+  OBJECT_STORE_REGION: us-east-1
+  OBJECT_STORE_ACCESS_KEY: ""
+  OBJECT_STORE_SECRET_KEY: ""
+  OBJECT_STORE_ACCESS_KEY_FILE: /run/secrets/object_store_application_access_key
+  OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/object_store_application_secret_key
+  OBJECT_STORE_AUTO_CREATE_BUCKET: "0"
+
+x-object-store-application-secrets: &object-store-application-secrets
+  - source: object_store_application_access_key
+    target: object_store_application_access_key
+  - source: object_store_application_secret_key
+    target: object_store_application_secret_key
+
 services:
+  minio:
+    environment:
+      MINIO_ROOT_USER: ""
+      MINIO_ROOT_PASSWORD: ""
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+    secrets:
+      - source: minio_root_user
+        target: minio_root_user
+      - source: minio_root_password
+        target: minio_root_password
+
+  minio-bootstrap:
+    environment:
+      MINIO_ROOT_USER: ""
+      MINIO_ROOT_PASSWORD: ""
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+      OBJECT_STORE_ACCESS_KEY: ""
+      OBJECT_STORE_SECRET_KEY: ""
+      OBJECT_STORE_ACCESS_KEY_FILE: /run/secrets/object_store_application_access_key
+      OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/object_store_application_secret_key
+      OBJECT_STORE_BACKUP_ACCESS_KEY: ""
+      OBJECT_STORE_BACKUP_SECRET_KEY: ""
+      OBJECT_STORE_BACKUP_ACCESS_KEY_FILE: /run/secrets/object_store_backup_access_key
+      OBJECT_STORE_BACKUP_SECRET_KEY_FILE: /run/secrets/object_store_backup_secret_key
+      OBJECT_STORE_RESTORE_ACCESS_KEY: ""
+      OBJECT_STORE_RESTORE_SECRET_KEY: ""
+      OBJECT_STORE_RESTORE_ACCESS_KEY_FILE: /run/secrets/object_store_restore_access_key
+      OBJECT_STORE_RESTORE_SECRET_KEY_FILE: /run/secrets/object_store_restore_secret_key
+      OBJECT_STORE_RETENTION_ACCESS_KEY: ""
+      OBJECT_STORE_RETENTION_SECRET_KEY: ""
+      OBJECT_STORE_RETENTION_ACCESS_KEY_FILE: /run/secrets/object_store_retention_access_key
+      OBJECT_STORE_RETENTION_SECRET_KEY_FILE: /run/secrets/object_store_retention_secret_key
+      OBJECT_STORE_BACKUP_PREFIX: ${OBJECT_STORE_BACKUP_PREFIX:?set OBJECT_STORE_BACKUP_PREFIX}
+      OBJECT_STORE_BACKUP_SMOKE_PREFIX: ${OBJECT_STORE_BACKUP_SMOKE_PREFIX:?set OBJECT_STORE_BACKUP_SMOKE_PREFIX}
+      OBJECT_STORE_RESTORE_PREFIX: ${OBJECT_STORE_RESTORE_PREFIX:?set OBJECT_STORE_RESTORE_PREFIX}
+      OBJECT_STORE_RETENTION_PREFIX: ${OBJECT_STORE_RETENTION_PREFIX:?set OBJECT_STORE_RETENTION_PREFIX}
+      MINIO_BOOTSTRAP_ENABLE_EPHEMERAL: ${MINIO_BOOTSTRAP_ENABLE_EPHEMERAL:-0}
+      MINIO_POLICY_VERSION: geno-object-store-policy-v1
+    secrets:
+      - source: minio_root_user
+        target: minio_root_user
+      - source: minio_root_password
+        target: minio_root_password
+      - source: object_store_application_access_key
+        target: object_store_application_access_key
+      - source: object_store_application_secret_key
+        target: object_store_application_secret_key
+      - source: object_store_backup_access_key
+        target: object_store_backup_access_key
+      - source: object_store_backup_secret_key
+        target: object_store_backup_secret_key
+      - source: object_store_restore_access_key
+        target: object_store_restore_access_key
+      - source: object_store_restore_secret_key
+        target: object_store_restore_secret_key
+      - source: object_store_retention_access_key
+        target: object_store_retention_access_key
+      - source: object_store_retention_secret_key
+        target: object_store_retention_secret_key
+
   api:
     environment:
+      <<: *object-store-application-environment
       GENO_DEPLOYMENT_ENVIRONMENT: production
       GENO_RUNTIME_PROJECT_ACCESS_CONTROL: "1"
       GENO_RUNTIME_AUTH_MODE: session
@@ -10,14 +89,127 @@ services:
       GENO_REPORT_ARTIFACT_SIGNING_SECRET: ${GENO_REPORT_ARTIFACT_SIGNING_SECRET:?set GENO_REPORT_ARTIFACT_SIGNING_SECRET}
       GENO_PDF_RENDERER_URL: http://report-pdf-renderer:8200
       GENO_REPORT_PDF_RENDERER_REQUIRED: "1"
-      OBJECT_STORE_ACCESS_KEY: ${OBJECT_STORE_ACCESS_KEY:?set OBJECT_STORE_ACCESS_KEY}
-      OBJECT_STORE_SECRET_KEY: ${OBJECT_STORE_SECRET_KEY:?set OBJECT_STORE_SECRET_KEY}
+    secrets: *object-store-application-secrets
+    depends_on:
+      minio-bootstrap:
+        condition: service_completed_successfully
+
+  collector-worker:
+    environment: *object-store-application-environment
+    secrets: *object-store-application-secrets
+    depends_on:
+      minio-bootstrap:
+        condition: service_completed_successfully
+
+  collector-worker-litellm:
+    environment: *object-store-application-environment
+    secrets: *object-store-application-secrets
+    depends_on:
+      minio-bootstrap:
+        condition: service_completed_successfully
+
+  browser-fidelity-scheduler:
+    environment: *object-store-application-environment
+    secrets: *object-store-application-secrets
+    depends_on:
+      minio-bootstrap:
+        condition: service_completed_successfully
+
+  report-export-worker:
+    environment: *object-store-application-environment
+    secrets: *object-store-application-secrets
+    depends_on:
+      minio-bootstrap:
+        condition: service_completed_successfully
+
+  knowledge-worker:
+    environment: *object-store-application-environment
+    secrets: *object-store-application-secrets
+    depends_on:
+      minio-bootstrap:
+        condition: service_completed_successfully
+
+  task-worker-runtime:
+    environment: *object-store-application-environment
+    secrets: *object-store-application-secrets
+    depends_on:
+      minio-bootstrap:
+        condition: service_completed_successfully
+
+  task-worker-knowledge:
+    environment: *object-store-application-environment
+    secrets: *object-store-application-secrets
+    depends_on:
+      minio-bootstrap:
+        condition: service_completed_successfully
+
+  runtime-e2e:
+    environment: *object-store-application-environment
+    secrets: *object-store-application-secrets
+    depends_on:
+      minio-bootstrap:
+        condition: service_completed_successfully
+
+  backup-object-smoke:
+    environment:
+      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_BACKUP_BUCKET: geno-backups
+      OBJECT_STORE_BACKUP_ACCESS_KEY: ""
+      OBJECT_STORE_BACKUP_SECRET_KEY: ""
+      OBJECT_STORE_BACKUP_ACCESS_KEY_FILE: /run/secrets/object_store_backup_access_key
+      OBJECT_STORE_BACKUP_SECRET_KEY_FILE: /run/secrets/object_store_backup_secret_key
+      OBJECT_STORE_RESTORE_ACCESS_KEY: ""
+      OBJECT_STORE_RESTORE_SECRET_KEY: ""
+      OBJECT_STORE_RESTORE_ACCESS_KEY_FILE: /run/secrets/object_store_restore_access_key
+      OBJECT_STORE_RESTORE_SECRET_KEY_FILE: /run/secrets/object_store_restore_secret_key
+      OBJECT_STORE_BACKUP_PREFIX: ${OBJECT_STORE_BACKUP_PREFIX:?set OBJECT_STORE_BACKUP_PREFIX}
+      OBJECT_STORE_BACKUP_SMOKE_PREFIX: ${OBJECT_STORE_BACKUP_SMOKE_PREFIX:?set OBJECT_STORE_BACKUP_SMOKE_PREFIX}
+      OBJECT_STORE_RESTORE_PREFIX: ${OBJECT_STORE_RESTORE_PREFIX:?set OBJECT_STORE_RESTORE_PREFIX}
+    secrets:
+      - source: object_store_backup_access_key
+        target: object_store_backup_access_key
+      - source: object_store_backup_secret_key
+        target: object_store_backup_secret_key
+      - source: object_store_restore_access_key
+        target: object_store_restore_access_key
+      - source: object_store_restore_secret_key
+        target: object_store_restore_secret_key
+
   admin-web:
     environment:
       GENO_RUNTIME_AUTH_MODE: session
       GENO_RUNTIME_SESSION_COOKIE_SECURE: "1"
       GENO_ADMIN_DEV_TOOLS_ENABLED: "0"
+
   customer-web:
     environment:
       GENO_RUNTIME_AUTH_MODE: session
       GENO_RUNTIME_SESSION_COOKIE_SECURE: "1"
+
+volumes:
+  minio_data:
+    external: true
+    name: ${GENO_MINIO_ENCRYPTED_VOLUME_NAME:?set GENO_MINIO_ENCRYPTED_VOLUME_NAME}
+
+secrets:
+  minio_root_user:
+    file: ${GENO_MINIO_ROOT_USER_SECRET_FILE:?set GENO_MINIO_ROOT_USER_SECRET_FILE}
+  minio_root_password:
+    file: ${GENO_MINIO_ROOT_PASSWORD_SECRET_FILE:?set GENO_MINIO_ROOT_PASSWORD_SECRET_FILE}
+  object_store_application_access_key:
+    file: ${GENO_OBJECT_STORE_APPLICATION_ACCESS_KEY_SECRET_FILE:?set GENO_OBJECT_STORE_APPLICATION_ACCESS_KEY_SECRET_FILE}
+  object_store_application_secret_key:
+    file: ${GENO_OBJECT_STORE_APPLICATION_SECRET_KEY_SECRET_FILE:?set GENO_OBJECT_STORE_APPLICATION_SECRET_KEY_SECRET_FILE}
+  object_store_backup_access_key:
+    file: ${GENO_OBJECT_STORE_BACKUP_ACCESS_KEY_SECRET_FILE:?set GENO_OBJECT_STORE_BACKUP_ACCESS_KEY_SECRET_FILE}
+  object_store_backup_secret_key:
+    file: ${GENO_OBJECT_STORE_BACKUP_SECRET_KEY_SECRET_FILE:?set GENO_OBJECT_STORE_BACKUP_SECRET_KEY_SECRET_FILE}
+  object_store_restore_access_key:
+    file: ${GENO_OBJECT_STORE_RESTORE_ACCESS_KEY_SECRET_FILE:?set GENO_OBJECT_STORE_RESTORE_ACCESS_KEY_SECRET_FILE}
+  object_store_restore_secret_key:
+    file: ${GENO_OBJECT_STORE_RESTORE_SECRET_KEY_SECRET_FILE:?set GENO_OBJECT_STORE_RESTORE_SECRET_KEY_SECRET_FILE}
+  object_store_retention_access_key:
+    file: ${GENO_OBJECT_STORE_RETENTION_ACCESS_KEY_SECRET_FILE:?set GENO_OBJECT_STORE_RETENTION_ACCESS_KEY_SECRET_FILE}
+  object_store_retention_secret_key:
+    file: ${GENO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE:?set GENO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE}

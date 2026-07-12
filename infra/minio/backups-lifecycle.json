@@ -1,0 +1,1 @@
+{"Rules":[{"Expiration":{"Days":7},"ID":"geno-backup-smoke-expiry-v1","Filter":{"Prefix":"smoke/"},"NoncurrentVersionExpiration":{"NoncurrentDays":1},"Status":"Enabled"},{"Expiration":{"Days":365},"ID":"geno-production-backup-expiry-v1","Filter":{"Prefix":"production/"},"NoncurrentVersionExpiration":{"NoncurrentDays":30},"Status":"Enabled"}]}

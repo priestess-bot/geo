@@ -6,6 +6,7 @@ import queue
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass, asdict
+from pathlib import Path
 from typing import Callable
 from urllib.parse import urlparse
 
@@ -38,6 +39,9 @@ RUNTIME_JWT_ISSUER_ENV = "GENO_RUNTIME_JWT_ISSUER"
 RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL_ENV = "GENO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL"
 RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV = "GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET"
 RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS_ENV = "GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS"
+OBJECT_STORE_AUTO_CREATE_BUCKET_ENV = "OBJECT_STORE_AUTO_CREATE_BUCKET"
+OBJECT_STORE_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+OBJECT_STORE_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES = {"1", "true", "yes", "on"}
 RUNTIME_AUTH_MODES = {"header", "jwt", "jwks"}
 
@@ -350,6 +354,35 @@ def build_repository_from_env(
     return PostgresEvidenceRepository(connect_postgres_from_env(env, connector=connector), **repository_kwargs)
 
 
+def _object_store_secret_from_env(env: Mapping[str, str], name: str) -> str:
+    direct_value = env.get(name, "").strip()
+    file_name = f"{name}_FILE"
+    secret_path = env.get(file_name, "").strip()
+    if direct_value and secret_path:
+        raise RuntimePersistenceError(f"{name} and {file_name} cannot both be configured")
+    if not secret_path:
+        return direct_value
+    try:
+        value = Path(secret_path).read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise RuntimePersistenceError(f"Unable to read {file_name}") from exc
+    if not value:
+        raise RuntimePersistenceError(f"{file_name} is empty")
+    return value
+
+
+def _object_store_auto_create_bucket(env: Mapping[str, str]) -> bool:
+    raw_value = env.get(OBJECT_STORE_AUTO_CREATE_BUCKET_ENV, "1").strip().lower()
+    if raw_value in OBJECT_STORE_TRUE_VALUES:
+        return True
+    if raw_value in OBJECT_STORE_FALSE_VALUES:
+        return False
+    raise RuntimePersistenceError(
+        f"{OBJECT_STORE_AUTO_CREATE_BUCKET_ENV} must be one of "
+        f"{sorted(OBJECT_STORE_TRUE_VALUES | OBJECT_STORE_FALSE_VALUES)}"
+    )
+
+
 def build_object_store_from_env(
     env: Mapping[str, str] | None = None,
     *,
@@ -359,9 +392,10 @@ def build_object_store_from_env(
     return S3CompatibleObjectStore(
         endpoint=runtime_env.get("OBJECT_STORE_ENDPOINT", "").strip(),
         bucket=runtime_env.get("OBJECT_STORE_BUCKET", "geno-reports").strip(),
-        access_key=runtime_env.get("OBJECT_STORE_ACCESS_KEY", "").strip(),
-        secret_key=runtime_env.get("OBJECT_STORE_SECRET_KEY", "").strip(),
+        access_key=_object_store_secret_from_env(runtime_env, "OBJECT_STORE_ACCESS_KEY"),
+        secret_key=_object_store_secret_from_env(runtime_env, "OBJECT_STORE_SECRET_KEY"),
         region=runtime_env.get("OBJECT_STORE_REGION", "us-east-1").strip(),
+        auto_create_bucket=_object_store_auto_create_bucket(runtime_env),
         requester=requester,
     )
 
@@ -410,17 +444,33 @@ def runtime_database_diagnostic(
     )
 
 
-def runtime_object_store_diagnostic(env: Mapping[str, str] | None = None) -> RuntimeComponentDiagnostic:
+def runtime_object_store_diagnostic(
+    env: Mapping[str, str] | None = None,
+) -> RuntimeComponentDiagnostic:
     runtime_env = os.environ if env is None else env
     endpoint = runtime_env.get("OBJECT_STORE_ENDPOINT", "").strip()
     bucket = runtime_env.get("OBJECT_STORE_BUCKET", "geno-reports").strip()
-    access_key = runtime_env.get("OBJECT_STORE_ACCESS_KEY", "").strip()
-    secret_key = runtime_env.get("OBJECT_STORE_SECRET_KEY", "").strip()
+    try:
+        access_key = _object_store_secret_from_env(runtime_env, "OBJECT_STORE_ACCESS_KEY")
+        secret_key = _object_store_secret_from_env(runtime_env, "OBJECT_STORE_SECRET_KEY")
+        auto_create_bucket = _object_store_auto_create_bucket(runtime_env)
+    except RuntimePersistenceError as exc:
+        return RuntimeComponentDiagnostic(
+            name="object_store",
+            status="fail",
+            detail=str(exc),
+            metadata={
+                "endpoint": "configured" if endpoint else "missing",
+                "bucket": bucket or "missing",
+                "network_check": "not_run",
+            },
+        )
     metadata: dict[str, object] = {
         "endpoint": "configured" if endpoint else "missing",
         "bucket": bucket or "missing",
         "access_key": "configured" if access_key else "missing",
         "secret_key": "configured" if secret_key else "missing",
+        "auto_create_bucket": auto_create_bucket,
         "network_check": "not_run",
     }
     if not endpoint:
