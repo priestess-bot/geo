@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import threading
 from collections import defaultdict
 from collections.abc import Mapping
@@ -57,6 +58,27 @@ def _escape_metric_label(value: object) -> str:
 
 def _metric_labels(labels: Mapping[str, object]) -> str:
     return ",".join(f'{key}="{_escape_metric_label(value)}"' for key, value in labels.items())
+
+
+def _durable_job_snapshot() -> dict[str, object]:
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if not database_url:
+        return {}
+    import psycopg
+
+    from geno_core.durable_jobs import collect_durable_job_metrics
+
+    connection = psycopg.connect(database_url)
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT set_config('app.rls_enabled', 'false', false)")
+            cursor.execute("SELECT set_config('geno.runtime_project_access_control', 'false', false)")
+            cursor.execute("SELECT set_config('app.actor_id', 'runtime-metrics', false)")
+            cursor.execute("SELECT set_config('app.roles', 'system,worker', false)")
+        connection.commit()
+        return collect_durable_job_metrics(connection)
+    finally:
+        connection.close()
 
 
 def render_runtime_metrics() -> str:
@@ -131,4 +153,66 @@ def render_runtime_metrics() -> str:
             f"geno_runtime_postgres_pool_connections_available {_format_metric_number(pool_snapshot.get('available', 0))}",
         ]
     )
+
+    lines.extend(
+        [
+            "# HELP geno_durable_job_snapshot_ok Whether durable PostgreSQL queue metrics could be read.",
+            "# TYPE geno_durable_job_snapshot_ok gauge",
+        ]
+    )
+    try:
+        durable_snapshot = _durable_job_snapshot()
+    except Exception:  # metrics must remain scrapeable while the queue DB is unavailable.
+        durable_snapshot = {}
+        lines.append("geno_durable_job_snapshot_ok 0")
+    else:
+        lines.append(f"geno_durable_job_snapshot_ok {1 if durable_snapshot else 0}")
+
+    queue_metric_names = (
+        ("queue_depth", "geno_durable_job_queue_depth"),
+        ("oldest_queued_age_seconds", "geno_durable_job_oldest_queued_age_seconds"),
+        ("expired_active_count", "geno_durable_job_expired_active_count"),
+        ("oldest_expired_age_seconds", "geno_durable_job_oldest_expired_age_seconds"),
+        ("reclaimed_total", "geno_durable_job_reclaimed_total"),
+        ("dead_letter_total", "geno_durable_job_dead_letter_total"),
+        ("cancelled_total", "geno_durable_job_cancelled_total"),
+    )
+    for key, metric_name in queue_metric_names:
+        lines.extend([f"# TYPE {metric_name} gauge"])
+        for record in durable_snapshot.get("queues", []):
+            if not isinstance(record, Mapping):
+                continue
+            labels = _metric_labels(
+                {"queue": record.get("queue", ""), "job_type": record.get("job_type", "")}
+            )
+            lines.append(f"{metric_name}{{{labels}}} {_format_metric_number(record.get(key, 0))}")
+    for record in durable_snapshot.get("counters", []):
+        if not isinstance(record, Mapping):
+            continue
+        labels = _metric_labels(
+            {
+                "queue": record.get("queue", ""),
+                "job_type": record.get("job_type", ""),
+                "event": record.get("metric", ""),
+            }
+        )
+        lines.append(
+            f"geno_durable_job_events_total{{{labels}}} {_format_metric_number(record.get('value', 0))}"
+        )
+    for record in durable_snapshot.get("cursors", []):
+        if not isinstance(record, Mapping):
+            continue
+        labels = _metric_labels({"queue": record.get("queue_name", "")})
+        lines.append(
+            f"geno_durable_job_recovery_cursor{{{labels}}} "
+            f"{_format_metric_number(record.get('cursor_index', 0))}"
+        )
+        lines.append(
+            f"geno_durable_job_recovery_slots_used{{{labels}}} "
+            f"{_format_metric_number(record.get('recovery_slots_used', 0))}"
+        )
+        lines.append(
+            f"geno_durable_job_worker_heartbeat_age_seconds{{{labels}}} "
+            f"{_format_metric_number(record.get('worker_heartbeat_age_seconds', 0))}"
+        )
     return "\n".join(lines) + "\n"

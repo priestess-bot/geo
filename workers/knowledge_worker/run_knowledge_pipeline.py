@@ -13,6 +13,7 @@ import sys
 import time
 from typing import Any
 
+from geno_core.durable_jobs import LeaseClaim, LeaseFencedConnection, LeaseGuard, LostLeaseError
 from geno_core.knowledge_application import (
     crawl_public_knowledge_url,
     deepseek_extract_knowledge_facts,
@@ -24,7 +25,6 @@ from geno_core.knowledge_pipeline import (
     DEFAULT_EMBEDDING_MODEL,
     DEFAULT_EMBEDDING_MODEL_VERSION,
     DEFAULT_QDRANT_COLLECTION,
-    JOB_TABLES,
     GeoParserAdapter,
     KnowledgePipelineRepository,
     LocalBgeM3Embedder,
@@ -47,6 +47,10 @@ EMBEDDING_MIN_SUCCESS_RATIO = min(1.0, max(0.0, float(os.getenv("GEO_EMBEDDING_M
 FACT_MIN_CANDIDATE_COUNT = max(1, int(os.getenv("GEO_FACT_MIN_CANDIDATE_COUNT", "1")))
 
 
+class FinalizingDescriptorError(RuntimeError):
+    pass
+
+
 def _json(value: Any) -> dict[str, Any]:
     return dict(value or {}) if isinstance(value, dict) else {}
 
@@ -55,6 +59,12 @@ def _dict_cursor(repository: KnowledgePipelineRepository):
     from psycopg.rows import dict_row
 
     return repository.connection.cursor(row_factory=dict_row)
+
+
+def _defer_terminal_transaction(repository: KnowledgePipelineRepository) -> None:
+    connection = repository.connection
+    if isinstance(connection, LeaseFencedConnection):
+        connection.defer_commits_until_terminal()
 
 
 def _text_from_config(config: dict[str, Any]) -> str:
@@ -456,6 +466,7 @@ def _process_import_job(repository: KnowledgePipelineRepository, job: dict[str, 
         if uploaded_assets:
             result = {"asset_count": len(uploaded_assets), "asset_ids": [str(asset["id"]) for asset in uploaded_assets]}
             if not existing_precheck_gate:
+                _defer_terminal_transaction(repository)
                 _record_quality_gate(
                     repository,
                     job=job,
@@ -469,6 +480,7 @@ def _process_import_job(repository: KnowledgePipelineRepository, job: dict[str, 
         text = _text_from_config(config)
         if not text:
             raise ValueError("file import job has no uploaded source asset")
+        _defer_terminal_transaction(repository)
         asset = repository.create_asset_from_text(
             project_id=project_id,
             pipeline_run_id=pipeline_run_id or None,
@@ -481,6 +493,9 @@ def _process_import_job(repository: KnowledgePipelineRepository, job: dict[str, 
             market_code=str(config.get("market_code") or "GLOBAL"),
             locale=str(config.get("locale") or "en"),
             city=str(config.get("city") or "") or None,
+            asset_id=stable_pipeline_id(
+                "source-asset", job["id"], "uploaded_file", content_hash(text)
+            ),
         )
         _enqueue_parser(repository, asset, import_job_id=str(job["id"]))
         result = {"asset_count": 1, "asset_ids": [str(asset["id"])]}
@@ -510,6 +525,7 @@ def _process_import_job(repository: KnowledgePipelineRepository, job: dict[str, 
         )
         if not bool(precheck.get("accepted")):
             raise ValueError("text knowledge source failed pre-import quality gate")
+        _defer_terminal_transaction(repository)
         asset = repository.create_asset_from_text(
             project_id=project_id,
             pipeline_run_id=pipeline_run_id or None,
@@ -522,6 +538,9 @@ def _process_import_job(repository: KnowledgePipelineRepository, job: dict[str, 
             market_code=str(config.get("market_code") or "GLOBAL"),
             locale=str(config.get("locale") or "en"),
             city=str(config.get("city") or "") or None,
+            asset_id=stable_pipeline_id(
+                "source-asset", job["id"], source_mode, content_hash(text)
+            ),
         )
         _enqueue_parser(repository, asset, import_job_id=str(job["id"]))
         result = {"asset_count": 1, "asset_ids": [str(asset["id"])]}
@@ -534,20 +553,23 @@ def _process_import_job(repository: KnowledgePipelineRepository, job: dict[str, 
         requested_page_budget = max(1, int(config.get("max_pages") or 1))
         total_page_budget = max(requested_page_budget, len(urls))
         base_page_budget, remainder = divmod(total_page_budget, len(urls))
+        _defer_terminal_transaction(repository)
         with repository.connection.cursor() as cursor:
             for index, url in enumerate(urls):
                 page_budget = base_page_budget + (1 if index < remainder else 0)
                 cursor.execute(
                     """
                     INSERT INTO crawl_jobs (
-                      project_id, pipeline_run_id, import_job_id, source_url, seed_urls,
+                      id, project_id, pipeline_run_id, import_job_id, source_url, seed_urls,
                       crawl_mode, max_pages, depth_limit, include_patterns, exclude_patterns,
                       respect_robots, metadata
                     )
-                    VALUES (%s::uuid, %s::uuid, %s::uuid, %s, ARRAY[%s]::text[],
+                    VALUES (%s::uuid, %s::uuid, %s::uuid, %s::uuid, %s, ARRAY[%s]::text[],
                             %s, %s, %s, %s::text[], %s::text[], %s, %s::jsonb)
+                    ON CONFLICT (id) DO NOTHING
                     """,
                     (
+                        stable_pipeline_id("crawl-job", job["id"], index, url),
                         project_id,
                         pipeline_run_id,
                         str(job["id"]),
@@ -595,10 +617,17 @@ def _enqueue_parser(repository: KnowledgePipelineRepository, asset: dict[str, An
         cursor.execute(
             """
             INSERT INTO knowledge_parser_runs (
-              project_id, pipeline_run_id, import_job_id, source_asset_id, adapter_engine, adapter_version
-            ) VALUES (%s::uuid, %s::uuid, %s::uuid, %s::uuid, 'docling', 'geo-parser-adapter-v1')
+              id, project_id, pipeline_run_id, import_job_id, source_asset_id, adapter_engine, adapter_version
+            ) VALUES (%s::uuid, %s::uuid, %s::uuid, %s::uuid, %s::uuid, 'docling', 'geo-parser-adapter-v1')
+            ON CONFLICT (id) DO NOTHING
             """,
-            (asset["project_id"], asset.get("pipeline_run_id"), import_job_id, asset["id"]),
+            (
+                stable_pipeline_id("parser-run", asset["id"], import_job_id or ""),
+                asset["project_id"],
+                asset.get("pipeline_run_id"),
+                import_job_id,
+                asset["id"],
+            ),
         )
         repository.connection.commit()
 
@@ -659,6 +688,9 @@ def _process_crawl_job(repository: KnowledgePipelineRepository, job: dict[str, A
                 title=title,
                 source_uri=source_uri,
                 created_by="knowledge-crawl-worker",
+                asset_id=stable_pipeline_id(
+                    "crawl-asset", job["id"], source_uri, asset_type, content_hash(content)
+                ),
             )
         digest = content_hash(content)
         key = "/".join(
@@ -682,6 +714,9 @@ def _process_crawl_job(repository: KnowledgePipelineRepository, job: dict[str, A
             source_uri=source_uri,
             created_by="knowledge-crawl-worker",
             metadata={"byte_size": len(content), "adapter": adapter},
+            asset_id=stable_pipeline_id(
+                "crawl-asset", job["id"], source_uri, asset_type, digest
+            ),
         )
 
     output_assets: list[dict[str, Any]] = []
@@ -738,6 +773,7 @@ def _process_crawl_job(repository: KnowledgePipelineRepository, job: dict[str, A
     if link_graph_asset:
         output_assets.append(link_graph_asset)
     output_asset_ids = [str(asset["id"]) for asset in output_assets]
+    _defer_terminal_transaction(repository)
     with repository.connection.cursor() as cursor:
         cursor.execute(
             """
@@ -828,6 +864,7 @@ def _process_parser_run(repository: KnowledgePipelineRepository, job: dict[str, 
     with _dict_cursor(repository) as cursor:
         cursor.execute("SELECT * FROM knowledge_source_assets WHERE id = %s::uuid", (job["source_asset_id"],))
         asset = cursor.fetchone()
+    repository.connection.commit()
     if not asset:
         raise ValueError("source asset not found")
     asset_dict = dict(asset)
@@ -956,6 +993,7 @@ def _process_parser_run(repository: KnowledgePipelineRepository, job: dict[str, 
             store=_optional_object_store(),
         ) if html_text else None
         table_artifacts[table_index] = (csv_asset, html_asset)
+    _defer_terminal_transaction(repository)
     with repository.connection.cursor() as cursor:
         cursor.execute(
             """
@@ -1112,10 +1150,17 @@ def _process_parser_run(repository: KnowledgePipelineRepository, job: dict[str, 
         if _pipeline_run_type(repository, str(job.get("pipeline_run_id") or "") or None) != "reparse":
             cursor.execute(
                 """
-                INSERT INTO chunk_jobs (project_id, pipeline_run_id, import_job_id, parser_run_id)
-                VALUES (%s::uuid, %s::uuid, %s::uuid, %s::uuid)
+                INSERT INTO chunk_jobs (id, project_id, pipeline_run_id, import_job_id, parser_run_id)
+                VALUES (%s::uuid, %s::uuid, %s::uuid, %s::uuid, %s::uuid)
+                ON CONFLICT (id) DO NOTHING
                 """,
-                (job["project_id"], job.get("pipeline_run_id"), job.get("import_job_id"), job["id"]),
+                (
+                    stable_pipeline_id("chunk-job", job["id"]),
+                    job["project_id"],
+                    job.get("pipeline_run_id"),
+                    job.get("import_job_id"),
+                    job["id"],
+                ),
             )
         cursor.execute(
             """
@@ -1521,10 +1566,16 @@ def _process_chunk_job(repository: KnowledgePipelineRepository, job: dict[str, A
         )
         cursor.execute(
             """
-            INSERT INTO embedding_jobs (project_id, pipeline_run_id, chunk_job_id)
-            VALUES (%s::uuid, %s::uuid, %s::uuid)
+            INSERT INTO embedding_jobs (id, project_id, pipeline_run_id, chunk_job_id)
+            VALUES (%s::uuid, %s::uuid, %s::uuid, %s::uuid)
+            ON CONFLICT (id) DO NOTHING
             """,
-            (job["project_id"], job.get("pipeline_run_id"), job["id"]),
+            (
+                stable_pipeline_id("embedding-job", job["id"]),
+                job["project_id"],
+                job.get("pipeline_run_id"),
+                job["id"],
+            ),
         )
         repository.connection.commit()
     stale_point_ids = [str(chunk.get("qdrant_point_id") or "") for chunk in prior_chunks if chunk.get("qdrant_point_id")]
@@ -1533,6 +1584,7 @@ def _process_chunk_job(repository: KnowledgePipelineRepository, job: dict[str, A
             point_ids=stale_point_ids,
             payload={"status": "superseded", "embedding_status": "stale"},
         )
+    _defer_terminal_transaction(repository)
     _update_stage(
         repository,
         pipeline_run_id=str(job.get("pipeline_run_id") or "") or None,
@@ -1575,6 +1627,7 @@ def _process_embedding_job(repository: KnowledgePipelineRepository, job: dict[st
             (job["chunk_job_id"],),
         )
         chunks = [dict(row) for row in cursor.fetchall()]
+    repository.connection.commit()
     if not chunks:
         return {"embedded_count": 0, "failed_count": 0}
     embedder = LocalBgeM3Embedder(str(job.get("embedding_model") or DEFAULT_EMBEDDING_MODEL))
@@ -1632,6 +1685,7 @@ def _process_embedding_job(repository: KnowledgePipelineRepository, job: dict[st
         qdrant.upsert(points=points, vector_size=len(embedded[0][1]))
     success_ratio = round(len(points) / max(1, len(chunks)), 4)
     threshold_passed = bool(points) and success_ratio >= EMBEDDING_MIN_SUCCESS_RATIO
+    _defer_terminal_transaction(repository)
     with repository.connection.cursor() as cursor:
         for (chunk, _vector), point in zip(embedded, points, strict=True):
             cursor.execute(
@@ -1663,15 +1717,16 @@ def _process_embedding_job(repository: KnowledgePipelineRepository, job: dict[st
             cursor.execute(
                 """
                 INSERT INTO fact_extraction_jobs (
-                  project_id, pipeline_run_id, import_job_id, fact_kinds, chunk_filter, max_facts, metadata
+                  id, project_id, pipeline_run_id, import_job_id, fact_kinds, chunk_filter, max_facts, metadata
                 )
-                SELECT %s::uuid, %s::uuid, cj.import_job_id, ARRAY['brand', 'competitor', 'market', 'source']::text[],
+                SELECT %s::uuid, %s::uuid, %s::uuid, cj.import_job_id, ARRAY['brand', 'competitor', 'market', 'source']::text[],
                        %s::jsonb, 20, %s::jsonb
                 FROM chunk_jobs cj
                 WHERE cj.id = %s::uuid
-                ON CONFLICT DO NOTHING
+                ON CONFLICT (id) DO NOTHING
                 """,
                 (
+                    stable_pipeline_id("fact-extraction-job", job["id"]),
                     job["project_id"],
                     job.get("pipeline_run_id"),
                     json.dumps({"source_pipeline_run_id": str(chunks[0].get("pipeline_run_id") or "")}),
@@ -1772,7 +1827,9 @@ def _process_fact_extraction_job(repository: KnowledgePipelineRepository, job: d
             ),
         )
         chunks = [dict(row) for row in cursor.fetchall()]
+    repository.connection.commit()
     if not chunks:
+        _defer_terminal_transaction(repository)
         _update_stage(
             repository,
             pipeline_run_id=str(job.get("pipeline_run_id") or "") or None,
@@ -1815,6 +1872,7 @@ def _process_fact_extraction_job(repository: KnowledgePipelineRepository, job: d
         raise RuntimeError("DeepSeek API key is required for knowledge fact extraction")
     candidate_ids: list[str] = []
     fact_quality_findings: list[dict[str, Any]] = []
+    _defer_terminal_transaction(repository)
     with _dict_cursor(repository) as cursor:
         cursor.execute(
             """
@@ -2094,7 +2152,9 @@ def _load_active_facts(repository: KnowledgePipelineRepository, job: dict[str, A
             """,
             tuple(params),
         )
-        return [dict(row) for row in cursor.fetchall()]
+        facts = [dict(row) for row in cursor.fetchall()]
+    repository.connection.commit()
+    return facts
 
 
 def _process_prompt_generation_job(repository: KnowledgePipelineRepository, job: dict[str, Any]) -> dict[str, Any]:
@@ -2120,6 +2180,7 @@ def _process_prompt_generation_job(repository: KnowledgePipelineRepository, job:
             (job["project_id"], job["project_id"]),
         )
         existing_prompt_texts = [str(row[0] if not isinstance(row, dict) else row.get("text") or "") for row in cursor.fetchall()]
+    repository.connection.commit()
     if not template:
         raise RuntimeError("Prompt generation requires a published template version")
     model_output: dict[str, Any] | None = None
@@ -2158,6 +2219,7 @@ def _process_prompt_generation_job(repository: KnowledgePipelineRepository, job:
     candidate_ids: list[str] = []
     prompt_quality_findings: list[dict[str, Any]] = []
     selected_competitor = str(_json(job.get("source_fact_filter")).get("competitor") or "").strip()
+    _defer_terminal_transaction(repository)
     with repository.connection.cursor() as cursor:
         for index, fact in enumerate(facts):
             model_candidate = model_candidates[index] if index < len(model_candidates) else {}
@@ -2402,6 +2464,7 @@ def _process_content_generation_job(repository: KnowledgePipelineRepository, job
     source_action_id = str(target_action.get("source_action_id") or "") or None
     source_gap_type = str(target_action.get("source_gap_type") or "") or None
     draft_id = stable_pipeline_id("content-draft", job["id"], content_hash(draft_markdown)[:16])
+    _defer_terminal_transaction(repository)
     with repository.connection.cursor() as cursor:
         cursor.execute(
             """
@@ -2615,37 +2678,272 @@ def _process_job(repository: KnowledgePipelineRepository, table: str, job: dict[
     return {"skipped": table}
 
 
+def _knowledge_terminal_status(table: str, result: dict[str, Any]) -> str:
+    if table == "knowledge_parser_runs" and result.get("fallback_used"):
+        return "fallback_succeeded"
+    # A Content Job records a successful model result as succeeded. QA blocking
+    # belongs to the resulting Asset state, not a partial Job state.
+    if table == "content_generation_jobs":
+        return "succeeded"
+    if result.get("failed_count") or result.get("blocked"):
+        return "partial_succeeded"
+    return "succeeded"
+
+
+def _test_after_claim_failpoint(claim: LeaseClaim) -> None:
+    failpoint = os.getenv("GENO_DURABLE_JOB_AFTER_CLAIM_FAILPOINT", "").strip()
+    if not failpoint:
+        return
+    if os.getenv("GENO_DEPLOYMENT_ENVIRONMENT", "").strip().lower() != "test":
+        raise RuntimeError("durable job failpoints are restricted to the test environment")
+    if failpoint not in {"all", claim.spec.table}:
+        return
+    target_attempt = max(
+        1, int(os.getenv("GENO_DURABLE_JOB_AFTER_CLAIM_FAILPOINT_ATTEMPT", "1"))
+    )
+    if claim.attempt_count != target_attempt:
+        return
+    pause_seconds = max(
+        0.0, float(os.getenv("GENO_DURABLE_JOB_AFTER_CLAIM_PAUSE_SECONDS", "0"))
+    )
+    if pause_seconds:
+        time.sleep(pause_seconds)
+    else:
+        raise RuntimeError("test failpoint after durable job claim")
+
+
+def _test_after_business_failpoint(claim: LeaseClaim) -> None:
+    failpoint = os.getenv("GENO_DURABLE_JOB_AFTER_BUSINESS_FAILPOINT", "").strip()
+    if not failpoint:
+        return
+    if os.getenv("GENO_DEPLOYMENT_ENVIRONMENT", "").strip().lower() != "test":
+        raise RuntimeError("durable job failpoints are restricted to the test environment")
+    if failpoint not in {"all", claim.spec.table}:
+        return
+    target_attempt = max(
+        1, int(os.getenv("GENO_DURABLE_JOB_AFTER_BUSINESS_FAILPOINT_ATTEMPT", "1"))
+    )
+    if claim.attempt_count != target_attempt:
+        return
+    pause_seconds = max(
+        0.0, float(os.getenv("GENO_DURABLE_JOB_AFTER_BUSINESS_PAUSE_SECONDS", "0"))
+    )
+    if pause_seconds:
+        time.sleep(pause_seconds)
+    else:
+        raise RuntimeError("test failpoint after durable business result")
+
+
+def _test_after_finalizing_failpoint(claim: LeaseClaim) -> None:
+    failpoint = os.getenv("GENO_DURABLE_JOB_AFTER_FINALIZING_FAILPOINT", "").strip()
+    if not failpoint:
+        return
+    if os.getenv("GENO_DEPLOYMENT_ENVIRONMENT", "").strip().lower() != "test":
+        raise RuntimeError("durable job failpoints are restricted to the test environment")
+    if failpoint not in {"all", claim.spec.table}:
+        return
+    target_attempt = max(
+        1, int(os.getenv("GENO_DURABLE_JOB_AFTER_FINALIZING_FAILPOINT_ATTEMPT", "1"))
+    )
+    if claim.attempt_count != target_attempt:
+        return
+    pause_seconds = max(
+        0.0, float(os.getenv("GENO_DURABLE_JOB_AFTER_FINALIZING_PAUSE_SECONDS", "0"))
+    )
+    if pause_seconds:
+        time.sleep(pause_seconds)
+    else:
+        raise RuntimeError("test failpoint after durable finalizing descriptor")
+
+
+def _process_claim(
+    repository: KnowledgePipelineRepository,
+    claim: LeaseClaim,
+    *,
+    lease_seconds: int,
+    guard: LeaseGuard | None = None,
+) -> dict[str, Any]:
+    table = claim.spec.table
+    job = claim.worker_payload()
+    active_guard = guard or repository.lease_guard(claim, lease_seconds=lease_seconds)
+    active_guard.start()
+    try:
+        descriptor_persisted = False
+        with repository.fence_job_commits(claim, lease_seconds=lease_seconds) as fenced:
+            _test_after_claim_failpoint(claim)
+            if claim.claimed_from == "finalizing":
+                descriptor = _json(job.get("finalize_descriptor"))
+                result = _json(descriptor.get("result"))
+                status = str(descriptor.get("terminal_status") or "")
+                if not result or status not in claim.spec.success_statuses:
+                    raise FinalizingDescriptorError(
+                        f"reclaimed finalizing {table} has no valid persisted descriptor"
+                    )
+            else:
+                result = _process_job(repository, table, job)
+                status = _knowledge_terminal_status(table, result)
+            if not fenced.commits_deferred:
+                fenced.defer_commits_until_terminal()
+            _test_after_business_failpoint(claim)
+            active_guard.raise_if_stopped()
+            if claim.claimed_from != "finalizing" and claim.spec.supports_finalizing:
+                fenced.begin_finalizing(
+                    descriptor={
+                        "descriptor_version": "durable_artifact_finalize_v1",
+                        "terminal_status": status,
+                        "result": result,
+                    }
+                )
+                descriptor_persisted = True
+            else:
+                # Stop the independent heartbeat before the atomic terminal
+                # commit so it cannot observe the cleared token as a loss.
+                active_guard.stop()
+                fenced.complete(status=status, result=result)
+        if descriptor_persisted:
+            _test_after_finalizing_failpoint(claim)
+            active_guard.raise_if_stopped()
+            active_guard.stop()
+            repository.complete_job(claim, status=status, summary=result)
+        if job.get("project_id"):
+            repository.refresh_project_pipeline_states(project_id=str(job["project_id"]))
+        return {
+            "table": table,
+            "id": str(claim.job_id),
+            "status": status,
+            "reclaimed": claim.reclaimed,
+            "result": result,
+        }
+    except LostLeaseError as exc:
+        active_guard.stop()
+        repository.connection.rollback()
+        final_status = "lease_lost"
+        if exc.cancel_requested or active_guard.cancel_requested:
+            try:
+                repository.acknowledge_job_cancel(claim)
+                final_status = "cancelled"
+            except LostLeaseError:
+                repository.connection.rollback()
+        return {
+            "table": table,
+            "id": str(claim.job_id),
+            "status": final_status,
+            "reclaimed": claim.reclaimed,
+        }
+    except Exception as exc:  # noqa: BLE001 - the durable state must record handler failure.
+        try:
+            active_guard.raise_if_stopped()
+        except LostLeaseError as lease_error:
+            active_guard.stop()
+            repository.connection.rollback()
+            if lease_error.cancel_requested or active_guard.cancel_requested:
+                try:
+                    repository.acknowledge_job_cancel(claim)
+                    status = "cancelled"
+                except LostLeaseError:
+                    repository.connection.rollback()
+                    status = "lease_lost"
+            else:
+                status = "lease_lost"
+            return {
+                "table": table,
+                "id": str(claim.job_id),
+                "status": status,
+                "reclaimed": claim.reclaimed,
+            }
+        active_guard.stop()
+        try:
+            failed = repository.fail_job(
+                claim,
+                error_code=exc.__class__.__name__,
+                error_message=str(exc),
+                retryable=not isinstance(exc, FinalizingDescriptorError),
+            )
+            status = str(failed["status"])
+        except LostLeaseError:
+            repository.connection.rollback()
+            status = "lease_lost"
+        if job.get("project_id") and status != "lease_lost":
+            repository.refresh_project_pipeline_states(project_id=str(job["project_id"]))
+        return {
+            "table": table,
+            "id": str(claim.job_id),
+            "status": status,
+            "reclaimed": claim.reclaimed,
+            "error": str(exc),
+        }
+
+
 def run_once(repository: KnowledgePipelineRepository, *, worker_id: str, lease_seconds: int, max_jobs: int) -> dict[str, Any]:
     processed: list[dict[str, Any]] = []
     pipeline = repository.run_ready_pipeline_once(worker_id=worker_id)
     if pipeline:
         processed.append({"table": "knowledge_pipeline_runs", "id": str(pipeline["id"]), "status": "running"})
-    for _ in range(max_jobs):
-        claimed = None
-        claimed_table = ""
-        for table in JOB_TABLES:
-            claimed = repository.claim_job(table, worker_id=worker_id, lease_seconds=lease_seconds)
-            if claimed:
-                claimed_table = table
+
+    # Owner transfer for every table happens before any recovered handler runs.
+    # Guards start immediately so later tables cannot expire while an earlier
+    # recovered handler is executing.
+    recovery_claims: list[tuple[LeaseClaim, LeaseGuard]] = []
+    recovery_order = repository.next_job_table_order(
+        queue_name="knowledge_recovery", worker_id=worker_id
+    )
+    for table in recovery_order:
+        outcome = repository.claim_job_outcome(
+            table,
+            worker_id=worker_id,
+            lease_seconds=lease_seconds,
+            mode="recovery",
+        )
+        if outcome.claim is not None:
+            guard = repository.lease_guard(outcome.claim, lease_seconds=lease_seconds).start()
+            recovery_claims.append((outcome.claim, guard))
+        elif outcome.kind != "empty":
+            processed.append(
+                {
+                    "table": table,
+                    "id": str(outcome.job_id),
+                    "status": outcome.kind,
+                    "reclaimed": False,
+                }
+            )
+    repository.record_recovery_pass(worker_id=worker_id, slots_used=len(recovery_order))
+    for claim, guard in recovery_claims:
+        processed.append(
+            _process_claim(
+                repository,
+                claim,
+                lease_seconds=lease_seconds,
+                guard=guard,
+            )
+        )
+
+    # Fresh work has a separate budget and a DB-persisted round-robin cursor.
+    for _ in range(max(0, max_jobs)):
+        claim: LeaseClaim | None = None
+        for table in repository.next_job_table_order(
+            queue_name="knowledge_fresh", worker_id=worker_id
+        ):
+            outcome = repository.claim_job_outcome(
+                table,
+                worker_id=worker_id,
+                lease_seconds=lease_seconds,
+                mode="fresh",
+            )
+            if outcome.claim is not None:
+                claim = outcome.claim
                 break
-        if not claimed:
+            if outcome.kind != "empty":
+                processed.append(
+                    {
+                        "table": table,
+                        "id": str(outcome.job_id),
+                        "status": outcome.kind,
+                        "reclaimed": False,
+                    }
+                )
+        if claim is None:
             break
-        try:
-            result = _process_job(repository, claimed_table, claimed)
-            status = "succeeded"
-            if claimed_table == "knowledge_parser_runs" and result.get("fallback_used"):
-                status = "fallback_succeeded"
-            elif result.get("failed_count") or result.get("blocked"):
-                status = "partial_succeeded"
-            repository.complete_job(claimed_table, str(claimed["id"]), status=status, summary=result)
-            if claimed.get("project_id"):
-                repository.refresh_project_pipeline_states(project_id=str(claimed["project_id"]))
-            processed.append({"table": claimed_table, "id": str(claimed["id"]), "status": status, "result": result})
-        except Exception as exc:  # noqa: BLE001 - worker must persist durable failure state.
-            repository.fail_job(claimed_table, str(claimed["id"]), error_code=exc.__class__.__name__, error_message=str(exc))
-            if claimed.get("project_id"):
-                repository.refresh_project_pipeline_states(project_id=str(claimed["project_id"]))
-            processed.append({"table": claimed_table, "id": str(claimed["id"]), "status": "failed_or_requeued", "error": str(exc)})
+        processed.append(_process_claim(repository, claim, lease_seconds=lease_seconds))
     return {"worker": worker_id, "processed": processed}
 
 

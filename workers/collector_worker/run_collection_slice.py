@@ -44,6 +44,7 @@ from geno_core.collectors import (
     ThirdPartySerpCollector,
 )
 from geno_core.contracts import CollectorBackend
+from geno_core.durable_jobs import LeaseClaim, LeaseFencedConnection, lease_claim_from_internal_environment
 from geno_core.graph import build_citation_graph
 from geno_core.fidelity import build_runtime_fidelity_check_from_records
 from geno_core.fidelity_schedule import build_browser_fidelity_sampling_plan
@@ -678,8 +679,14 @@ def _persist_records(
     judge_gateway: str,
     judge_model: str,
     ensure_project_bootstrap: bool = True,
+    durable_lease: tuple[LeaseClaim, int] | None = None,
 ) -> dict[str, object]:
     repository = build_repository_from_env()
+    if durable_lease is not None:
+        claim, lease_seconds = durable_lease
+        repository.connection = LeaseFencedConnection(
+            repository.connection, claim, lease_seconds=lease_seconds
+        )
     if ensure_project_bootstrap:
         repository.save_project_bootstrap(bootstrap)
     snapshot_archive_summary: dict[str, object] = {
@@ -872,6 +879,9 @@ def _persist_records(
             f"worker-runtime-{collection_summary.created_at.strftime('%Y%m%dT%H%M%S%fZ')}"
             f"-{collection_summary.id[:8]}"
         )
+        durable_attempt = os.environ.get("GENO_INTERNAL_DURABLE_ATTEMPT_COUNT", "").strip()
+        if durable_attempt:
+            report_version = f"{report_version}-attempt-{int(durable_attempt)}"
         report = MarkdownCsvReportExporter().export(
             project_id=bootstrap.project.id,
             market_code=bootstrap.project.market_code,
@@ -1087,6 +1097,7 @@ def _persist_records(
 
 
 def main() -> None:
+    durable_lease = lease_claim_from_internal_environment()
     parser = argparse.ArgumentParser(description="Run a GEO collection slice")
     parser.add_argument(
         "--mode",
@@ -1483,6 +1494,7 @@ def main() -> None:
                 judge_gateway=args.judge_gateway,
                 judge_model=args.judge_model,
                 ensure_project_bootstrap=not bool(args.project_id),
+                durable_lease=durable_lease,
             )
         except RuntimePersistenceError as exc:
             print(f"persistence_error: {exc}", file=sys.stderr)
