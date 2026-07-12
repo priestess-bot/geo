@@ -1,20 +1,40 @@
 import { cookies } from "next/headers";
 
 import { resolveCounterpartPortalUrl } from "./_auth/portalUrl";
+import {
+  performRuntimeHttpRequest,
+  runtimeGuardHeaders,
+  type RuntimeErrorEnvelope,
+  type RuntimeHttpResult,
+  type RuntimeRequestGuards,
+  type RuntimeResponseMetadata
+} from "./_runtime/contracts";
 
-type RuntimeRequestOptions = {
+export type RuntimeRequestOptions = RuntimeRequestGuards & {
   method?: string;
   body?: unknown;
   query?: Record<string, string | number | undefined | null>;
   cache?: RequestCache;
 };
 
-export type RuntimeResult<T> = {
-  ok: boolean;
-  data?: T;
-  error?: string;
-  status?: number;
-};
+export type RuntimeResult<T> =
+  | {
+      ok: true;
+      data: T;
+      status: number;
+      response: RuntimeResponseMetadata;
+    }
+  | {
+      ok: false;
+      error: string;
+      problem: RuntimeErrorEnvelope;
+      status?: number;
+      response: RuntimeResponseMetadata;
+    };
+
+type ParseJsonResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
 
 export function apiBase(): string {
   return process.env.API_INTERNAL_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://api:8000";
@@ -81,27 +101,37 @@ function runtimeUrl(path: string, query?: RuntimeRequestOptions["query"]): strin
   return url.toString();
 }
 
-export async function runtimeRequest<T>(path: string, options: RuntimeRequestOptions = {}): Promise<RuntimeResult<T>> {
-  const headers: HeadersInit = options.body
-    ? await actorHeaders({ "Content-Type": "application/json" })
-    : await actorHeaders();
-  try {
-    const response = await fetch(runtimeUrl(path, options.query), {
-      method: options.method || "GET",
-      headers,
-      body: options.body ? JSON.stringify(options.body) : undefined,
-      cache: options.cache || "no-store"
-    });
-    const contentType = response.headers.get("content-type") || "";
-    const payload = contentType.includes("application/json") ? await response.json() : await response.text();
-    if (!response.ok) {
-      const detail = typeof payload === "object" && payload && "detail" in payload ? String(payload.detail) : String(payload);
-      return { ok: false, error: detail || `Runtime request failed with ${response.status}`, status: response.status };
-    }
-    return { ok: true, data: payload as T, status: response.status };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Runtime API unavailable" };
+export async function runtimeHttpRequest<T>(
+  path: string,
+  options: RuntimeRequestOptions = {}
+): Promise<RuntimeHttpResult<T>> {
+  const hasBody = options.body !== undefined;
+  const commandHeaders = runtimeGuardHeaders(options);
+  const headers = await actorHeaders({
+    ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    ...commandHeaders
+  });
+  return performRuntimeHttpRequest<T>(runtimeUrl(path, options.query), {
+    method: options.method || "GET",
+    headers,
+    body: hasBody ? JSON.stringify(options.body) : undefined,
+    cache: options.cache || "no-store"
+  });
+}
+
+export async function runtimeRequest<T>(
+  path: string,
+  options: RuntimeRequestOptions = {}
+): Promise<RuntimeResult<T>> {
+  const result = await runtimeHttpRequest<T>(path, options);
+  if (result.ok) {
+    return result;
   }
+  return {
+    ...result,
+    error: result.error.detail,
+    problem: result.error
+  };
 }
 
 export function lines(value: FormDataEntryValue | null): string[] {
@@ -111,7 +141,10 @@ export function lines(value: FormDataEntryValue | null): string[] {
     .filter(Boolean);
 }
 
-export function parseJsonObject(value: FormDataEntryValue | null, fieldName: string): RuntimeResult<Record<string, unknown>> {
+export function parseJsonObject(
+  value: FormDataEntryValue | null,
+  fieldName: string
+): ParseJsonResult<Record<string, unknown>> {
   const raw = String(value || "").trim();
   if (!raw) {
     return { ok: true, data: {} };

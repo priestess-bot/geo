@@ -7,8 +7,16 @@ import {
   type RuntimeAuthMeResponse
 } from "./_auth/contracts";
 import { resolveCounterpartPortalUrl } from "./_auth/portalUrl";
+import {
+  performRuntimeHttpRequest,
+  runtimeGuardHeaders,
+  type RuntimeErrorEnvelope,
+  type RuntimeHttpResult,
+  type RuntimeRequestGuards,
+  type RuntimeResponseMetadata
+} from "./_runtime/contracts";
 
-type RuntimeRequestOptions = {
+export type RuntimeRequestOptions = RuntimeRequestGuards & {
   method?: string;
   body?: unknown;
   query?: Record<string, string | number | undefined | null>;
@@ -58,8 +66,19 @@ export type SessionPortalResponse = PortalAccessResponse & {
 };
 
 export type RuntimeResult<T> =
-  | { ok: true; data: T; status: number }
-  | { ok: false; error: AuthErrorEnvelope; status?: number };
+  | {
+      ok: true;
+      data: T;
+      status: number;
+      response: RuntimeResponseMetadata;
+    }
+  | {
+      ok: false;
+      error: AuthErrorEnvelope;
+      problem: RuntimeErrorEnvelope;
+      status?: number;
+      response: RuntimeResponseMetadata;
+    };
 
 export type PortalRuntimeData = {
   scores: RuntimePage;
@@ -139,37 +158,54 @@ function runtimeUrl(path: string, query?: RuntimeRequestOptions["query"]): strin
   return url.toString();
 }
 
-export async function runtimeRequest<T>(path: string, options: RuntimeRequestOptions = {}): Promise<RuntimeResult<T>> {
-  try {
-    const headers = options.body
-      ? await actorHeaders(options.actorId, { "Content-Type": "application/json" }, options.includeCsrfProof)
-      : await actorHeaders(options.actorId, undefined, options.includeCsrfProof);
-    const response = await fetch(runtimeUrl(path, options.query), {
-      method: options.method || "GET",
-      headers,
-      body: options.body ? JSON.stringify(options.body) : undefined,
-      cache: options.cache || "no-store"
-    });
-    const contentType = response.headers.get("content-type") || "";
-    const payload = contentType.includes("application/json") ? await response.json().catch(() => undefined) : undefined;
-    if (!response.ok) {
-      return {
-        ok: false,
-        error: parseAuthError(payload, "auth_request_failed", `Runtime request failed with ${response.status}`),
-        status: response.status
-      };
-    }
-    return { ok: true, data: payload as T, status: response.status };
-  } catch {
-    return {
-      ok: false,
-      error: {
+export async function runtimeHttpRequest<T>(
+  path: string,
+  options: RuntimeRequestOptions = {}
+): Promise<RuntimeHttpResult<T>> {
+  const hasBody = options.body !== undefined;
+  const commandHeaders = runtimeGuardHeaders(options);
+  const headers = await actorHeaders(
+    options.actorId,
+    {
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+      ...commandHeaders
+    },
+    options.includeCsrfProof
+  );
+  return performRuntimeHttpRequest<T>(runtimeUrl(path, options.query), {
+    method: options.method || "GET",
+    headers,
+    body: hasBody ? JSON.stringify(options.body) : undefined,
+    cache: options.cache || "no-store"
+  });
+}
+
+export async function runtimeRequest<T>(
+  path: string,
+  options: RuntimeRequestOptions = {}
+): Promise<RuntimeResult<T>> {
+  const result = await runtimeHttpRequest<T>(path, options);
+  if (result.ok) {
+    return result;
+  }
+  const legacyError = result.status === undefined
+    ? {
         code: "auth_upstream_unavailable",
         detail: "Runtime API unavailable",
-        correlation_id: ""
+        correlation_id: result.error.correlation_id
       }
-    };
-  }
+    : result.error;
+  const fallbackCode = result.status === undefined ? "auth_upstream_unavailable" : "auth_request_failed";
+  return {
+    ...result,
+    error: parseAuthError(
+      legacyError,
+      fallbackCode,
+      legacyError.detail,
+      legacyError.correlation_id
+    ),
+    problem: result.error
+  };
 }
 
 export async function loadSessionPortal(projectId?: string): Promise<SessionPortalResponse> {
@@ -281,14 +317,21 @@ async function loadAllCustomerProjects(): Promise<RuntimeResult<AuthorizedProjec
     }
     offset = records.length;
   }
-  return { ok: true, data: records, status: 200 };
+  return { ok: true, data: records, status: 200, response: {} };
 }
 
 function projectPaginationFailure(detail: string): RuntimeResult<AuthorizedProject[]> {
+  const problem: RuntimeErrorEnvelope = {
+    code: "runtime_invalid_page",
+    detail,
+    correlation_id: ""
+  };
   return {
     ok: false,
     error: { code: "auth_request_failed", detail, correlation_id: "" },
-    status: 502
+    problem,
+    status: 502,
+    response: {}
   };
 }
 
