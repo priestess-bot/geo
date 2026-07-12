@@ -36,3 +36,16 @@ During pre-cutover development, changing the baseline requires deleting the
 disposable `geno_v2` volume and performing a fresh install. After the baseline
 is released, never edit a listed baseline file; add an ordered file under
 `migrations/` and list it in `migration_files` instead.
+
+## Runtime authorization boundary
+
+Baseline `0010_tenancy_project_rls.sql` creates and forces RLS on the tenancy,
+project, membership, derived-grant, profile, and audit tables, but deliberately
+defines no runtime policies and grants `geno_v2_runtime` no schema, table, or
+function access. Caller-controlled `app.actor_id`, `app.tenant_id`,
+`app.project_id`, `app.project_ids`, or role GUCs are not authentication.
+
+The planned `0011` session authorization slice must resolve actor, tenant, and
+project scope by looking up an active `runtime_sessions` row from a secret
+`session_token_hash`. Only that session-backed context may unlock runtime RLS.
+Until `0011` is installed and its negative tests pass, Gate 1 remains pending.

@@ -94,11 +94,14 @@ class SchemaV2ManifestContractsTest(unittest.TestCase):
 
         self.assertEqual(manifest.schema_generation, EXPECTED_SCHEMA_GENERATION)
         self.assertEqual(manifest.database_name, EXPECTED_DATABASE_NAME)
-        self.assertEqual(manifest.baseline_version, "2.0.0-b1")
+        self.assertEqual(manifest.baseline_version, "2.0.0-b2")
         self.assertEqual(manifest.minimum_app_version, "0.1.0")
         self.assertEqual(
             [item.path for item in manifest.baseline_files],
-            ["baseline/0000_extensions_roles.sql"],
+            [
+                "baseline/0000_extensions_roles.sql",
+                "baseline/0010_tenancy_project_rls.sql",
+            ],
         )
         self.assertEqual(manifest.migration_files, ())
         self.assertEqual(manifest.baseline_hash, compute_baseline_hash(manifest.baseline_files))
@@ -160,6 +163,52 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         self.assertIn("app_commit text NOT NULL", sql)
         self.assertIn("CREATE TRIGGER schema_migration_ledger_immutable", sql)
         self.assertIn("BEFORE UPDATE OR DELETE ON schema_migration_ledger", sql)
+
+    def test_tenancy_baseline_is_clean_canonical_and_fail_closed(self) -> None:
+        sql = (SCHEMA_ROOT / "baseline/0010_tenancy_project_rls.sql").read_text(
+            encoding="utf-8"
+        )
+
+        for forbidden in (
+            "uuid_generate_v4",
+            "CREATE ROLE geno_v2_runtime LOGIN",
+            "CREATE ROLE geno_v2_authz_owner LOGIN",
+            "PASSWORD",
+            "CONCURRENTLY",
+            "quarantine",
+            "FROM public.runtime_sessions",
+            "FROM public.project_member_invitations",
+            "current_setting('app.",
+            "CREATE POLICY",
+            "GRANT SELECT ON market_profiles",
+            "GRANT EXECUTE ON FUNCTION",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, sql)
+
+        self.assertIn("DEFAULT gen_random_uuid()", sql)
+        self.assertIn("NOLOGIN NOSUPERUSER", sql)
+        self.assertIn("NOREPLICATION NOBYPASSRLS", sql)
+        self.assertIn("NOREPLICATION BYPASSRLS", sql)
+        self.assertIn("REVOKE CREATE ON SCHEMA public FROM PUBLIC", sql)
+        self.assertIn("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC", sql)
+        self.assertIn("FOREIGN KEY (project_id, tenant_id)", sql)
+        self.assertIn("REFERENCES projects(id, tenant_id)", sql)
+        self.assertIn("CHECK (role IN ('super_admin', 'tenant_admin'))", sql)
+        self.assertIn("'project_owner', 'analyst', 'reviewer'", sql)
+        self.assertIn("pg_catalog.pg_auth_members", sql)
+        self.assertIn("must not participate in role memberships", sql)
+        self.assertIn("ALTER TABLE audit_events FORCE ROW LEVEL SECURITY", sql)
+        self.assertIn("CREATE TRIGGER tenant_members_sync_project_grants", sql)
+        self.assertIn("CREATE TRIGGER projects_sync_tenant_grants", sql)
+        self.assertIn("CREATE TRIGGER tenants_sync_status_grants", sql)
+        self.assertIn("CREATE TRIGGER audit_events_immutable", sql)
+        self.assertIn("FOREIGN KEY (tenant_id) REFERENCES tenants(id)", sql)
+
+        readme = (SCHEMA_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("defines no runtime policies", readme)
+        self.assertIn("session_token_hash", readme)
+        self.assertIn("Gate 1 remains pending", readme)
 
     def test_runner_uses_a_session_lock_and_transactional_ledger(self) -> None:
         runner = (ROOT / "scripts/schema_v2_runner.py").read_text(encoding="utf-8")
