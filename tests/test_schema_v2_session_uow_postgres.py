@@ -175,36 +175,30 @@ class SchemaV2SessionUnitOfWorkPostgresBehaviorTest(unittest.TestCase):
         attempt_created_at = issued_at - timedelta(seconds=2)
         accepted_at = issued_at - timedelta(seconds=1)
         invitation_expires_at = issued_at + timedelta(days=2)
-        delivery_expires_at = min(expires_at, issued_at + timedelta(minutes=15))
+        delivery_expires_at = datetime.now(UTC) + timedelta(minutes=15)
         invitation_token_hash = _digest(f"session-uow-invitation-{state}-{invitation_id}")
 
         cursor.execute(
             "INSERT INTO project_member_invitations ("
-            "id, tenant_id, project_id, email, role, status, invite_token_hash, "
-            "audience, allowed_surfaces, invited_by, accepted_by_attempt_id, "
-            "expires_at, accepted_at, created_at) "
-            "VALUES (%s, %s, %s, %s, 'project_owner', 'accepted', %s, "
-            "'admin', ARRAY['admin']::text[], 'session-uow-behavior-test', %s, %s, %s, %s)",
+            "id, tenant_id, project_id, email, role, invite_token_hash, "
+            "audience, allowed_surfaces, invited_by, expires_at, created_at) "
+            "VALUES (%s, %s, %s, %s, 'project_owner', %s, "
+            "'admin', ARRAY['admin']::text[], 'session-uow-behavior-test', %s, %s)",
             (
                 invitation_id,
                 cls.tenant_id,
                 cls.project_ids[0],
                 cls.actor_id,
                 invitation_token_hash,
-                attempt_id,
                 invitation_expires_at,
-                accepted_at,
                 invitation_created_at,
             ),
         )
         cursor.execute(
             "INSERT INTO auth_invitation_redemption_attempts ("
             "id, tenant_id, project_id, invitation_id, requested_surface, "
-            "idempotency_key_hash, request_hash, token_fingerprint, session_id, "
-            "status, created_at, delivery_ciphertext, delivery_key_id, "
-            "delivery_nonce, delivery_expires_at) "
-            "VALUES (%s, %s, %s, %s, 'admin', %s, %s, %s, %s, "
-            "'succeeded', %s, %s, %s, %s, %s)",
+            "idempotency_key_hash, request_hash, token_fingerprint, created_at) "
+            "VALUES (%s, %s, %s, %s, 'admin', %s, %s, %s, %s)",
             (
                 attempt_id,
                 cls.tenant_id,
@@ -213,12 +207,7 @@ class SchemaV2SessionUnitOfWorkPostgresBehaviorTest(unittest.TestCase):
                 _digest(f"session-uow-idempotency-{state}-{attempt_id}"),
                 _digest(f"session-uow-request-{state}-{attempt_id}"),
                 invitation_token_hash,
-                session_id,
                 attempt_created_at,
-                b"encrypted-session-token-fixture",
-                "session-uow-behavior-key",
-                b"session-uow-behavior-nonce",
-                delivery_expires_at,
             ),
         )
         cursor.execute(
@@ -241,6 +230,28 @@ class SchemaV2SessionUnitOfWorkPostgresBehaviorTest(unittest.TestCase):
                 issued_at,
                 expires_at,
                 psycopg.types.json.Jsonb({"fixture": state}),
+            ),
+        )
+        cursor.execute(
+            "UPDATE project_member_invitations SET status = 'accepted', "
+            "accepted_by_attempt_id = %s, accepted_at = %s, "
+            "updated_at = greatest(clock_timestamp(), updated_at + interval '1 microsecond') "
+            "WHERE id = %s",
+            (attempt_id, accepted_at, invitation_id),
+        )
+        cursor.execute(
+            "UPDATE auth_invitation_redemption_attempts SET status = 'succeeded', "
+            "session_id = %s, delivery_ciphertext = %s, delivery_key_id = %s, "
+            "delivery_nonce = %s, delivery_expires_at = %s, "
+            "updated_at = greatest(clock_timestamp(), updated_at + interval '1 microsecond') "
+            "WHERE id = %s",
+            (
+                session_id,
+                b"encrypted-session-token-fixture",
+                "session-uow-behavior-key",
+                b"uow-nonce-12",
+                delivery_expires_at,
+                attempt_id,
             ),
         )
         return session_id
