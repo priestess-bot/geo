@@ -122,7 +122,8 @@ infra/db/schema-v2/
   manifest.json
   baseline/
     0000_extensions_roles.sql
-    0010_tenancy_auth_rls.sql
+    0010_tenancy_project_rls.sql
+    0011_auth_sessions_invitations.sql
     0020_collection_geo_scoring.sql
     0030_knowledge_pipeline.sql
     0040_reports_notifications_integrations.sql
@@ -159,6 +160,25 @@ schema_migration_ledger(
 - API、Dispatcher 和所有 Worker 启动时校验 `schema_generation=2`、baseline hash 和应用兼容范围；
 - 生产 seed 只包含系统策略、系统 Skill、Prompt Definition 和枚举配置，不包含示例客户内容；
 - 测试 fixture 与生产 seed 完全分离。
+
+数据库授权上下文必须满足：
+
+```text
+HTTP request
+  -> hash raw session token in process
+  -> SET LOCAL app.session_token_hash
+  -> SECURITY DEFINER resolver
+  -> active runtime_sessions snapshot
+  -> actor / tenant / project capabilities
+```
+
+- `0010` 只安装 Tenancy、Project、Membership、derived Grant 和 Audit 边界，并对全部表启用 `FORCE RLS`；在 `0011` 安装前，runtime role 没有 schema/table/function 权限，也没有 runtime policy；
+- Schema v2 授权只接受事务级 `app.session_token_hash`，不得使用 `app.actor_id`、`app.tenant_id`、`app.project_id`、`app.project_ids` 或请求角色 GUC 作为身份真源；
+- raw Session Token 永不进入 PostgreSQL、日志、错误、审计或 Job payload；数据库只接收其 SHA-256，且 runtime role 不能直接读取或枚举 `runtime_sessions.session_token_hash`；
+- 无 hash、格式错误、未知、过期或撤销 Session 一律解析为匿名零权限，不向调用方暴露具体原因；
+- 每个事务重新设置 `SET LOCAL app.session_token_hash`，连接池归还前必须 rollback/reset，清理失败时销毁连接；
+- Worker 不继承用户 Session Token/hash，使用独立 worker 数据库角色和窄 Job 函数；Job 只保存请求 Session/Actor 的审计 lineage；
+- API/Worker 登录角色、runtime group role、authz owner 和 schema owner 必须分离；runtime/worker 不能继承或 `SET ROLE` 到 `BYPASSRLS` authz owner。
 
 ---
 
