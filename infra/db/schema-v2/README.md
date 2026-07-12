@@ -56,10 +56,17 @@ portal surface, policy, state, and issuance timeline must agree at commit.
 Project-member reads expose only the caller's row unless the resolved project
 scope contains `member.manage`.
 
-Invitation redemption, preflight counter consumption, session issuance and
-revocation commands, reauthentication queue mutation, and the write-control
-enablement path remain sealed for `0012`. Gate 1 remains pending until that
-sensitive command boundary and its race/idempotency tests pass.
+Baseline `0012_auth_state_guards.sql` makes auth history single-directional and
+revokes affected sessions when membership, derived grant, project archive, or
+tenant-disable state changes. Session issuance takes shared locks on its scope
+sources, so a concurrent stale session is either rejected or immediately
+revoked. Revocation atomically creates one reauth queue row and remains
+available while privilege-expanding auth writes are disabled.
+
+Invitation creation/redemption, preflight counter consumption, session command
+entry points, reauthentication resolution, write-control enablement, and LOGIN
+provisioning remain sealed for the next sensitive command slice. Gate 1 remains pending
+until that command boundary and its race/idempotency tests pass.
 
 The baseline creates `geno_v2_api_login` as a `NOLOGIN`, passwordless,
 `NOINHERIT`, `NOBYPASSRLS` deployment placeholder. It is the only permitted
@@ -71,10 +78,9 @@ owner. The baseline clears global and database-specific role settings for the
 placeholder; connection-pool checkout must still clear settings on existing
 backends before beginning a request transaction.
 
-The 0012 command boundary must add member/grant/project lifecycle session
-revocation and reauthentication triggers before it provides secret provisioning
-and real LOGIN/connection-pool tests. Provisioning must then atomically set a
-newly rotated password and enable `LOGIN`; enabling `LOGIN` alone is forbidden
-because the baseline always clears any pre-existing password with `PASSWORD
-NULL`. Every API transaction must use `SET LOCAL ROLE geno_v2_runtime` and `SET
-LOCAL app.session_token_hash`.
+The next command boundary must provide secret provisioning and real
+LOGIN/connection-pool tests. Provisioning must atomically set a newly rotated
+password and enable `LOGIN`; enabling `LOGIN` alone is forbidden because the
+baseline always clears any pre-existing password with `PASSWORD NULL`. Every API
+transaction must use `SET LOCAL ROLE geno_v2_runtime` and `SET LOCAL
+app.session_token_hash`.

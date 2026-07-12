@@ -460,7 +460,7 @@ BEGIN
 
     chain_required := chain_required
         OR attempt_row.status = 'succeeded'
-        OR invitation_row.accepted_by_attempt_id = attempt_row.id;
+        OR coalesce(invitation_row.accepted_by_attempt_id = attempt_row.id, false);
     IF NOT chain_required THEN
         RETURN NULL;
     END IF;
