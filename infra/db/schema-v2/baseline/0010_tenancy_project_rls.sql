@@ -29,19 +29,45 @@ BEGIN
     IF EXISTS (
         SELECT 1
         FROM pg_catalog.pg_auth_members AS membership
-        WHERE membership.roleid IN (
-                SELECT role_entry.oid
-                FROM pg_catalog.pg_roles AS role_entry
-                WHERE role_entry.rolname IN ('geno_v2_runtime', 'geno_v2_authz_owner')
+        WHERE membership.roleid = (
+                SELECT oid FROM pg_catalog.pg_roles
+                WHERE rolname = 'geno_v2_authz_owner'
             )
-           OR membership.member IN (
-                SELECT role_entry.oid
-                FROM pg_catalog.pg_roles AS role_entry
-                WHERE role_entry.rolname IN ('geno_v2_runtime', 'geno_v2_authz_owner')
+           OR membership.member = (
+                SELECT oid FROM pg_catalog.pg_roles
+                WHERE rolname = 'geno_v2_authz_owner'
             )
+           OR membership.member = (
+                SELECT oid FROM pg_catalog.pg_roles
+                WHERE rolname = 'geno_v2_runtime'
+            )
+           OR membership.roleid = (
+                SELECT oid FROM pg_catalog.pg_roles
+                WHERE rolname = 'geno_v2_api_login'
+            )
+           OR (
+                membership.roleid = (
+                    SELECT oid FROM pg_catalog.pg_roles
+                    WHERE rolname = 'geno_v2_runtime'
+                )
+                AND membership.member IS DISTINCT FROM (
+                    SELECT oid FROM pg_catalog.pg_roles
+                    WHERE rolname = 'geno_v2_api_login'
+                )
+           )
+           OR (
+                membership.member = (
+                    SELECT oid FROM pg_catalog.pg_roles
+                    WHERE rolname = 'geno_v2_api_login'
+                )
+                AND membership.roleid IS DISTINCT FROM (
+                    SELECT oid FROM pg_catalog.pg_roles
+                    WHERE rolname = 'geno_v2_runtime'
+                )
+           )
     ) THEN
         RAISE EXCEPTION
-            'Schema v2 boundary roles must not participate in role memberships';
+            'Schema v2 boundary roles contain an unauthorized role membership';
     END IF;
 END
 $roles$;
