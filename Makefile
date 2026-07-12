@@ -377,6 +377,23 @@ backup-smoke:
 	docker compose -p geno-backup-smoke -f infra/docker-compose.yml --profile backup-smoke run --rm backup-object-smoke
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py backup-smoke
 
+.PHONY: test-durable-leases smoke-durable-lease-recovery
+
+test-durable-leases:
+	GENO_DURABLE_JOB_TEST_DATABASE_URL="$${GENO_DURABLE_JOB_TEST_DATABASE_URL:?required}" \
+		PYTHONPATH=packages/geno_core:apps/api:. python3 -m pytest -q \
+		tests/test_durable_job_lease_contracts.py \
+		tests/test_durable_job_lease_postgres.py \
+		tests/test_api_contracts.py::ApiContractsTest::test_terminal_collection_job_cancel_maps_state_conflict_to_409 \
+		tests/test_api_contracts.py::ApiContractsTest::test_missing_collection_job_cancel_remains_404
+
+smoke-durable-lease-recovery:
+	PYTHONPATH=packages/geno_core:apps/api:. python3 scripts/verify_durable_job_lease_recovery.py \
+		--database-url "$${GENO_DURABLE_JOB_TEST_DATABASE_URL:?required}" \
+		--compose-project "$${COMPOSE_PROJECT_NAME:-geo-durable-leases}" \
+		--artifact-path tmp/durable-job-lease-recovery/latest.json \
+		--run-actor-kill-tests
+
 production-v1-progress:
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py checklist --allow-pending
 	PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_production_v1_gate.py production-v1-e2e --allow-pending

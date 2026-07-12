@@ -57,7 +57,8 @@ services:
           /migrations/up/0025_global_auth_audit.sql \
           /migrations/up/0026_collection_jobs.sql \
           /migrations/up/0027_knowledge_pipeline_consolidation.sql \
-          /migrations/up/0028_knowledge_pipeline_production_contract.sql
+          /migrations/up/0028_knowledge_pipeline_production_contract.sql \
+          /migrations/up/0029_durable_job_lease_recovery.sql
         do
           psql -h postgres -U geno -d geno -v ON_ERROR_STOP=1 -f "$$file"
         done
@@ -568,11 +569,17 @@ services:
       GENO_TASK_QUEUE_ENABLED: "1"
       GENO_TASK_QUEUE_REQUIRED: "1"
       GENO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GENO_COLLECTION_JOB_LEASE_SECONDS: ${GENO_COLLECTION_JOB_LEASE_SECONDS:-3600}
+      GENO_COLLECTION_JOB_TIMEOUT_SECONDS: ${GENO_COLLECTION_JOB_TIMEOUT_SECONDS:-3600}
+      GENO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS: ${GENO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS:-10}
+      GENO_COLLECTION_RETRY_BACKOFF_SECONDS: ${GENO_COLLECTION_RETRY_BACKOFF_SECONDS:-120}
+      GENO_COLLECTION_PROVIDER_CONCURRENCY: ${GENO_COLLECTION_PROVIDER_CONCURRENCY:-1}
     command:
       - dramatiq
       - workers.task_queue.tasks
       - --queues
-      - collection,report
+      - collection
+      - report
       - --processes
       - "1"
       - --threads
@@ -614,6 +621,7 @@ services:
       GENO_DEEPSEEK_API_KEY_FILE: ${GENO_DEEPSEEK_API_KEY_FILE:-/run/secrets/deepseek_api_key}
       GENO_KNOWLEDGE_WORKER_MAX_JOBS: ${GENO_KNOWLEDGE_WORKER_MAX_JOBS:-25}
       GENO_KNOWLEDGE_WORKER_LEASE_SECONDS: ${GENO_KNOWLEDGE_WORKER_LEASE_SECONDS:-600}
+      GENO_KNOWLEDGE_DRAMATIQ_DRAIN_CYCLES: ${GENO_KNOWLEDGE_DRAMATIQ_DRAIN_CYCLES:-20}
       GENO_TASK_QUEUE_ENABLED: "1"
       GENO_TASK_QUEUE_REQUIRED: "1"
       GENO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
@@ -647,6 +655,7 @@ services:
       context: ..
       dockerfile: apps/api/Dockerfile
     environment:
+      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
       GENO_TASK_QUEUE_ENABLED: "1"
       GENO_TASK_QUEUE_REQUIRED: "1"
       GENO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
