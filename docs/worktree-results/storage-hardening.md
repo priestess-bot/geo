@@ -14,6 +14,7 @@
 - `ecad8be` `chore(storage): keep runtime changes object-store scoped`
 - `7c6d65a` `feat(storage): provision scoped MinIO production identities`
 - `8f0e191` `fix(storage): require native per-service roundtrip evidence`
+- `d86db3e` `fix(storage): remove native smoke volumes`
 
 本文件由后续 handoff commit 提交；最终 branch tip 以集成 session 读取到的 `codex/storage-hardening` HEAD 为准。
 
