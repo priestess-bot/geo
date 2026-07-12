@@ -504,7 +504,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         if not args.keep_stack:
             subprocess.run(
-                _compose_command(args.project_name, "down", "--remove-orphans"),
+                _compose_command(args.project_name, "down", "--volumes", "--remove-orphans"),
                 cwd=ROOT,
                 env=env,
                 check=False,
