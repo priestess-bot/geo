@@ -4,7 +4,7 @@
 
 `codex/storage-hardening` 已完成对象存储客户端、MinIO bootstrap、身份/policy、production Compose、backup/restore smoke 和专属 verifier。配置合同、单元测试、既有基础设施合同，以及使用随机非默认凭据的隔离 MinIO policy smoke 均通过。
 
-本分支不宣称 Production Final Gate 已通过。当前没有平台签发的真实加密卷 receipt、从加密 snapshot 恢复到新节点/新 volume 的 receipt，也没有启动九个实际 runtime service 镜像逐一执行对象 roundtrip。因此未生成 `tmp/production-object-store-credentials/latest.json`；正式 verifier 对缺失 receipt 保持 fail closed。
+本分支不宣称 Production Final Gate 已通过。九个实际 runtime service 镜像已分别通过 Compose 启动，并在各自容器内使用 native `build_object_store_from_env()` 完成独立 put/head/get/hash。当前唯一未满足的生产证据是平台签发的真实加密卷 receipt，以及从加密 snapshot 恢复到新节点/新 volume 的 receipt。因此未生成 `tmp/production-object-store-credentials/latest.json`；正式 verifier 对缺失 receipt 保持 fail closed。
 
 ## 提交
 
@@ -13,6 +13,7 @@
 - `ac1b30d` `feat(storage): disable production bucket auto-creation`
 - `ecad8be` `chore(storage): keep runtime changes object-store scoped`
 - `7c6d65a` `feat(storage): provision scoped MinIO production identities`
+- `8f0e191` `fix(storage): require native per-service roundtrip evidence`
 
 本文件由后续 handoff commit 提交；最终 branch tip 以集成 session 读取到的 `codex/storage-hardening` HEAD 为准。
 
@@ -41,6 +42,8 @@
 - `OBJECT_STORE_ACCESS_KEY_FILE` / `OBJECT_STORE_SECRET_KEY_FILE` 支持 Compose Secret；同一值的 direct env 与 `_FILE` 同时存在、空文件、不可读文件或非法 boolean 均失败。
 - production 的九个 application consumer 固定为：`api`、`collector-worker`、`collector-worker-litellm`、`browser-fidelity-scheduler`、`report-export-worker`、`knowledge-worker`、`task-worker-runtime`、`task-worker-knowledge`、`runtime-e2e`。
 - 九个 consumer 使用相同 endpoint/bucket/region 和相同 application Secret file，全部设置 auto-create `0`，并等待 `minio-bootstrap` 成功退出。
+- policy-only MC probe 只生成 `production-object-store-shared-identity-roundtrip-v1`，scope 固定为 `shared_identity_policy_only`，不包含或冒充 consumer pass。
+- full runner build 当前源码，并对九个 Compose service 分别执行 `docker compose run`；每个容器内使用 native builder、独立 key、`_FILE` credential 完成 put/head/get/hash。
 - root Secret 只挂载到 `minio` 和 `minio-bootstrap`。`backup-object-smoke` 只挂载 backup/restore Secret；Web、renderer、embedding、recovery dispatcher 和 notification worker 无对象存储 Secret。
 - production `minio_data` 必须是预先创建的 external encrypted volume；Compose 字符串本身不构成加密证明。
 
@@ -87,7 +90,7 @@ MINIO_BOOTSTRAP_ENABLE_EPHEMERAL=0|1
 
 - 加密卷 receipt 必须含 `volume_id/provider/encryption_enabled=true/key_alias/policy_version/rotation_owner/recovery_owner/verified_at`。
 - snapshot restore receipt 必须含 `snapshot_id/source_volume_id/new_node_id/new_volume_id/restored_object_hash/verified_at`，且新旧 volume ID 不同、hash 为 SHA-256。
-- full verifier 还消费 bootstrap、backup/restore、consumer roundtrip 与 ephemeral cleanup receipt。
+- full verifier 还消费 bootstrap、backup/restore、native consumer roundtrip 与 ephemeral cleanup receipt。consumer receipt 必须是 `compose_service_native_builder` scope，并提供九个独立 container ID、逐 service binding、native builder execution path、`_FILE` source、auto-create=false 和统一 fingerprint；shared-identity receipt 会被明确拒绝。
 - 最终 `production-object-store-credentials/latest.json` 包含 git commit/dirty、merged Compose hash、consumer inventory、不可逆 application access-key fingerprint、policy/receipt hash、roundtrip、negative results、三方 restore hash、加密 receipt hash和 `secret_leak_count=0`，不包含可恢复 credential。
 
 ## 已执行测试
@@ -96,7 +99,7 @@ MINIO_BOOTSTRAP_ENABLE_EPHEMERAL=0|1
 
 ```text
 PYTHONPATH=packages/geno_core:apps/api python3 -m unittest tests.test_production_object_store_contracts
-11 tests, OK
+13 tests, OK
 
 PYTHONPATH=packages/geno_core:apps/api python3 -m unittest tests.test_infra_contracts
 20 tests, OK
@@ -131,15 +134,16 @@ pass
 ```text
 python3 scripts/run_production_object_store_smoke.py \
   --policy-only \
-  --project-name geo-storage-hardening-live4
+  --native-consumers \
+  --project-name geo-storage-hardening-native
 ```
 
-结果：pass；run ID `a3bb6c5a-581d-4cbd-82d3-61f113ebb2fc`；随机 Secret file、动态专用 host ports、独立 Compose project/volume；结束后 container/network/volume 和临时 Secret 均清理。验证了非默认 `_FILE` root/app/backup/restore/retention、versioning/lifecycle、application/backup/restore negative、正式与 smoke prefix、三方 hash、九个逻辑 application-principal roundtrip、临时身份撤销及 raw Secret count 0。
+结果：pass；run ID `03f401f9-306b-411f-a06b-8d3fc5490a4c`；随机 Secret file、动态专用 host ports、独立 Compose project/volume；结束后 container/network/volume 和临时 Secret 均清理。验证了非默认 `_FILE` root/app/backup/restore/retention、versioning/lifecycle、application/backup/restore negative、正式与 smoke prefix、三方 hash、临时身份撤销及 raw Secret count 0。九个 Compose service 均 build 当前源码，并在九个不同 container ID 内通过 native builder roundtrip；receipt 中 service count=9、container count=9、fingerprint count=1、credential source=`OBJECT_STORE_ACCESS_KEY_FILE`、auto-create 全部为 false。
 
 未提交的无 Secret receipt 位于：
 
 ```text
-tmp/production-object-store-smoke/a3bb6c5a-581d-4cbd-82d3-61f113ebb2fc/
+tmp/production-object-store-smoke/03f401f9-306b-411f-a06b-8d3fc5490a4c/
 ```
 
 扩大执行 `tests.test_core_contracts` 时共运行 279 tests，出现 10 failure + 1 error；失败均在未改动的 notification/repository `psycopg.types.json.Jsonb` 字符串表示断言及既有 float 精确相等断言。上述八个与本改动直接相关的 core tests 单独全部通过。
@@ -147,15 +151,14 @@ tmp/production-object-store-smoke/a3bb6c5a-581d-4cbd-82d3-61f113ebb2fc/
 ## 未完成的 live Gate / 外部 blocker
 
 1. 环境中没有真实 encrypted volume receipt，也没有 encrypted snapshot 在新节点/新 volume 的 restore receipt；因此 full verifier 未运行，正式 `latest.json` 未生成。
-2. policy-only runner 的九项 roundtrip 使用同一 file-backed application principal 和 `mc` 数据路径，证明 credential/policy coherence，但不等价于启动九个实际 API/worker 镜像逐一路径执行。集成 session 必须 build 当前镜像并补实际 service-path receipt。
-3. 没有运行包含 PostgreSQL/Qdrant/heavy model 的全栈 Production Final Gate；这属于 integration 分支职责。
+2. 没有运行包含 PostgreSQL/Qdrant/heavy model 的全栈 Production Final Gate；这属于 integration 分支职责。
 
 ## 集成分支动作
 
 1. 合并本分支后，以 storage overlay 为 Compose 真源；加入 lease/auth 环境变量时保留 external Secret、`_FILE`、consumer anchor 和 `minio-bootstrap` dependency。
 2. 在 `Makefile` 增加 config-only 与 full object-store Gate 入口，并接入 `scripts/verify_production_v1_gate.py`；本分支按任务边界未修改这两个文件。
 3. 在目标平台创建 encrypted external volume，提供两类真实 receipt；用当前合并 commit 重跑 full runner/verifier。
-4. build 当前 API/Knowledge 镜像，逐个 application consumer 执行 put/head/get/hash，并生成实际 service-path consumer receipt；不要把 policy-only logical receipt提升为 production 证明。
+4. 在最终 merge commit 上重跑 `--native-consumers`；不要复用本分支 commit 的 service receipt，也不要把 shared-identity policy-only receipt 提升为 production 证明。
 5. 确认 full artifact 绑定最终 merge commit、`worktree_dirty=false`、`secret_leak_count=0`，再允许 Production Final Gate Green。
 6. Compose 冲突解决后重跑所有 profile 的 merged-config verifier；新增 `build_object_store_from_env()` 调用文件会触发 caller inventory drift，必须映射到明确服务。
 
