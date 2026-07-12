@@ -6794,10 +6794,14 @@ class CoreContractsTest(unittest.TestCase):
             self.assertEqual(connections[0].commit_count, 1)
             self.assertEqual(connections[0].close_count, 0)
             reset_sql = "\n".join(sql for sql, _ in connections[0].calls)
+            self.assertIn("RESET ALL", reset_sql)
+            self.assertIn("RESET ROLE", reset_sql)
             self.assertIn("set_config(%s, %s, false)", reset_sql)
             self.assertEqual(
-                connections[0].calls[0][1],
+                connections[0].calls[2][1],
                 (
+                    "app.session_token_hash",
+                    "",
                     "geno.runtime_project_access_control",
                     "",
                     "geno.runtime_actor_id",

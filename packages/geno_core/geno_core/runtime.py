@@ -155,6 +155,13 @@ class _PooledDbConnection:
         self._released = True
         self._pool.release(self._connection)
 
+    def invalidate(self) -> None:
+        """Discard a connection whose request-scoped cleanup could not be proven."""
+        if self._released:
+            return
+        self._released = True
+        self._pool.discard(self._connection)
+
 
 class RuntimePostgresConnectionPool:
     """Small process-local PostgreSQL connection pool for API runtime requests."""
@@ -210,14 +217,17 @@ class RuntimePostgresConnectionPool:
 
     def release(self, connection: DbConnection) -> None:
         if not self._reset_connection(connection):
-            self._close_connection(connection)
-            with self._lock:
-                self._created -= 1
+            self.discard(connection)
             return
         try:
             self._available.put_nowait(connection)
         except queue.Full:
+            self.discard(connection)
+
+    def discard(self, connection: DbConnection) -> None:
+        try:
             self._close_connection(connection)
+        finally:
             with self._lock:
                 self._created -= 1
 
@@ -235,19 +245,25 @@ class RuntimePostgresConnectionPool:
     def _reset_connection(connection: DbConnection) -> bool:
         rollback = getattr(connection, "rollback", None)
         commit = getattr(connection, "commit", None)
+        if not callable(rollback) or not callable(commit):
+            return False
         try:
-            if callable(rollback):
-                rollback()
+            rollback()
             with connection.cursor() as cursor:
+                cursor.execute("RESET ALL")
+                cursor.execute("RESET ROLE")
                 cursor.execute(
                     """
                     SELECT
                       set_config(%s, %s, false),
                       set_config(%s, %s, false),
                       set_config(%s, %s, false),
+                      set_config(%s, %s, false),
                       set_config(%s, %s, false)
                     """,
                     (
+                        "app.session_token_hash",
+                        "",
                         "geno.runtime_project_access_control",
                         "",
                         "geno.runtime_actor_id",
@@ -258,8 +274,9 @@ class RuntimePostgresConnectionPool:
                         "",
                     ),
                 )
-            if callable(commit):
-                commit()
+            commit()
+            if not _connection_transaction_is_idle(connection):
+                return False
         except Exception:
             return False
         return True
@@ -269,6 +286,20 @@ class RuntimePostgresConnectionPool:
         close = getattr(connection, "close", None)
         if callable(close):
             close()
+
+
+def _connection_transaction_is_idle(connection: DbConnection) -> bool:
+    info = getattr(connection, "info", None)
+    status = getattr(info, "transaction_status", None)
+    if status is None:
+        return True
+    status_name = getattr(status, "name", None)
+    if status_name is not None:
+        return status_name == "IDLE"
+    try:
+        return int(status) == 0
+    except (TypeError, ValueError):
+        return False
 
 
 _RUNTIME_POSTGRES_POOL: RuntimePostgresConnectionPool | None = None
