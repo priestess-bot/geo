@@ -316,14 +316,21 @@ def _serialize_bound_json(value: object) -> str:
     return json.dumps(_bound_json_payload(value), ensure_ascii=False, sort_keys=True, default=str)
 
 
+class RecordingTransactionStatus:
+    def __init__(self) -> None:
+        self.name = "IDLE"
+
+
 class RecordingCursor:
     def __init__(
         self,
         calls: list[tuple[str, tuple[object, ...]]],
         result_sets: list[object],
+        connection_status: RecordingTransactionStatus,
     ) -> None:
         self.calls = calls
         self.result_sets = result_sets
+        self.connection_status = connection_status
 
     def __enter__(self) -> "RecordingCursor":
         return self
@@ -332,6 +339,8 @@ class RecordingCursor:
         return None
 
     def execute(self, sql: str, params: tuple[object, ...] = ()) -> None:
+        if self.connection_status.name == "IDLE":
+            self.connection_status.name = "INTRANS"
         self.calls.append((" ".join(sql.split()), params))
 
     def fetchone(self) -> object:
@@ -352,15 +361,23 @@ class RecordingConnection:
         self.rollback_count = 0
         self.close_count = 0
         self.result_sets = result_sets or []
+        self.info = type("ConnectionInfo", (), {})()
+        self.info.transaction_status = RecordingTransactionStatus()
 
     def cursor(self) -> RecordingCursor:
-        return RecordingCursor(self.calls, self.result_sets)
+        return RecordingCursor(
+            self.calls,
+            self.result_sets,
+            self.info.transaction_status,
+        )
 
     def commit(self) -> None:
         self.commit_count += 1
+        self.info.transaction_status.name = "IDLE"
 
     def rollback(self) -> None:
         self.rollback_count += 1
+        self.info.transaction_status.name = "IDLE"
 
     def close(self) -> None:
         self.close_count += 1
@@ -6794,10 +6811,14 @@ class CoreContractsTest(unittest.TestCase):
             self.assertEqual(connections[0].commit_count, 1)
             self.assertEqual(connections[0].close_count, 0)
             reset_sql = "\n".join(sql for sql, _ in connections[0].calls)
+            self.assertIn("RESET ALL", reset_sql)
+            self.assertIn("RESET ROLE", reset_sql)
             self.assertIn("set_config(%s, %s, false)", reset_sql)
             self.assertEqual(
-                connections[0].calls[0][1],
+                connections[0].calls[2][1],
                 (
+                    "app.session_token_hash",
+                    "",
                     "geno.runtime_project_access_control",
                     "",
                     "geno.runtime_actor_id",
