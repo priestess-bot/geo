@@ -44,5 +44,9 @@ jobs:
         run: make docker-config-db-smoke
       - name: Run DB schema smoke
         run: make db-smoke
+      - name: Validate Schema v2 Compose config
+        run: make schema-v2-config
+      - name: Run Schema v2 fresh-install gate
+        run: make schema-v2-fresh-install
       - name: Run runtime E2E
         run: make runtime-e2e

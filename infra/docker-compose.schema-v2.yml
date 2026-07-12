@@ -1,0 +1,82 @@
+x-schema-v2-pg-environment: &schema-v2-pg-environment
+  PGHOST: postgres-v2
+  PGPORT: "5432"
+  PGDATABASE: geno_v2
+  PGUSER: ${SCHEMA_V2_POSTGRES_USER:?SCHEMA_V2_POSTGRES_USER is required}
+  PGPASSWORD: ${SCHEMA_V2_POSTGRES_PASSWORD:?SCHEMA_V2_POSTGRES_PASSWORD is required}
+
+services:
+  postgres-v2:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: geno_v2
+      POSTGRES_USER: ${SCHEMA_V2_POSTGRES_USER:?SCHEMA_V2_POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${SCHEMA_V2_POSTGRES_PASSWORD:?SCHEMA_V2_POSTGRES_PASSWORD is required}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - schema_v2_postgres_data:/var/lib/postgresql/data
+
+  schema-v2-install:
+    image: ${SCHEMA_V2_RUNNER_IMAGE:-geno-schema-v2-runner:local}
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    environment:
+      <<: *schema-v2-pg-environment
+      GENO_APP_VERSION: ${GENO_APP_VERSION:-0.1.0}
+      GENO_APP_COMMIT: ${GENO_APP_COMMIT:-development}
+    command:
+      - python
+      - scripts/schema_v2_runner.py
+      - install
+      - --schema-root
+      - /schema-v2
+    volumes:
+      - ./db/schema-v2:/schema-v2:ro
+    depends_on:
+      postgres-v2:
+        condition: service_healthy
+
+  schema-v2-verify:
+    image: ${SCHEMA_V2_RUNNER_IMAGE:-geno-schema-v2-runner:local}
+    environment:
+      <<: *schema-v2-pg-environment
+      GENO_APP_VERSION: ${GENO_APP_VERSION:-0.1.0}
+      GENO_APP_COMMIT: ${GENO_APP_COMMIT:-development}
+    command:
+      - python
+      - scripts/schema_v2_runner.py
+      - verify
+      - --schema-root
+      - /schema-v2
+    volumes:
+      - ./db/schema-v2:/schema-v2:ro
+    depends_on:
+      postgres-v2:
+        condition: service_healthy
+
+  schema-v2-behavior-test:
+    image: ${SCHEMA_V2_RUNNER_IMAGE:-geno-schema-v2-runner:local}
+    environment:
+      <<: *schema-v2-pg-environment
+      SCHEMA_V2_BEHAVIOR_TEST: "1"
+      GENO_APP_VERSION: ${GENO_APP_VERSION:-0.1.0}
+      GENO_APP_COMMIT: ${GENO_APP_COMMIT:-development}
+    command:
+      - python
+      - /app/tests/test_schema_v2_postgres.py
+    volumes:
+      - ./db/schema-v2:/schema-v2:ro
+      - ../tests/test_schema_v2_postgres.py:/app/tests/test_schema_v2_postgres.py:ro
+    depends_on:
+      postgres-v2:
+        condition: service_healthy
+
+volumes:
+  schema_v2_postgres_data:
