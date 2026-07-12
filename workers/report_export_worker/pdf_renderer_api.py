@@ -12,8 +12,15 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 from pydantic import BaseModel, Field
 
+from geno_core.runtime import validate_runtime_schema_compatibility
+
 
 app = FastAPI(title="GEO Report PDF Renderer", version="1.0.0")
+
+
+@app.on_event("startup")
+def validate_schema_compatibility_on_startup() -> None:
+    validate_runtime_schema_compatibility()
 
 
 class PdfRenderRequest(BaseModel):

@@ -89,6 +89,7 @@ from geno_core.runtime import (
     build_object_store_from_env,
     build_repository_from_env,
     close_repository_connection,
+    validate_runtime_schema_compatibility,
 )
 from geno_core.traceability import build_traceability_bundle
 
@@ -1097,7 +1098,6 @@ def _persist_records(
 
 
 def main() -> None:
-    durable_lease = lease_claim_from_internal_environment()
     parser = argparse.ArgumentParser(description="Run a GEO collection slice")
     parser.add_argument(
         "--mode",
@@ -1220,6 +1220,8 @@ def main() -> None:
         help="Write the final worker JSON output to this path for preflight audit replay.",
     )
     args = parser.parse_args()
+    validate_runtime_schema_compatibility()
+    durable_lease = lease_claim_from_internal_environment()
     google_modes = {"google-fixture", "google-spike", "google-serp-fixture", "google-serp-spike"}
     google_full_spike_modes = {"google-fixture", "google-spike"}
     google_serp_modes = {"google-serp-fixture", "google-serp-spike"}

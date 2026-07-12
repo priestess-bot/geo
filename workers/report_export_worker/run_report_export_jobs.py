@@ -10,7 +10,12 @@ from typing import Any, Protocol
 from geno_core.models import RuntimeReportExportJobStatusInput
 from geno_core.object_store import S3CompatibleObjectStore, StoredObject, archive_runtime_report_artifact
 from geno_core.repository import PostgresEvidenceRepository
-from geno_core.runtime import build_object_store_from_env, build_repository_from_env, close_repository_connection
+from geno_core.runtime import (
+    build_object_store_from_env,
+    build_repository_from_env,
+    close_repository_connection,
+    validate_runtime_schema_compatibility,
+)
 
 
 WORKER_ID = "runtime-worker"
@@ -238,6 +243,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    validate_runtime_schema_compatibility()
     max_jobs = max(1, args.max_jobs)
     repository: PostgresEvidenceRepository | None = None
     results: list[dict[str, Any]] = []

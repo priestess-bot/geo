@@ -38,7 +38,7 @@ from geno_core.knowledge_pipeline import (
     stable_pipeline_id,
 )
 from geno_core.object_store import ObjectStoreError, parse_s3_uri
-from geno_core.runtime import build_object_store_from_env
+from geno_core.runtime import build_object_store_from_env, validate_runtime_schema_compatibility
 
 
 CRAWL_MIN_SUCCESS_PAGES = max(1, int(os.getenv("GEO_CRAWL_MIN_SUCCESS_PAGES", "1")))
@@ -2977,6 +2977,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--loop-once", action="store_true")
     parser.add_argument("--poll-seconds", type=float, default=float(os.getenv("GENO_KNOWLEDGE_WORKER_POLL_SECONDS", "2.0")))
     args = parser.parse_args(argv)
+    validate_runtime_schema_compatibility()
     repository = connect_knowledge_pipeline_repository()
     repository.set_maintenance_scope(worker_id=args.worker_id)
     try:

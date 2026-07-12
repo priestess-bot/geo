@@ -8,7 +8,11 @@ from typing import Any, Protocol
 
 from geno_core.models import RuntimeAlertEventInput
 from geno_core.repository import PostgresEvidenceRepository
-from geno_core.runtime import build_repository_from_env, close_repository_connection
+from geno_core.runtime import (
+    build_repository_from_env,
+    close_repository_connection,
+    validate_runtime_schema_compatibility,
+)
 
 
 WORKER_ID = "runtime-alert-escalation-worker"
@@ -293,6 +297,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    validate_runtime_schema_compatibility()
     repository: PostgresEvidenceRepository | None = None
     try:
         repository = build_repository_from_env()

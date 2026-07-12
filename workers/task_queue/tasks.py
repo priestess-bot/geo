@@ -12,6 +12,7 @@ from typing import Any
 
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
+from dramatiq.middleware import MiddlewareError
 
 from geno_core.collection_jobs import CollectionJobStore
 from geno_core.durable_jobs import (
@@ -20,7 +21,12 @@ from geno_core.durable_jobs import (
     LostLeaseError,
     internal_lease_environment,
 )
-from geno_core.runtime import build_object_store_from_env, build_repository_from_env, close_repository_connection
+from geno_core.runtime import (
+    build_object_store_from_env,
+    build_repository_from_env,
+    close_repository_connection,
+    validate_runtime_schema_compatibility,
+)
 from workers.knowledge_worker.run_knowledge_pipeline import run_once as run_knowledge_once
 from workers.report_export_worker.run_report_export_jobs import process_next_report_export_job
 
@@ -30,6 +36,18 @@ if not BROKER_URL:
     raise RuntimeError("GENO_TASK_QUEUE_BROKER_URL is required")
 
 broker = RedisBroker(url=BROKER_URL)
+
+
+class SchemaCompatibilityMiddleware(dramatiq.Middleware):
+    def before_worker_boot(self, broker: object, worker: object) -> None:
+        del broker, worker
+        try:
+            validate_runtime_schema_compatibility()
+        except Exception:
+            raise MiddlewareError("Schema v2 compatibility check failed") from None
+
+
+broker.add_middleware(SchemaCompatibilityMiddleware())
 dramatiq.set_broker(broker)
 
 _COLLECTION_ADVISORY_LOCK_NAMESPACE = 1_196_572_994
