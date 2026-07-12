@@ -72,8 +72,11 @@ export async function createProjectAction(
     method: "POST",
     body: payload
   });
-  if (!response.ok || !response.data?.project_id) {
+  if (!response.ok) {
     return { ok: false, error: response.error || "项目创建失败。" };
+  }
+  if (!response.data?.project_id) {
+    return { ok: false, error: "项目创建失败：响应缺少 project_id。" };
   }
   const invitation = response.data.customer_invitation?.invitation;
   const invitationId = invitation?.id;

@@ -974,8 +974,11 @@ export async function createKnowledgeMaintenanceRunAction(
       }
     }
   });
-  if (!createResponse.ok || !createResponse.data?.knowledge_pipeline_run?.id) {
+  if (!createResponse.ok) {
     return { ok: false, error: createResponse.error || "知识库重跑任务创建失败。" };
+  }
+  if (!createResponse.data?.knowledge_pipeline_run?.id) {
+    return { ok: false, error: "知识库重跑任务创建失败：响应缺少 pipeline_run_id。" };
   }
   const runId = createResponse.data.knowledge_pipeline_run.id;
   const startResponse = await runtimeRequest<KnowledgePipelineResponse>(
