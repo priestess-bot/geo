@@ -29,6 +29,7 @@ from geno_core.collection import (
     evaluate_p0a_collection_readiness,
 )
 from geno_core.collectors import (
+    DeepSeekChatCollector,
     FixtureChatGPTSearchBrowserCollector,
     FixtureGoogleAIModeCollector,
     FixtureGoogleAIOCollector,
@@ -53,12 +54,13 @@ from geno_core.google_spike import (
     select_google_spike_prompts,
 )
 from geno_core.llm_gateway import LiteLLMGateway
-from geno_core.industry import build_au_dtc_ecommerce_profile
-from geno_core.market import build_au_market_profile
 from geno_core.models import (
     BrandEntity,
     CollectionFailureRecord,
     CompetitorEntity,
+    IndustryProfile,
+    MarketProfile,
+    PlatformConfig,
     Project,
     ProjectBootstrap,
     ProjectMember,
@@ -111,17 +113,17 @@ def _prompt_from_record(record: dict[str, object]) -> PromptQuestion:
     return PromptQuestion(
         id=str(record["id"]),
         project_id=str(record["project_id"]),
-        market_code=str(record.get("market_code") or "AU"),
-        industry_code=str(record.get("industry_code") or "dtc_ecommerce"),
+        market_code=str(record.get("market_code") or "GLOBAL"),
+        industry_code=str(record.get("industry_code") or "general"),
         text=str(record.get("text") or record.get("prompt_text") or ""),
         intent_type=str(record.get("intent_type") or "brand_awareness"),
-        city=str(record.get("city") or "Australia"),
-        language=str(record.get("language") or "en-AU"),
+        city=str(record.get("city") or "Global"),
+        language=str(record.get("language") or "en"),
         target_brand=str(record.get("target_brand") or ""),
         competitors=_tuple_strings(record.get("competitors")),
         priority=int(record.get("priority") or 0),
         intent_weight=float(record.get("intent_weight") or 1.0),
-        prompt_version=str(record.get("prompt_version") or "au_dtc_ecommerce_v1"),
+        prompt_version=str(record.get("prompt_version") or "project_prompts_v1"),
         status=str(record.get("status") or "active"),
     )
 
@@ -149,10 +151,43 @@ def _load_runtime_project_bootstrap(project_id: str) -> ProjectBootstrap:
         prompts = tuple(_prompt_from_record(prompt) for prompt in prompt_page.records)
         if not prompts:
             raise RuntimePersistenceError(f"project has no active prompts: {project_id}")
+        get_launch_config = getattr(repository, "get_project_launch_config", None)
+        launch_record = get_launch_config(project_id=project_id) if callable(get_launch_config) else None
+        launch_config = launch_record.launch_config if launch_record is not None else {}
     finally:
         close_repository_connection(repository)
-    market_profile = build_au_market_profile()
-    industry_profile = build_au_dtc_ecommerce_profile()
+    market_code = str(project_row.get("market_code") or launch_config.get("country_code") or "GLOBAL")
+    locale = str(launch_config.get("locale") or prompts[0].language or "en")
+    timezone = str(launch_config.get("timezone") or "UTC")
+    metadata = launch_config.get("metadata") if isinstance(launch_config.get("metadata"), dict) else {}
+    cities = list(dict.fromkeys(prompt.city for prompt in prompts if prompt.city)) or [market_code]
+    market_profile = MarketProfile(
+        market=str(metadata.get("market_name") or market_code),
+        market_code=market_code,
+        locale=locale,
+        timezone=timezone,
+        currency=str(metadata.get("currency") or "USD"),
+        primary_language=str(metadata.get("primary_language") or locale),
+        cities=cities,
+        source_types=[],
+        platforms=[
+            PlatformConfig("deepseek", "chat_completions", "production_v1", 1.0, True),
+            PlatformConfig("chatgpt", "chatgpt_search", "production_v1", 0.0, False),
+            PlatformConfig("perplexity", "sonar", "production_v1", 0.0, False),
+            PlatformConfig("google", "google_ai_mode", "production_v1", 0.0, False),
+        ],
+    )
+    industry_code = str(project_row.get("industry_code") or "general")
+    industry_profile = IndustryProfile(
+        market_code=market_code,
+        industry_code=industry_code,
+        display_name=str(metadata.get("industry_name") or industry_code),
+        default_prompt_templates=(),
+        source_type_weights={},
+        competitor_fields=("canonical_name", "official_domains", "product_lines"),
+        required_local_facts=(),
+        report_template="geo_visibility_v1",
+    )
     project = Project(
         id=str(project_row["id"]),
         tenant_id=str(project_row["tenant_id"]),
@@ -161,8 +196,8 @@ def _load_runtime_project_bootstrap(project_id: str) -> ProjectBootstrap:
         industry_code=str(project_row.get("industry_code") or industry_profile.industry_code),
         target_brand=str(project_row.get("target_brand") or brand_row.get("canonical_name") or ""),
         category=str(project_row.get("category") or ""),
-        prompt_version=str(project_row.get("prompt_version") or "au_dtc_ecommerce_v1"),
-        status=str(project_row.get("status") or "configured"),
+        prompt_version=str(project_row.get("prompt_version") or "project_prompts_v1"),
+        status=str(project_row.get("status") or "paused"),
         created_at=_datetime_value(project_row.get("created_at")),
     )
     tenant = Tenant(
@@ -213,11 +248,55 @@ def _load_runtime_project_bootstrap(project_id: str) -> ProjectBootstrap:
     )
 
 
-def _collectors(mode: str) -> tuple[CollectorBackend, ...]:
+def _configured_project_collectors(project_id: str) -> tuple[CollectorBackend, ...]:
+    repository = build_repository_from_env()
+    try:
+        launch_record = repository.get_project_launch_config(project_id=project_id)
+        if launch_record is None:
+            raise RuntimePersistenceError(f"project launch config not found: {project_id}")
+        launch = launch_record.launch_config
+        configured = launch.get("external_connectors") if isinstance(launch.get("external_connectors"), dict) else {}
+        collectors: list[CollectorBackend] = []
+        seen_ids: set[str] = set()
+        for provider in ("openai", "perplexity"):
+            config = configured.get(provider) if isinstance(configured.get(provider), dict) else {}
+            status = str(config.get("status") or "not_configured").strip().lower()
+            mode = str(config.get("mode") or "official_api").strip().lower()
+            if status not in {"active", "ready"} or mode == "disabled":
+                continue
+            secret_ref = str(config.get("secret_ref") or "").strip()
+            if not secret_ref:
+                raise RuntimePersistenceError(f"{provider} connector has no secret_ref")
+            api_key = repository.resolve_connector_secret(secret_ref=secret_ref)
+            model = str(config.get("model") or "").strip()
+            if mode == "deepseek_fallback":
+                collector: CollectorBackend = DeepSeekChatCollector(
+                    api_key=api_key,
+                    model=model or "deepseek-v4-flash",
+                )
+            elif provider == "openai":
+                collector = OpenAIWebSearchCollector(api_key=api_key, model=model or "gpt-4.1-mini")
+            else:
+                collector = PerplexitySonarCollector(api_key=api_key, model=model or "sonar")
+            if collector.id() not in seen_ids:
+                seen_ids.add(collector.id())
+                collectors.append(collector)
+        if not collectors:
+            raise RuntimePersistenceError("project has no active API connector with a saved secret_ref")
+        return tuple(collectors)
+    finally:
+        close_repository_connection(repository)
+
+
+def _collectors(mode: str, *, project_id: str | None = None) -> tuple[CollectorBackend, ...]:
     if mode == "fixture":
         return (FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector())
     if mode == "api":
+        if project_id:
+            return _configured_project_collectors(project_id)
         return (PerplexitySonarCollector(), OpenAIWebSearchCollector())
+    if mode == "deepseek":
+        return (DeepSeekChatCollector(),)
     if mode == "google-fixture":
         return (FixtureGoogleAIOCollector(), FixtureGoogleAIModeCollector())
     if mode == "google-spike":
@@ -705,9 +784,7 @@ def _persist_records(
     if persist_analysis and successes:
         entity_aliases = repository.get_confirmed_entity_alias_terms(bootstrap.project.id)
         platform_weights_snapshot = {
-            item.platform: item.weight
-            for item in bootstrap.market_profile.platforms
-            if item.enabled and item.platform in {"chatgpt", "perplexity"}
+            item.platform: item.weight for item in bootstrap.market_profile.platforms if item.enabled
         }
         score_weights = repository.get_score_weights_snapshot(
             project_id=bootstrap.project.id,
@@ -895,9 +972,12 @@ def _persist_records(
         )
         knowledge_results = search_knowledge_facts(
             facts=facts,
-            query=f"{bootstrap.project.target_brand} {bootstrap.project.category} Australia shipping reviews",
+            query=(
+                f"{bootstrap.project.target_brand} {bootstrap.project.category} "
+                f"{bootstrap.project.market_code} shipping reviews"
+            ),
             market_code=bootstrap.project.market_code,
-            city="Sydney",
+            city=bootstrap.market_profile.cities[0] if bootstrap.market_profile.cities else bootstrap.project.market_code,
             limit=5,
         )
         drafts = build_content_drafts(
@@ -1007,10 +1087,10 @@ def _persist_records(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run a small AU P0a collection slice")
+    parser = argparse.ArgumentParser(description="Run a GEO collection slice")
     parser.add_argument(
         "--mode",
-        choices=["fixture", "api", "google-fixture", "google-spike", "google-serp-fixture", "google-serp-spike"],
+        choices=["fixture", "api", "deepseek", "google-fixture", "google-spike", "google-serp-fixture", "google-serp-spike"],
         default="api",
     )
     parser.add_argument(
@@ -1025,7 +1105,11 @@ def main() -> None:
         help="Comma-separated PromptQuestion ids to run; used by scheduled fidelity sampling plans.",
     )
     parser.add_argument("--sample-size", type=int, default=1)
-    parser.add_argument("--cities", default="Australia,Sydney")
+    parser.add_argument(
+        "--cities",
+        default=None,
+        help="Comma-separated cities. Defaults to the first two cities in the selected project's market profile.",
+    )
     parser.add_argument(
         "--plan-browser-fidelity-sampling",
         action="store_true",
@@ -1105,7 +1189,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--score-formula-version",
-        default="au_visibility_v1",
+        default="visibility_v1.0",
         help="Registered score formula version to use with --persist-analysis",
     )
     parser.add_argument(
@@ -1200,7 +1284,13 @@ def main() -> None:
         return
 
     prompts = bootstrap.prompt_questions
-    cities = tuple(city.strip() for city in args.cities.split(",") if city.strip())
+    cities = (
+        tuple(city.strip() for city in args.cities.split(",") if city.strip())
+        if args.cities
+        else tuple(bootstrap.market_profile.cities[:2])
+    )
+    if not cities:
+        cities = (bootstrap.project.market_code or "GLOBAL",)
     if args.mode in google_modes:
         plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
         prompts = select_google_spike_prompts(bootstrap.prompt_questions)
@@ -1218,7 +1308,7 @@ def main() -> None:
     google_serp_comparison_plan = (
         _google_serp_comparison_plan(google_plan=plan) if args.mode in google_serp_modes else None
     )
-    base_collectors = _collectors(args.mode)
+    base_collectors = _collectors(args.mode, project_id=args.project_id.strip() if args.project_id else None)
     fidelity_collectors = _fidelity_fixture_collectors(args.mode) if args.include_browser_fidelity_fixture else ()
     if args.include_browser_fidelity_playwright:
         fidelity_collectors = fidelity_collectors + _fidelity_playwright_collectors(args.mode)
@@ -1380,6 +1470,8 @@ def main() -> None:
                     if args.mode in google_serp_modes
                     else "google_spike"
                     if args.mode in google_full_spike_modes
+                    else "deepseek_slice"
+                    if args.mode == "deepseek"
                     else "p0a_slice"
                 ),
                 planned_runs=planned_runs,

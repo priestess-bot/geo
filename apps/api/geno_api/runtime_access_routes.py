@@ -20,18 +20,18 @@ class ProjectLaunchConfigRequest(BaseModel):
     customer_email: str = Field(min_length=1, max_length=320)
     primary_domain: str = Field(min_length=1, max_length=320)
     competitor_domains: list[str] = Field(default_factory=list, max_length=5)
-    locale: str = Field(default="en-AU", min_length=1, max_length=40)
-    country_code: str = Field(default="AU", min_length=1, max_length=8)
-    timezone: str = Field(default="Australia/Sydney", min_length=1, max_length=120)
+    locale: str = Field(default="en", min_length=1, max_length=40)
+    country_code: str = Field(default="GLOBAL", min_length=1, max_length=12)
+    timezone: str = Field(default="UTC", min_length=1, max_length=120)
     collection_mode: str = Field(default="api", min_length=1, max_length=40)
     schedule: dict[str, object] = Field(default_factory=dict)
     external_connectors: dict[str, object] = Field(default_factory=dict)
-    scoring_profile: str = Field(default="au_visibility_v1", min_length=1, max_length=120)
+    scoring_profile: str = Field(default="visibility_v1.0", min_length=1, max_length=120)
     status: str = Field(default="draft", min_length=1, max_length=40)
     metadata: dict[str, object] = Field(default_factory=dict)
     created_by: str = Field(default="runtime-console", min_length=1, max_length=120)
     updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
-    config_version: str = Field(default="au_launch_config_v1", min_length=1, max_length=120)
+    config_version: str = Field(default="project_launch_config_v1", min_length=1, max_length=120)
     reason: str | None = Field(default=None, max_length=500)
 
 
@@ -72,7 +72,7 @@ def register_runtime_access_routes(
     @router.get("/v1/project-launch-configs/runtime")
     def runtime_project_launch_config(
         project_id: str = Query(min_length=1),
-        config_version: str = Query(default="au_launch_config_v1", min_length=1),
+        config_version: str | None = Query(default=None, min_length=1),
         x_geno_actor_id: str | None = Header(default=None, alias=runtime_actor_header),
     ) -> dict[str, object]:
         actor_id = require_runtime_actor_id(x_geno_actor_id)

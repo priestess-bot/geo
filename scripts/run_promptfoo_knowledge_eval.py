@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from geno_core.knowledge import KNOWLEDGE_FACT_APPROVED_STATUS
@@ -12,6 +13,7 @@ OUTPUT_PATH = ROOT / "tmp/promptfoo-knowledge-eval/latest.json"
 
 
 def build_eval_report() -> dict[str, object]:
+    started_at = datetime.now(UTC)
     project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
     facts = (
         {
@@ -86,6 +88,9 @@ def build_eval_report() -> dict[str, object]:
         },
     ]
     return {
+        "run_id": f"knowledge-eval-{started_at.strftime('%Y%m%d%H%M%S%f')}",
+        "started_at": started_at.isoformat(),
+        "finished_at": datetime.now(UTC).isoformat(),
         "provider": "promptfoo-compatible-local-eval",
         "model": "deepseek-v4-flash",
         "status": "passed" if all(check["status"] == "pass" for check in checks) else "failed",

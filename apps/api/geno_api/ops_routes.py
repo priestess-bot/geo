@@ -14,7 +14,7 @@ router = APIRouter(tags=["ops"])
 
 @router.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "geno-saas-au-api"}
+    return {"status": "ok", "service": "geo-production-api"}
 
 
 @router.get("/ready")
@@ -25,7 +25,7 @@ def readiness() -> JSONResponse:
         status_code=status_code,
         content={
             "status": diagnostic.status,
-            "service": "geno-saas-au-api",
+            "service": "geo-production-api",
             "checks": [asdict(diagnostic)],
         },
     )

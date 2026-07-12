@@ -1,6 +1,6 @@
 {
-  "name": "geno-saas-au-customer-web",
-  "version": "0.1.0",
+  "name": "geo-production-customer-web",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 3000",

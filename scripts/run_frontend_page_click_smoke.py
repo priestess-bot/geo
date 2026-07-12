@@ -95,9 +95,12 @@ def _routes(project_id: str) -> dict[str, list[str]]:
             f"{project}?tab=prompts&prompt_tab=templates",
             f"{project}?tab=prompts&prompt_tab=imports",
             f"{project}?tab=knowledge&knowledge_tab=import",
+            f"{project}?tab=knowledge&knowledge_tab=processing",
+            f"{project}?tab=knowledge&knowledge_tab=chunks",
             f"{project}?tab=knowledge&knowledge_tab=search",
             f"{project}?tab=knowledge&knowledge_tab=dashboard",
             f"{project}?tab=knowledge&knowledge_tab=quality",
+            f"{project}?tab=knowledge&knowledge_tab=trace",
             f"{project}?tab=operations&operation_tab=backfill",
             f"{project}?tab=operations&operation_tab=review",
             f"{project}?tab=operations&operation_tab=reports",
@@ -154,13 +157,18 @@ def _route_assertions(route: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
                 "竞品 1 域名",
                 "添加新竞品",
                 "项目负责人",
-                "生成客户查看邀请",
-                "不保存原始密钥",
-                "草稿",
-                "就绪",
-                "运行中",
+                "市场与行业",
+                "市场代码",
+                "语言区域",
+                "初始状态：暂停中",
             ),
-            ("项目 owner", "生成 viewer 邀请", "不保存 raw secret"),
+            (
+                "项目 owner",
+                "生成 viewer 邀请",
+                "不保存 raw secret",
+                "调度配置 JSON",
+                "连接器配置 JSON",
+            ),
         )
     if route == "/projects":
         return (("项目列表", "状态筛选", "新建项目", "返回首页"), ("暂停中（历史已配置）", "<option value=\"configured\""))
@@ -185,7 +193,7 @@ def _route_assertions(route: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     if "basic_tab=competitors" in route:
         return (("逐条管理竞品", "新增竞品", "启动", "暂停", "归档"), ("<select",))
     if "tab=entry" in route:
-        return (("客户邀请", "成员权限", "门户 token", "当前可用邀请", "历史 / 已失效邀请"), ())
+        return (("客户邀请", "成员权限", "安全会话", "当前可用邀请", "历史 / 已失效邀请"), ())
     if "prompt_tab=config" in route:
         return (("Prompt 配置", "正式采集 Prompt", "Prompt 总数", "导入 Prompt CSV"), ())
     if "prompt_tab=generate" in route:
@@ -193,17 +201,23 @@ def _route_assertions(route: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     if "prompt_tab=candidates" in route:
         return (("候选审核", "审核并导入 Prompt 候选", "导入已批准 Prompt"), ())
     if "prompt_tab=templates" in route:
-        return (("生成模板", "本地模板库与 Langfuse 兼容字段", "品牌可见性 Prompt 生成模板"), ())
+        return (("生成模板", "本地模板库与 Langfuse 兼容字段", "新增或更新 Prompt 生成模板"), ())
     if "prompt_tab=imports" in route:
         return (("导入记录", "CSV 与候选导入追踪", "候选导入记录"), ())
     if "knowledge_tab=import" in route:
-        return (("知识库导入", "来源导入、解析和事实抽取", "Unstructured 默认", "Docling", "导入知识来源"), ())
+        return (("知识库导入", "来源导入、解析和事实抽取", "创建完整知识库 Pipeline", "Docling", "创建并启动 Pipeline"), ())
+    if "knowledge_tab=processing" in route:
+        return (("知识库处理任务", "Pipeline、Job 和 Quality Gate", "Source Assets", "Parser Runs"), ())
+    if "knowledge_tab=chunks" in route:
+        return (("Chunk 可视化", "文件与网页", "Chunks", "选择一个 Chunk"), ())
     if "knowledge_tab=search" in route:
         return (("知识库检索", "验证已批准知识是否可用", "检索知识库", "检索结果"), ())
     if "knowledge_tab=dashboard" in route:
         return (("知识库看板", "覆盖、质量和应用状态", "知识来源", "Prompt 候选"), ())
     if "knowledge_tab=quality" in route:
         return (("知识库质检", "事实审核、去重和风险处理", "保存事实审核"), ())
+    if "knowledge_tab=trace" in route:
+        return (("证据追踪", "Source Asset 到 Chunk 到 Fact 到 Prompt / Content", "Trace Refs"), ())
     if "operation_tab=backfill" in route:
         return (("Google 补录", "写入证据链", "选择 Prompt 或导入 CSV"), ("连接器密钥",))
     if "operation_tab=review" in route:
@@ -261,19 +275,82 @@ def _targeted_interaction(page: Any, route: str) -> str:
     if "tab=entry" in route:
         return _click_by_text(page, "历史 / 已失效邀请")
     if "prompt_tab=generate" in route:
+        interactions: list[str] = []
         template = page.locator("select[name='prompt_template_id']").first
         if template.is_visible(timeout=1000):
-            template.select_option("competitor_comparison_prompt_v1")
-            return "selected prompt generation template"
+            options = template.locator("option:not([disabled])")
+            if options.count() > 0:
+                template.select_option(index=1)
+                interactions.append("selected published prompt generation template version")
+        scope_summary = page.get_by_text("限定生成使用的知识范围", exact=True).first
+        if scope_summary.is_visible(timeout=1000):
+            scope_summary.click()
+            page.locator("select[name='source_fact_kind']").first.select_option("brand")
+            page.locator("input[name='source_market_code']").first.fill("AU")
+            page.locator("select[name='source_chunk_type']").first.select_option("text")
+            page.locator("input[name='source_chunk_query']").first.fill("delivery")
+            interactions.append("configured source-backed Prompt generation scope")
+        return "; ".join(interactions) or "Prompt generation controls visible"
     if "prompt_tab=templates" in route:
         return _click_by_text(page, "查看模板规则")
+    if "knowledge_tab=import" in route:
+        source_mode = page.locator("select[name='source_mode']").first
+        source_mode.select_option("url")
+        page.locator("textarea[name='source_urls']").first.fill("https://example.com/faq")
+        source_mode.select_option("site_crawl")
+        page.locator("textarea[name='source_urls']").first.fill("https://example.com/help")
+        page.locator("input[name='max_pages']").first.fill("5")
+        page.locator("input[name='depth_limit']").first.fill("1")
+        page.locator("select[name='respect_robots']").first.select_option("1")
+        source_mode.select_option("file")
+        file_input = page.locator("input[name='source_files']").first
+        file_input.set_input_files(
+            [
+                {"name": "playwright-brand.md", "mimeType": "text/markdown", "buffer": b"# Brand policy\nFree delivery over AUD 99."},
+                {"name": "playwright-market.csv", "mimeType": "text/csv", "buffer": b"subject,predicate,value\nBrand,returns,30 days\n"},
+            ]
+        )
+        page.wait_for_function("document.querySelectorAll('.knowledgeFileQueueRow').length === 2", timeout=10000)
+        return "configured URL/site crawl and rendered a two-file precheck queue"
+    if "knowledge_tab=processing" in route:
+        return "pipeline stages and parser artifacts visible"
+    if "knowledge_tab=chunks" in route:
+        query = page.locator("input[name='chunk_query']").first
+        if not query.is_visible(timeout=1000):
+            raise AssertionError("knowledge chunk filter form is missing")
+        query.fill("delivery")
+        page.locator("select[name='chunk_status']").first.select_option("active")
+        page.locator("select[name='chunk_type']").first.select_option("text")
+        page.get_by_text("应用筛选", exact=True).first.click()
+        page.wait_for_load_state("networkidle", timeout=5000)
+        if "chunk_query=delivery" not in page.url or "chunk_status=active" not in page.url:
+            raise AssertionError(f"knowledge chunk filters did not persist in URL: {page.url}")
+        fact_source = page.locator("select[name='source_pipeline_run_id']").last
+        if fact_source.is_visible(timeout=1000) and fact_source.locator("option:not([disabled])").count() > 0:
+            fact_source.select_option(index=1)
+            page.locator("select[name='chunk_type']").last.select_option("text")
+            page.locator("textarea[name='fact_kinds']").first.fill("brand\ncompetitor\nmarket\nsource")
+            page.locator("input[name='max_facts']").first.fill("12")
+        chunks = page.locator(".knowledgeChunkItem")
+        if chunks.count() > 0 and chunks.first.is_visible(timeout=1000):
+            chunks.first.click()
+            page.wait_for_load_state("networkidle", timeout=5000)
+            return "applied chunk filters, configured fact extraction, and opened evidence pane"
+        return "applied chunk filters and verified fact extraction controls with empty result state"
     if "knowledge_tab=search" in route:
         button = page.get_by_text("检索知识库", exact=True).first
         if button.is_visible(timeout=1000):
             return "knowledge search form visible"
-    if "knowledge_tab=dashboard" in route or "knowledge_tab=quality" in route:
+    if "knowledge_tab=dashboard" in route or "knowledge_tab=quality" in route or "knowledge_tab=trace" in route:
         return "knowledge subtab visible"
     if "operation_tab=" in route:
+        if "operation_tab=content" in route:
+            page.locator("select[name='content_type']").first.select_option("evidence_brief")
+            page.locator("input[name='source_action_id']").first.fill("00000000-0000-0000-0000-000000000001")
+            page.locator("input[name='source_report_id']").first.fill("00000000-0000-0000-0000-000000000002")
+            page.locator("input[name='source_retest_id']").first.fill("00000000-0000-0000-0000-000000000003")
+            page.locator("input[name='source_gap_type']").first.fill("weak_citation")
+            return "configured source-linked GEO content generation controls"
         summary = page.locator(".operationGuide").first
         if summary.is_visible(timeout=1000):
             return "operation guide visible"
@@ -320,6 +397,7 @@ def run_smoke(
     customer_url: str | None,
     mobile: bool,
 ) -> dict[str, Any]:
+    started_at = datetime.now(UTC)
     try:
         from playwright.sync_api import sync_playwright
     except ModuleNotFoundError as exc:
@@ -412,8 +490,10 @@ def run_smoke(
         checks.append(PageCheck("all", "console", "all", "fail", json.dumps(actionable_console[:10], ensure_ascii=False)))
 
     report = {
+        "run_id": f"frontend-click-{started_at.strftime('%Y%m%d%H%M%S%f')}",
         "status": "passed" if all(check.status == "pass" for check in checks) else "failed",
-        "started_at": datetime.now(UTC).isoformat(),
+        "started_at": started_at.isoformat(),
+        "finished_at": datetime.now(UTC).isoformat(),
         "base_urls": bases,
         "project_id": project_id,
         "checks": [asdict(check) for check in checks],

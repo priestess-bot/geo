@@ -4,6 +4,7 @@ import argparse
 import json
 import re
 from dataclasses import dataclass, asdict
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable
 
@@ -13,6 +14,7 @@ CHECKLIST_PATH = ROOT / "docs/GEO-Production-v1执行进度-checklist-2026-07-05
 PLAN_PATH = ROOT / "docs/GEO-Production-v1完整规划-2026-07-05.md"
 CONNECTOR_REAL_SMOKE_PATH = ROOT / "tmp/connector-real-smoke/latest.json"
 FRONTEND_PAGE_CLICK_SMOKE_PATH = ROOT / "tmp/frontend-page-click-smoke/latest.json"
+FRONTEND_KNOWLEDGE_LIFECYCLE_SMOKE_PATH = ROOT / "tmp/frontend-knowledge-lifecycle-smoke/latest.json"
 FULL_PROJECT_LIFECYCLE_SMOKE_PATH = ROOT / "tmp/full-project-lifecycle-smoke/latest.json"
 PROMPTFOO_KNOWLEDGE_EVAL_PATH = ROOT / "tmp/promptfoo-knowledge-eval/latest.json"
 
@@ -66,6 +68,40 @@ def _fail(name: str, detail: str) -> Check:
 
 def _pass(name: str, detail: str) -> Check:
     return Check(name, "pass", detail)
+
+
+def _runtime_artifact_checks(path: Path, prefix: str, report: dict[str, object]) -> list[Check]:
+    run_id = str(report.get("run_id") or "").strip()
+    checks = [
+        _pass(f"{prefix}_run_id", run_id) if run_id else _fail(f"{prefix}_run_id", "run_id is missing")
+    ]
+    timestamp_value = report.get("finished_at") or report.get("completed_at") or report.get("started_at")
+    if not isinstance(timestamp_value, str) or not timestamp_value.strip():
+        checks.append(_fail(f"{prefix}_artifact_fresh", "runtime timestamp is missing"))
+        return checks
+    try:
+        timestamp = datetime.fromisoformat(timestamp_value.replace("Z", "+00:00"))
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=UTC)
+    except ValueError:
+        checks.append(_fail(f"{prefix}_artifact_fresh", f"invalid timestamp: {timestamp_value}"))
+        return checks
+    age_seconds = (datetime.now(UTC) - timestamp.astimezone(UTC)).total_seconds()
+    if -300 <= age_seconds <= 86_400:
+        checks.append(
+            _pass(
+                f"{prefix}_artifact_fresh",
+                f"{path.relative_to(ROOT)} age_seconds={round(age_seconds)}",
+            )
+        )
+    else:
+        checks.append(
+            _fail(
+                f"{prefix}_artifact_fresh",
+                f"{path.relative_to(ROOT)} age_seconds={round(age_seconds)}; expected <= 86400",
+            )
+        )
+    return checks
 
 
 def _scan_runtime_files(patterns: tuple[str, ...]) -> list[Path]:
@@ -315,8 +351,10 @@ def _gate_customer_access_negative() -> list[Check]:
         *_gate_checklist(),
         _check_contains("customer_portal_token_table_exists", "infra/db/migrations/up/0015_customer_portal_launch_access_logs.sql", "CREATE TABLE IF NOT EXISTS customer_portal_tokens"),
         _check_contains("customer_portal_token_rls_exists", "infra/db/migrations/up/0015_customer_portal_launch_access_logs.sql", "customer_portal_tokens_runtime_project_isolation"),
-        _check_contains("artifact_route_checks_portal", "apps/customer-web/app/api/report-artifact/route.ts", "/v1/customer-portal/access"),
-        _check_contains("artifact_route_uses_actor_header", "apps/customer-web/app/api/report-artifact/route.ts", "X-GENO-Actor-Id"),
+        _check_contains("artifact_route_reads_session_cookie", "apps/customer-web/app/api/report-artifact/route.ts", "GENO_RUNTIME_SESSION"),
+        _check_contains("artifact_route_uses_session_header", "apps/customer-web/app/api/report-artifact/route.ts", "X-GENO-Session-Token"),
+        _check_absent("artifact_route_avoids_legacy_portal_token_exchange", "apps/customer-web/app/api/report-artifact/route.ts", "/v1/customer-portal/access"),
+        _check_absent("artifact_route_avoids_actor_header_impersonation", "apps/customer-web/app/api/report-artifact/route.ts", "X-GENO-Actor-Id"),
         _check_contains("artifact_route_marks_customer_portal_access", "apps/customer-web/app/api/report-artifact/route.ts", "X-GENO-Customer-Portal-Access"),
         _check_contains("customer_report_center_exists", "apps/customer-web/app/portal/[module]/page.tsx", "报告交付"),
         _check_contains("customer_report_center_lists_reports", "apps/customer-web/app/portal/[module]/page.tsx", "runtime?.reports.records"),
@@ -499,6 +537,7 @@ def _gate_connector_real() -> list[Check]:
         checks.append(
             _pass("connector_real_smoke_artifact_exists", str(CONNECTOR_REAL_SMOKE_PATH.relative_to(ROOT)))
         )
+        checks.extend(_runtime_artifact_checks(CONNECTOR_REAL_SMOKE_PATH, "connector_real_smoke", report))
         checks.append(
             _pass("connector_real_smoke_artifact_passed", "status=passed")
             if status == "passed"
@@ -557,6 +596,7 @@ def _gate_frontend_page_click() -> list[Check]:
         status = str(report.get("status") or "")
         summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
         checks.append(_pass("frontend_page_click_artifact_exists", str(FRONTEND_PAGE_CLICK_SMOKE_PATH.relative_to(ROOT))))
+        checks.extend(_runtime_artifact_checks(FRONTEND_PAGE_CLICK_SMOKE_PATH, "frontend_page_click", report))
         checks.append(
             _pass("frontend_page_click_artifact_passed", "status=passed")
             if status == "passed"
@@ -577,6 +617,7 @@ def _gate_full_project_lifecycle() -> list[Check]:
         "create_project",
         "read_project",
         "update_project",
+        "negative_start_before_ready",
         "project_status_action_flow",
         "project_lifecycle_pause_restore",
         "negative_invalid_project_action",
@@ -591,7 +632,7 @@ def _gate_full_project_lifecycle() -> list[Check]:
         "negative_invalid_knowledge_csv",
         "manual_backfill_single_csv",
         "negative_manual_backfill_missing_prompt",
-        "fixture_collection_analysis_scoring",
+        "deepseek_collection_analysis_scoring",
         "runtime_outputs_exist",
         "report_publish_download_revoke",
         "report_job_fidelity",
@@ -609,7 +650,7 @@ def _gate_full_project_lifecycle() -> list[Check]:
         _check_contains(
             "full_lifecycle_creates_runtime_project",
             "scripts/run_full_project_lifecycle_smoke.py",
-            "/v1/projects/runtime/au/dtc-ecommerce",
+            '"/v1/projects/runtime"',
         ),
         _check_contains(
             "full_lifecycle_checks_crud",
@@ -650,12 +691,13 @@ def _gate_full_project_lifecycle() -> list[Check]:
             str(step.get("name"))
             for step in steps
             if isinstance(step, dict)
-            and str(step.get("name")) in {"connector_secret_masking", "fixture_collection_analysis_scoring"}
+            and str(step.get("name")) in {"connector_secret_masking", "deepseek_collection_analysis_scoring"}
             and isinstance(step.get("data"), dict)
             and bool(step["data"].get("skipped"))
         )
         missing_steps = sorted(required_steps - passed_steps)
         checks.append(_pass("full_lifecycle_artifact_exists", str(FULL_PROJECT_LIFECYCLE_SMOKE_PATH.relative_to(ROOT))))
+        checks.extend(_runtime_artifact_checks(FULL_PROJECT_LIFECYCLE_SMOKE_PATH, "full_lifecycle", report))
         checks.append(
             _pass("full_lifecycle_artifact_passed", "status=passed")
             if status == "passed"
@@ -691,7 +733,8 @@ def _gate_ops() -> list[Check]:
         _check_contains("runtime_alert_notification_worker_exists", "infra/docker-compose.yml", "runtime-alert-notification-worker"),
         _check_contains("runtime_alert_escalation_worker_exists", "infra/docker-compose.yml", "runtime-alert-escalation-worker"),
         _check_contains("ops_smoke_script_exists", "scripts/verify_ops_smoke.py", "def build_ops_smoke_report"),
-        _check_contains("ops_make_target_runs_script", "Makefile", "scripts/verify_ops_smoke.py"),
+        _check_contains("ops_runtime_smoke_exists", "scripts/run_ops_runtime_smoke.py", "def run_ops_runtime_smoke"),
+        _check_contains("ops_make_target_runs_runtime_smoke", "Makefile", "run --rm ops-runtime-smoke"),
     ]
 
 
@@ -700,11 +743,12 @@ def _gate_backup() -> list[Check]:
         *_gate_checklist(),
         _check_contains("postgres_volume_exists", "infra/docker-compose.yml", "postgres_data"),
         _check_contains("minio_volume_exists", "infra/docker-compose.yml", "minio_data"),
-        _check_contains("latest_action_contract_migration_runs", "infra/docker-compose.yml", "0020_action_recommendation_contract.sql"),
+        _check_contains("latest_market_neutral_migration_runs", "infra/docker-compose.yml", "0024_market_neutral_defaults.sql"),
         _check_contains("backup_smoke_script_exists", "scripts/verify_backup_smoke.py", "def build_backup_smoke_report"),
-        _check_contains("backup_script_checks_postgres_manifest", "scripts/verify_backup_smoke.py", "postgres_dump_sha256"),
-        _check_contains("backup_script_checks_object_manifest", "scripts/verify_backup_smoke.py", "object_payload_sha256"),
-        _check_contains("backup_make_target_runs_script", "Makefile", "scripts/verify_backup_smoke.py"),
+        _check_contains("backup_script_checks_postgres_restore", "scripts/verify_backup_smoke.py", "postgres_runtime_restore"),
+        _check_contains("backup_script_checks_object_restore", "scripts/verify_backup_smoke.py", "object_runtime_restore"),
+        _check_contains("backup_make_target_runs_postgres_restore", "Makefile", "run --rm backup-postgres-smoke"),
+        _check_contains("backup_make_target_runs_object_restore", "Makefile", "run --rm backup-object-smoke"),
     ]
 
 
@@ -731,11 +775,11 @@ def _gate_official_ui_contract() -> list[Check]:
         _check_contains("admin_report_lifecycle_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "/management-events"),
         _check_contains("admin_report_job_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "/v1/report-export-jobs/runtime"),
         _check_contains("admin_action_plan_mutation_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "/v1/action-plans/runtime/"),
-        _check_contains("admin_content_draft_review_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "/v1/content-drafts/runtime/"),
+        _check_contains("admin_content_draft_review_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "/v1/knowledge/content-drafts/runtime/"),
         _check_contains("admin_distribution_backfill_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "/v1/manual-distribution-records/runtime/"),
         _check_contains("admin_content_review_form_exists", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "ContentDraftReviewForm"),
         _check_contains("admin_distribution_backfill_form_exists", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "ManualDistributionBackfillForm"),
-        _check_contains("api_content_draft_review_endpoint_exists", "apps/api/geno_api/main.py", "/v1/content-drafts/runtime/{content_draft_id}/review"),
+        _check_contains("api_content_draft_review_endpoint_exists", "apps/api/geno_api/main.py", "/v1/knowledge/content-drafts/runtime/{content_draft_id}/review"),
         _check_contains("api_distribution_backfill_endpoint_exists", "apps/api/geno_api/main.py", "/v1/manual-distribution-records/runtime/{distribution_record_id}/backfill"),
         _check_contains("api_content_draft_review_test_exists", "tests/test_api_contracts.py", "test_runtime_content_draft_review_endpoint_passes_payload"),
         _check_contains("api_distribution_backfill_test_exists", "tests/test_api_contracts.py", "test_runtime_manual_distribution_backfill_endpoint_passes_payload"),
@@ -763,7 +807,7 @@ def _gate_development_board_truth() -> list[Check]:
         *_gate_checklist(),
         _check_contains("development_board_reads_commit_column", "apps/admin-web/app/development-board/page.tsx", "commit: string"),
         _check_contains("development_board_has_production_ready_flag", "apps/admin-web/app/development-board/page.tsx", "productionReady: boolean"),
-        _check_contains("development_board_requires_command_evidence_commit", "apps/admin-web/app/development-board/page.tsx", "commit hash 未填写"),
+        _check_absent("development_board_commit_is_not_completion_blocker", "apps/admin-web/app/development-board/page.tsx", "commit hash 未填写"),
         _check_contains("development_board_completion_uses_production_ready", "apps/admin-web/app/development-board/page.tsx", "checklist.totals.productionReady"),
         _check_contains("development_board_shows_blockers", "apps/admin-web/app/development-board/page.tsx", "developmentBlockers"),
         _check_contains("development_board_warning_metric_exists", "apps/admin-web/app/development-board/page.tsx", "待补正式证据"),
@@ -771,9 +815,29 @@ def _gate_development_board_truth() -> list[Check]:
         _check_contains("development_board_shows_gate_evidence", "apps/admin-web/app/development-board/page.tsx", "make production-v1-final-gate"),
         _check_contains("development_board_shows_artifacts", "apps/admin-web/app/development-board/page.tsx", "tmp/frontend-page-click-smoke/latest.json"),
         _check_contains(
+            "development_board_shows_knowledge_lifecycle_artifact",
+            "apps/admin-web/app/development-board/page.tsx",
+            "tmp/frontend-knowledge-lifecycle-smoke/latest.json",
+        ),
+        _check_contains(
+            "development_board_shows_knowledge_pipeline_artifact",
+            "apps/admin-web/app/development-board/page.tsx",
+            "tmp/geo-production-full-pipeline-smoke/latest.json",
+        ),
+        _check_contains(
             "development_board_shows_current_documents",
             "apps/admin-web/app/development-board/page.tsx",
             "GEO-Production-v1正式可用性复查报告-2026-07-05.md",
+        ),
+        _check_contains(
+            "development_board_shows_current_progress",
+            "apps/admin-web/app/development-board/page.tsx",
+            "GEO-当前项目进度汇报-2026-07-10.md",
+        ),
+        _check_contains(
+            "development_board_shows_knowledge_plan",
+            "apps/admin-web/app/development-board/page.tsx",
+            "GEO-知识库解析与生成工作流规划-2026-07-08.md",
         ),
         _check_contains("development_board_production_status_css_exists", "apps/admin-web/app/globals.css", "statusPill-production"),
         _check_contains("development_board_blocker_css_exists", "apps/admin-web/app/globals.css", ".developmentBlockers"),
@@ -805,6 +869,7 @@ def _gate_production_e2e() -> list[Check]:
         _check_contains("retest_p0_delta_test_exists", "tests/test_core_contracts.py", "test_retest_p0_minimal_compares_before_after_delta_for_same_prompt_set"),
         _check_contains("retest_comparison_audit_exists", "packages/geno_core/geno_core/action_plan.py", "retest_comparison_created"),
         *[_check_checklist_status(item, {"Done", "Verifying"}) for item in required],
+        *_gate_full_project_lifecycle(),
     ]
 
 
@@ -846,49 +911,51 @@ def _gate_enablement_e2e() -> list[Check]:
             "tests/test_api_contracts.py",
             "test_runtime_knowledge_fact_search_endpoint_passes_query",
         ),
-        _check_contains("knowledge_application_core_exists", "packages/geno_core/geno_core/knowledge_application.py", "def build_knowledge_application_artifacts"),
-        _check_contains("knowledge_application_api_exists", "apps/api/geno_api/main.py", "/v1/knowledge-applications/runtime/generate"),
-        _check_contains("knowledge_application_admin_panel_exists", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "PromptGenerationPanel"),
-        _check_contains("knowledge_application_api_test_exists", "tests/test_api_contracts.py", "test_runtime_knowledge_application_generate_endpoint_passes_payload"),
-        _check_contains("knowledge_application_web_test_exists", "tests/test_web_console_contracts.py", "test_admin_project_page_surfaces_knowledge_application_workbench"),
+        _check_contains("knowledge_pipeline_repository_exists", "packages/geno_core/geno_core/knowledge_pipeline.py", "class KnowledgePipelineRepository"),
+        _check_contains("knowledge_pipeline_api_exists", "apps/api/geno_api/main.py", "/v1/knowledge/pipeline-runs/runtime"),
+        _check_contains("knowledge_pipeline_admin_panel_exists", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "KnowledgePipelineCreateForm"),
+        _check_contains("knowledge_pipeline_contract_tests_exist", "tests/test_knowledge_pipeline_contracts.py", "KnowledgePipelineContractTest"),
+        _check_contains("knowledge_pipeline_live_e2e_exists", "scripts/run_knowledge_pipeline_live_e2e.py", "def main"),
     ]
 
 
 def _gate_knowledge_application() -> list[Check]:
     return [
         *_gate_checklist(),
-        _check_contains("knowledge_application_models_exist", "packages/geno_core/geno_core/models.py", "class RuntimeKnowledgeApplicationRequest"),
-        _check_contains("knowledge_documents_table_exists", "infra/db/migrations/up/0021_knowledge_application.sql", "CREATE TABLE IF NOT EXISTS knowledge_documents"),
-        _check_contains("knowledge_document_versions_table_exists", "infra/db/migrations/up/0021_knowledge_application.sql", "CREATE TABLE IF NOT EXISTS knowledge_document_versions"),
-        _check_contains("knowledge_generation_jobs_table_exists", "infra/db/migrations/up/0021_knowledge_application.sql", "CREATE TABLE IF NOT EXISTS knowledge_generation_jobs"),
-        _check_contains("prompt_candidates_table_exists", "infra/db/migrations/up/0021_knowledge_application.sql", "CREATE TABLE IF NOT EXISTS prompt_candidates"),
-        _check_contains("faq_candidates_table_exists", "infra/db/migrations/up/0021_knowledge_application.sql", "CREATE TABLE IF NOT EXISTS faq_answer_candidates"),
-        _check_contains("knowledge_application_migration_runs", "infra/docker-compose.yml", "0021_knowledge_application.sql"),
+        _check_contains("knowledge_pipeline_schema_exists", "infra/db/migrations/up/0023_knowledge_pipeline_orchestration.sql", "CREATE TABLE IF NOT EXISTS knowledge_pipeline_runs"),
+        _check_contains("knowledge_pipeline_stages_exist", "infra/db/migrations/up/0023_knowledge_pipeline_orchestration.sql", "CREATE TABLE IF NOT EXISTS knowledge_pipeline_stages"),
+        _check_contains("knowledge_trace_refs_exist", "infra/db/migrations/up/0023_knowledge_pipeline_orchestration.sql", "CREATE TABLE IF NOT EXISTS knowledge_trace_refs"),
+        _check_contains("knowledge_quality_gates_exist", "infra/db/migrations/up/0023_knowledge_pipeline_orchestration.sql", "CREATE TABLE IF NOT EXISTS knowledge_quality_gate_runs"),
+        _check_contains("knowledge_active_fact_migration_exists", "infra/db/migrations/up/0027_knowledge_pipeline_consolidation.sql", "status = 'active'"),
+        _check_contains("knowledge_template_seed_exists", "infra/db/migrations/up/0027_knowledge_pipeline_consolidation.sql", "citation_gap_prompt_v1"),
+        _check_contains("knowledge_pipeline_migrations_run", "infra/docker-compose.yml", "0027_knowledge_pipeline_consolidation.sql"),
         _check_contains("knowledge_url_private_network_guard_exists", "packages/geno_core/geno_core/knowledge_application.py", "blocked_private_network"),
-        _check_contains("knowledge_crawl_adapter_contract_exists", "packages/geno_core/geno_core/knowledge_application.py", "crawl4ai_adapter_v1"),
-        _check_contains("knowledge_haystack_adapter_contract_exists", "packages/geno_core/geno_core/knowledge_application.py", "knowledge_application_haystack_adapter_v1"),
+        _check_contains("knowledge_adapter_contract_exists", "scripts/run_knowledge_component.py", "geo-parser-adapter-v1"),
+        _check_contains("knowledge_docling_adapter_exists", "scripts/run_knowledge_component.py", "def _parse_docling"),
+        _check_contains("knowledge_mineru_adapter_exists", "scripts/run_knowledge_component.py", "def _parse_mineru"),
+        _check_contains("knowledge_crawl4ai_adapter_exists", "scripts/run_knowledge_component.py", "AsyncWebCrawler"),
+        _check_contains("knowledge_bge_adapter_exists", "scripts/run_knowledge_component.py", "SentenceTransformer"),
         _check_contains("knowledge_deepseek_default_model_exists", "packages/geno_core/geno_core/knowledge_application.py", "deepseek-v4-flash"),
         _check_contains("knowledge_deepseek_extract_adapter_exists", "packages/geno_core/geno_core/knowledge_application.py", "def deepseek_extract_knowledge_facts"),
         _check_contains("knowledge_deepseek_generate_adapter_exists", "packages/geno_core/geno_core/knowledge_application.py", "def deepseek_generate_knowledge_application"),
         _check_contains("knowledge_deepseek_key_file_fallback_exists", "packages/geno_core/geno_core/knowledge_application.py", "deepseek_api_key.txt"),
-        _check_contains("knowledge_document_repository_create_exists", "packages/geno_core/geno_core/repository.py", "def create_runtime_knowledge_document"),
-        _check_contains("knowledge_document_repository_crawl_exists", "packages/geno_core/geno_core/repository.py", "def crawl_runtime_knowledge_document"),
-        _check_contains("knowledge_document_repository_extract_exists", "packages/geno_core/geno_core/repository.py", "def extract_runtime_knowledge_document_facts"),
-        _check_contains("knowledge_application_repository_generate_exists", "packages/geno_core/geno_core/repository.py", "def run_runtime_knowledge_application"),
-        _check_contains("prompt_candidate_import_repository_exists", "packages/geno_core/geno_core/repository.py", "def import_runtime_approved_prompt_candidates"),
-        _check_contains("knowledge_document_api_create_exists", "apps/api/geno_api/main.py", "/v1/knowledge-documents/runtime"),
-        _check_contains("knowledge_document_api_crawl_exists", "apps/api/geno_api/main.py", "/crawl"),
-        _check_contains("knowledge_document_api_extract_exists", "apps/api/geno_api/main.py", "/extract-facts"),
-        _check_contains("knowledge_application_api_generate_exists", "apps/api/geno_api/main.py", "/v1/knowledge-applications/runtime/generate"),
-        _check_contains("prompt_candidate_api_import_exists", "apps/api/geno_api/main.py", "/v1/prompt-candidates/runtime/import-approved"),
-        _check_contains("admin_knowledge_panel_wired", "apps/admin-web/app/projects/[project_id]/page.tsx", "KnowledgeDocumentImportPanel"),
-        _check_contains("admin_knowledge_create_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "createKnowledgeDocumentAction"),
-        _check_contains("admin_knowledge_generate_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "generateKnowledgeApplicationAction"),
-        _check_contains("admin_prompt_candidate_import_action_exists", "apps/admin-web/app/projects/[project_id]/actions.ts", "importApprovedPromptCandidatesAction"),
-        _check_contains("knowledge_application_core_test_exists", "tests/test_core_contracts.py", "test_knowledge_application_extracts_reviewable_facts_and_generates_grounded_outputs"),
-        _check_contains("knowledge_deepseek_adapter_test_exists", "tests/test_core_contracts.py", "test_deepseek_knowledge_application_adapter_parses_structured_json_without_leaking_key"),
-        _check_contains("knowledge_application_api_test_exists", "tests/test_api_contracts.py", "test_runtime_knowledge_application_generate_endpoint_passes_payload"),
-        _check_contains("knowledge_application_web_contract_test_exists", "tests/test_web_console_contracts.py", "test_admin_project_page_surfaces_knowledge_application_workbench"),
+        _check_contains("knowledge_pipeline_repository_exists", "packages/geno_core/geno_core/knowledge_pipeline.py", "class KnowledgePipelineRepository"),
+        _check_contains("knowledge_pipeline_idempotent_start_exists", "packages/geno_core/geno_core/knowledge_pipeline.py", "create a versioned rerun"),
+        _check_contains("knowledge_partial_thresholds_exist", "workers/knowledge_worker/run_knowledge_pipeline.py", "EMBEDDING_MIN_SUCCESS_RATIO"),
+        _check_contains("knowledge_worker_exists", "workers/knowledge_worker/run_knowledge_pipeline.py", "def run_once"),
+        _check_contains("knowledge_pipeline_api_create_exists", "apps/api/geno_api/main.py", "/v1/knowledge/pipeline-runs/runtime"),
+        _check_contains("knowledge_import_file_api_exists", "apps/api/geno_api/main.py", "/v1/knowledge/import-jobs/runtime/{import_job_id}/files"),
+        _check_contains("knowledge_quality_api_exists", "apps/api/geno_api/main.py", "/v1/knowledge/quality-gate-runs/runtime"),
+        _check_contains("knowledge_prompt_api_exists", "apps/api/geno_api/main.py", "/v1/knowledge/prompt-generation-jobs/runtime"),
+        _check_contains("knowledge_content_api_exists", "apps/api/geno_api/main.py", "/v1/knowledge/content-generation-jobs/runtime"),
+        _check_contains("admin_knowledge_import_wired", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "KnowledgePipelineCreateForm"),
+        _check_contains("admin_knowledge_processing_wired", "apps/admin-web/app/projects/[project_id]/page.tsx", "KnowledgeProcessingPanel"),
+        _check_contains("admin_knowledge_chunk_trace_wired", "apps/admin-web/app/projects/[project_id]/page.tsx", "KnowledgeTracePanel"),
+        _check_absent("admin_does_not_call_legacy_knowledge_application", "apps/admin-web/app/projects/[project_id]/page.tsx", "/v1/knowledge-applications/runtime"),
+        _check_contains("knowledge_pipeline_contract_tests_exist", "tests/test_knowledge_pipeline_contracts.py", "KnowledgePipelineContractTest"),
+        _check_contains("knowledge_pipeline_live_e2e_exists", "scripts/run_knowledge_pipeline_live_e2e.py", "full_rebuild"),
+        _check_contains("knowledge_full_pipeline_smoke_exists", "scripts/run_geo_production_full_pipeline_smoke.py", "real import-to-approved-Prompt/content pipeline pass"),
+        _check_contains("knowledge_heavy_components_smoke_exists", "scripts/run_knowledge_heavy_components_smoke.py", "sentence_transformers_bge_m3"),
         _check_contains("promptfoo_knowledge_eval_script_exists", "scripts/run_promptfoo_knowledge_eval.py", "promptfoo-compatible-local-eval"),
     ]
 
@@ -912,6 +979,7 @@ def _gate_promptfoo_knowledge_eval() -> list[Check]:
         model = str(report.get("model") or "")
         summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
         checks.append(_pass("promptfoo_knowledge_eval_artifact_exists", str(PROMPTFOO_KNOWLEDGE_EVAL_PATH.relative_to(ROOT))))
+        checks.extend(_runtime_artifact_checks(PROMPTFOO_KNOWLEDGE_EVAL_PATH, "promptfoo_knowledge_eval", report))
         checks.append(
             _pass("promptfoo_knowledge_eval_artifact_passed", "status=passed")
             if status == "passed"
@@ -933,20 +1001,119 @@ def _gate_promptfoo_knowledge_eval() -> list[Check]:
 
 
 def _gate_frontend_knowledge_click() -> list[Check]:
-    return [
+    checks = [
         *_gate_checklist(),
-        _check_contains("frontend_full_click_script_exists", "scripts/run_frontend_page_click_smoke.py", "def run_smoke"),
+        _check_contains(
+            "frontend_knowledge_lifecycle_script_exists",
+            "scripts/run_frontend_knowledge_lifecycle_smoke.py",
+            "def run(args: argparse.Namespace)",
+        ),
+        _check_contains(
+            "frontend_knowledge_lifecycle_uses_playwright",
+            "scripts/run_frontend_knowledge_lifecycle_smoke.py",
+            "sync_playwright",
+        ),
+        _check_contains(
+            "frontend_knowledge_lifecycle_runs_real_worker",
+            "scripts/run_frontend_knowledge_lifecycle_smoke.py",
+            "run_knowledge_pipeline.py",
+        ),
+        _check_contains(
+            "frontend_knowledge_lifecycle_make_target",
+            "Makefile",
+            "scripts/run_frontend_knowledge_lifecycle_smoke.py",
+        ),
         _check_contains("frontend_click_covers_project_detail", "scripts/run_frontend_page_click_smoke.py", "/projects/"),
         _check_contains("admin_knowledge_panel_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "知识库看板"),
-        _check_contains("admin_knowledge_import_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "导入 URL / 文本 / CSV"),
-        _check_contains("admin_knowledge_crawl_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "运行网页抓取"),
-        _check_contains("admin_knowledge_extract_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "抽取知识事实"),
+        _check_contains("admin_knowledge_import_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "创建完整知识库 Pipeline"),
+        _check_contains("admin_knowledge_crawl_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "站点深度抓取"),
+        _check_contains("admin_knowledge_extract_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "开始事实抽取"),
         _check_contains("admin_knowledge_generate_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "生成提问 Prompt 候选"),
         _check_contains("admin_prompt_candidate_review_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "审核候选 Prompt"),
         _check_contains("admin_prompt_candidate_import_visible", "apps/admin-web/app/projects/[project_id]/ProjectActions.tsx", "导入已批准 Prompt"),
         _check_contains("admin_knowledge_css_exists", "apps/admin-web/app/globals.css", ".knowledgePanel"),
-        _check_contains("admin_knowledge_web_contract_test_exists", "tests/test_web_console_contracts.py", "test_admin_project_page_surfaces_knowledge_application_workbench"),
+        _check_contains(
+            "admin_knowledge_web_contract_test_exists",
+            "tests/test_web_console_contracts.py",
+            "test_admin_project_page_surfaces_knowledge_pipeline_workbench",
+        ),
     ]
+    if not FRONTEND_PAGE_CLICK_SMOKE_PATH.exists():
+        checks.append(_fail("frontend_knowledge_click_artifact_exists", str(FRONTEND_PAGE_CLICK_SMOKE_PATH.relative_to(ROOT))))
+        return checks
+    try:
+        report = json.loads(FRONTEND_PAGE_CLICK_SMOKE_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        checks.append(_fail("frontend_knowledge_click_artifact_valid_json", str(exc)))
+        return checks
+    checks.extend(_runtime_artifact_checks(FRONTEND_PAGE_CLICK_SMOKE_PATH, "frontend_knowledge_click", report))
+    page_checks = report.get("checks") if isinstance(report.get("checks"), list) else []
+    passed_routes = {
+        str(item.get("route"))
+        for item in page_checks
+        if isinstance(item, dict)
+        and item.get("status") == "pass"
+        and ("tab=knowledge" in str(item.get("route")) or "tab=prompts" in str(item.get("route")))
+    }
+    checks.append(
+        _pass("frontend_knowledge_click_route_coverage", f"routes={len(passed_routes)}")
+        if len(passed_routes) >= 9
+        else _fail("frontend_knowledge_click_route_coverage", f"routes={sorted(passed_routes)}")
+    )
+    if not FRONTEND_KNOWLEDGE_LIFECYCLE_SMOKE_PATH.exists():
+        checks.append(
+            _fail(
+                "frontend_knowledge_lifecycle_artifact_exists",
+                str(FRONTEND_KNOWLEDGE_LIFECYCLE_SMOKE_PATH.relative_to(ROOT)),
+            )
+        )
+        return checks
+    try:
+        lifecycle = json.loads(FRONTEND_KNOWLEDGE_LIFECYCLE_SMOKE_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        checks.append(_fail("frontend_knowledge_lifecycle_artifact_valid_json", str(exc)))
+        return checks
+    checks.append(
+        _pass(
+            "frontend_knowledge_lifecycle_artifact_exists",
+            str(FRONTEND_KNOWLEDGE_LIFECYCLE_SMOKE_PATH.relative_to(ROOT)),
+        )
+    )
+    checks.extend(
+        _runtime_artifact_checks(
+            FRONTEND_KNOWLEDGE_LIFECYCLE_SMOKE_PATH,
+            "frontend_knowledge_lifecycle",
+            lifecycle,
+        )
+    )
+    status = str(lifecycle.get("status") or "")
+    checks.append(
+        _pass("frontend_knowledge_lifecycle_artifact_passed", "status=passed")
+        if status == "passed"
+        else _fail("frontend_knowledge_lifecycle_artifact_passed", f"status={status}")
+    )
+    required_steps = {
+        "frontend_import_precheck_and_start",
+        "frontend_view_pipeline_processing",
+        "frontend_fact_candidate_review",
+        "frontend_prompt_generation",
+        "frontend_prompt_review_and_import",
+        "frontend_content_generation",
+        "frontend_content_review_and_export",
+        "frontend_knowledge_search",
+    }
+    passed_steps = {
+        str(item.get("name"))
+        for item in lifecycle.get("steps") or []
+        if isinstance(item, dict) and item.get("status") == "pass"
+    }
+    missing_steps = sorted(required_steps - passed_steps)
+    checks.append(
+        _pass("frontend_knowledge_lifecycle_step_coverage", f"steps={len(passed_steps)}")
+        if not missing_steps
+        else _fail("frontend_knowledge_lifecycle_step_coverage", f"missing={missing_steps}")
+    )
+    return checks
 
 
 def _dedupe(checks: list[Check]) -> list[Check]:
@@ -968,6 +1135,7 @@ GATES: dict[str, Callable[[], list[Check]]] = {
     "production-v1-e2e": _gate_production_e2e,
     "enablement-v1-e2e": _gate_enablement_e2e,
     "knowledge-application-smoke": _gate_knowledge_application,
+    "knowledge-pipeline-smoke": _gate_knowledge_application,
     "promptfoo-knowledge-eval": _gate_promptfoo_knowledge_eval,
     "frontend-knowledge-click-smoke": _gate_frontend_knowledge_click,
     "no-fixture-production-smoke": _gate_no_fixture_production,

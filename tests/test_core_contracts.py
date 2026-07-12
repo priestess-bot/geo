@@ -33,7 +33,7 @@ from geno_core.analysis_contract import (
     build_answer_analysis_output_contract,
 )
 from geno_core.analysis_pipeline import analyze_and_score_records
-from geno_core.bootstrap import build_au_project_bootstrap
+from geno_core.bootstrap import build_au_project_bootstrap, build_project_bootstrap
 from geno_core.collection import (
     CollectionExecutionPolicy,
     build_collection_run_audit_event,
@@ -259,7 +259,12 @@ from geno_core.prompt_pack import INTENT_WEIGHTS
 from geno_core.prompt_import import prompt_import_file_to_csv
 from geno_core.parser import ComparativeAnswerParser, LLMJudgeAnswerParser, RuleBasedAnswerParser
 from geno_core.report import MarkdownCsvReportExporter
-from geno_core.repository import PostgresEvidenceRepository, _artifact_hash, _stable_id
+from geno_core.repository import (
+    PostgresEvidenceRepository,
+    _artifact_hash,
+    _parse_knowledge_fact_import_csv,
+    _stable_id,
+)
 from geno_core.runtime import (
     RuntimePersistenceError,
     build_runtime_diagnostics,
@@ -1272,6 +1277,35 @@ class CoreContractsTest(unittest.TestCase):
 
         self.assertEqual(first.project.id, second.project.id)
         self.assertEqual(first.audit_events[0].id, second.audit_events[0].id)
+
+    def test_market_neutral_project_bootstrap_does_not_inject_au_prompts(self) -> None:
+        bootstrap = build_project_bootstrap(
+            tenant_name="Northwind US",
+            project_name="Northwind GEO",
+            target_brand="Northwind",
+            category="Outdoor equipment",
+            market_code="US",
+            market_name="United States",
+            locale="en-US",
+            timezone="America/Los_Angeles",
+            currency="USD",
+            primary_language="English",
+            cities=("Seattle", "Portland"),
+            industry_code="outdoor_retail",
+            industry_name="Outdoor retail",
+            competitors=("Contoso", "Adventure Works", "Fabrikam"),
+            brand_official_domains=("northwind.example",),
+            owner_user_id="owner@northwind.example",
+        )
+
+        self.assertEqual(bootstrap.project.market_code, "US")
+        self.assertEqual(bootstrap.project.prompt_version, "project_prompts_v1")
+        self.assertEqual(bootstrap.project.status, "paused")
+        self.assertEqual(bootstrap.market_profile.locale, "en-US")
+        self.assertEqual(bootstrap.market_profile.timezone, "America/Los_Angeles")
+        self.assertEqual(bootstrap.industry_profile.report_template, "geo_visibility_v1")
+        self.assertEqual(bootstrap.prompt_questions, ())
+        self.assertEqual(bootstrap.audit_events[0].method_version, "project_bootstrap_v2")
 
     def test_m1_bootstrap_rejects_invalid_competitor_count(self) -> None:
         with self.assertRaises(ValueError):
@@ -3073,7 +3107,7 @@ class CoreContractsTest(unittest.TestCase):
         assert report.report_export.pdf_url is not None
         self.assertTrue(report.report_export.pdf_url.endswith(".pdf"))
         self.assertTrue(report.report_export.csv_url.endswith(".csv"))
-        self.assertIn("GENO AU Evidence Report", report.markdown)
+        self.assertIn("GEO Evidence Report", report.markdown)
         self.assertIn("### Method Disclosure", report.markdown)
         self.assertIn("Google spike gate: not_run", report.markdown)
         self.assertIn("Google limited coverage: yes", report.markdown)
@@ -4551,7 +4585,7 @@ class CoreContractsTest(unittest.TestCase):
                 project_id=project_id,
                 csv_content=(
                     "fact_type,subject,predicate,object_value,market_code,city,confidence,status\n"
-                    "returns_policy,KoalaHome,has_policy,30 day returns,AU,Sydney,0.86,approved"
+                    "returns_policy,KoalaHome,has_policy,30 day returns,AU,Sydney,0.86,active"
                 ),
                 imported_by="runtime-console",
                 default_market_code="AU",
@@ -4568,6 +4602,21 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("knowledge_fact_embeddings_indexed", str(connection.calls))
         self.assertIn("runtime_knowledge_facts_imported", str(connection.calls))
         self.assertGreaterEqual(connection.commit_count, 1)
+
+    def test_runtime_knowledge_fact_csv_rejects_invalid_status_before_database_insert(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "row 1 status must be one of: active, archived, forbidden, superseded",
+        ):
+            _parse_knowledge_fact_import_csv(
+                project_id="9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                csv_content=(
+                    "fact_type,subject,predicate,object_value,market_code,city,confidence,status\n"
+                    "returns_policy,KoalaHome,has_policy,30 day returns,AU,Sydney,0.86,approved"
+                ),
+                max_rows=10,
+                default_market_code="AU",
+            )
 
     def test_vector_store_pgvector_and_qdrant_projection_keep_search_results_stable(self) -> None:
         bootstrap = build_au_project_bootstrap()
@@ -4807,7 +4856,6 @@ class CoreContractsTest(unittest.TestCase):
             "name": "Koala GEO Pilot",
             "target_brand": "Koala",
             "category": "mattresses",
-            "status": "active",
         }
         connection = RecordingConnection(
             result_sets=[
@@ -4853,7 +4901,7 @@ class CoreContractsTest(unittest.TestCase):
                         "target_id": project_id,
                         "before_hash": "before",
                         "after_hash": "after",
-                        "input_refs": {"changed_fields": ["name", "target_brand", "category", "status"]},
+                        "input_refs": {"changed_fields": ["name", "target_brand", "category"]},
                         "output_refs": {"project_ids": [project_id]},
                         "method_version": "runtime_project_update_v1",
                         "reason": "refresh client metadata",
@@ -4870,7 +4918,6 @@ class CoreContractsTest(unittest.TestCase):
                 name="Koala GEO Pilot",
                 target_brand="Koala",
                 category="mattresses",
-                status="active",
                 updated_by="agency-owner",
                 reason="refresh client metadata",
             )
@@ -4878,7 +4925,7 @@ class CoreContractsTest(unittest.TestCase):
 
         self.assertEqual(record.project["name"], "Koala GEO Pilot")
         self.assertEqual(record.project["target_brand"], "Koala")
-        self.assertEqual(record.project["status"], "active")
+        self.assertEqual(record.project["status"], "paused")
         assert record.brand is not None
         self.assertEqual(record.brand["canonical_name"], "Koala")
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
@@ -4960,6 +5007,53 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(audit_insert[1], "project_archived")
         self.assertEqual(audit_insert[11], "runtime_project_archive_v1")
         self.assertEqual(connection.commit_count, 1)
+
+    def test_postgres_repository_rejects_direct_project_status_update(self) -> None:
+        connection = RecordingConnection(result_sets=[])
+
+        with self.assertRaisesRegex(ValueError, "project lifecycle action"):
+            PostgresEvidenceRepository(connection).update_runtime_project(
+                RuntimeProjectUpdateInput(project_id="project-1", status="active")
+            )
+
+        self.assertEqual(connection.calls, [])
+
+    def test_postgres_repository_start_reports_all_missing_prerequisites(self) -> None:
+        now = datetime.now(UTC)
+        project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
+        before_project = {
+            "id": project_id,
+            "tenant_id": "8330ea73-6914-5278-90cb-147f8369fed6",
+            "name": "Incomplete GEO project",
+            "market_code": "US",
+            "industry_code": "retail",
+            "target_brand": "Brand",
+            "category": "Retail",
+            "prompt_version": "project_prompts_v1",
+            "status": "paused",
+            "created_at": now,
+        }
+        connection = RecordingConnection(
+            result_sets=[
+                before_project,
+                {"official_domains": [], "status": "active"},
+                {"count": 0},
+                {"count": 0},
+                None,
+            ]
+        )
+
+        with self.assertRaisesRegex(ValueError, "project cannot start") as context:
+            PostgresEvidenceRepository(connection).apply_runtime_project_action(
+                RuntimeProjectActionInput(project_id=project_id, action="start")
+            )
+
+        detail = str(context.exception)
+        self.assertIn("official domain", detail)
+        self.assertIn("active competitor", detail)
+        self.assertIn("active Prompt", detail)
+        self.assertIn("launch configuration", detail)
+        self.assertEqual(connection.commit_count, 0)
 
     def test_postgres_repository_restores_runtime_project_with_audit_event(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
@@ -5129,10 +5223,20 @@ class CoreContractsTest(unittest.TestCase):
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FROM audit_events", executed_sql)
         self.assertIn("event_type = ANY", executed_sql)
-        self.assertEqual(connection.calls[0][1], (UUID(project_id), list(("project_bootstrap_created", "project_updated", "project_archived", "project_restored"))))
+        lifecycle_types = list(
+            (
+                "project_bootstrap_created",
+                "project_updated",
+                "project_started",
+                "project_paused",
+                "project_archived",
+                "project_restored",
+            )
+        )
+        self.assertEqual(connection.calls[0][1], (UUID(project_id), lifecycle_types))
         self.assertEqual(
             connection.calls[1][1],
-            (UUID(project_id), list(("project_bootstrap_created", "project_updated", "project_archived", "project_restored")), 5, 1),
+            (UUID(project_id), lifecycle_types, 5, 1),
         )
 
     def test_postgres_repository_exports_runtime_project_lifecycle_events_csv(self) -> None:
@@ -5181,7 +5285,21 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(export.content_hash, hashlib.sha256(str(export.content).encode("utf-8")).hexdigest())
         self.assertEqual(
             connection.calls[1][1],
-            (UUID(project_id), list(("project_bootstrap_created", "project_updated", "project_archived", "project_restored")), 10, 0),
+            (
+                UUID(project_id),
+                list(
+                    (
+                        "project_bootstrap_created",
+                        "project_updated",
+                        "project_started",
+                        "project_paused",
+                        "project_archived",
+                        "project_restored",
+                    )
+                ),
+                10,
+                0,
+            ),
         )
 
     def test_postgres_repository_lists_runtime_audit_events_with_filters(self) -> None:
@@ -11823,7 +11941,7 @@ class CoreContractsTest(unittest.TestCase):
         assert artifact is not None
         self.assertEqual(artifact.filename, "worker-runtime-v1.md")
         self.assertEqual(artifact.media_type, "text/markdown; charset=utf-8")
-        self.assertIn("GENO AU Evidence Report", artifact.content)
+        self.assertIn("GEO Evidence Report", artifact.content)
         self.assertIn("Is ExampleBrand good in Australia?", artifact.content)
         self.assertIn("## Method Disclosure", artifact.content)
         self.assertIn("Google spike gate: fail", artifact.content)

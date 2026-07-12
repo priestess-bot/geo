@@ -3012,6 +3012,47 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["bootstrap"]["brand"]["product_lines"], ["Mattress", "Sofa Bed"])
         self.assertEqual(payload["bootstrap"]["members"][0]["user_id"], "agency-owner")
 
+    def test_runtime_generic_project_create_endpoint_uses_explicit_market_profile(self) -> None:
+        class FakeRepository:
+            def save_project_bootstrap(self, bootstrap: object) -> None:
+                self.bootstrap = bootstrap
+
+        fake_repository = FakeRepository()
+        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/projects/runtime",
+                json={
+                    "tenant_name": "Northwind US",
+                    "project_name": "Northwind GEO",
+                    "target_brand": "Northwind",
+                    "category": "Outdoor equipment",
+                    "market_code": "US",
+                    "market_name": "United States",
+                    "locale": "en-US",
+                    "timezone": "America/Los_Angeles",
+                    "currency": "USD",
+                    "primary_language": "English",
+                    "cities": ["Seattle", "Portland"],
+                    "industry_code": "outdoor_retail",
+                    "industry_name": "Outdoor retail",
+                    "competitors": ["Contoso", "Adventure Works", "Fabrikam"],
+                    "brand_official_domains": ["northwind.example"],
+                    "customer_email": "customer@northwind.example",
+                    "owner_user_id": "owner@northwind.example",
+                },
+            )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["market_code"], "US")
+        self.assertEqual(payload["industry_code"], "outdoor_retail")
+        self.assertEqual(payload["prompt_count"], 0)
+        self.assertEqual(payload["bootstrap"]["market_profile"]["locale"], "en-US")
+        self.assertEqual(payload["bootstrap"]["project"]["status"], "paused")
+        self.assertEqual(payload["bootstrap"]["prompt_questions"], [])
+
     def test_runtime_project_create_endpoint_uses_actor_as_owner_when_access_control_enabled(self) -> None:
         class FakeRepository:
             def save_project_bootstrap(self, bootstrap: object) -> None:
@@ -3410,7 +3451,6 @@ class ApiContractsTest(unittest.TestCase):
                     "name": "Koala GEO Pilot",
                     "target_brand": "Koala",
                     "category": "mattresses",
-                    "status": "active",
                     "updated_by": "agency-owner",
                     "reason": "refresh client metadata",
                 },
@@ -3423,6 +3463,25 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.project.tenant_name, "Koala Client Team")
         self.assertEqual(fake_repository.project.updated_by, "agency-owner")
         self.assertEqual(fake_repository.project.reason, "refresh client metadata")
+
+    def test_runtime_project_update_endpoint_rejects_direct_status_change(self) -> None:
+        class FakeRepository:
+            def update_runtime_project(self, project: RuntimeProjectUpdateInput) -> RuntimeProject:
+                raise AssertionError("direct status mutation must be rejected before repository update")
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.patch(
+                "/v1/projects/runtime",
+                json={
+                    "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
+                    "status": "active",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("/v1/projects/runtime/action", response.json()["detail"])
 
     def test_runtime_project_update_endpoint_requires_admin_or_owner_role(self) -> None:
         class FakeRepository:
@@ -11816,7 +11875,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertTrue(payload["report_export"]["markdown_url"].endswith(".md"))
         self.assertTrue(payload["report_export"]["pdf_url"].endswith(".pdf"))
         self.assertTrue(payload["report_export"]["csv_url"].endswith(".csv"))
-        self.assertIn("GENO AU Evidence Report", payload["markdown"])
+        self.assertIn("GEO Evidence Report", payload["markdown"])
         self.assertIn("### Method Disclosure", payload["markdown"])
         self.assertIn("Google spike gate: fail", payload["markdown"])
         self.assertIn("Google limited coverage: yes", payload["markdown"])

@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+
 type RuntimeRequestOptions = {
   method?: string;
   body?: unknown;
@@ -28,10 +30,19 @@ export type PortalBundle = {
 };
 
 export type PortalAccessResponse = {
-  portal_token?: string | null;
-  portal_token_record?: Record<string, unknown>;
   accepted_invitation?: Record<string, unknown>;
   bundle?: PortalBundle;
+};
+
+export type AuthorizedProject = {
+  project?: { id?: string; name?: string; target_brand?: string; status?: string };
+  tenant?: { name?: string };
+  competitors?: Array<{ canonical_name?: string; official_domains?: string[] }>;
+  prompt_count?: number;
+};
+
+export type SessionPortalResponse = PortalAccessResponse & {
+  authorized_projects: AuthorizedProject[];
 };
 
 export type PortalRuntimeData = {
@@ -49,7 +60,25 @@ export function apiBase(): string {
   return process.env.API_INTERNAL_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://api:8000";
 }
 
-function actorHeaders(actorId?: string, extra?: HeadersInit): HeadersInit {
+async function actorHeaders(actorId?: string, extra?: HeadersInit): Promise<HeadersInit> {
+  const cookieStore = await cookies();
+  const sessionToken = cookieStore.get("GENO_RUNTIME_SESSION")?.value || "";
+  const csrfToken = cookieStore.get("GENO_CSRF_TOKEN")?.value || "";
+  if (sessionToken) {
+    return {
+      "X-GENO-Session-Token": sessionToken,
+      ...(csrfToken
+        ? {
+            "X-GENO-CSRF-Token": csrfToken,
+            Cookie: `GENO_CSRF_TOKEN=${encodeURIComponent(csrfToken)}`
+          }
+        : {}),
+      ...(extra || {})
+    };
+  }
+  if ((process.env.GENO_RUNTIME_AUTH_MODE || "header") === "session") {
+    return { ...(extra || {}) };
+  }
   return {
     "X-GENO-Actor-Id": actorId || process.env.GENO_CUSTOMER_RUNTIME_ACTOR_ID || process.env.GENO_ADMIN_ACTOR_ID || "runtime-console",
     ...(extra || {})
@@ -66,11 +95,14 @@ function runtimeUrl(path: string, query?: RuntimeRequestOptions["query"]): strin
   return url.toString();
 }
 
-async function runtimeRequest<T>(path: string, options: RuntimeRequestOptions = {}): Promise<T | null> {
+export async function runtimeRequest<T>(path: string, options: RuntimeRequestOptions = {}): Promise<T | null> {
   try {
+    const headers = options.body
+      ? await actorHeaders(options.actorId, { "Content-Type": "application/json" })
+      : await actorHeaders(options.actorId);
     const response = await fetch(runtimeUrl(path, options.query), {
       method: options.method || "GET",
-      headers: options.body ? actorHeaders(options.actorId, { "Content-Type": "application/json" }) : actorHeaders(options.actorId),
+      headers,
       body: options.body ? JSON.stringify(options.body) : undefined,
       cache: options.cache || "no-store"
     });
@@ -83,28 +115,37 @@ async function runtimeRequest<T>(path: string, options: RuntimeRequestOptions = 
   }
 }
 
-export async function loadPortal(params: {
-  portalToken?: string;
-  invitationId?: string;
-  inviteToken?: string;
-  acceptedBy?: string;
-}): Promise<PortalAccessResponse | null> {
-  const body = params.portalToken
-    ? { portal_token: params.portalToken }
-    : params.invitationId && params.inviteToken
-      ? {
-          invitation_id: params.invitationId,
-          invite_token: params.inviteToken,
-          accepted_by: params.acceptedBy || null
-        }
-      : null;
-  if (!body) {
+export async function loadSessionPortal(projectId?: string): Promise<SessionPortalResponse | null> {
+  const authResponse = await runtimeRequest<{ auth?: { actor_id?: string; project_ids?: string[] } }>("/v1/auth/me");
+  if (!authResponse?.auth?.actor_id) {
     return null;
   }
-  return runtimeRequest<PortalAccessResponse>("/v1/customer-portal/access", {
-    method: "POST",
-    body
+  const projectPage = await runtimeRequest<RuntimePage<AuthorizedProject>>("/v1/projects/runtime", {
+    query: { limit: 100 }
   });
+  const authorizedProjects = projectPage?.records || [];
+  const selected = authorizedProjects.find((record) => record.project?.id === projectId) || authorizedProjects[0];
+  const selectedProjectId = selected?.project?.id || "";
+  if (!selectedProjectId) {
+    return { authorized_projects: authorizedProjects, bundle: { access: { member_user_id: authResponse.auth.actor_id } } };
+  }
+  const [launch, scoreWeight, lifecycleEvents, auditEvents] = await Promise.all([
+    runtimeRequest<Record<string, unknown>>("/v1/project-launch-configs/runtime", { query: { project_id: selectedProjectId } }),
+    runtimeRequest<Record<string, unknown>>("/v1/score-weight-configs/runtime", { query: { project_id: selectedProjectId } }),
+    runtimeRequest<RuntimePage>("/v1/projects/runtime/lifecycle-events", { query: { project_id: selectedProjectId, limit: 50 } }),
+    runtimeRequest<RuntimePage>("/v1/audit-events/runtime", { query: { project_id: selectedProjectId, limit: 50 } })
+  ]);
+  return {
+    authorized_projects: authorizedProjects,
+    bundle: {
+      access: { project_id: selectedProjectId, member_user_id: authResponse.auth.actor_id },
+      project: selected,
+      launch_config: launch,
+      score_weight_config: scoreWeight,
+      lifecycle_events: lifecycleEvents || { total_count: 0, records: [] },
+      audit_events: auditEvents || { total_count: 0, records: [] }
+    }
+  };
 }
 
 async function loadPage(

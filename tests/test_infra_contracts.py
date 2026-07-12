@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import unittest
 from pathlib import Path
@@ -297,7 +298,10 @@ class InfraContractsTest(unittest.TestCase):
 
         self.assertEqual(prometheus["image"], "prom/prometheus:v3.0.1")
         self.assertIn("--config.file=/etc/prometheus/prometheus.yml", prometheus["command"])
-        self.assertIn("9090", {str(port["published"]) for port in prometheus["ports"]})
+        self.assertIn(
+            os.environ.get("GENO_PROMETHEUS_HOST_PORT", "9090"),
+            {str(port["published"]) for port in prometheus["ports"]},
+        )
         self.assertTrue(
             any(volume["target"] == "/etc/prometheus/prometheus.yml" and volume["read_only"] for volume in prometheus["volumes"])
         )
@@ -306,7 +310,10 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(grafana["image"], "grafana/grafana:11.4.0")
         self.assertEqual(grafana["environment"]["GF_SECURITY_ADMIN_USER"], "admin")
         self.assertEqual(grafana["environment"]["GF_SECURITY_ADMIN_PASSWORD"], "admin")
-        self.assertIn("3001", {str(port["published"]) for port in grafana["ports"]})
+        self.assertIn(
+            os.environ.get("GENO_GRAFANA_HOST_PORT", "3001"),
+            {str(port["published"]) for port in grafana["ports"]},
+        )
         self.assertTrue(
             any(volume["target"] == "/etc/grafana/provisioning" and volume["read_only"] for volume in grafana["volumes"])
         )

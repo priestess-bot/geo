@@ -97,7 +97,7 @@ def run_smoke(*, key_path: Path, output_path: Path, endpoint: str, model: str, t
                         {"role": "user", "content": prompt},
                     ],
                     "temperature": 0,
-                    "max_tokens": 320,
+                    "max_tokens": 1024,
                 },
             )
             latency_ms = round((time.perf_counter() - request_started) * 1000)
@@ -124,12 +124,14 @@ def run_smoke(*, key_path: Path, output_path: Path, endpoint: str, model: str, t
             checks.append(check)
             if check["status"] != "pass":
                 failures.append(
-                    f"prompt_{index}: status={response.status_code}, answer_length={redacted.get('answer_length')}"
+                    f"prompt_{index}: status={response.status_code}, finish_reason={redacted.get('finish_reason')}, "
+                    f"answer_length={redacted.get('answer_length')}"
                 )
     finally:
         client.close()
 
     report = {
+        "run_id": f"connector-real-{started_at.strftime('%Y%m%d%H%M%S%f')}",
         "status": "passed" if not failures else "failed",
         "provider": "deepseek",
         "endpoint": endpoint,

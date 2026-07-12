@@ -1,15 +1,20 @@
 import {
   BrandAssetsPanel,
   CompetitorEditor,
+  CollectionJobPanel,
   ContentWorkbenchPanel,
   FixtureE2EForm,
   HumanReviewPanel,
   InvitationForm,
   InvitationList,
-  KnowledgeFactImportForm,
   KnowledgeDashboardPanel,
+  KnowledgeChunkControlForm,
+  KnowledgeFactExtractionForm,
   KnowledgeDocumentImportPanel,
+  KnowledgeMaintenanceRunForm,
   KnowledgeQualityPanel,
+  KnowledgeQualityRiskAcceptForm,
+  KnowledgeStageRetryForm,
   type KnowledgeFactSearchResult,
   LaunchConfigForm,
   ManualBackfillPanel,
@@ -25,10 +30,7 @@ import {
   PromptTemplatePanel,
   QualityOpsPanel,
   ReportCenterPanel,
-  ActionPlanPanel,
-  TokenList,
-  TokenCreateForm,
-  TokenRevokeForm
+  ActionPlanPanel
 } from "./ProjectActions";
 import type { ReactNode } from "react";
 import { actorHeaders, adminDevToolsEnabled, apiBase, runtimeRequest } from "../../runtime";
@@ -110,6 +112,15 @@ type PromptRecord = {
 
 type QueryParams = Record<string, string | string[] | undefined>;
 
+type KnowledgeChunkFilters = {
+  query: string;
+  status: string;
+  embeddingStatus: string;
+  chunkType: string;
+  qualityFlag: string;
+  sourceAssetId: string;
+};
+
 const mainTabs = [
   { id: "basic", label: "基础配置" },
   { id: "entry", label: "用户入口" },
@@ -136,9 +147,12 @@ const promptTabs = [
 
 const knowledgeTabs = [
   { id: "import", label: "导入" },
+  { id: "processing", label: "处理任务" },
+  { id: "chunks", label: "Chunk 可视化" },
   { id: "search", label: "检索" },
   { id: "dashboard", label: "知识库看板" },
-  { id: "quality", label: "质检" }
+  { id: "quality", label: "质检" },
+  { id: "trace", label: "证据追踪" }
 ] as const;
 
 const statusTabs = [
@@ -162,7 +176,7 @@ async function loadProject(projectId: string): Promise<RuntimeProject | null> {
   try {
     const response = await fetch(`${apiBase()}/v1/projects/runtime?project_id=${encodeURIComponent(projectId)}`, {
       cache: "no-store",
-      headers: actorHeaders()
+      headers: await actorHeaders()
     });
     if (!response.ok) {
       return null;
@@ -178,7 +192,7 @@ async function loadLaunchConfig(projectId: string): Promise<LaunchConfigResponse
   try {
     const response = await fetch(`${apiBase()}/v1/project-launch-configs/runtime?project_id=${encodeURIComponent(projectId)}`, {
       cache: "no-store",
-      headers: actorHeaders()
+      headers: await actorHeaders()
     });
     if (!response.ok) {
       return null;
@@ -191,7 +205,7 @@ async function loadLaunchConfig(projectId: string): Promise<LaunchConfigResponse
 
 async function loadScoreWeightConfig(projectId: string, formulaVersion: string): Promise<ScoreWeightConfigResponse | null> {
   const response = await runtimeRequest<ScoreWeightConfigResponse>("/v1/score-weight-configs/runtime", {
-    query: { project_id: projectId, formula_version: formulaVersion || "au_visibility_v1" }
+    query: { project_id: projectId, formula_version: formulaVersion || "visibility_v1.0" }
   });
   return response.ok && response.data ? response.data : null;
 }
@@ -223,11 +237,11 @@ async function loadKnowledgeSearch(
   city: string
 ): Promise<KnowledgeSearchPage> {
   const effectiveQuery = query.trim() || "shipping returns reviews";
-  const response = await runtimeRequest<KnowledgeSearchPage>("/v1/knowledge-facts/runtime/search", {
+  const response = await runtimeRequest<KnowledgeSearchPage>("/v1/knowledge/chunks/runtime/search", {
     query: {
       project_id: projectId,
       query: effectiveQuery,
-      market_code: marketCode || "AU",
+      market_code: marketCode || "GLOBAL",
       city: city || undefined,
       limit: 10
     }
@@ -239,28 +253,138 @@ async function loadKnowledgeSearch(
       limit: 10,
       offset: 0,
       query: effectiveQuery,
-      market_code: marketCode || "AU",
+      market_code: marketCode || "GLOBAL",
       city: city || null,
       records: []
     };
 }
 
-async function loadKnowledgeApplication(projectId: string): Promise<Record<string, unknown>> {
-  const response = await runtimeRequest<Record<string, unknown>>("/v1/knowledge-applications/runtime", {
-    query: { project_id: projectId, limit: 50 }
-  });
-  return response.ok && response.data
-    ? response.data
-    : {
-      project_id: projectId,
-      knowledge_documents: [],
-      knowledge_facts: [],
-      generation_jobs: [],
-      prompt_candidates: [],
-      faq_candidates: [],
-      content_drafts: [],
-      total_count: 0
-    };
+async function loadKnowledgePipelineData(
+  projectId: string,
+  chunkFilters: KnowledgeChunkFilters
+): Promise<Record<string, PageResponse<Record<string, unknown>>>> {
+  const [
+    pipelineRuns,
+    importJobs,
+    sourceAssets,
+    parserRuns,
+    blocks,
+    tables,
+    ocrSpans,
+    pageSnapshots,
+    chunks,
+    qualityFindings,
+    qualityGateRuns,
+    traceRefs,
+    factCandidates,
+    approvedFacts,
+    factExtractionJobs,
+    promptGenerationJobs,
+    promptTemplates,
+    contentGenerationJobs,
+    promptCandidates,
+    contentDrafts
+  ] = await Promise.all([
+    loadPage<Record<string, unknown>>("/v1/knowledge/pipeline-runs/runtime", projectId, {}, 20),
+    loadPage<Record<string, unknown>>("/v1/knowledge/import-jobs/runtime", projectId, {}, 20),
+    loadPage<Record<string, unknown>>("/v1/knowledge/source-assets/runtime", projectId, {}, 50),
+    loadPage<Record<string, unknown>>("/v1/knowledge/parser-runs/runtime", projectId, {}, 50),
+    loadPage<Record<string, unknown>>("/v1/knowledge/blocks/runtime", projectId, {}, 100),
+    loadPage<Record<string, unknown>>("/v1/knowledge/tables/runtime", projectId, {}, 50),
+    loadPage<Record<string, unknown>>("/v1/knowledge/ocr-spans/runtime", projectId, {}, 50),
+    loadPage<Record<string, unknown>>("/v1/knowledge/page-snapshots/runtime", projectId, {}, 50),
+    loadPage<Record<string, unknown>>("/v1/knowledge/chunks/runtime", projectId, {
+      query: chunkFilters.query || undefined,
+      status: chunkFilters.status || undefined,
+      embedding_status: chunkFilters.embeddingStatus || undefined,
+      chunk_type: chunkFilters.chunkType || undefined,
+      quality_flag: chunkFilters.qualityFlag || undefined,
+      source_asset_id: chunkFilters.sourceAssetId || undefined
+    }, 50),
+    loadPage<Record<string, unknown>>("/v1/knowledge/quality-findings/runtime", projectId, {}, 20),
+    loadPage<Record<string, unknown>>("/v1/knowledge/quality-gate-runs/runtime", projectId, {}, 20),
+    loadPage<Record<string, unknown>>("/v1/knowledge/trace-refs/runtime", projectId, {}, 20),
+    loadPage<Record<string, unknown>>("/v1/knowledge/fact-candidates/runtime", projectId, {}, 20),
+    loadPage<Record<string, unknown>>("/v1/knowledge/approved-facts/runtime", projectId, {}, 50),
+    loadPage<Record<string, unknown>>("/v1/knowledge/fact-extraction-jobs/runtime", projectId, {}, 20),
+    loadPage<Record<string, unknown>>("/v1/knowledge/prompt-generation-jobs/runtime", projectId, {}, 20),
+    loadPage<Record<string, unknown>>("/v1/knowledge/prompt-generation-templates/runtime", projectId, {}, 50),
+    loadPage<Record<string, unknown>>("/v1/knowledge/content-generation-jobs/runtime", projectId, {}, 20),
+    loadPage<Record<string, unknown>>("/v1/knowledge/prompt-candidates/runtime", projectId, {}, 20),
+    loadPage<Record<string, unknown>>("/v1/knowledge/content-drafts/runtime", projectId, {}, 20)
+  ]);
+  const latestPipelineRunId = String(pipelineRuns.records[0]?.id || "");
+  const stageResponse = latestPipelineRunId
+    ? await runtimeRequest<PageResponse<Record<string, unknown>>>(
+        `/v1/knowledge/pipeline-runs/runtime/${encodeURIComponent(latestPipelineRunId)}/stages`,
+        { query: { project_id: projectId } }
+      )
+    : null;
+  const pipelineStages = stageResponse?.ok && stageResponse.data
+    ? stageResponse.data
+    : { total_count: 0, records: [], limit: 50, offset: 0 };
+  return {
+    pipelineRuns,
+    importJobs,
+    sourceAssets,
+    parserRuns,
+    blocks,
+    tables,
+    ocrSpans,
+    pageSnapshots,
+    chunks,
+    qualityFindings,
+    qualityGateRuns,
+    traceRefs,
+    factCandidates,
+    approvedFacts,
+    factExtractionJobs,
+    promptGenerationJobs,
+    promptTemplates,
+    contentGenerationJobs,
+    promptCandidates,
+    contentDrafts,
+    pipelineStages
+  };
+}
+
+function knowledgeApplicationFromPipeline(
+  projectId: string,
+  pipeline: Record<string, PageResponse<Record<string, unknown>>>
+): Record<string, unknown> {
+  const factJobs = (pipeline.factExtractionJobs?.records || []).map((job) => ({
+    ...job,
+    job_type: "extract_facts",
+    generation_model: job.model,
+    generation_prompt_version: job.prompt_version
+  }));
+  const promptJobs = (pipeline.promptGenerationJobs?.records || []).map((job) => ({
+    ...job,
+    job_type: "prompt_candidates",
+    generation_model: job.model,
+    generation_prompt_version: job.template_version
+  }));
+  const contentJobs = (pipeline.contentGenerationJobs?.records || []).map((job) => ({
+    ...job,
+    job_type: "content_draft",
+    generation_model: job.model,
+    generation_prompt_version: job.template_version
+  }));
+  return {
+    project_id: projectId,
+    knowledge_documents: pipeline.sourceAssets?.records || [],
+    knowledge_facts: pipeline.approvedFacts?.records || [],
+    generation_jobs: [...factJobs, ...promptJobs, ...contentJobs],
+    prompt_candidates: pipeline.promptCandidates?.records || [],
+    faq_candidates: [],
+    content_drafts: pipeline.contentDrafts?.records || [],
+    prompt_templates: pipeline.promptTemplates?.records || [],
+    total_count:
+      (pipeline.sourceAssets?.total_count || 0)
+      + (pipeline.approvedFacts?.total_count || 0)
+      + (pipeline.promptCandidates?.total_count || 0)
+      + (pipeline.contentDrafts?.total_count || 0)
+  };
 }
 
 async function loadBrandKit(projectId: string): Promise<Record<string, unknown> | null> {
@@ -296,9 +420,20 @@ export default async function ProjectDetailPage({
   const promptLimit = normalizePromptLimit(queryValue(queryParams, "prompt_limit"));
   const promptImported = queryValue(queryParams, "prompt_imported");
   const knowledgeQuery = queryValue(queryParams, "knowledge_query") || "shipping returns reviews";
-  const knowledgeMarket = queryValue(queryParams, "knowledge_market") || "AU";
+  const knowledgeMarket = queryValue(queryParams, "knowledge_market");
   const knowledgeCity = queryValue(queryParams, "knowledge_city");
   const knowledgeImported = queryValue(queryParams, "knowledge_imported");
+  const knowledgeSourceUploaded = queryValue(queryParams, "source_uploaded");
+  const knowledgeSourceRejected = queryValue(queryParams, "source_rejected");
+  const traceChunkId = queryValue(queryParams, "trace_chunk_id");
+  const knowledgeChunkFilters: KnowledgeChunkFilters = {
+    query: queryValue(queryParams, "chunk_query"),
+    status: queryValue(queryParams, "chunk_status"),
+    embeddingStatus: queryValue(queryParams, "chunk_embedding_status"),
+    chunkType: queryValue(queryParams, "chunk_type"),
+    qualityFlag: queryValue(queryParams, "chunk_quality_flag"),
+    sourceAssetId: queryValue(queryParams, "chunk_source_asset_id")
+  };
 
   const promptQuery = {
     status: promptStatus === "all" ? undefined : promptStatus || undefined,
@@ -312,7 +447,7 @@ export default async function ProjectDetailPage({
     loadLaunchConfig(projectId)
   ]);
   const launch = launchConfig?.launch_config || {};
-  const scoringProfile = stringValue(launch, "scoring_profile") || "au_visibility_v1";
+  const scoringProfile = stringValue(launch, "scoring_profile") || "visibility_v1.0";
 
   const [
     scoreConfig,
@@ -320,10 +455,10 @@ export default async function ProjectDetailPage({
     scoreProfiles,
     members,
     invitations,
-    tokens,
     prompts,
     knowledge,
-    knowledgeApplication,
+    knowledgePipeline,
+    collectionJobs,
     collectionRuns,
     scores,
     reports,
@@ -345,10 +480,10 @@ export default async function ProjectDetailPage({
     loadScoreProfiles(),
     loadPage<Record<string, unknown>>("/v1/project-members/runtime", projectId),
     loadPage<Record<string, unknown>>("/v1/project-member-invitations/runtime", projectId),
-    loadPage<Record<string, unknown>>("/v1/customer-portal/tokens/runtime", projectId),
     loadPage<PromptRecord>("/v1/prompts/runtime", projectId, promptQuery, promptLimit),
-    loadKnowledgeSearch(projectId, knowledgeQuery, knowledgeMarket || record?.project.market_code || "AU", knowledgeCity),
-    loadKnowledgeApplication(projectId),
+    loadKnowledgeSearch(projectId, knowledgeQuery, knowledgeMarket || record?.project.market_code || "GLOBAL", knowledgeCity),
+    loadKnowledgePipelineData(projectId, knowledgeChunkFilters),
+    loadPage<Record<string, unknown>>("/v1/collection-jobs/runtime", projectId, {}, 20),
     loadPage<Record<string, unknown>>("/v1/collection-runs/runtime", projectId),
     loadPage<Record<string, unknown>>("/v1/visibility-scores/runtime", projectId),
     loadPage<Record<string, unknown>>("/v1/reports/runtime", projectId),
@@ -365,6 +500,14 @@ export default async function ProjectDetailPage({
     loadPage<Record<string, unknown>>("/v1/runtime-alerts", projectId),
     loadBrandKit(projectId)
   ]);
+  const knowledgeApplication = knowledgeApplicationFromPipeline(projectId, knowledgePipeline);
+  const chunkTraceResponse = traceChunkId
+    ? await runtimeRequest<Record<string, unknown>>(
+        `/v1/knowledge/chunks/runtime/${encodeURIComponent(traceChunkId)}/trace`,
+        { query: { project_id: projectId } }
+      )
+    : null;
+  const knowledgeChunkTrace = chunkTraceResponse?.ok && chunkTraceResponse.data ? chunkTraceResponse.data : null;
   const defaultEmail = typeof launch.customer_email === "string" ? launch.customer_email : undefined;
   const competitors = record?.competitors || [];
   const connectorReady = launchConnectorsReady(launch);
@@ -391,12 +534,11 @@ export default async function ProjectDetailPage({
           <div className="stat"><span className="muted">状态</span><strong>{projectStatusLabel(record.project.status)}</strong></div>
           <div className="stat"><span className="muted">竞品数</span><strong>{competitors.length}</strong></div>
           <div className="stat"><span className="muted">Prompt 数</span><strong>{record.prompt_count ?? prompts.total_count}</strong></div>
-          <div className="stat"><span className="muted">市场</span><strong>{record.project.market_code || "AU"}</strong></div>
+          <div className="stat"><span className="muted">市场</span><strong>{record.project.market_code || "GLOBAL"}</strong></div>
           <ProjectStatusControls
             category={record.project.category}
             competitorCount={competitors.length}
             connectorReady={connectorReady}
-            launchStatus={stringValue(launch, "status")}
             primaryDomain={stringValue(launch, "primary_domain")}
             projectId={projectId}
             promptCount={record.prompt_count ?? prompts.total_count}
@@ -432,7 +574,6 @@ export default async function ProjectDetailPage({
             launch={launch}
             members={members}
             projectId={projectId}
-            tokens={tokens}
           />
         ) : null}
         {activeTab === "prompts" ? (
@@ -453,12 +594,18 @@ export default async function ProjectDetailPage({
           <KnowledgePanel
             activeTab={activeKnowledgeTab}
             application={knowledgeApplication}
-            importedCount={knowledgeImported}
-            marketCode={knowledgeMarket || record?.project.market_code || "AU"}
+            chunkTrace={knowledgeChunkTrace}
+            chunkFilters={knowledgeChunkFilters}
+          importedCount={knowledgeImported}
+            pipeline={knowledgePipeline}
+            locale={stringValue(launch, "locale") || "en"}
+            marketCode={knowledgeMarket || record?.project.market_code || "GLOBAL"}
             projectId={projectId}
             searchCity={knowledgeCity}
             searchPage={knowledge}
-            searchQuery={knowledgeQuery}
+          searchQuery={knowledgeQuery}
+          sourceRejected={knowledgeSourceRejected}
+          sourceUploaded={knowledgeSourceUploaded}
           />
         ) : null}
         {activeTab === "operations" ? (
@@ -473,6 +620,7 @@ export default async function ProjectDetailPage({
             humanReviewQueue={humanReviewQueue}
             humanReviews={humanReviews}
             jobs={jobs}
+            knowledgePipeline={knowledgePipeline}
             projectId={projectId}
             prompts={prompts}
             reports={reports}
@@ -484,6 +632,7 @@ export default async function ProjectDetailPage({
           <StatusPanel
             actions={actions}
             activeTab={activeStatusTab}
+            collectionJobs={collectionJobs}
             collectionRuns={collectionRuns}
             graphs={graphs}
             jobs={jobs}
@@ -573,24 +722,22 @@ function EntryPanel({
   invitations,
   launch,
   members,
-  projectId,
-  tokens
+  projectId
 }: {
   defaultEmail?: string;
   invitations: PageResponse<Record<string, unknown>>;
   launch: Record<string, unknown>;
   members: PageResponse<Record<string, unknown>>;
   projectId: string;
-  tokens: PageResponse<Record<string, unknown>>;
 }) {
   return (
     <section className="detailPanel unframedPanel">
       <p className="eyebrow">用户入口</p>
-      <h2>邀请、成员与门户 token</h2>
+      <h2>邀请、成员与安全会话</h2>
       <p className="muted formIntro">
-        用户入口分三层：先发客户邀请，客户兑换后成为项目成员，再由门户 token/session 控制后续访问。新建项目时填写的客户邮箱和默认 viewer 权限在这里明文展示。
+        用户入口只有一条正式路径：发送一次性邀请，客户兑换后成为项目成员并建立安全会话。新建项目时填写的客户邮箱和默认查看权限在这里明文展示。
       </p>
-      <AccessOverview defaultEmail={defaultEmail} invitations={invitations} launch={launch} members={members} tokens={tokens} />
+      <AccessOverview defaultEmail={defaultEmail} invitations={invitations} launch={launch} members={members} />
       <div className="detailPanel nestedPanel">
         <div className="sectionTitle">
           <div>
@@ -607,20 +754,11 @@ function EntryPanel({
         />
         <InvitationList invitations={invitations.records} projectId={projectId} />
       </div>
-      <div className="twoCol compact">
-        <div className="detailPanel">
-          <p className="eyebrow">门户 token</p>
-          <h3>生成、撤销与查看状态</h3>
-          <TokenCreateForm projectId={projectId} />
-          <TokenRevokeForm projectId={projectId} />
-          <TokenList tokens={tokens.records} />
-        </div>
-        <div className="detailPanel">
+      <div className="detailPanel">
           <p className="eyebrow">成员权限</p>
           <h3>内部和客户成员</h3>
           <MemberManagement projectId={projectId} />
           <MemberList members={members.records} />
-        </div>
       </div>
     </section>
   );
@@ -689,7 +827,7 @@ function PromptPanel({
             </label>
             <label>
               <span>城市</span>
-              <input suppressHydrationWarning name="prompt_city" defaultValue={city} placeholder="Sydney" />
+              <input suppressHydrationWarning name="prompt_city" defaultValue={city} placeholder="例如 Shanghai" />
             </label>
             <label>
               <span>每页显示</span>
@@ -772,7 +910,7 @@ function PromptPanel({
       ) : null}
       {activeTab === "generate" ? <PromptGenerationPanel application={application} projectId={projectId} /> : null}
       {activeTab === "candidates" ? <PromptCandidatePanel application={application} projectId={projectId} /> : null}
-      {activeTab === "templates" ? <PromptTemplatePanel application={application} /> : null}
+      {activeTab === "templates" ? <PromptTemplatePanel application={application} projectId={projectId} /> : null}
       {activeTab === "imports" ? <PromptImportHistoryPanel application={application} projectId={projectId} /> : null}
     </>
   );
@@ -781,21 +919,33 @@ function PromptPanel({
 function KnowledgePanel({
   activeTab,
   application,
+  chunkTrace,
+  chunkFilters,
   importedCount,
+  locale,
+  pipeline,
   marketCode,
   projectId,
   searchCity,
   searchPage,
-  searchQuery
+  searchQuery,
+  sourceRejected,
+  sourceUploaded
 }: {
   activeTab: string;
   application: Record<string, unknown>;
+  chunkTrace: Record<string, unknown> | null;
+  chunkFilters: KnowledgeChunkFilters;
   importedCount: string;
+  locale: string;
+  pipeline: Record<string, PageResponse<Record<string, unknown>>>;
   marketCode: string;
   projectId: string;
   searchCity: string;
   searchPage: KnowledgeSearchPage;
   searchQuery: string;
+  sourceRejected: string;
+  sourceUploaded: string;
 }) {
   return (
     <>
@@ -808,12 +958,22 @@ function KnowledgePanel({
       {activeTab === "import" ? (
         <KnowledgeDocumentImportPanel
           application={application}
-          defaultMarketCode={marketCode || "AU"}
+          defaultLocale={locale}
+          defaultMarketCode={marketCode || "GLOBAL"}
           importedCount={importedCount}
+          pipeline={pipeline}
           projectId={projectId}
-          searchQuery={searchQuery}
         />
       ) : null}
+      {activeTab === "processing" ? (
+        <KnowledgeProcessingPanel
+          pipeline={pipeline}
+          projectId={projectId}
+          sourceRejected={sourceRejected}
+          sourceUploaded={sourceUploaded}
+        />
+      ) : null}
+      {activeTab === "chunks" ? <KnowledgeChunksPanel chunkFilters={chunkFilters} chunkTrace={chunkTrace} pipeline={pipeline} projectId={projectId} /> : null}
       {activeTab === "search" ? (
         <section className="detailPanel unframedPanel knowledgePanel">
           <div className="sectionTitle">
@@ -831,26 +991,358 @@ function KnowledgePanel({
             </label>
             <label>
               <span>市场</span>
-              <input suppressHydrationWarning name="knowledge_market" defaultValue={marketCode || "AU"} required />
+              <input suppressHydrationWarning name="knowledge_market" defaultValue={marketCode || "GLOBAL"} required />
             </label>
             <label>
               <span>城市</span>
-              <input suppressHydrationWarning name="knowledge_city" defaultValue={searchCity} placeholder="可选，例如 Sydney" />
+              <input suppressHydrationWarning name="knowledge_city" defaultValue={searchCity} placeholder="可选，例如 Shanghai" />
             </label>
             <button type="submit">检索知识库</button>
           </form>
           <SummaryTable rows={[
             ["匹配事实", String(searchPage.total_count)],
             ["检索词", searchPage.query || searchQuery],
-            ["市场", searchPage.market_code || marketCode || "AU"],
-            ["Embedding", searchPage.embedding_model || "fixture-knowledge-embedding-v1"]
+            ["市场", searchPage.market_code || marketCode || "GLOBAL"],
+            ["Embedding", searchPage.embedding_model || "BAAI/bge-m3"]
           ]} />
           <KnowledgeSearchResults searchPage={searchPage} />
         </section>
       ) : null}
       {activeTab === "dashboard" ? <KnowledgeDashboardPanel application={application} searchPage={searchPage} /> : null}
-      {activeTab === "quality" ? <KnowledgeQualityPanel application={application} projectId={projectId} /> : null}
+      {activeTab === "quality" ? <KnowledgeQualityPanel application={application} pipeline={pipeline} projectId={projectId} /> : null}
+      {activeTab === "trace" ? <KnowledgeTracePanel chunkTrace={chunkTrace} pipeline={pipeline} /> : null}
     </>
+  );
+}
+
+function KnowledgeProcessingPanel({
+  pipeline,
+  projectId,
+  sourceRejected,
+  sourceUploaded
+}: {
+  pipeline: Record<string, PageResponse<Record<string, unknown>>>;
+  projectId: string;
+  sourceRejected: string;
+  sourceUploaded: string;
+}) {
+  const runs = pipeline.pipelineRuns?.records || [];
+  const importJobs = pipeline.importJobs?.records || [];
+  const gateRuns = pipeline.qualityGateRuns?.records || [];
+  const findings = pipeline.qualityFindings?.records || [];
+  const stages = pipeline.pipelineStages?.records || [];
+  const assets = pipeline.sourceAssets?.records || [];
+  const parserRuns = pipeline.parserRuns?.records || [];
+  const blocks = pipeline.blocks?.records || [];
+  const tables = pipeline.tables?.records || [];
+  const ocrSpans = pipeline.ocrSpans?.records || [];
+  const pageSnapshots = pipeline.pageSnapshots?.records || [];
+  return (
+    <section className="detailPanel unframedPanel knowledgePanel">
+      <div className="sectionTitle">
+        <div>
+          <p className="eyebrow">知识库处理任务</p>
+          <h2>Pipeline、Job 和 Quality Gate</h2>
+        </div>
+      </div>
+      {sourceUploaded ? (
+        <div className="notice success">
+          <p>文件批次已提交：{sourceUploaded} 个通过预检并进入处理，{sourceRejected || "0"} 个被预检阻断。阻断详情保留在 Quality Findings。</p>
+        </div>
+      ) : null}
+      <div className="metricGrid compact">
+        <MetricCard label="Pipeline" value={runs.length} />
+        <MetricCard label="导入任务" value={importJobs.length} />
+        <MetricCard label="阶段" value={stages.length} />
+        <MetricCard label="Gate Runs" value={gateRuns.length} />
+        <MetricCard label="质量问题" value={findings.length} />
+        <MetricCard label="来源资产" value={assets.length} />
+        <MetricCard label="解析运行" value={parserRuns.length} />
+        <MetricCard label="Blocks" value={blocks.length} />
+        <MetricCard label="表格 / OCR" value={tables.length + ocrSpans.length} />
+      </div>
+      <div className="twoCol compact">
+        <SimpleRecordList
+          title="Pipeline Runs"
+          emptyText="暂无 Pipeline。"
+          records={runs}
+          pick={(run) => [
+            `${stringValue(run, "run_type") || "run"} · ${shortValue(stringValue(run, "id"))}`,
+            `${statusLabel(stringValue(run, "status"))} · ${stringValue(run, "entry_source") || "mixed"} · 等待审核 ${stringValue(run, "waiting_review_count") || "0"}`
+          ]}
+        />
+        <SimpleRecordList
+          title="Import Jobs"
+          emptyText="暂无导入任务。"
+          records={importJobs}
+          pick={(job) => [
+            `${stringValue(job, "source_mode") || "source"} · ${shortValue(stringValue(job, "id"))}`,
+            `${statusLabel(stringValue(job, "status"))} · attempt ${stringValue(job, "attempt_count") || "0"} · ${stringValue(job, "last_error_code") || "无错误"}`
+          ]}
+        />
+      </div>
+      <div className="knowledgeArtifactGrid">
+        <section className="knowledgeArtifactSection">
+          <p className="eyebrow">来源与大产物</p>
+          <h3>Source Assets</h3>
+          <div className="compactList">
+            {assets.map((asset, index) => (
+              <div className="compactListItem knowledgeArtifactRow" key={`${stringValue(asset, "id")}-${index}`}>
+                <div>
+                  <strong>{stringValue(asset, "filename") || stringValue(asset, "title") || shortValue(stringValue(asset, "id"))}</strong>
+                  <span>{stringValue(asset, "asset_type")} · {statusLabel(stringValue(asset, "status"))} · {stringValue(asset, "parser_engine") || "待路由"}</span>
+                </div>
+                <a className="button secondary" href={`/api/knowledge/source-asset?project_id=${encodeURIComponent(projectId)}&source_asset_id=${encodeURIComponent(stringValue(asset, "id"))}`}>下载</a>
+              </div>
+            ))}
+            {!assets.length ? <p className="muted emptyState">暂无来源资产。</p> : null}
+          </div>
+        </section>
+        <SimpleRecordList
+          title="Parser Runs"
+          emptyText="暂无解析运行。"
+          records={parserRuns}
+          pick={(run) => [
+            `${stringValue(run, "adapter_engine") || "auto"} · ${shortValue(stringValue(run, "id"))}`,
+            `${statusLabel(stringValue(run, "status"))} · blocks ${stringValue(run, "block_count") || "0"} · tables ${stringValue(run, "table_count") || "0"} · OCR ${stringValue(run, "ocr_span_count") || "0"}${stringValue(run, "fallback_reason") ? ` · 降级：${stringValue(run, "fallback_reason")}` : ""}`
+          ]}
+        />
+        <SimpleRecordList
+          title="Blocks"
+          emptyText="暂无解析块。"
+          records={blocks}
+          pick={(block) => [
+            `${stringValue(block, "block_type") || "paragraph"} · page ${stringValue(block, "page_number") || "-"} · order ${stringValue(block, "reading_order") || stringValue(block, "block_index")}`,
+            `${shortValue(stringValue(block, "text"), 120)} · confidence ${stringValue(block, "confidence") || "无"}`
+          ]}
+        />
+        <SimpleRecordList
+          title="表格产物"
+          emptyText="暂无表格产物。"
+          records={tables}
+          pick={(table) => [
+            `${stringValue(table, "caption") || "未命名表格"} · page ${stringValue(table, "page_number") || "-"}`,
+            `${stringValue(table, "row_count") || "0"} 行 × ${stringValue(table, "column_count") || "0"} 列 · CSV ${shortValue(stringValue(table, "csv_asset_id")) || "无"} · HTML ${shortValue(stringValue(table, "html_asset_id")) || "无"}`
+          ]}
+        />
+        <SimpleRecordList
+          title="OCR Spans"
+          emptyText="暂无 OCR 结果。"
+          records={ocrSpans}
+          pick={(span) => [
+            `page ${stringValue(span, "page_number") || "-"} · ${stringValue(span, "language") || "未知语言"}`,
+            `${shortValue(stringValue(span, "text"), 120)} · confidence ${stringValue(span, "confidence") || "无"}`
+          ]}
+        />
+        <SimpleRecordList
+          title="页面快照"
+          emptyText="暂无页面快照。"
+          records={pageSnapshots}
+          pick={(page) => [
+            `${stringValue(page, "title") || "页面"} · page ${stringValue(page, "page_number") || "-"}`,
+            `${stringValue(page, "source_url") || "本地文件"} · ${shortValue(stringValue(page, "text_preview"), 100)}`
+          ]}
+        />
+      </div>
+      <div className="twoCol compact">
+        <SimpleRecordList
+          title="Latest Pipeline Stages"
+          emptyText="暂无阶段状态。"
+          records={stages}
+          pick={(stage) => [
+            `${stringValue(stage, "stage_key") || "stage"} · ${shortValue(stringValue(stage, "id"))}`,
+            `${statusLabel(stringValue(stage, "status"))} · retry ${stringValue(stage, "retry_count") || "0"} · ${stringValue(stage, "error_code") || "无错误"}`
+          ]}
+        />
+        <SimpleRecordList
+          title="Quality Gate Runs"
+          emptyText="暂无门禁运行。"
+          records={gateRuns}
+          pick={(gate) => [
+            `${stringValue(gate, "gate_key") || "gate"} · ${shortValue(stringValue(gate, "id"))}`,
+            `${statusLabel(stringValue(gate, "status"))} · findings ${arrayValue(gate["finding_ids"]).length}`
+          ]}
+        />
+        <SimpleRecordList
+          title="Quality Findings"
+          emptyText="暂无质量问题。"
+          records={findings}
+          pick={(finding) => [
+            `${stringValue(finding, "finding_type") || "finding"} · ${stringValue(finding, "severity") || "warning"}`,
+            `${statusLabel(stringValue(finding, "status"))} · ${shortValue(stringValue(finding, "message"), 100)}`
+          ]}
+        />
+      </div>
+      <div className="twoCol compact">
+        <KnowledgeMaintenanceRunForm projectId={projectId} runs={runs} />
+        <KnowledgeStageRetryForm projectId={projectId} stages={stages} />
+      </div>
+      <KnowledgeQualityRiskAcceptForm gateRuns={gateRuns} projectId={projectId} />
+    </section>
+  );
+}
+
+function KnowledgeChunksPanel({
+  chunkFilters,
+  chunkTrace,
+  pipeline,
+  projectId
+}: {
+  chunkFilters: KnowledgeChunkFilters;
+  chunkTrace: Record<string, unknown> | null;
+  pipeline: Record<string, PageResponse<Record<string, unknown>>>;
+  projectId: string;
+}) {
+  const chunks = pipeline.chunks?.records || [];
+  const assets = pipeline.sourceAssets?.records || [];
+  const selectedChunk = (chunkTrace?.knowledge_chunk || {}) as Record<string, unknown>;
+  const selectedBlocks = Array.isArray(chunkTrace?.blocks) ? chunkTrace.blocks as Record<string, unknown>[] : [];
+  const selectedFacts = Array.isArray(chunkTrace?.approved_facts) ? chunkTrace.approved_facts as Record<string, unknown>[] : [];
+  const runs = pipeline.pipelineRuns?.records || [];
+  const importJobs = pipeline.importJobs?.records || [];
+  return (
+    <section className="detailPanel unframedPanel knowledgePanel">
+      <div className="sectionTitle">
+        <div>
+          <p className="eyebrow">Chunk 可视化</p>
+          <h2>解析块、向量状态和 Qdrant Payload</h2>
+        </div>
+      </div>
+      <div className="metricGrid compact">
+        <MetricCard label="Chunk 数" value={chunks.length} />
+        <MetricCard label="已向量化" value={chunks.filter((chunk) => stringValue(chunk, "embedding_status") === "embedded").length} />
+        <MetricCard label="禁用/过期" value={chunks.filter((chunk) => ["disabled", "superseded", "archived"].includes(stringValue(chunk, "status"))).length} />
+        <MetricCard label="Qdrant 点" value={chunks.filter((chunk) => stringValue(chunk, "qdrant_point_id")).length} />
+      </div>
+      <form className="promptToolbar knowledgeChunkFilters" action={`/projects/${projectId}`} method="get">
+        <input suppressHydrationWarning type="hidden" name="tab" value="knowledge" />
+        <input suppressHydrationWarning type="hidden" name="knowledge_tab" value="chunks" />
+        <label><span>包含文本</span><input suppressHydrationWarning name="chunk_query" defaultValue={chunkFilters.query} placeholder="搜索 Chunk 正文" /></label>
+        <label><span>生命周期</span><select suppressHydrationWarning name="chunk_status" defaultValue={chunkFilters.status}><option value="">全部</option><option value="active">运行中</option><option value="disabled">已禁用</option><option value="superseded">已替代</option><option value="archived">已归档</option></select></label>
+        <label><span>向量状态</span><select suppressHydrationWarning name="chunk_embedding_status" defaultValue={chunkFilters.embeddingStatus}><option value="">全部</option><option value="embedded">已向量化</option><option value="pending">等待向量化</option><option value="failed">向量化失败</option><option value="stale">已过期</option><option value="disabled">已禁用</option></select></label>
+        <label><span>Chunk 类型</span><select suppressHydrationWarning name="chunk_type" defaultValue={chunkFilters.chunkType}><option value="">全部</option><option value="text">正文</option><option value="table">表格</option><option value="mixed">混合</option></select></label>
+        <label><span>质量标记</span><input suppressHydrationWarning name="chunk_quality_flag" defaultValue={chunkFilters.qualityFlag} placeholder="例如 chunk_duplicate" /></label>
+        <label><span>来源</span><select suppressHydrationWarning name="chunk_source_asset_id" defaultValue={chunkFilters.sourceAssetId}><option value="">全部来源</option>{assets.map((asset) => <option key={stringValue(asset, "id")} value={stringValue(asset, "id")}>{stringValue(asset, "filename") || stringValue(asset, "title") || shortValue(stringValue(asset, "id"))}</option>)}</select></label>
+        <button type="submit">应用筛选</button>
+        <a className="button secondary" href={tabHref(projectId, { tab: "knowledge", knowledge_tab: "chunks" })}>清除</a>
+      </form>
+      <div className="knowledgeChunkWorkbench">
+        <aside className="knowledgeChunkSources">
+          <p className="eyebrow">来源</p>
+          <h3>文件与网页</h3>
+          {assets.map((asset) => (
+            <div className="knowledgeSourceItem" key={stringValue(asset, "id")}>
+              <strong>{stringValue(asset, "filename") || stringValue(asset, "title") || shortValue(stringValue(asset, "id"))}</strong>
+              <span>{stringValue(asset, "asset_type")} · {statusLabel(stringValue(asset, "status"))}</span>
+            </div>
+          ))}
+          {!assets.length ? <p className="muted">暂无来源。</p> : null}
+        </aside>
+        <div className="knowledgeChunkList">
+          <p className="eyebrow">知识单元</p>
+          <h3>Chunks</h3>
+          {chunks.length ? chunks.map((chunk, index) => (
+            <a
+              className={`knowledgeChunkItem ${stringValue(selectedChunk, "id") === stringValue(chunk, "id") ? "active" : ""}`}
+              href={tabHref(projectId, {
+                tab: "knowledge",
+                knowledge_tab: "chunks",
+                trace_chunk_id: stringValue(chunk, "id"),
+                chunk_query: chunkFilters.query,
+                chunk_status: chunkFilters.status,
+                chunk_embedding_status: chunkFilters.embeddingStatus,
+                chunk_type: chunkFilters.chunkType,
+                chunk_quality_flag: chunkFilters.qualityFlag,
+                chunk_source_asset_id: chunkFilters.sourceAssetId
+              })}
+              key={`${stringValue(chunk, "id") || "chunk"}-${index}`}
+            >
+              <strong>{stringValue(chunk, "chunk_type") || "text"} · {shortValue(stringValue(chunk, "id"))}</strong>
+              <p>{shortValue(stringValue(chunk, "text"), 220)}</p>
+              <span>{statusLabel(stringValue(chunk, "status"))} · {statusLabel(stringValue(chunk, "embedding_status"))} · v{stringValue(chunk, "chunk_version") || "1"}</span>
+            </a>
+          )) : <EmptyState text="暂无 chunk。请先创建并启动知识库 Pipeline。" />}
+        </div>
+        <aside className="knowledgeChunkEvidence">
+          <p className="eyebrow">证据</p>
+          <h3>{stringValue(selectedChunk, "id") ? `Chunk ${shortValue(stringValue(selectedChunk, "id"))}` : "选择一个 Chunk"}</h3>
+          {stringValue(selectedChunk, "id") ? (
+            <>
+              <SummaryTable rows={[
+                ["状态", statusLabel(stringValue(selectedChunk, "status"))],
+                ["Qdrant", shortValue(stringValue(selectedChunk, "qdrant_point_id")) || "未写入"],
+                ["来源 Block", String(selectedBlocks.length)],
+                ["正式事实", String(selectedFacts.length)]
+              ]} />
+              <div className="knowledgeEvidenceText">{stringValue(selectedChunk, "text")}</div>
+              {selectedBlocks.slice(0, 5).map((block) => (
+                <div className="knowledgeEvidenceBlock" key={stringValue(block, "id")}>
+                  <strong>{stringValue(block, "block_type") || "block"} · page {stringValue(block, "page_number") || "-"}</strong>
+                  <p>{shortValue(stringValue(block, "text"), 180)}</p>
+                </div>
+              ))}
+              <a className="button secondary" href={tabHref(projectId, { tab: "knowledge", knowledge_tab: "trace", trace_chunk_id: stringValue(selectedChunk, "id") })}>打开完整证据链</a>
+            </>
+          ) : <p className="muted">点击中间列表中的 Chunk 查看原始 Block、向量状态和正式事实。</p>}
+        </aside>
+      </div>
+      <div className="twoCol compact">
+        <KnowledgeMaintenanceRunForm projectId={projectId} runs={runs} />
+        <KnowledgeFactExtractionForm assets={assets} importJobs={importJobs} projectId={projectId} runs={runs} />
+      </div>
+      <KnowledgeChunkControlForm chunks={chunks} projectId={projectId} />
+    </section>
+  );
+}
+
+function KnowledgeTracePanel({
+  chunkTrace,
+  pipeline
+}: {
+  chunkTrace: Record<string, unknown> | null;
+  pipeline: Record<string, PageResponse<Record<string, unknown>>>;
+}) {
+  const traceRefs = pipeline.traceRefs?.records || [];
+  const selectedChunk = (chunkTrace?.knowledge_chunk || {}) as Record<string, unknown>;
+  const selectedBlocks = Array.isArray(chunkTrace?.blocks) ? chunkTrace.blocks as Record<string, unknown>[] : [];
+  const selectedFacts = Array.isArray(chunkTrace?.approved_facts) ? chunkTrace.approved_facts as Record<string, unknown>[] : [];
+  const selectedPrompts = Array.isArray(chunkTrace?.prompt_candidates) ? chunkTrace.prompt_candidates as Record<string, unknown>[] : [];
+  const selectedDrafts = Array.isArray(chunkTrace?.content_drafts) ? chunkTrace.content_drafts as Record<string, unknown>[] : [];
+  return (
+    <section className="detailPanel unframedPanel knowledgePanel">
+      <div className="sectionTitle">
+        <div>
+          <p className="eyebrow">证据追踪</p>
+          <h2>Source Asset 到 Chunk 到 Fact 到 Prompt / Content</h2>
+        </div>
+      </div>
+      {chunkTrace ? (
+        <div className="detailPanel spacedPanel">
+          <p className="eyebrow">选中 Chunk 完整链路</p>
+          <h3>{shortValue(stringValue(selectedChunk, "id"))} · {statusLabel(stringValue(selectedChunk, "status"))}</h3>
+          <SummaryTable rows={[
+            ["Source Asset", shortValue(stringValue((chunkTrace.source_asset || {}) as Record<string, unknown>, "id")) || "无"],
+            ["Parser Run", shortValue(stringValue((chunkTrace.parser_run || {}) as Record<string, unknown>, "id")) || "无"],
+            ["Blocks", String(selectedBlocks.length)],
+            ["Active Facts", String(selectedFacts.length)],
+            ["Prompt Candidates", String(selectedPrompts.length)],
+            ["Content Drafts", String(selectedDrafts.length)]
+          ]} />
+          <p className="muted">{stringValue(selectedChunk, "text") || "无 Chunk 文本"}</p>
+        </div>
+      ) : (
+        <p className="muted formIntro">从“Chunk 可视化”点击“查看证据链”，可查看该 Chunk 到 Block、Parser、Source Asset 和正式事实的完整路径。</p>
+      )}
+      <SimpleRecordList
+        title="Trace Refs"
+        emptyText="暂无追踪关系。"
+        records={traceRefs}
+        pick={(trace) => [
+          `${stringValue(trace, "source_type")} -> ${stringValue(trace, "target_type")} · ${stringValue(trace, "trace_role")}`,
+          `${shortValue(stringValue(trace, "source_id"))} -> ${shortValue(stringValue(trace, "target_id"))} · confidence ${stringValue(trace, "confidence") || "无"}`
+        ]}
+      />
+    </section>
   );
 }
 
@@ -858,19 +1350,21 @@ function KnowledgeSearchResults({ searchPage }: { searchPage: KnowledgeSearchPag
   return (
     <div className="detailPanel spacedPanel">
       <p className="eyebrow">检索结果</p>
-      <h3>当前项目可用知识事实</h3>
+      <h3>当前项目可用知识片段</h3>
       {searchPage.records.length ? (
         <div className="knowledgeFactList">
           {searchPage.records.map((record, index) => {
             const fact = record.fact || {};
-            const factId = `${index}-${stringValue(fact, "id") || "knowledge-fact"}`;
+            const chunk = record.chunk || {};
+            const item = Object.keys(chunk).length ? chunk : fact;
+            const factId = `${index}-${stringValue(item, "id") || "knowledge-item"}`;
             return (
               <div className="knowledgeFactRow" key={factId}>
                 <div>
-                  <strong>{stringValue(fact, "subject") || "未知主体"} · {stringValue(fact, "predicate") || "未知谓词"}</strong>
-                  <p>{stringValue(fact, "object_value") || "无事实内容"}</p>
+                  <strong>{stringValue(item, "subject") || stringValue(item, "chunk_type") || "知识片段"} · {shortValue(stringValue(item, "id"))}</strong>
+                  <p>{stringValue(item, "text") || stringValue(item, "object_value") || "无事实内容"}</p>
                   <p className="muted">
-                    {stringValue(fact, "fact_type") || "unknown"} · {stringValue(fact, "market_code") || "AU"} · {stringValue(fact, "city") || "global"} · {statusLabel(stringValue(fact, "status"))}
+                    {stringValue(item, "fact_type") || stringValue(item, "chunk_type") || "text"} · {stringValue(item, "market_code") || "GLOBAL"} · {stringValue(item, "city") || "global"} · {statusLabel(stringValue(item, "status"))}
                   </p>
                 </div>
                 <div className="knowledgeScore">
@@ -883,7 +1377,7 @@ function KnowledgeSearchResults({ searchPage }: { searchPage: KnowledgeSearchPag
           })}
         </div>
       ) : (
-        <EmptyState text="暂无可检索知识事实。请先导入并批准知识，再使用检索词验证。" />
+        <EmptyState text="暂无可检索知识片段。请先完成导入、解析、切分和向量索引，再使用检索词验证。" />
       )}
     </div>
   );
@@ -900,6 +1394,7 @@ function OperationsPanel({
   humanReviewQueue,
   humanReviews,
   jobs,
+  knowledgePipeline,
   projectId,
   prompts,
   reports,
@@ -916,6 +1411,7 @@ function OperationsPanel({
   humanReviewQueue: PageResponse<Record<string, unknown>>;
   humanReviews: PageResponse<Record<string, unknown>>;
   jobs: PageResponse<Record<string, unknown>>;
+  knowledgePipeline: Record<string, PageResponse<Record<string, unknown>>>;
   projectId: string;
   prompts: PageResponse<PromptRecord>;
   reports: PageResponse<Record<string, unknown>>;
@@ -972,7 +1468,12 @@ function OperationsPanel({
           description="用于审核基于知识库生成的 GEO 文案，并手工回填实际发布 URL 或证明。它不替代 CMS 发布，只记录分发结果。"
           flow="生成或导入内容草稿 -> 审核草稿 -> 手工发布到目标渠道 -> 回填 URL/proof -> 后续复测验证效果。"
         >
-          <ContentWorkbenchPanel content={contentEngines} projectId={projectId} />
+          <ContentWorkbenchPanel
+            content={contentEngines}
+            contentDrafts={knowledgePipeline.contentDrafts?.records || []}
+            contentGenerationJobs={knowledgePipeline.contentGenerationJobs?.records || []}
+            projectId={projectId}
+          />
         </OperationSection>
       ) : null}
       {activeTab === "assets" ? (
@@ -1036,14 +1537,12 @@ function AccessOverview({
   defaultEmail,
   invitations,
   launch,
-  members,
-  tokens
+  members
 }: {
   defaultEmail?: string;
   invitations: PageResponse<Record<string, unknown>>;
   launch: Record<string, unknown>;
   members: PageResponse<Record<string, unknown>>;
-  tokens: PageResponse<Record<string, unknown>>;
 }) {
   const pendingInvitations = invitations.records.filter((record) => stringValue(childRecord(record, "invitation"), "status") === "pending");
   const defaultRole = pendingInvitations[0] ? stringValue(childRecord(pendingInvitations[0], "invitation"), "role") || "viewer" : "viewer";
@@ -1061,8 +1560,8 @@ function AccessOverview({
       </div>
       <div className="accessStep">
         <span>3</span>
-        <strong>门户 token / session</strong>
-        <p>门户 token 只显示一次，用于客户门户登录换取会话；撤销后客户不能继续下载报告或查看项目内容。</p>
+        <strong>安全会话</strong>
+        <p>邀请只能兑换一次。兑换后由服务端会话控制客户访问，URL 不携带长期 token；撤销会话或成员权限后立即失去访问权。</p>
       </div>
       <div className="detailPanel">
         <p className="eyebrow">访问对象</p>
@@ -1080,7 +1579,7 @@ function AccessOverview({
         <SummaryTable rows={[
           ["成员数量", String(members.total_count)],
           ["邀请数量", String(invitations.total_count)],
-          ["门户 token", String(tokens.total_count)]
+          ["访问方式", "安全会话"]
         ]} />
       </div>
     </div>
@@ -1090,6 +1589,7 @@ function AccessOverview({
 function StatusPanel({
   actions,
   activeTab,
+  collectionJobs,
   collectionRuns,
   graphs,
   jobs,
@@ -1100,6 +1600,7 @@ function StatusPanel({
 }: {
   actions: PageResponse<Record<string, unknown>>;
   activeTab: string;
+  collectionJobs: PageResponse<Record<string, unknown>>;
   collectionRuns: PageResponse<Record<string, unknown>>;
   graphs: PageResponse<Record<string, unknown>>;
   jobs: PageResponse<Record<string, unknown>>;
@@ -1116,7 +1617,16 @@ function StatusPanel({
         items={statusTabs}
         hrefFor={(statusTab) => tabHref(projectId, { tab: "status", status_tab: statusTab })}
       />
-      {activeTab === "collection" ? <RuntimeSummary title="采集运行" page={collectionRuns} /> : null}
+      {activeTab === "collection" ? (
+        <>
+          <CollectionJobPanel
+            jobs={collectionJobs}
+            projectId={projectId}
+            projectStatus={record?.project.status || "paused"}
+          />
+          <RuntimeSummary title="采集运行" page={collectionRuns} />
+        </>
+      ) : null}
       {activeTab === "scores" ? <RuntimeSummary title="评分快照" page={scores} /> : null}
       {activeTab === "reports" ? <RuntimeSummary title="报告" page={reports} /> : null}
       {activeTab === "jobs" ? <RuntimeSummary title="报告任务" page={jobs} /> : null}
@@ -1199,6 +1709,48 @@ function SummaryTable({ rows }: { rows: Array<[string, string]> }) {
   );
 }
 
+function MetricCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="metricCard">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function SimpleRecordList({
+  emptyText,
+  pick,
+  records,
+  title
+}: {
+  emptyText: string;
+  pick: (record: Record<string, unknown>) => [string, string];
+  records: Array<Record<string, unknown>>;
+  title: string;
+}) {
+  return (
+    <div className="detailPanel">
+      <p className="eyebrow">{title}</p>
+      {records.length ? (
+        <div className="compactList">
+          {records.map((record, index) => {
+            const [primary, secondary] = pick(record);
+            return (
+              <div className="compactListItem" key={`${stringValue(record, "id") || title}-${index}`}>
+                <strong>{primary}</strong>
+                <span>{secondary}</span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyState text={emptyText} />
+      )}
+    </div>
+  );
+}
+
 function childRecord(record: Record<string, unknown>, key: string): Record<string, unknown> {
   const value = record[key];
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -1210,6 +1762,17 @@ function stringValue(record: Record<string, unknown>, key: string): string {
     return "";
   }
   return String(value);
+}
+
+function arrayValue(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function shortValue(value: string, maxLength = 14): string {
+  if (!value) {
+    return "";
+  }
+  return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
 }
 
 function numberValue(record: Record<string, unknown>, key: string): number | null {

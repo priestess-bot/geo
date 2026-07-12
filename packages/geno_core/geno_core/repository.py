@@ -209,7 +209,11 @@ from geno_core.report import (
     render_audit_summary_lines,
     render_methodology_disclosure_lines,
 )
-from geno_core.runtime_project_access_repository import RuntimeProjectAccessRepositoryMixin
+from geno_core.runtime_project_access_repository import (
+    PROJECT_LAUNCH_CONFIG_COLUMNS,
+    RuntimeProjectAccessRepositoryMixin,
+    runtime_launch_config_ready,
+)
 from geno_core.fidelity import build_runtime_fidelity_check
 from geno_core.scoring import get_score_formula, list_score_weight_profiles, normalize_score_weights
 from geno_core.knowledge import (
@@ -1194,6 +1198,7 @@ def _parse_knowledge_fact_import_csv(
     max_rows: int,
     default_market_code: str,
 ) -> tuple[dict[str, Any], ...]:
+    allowed_statuses = {"active", "superseded", "archived", "forbidden"}
     content = csv_content.strip()
     if not content:
         raise ValueError("csv_content is required")
@@ -1249,7 +1254,12 @@ def _parse_knowledge_fact_import_csv(
         fact["object_value"] = object_value
         fact["city"] = city or None
         fact["confidence"] = confidence
-        fact["status"] = str(fact.get("status") or KNOWLEDGE_FACT_APPROVED_STATUS).strip() or KNOWLEDGE_FACT_APPROVED_STATUS
+        status = str(fact.get("status") or KNOWLEDGE_FACT_APPROVED_STATUS).strip().lower() or KNOWLEDGE_FACT_APPROVED_STATUS
+        if status not in allowed_statuses:
+            raise ValueError(
+                f"row {row_index} status must be one of: {', '.join(sorted(allowed_statuses))}"
+            )
+        fact["status"] = status
         facts.append(fact)
     if not facts:
         raise ValueError("csv must contain at least one knowledge fact row")
@@ -1321,7 +1331,7 @@ def _render_runtime_report_markdown(report: RuntimeReportExport) -> str:
     graph = report.citation_graph
     method_disclosure = _runtime_method_disclosure(report)
     lines = [
-        "# GENO AU Evidence Report",
+        "# GEO Evidence Report",
         "",
         f"- Report version: {report_export['report_version']}",
         f"- Market: {report_export['market_code']}",
@@ -3817,6 +3827,8 @@ PROMPT_CANDIDATE_COLUMNS = (
     "id",
     "project_id",
     "generation_job_id",
+    "pipeline_run_id",
+    "prompt_generation_job_id",
     "text",
     "intent_type",
     "market_code",
@@ -3827,6 +3839,7 @@ PROMPT_CANDIDATE_COLUMNS = (
     "priority",
     "intent_weight",
     "source_knowledge_fact_ids",
+    "source_chunk_ids",
     "rationale",
     "duplicate_state",
     "review_status",
@@ -3835,6 +3848,12 @@ PROMPT_CANDIDATE_COLUMNS = (
     "imported_prompt_id",
     "generation_model",
     "generation_prompt_version",
+    "risk_flags",
+    "candidate_version",
+    "superseded_by_candidate_id",
+    "target_platform",
+    "prompt_template_id",
+    "prompt_template_version",
     "created_at",
     "updated_at",
 )
@@ -3875,7 +3894,19 @@ CONTENT_DRAFT_COLUMNS = (
     "draft_markdown",
     "review_status",
     "created_by",
+    "pipeline_run_id",
+    "content_generation_job_id",
+    "source_fact_ids",
+    "source_chunk_ids",
+    "citation_refs",
+    "status",
+    "summary",
+    "risk_flags",
+    "generation_model",
+    "generation_prompt_version",
+    "raw_output_hash",
     "created_at",
+    "updated_at",
 )
 INTEGRATION_CONNECTOR_COLUMNS = (
     "id",
@@ -4250,8 +4281,8 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             raise ValueError("target_brand cannot be empty")
         if category is not None and not category:
             raise ValueError("category cannot be empty")
-        if status is not None and status not in {"active", "paused"}:
-            raise ValueError("status must be active or paused")
+        if status is not None:
+            raise ValueError("project status can only be changed through a project lifecycle action")
         with self.connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -4372,8 +4403,8 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         updated_by = action_input.updated_by.strip() or "runtime-console"
         if not project_id:
             raise ValueError("project_id is required")
-        if action not in {"archive", "restore"}:
-            raise ValueError("action must be archive or restore")
+        if action not in {"start", "pause", "archive", "restore"}:
+            raise ValueError("action must be start, pause, archive, or restore")
         with self.connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -4389,7 +4420,99 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                 raise ValueError("project not found")
             before = _row_dict(existing, PROJECT_COLUMNS)
             before_status = str(before.get("status") or "")
-            if action == "archive":
+            if action == "start":
+                if before_status == "archived":
+                    raise ValueError("archived project cannot be started")
+                if before_status == "active":
+                    raise ValueError("project already active")
+                blockers: list[str] = []
+                if not str(before.get("target_brand") or "").strip():
+                    blockers.append("target brand is missing")
+                if not str(before.get("category") or "").strip():
+                    blockers.append("category is missing")
+                cursor.execute(
+                    """
+                    SELECT official_domains, status
+                    FROM brand_entities
+                    WHERE project_id = %s
+                    ORDER BY id
+                    LIMIT 1
+                    """,
+                    (_uuid(project_id),),
+                )
+                brand_row = cursor.fetchone()
+                if not brand_row:
+                    blockers.append("active brand configuration is missing")
+                else:
+                    brand_data = _row_dict(brand_row, ("official_domains", "status"))
+                    domains = brand_data.get("official_domains")
+                    if isinstance(domains, str):
+                        try:
+                            domains = json.loads(domains)
+                        except json.JSONDecodeError:
+                            domains = ()
+                    if brand_data.get("status") != "active" or not domains:
+                        blockers.append("active brand with an official domain is required")
+                cursor.execute(
+                    "SELECT count(*) FROM competitor_entities WHERE project_id = %s AND status = 'active'",
+                    (_uuid(project_id),),
+                )
+                competitor_count_row = cursor.fetchone()
+                competitor_count = int(
+                    competitor_count_row.get("count", 0)
+                    if isinstance(competitor_count_row, dict)
+                    else competitor_count_row[0]
+                )
+                if competitor_count < 1:
+                    blockers.append("at least one active competitor is required")
+                cursor.execute(
+                    "SELECT count(*) FROM prompt_questions WHERE project_id = %s AND status = 'active'",
+                    (_uuid(project_id),),
+                )
+                prompt_count_row = cursor.fetchone()
+                prompt_count = int(
+                    prompt_count_row.get("count", 0)
+                    if isinstance(prompt_count_row, dict)
+                    else prompt_count_row[0]
+                )
+                if prompt_count < 1:
+                    blockers.append("at least one active Prompt is required")
+                cursor.execute(
+                    f"""
+                    SELECT {", ".join(PROJECT_LAUNCH_CONFIG_COLUMNS)}
+                    FROM project_launch_configs
+                    WHERE project_id = %s
+                    ORDER BY updated_at DESC, created_at DESC
+                    LIMIT 1
+                    """,
+                    (_uuid(project_id),),
+                )
+                launch_row = cursor.fetchone()
+                if not launch_row:
+                    blockers.append("launch configuration is missing")
+                else:
+                    launch = _row_dict(launch_row, PROJECT_LAUNCH_CONFIG_COLUMNS)
+                    if not str(launch.get("primary_domain") or "").strip():
+                        blockers.append("launch primary domain is missing")
+                    if not runtime_launch_config_ready(
+                        collection_mode=str(launch.get("collection_mode") or ""),
+                        external_connectors=launch.get("external_connectors"),
+                    ):
+                        blockers.append("a tested connector or manual collection mode is required")
+                if blockers:
+                    raise ValueError(f"project cannot start: {'; '.join(blockers)}")
+                after_status = "active"
+                event_type = "project_started"
+                method_version = "runtime_project_start_v1"
+            elif action == "pause":
+                if before_status == "archived":
+                    raise ValueError("archived project cannot be paused")
+                if before_status == "paused":
+                    raise ValueError("project already paused")
+                after_status = "paused"
+                event_type = "project_paused"
+                method_version = "runtime_project_pause_v1"
+            elif action == "archive":
                 if before_status == "archived":
                     raise ValueError("project already archived")
                 after_status = "archived"
@@ -4408,6 +4531,20 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                 WHERE id = %s
                 """,
                 (after_status, _uuid(project_id)),
+            )
+            cursor.execute(
+                """
+                UPDATE project_launch_configs
+                SET status = %s, updated_by = %s, updated_at = now()
+                WHERE id = (
+                  SELECT id
+                  FROM project_launch_configs
+                  WHERE project_id = %s
+                  ORDER BY updated_at DESC, created_at DESC
+                  LIMIT 1
+                )
+                """,
+                ("active" if action == "start" else "paused", updated_by, _uuid(project_id)),
             )
             cursor.execute(
                 f"""
@@ -4647,6 +4784,8 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         lifecycle_event_types = (
             "project_bootstrap_created",
             "project_updated",
+            "project_started",
+            "project_paused",
             "project_archived",
             "project_restored",
         )
@@ -9813,8 +9952,7 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                 """,
                 (profile_key,),
             )
-            existing = cursor.fetchone()
-            before = _row_dict(existing, SCORE_WEIGHT_PROFILE_COLUMNS) if existing else None
+            cursor.fetchone()
             cursor.execute(
                 """
                 INSERT INTO score_weight_profiles (
@@ -14451,6 +14589,8 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         project_id = review.project_id.strip()
         content_draft_id = review.content_draft_id.strip()
         review_status = review.review_status.strip().lower()
+        if review_status == "needs_changes":
+            review_status = "needs_revision"
         reviewer_id = review.reviewer_id.strip() or "runtime-console"
         decision = review.decision.strip() or "content draft reviewed"
         notes = review.notes.strip() if review.notes else None
@@ -14458,8 +14598,44 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             raise ValueError("project_id is required")
         if not content_draft_id:
             raise ValueError("content_draft_id is required")
-        if review_status not in {"approved", "needs_changes", "rejected", "pending_human_review"}:
-            raise ValueError("content draft review_status must be approved, needs_changes, rejected, or pending_human_review")
+        if review_status not in {"approved", "needs_revision", "rejected", "pending_human_review", "archived"}:
+            raise ValueError(
+                "content draft review_status must be approved, needs_revision, rejected, pending_human_review, or archived"
+            )
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT project_id, source_fact_ids, source_chunk_ids, risk_flags
+                FROM content_drafts
+                WHERE id = %s AND project_id = %s
+                LIMIT 1
+                """,
+                (_uuid(content_draft_id), _uuid(project_id)),
+            )
+            draft_row = cursor.fetchone()
+        if not draft_row:
+            raise ValueError("content draft not found")
+        if review_status == "approved":
+            source_fact_ids = list(draft_row[1] or [])
+            source_chunk_ids = list(draft_row[2] or [])
+            risk_flags = list(draft_row[3] or []) if isinstance(draft_row[3], list) else []
+            if not source_fact_ids or not source_chunk_ids:
+                raise ValueError("content draft cannot be approved without fact and chunk evidence")
+            if risk_flags:
+                raise ValueError("content draft cannot be approved while generation risk flags remain")
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT count(*) FROM localized_knowledge_facts WHERE project_id = %s AND id = ANY(%s) AND status = 'active'",
+                    (_uuid(project_id), _uuid_array(source_fact_ids)),
+                )
+                if int(cursor.fetchone()[0] or 0) != len(source_fact_ids):
+                    raise ValueError("content draft references non-active knowledge facts")
+                cursor.execute(
+                    "SELECT count(*) FROM knowledge_chunks WHERE project_id = %s AND id = ANY(%s) AND status = 'active' AND embedding_status = 'embedded'",
+                    (_uuid(project_id), _uuid_array(source_chunk_ids)),
+                )
+                if int(cursor.fetchone()[0] or 0) != len(source_chunk_ids):
+                    raise ValueError("content draft references disabled or stale chunks")
         human_review = self.save_human_review(
             RuntimeHumanReviewInput(
                 project_id=project_id,
@@ -14473,12 +14649,23 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             )
         )
         with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE content_drafts
+                SET review_status = %s,
+                    status = %s,
+                    updated_at = now()
+                WHERE id = %s AND project_id = %s
+                """,
+                (review_status, review_status, _uuid(content_draft_id), _uuid(project_id)),
+            )
             runtime_draft = self._load_runtime_content_draft_by_id(
                 cursor=cursor,
                 content_draft_id=content_draft_id,
             )
         if runtime_draft is None or str(runtime_draft.draft.get("project_id")) != project_id:
             raise ValueError("content draft not found")
+        self.connection.commit()
         return RuntimeContentDraftReview(
             content_draft=runtime_draft.draft,
             human_review=human_review.human_review,
@@ -16450,8 +16637,17 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         candidate_id = review.prompt_candidate_id.strip()
         reviewed_by = review.reviewed_by.strip() or "runtime-console"
         review_status = review.review_status.strip().lower()
-        if review_status not in {PROMPT_CANDIDATE_APPROVED, PROMPT_CANDIDATE_REJECTED, PROMPT_CANDIDATE_PENDING, PROMPT_CANDIDATE_ARCHIVED}:
-            raise ValueError("prompt candidate review_status must be approved, rejected, pending_review, or archived")
+        if review_status not in {
+            PROMPT_CANDIDATE_APPROVED,
+            "edited_approved",
+            PROMPT_CANDIDATE_REJECTED,
+            PROMPT_CANDIDATE_PENDING,
+            PROMPT_CANDIDATE_ARCHIVED,
+            "superseded",
+        }:
+            raise ValueError(
+                "prompt candidate review_status must be approved, edited_approved, rejected, pending_review, archived, or superseded"
+            )
         with self.connection.cursor() as cursor:
             cursor.execute(
                 f"SELECT {', '.join(PROMPT_CANDIDATE_COLUMNS)} FROM prompt_candidates WHERE id = %s AND project_id = %s FOR UPDATE",
@@ -16461,13 +16657,60 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             if not before_row:
                 raise ValueError("prompt candidate not found")
             before = _row_dict(before_row, PROMPT_CANDIDATE_COLUMNS)
+            if review_status == "edited_approved" and not (review.edited_text or "").strip():
+                raise ValueError("edited_text is required for edited_approved Prompt candidates")
+            if review_status in {PROMPT_CANDIDATE_APPROVED, "edited_approved"}:
+                source_fact_ids = list(before.get("source_knowledge_fact_ids") or [])
+                source_chunk_ids = list(before.get("source_chunk_ids") or [])
+                if not source_fact_ids or not source_chunk_ids:
+                    raise ValueError("Prompt candidate cannot be approved without fact and chunk evidence")
+                cursor.execute(
+                    """
+                    SELECT count(*)
+                    FROM localized_knowledge_facts
+                    WHERE project_id = %s AND id = ANY(%s) AND status = 'active'
+                    """,
+                    (_uuid(project_id), _uuid_array(source_fact_ids)),
+                )
+                if int(cursor.fetchone()[0] or 0) != len(source_fact_ids):
+                    raise ValueError("Prompt candidate references non-active knowledge facts")
+                cursor.execute(
+                    """
+                    SELECT count(*)
+                    FROM knowledge_chunks
+                    WHERE project_id = %s AND id = ANY(%s)
+                      AND status = 'active' AND embedding_status = 'embedded'
+                    """,
+                    (_uuid(project_id), _uuid_array(source_chunk_ids)),
+                )
+                if int(cursor.fetchone()[0] or 0) != len(source_chunk_ids):
+                    raise ValueError("Prompt candidate references disabled or stale chunks")
+                cursor.execute(
+                    """
+                    SELECT 1 FROM prompt_generation_templates
+                    WHERE id = %s AND template_version = %s AND status = 'published'
+                    LIMIT 1
+                    """,
+                    (before.get("prompt_template_id"), before.get("prompt_template_version")),
+                )
+                if not cursor.fetchone():
+                    raise ValueError("Prompt candidate template version is not published")
             cursor.execute(
                 """
                 UPDATE prompt_candidates
-                SET review_status = %s, reviewed_by = %s, reviewed_at = now(), updated_at = now()
+                SET review_status = %s,
+                    text = CASE WHEN %s = 'edited_approved' THEN %s ELSE text END,
+                    reviewed_by = %s, reviewed_at = now(), updated_at = now()
                 WHERE id = %s AND project_id = %s
                 """,
-                (review_status, reviewed_by, _uuid(candidate_id), _uuid(project_id)),
+                (
+                    review_status,
+                    review_status,
+                    (review.edited_text or "").strip() or before.get("text"),
+                    reviewed_by,
+                    _uuid(candidate_id),
+                    _uuid(project_id),
+                ),
             )
             cursor.execute(
                 f"SELECT {', '.join(PROMPT_CANDIDATE_COLUMNS)} FROM prompt_candidates WHERE id = %s AND project_id = %s LIMIT 1",
@@ -16514,8 +16757,8 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             if not project_row:
                 raise ValueError("project not found")
             project = _row_dict(project_row, ("id", "market_code", "industry_code", "target_brand", "prompt_version"))
-            filters = ["project_id = %s", "review_status = %s"]
-            params: list[object] = [_uuid(project_id), PROMPT_CANDIDATE_APPROVED]
+            filters = ["project_id = %s", "review_status = ANY(%s)"]
+            params: list[object] = [_uuid(project_id), [PROMPT_CANDIDATE_APPROVED, "edited_approved"]]
             if prompt_import.prompt_candidate_ids:
                 filters.append("id = ANY(%s)")
                 params.append(_uuid_array(list(prompt_import.prompt_candidate_ids)))
@@ -16540,6 +16783,22 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             prompt_ids: list[str] = []
             candidate_to_prompt: dict[str, str] = {}
             for index, candidate in enumerate(candidates, start=1):
+                source_fact_ids = list(candidate.get("source_knowledge_fact_ids") or [])
+                source_chunk_ids = list(candidate.get("source_chunk_ids") or [])
+                if not source_fact_ids or not source_chunk_ids:
+                    raise ValueError("Prompt candidate cannot be imported without fact and chunk evidence")
+                cursor.execute(
+                    "SELECT count(*) FROM localized_knowledge_facts WHERE project_id = %s AND id = ANY(%s) AND status = 'active'",
+                    (_uuid(project_id), _uuid_array(source_fact_ids)),
+                )
+                if int(cursor.fetchone()[0] or 0) != len(source_fact_ids):
+                    raise ValueError("Prompt candidate references non-active knowledge facts")
+                cursor.execute(
+                    "SELECT count(*) FROM knowledge_chunks WHERE project_id = %s AND id = ANY(%s) AND status = 'active' AND embedding_status = 'embedded'",
+                    (_uuid(project_id), _uuid_array(source_chunk_ids)),
+                )
+                if int(cursor.fetchone()[0] or 0) != len(source_chunk_ids):
+                    raise ValueError("Prompt candidate references disabled or stale chunks")
                 prompt_id = stable_knowledge_id("prompt-candidate-import", project_id, prompt_version, candidate["id"], candidate["text"])
                 prompt_ids.append(prompt_id)
                 candidate_to_prompt[str(candidate["id"])] = prompt_id
@@ -16586,6 +16845,24 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                     WHERE id = %s
                     """,
                     (PROMPT_CANDIDATE_IMPORTED, _uuid(prompt_id), _uuid(str(candidate["id"]))),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO knowledge_trace_refs (
+                      project_id, pipeline_run_id, source_type, source_id, target_type, target_id,
+                      trace_role, confidence, created_by_job_type, created_by_job_id, metadata
+                    ) VALUES (%s, %s, 'prompt_candidate', %s, 'official_prompt', %s,
+                              'derived_from', 1.0, 'prompt_candidate_import', %s, %s::jsonb)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    (
+                        _uuid(project_id),
+                        candidate.get("pipeline_run_id"),
+                        str(candidate["id"]),
+                        prompt_id,
+                        candidate.get("prompt_generation_job_id"),
+                        _json_payload({"prompt_version": prompt_version, "imported_by": imported_by}),
+                    ),
                 )
                 cursor.execute(
                     f"SELECT {', '.join(PROMPT_QUESTION_READ_COLUMNS)} FROM prompt_questions WHERE id = %s LIMIT 1",
@@ -18426,7 +18703,7 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
                     (
                         _uuid(event.id),
                         event.event_type,
-                        _uuid(event.project_id),
+                        _uuid(event.project_id) if event.project_id else None,
                         event.actor_type,
                         event.actor_id,
                         event.target_type,

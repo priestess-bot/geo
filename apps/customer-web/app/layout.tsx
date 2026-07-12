@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata = {
-  title: "GENO 澳大利亚客户工作台",
-  description: "澳大利亚 AI 搜索可见度与 GEO 交付门户"
+  title: "GEO 客户工作台",
+  description: "AI 搜索可见度、证据、报告与行动交付门户"
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

@@ -18,7 +18,9 @@ from geno_core.models import (
 )
 
 KNOWLEDGE_EMBEDDING_MODEL = "fixture-knowledge-embedding-v1"
-KNOWLEDGE_FACT_APPROVED_STATUS = "approved"
+# An approved fact becomes an active production fact. Review decisions still use
+# the verb "approved"; the persisted fact lifecycle uses active/superseded/etc.
+KNOWLEDGE_FACT_APPROVED_STATUS = "active"
 CONTENT_REVIEW_PENDING_STATUS = "pending_human_review"
 MANUAL_DISTRIBUTION_BACKFILL_REQUIRED_STATUS = "awaiting_url_backfill"
 MANUAL_DISTRIBUTION_BACKFILLED_STATUS = "url_backfilled"

@@ -293,7 +293,7 @@ def build_au_p0c_report_package(
         "graph_has_competitor_benchmarks": context["competitor_benchmark_count"] >= 3,
     }
     markdown_checks = {
-        "mentions_report_title": "GENO AU Evidence Report" in report.markdown,
+        "mentions_report_title": "GEO Evidence Report" in report.markdown,
         "mentions_method_disclosure": "### Method Disclosure" in report.markdown,
         "mentions_audit_summary": "### Audit Summary" in report.markdown,
         "mentions_trigger_denominator": "Trigger rate denominator: all attempted evidence records" in report.markdown,
