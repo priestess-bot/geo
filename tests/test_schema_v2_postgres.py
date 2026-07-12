@@ -12,11 +12,11 @@ import psycopg
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "scripts/schema_v2_runner.py"
 SCHEMA_ROOT = Path(os.getenv("SCHEMA_V2_ROOT", "/schema-v2"))
-DATABASE_URL = os.getenv("SCHEMA_V2_TEST_DATABASE_URL", "")
+BEHAVIOR_TEST_ENABLED = os.getenv("SCHEMA_V2_BEHAVIOR_TEST") == "1"
 LOCK_NAME = "geno:schema-v2:install"
 
 
-@unittest.skipUnless(DATABASE_URL, "SCHEMA_V2_TEST_DATABASE_URL is required")
+@unittest.skipUnless(BEHAVIOR_TEST_ENABLED, "SCHEMA_V2_BEHAVIOR_TEST=1 is required")
 class SchemaV2PostgresBehaviorTest(unittest.TestCase):
     def _run_runner(
         self,
@@ -29,8 +29,6 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 sys.executable,
                 str(RUNNER),
                 command,
-                "--database-url",
-                DATABASE_URL,
                 "--schema-root",
                 str(SCHEMA_ROOT),
                 "--app-version",
@@ -67,6 +65,11 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 "LANGUAGE sql AS 'SELECT 1'"
             )
             cursor.execute("CREATE TYPE dirty_enum AS ENUM ('dirty')")
+            cursor.execute('CREATE COLLATION dirty_collation FROM "C"')
+            cursor.execute(
+                "CREATE TEXT SEARCH CONFIGURATION dirty_ts_config "
+                "(COPY = pg_catalog.simple)"
+            )
             cursor.execute("CREATE EXTENSION postgres_fdw")
             cursor.execute("CREATE SERVER dirty_server FOREIGN DATA WRAPPER postgres_fdw")
             cursor.execute(
@@ -84,9 +87,11 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
             cursor.execute("DROP SEQUENCE IF EXISTS dirty_sequence")
             cursor.execute("DROP FUNCTION IF EXISTS dirty_function()")
             cursor.execute("DROP TYPE IF EXISTS dirty_enum")
+            cursor.execute("DROP COLLATION IF EXISTS dirty_collation")
+            cursor.execute("DROP TEXT SEARCH CONFIGURATION IF EXISTS dirty_ts_config")
 
     def test_advisory_lock_has_a_stable_timeout(self) -> None:
-        with psycopg.connect(DATABASE_URL, autocommit=True) as holder:
+        with psycopg.connect(autocommit=True) as holder:
             with holder.cursor() as cursor:
                 cursor.execute(
                     "SELECT pg_advisory_lock(hashtextextended(%s, 0))",
@@ -109,7 +114,7 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
         self.assertNotIn("Traceback", result.stderr)
 
     def test_dirty_public_namespace_fails_closed_but_required_extensions_are_allowed(self) -> None:
-        with psycopg.connect(DATABASE_URL, autocommit=True) as connection:
+        with psycopg.connect(autocommit=True) as connection:
             self._drop_bootstrap_metadata(connection)
 
         extension_only_install = self._run_runner("install")
@@ -119,7 +124,7 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
             extension_only_install.stdout + extension_only_install.stderr,
         )
 
-        with psycopg.connect(DATABASE_URL, autocommit=True) as connection:
+        with psycopg.connect(autocommit=True) as connection:
             self._drop_bootstrap_metadata(connection)
             self._create_dirty_objects(connection)
 
@@ -134,12 +139,14 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 "foreign_table:public.dirty_foreign_table",
                 "dirty_function()",
                 "enum_type:public.dirty_enum",
+                "collation:public.dirty_collation",
+                "text_search_configuration:public.dirty_ts_config",
                 "extension:postgres_fdw",
             ):
                 self.assertIn(expected, dirty_install.stderr)
             self.assertNotIn("Traceback", dirty_install.stderr)
         finally:
-            with psycopg.connect(DATABASE_URL, autocommit=True) as connection:
+            with psycopg.connect(autocommit=True) as connection:
                 self._drop_dirty_objects(connection)
             restored = self._run_runner("install")
             self.assertEqual(restored.returncode, 0, restored.stdout + restored.stderr)

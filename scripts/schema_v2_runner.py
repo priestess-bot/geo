@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -19,6 +20,7 @@ ADVISORY_LOCK_NAME = "geno:schema-v2:install"
 ADVISORY_LOCK_POLL_INTERVAL_SECONDS = 0.1
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 VERSION_RE = re.compile(r"^(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)(?:[-+].*)?$")
+REQUIRED_PG_ENVIRONMENT = ("PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD")
 
 
 class SchemaV2Error(RuntimeError):
@@ -181,6 +183,32 @@ def ensure_app_compatible(*, app_version: str, minimum_app_version: str) -> None
         )
 
 
+def _nonnegative_finite_seconds(raw_value: str) -> float:
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a finite non-negative number") from exc
+    if not math.isfinite(value) or value < 0:
+        raise argparse.ArgumentTypeError("must be a finite non-negative number")
+    return value
+
+
+def _validate_pg_environment(environment: dict[str, str]) -> None:
+    missing = [name for name in REQUIRED_PG_ENVIRONMENT if not environment.get(name, "").strip()]
+    if missing:
+        raise SchemaV2Error(
+            "missing required PostgreSQL connection settings: " + ", ".join(missing)
+        )
+    if environment["PGDATABASE"] != EXPECTED_DATABASE_NAME:
+        raise SchemaV2Error("PGDATABASE must remain fixed at 'geno_v2'")
+    try:
+        port = int(environment["PGPORT"])
+    except ValueError as exc:
+        raise SchemaV2Error("PGPORT must be an integer between 1 and 65535") from exc
+    if not 1 <= port <= 65535:
+        raise SchemaV2Error("PGPORT must be an integer between 1 and 65535")
+
+
 def _metadata_tables_exist(cursor: Any) -> tuple[bool, bool]:
     cursor.execute(
         "SELECT to_regclass('public.app_schema_metadata') IS NOT NULL, "
@@ -285,18 +313,132 @@ def _unexpected_public_objects(cursor: Any) -> list[str]:
                     AND dependency.deptype = 'e'
               )
         ),
+        unexpected_collations AS (
+            SELECT
+                'collation'::text AS object_kind,
+                format('%I.%I', namespace.nspname, coll.collname) AS object_identity
+            FROM pg_catalog.pg_collation AS coll
+            JOIN pg_catalog.pg_namespace AS namespace
+              ON namespace.oid = coll.collnamespace
+            WHERE namespace.nspname = 'public'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM pg_catalog.pg_depend AS dependency
+                  WHERE dependency.classid = 'pg_catalog.pg_collation'::regclass
+                    AND dependency.objid = coll.oid
+                    AND dependency.refclassid = 'pg_catalog.pg_extension'::regclass
+                    AND dependency.deptype = 'e'
+              )
+        ),
+        unexpected_operators AS (
+            SELECT
+                'operator'::text AS object_kind,
+                format('%I.%I', namespace.nspname, op.oprname) AS object_identity
+            FROM pg_catalog.pg_operator AS op
+            JOIN pg_catalog.pg_namespace AS namespace
+              ON namespace.oid = op.oprnamespace
+            WHERE namespace.nspname = 'public'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM pg_catalog.pg_depend AS dependency
+                  WHERE dependency.classid = 'pg_catalog.pg_operator'::regclass
+                    AND dependency.objid = op.oid
+                    AND dependency.refclassid = 'pg_catalog.pg_extension'::regclass
+                    AND dependency.deptype = 'e'
+              )
+        ),
+        unexpected_text_search_configurations AS (
+            SELECT
+                'text_search_configuration'::text AS object_kind,
+                format('%I.%I', namespace.nspname, ts_configuration.cfgname) AS object_identity
+            FROM pg_catalog.pg_ts_config AS ts_configuration
+            JOIN pg_catalog.pg_namespace AS namespace
+              ON namespace.oid = ts_configuration.cfgnamespace
+            WHERE namespace.nspname = 'public'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM pg_catalog.pg_depend AS dependency
+                  WHERE dependency.classid = 'pg_catalog.pg_ts_config'::regclass
+                    AND dependency.objid = ts_configuration.oid
+                    AND dependency.refclassid = 'pg_catalog.pg_extension'::regclass
+                    AND dependency.deptype = 'e'
+              )
+        ),
+        unexpected_text_search_dictionaries AS (
+            SELECT
+                'text_search_dictionary'::text AS object_kind,
+                format('%I.%I', namespace.nspname, ts_dictionary.dictname) AS object_identity
+            FROM pg_catalog.pg_ts_dict AS ts_dictionary
+            JOIN pg_catalog.pg_namespace AS namespace
+              ON namespace.oid = ts_dictionary.dictnamespace
+            WHERE namespace.nspname = 'public'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM pg_catalog.pg_depend AS dependency
+                  WHERE dependency.classid = 'pg_catalog.pg_ts_dict'::regclass
+                    AND dependency.objid = ts_dictionary.oid
+                    AND dependency.refclassid = 'pg_catalog.pg_extension'::regclass
+                    AND dependency.deptype = 'e'
+              )
+        ),
+        unexpected_text_search_parsers AS (
+            SELECT
+                'text_search_parser'::text AS object_kind,
+                format('%I.%I', namespace.nspname, ts_parser_entry.prsname) AS object_identity
+            FROM pg_catalog.pg_ts_parser AS ts_parser_entry
+            JOIN pg_catalog.pg_namespace AS namespace
+              ON namespace.oid = ts_parser_entry.prsnamespace
+            WHERE namespace.nspname = 'public'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM pg_catalog.pg_depend AS dependency
+                  WHERE dependency.classid = 'pg_catalog.pg_ts_parser'::regclass
+                    AND dependency.objid = ts_parser_entry.oid
+                    AND dependency.refclassid = 'pg_catalog.pg_extension'::regclass
+                    AND dependency.deptype = 'e'
+              )
+        ),
+        unexpected_text_search_templates AS (
+            SELECT
+                'text_search_template'::text AS object_kind,
+                format('%I.%I', namespace.nspname, ts_template_entry.tmplname) AS object_identity
+            FROM pg_catalog.pg_ts_template AS ts_template_entry
+            JOIN pg_catalog.pg_namespace AS namespace
+              ON namespace.oid = ts_template_entry.tmplnamespace
+            WHERE namespace.nspname = 'public'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM pg_catalog.pg_depend AS dependency
+                  WHERE dependency.classid = 'pg_catalog.pg_ts_template'::regclass
+                    AND dependency.objid = ts_template_entry.oid
+                    AND dependency.refclassid = 'pg_catalog.pg_extension'::regclass
+                    AND dependency.deptype = 'e'
+              )
+        ),
         unexpected_extensions AS (
             SELECT
                 'extension'::text AS object_kind,
-                extension.extname::text AS object_identity
-            FROM pg_catalog.pg_extension AS extension
-            WHERE extension.extname NOT IN ('plpgsql', 'pgcrypto', 'vector')
+                ext.extname::text AS object_identity
+            FROM pg_catalog.pg_extension AS ext
+            WHERE ext.extname NOT IN ('plpgsql', 'pgcrypto', 'vector')
         )
         SELECT object_kind, object_identity FROM unexpected_relations
         UNION ALL
         SELECT object_kind, object_identity FROM unexpected_routines
         UNION ALL
         SELECT object_kind, object_identity FROM unexpected_types
+        UNION ALL
+        SELECT object_kind, object_identity FROM unexpected_collations
+        UNION ALL
+        SELECT object_kind, object_identity FROM unexpected_operators
+        UNION ALL
+        SELECT object_kind, object_identity FROM unexpected_text_search_configurations
+        UNION ALL
+        SELECT object_kind, object_identity FROM unexpected_text_search_dictionaries
+        UNION ALL
+        SELECT object_kind, object_identity FROM unexpected_text_search_parsers
+        UNION ALL
+        SELECT object_kind, object_identity FROM unexpected_text_search_templates
         UNION ALL
         SELECT object_kind, object_identity FROM unexpected_extensions
         ORDER BY object_kind, object_identity
@@ -322,10 +464,10 @@ def _acquire_advisory_lock(
     monotonic: Any = time.monotonic,
     sleep: Any = time.sleep,
 ) -> None:
-    if timeout_seconds < 0:
-        raise SchemaV2Error("advisory lock timeout must be non-negative")
-    if poll_interval_seconds <= 0:
-        raise SchemaV2Error("advisory lock poll interval must be positive")
+    if not math.isfinite(timeout_seconds) or timeout_seconds < 0:
+        raise SchemaV2Error("advisory lock timeout must be finite and non-negative")
+    if not math.isfinite(poll_interval_seconds) or poll_interval_seconds <= 0:
+        raise SchemaV2Error("advisory lock poll interval must be finite and positive")
 
     deadline = monotonic() + timeout_seconds
     while True:
@@ -457,27 +599,32 @@ def _verify_with_cursor(cursor: Any, manifest: SchemaManifest) -> None:
     _verify_ledger(cursor, manifest, require_all_migrations=True)
 
 
-def _connect_with_retry(database_url: str, *, timeout_seconds: float, driver: Any) -> Any:
+def _connect_with_retry(*, timeout_seconds: float, driver: Any) -> Any:
+    if not math.isfinite(timeout_seconds) or timeout_seconds < 0:
+        raise SchemaV2Error("database connect timeout must be finite and non-negative")
     deadline = time.monotonic() + timeout_seconds
     while True:
         try:
-            return driver.connect(database_url)
+            # libpq reads PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD directly.
+            # No raw credential is assembled into a URI or command-line value.
+            return driver.connect()
         except driver.OperationalError:
-            if time.monotonic() >= deadline:
+            remaining_seconds = deadline - time.monotonic()
+            if remaining_seconds <= 0:
                 raise
-            time.sleep(0.5)
+            time.sleep(min(0.5, remaining_seconds))
 
 
 def run_database_command(
     command: str,
     *,
-    database_url: str,
     schema_root: Path,
     app_version: str,
     app_commit: str,
     connect_timeout_seconds: float,
     lock_timeout_seconds: float,
 ) -> None:
+    _validate_pg_environment(dict(os.environ))
     manifest = load_manifest(schema_root)
     ensure_app_compatible(
         app_version=app_version,
@@ -493,10 +640,15 @@ def run_database_command(
 
     try:
         connection = _connect_with_retry(
-            database_url,
             timeout_seconds=connect_timeout_seconds,
             driver=psycopg,
         )
+    except SchemaV2Error:
+        raise
+    except Exception:
+        raise SchemaV2Error("database connection failed") from None
+
+    try:
         try:
             # Keep the session lock outside the migration transaction. This
             # makes every SQL file and its ledger write commit atomically while
@@ -532,20 +684,20 @@ def run_database_command(
                         "SELECT pg_advisory_unlock(hashtextextended(%s, 0))",
                         (ADVISORY_LOCK_NAME,),
                     )
-        finally:
+        except SchemaV2Error:
+            raise
+        except Exception:
+            raise SchemaV2Error("database operation failed") from None
+    finally:
+        try:
             connection.close()
-    except psycopg.Error as exc:
-        raise SchemaV2Error(f"database operation failed: {exc}") from exc
+        except Exception:
+            raise SchemaV2Error("database connection cleanup failed") from None
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Install or verify the isolated Geno Schema v2")
     parser.add_argument("command", choices=("install", "verify"))
-    parser.add_argument(
-        "--database-url",
-        default=os.getenv("SCHEMA_V2_DATABASE_URL", ""),
-        help="Schema v2 PostgreSQL URL (or set SCHEMA_V2_DATABASE_URL)",
-    )
     parser.add_argument(
         "--schema-root",
         type=Path,
@@ -553,24 +705,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--app-version", default=os.getenv("GENO_APP_VERSION", "0.1.0"))
     parser.add_argument("--app-commit", default=os.getenv("GENO_APP_COMMIT", "development"))
-    parser.add_argument("--connect-timeout-seconds", type=float, default=30.0)
+    parser.add_argument(
+        "--connect-timeout-seconds",
+        type=_nonnegative_finite_seconds,
+        default=os.getenv("SCHEMA_V2_CONNECT_TIMEOUT_SECONDS", "30"),
+    )
     parser.add_argument(
         "--lock-timeout-seconds",
-        type=float,
-        default=float(os.getenv("SCHEMA_V2_LOCK_TIMEOUT_SECONDS", "30")),
+        type=_nonnegative_finite_seconds,
+        default=os.getenv("SCHEMA_V2_LOCK_TIMEOUT_SECONDS", "30"),
     )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if not args.database_url:
-        print("schema-v2 error: --database-url or SCHEMA_V2_DATABASE_URL is required", file=sys.stderr)
-        return 2
     try:
         run_database_command(
             args.command,
-            database_url=args.database_url,
             schema_root=args.schema_root,
             app_version=args.app_version,
             app_commit=args.app_commit,

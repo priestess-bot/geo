@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,7 +16,10 @@ from scripts.schema_v2_runner import (
     EXPECTED_SCHEMA_GENERATION,
     SchemaV2Error,
     _acquire_advisory_lock,
+    _connect_with_retry,
+    _nonnegative_finite_seconds,
     _unexpected_public_objects,
+    _validate_pg_environment,
     compute_baseline_hash,
     ensure_app_compatible,
     load_manifest,
@@ -54,6 +59,15 @@ class _CatalogCursor:
 
     def fetchall(self) -> list[tuple[str, str]]:
         return self.rows
+
+
+class _NeverConnectDriver:
+    class OperationalError(Exception):
+        pass
+
+    @classmethod
+    def connect(cls) -> None:
+        raise AssertionError("timeout validation must run before connect")
 
 
 class SchemaV2ManifestContractsTest(unittest.TestCase):
@@ -152,6 +166,9 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
                 ("foreign_table", "public.dirty_foreign_table"),
                 ("function", "dirty_function()"),
                 ("enum_type", "public.dirty_enum"),
+                ("collation", "public.dirty_collation"),
+                ("operator", "public.dirty_operator"),
+                ("text_search_configuration", "public.dirty_ts_config"),
                 ("extension", "postgres_fdw"),
             ]
         )
@@ -161,6 +178,12 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         self.assertIn("pg_catalog.pg_class", cursor.statement)
         self.assertIn("pg_catalog.pg_proc", cursor.statement)
         self.assertIn("pg_catalog.pg_type", cursor.statement)
+        self.assertIn("pg_catalog.pg_collation", cursor.statement)
+        self.assertIn("pg_catalog.pg_operator", cursor.statement)
+        self.assertIn("pg_catalog.pg_ts_config", cursor.statement)
+        self.assertIn("pg_catalog.pg_ts_dict", cursor.statement)
+        self.assertIn("pg_catalog.pg_ts_parser", cursor.statement)
+        self.assertIn("pg_catalog.pg_ts_template", cursor.statement)
         self.assertIn("pg_catalog.pg_extension", cursor.statement)
         self.assertIn("dependency.deptype = 'e'", cursor.statement)
         self.assertEqual(objects[0], "table:public.dirty_table")
@@ -191,6 +214,125 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
             "timed out acquiring Schema v2 advisory lock after 0.000 seconds",
         ):
             _acquire_advisory_lock(timeout_cursor, timeout_seconds=0.0)
+
+    def test_connect_and_lock_timeouts_reject_non_finite_or_negative_values(self) -> None:
+        for invalid in (float("nan"), float("inf"), float("-inf"), -0.1):
+            with self.subTest(invalid=invalid):
+                with self.assertRaisesRegex(SchemaV2Error, "finite and non-negative"):
+                    _acquire_advisory_lock(
+                        _TryLockCursor([True]),
+                        timeout_seconds=invalid,
+                    )
+                with self.assertRaisesRegex(SchemaV2Error, "finite and non-negative"):
+                    _connect_with_retry(
+                        timeout_seconds=invalid,
+                        driver=_NeverConnectDriver,
+                    )
+
+        with self.assertRaisesRegex(SchemaV2Error, "finite and positive"):
+            _acquire_advisory_lock(
+                _TryLockCursor([True]),
+                timeout_seconds=1.0,
+                poll_interval_seconds=float("inf"),
+            )
+        for raw in ("nan", "inf", "-inf", "-0.1", "not-a-number"):
+            with self.subTest(raw=raw):
+                with self.assertRaisesRegex(
+                    argparse.ArgumentTypeError,
+                    "finite non-negative number",
+                ):
+                    _nonnegative_finite_seconds(raw)
+
+    def test_structured_pg_environment_is_required_and_database_is_fixed(self) -> None:
+        environment = {
+            "PGHOST": "postgres-v2",
+            "PGPORT": "5432",
+            "PGDATABASE": "geno_v2",
+            "PGUSER": "runner",
+            "PGPASSWORD": "marker-password",
+        }
+        _validate_pg_environment(environment)
+
+        for key in environment:
+            with self.subTest(missing=key):
+                invalid = {**environment, key: ""}
+                with self.assertRaisesRegex(SchemaV2Error, key):
+                    _validate_pg_environment(invalid)
+        with self.assertRaisesRegex(SchemaV2Error, "PGDATABASE must remain fixed"):
+            _validate_pg_environment({**environment, "PGDATABASE": "geno"})
+
+    def test_connection_failure_stderr_is_stable_and_contains_no_connection_markers(self) -> None:
+        password_marker = "PASSWORD_MARKER_must_never_appear"
+        user_marker = "DSN_MARKER_must_never_appear"
+        deprecated_dsn_marker = "postgresql://DEPRECATED_DSN_MARKER_must_never_appear"
+        environment = {
+            **os.environ,
+            "PGHOST": "127.0.0.1",
+            "PGPORT": "1",
+            "PGDATABASE": "geno_v2",
+            "PGUSER": user_marker,
+            "PGPASSWORD": password_marker,
+            "SCHEMA_V2_DATABASE_URL": deprecated_dsn_marker,
+        }
+        result = subprocess.run(
+            [
+                sys.executable,
+                "scripts/schema_v2_runner.py",
+                "verify",
+                "--schema-root",
+                "infra/db/schema-v2",
+                "--connect-timeout-seconds",
+                "0",
+            ],
+            cwd=ROOT,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stderr, "schema-v2 error: database connection failed\n")
+        self.assertNotIn(password_marker, result.stderr)
+        self.assertNotIn(user_marker, result.stderr)
+        self.assertNotIn(deprecated_dsn_marker, result.stderr)
+        self.assertNotIn("postgresql://", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_invalid_timeout_environment_values_fail_without_a_traceback(self) -> None:
+        base_environment = {
+            **os.environ,
+            "PGHOST": "127.0.0.1",
+            "PGPORT": "1",
+            "PGDATABASE": "geno_v2",
+            "PGUSER": "timeout-test",
+            "PGPASSWORD": "timeout-test-marker",
+        }
+        for variable in (
+            "SCHEMA_V2_CONNECT_TIMEOUT_SECONDS",
+            "SCHEMA_V2_LOCK_TIMEOUT_SECONDS",
+        ):
+            for invalid in ("nan", "inf", "-inf", "-0.1", "not-a-number"):
+                with self.subTest(variable=variable, invalid=invalid):
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            "scripts/schema_v2_runner.py",
+                            "verify",
+                            "--schema-root",
+                            "infra/db/schema-v2",
+                        ],
+                        cwd=ROOT,
+                        env={**base_environment, variable: invalid},
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn("must be a finite non-negative number", result.stderr)
+                    self.assertNotIn("Traceback", result.stderr)
 
 
 @unittest.skipIf(yaml is None, "PyYAML is required for Compose contract checks")
@@ -224,14 +366,17 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
         self.assertEqual(database["environment"]["POSTGRES_DB"], "geno_v2")
         self.assertEqual(database["environment"]["POSTGRES_USER"], COMPOSE_USER)
         self.assertEqual(database["environment"]["POSTGRES_PASSWORD"], COMPOSE_PASSWORD)
-        expected_url = (
-            f"postgresql://{COMPOSE_USER}:{COMPOSE_PASSWORD}@postgres-v2:5432/geno_v2"
-        )
-        self.assertEqual(installer["environment"]["SCHEMA_V2_DATABASE_URL"], expected_url)
-        self.assertEqual(verifier["environment"]["SCHEMA_V2_DATABASE_URL"], expected_url)
-        self.assertEqual(
-            behavior_test["environment"]["SCHEMA_V2_TEST_DATABASE_URL"], expected_url
-        )
+        expected_pg_environment = {
+            "PGHOST": "postgres-v2",
+            "PGPORT": "5432",
+            "PGDATABASE": "geno_v2",
+            "PGUSER": COMPOSE_USER,
+            "PGPASSWORD": COMPOSE_PASSWORD,
+        }
+        for service in (installer, verifier, behavior_test):
+            for key, expected_value in expected_pg_environment.items():
+                self.assertEqual(service["environment"][key], expected_value)
+            self.assertNotIn("SCHEMA_V2_DATABASE_URL", service["environment"])
         self.assertNotIn("ports", database)
         self.assertTrue(
             any(volume["source"] == "schema_v2_postgres_data" for volume in database["volumes"])
@@ -250,6 +395,7 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
         self.assertNotIn("/docker-entrypoint-initdb.d", rendered)
         self.assertNotIn("must_not_be_used", rendered)
         self.assertNotIn("geno_v2_local", rendered)
+        self.assertNotIn("postgresql://", rendered)
 
     def test_makefile_exposes_contract_and_fresh_install_entrypoints(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
