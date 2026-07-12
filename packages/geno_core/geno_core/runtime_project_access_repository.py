@@ -200,6 +200,18 @@ def _json_payload(value: object) -> object:
     return Jsonb(payload)
 
 
+def _json_array(value: object) -> list[object]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        return parsed if isinstance(parsed, list) else []
+    return []
+
+
 def _uuid(value: str | None) -> object | None:
     return value
 
@@ -994,6 +1006,21 @@ class RuntimeProjectAccessRepositoryMixin:
             if not existing:
                 raise ValueError("runtime session not found")
             before = _row_dict(existing, RUNTIME_SESSION_COLUMNS)
+            tenant_id = str(before.get("tenant_id") or "").strip()
+            project_ids = tuple(
+                str(value).strip()
+                for value in _json_array(before.get("project_ids"))
+                if str(value).strip()
+            )
+            cursor.execute(
+                """
+                SELECT
+                  set_config('app.tenant_id', %s, true),
+                  set_config('app.project_ids', %s, true),
+                  set_config('geno.runtime_tenant_id', %s, true)
+                """,
+                (tenant_id, ",".join(project_ids), tenant_id),
+            )
             cursor.execute(
                 """
                 UPDATE runtime_sessions
@@ -1022,7 +1049,7 @@ class RuntimeProjectAccessRepositoryMixin:
             after = _row_dict(cursor.fetchone(), RUNTIME_SESSION_COLUMNS)
             audit_event = build_audit_event(
                 event_type="runtime_session_revoked",
-                project_id="",
+                project_id=project_ids[0] if project_ids else "",
                 actor_type="user",
                 actor_id=revoked_by,
                 target_type="runtime_session",

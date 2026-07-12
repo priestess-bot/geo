@@ -101,7 +101,7 @@ def register_auth_routes(
                     http_status=503,
                 )
             result = method(
-                invitation_id=payload.invitation_id,
+                invitation_id=str(payload.invitation_id),
                 invite_token=payload.invite_token,
                 requested_surface=payload.requested_surface,
             )
@@ -141,7 +141,7 @@ def register_auth_routes(
                     http_status=503,
                 )
             result = method(
-                invitation_id=payload.invitation_id,
+                invitation_id=str(payload.invitation_id),
                 invite_token=payload.invite_token,
                 requested_surface=payload.requested_surface,
                 idempotency_key=idempotency_key,
@@ -260,7 +260,7 @@ def _consume_preflight_rate_limit(
         maximum=3600,
     )
     bucket_key = hashlib.sha256(
-        f"invitation\0{payload.invitation_id}".encode("utf-8")
+        f"invitation\0{str(payload.invitation_id)}".encode("utf-8")
     ).hexdigest()
     count = int(method(bucket_key=bucket_key, limit=limit, window_seconds=window_seconds))
     if count > limit:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -16,7 +17,7 @@ from geno_core.auth import (
 class AuthInvitationPreflightRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    invitation_id: str = Field(min_length=1, max_length=80)
+    invitation_id: UUID
     invite_token: str = Field(min_length=1, max_length=512)
     requested_surface: InvitationSurface
 
@@ -33,7 +34,7 @@ class AuthInvitationPreflightResponse(BaseModel):
 class AuthInvitationRedeemRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    invitation_id: str = Field(min_length=1, max_length=80)
+    invitation_id: UUID
     invite_token: str = Field(min_length=1, max_length=512)
     requested_surface: InvitationSurface
 

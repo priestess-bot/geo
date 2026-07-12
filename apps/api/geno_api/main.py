@@ -49,7 +49,7 @@ from geno_core.action_plan import (
 from geno_core.collection_jobs import CollectionJobStore
 from geno_core.analysis_pipeline import analyze_and_score_records
 from geno_core.audit import build_audit_event
-from geno_core.auth_delivery import AuthDeliveryError, auth_session_cookie_secure
+from geno_core.auth_delivery import AuthDeliveryError, AuthDeliveryKeyring, auth_session_cookie_secure
 from geno_core.bootstrap import DEFAULT_AU_COMPETITORS, build_au_project_bootstrap, build_project_bootstrap
 from geno_core.collection import (
     build_manual_backfill_record,
@@ -479,8 +479,17 @@ def validate_production_runtime_security() -> None:
     auth_mode = runtime_auth_mode()
     if auth_mode == RUNTIME_AUTH_MODE_HEADER:
         errors.append(f"{RUNTIME_AUTH_MODE_ENV}=header is forbidden")
-    if auth_mode == RUNTIME_AUTH_MODE_SESSION and not runtime_session_cookie_secure():
-        errors.append(f"{RUNTIME_SESSION_COOKIE_SECURE_ENV}=1 is required for session auth")
+    try:
+        secure_cookie = auth_session_cookie_secure()
+    except AuthDeliveryError as exc:
+        errors.append(str(exc))
+        secure_cookie = False
+    if not secure_cookie:
+        errors.append(f"{RUNTIME_SESSION_COOKIE_SECURE_ENV}=1 is required")
+    try:
+        AuthDeliveryKeyring.from_env()
+    except AuthDeliveryError as exc:
+        errors.append(f"auth delivery keyring is invalid: {exc}")
     connector_key = os.getenv("GENO_CONNECTOR_SECRET_MASTER_KEY", "").strip()
     if not connector_key or connector_key == "geno-local-connector-secret-master-key":
         errors.append("GENO_CONNECTOR_SECRET_MASTER_KEY must be a non-default secret")

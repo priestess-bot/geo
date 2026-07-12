@@ -500,11 +500,9 @@ class AuthSessionV2Repository:
                 cursor.execute(
                     """
                     SELECT id, role, status
-                    FROM project_members
-                    WHERE project_id = %s AND lower(btrim(user_id)) = %s
-                    FOR UPDATE
+                    FROM geno_runtime_lock_invited_member(%s, %s, %s)
                     """,
-                    (_uuid(project_id), actor_id),
+                    (_uuid(project_id), _uuid(tenant_id), actor_id),
                 )
                 member = _row(cursor.fetchone(), ("id", "role", "status"))
                 if member and (member.get("status") != "active" or normalize_role(str(member["role"])) != canonical_role):
@@ -585,6 +583,17 @@ class AuthSessionV2Repository:
                 )
                 cursor.execute(
                     """
+                    UPDATE project_member_invitations
+                    SET status = 'accepted',
+                        accepted_at = now(),
+                        accepted_by_attempt_id = %s,
+                        updated_at = now()
+                    WHERE id = %s AND status = 'pending'
+                    """,
+                    (_uuid(attempt_id), _uuid(invitation_id)),
+                )
+                cursor.execute(
+                    """
                     UPDATE auth_invitation_redemption_attempts
                     SET session_id = %s,
                         status = 'succeeded',
@@ -603,17 +612,6 @@ class AuthSessionV2Repository:
                         delivery_expires_at,
                         _uuid(attempt_id),
                     ),
-                )
-                cursor.execute(
-                    """
-                    UPDATE project_member_invitations
-                    SET status = 'accepted',
-                        accepted_at = now(),
-                        accepted_by_attempt_id = %s,
-                        updated_at = now()
-                    WHERE id = %s AND status = 'pending'
-                    """,
-                    (_uuid(attempt_id), _uuid(invitation_id)),
                 )
                 self._write_accept_audit(
                     cursor,
@@ -697,23 +695,17 @@ class AuthSessionV2Repository:
         cursor.execute(
             """
             SELECT project_id, role
-            FROM project_members
-            WHERE tenant_id = %s AND lower(btrim(user_id)) = %s AND status = 'active'
-            ORDER BY project_id, created_at, id
-            FOR SHARE
+            FROM geno_runtime_lock_scope_members(%s, %s)
             """,
-            (_uuid(tenant_id), actor_id),
+            (actor_id, _uuid(tenant_id)),
         )
         direct_memberships = [_row(row, ("project_id", "role")) for row in (cursor.fetchall() or ())]
         cursor.execute(
             """
             SELECT project_id, canonical_role, permissions
-            FROM runtime_project_access_grants
-            WHERE tenant_id = %s AND lower(btrim(actor_id)) = %s AND status = 'active'
-            ORDER BY project_id, granted_at, id
-            FOR SHARE
+            FROM geno_runtime_lock_scope_grants(%s, %s)
             """,
-            (_uuid(tenant_id), actor_id),
+            (actor_id, _uuid(tenant_id)),
         )
         grants = [
             _row(row, ("project_id", "canonical_role", "permissions"))

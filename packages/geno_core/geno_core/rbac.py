@@ -130,6 +130,7 @@ ROLE_PERMISSION_MATRIX: Mapping[Role, frozenset[Permission]] = {
             "project.update",
             "project.archive",
             "member.invite",
+            "member.manage",
             "prompt.import",
             "connector.read",
             "connector.manage",

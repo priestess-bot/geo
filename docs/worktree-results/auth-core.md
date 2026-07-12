@@ -9,6 +9,13 @@
 - Changed invitation email delivery to keep the raw one-time code out of URLs and audit payloads; links contain only `invitation_id`, while the code is displayed separately in the v2 email template.
 - Retired the legacy invitation acceptance mutation with `410` and rejected the legacy auth redeem shape with `422`.
 - Added bounded maintenance cleanup and a real Session v2 E2E script.
+- Tightened the reviewer follow-up findings:
+  - `invitation_id` is now validated as a UUID at the API boundary before repository/rate-limit calls.
+  - Runtime invitation redemption can no longer mutate pending invitation snapshots or create arbitrary membership rows.
+  - Runtime app cannot forge `runtime_project_access_grants` or escalate immutable Session v2 authorization snapshots.
+  - Viewer runtime contexts cannot update project memberships.
+  - Production startup validation fails closed unless the Session cookie is secure and the auth delivery keyring is configured.
+  - Auth invitation email writes honor the `AUTH_WRITES_ENABLED` kill switch.
 
 ## Integration Configuration
 
@@ -48,9 +55,10 @@ Verified against the dedicated `geo-auth-core-postgres-1` project:
 
 - Complete `0001..0030` chain on an empty database: passed.
 - `0030` rerun on the fully migrated database: passed.
+- `0030` down/up roundtrip followed by the PostgreSQL auth suite: passed.
 - Dirty duplicate/conflict upgrade and rerun: passed, with quarantine/reconciliation records retained.
 - Down fail-closed checks and forward reapply: passed.
-- App-role FORCE RLS, cross-tenant rejection, helper owner/ACL/search-path drift, lineage FKs, v1 rejection, and scope revocation races: passed.
+- App-role FORCE RLS, cross-tenant rejection, helper owner/ACL/search-path drift, lineage FKs, v1 rejection, scope revocation races, invitation snapshot immutability, grant-forgery rejection, membership escalation rejection, and Session v2 scope-forgery rejection: passed.
 
 ## Operations Wiring
 
@@ -77,14 +85,19 @@ The repository has no committed OpenAPI snapshot/generator. After merge, regener
 
 - `scripts/bootstrap_admin_session.py` still constructs a scope-v1 session. Migration `0030` rejects active v1 sessions, so update that script in the integration branch to resolve a real tenant and build explicit Session v2 project scopes before deployment.
 - Wire the key files, cleanup job, migration role, rollback role, and auth E2E into Compose/Make/Gates; those files were outside this worktree's ownership.
+- Ensure Compose migration wiring applies `0029_durable_job_lease_recovery.sql` before `0030_auth_session_scope_v2.sql` when this branch is merged with the durable-lease branch.
 - The surface projection correctly handles scopes above the repository page cap by fetching authorized projects individually before pagination. It is intentionally conservative but can issue many queries; add a batch-by-ID repository method after merge if this becomes a measured hotspot.
 
 ## Verification
 
-- New auth suites: `35 passed`.
-- Real PostgreSQL auth integration: `15 passed`.
-- Related API contracts: `27 passed`.
-- Ruff, compileall, and `git diff --check`: passed.
-- Session v2 E2E: passed, including mismatch zero-side-effects, stable replay, validation, confirmation, and ciphertext erasure.
-
-The related Core auth/email contract selection has `18 passed`. The full baselines are `341 passed, 14 skipped, 1 failed` for API and `269 passed, 10 failed` for Core. Those remaining failures are existing exact floating-point sum assertions (`0.9999999999999999` versus `1.0`) or searches inside the truncated `str(psycopg.types.json.Jsonb(...))`; both categories reproduce on `main` and are unrelated to this branch.
+- `AUTH_TEST_DATABASE_URL=postgresql://geno:geno@localhost:55433/geno AUTH_TEST_APP_DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:55433/geno PYTHONPATH=packages/geno_core:apps/api:. python3 -m pytest -q tests/test_auth_postgres_integration.py`: `21 passed`.
+- `PYTHONPATH=packages/geno_core:apps/api:. python3 -m pytest -q tests/test_auth_session_v2_contracts.py tests/test_production_runtime_contracts.py tests/test_api_contracts.py::ApiContractsTest::test_auth_invitation_preflight_rejects_malformed_invitation_id_before_repository`: `21 passed`.
+- `PYTHONPATH=packages/geno_core:apps/api:. python3 -m pytest -q tests/test_auth_session_v2_contracts.py tests/test_auth_redemption_repository.py tests/test_auth_context_contracts.py tests/test_production_runtime_contracts.py`: `37 passed`.
+- Focused API auth unittest selection: `6 passed`.
+- Focused Core auth/email unittest selection: `5 passed`.
+- Fresh `0001..0030` migration chain on a temporary PostgreSQL database: passed.
+- `0030` rerun on the fully migrated database: passed.
+- `0030` down/up roundtrip followed by the PostgreSQL auth suite: passed.
+- `python3 -m compileall -q apps/api/geno_api packages/geno_core/geno_core tests/test_auth_postgres_integration.py tests/test_auth_session_v2_contracts.py tests/test_production_runtime_contracts.py`: passed.
+- `python3 -m ruff check ...`: passed.
+- `git diff --check`: passed.

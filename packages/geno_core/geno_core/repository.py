@@ -5803,6 +5803,7 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         self,
         email_input: RuntimeProjectMemberInvitationEmailInput,
     ) -> RuntimeProjectMemberInvitation:
+        assert_auth_writes_enabled()
         project_id = email_input.project_id.strip()
         invitation_id = email_input.invitation_id.strip()
         invite_token = email_input.invite_token.strip()

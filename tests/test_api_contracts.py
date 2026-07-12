@@ -5187,6 +5187,25 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 410)
         self.assertIn("retired", response.json()["detail"])
 
+    def test_auth_invitation_preflight_rejects_malformed_invitation_id_before_repository(self) -> None:
+        class FakeRepository:
+            def preflight(self, **_kwargs: object) -> object:
+                raise AssertionError("malformed invitation_id must be rejected by request validation")
+
+        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geno_api.main.close_repository_connection"
+        ):
+            response = self.client.post(
+                "/v1/auth/invitations/preflight",
+                json={
+                    "invitation_id": "21a98a17-7930-5504-a6fa-not-a-uuid",
+                    "invite_token": "geno-invite-token",
+                    "requested_surface": "customer",
+                },
+            )
+
+        self.assertEqual(response.status_code, 422)
+
     def test_auth_invitation_redeem_creates_session_cookie_without_returning_raw_token(self) -> None:
         class Scope:
             tenant_id = "tenant-1"

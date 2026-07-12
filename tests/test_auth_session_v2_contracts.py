@@ -160,7 +160,7 @@ def test_redeem_contract_rejects_client_supplied_actor() -> None:
     with pytest.raises(ValidationError):
         AuthInvitationRedeemRequest.model_validate(
             {
-                "invitation_id": "invitation-1",
+                "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
                 "invite_token": "secret",
                 "requested_surface": "customer",
                 "accepted_by": "attacker@example.com",
@@ -188,7 +188,7 @@ def test_preflight_rate_limit_bucket_does_not_change_with_candidate_token(
         _consume_preflight_rate_limit(
             repository,
             payload=AuthInvitationPreflightRequest(
-                invitation_id="invitation-1",
+                invitation_id="21a98a17-7930-5504-a6fa-cd08990fbf07",
                 invite_token=token,
                 requested_surface="customer",
             ),
@@ -216,7 +216,7 @@ def test_preflight_trusted_source_limit_above_one_thousand_still_blocks(
         _consume_preflight_rate_limit(
             RateRepository(),
             payload=AuthInvitationPreflightRequest(
-                invitation_id="invitation-1",
+                invitation_id="21a98a17-7930-5504-a6fa-cd08990fbf07",
                 invite_token="candidate",
                 requested_surface="customer",
             ),
@@ -368,7 +368,7 @@ def test_customer_portal_access_rejects_legacy_invitation_mutation_fields() -> N
     response = client.post(
         "/v1/customer-portal/access",
         json={
-            "invitation_id": "invitation-1",
+            "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
             "invite_token": "secret",
             "accepted_by": "attacker@example.com",
         },

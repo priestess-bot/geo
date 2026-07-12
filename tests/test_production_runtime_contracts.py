@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 from pathlib import Path
 import unittest
@@ -19,6 +20,8 @@ def safe_production_environment() -> dict[str, str]:
         "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
         "GENO_RUNTIME_AUTH_MODE": "session",
         "GENO_RUNTIME_SESSION_COOKIE_SECURE": "1",
+        "GENO_AUTH_DELIVERY_MASTER_KEY": base64.urlsafe_b64encode(b"p" * 32).decode("ascii"),
+        "GENO_AUTH_DELIVERY_KEY_ID": "production-test-key",
         "GENO_CONNECTOR_SECRET_MASTER_KEY": "production-test-master-key",
         "GENO_REPORT_ARTIFACT_SIGNING_SECRET": "production-test-signing-key",
         "GENO_PDF_RENDERER_URL": "http://report-pdf-renderer:8200",

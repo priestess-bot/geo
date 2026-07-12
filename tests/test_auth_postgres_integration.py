@@ -24,6 +24,7 @@ from geno_core.auth import (
     InvitationSurfaceCompatibility,
 )
 from geno_core.auth_delivery import AuthDeliveryKeyring
+from geno_core.models import RuntimeProjectMemberInvitationEmailInput
 from geno_core.repository import PostgresEvidenceRepository
 
 
@@ -141,6 +142,70 @@ def _repository(connection: psycopg.Connection[dict[str, object]]) -> AuthSessio
     )
 
 
+def _idempotency_hash(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _invitation_token_hash(invitation: dict[str, str]) -> str:
+    return hashlib.sha256(invitation["token"].encode("utf-8")).hexdigest()
+
+
+def _set_redemption_context(
+    cursor: psycopg.Cursor[dict[str, object]],
+    invitation: dict[str, str],
+    *,
+    idempotency_key: str,
+    surface: str = "customer",
+) -> None:
+    cursor.execute(
+        """
+        SELECT set_config('app.rls_enabled', '1', true),
+               set_config('app.actor_id', '', true),
+               set_config('app.project_id', '', true),
+               set_config('app.project_ids', '', true),
+               set_config('app.tenant_id', '', true),
+               set_config('geno.runtime_project_access_control', '1', true),
+               set_config('geno.runtime_actor_id', '', true),
+               set_config('geno.runtime_project_id', '', true),
+               set_config('geno.runtime_tenant_id', '', true),
+               set_config('geno.runtime_invitation_token_hash', %s, true),
+               set_config('geno.runtime_idempotency_key_hash', %s, true),
+               set_config('geno.runtime_requested_surface', %s, true),
+               set_config('geno.runtime_session_token_hash', '', true)
+        """,
+        (_invitation_token_hash(invitation), _idempotency_hash(idempotency_key), surface),
+    )
+
+
+def _insert_preparing_attempt(
+    cursor: psycopg.Cursor[dict[str, object]],
+    invitation: dict[str, str],
+    *,
+    idempotency_key: str,
+    surface: str = "customer",
+) -> str:
+    attempt_id = str(uuid4())
+    _set_redemption_context(cursor, invitation, idempotency_key=idempotency_key, surface=surface)
+    cursor.execute(
+        """
+        INSERT INTO auth_invitation_redemption_attempts(
+          id, invitation_id, requested_surface, idempotency_key_hash,
+          request_hash, token_fingerprint, status
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, 'preparing')
+        """,
+        (
+            attempt_id,
+            invitation["invitation_id"],
+            surface,
+            _idempotency_hash(idempotency_key),
+            hashlib.sha256(f"request-{attempt_id}".encode("utf-8")).hexdigest(),
+            _invitation_token_hash(invitation),
+        ),
+    )
+    return attempt_id
+
+
 def _insert_scope_session(
     owner: psycopg.Connection[dict[str, object]],
     *,
@@ -191,6 +256,258 @@ def _insert_scope_session(
         )
     owner.commit()
     return session_id, raw_token
+
+
+def test_runtime_token_cannot_mutate_pending_invitation_snapshot() -> None:
+    with _connect(OWNER_URL) as owner:
+        invitation = _seed_invitation(
+            owner,
+            project=_seed_project(owner, suffix="snapshot-mutation"),
+            actor_id=f"snapshot-{uuid4()}@example.com",
+        )
+
+    with _connect(APP_URL) as app_connection, app_connection.cursor() as cursor:
+        _set_redemption_context(cursor, invitation, idempotency_key=f"snapshot-{uuid4()}")
+        with pytest.raises(psycopg.Error):
+            cursor.execute(
+                """
+                UPDATE project_member_invitations
+                SET email = %s,
+                    role = 'owner',
+                    audience = 'admin',
+                    allowed_surfaces = ARRAY['admin']::text[]
+                WHERE id = %s
+                """,
+                (f"attacker-{uuid4()}@example.com", invitation["invitation_id"]),
+            )
+        app_connection.rollback()
+
+    with _connect(OWNER_URL) as owner, owner.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT email, role, audience, allowed_surfaces, status
+            FROM project_member_invitations
+            WHERE id = %s
+            """,
+            (invitation["invitation_id"],),
+        )
+        assert cursor.fetchone() == {
+            "email": invitation["actor_id"],
+            "role": "viewer",
+            "audience": "customer",
+            "allowed_surfaces": ["customer"],
+            "status": "pending",
+        }
+
+
+def test_runtime_invitation_accept_cannot_create_arbitrary_owner_member() -> None:
+    with _connect(OWNER_URL) as owner:
+        invitation = _seed_invitation(
+            owner,
+            project=_seed_project(owner, suffix="strict-accept"),
+            actor_id=f"strict-{uuid4()}@example.com",
+        )
+
+    with _connect(APP_URL) as app_connection, app_connection.cursor() as cursor:
+        _insert_preparing_attempt(cursor, invitation, idempotency_key=f"strict-{uuid4()}")
+        with pytest.raises(psycopg.Error):
+            cursor.execute(
+                """
+                INSERT INTO project_members(id, project_id, tenant_id, user_id, role, status)
+                VALUES (%s, %s, %s, %s, 'owner', 'active')
+                """,
+                (str(uuid4()), invitation["project_id"], invitation["tenant_id"], invitation["actor_id"]),
+            )
+        app_connection.rollback()
+
+    with _connect(OWNER_URL) as owner, owner.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) AS count FROM project_members WHERE project_id = %s",
+            (invitation["project_id"],),
+        )
+        assert cursor.fetchone()["count"] == 0
+
+
+def test_viewer_runtime_context_cannot_update_project_membership() -> None:
+    with _connect(OWNER_URL) as owner:
+        project = _seed_project(owner, suffix="viewer-update")
+        viewer = f"viewer-update-{uuid4()}@example.com"
+        with owner.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO project_members(id, project_id, tenant_id, user_id, role, status)
+                VALUES (%s, %s, %s, %s, 'viewer', 'active')
+                """,
+                (str(uuid4()), project["project_id"], project["tenant_id"], viewer),
+            )
+        owner.commit()
+
+    with _connect(APP_URL) as app_connection, app_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT set_config('app.rls_enabled', '1', true),
+                   set_config('app.actor_id', %s, true),
+                   set_config('app.project_id', %s, true),
+                   set_config('app.project_ids', %s, true),
+                   set_config('app.tenant_id', %s, true),
+                   set_config('geno.runtime_project_access_control', '1', true),
+                   set_config('geno.runtime_actor_id', %s, true),
+                   set_config('geno.runtime_project_id', %s, true),
+                   set_config('geno.runtime_tenant_id', %s, true)
+            """,
+            (
+                viewer,
+                project["project_id"],
+                project["project_id"],
+                project["tenant_id"],
+                viewer,
+                project["project_id"],
+                project["tenant_id"],
+            ),
+        )
+        cursor.execute(
+            "UPDATE project_members SET role = 'owner' WHERE project_id = %s AND lower(user_id) = %s",
+            (project["project_id"], viewer),
+        )
+        assert cursor.rowcount == 0
+        app_connection.rollback()
+
+    with _connect(OWNER_URL) as owner, owner.cursor() as cursor:
+        cursor.execute(
+            "SELECT role FROM project_members WHERE project_id = %s AND lower(user_id) = %s",
+            (project["project_id"], viewer),
+        )
+        assert cursor.fetchone()["role"] == "viewer"
+
+
+def test_runtime_app_cannot_forge_project_access_grant() -> None:
+    with _connect(OWNER_URL) as owner:
+        project = _seed_project(owner, suffix="grant-forge")
+
+    with _connect(APP_URL) as app_connection, app_connection.cursor() as cursor:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            cursor.execute(
+                """
+                INSERT INTO runtime_project_access_grants(
+                  tenant_id, project_id, actor_id, source_type, source_id,
+                  canonical_role, permission_set_version, permissions, status
+                )
+                VALUES (%s, %s, %s, 'tenant_role', %s, 'super_admin',
+                        'auth_surface_policy_v1', ARRAY['system.admin'], 'active')
+                """,
+                (
+                    project["tenant_id"],
+                    project["project_id"],
+                    f"forged-{uuid4()}@example.com",
+                    str(uuid4()),
+                ),
+            )
+        app_connection.rollback()
+
+
+def test_runtime_app_cannot_forge_or_escalate_session_scope() -> None:
+    with _connect(OWNER_URL) as owner:
+        project = _seed_project(owner, suffix="session-forge")
+        actor = f"session-forge-{uuid4()}@example.com"
+        invitation = _seed_invitation(owner, project=project, actor_id=actor)
+        with owner.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO project_members(id, project_id, tenant_id, user_id, role, status)
+                VALUES (%s, %s, %s, %s, 'viewer', 'active')
+                """,
+                (str(uuid4()), project["project_id"], project["tenant_id"], actor),
+            )
+        owner.commit()
+
+    with _connect(APP_URL) as app_connection, app_connection.cursor() as cursor:
+        attempt_id = _insert_preparing_attempt(cursor, invitation, idempotency_key=f"session-forge-{uuid4()}")
+        with pytest.raises(psycopg.Error):
+            cursor.execute(
+                """
+                INSERT INTO runtime_sessions(
+                  id, session_token_hash, actor_id, actor_type, tenant_id,
+                  project_ids, roles, permissions, tenant_roles, project_scopes,
+                  scope_version, authz_policy_version, redemption_attempt_id,
+                  auth_method, status, issued_by, expires_at, metadata
+                )
+                VALUES (
+                  %s, %s, %s, 'user', %s,
+                  %s, %s, %s, %s, %s,
+                  'runtime_session_scope_v2', 'auth_surface_policy_v1', %s,
+                  'session', 'active', 'auth-postgres-test', now() + interval '1 hour', '{}'::jsonb
+                )
+                """,
+                (
+                    str(uuid4()),
+                    hashlib.sha256(str(uuid4()).encode("utf-8")).hexdigest(),
+                    actor,
+                    project["tenant_id"],
+                    Jsonb([project["project_id"]]),
+                    Jsonb(["project_owner"]),
+                    Jsonb(["member.manage"]),
+                    Jsonb([]),
+                    Jsonb(
+                        [
+                            {
+                                "project_id": project["project_id"],
+                                "roles": ["project_owner"],
+                                "permissions": ["member.manage"],
+                                "portal_capabilities": ["portal.admin.access"],
+                                "scope_sources": ["direct_member"],
+                            }
+                        ]
+                    ),
+                    attempt_id,
+                ),
+            )
+        app_connection.rollback()
+
+    with _connect(APP_URL) as app_connection:
+        result = _repository(app_connection).redeem(
+            invitation_id=invitation["invitation_id"],
+            invite_token=invitation["token"],
+            requested_surface=InvitationSurface.CUSTOMER,
+            idempotency_key=f"session-valid-{uuid4()}",
+        )
+    with _connect(OWNER_URL) as owner, owner.cursor() as cursor:
+        cursor.execute(
+            "SELECT session_id::text AS session_id FROM auth_invitation_redemption_attempts WHERE id = %s",
+            (result.correlation_id,),
+        )
+        session_id = str(cursor.fetchone()["session_id"])
+    with _connect(APP_URL) as app_connection, app_connection.cursor() as cursor:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            cursor.execute(
+                "UPDATE runtime_sessions SET roles = %s WHERE id = %s",
+                (Jsonb(["project_owner"]), session_id),
+            )
+        app_connection.rollback()
+
+
+def test_auth_write_kill_switch_blocks_invitation_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AUTH_WRITES_ENABLED", "0")
+    with _connect(OWNER_URL) as owner:
+        invitation = _seed_invitation(
+            owner,
+            project=_seed_project(owner, suffix="email-kill-switch"),
+            actor_id=f"email-kill-{uuid4()}@example.com",
+        )
+    with _connect(APP_URL) as app_connection:
+        with pytest.raises(AuthContractError) as caught:
+            PostgresEvidenceRepository(app_connection).send_runtime_project_member_invitation_email(
+                RuntimeProjectMemberInvitationEmailInput(
+                    project_id=invitation["project_id"],
+                    invitation_id=invitation["invitation_id"],
+                    invite_token=invitation["token"],
+                    accept_base_url="https://customer.example.test/invite",
+                    sent_by="auth-test",
+                    smtp_env_prefix="GENO_TEST_SMTP",
+                )
+            )
+        assert caught.value.code == "auth_writes_temporarily_disabled"
 
 
 def test_stale_policy_and_surface_mismatch_are_zero_side_effects() -> None:

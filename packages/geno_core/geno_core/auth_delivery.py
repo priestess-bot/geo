@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import os
 from dataclasses import dataclass
@@ -258,11 +259,20 @@ def _decode_key(value: str, *, field: str) -> bytes:
     encoded = value.strip()
     if not encoded:
         raise AuthDeliveryError(f"{field} is required")
-    padding = "=" * (-len(encoded) % 4)
+    unpadded = encoded.rstrip("=")
+    if not unpadded or "=" in unpadded or len(encoded) - len(unpadded) > 2:
+        raise AuthDeliveryError(f"{field} must be URL-safe base64")
+    padding = "=" * (-len(unpadded) % 4)
     try:
-        decoded = base64.urlsafe_b64decode(encoded + padding)
-    except (ValueError, TypeError) as exc:
+        decoded = base64.b64decode(
+            (unpadded + padding).encode("ascii"),
+            altchars=b"-_",
+            validate=True,
+        )
+    except (binascii.Error, UnicodeEncodeError, ValueError, TypeError) as exc:
         raise AuthDeliveryError(f"{field} must be URL-safe base64") from exc
+    if base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=") != unpadded:
+        raise AuthDeliveryError(f"{field} must be canonical URL-safe base64")
     if len(decoded) != 32:
         raise AuthDeliveryError(f"{field} must decode to 32 bytes")
     return decoded
