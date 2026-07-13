@@ -8,6 +8,12 @@ x-schema-v2-pg-environment: &schema-v2-pg-environment
 services:
   postgres-v2:
     image: pgvector/pgvector:pg16
+    command:
+      - postgres
+      - -c
+      - log_statement=all
+      - -c
+      - log_min_error_statement=error
     environment:
       POSTGRES_DB: geno_v2
       POSTGRES_USER: ${SCHEMA_V2_POSTGRES_USER:?SCHEMA_V2_POSTGRES_USER is required}
@@ -116,6 +122,20 @@ services:
       - /app/tests/test_schema_v2_anonymous_auth_uow_postgres.py
     volumes:
       - ../tests/test_schema_v2_anonymous_auth_uow_postgres.py:/app/tests/test_schema_v2_anonymous_auth_uow_postgres.py:ro
+    depends_on:
+      postgres-v2:
+        condition: service_healthy
+
+  schema-v2-login-provision-behavior-test:
+    image: ${SCHEMA_V2_RUNNER_IMAGE:-geno-schema-v2-runner:local}
+    environment:
+      <<: *schema-v2-pg-environment
+      SCHEMA_V2_BEHAVIOR_TEST: "1"
+    command:
+      - python
+      - /app/tests/test_schema_v2_login_provision_postgres.py
+    volumes:
+      - ../tests/test_schema_v2_login_provision_postgres.py:/app/tests/test_schema_v2_login_provision_postgres.py:ro
     depends_on:
       postgres-v2:
         condition: service_healthy
