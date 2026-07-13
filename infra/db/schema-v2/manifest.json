@@ -3,7 +3,7 @@
   "schema_generation": 2,
   "database_name": "geno_v2",
   "baseline_version": "2.0.0-b2",
-  "baseline_hash": "15d8f96168b94e57f7b33c897c3736296b887d212f020a62f54b2f10bc5eba24",
+  "baseline_hash": "7586b620c61819bdb68b81d5d0b0194aa0f5e0766cfc57030b1f8fdecf244d62",
   "minimum_app_version": "0.1.0",
   "baseline_files": [
     {
@@ -21,6 +21,14 @@
     {
       "path": "baseline/0012_auth_state_guards.sql",
       "sha256": "975d75d5658438d7fd1d9f8d9ba7d81674bda1cc97c0a73c5454395a08425a66"
+    },
+    {
+      "path": "baseline/0013_auth_commands.sql",
+      "sha256": "733632f47e2234ebc3475bb583913467508a228db20cb35d3ed0d0c19cbaa58a"
+    },
+    {
+      "path": "baseline/0014_auth_login_provision.sql",
+      "sha256": "392dd621c63acbd5adf4c6218ff8898993b08bb1e468af304be3bdfcc2a2a27a"
     },
     {
       "path": "baseline/0020_collection_geo_scoring.sql",

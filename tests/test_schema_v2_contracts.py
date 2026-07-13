@@ -103,6 +103,8 @@ class SchemaV2ManifestContractsTest(unittest.TestCase):
                 "baseline/0010_tenancy_project_rls.sql",
                 "baseline/0011_auth_session_context.sql",
                 "baseline/0012_auth_state_guards.sql",
+                "baseline/0013_auth_commands.sql",
+                "baseline/0014_auth_login_provision.sql",
                 "baseline/0020_collection_geo_scoring.sql",
             ],
         )
@@ -213,7 +215,8 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         readme = (SCHEMA_ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("defines no runtime policies", readme)
         self.assertIn("session_token_hash", readme)
-        self.assertIn("Gate 1 remains pending", readme)
+        self.assertIn("0013_auth_commands.sql", readme)
+        self.assertIn("nine reviewed auth command entry", readme)
 
     def test_auth_context_accepts_only_session_hash_and_exposes_read_only_runtime(self) -> None:
         sql = (SCHEMA_ROOT / "baseline/0011_auth_session_context.sql").read_text(
@@ -348,6 +351,116 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         self.assertNotIn("TO geno_v2_runtime", sql)
         self.assertNotIn("CREATE POLICY", sql)
         self.assertNotIn("LOGIN", sql.replace("NOLOGIN", ""))
+
+    def test_auth_command_boundary_is_bounded_and_self_verifying(self) -> None:
+        sql = (SCHEMA_ROOT / "baseline/0013_auth_commands.sql").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("UNIQUE (invitation_id, idempotency_key_hash)", sql)
+        self.assertNotIn(
+            "UNIQUE (invitation_id, requested_surface, idempotency_key_hash)", sql
+        )
+        self.assertIn("delivery_expires_at <= updated_at + interval '1 hour'", sql)
+        self.assertIn("expires_at <= issued_at + interval '30 days'", sql)
+        self.assertIn("ADD COLUMN resolved_by_session_id uuid", sql)
+        self.assertIn(
+            "FOREIGN KEY (resolved_by_session_id, tenant_id, actor_id)", sql
+        )
+        self.assertIn("NEW.resolved_by_session_id IS NULL", sql)
+        self.assertIn("auth-delivery-v1 + NUL + canonical attempt UUID", sql)
+        public_signatures = (
+            "geno_v2_preflight_auth_invitation(uuid, text, text, text)",
+            "geno_v2_create_project_member_invitation(\n    uuid, uuid, text, text, text, timestamptz\n)",
+            "geno_v2_revoke_project_member_invitation(uuid, text)",
+            "geno_v2_expire_project_member_invitation(uuid)",
+            "geno_v2_redeem_auth_invitation(\n    uuid, uuid, uuid, text, text, text, text, timestamptz,\n    bytea, text, bytea, timestamptz\n)",
+            "geno_v2_confirm_current_auth_delivery()",
+            "geno_v2_erase_current_auth_delivery_secret()",
+            "geno_v2_logout_current_session()",
+            "geno_v2_resolve_current_reauth_queue()",
+        )
+        normalized_sql = " ".join(sql.split())
+        for signature in public_signatures:
+            with self.subTest(signature=signature):
+                normalized_signature = " ".join(signature.split())
+                self.assertIn(
+                    f"GRANT EXECUTE ON FUNCTION {normalized_signature}", normalized_sql
+                )
+                self.assertIn(
+                    f"REVOKE ALL ON FUNCTION {normalized_signature} FROM PUBLIC",
+                    normalized_sql,
+                )
+        self.assertEqual(sql.count("TO geno_v2_runtime;"), 9)
+        self.assertIn("invitation_limit constant integer := 20", sql)
+        self.assertIn("source_limit constant integer := 100", sql)
+        self.assertIn("window_seconds constant integer := 600", sql)
+        self.assertIn("attempt_row.replay_count >= 3", sql)
+        self.assertIn("public.digest(", sql)
+        self.assertNotRegex(sql, r"(?<!public\.)digest\(")
+        self.assertIn(
+            "GRANT EXECUTE ON FUNCTION public.digest(bytea, text) "
+            "TO geno_v2_authz_owner",
+            sql,
+        )
+        self.assertIn("'member.manage'", sql)
+        self.assertIn("UUID-ordered NO KEY UPDATE lock", sql)
+        self.assertIn("CREATE OR REPLACE FUNCTION geno_v2_require_auth_writes_enabled", sql)
+        self.assertIn("CREATE FUNCTION geno_v2_lock_auth_write_control()", sql)
+        self.assertIn("VOLATILE", sql)
+        self.assertIn("FOR SHARE", sql)
+        self.assertIn(
+            "REVOKE ALL ON FUNCTION geno_v2_lock_auth_write_control() FROM PUBLIC",
+            sql,
+        )
+        self.assertIn(
+            "GRANT UPDATE (writes_enabled) ON auth_runtime_write_controls", sql
+        )
+        self.assertIn("DO $auth_command_catalog_assert$", sql)
+        self.assertIn("procedure.proowner = authz_owner_oid", sql)
+        self.assertIn("procedure.prosecdef", sql)
+        self.assertIn("'search_path=pg_catalog' = ANY(procedure.proconfig)", sql)
+        self.assertIn("role_row.rolpassword IS NOT NULL", sql)
+        self.assertIn("WHERE control.singleton AND NOT control.writes_enabled", sql)
+        self.assertTrue(sql.rstrip().endswith("WHERE singleton;"))
+        self.assertNotIn("LOGIN", sql.replace("NOLOGIN", ""))
+        self.assertNotIn("PASSWORD", sql)
+        self.assertNotIn("CREATE POLICY", sql)
+
+    def test_auth_login_provision_contract_is_sealed_and_fail_closed(self) -> None:
+        sql = (SCHEMA_ROOT / "baseline/0014_auth_login_provision.sql").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("CREATE TABLE auth_login_provision_attempts", sql)
+        self.assertIn("attempt_sequence bigint GENERATED ALWAYS AS IDENTITY UNIQUE", sql)
+        self.assertIn("CHECK (login_kind IN ('api', 'worker'))", sql)
+        self.assertIn("ON auth_login_provision_attempts (login_kind)", sql)
+        self.assertIn("WHERE status = 'preparing'", sql)
+        self.assertIn("CREATE TABLE auth_login_provision_receipts", sql)
+        self.assertIn("auth_login_successful_credential_version_idx", sql)
+        self.assertIn(
+            "ON auth_login_provision_receipts (login_kind, credential_version)", sql
+        )
+        self.assertIn("auth_login_attempts_guard_state", sql)
+        self.assertIn("auth_login_receipts_reject_mutation", sql)
+        self.assertIn("DEFERRABLE INITIALLY DEFERRED", sql)
+        self.assertIn("geno_v2_auth_login_startup_ready", sql)
+        self.assertIn("ORDER BY attempt.attempt_sequence DESC", sql)
+        self.assertIn("attempt.status = 'succeeded'", sql)
+        self.assertIn("attempt.operation IN ('provision', 'rotate')", sql)
+        self.assertIn("WHERE attempt.login_kind = 'api'", sql)
+        self.assertIn("session_user = 'geno_v2_api_login'", sql)
+        self.assertIn("current_setting('role', true) = 'geno_v2_runtime'", sql)
+        self.assertIn("DO $auth_login_provision_catalog_assert$", sql)
+        self.assertIn("has_schema_privilege(api_login_oid, 'public', 'USAGE')", sql)
+        self.assertIn("has_function_privilege(api_login_oid", sql)
+        self.assertIn("NOLOGIN NOSUPERUSER", sql)
+        self.assertIn("NOBYPASSRLS PASSWORD NULL", sql)
+        self.assertNotIn("ALTER ROLE geno_v2_api_login LOGIN", sql)
+        self.assertNotIn("PASSWORD '", sql)
+        self.assertNotIn("CREATE POLICY", sql)
+        self.assertTrue(sql.rstrip().endswith("$auth_login_provision_catalog_assert$;"))
 
     def test_runner_uses_a_session_lock_and_transactional_ledger(self) -> None:
         runner = (ROOT / "scripts/schema_v2_runner.py").read_text(encoding="utf-8")
@@ -640,10 +753,23 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
         collection_scoring_behavior_test = services[
             "schema-v2-collection-scoring-behavior-test"
         ]
+        auth_commands_behavior_test = services[
+            "schema-v2-auth-commands-behavior-test"
+        ]
+        anonymous_auth_uow_behavior_test = services[
+            "schema-v2-anonymous-auth-uow-behavior-test"
+        ]
+        login_provision_behavior_test = services[
+            "schema-v2-login-provision-behavior-test"
+        ]
 
         self.assertEqual(database["environment"]["POSTGRES_DB"], "geno_v2")
         self.assertEqual(database["environment"]["POSTGRES_USER"], COMPOSE_USER)
         self.assertEqual(database["environment"]["POSTGRES_PASSWORD"], COMPOSE_PASSWORD)
+        self.assertEqual(
+            database["command"],
+            ["postgres", "-c", "log_statement=all", "-c", "log_min_error_statement=error"],
+        )
         expected_pg_environment = {
             "PGHOST": "postgres-v2",
             "PGPORT": "5432",
@@ -657,6 +783,9 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
             behavior_test,
             session_uow_behavior_test,
             collection_scoring_behavior_test,
+            auth_commands_behavior_test,
+            anonymous_auth_uow_behavior_test,
+            login_provision_behavior_test,
         ):
             for key, expected_value in expected_pg_environment.items():
                 self.assertEqual(service["environment"][key], expected_value)
@@ -703,6 +832,48 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
                 for volume in session_uow_behavior_test["volumes"]
             )
         )
+        self.assertEqual(
+            auth_commands_behavior_test["command"],
+            ["python", "/app/tests/test_schema_v2_auth_commands_postgres.py"],
+        )
+        self.assertEqual(
+            auth_commands_behavior_test["environment"]["SCHEMA_V2_BEHAVIOR_TEST"],
+            "1",
+        )
+        self.assertTrue(
+            any(
+                volume["target"]
+                == "/app/tests/test_schema_v2_auth_commands_postgres.py"
+                and volume["read_only"]
+                for volume in auth_commands_behavior_test["volumes"]
+            )
+        )
+        self.assertEqual(
+            anonymous_auth_uow_behavior_test["command"],
+            ["python", "/app/tests/test_schema_v2_anonymous_auth_uow_postgres.py"],
+        )
+        self.assertEqual(
+            anonymous_auth_uow_behavior_test["environment"][
+                "SCHEMA_V2_BEHAVIOR_TEST"
+            ],
+            "1",
+        )
+        self.assertTrue(
+            any(
+                volume["target"]
+                == "/app/tests/test_schema_v2_anonymous_auth_uow_postgres.py"
+                and volume["read_only"]
+                for volume in anonymous_auth_uow_behavior_test["volumes"]
+            )
+        )
+        self.assertEqual(
+            login_provision_behavior_test["command"],
+            ["python", "/app/tests/test_schema_v2_login_provision_postgres.py"],
+        )
+        self.assertEqual(
+            login_provision_behavior_test["environment"]["SCHEMA_V2_BEHAVIOR_TEST"],
+            "1",
+        )
         self.assertNotIn("infra/db/migrations/up", rendered)
         self.assertNotIn("/docker-entrypoint-initdb.d", rendered)
         self.assertNotIn("must_not_be_used", rendered)
@@ -719,11 +890,22 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
             "schema-v2-gate: schema-v2-contracts schema-v2-config schema-v2-fresh-install",
             makefile,
         )
-        self.assertEqual(makefile.count("run --rm schema-v2-install"), 2)
-        self.assertEqual(makefile.count("run --rm schema-v2-verify"), 2)
+        self.assertEqual(makefile.count("run --rm schema-v2-install"), 4)
+        self.assertEqual(makefile.count("run --rm schema-v2-verify"), 4)
         self.assertIn("run --rm schema-v2-behavior-test", makefile)
         self.assertIn("run --rm schema-v2-session-uow-behavior-test", makefile)
         self.assertIn("run --rm schema-v2-collection-scoring-behavior-test", makefile)
+        self.assertIn("run --rm schema-v2-auth-commands-behavior-test", makefile)
+        self.assertIn("schema-v2-anonymous-auth-uow-gate:", makefile)
+        self.assertIn(
+            "run --rm schema-v2-anonymous-auth-uow-behavior-test", makefile
+        )
+        self.assertIn("geno-schema-v2-anonymous-auth-pg", makefile)
+        self.assertIn("schema-v2-login-provision-gate:", makefile)
+        self.assertIn("run --rm schema-v2-login-provision-behavior-test", makefile)
+        self.assertIn("geno-schema-v2-login-provision-pg", makefile)
+        self.assertIn("SCRAM-SHA-256$$", makefile)
+        self.assertIn("appeared in PostgreSQL logs", makefile)
         self.assertIn("down --remove-orphans -v", makefile)
         ci_local = makefile.split("\nci-local:", 1)[1].split("\n", 1)[0]
         self.assertIn("schema-v2-gate", ci_local)
