@@ -3,7 +3,7 @@
   "schema_generation": 2,
   "database_name": "geno_v2",
   "baseline_version": "2.0.0-b2",
-  "baseline_hash": "7586b620c61819bdb68b81d5d0b0194aa0f5e0766cfc57030b1f8fdecf244d62",
+  "baseline_hash": "1dd69e456b7856a975ace22d2a00d23e105dfa4c423b50d893858eb8401d45ce",
   "minimum_app_version": "0.1.0",
   "baseline_files": [
     {
@@ -33,6 +33,10 @@
     {
       "path": "baseline/0020_collection_geo_scoring.sql",
       "sha256": "b57da83dbc311adcd630d63e7888bb7902294810e35e81843944194752a96fb5"
+    },
+    {
+      "path": "baseline/0030_knowledge_pipeline.sql",
+      "sha256": "aa4d830e8fd67f17e596afd2a2d141bc7c5f67c40ff0c3260208e466888a70e7"
     }
   ],
   "migration_files": []
