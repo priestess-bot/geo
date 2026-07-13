@@ -187,14 +187,28 @@ HTTP request
 
 ## 5. 角色、Capability 与职责分离
 
-不新增持久化角色。沿用当前角色并由服务端映射 capability：
+Schema v2 使用六种 canonical project role，由服务端映射 capability：
 
-| 持久角色 | 主要能力 |
+| 持久角色 | 主要边界 |
 | --- | --- |
-| `analyst` | 创建/编辑 Brief、生成、编辑 Asset、提交审核、内部 Export |
-| `admin` | Claim completeness/support、内部批准、Delivery 创建 |
-| `owner` | Publication Review、Destination 和 Connector 管理 |
-| `viewer` | Customer comment、request changes、accept |
+| `project_owner` | 项目、成员、Connector、报告可见性和 Publication 管理 |
+| `analyst` | Collection、Analysis、Scoring、Action 和 Report 生成 |
+| `reviewer` | Analysis/Report/Content 审核，不运行 Connector |
+| `knowledge_architect` | Knowledge 导入、内部读取、Fact 审核和已批准知识读取 |
+| `content_operator` | 只消费已批准 Knowledge，执行 Content 生成、编辑和 Delivery |
+| `client_viewer` | 只读取 customer-visible 投影，执行 Customer comment、request changes 和 accept |
+
+旧输入别名只用于切换期兼容：
+
+```text
+owner | admin -> project_owner
+viewer        -> client_viewer
+analyst       -> analyst
+```
+
+新写入、Session scope 和审计必须使用 canonical role。`project_owner`、`analyst` 和 `reviewer` 不因角色名称自动获得 Knowledge 内部权限；Knowledge 治理只由 `knowledge_architect` 执行，`content_operator` 只读已批准投影，`client_viewer` 还必须满足 `customer-visible` 条件。
+
+Content 流程中的“内部操作者、内部批准者、Publication Owner、Customer”是 capability 职责，不是另一套持久化角色。一个命令所需的 capability 必须由 API 按当前 `project_id` 返回，不能使用跨项目的扁平权限集。
 
 必须满足：
 
@@ -202,9 +216,9 @@ HTTP request
 submitted_for_review_by != internal_approver
 ```
 
-默认任一 active `viewer` 的首次有效 acceptance 满足客户接受。所有按钮和命令以 API 返回的 `capabilities/available_actions/blocked_reasons` 为准，前端不得根据角色字符串自行计算权限。
+默认任一 active `client_viewer` 的首次有效 acceptance 满足客户接受。所有按钮和命令以 API 返回的 `capabilities/available_actions/blocked_reasons` 为准，前端不得根据角色字符串自行计算权限。
 
-两个不同管理员可以共同接受软质量 warning，但不能 override：
+两个不同且具备对应 approval capability 的内部审批者可以共同接受软质量 warning，但不能 override：
 
 - Evidence 不合格；
 - Claim inventory 不完整；
@@ -994,7 +1008,7 @@ Golden Set 必须分别衡量：
 6. 两种 locale 独立 Publication Request；
 7. Export 无 Publication 副作用；
 8. `412` 保留 working copy；
-9. reviewer/owner/viewer 权限隔离；
+9. `reviewer`/`project_owner`/`client_viewer` 以及按项目 capability 权限隔离；
 10. 真实体验描述之外的第一人称细节被阻断；
 11. Prompt 修改无需部署，新 Job 使用新 Release，retry 使用旧 Bundle；
 12. 1440/1024/390 px 无重叠且关键流程可操作。
