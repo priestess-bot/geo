@@ -305,7 +305,7 @@ schema-v2-config:
 	$(SCHEMA_V2_COMPOSE) config --quiet
 
 schema-v2-contracts:
-	python3 -m pytest -q tests/test_schema_v2_contracts.py tests/test_schema_v2_collection_scoring_contracts.py tests/test_schema_v2_knowledge_contracts.py tests/test_schema_v2_worker_login_provision.py
+	python3 -m pytest -q tests/test_schema_v2_contracts.py tests/test_schema_v2_collection_scoring_contracts.py tests/test_schema_v2_knowledge_contracts.py tests/test_schema_v2_reports_contracts.py tests/test_schema_v2_worker_login_provision.py
 
 schema-v2-fresh-install:
 	set -e; \
@@ -323,6 +323,7 @@ schema-v2-fresh-install:
 	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-worker-login-provision-behavior-test; \
 	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-collection-scoring-behavior-test; \
 	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-knowledge-behavior-test; \
+	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-reports-behavior-test; \
 	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-verify
 
 .PHONY: schema-v2-anonymous-auth-uow-gate

@@ -79,6 +79,11 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 "knowledge_pipeline_job_dependencies, knowledge_pipeline_jobs, "
                 "knowledge_import_source_channels, knowledge_import_source_subjects, "
                 "knowledge_import_sources, knowledge_pipeline_stages, knowledge_pipeline_runs, "
+                "portal_report_visibility, portal_project_settings, notification_deliveries, "
+                "notifications, notification_recipients, integration_connectors, "
+                "report_version_actions, report_version_facts, report_version_retests, "
+                "report_version_score_snapshots, report_exports, report_generation_jobs, "
+                "report_versions, reports, "
                 "durable_job_dispatch_outbox, "
                 "review_assignments, retest_comparisons, "
                 "retest_run_queries, retest_runs, action_tasks, "
@@ -1329,7 +1334,24 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     "geno_v2_validate_knowledge_subject",
                     "geno_v2_withdraw_knowledge_fact",
                 )
-                non_auth_functions = collection_scoring_functions + knowledge_functions
+                report_functions = (
+                    "geno_v2_claim_notification_delivery",
+                    "geno_v2_claim_report_generation_job",
+                    "geno_v2_complete_notification_delivery",
+                    "geno_v2_complete_report_generation_job",
+                    "geno_v2_create_report_generation_job",
+                    "geno_v2_fail_notification_delivery",
+                    "geno_v2_fail_report_generation_job",
+                    "geno_v2_heartbeat_notification_delivery",
+                    "geno_v2_heartbeat_report_generation_job",
+                    "geno_v2_persist_report_generation_result",
+                    "geno_v2_read_portal_reports",
+                    "geno_v2_reject_report_immutable_update",
+                    "geno_v2_require_finalized_report_artifact",
+                )
+                non_auth_functions = (
+                    collection_scoring_functions + knowledge_functions + report_functions
+                )
                 cursor.execute(
                     "SELECT proname, "
                     "has_function_privilege('geno_v2_runtime', pg_proc.oid, 'EXECUTE') "
