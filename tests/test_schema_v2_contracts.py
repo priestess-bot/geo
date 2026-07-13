@@ -109,6 +109,7 @@ class SchemaV2ManifestContractsTest(unittest.TestCase):
                 "baseline/0021_worker_login_provision.sql",
                 "baseline/0030_knowledge_pipeline.sql",
                 "baseline/0040_reports_notifications_integrations.sql",
+                "baseline/0050_geo_placement_foundation.sql",
             ],
         )
         self.assertEqual(manifest.migration_files, ())

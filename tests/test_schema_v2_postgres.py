@@ -84,6 +84,8 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 "report_version_actions, report_version_facts, report_version_retests, "
                 "report_version_score_snapshots, report_exports, report_generation_jobs, "
                 "report_versions, reports, "
+                "placement_opportunities, project_destinations, geo_campaign_queries, "
+                "geo_campaigns, publisher_catalog, "
                 "durable_job_dispatch_outbox, "
                 "review_assignments, retest_comparisons, "
                 "retest_run_queries, retest_runs, action_tasks, "
