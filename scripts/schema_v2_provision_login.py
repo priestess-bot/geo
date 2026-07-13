@@ -10,6 +10,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 from uuid import UUID, uuid4
 
@@ -17,9 +18,12 @@ from uuid import UUID, uuid4
 DATABASE_NAME = "geno_v2"
 API_LOGIN_ROLE = "geno_v2_api_login"
 RUNTIME_ROLE = "geno_v2_runtime"
+WORKER_LOGIN_ROLE = "geno_v2_worker_login"
+WORKER_ROLE = "geno_v2_worker"
 INSTALL_LOCK_NAME = "geno:schema-v2:install"
 PROVISION_LOCK_NAME = "geno:schema-v2:auth-login-provision"
 REQUIRED_BASELINE_FILE = "baseline/0014_auth_login_provision.sql"
+WORKER_REQUIRED_BASELINE_FILE = "baseline/0021_worker_login_provision.sql"
 MAX_SECRET_BYTES = 4096
 MIN_SECRET_CHARS = 32
 MAX_SECRET_CHARS = 1024
@@ -28,6 +32,9 @@ FORBIDDEN_API_SECRET_ENV = (
     "GENO_SCHEMA_V2_API_LOGIN_PASSWORD",
     "SCHEMA_V2_API_LOGIN_PASSWORD",
     "GENO_V2_API_LOGIN_PASSWORD",
+    "GENO_SCHEMA_V2_WORKER_LOGIN_PASSWORD",
+    "SCHEMA_V2_WORKER_LOGIN_PASSWORD",
+    "GENO_V2_WORKER_LOGIN_PASSWORD",
 )
 FORBIDDEN_CONNECTION_ENV = (
     "DATABASE_URL",
@@ -51,6 +58,41 @@ SENSITIVE_TABLES = (
     "project_members",
     "runtime_project_access_grants",
 )
+WORKER_EXECUTION_FUNCTION_SIGNATURES = frozenset(
+    {
+        "public.geno_v2_claim_durable_job_dispatch(text, integer, uuid, uuid)",
+        "public.geno_v2_heartbeat_durable_job_dispatch(uuid, text, uuid, integer)",
+        "public.geno_v2_complete_durable_job_dispatch(uuid, text, uuid)",
+        "public.geno_v2_fail_durable_job_dispatch(uuid, text, uuid, text, text, boolean, integer)",
+        "public.geno_v2_claim_artifact_finalize(text, integer, uuid)",
+        "public.geno_v2_heartbeat_artifact_finalize(uuid, text, uuid, integer)",
+        "public.geno_v2_complete_artifact_finalize(uuid, text, uuid, text)",
+        "public.geno_v2_fail_artifact_finalize(uuid, text, uuid, text, text, boolean, integer)",
+        "public.geno_v2_claim_collection_job(text, integer, uuid)",
+        "public.geno_v2_heartbeat_collection_job(uuid, text, uuid, integer)",
+        "public.geno_v2_complete_collection_job(uuid, text, uuid, jsonb)",
+        "public.geno_v2_fail_collection_job(uuid, text, uuid, text, text, boolean, integer)",
+        "public.geno_v2_ack_collection_job_cancel(uuid, text, uuid)",
+        "public.geno_v2_claim_visibility_score_run(text, integer, uuid)",
+        "public.geno_v2_heartbeat_visibility_score_run(uuid, text, uuid, integer)",
+        "public.geno_v2_complete_visibility_score_run(uuid, text, uuid, jsonb)",
+        "public.geno_v2_fail_visibility_score_run(uuid, text, uuid, text, text, boolean, integer)",
+        "public.geno_v2_ack_visibility_score_run_cancel(uuid, text, uuid)",
+        "public.geno_v2_claim_retest_run(text, integer, uuid)",
+        "public.geno_v2_heartbeat_retest_run(uuid, text, uuid, integer)",
+        "public.geno_v2_complete_retest_run(uuid, text, uuid, uuid, jsonb)",
+        "public.geno_v2_fail_retest_run(uuid, text, uuid, text, text, boolean, integer)",
+        "public.geno_v2_ack_retest_run_cancel(uuid, text, uuid)",
+        "public.geno_v2_claim_knowledge_job(text, integer, uuid, text)",
+        "public.geno_v2_heartbeat_knowledge_job(uuid, text, uuid, integer)",
+        "public.geno_v2_begin_finalizing_knowledge_job(uuid, text, uuid, text, jsonb)",
+        "public.geno_v2_complete_knowledge_job(uuid, text, uuid)",
+        "public.geno_v2_fail_knowledge_job(uuid, text, uuid, text, text, boolean, integer)",
+        "public.geno_v2_ack_knowledge_job_cancel(uuid, text, uuid)",
+        "public.geno_v2_read_knowledge_job_input(uuid, text, uuid)",
+        "public.geno_v2_worker_login_startup_ready(text)",
+    }
+)
 
 
 class LoginProvisionError(RuntimeError):
@@ -73,6 +115,54 @@ class InstallerConfig:
     endpoint: DatabaseEndpoint
     user: str
     password: str
+
+
+@dataclass(frozen=True)
+class LoginProfile:
+    kind: str
+    login_role: str
+    execution_role: str
+    readiness_function: str
+    required_baseline_files: tuple[str, ...]
+    denied_role: str
+
+    @property
+    def provision_lock_name(self) -> str:
+        return PROVISION_LOCK_NAME
+
+    def error(self, suffix: str) -> str:
+        return f"{self.kind}_login_{suffix}"
+
+
+LOGIN_PROFILES = MappingProxyType({
+    "api": LoginProfile(
+        kind="api",
+        login_role=API_LOGIN_ROLE,
+        execution_role=RUNTIME_ROLE,
+        readiness_function="geno_v2_auth_login_startup_ready",
+        required_baseline_files=(REQUIRED_BASELINE_FILE,),
+        denied_role=WORKER_ROLE,
+    ),
+    "worker": LoginProfile(
+        kind="worker",
+        login_role=WORKER_LOGIN_ROLE,
+        execution_role=WORKER_ROLE,
+        readiness_function="geno_v2_worker_login_startup_ready",
+        required_baseline_files=(
+            REQUIRED_BASELINE_FILE,
+            "baseline/0020_collection_geo_scoring.sql",
+            WORKER_REQUIRED_BASELINE_FILE,
+        ),
+        denied_role=RUNTIME_ROLE,
+    ),
+})
+
+
+def _login_profile(login_kind: str) -> LoginProfile:
+    try:
+        return LOGIN_PROFILES[login_kind]
+    except KeyError:
+        raise LoginProvisionError("login_kind_invalid") from None
 
 
 @dataclass(frozen=True)
@@ -244,6 +334,20 @@ def read_api_login_secret(
     return secret
 
 
+def read_login_secret(
+    path: Path,
+    *,
+    repository_root: Path,
+    installer_password: str | None = None,
+) -> str:
+    """Profile-neutral name; the API-named entry point remains supported."""
+    return read_api_login_secret(
+        path,
+        repository_root=repository_root,
+        installer_password=installer_password,
+    )
+
+
 def _connect_kwargs(endpoint: DatabaseEndpoint) -> dict[str, object]:
     return {
         "host": endpoint.host,
@@ -267,17 +371,26 @@ def _connect_installer(config: InstallerConfig) -> Any:
         raise LoginProvisionError("installer_database_connection_failed") from None
 
 
-def _connect_api(endpoint: DatabaseEndpoint, secret: str) -> Any:
+def _connect_login(
+    endpoint: DatabaseEndpoint,
+    secret: str,
+    profile: LoginProfile,
+) -> Any:
     try:
         import psycopg
 
         return psycopg.connect(
             **_connect_kwargs(endpoint),
-            user=API_LOGIN_ROLE,
+            user=profile.login_role,
             password=secret,
         )
     except Exception:
-        raise LoginProvisionError("api_login_authentication_failed") from None
+        raise LoginProvisionError(profile.error("authentication_failed")) from None
+
+
+def _connect_api(endpoint: DatabaseEndpoint, secret: str) -> Any:
+    """Backward-compatible API profile connection helper."""
+    return _connect_login(endpoint, secret, LOGIN_PROFILES["api"])
 
 
 def _acquire_lock(cursor: Any, name: str, timeout_seconds: float) -> None:
@@ -298,15 +411,22 @@ def _acquire_lock(cursor: Any, name: str, timeout_seconds: float) -> None:
         time.sleep(min(0.1, remaining))
 
 
-def _acquire_provision_locks(connection: Any, timeout_seconds: float) -> None:
+def _acquire_provision_locks(
+    connection: Any,
+    timeout_seconds: float,
+    profile: LoginProfile = LOGIN_PROFILES["api"],
+) -> None:
     started = time.monotonic()
     with connection.cursor() as cursor:
         _acquire_lock(cursor, INSTALL_LOCK_NAME, timeout_seconds)
         remaining = max(0.0, timeout_seconds - (time.monotonic() - started))
-        _acquire_lock(cursor, PROVISION_LOCK_NAME, remaining)
+        _acquire_lock(cursor, profile.provision_lock_name, remaining)
 
 
-def _verify_installed_contract(connection: Any) -> None:
+def _verify_installed_contract(
+    connection: Any,
+    profile: LoginProfile = LOGIN_PROFILES["api"],
+) -> None:
     try:
         with connection.transaction():
             with connection.cursor() as cursor:
@@ -321,24 +441,33 @@ def _verify_installed_contract(connection: Any) -> None:
                     or row[0] != row[1]
                     or row[2] != DATABASE_NAME
                     or not row[3]
-                    or row[0] in (API_LOGIN_ROLE, RUNTIME_ROLE, "geno_v2_authz_owner")
+                    or row[0]
+                    in (
+                        API_LOGIN_ROLE,
+                        RUNTIME_ROLE,
+                        WORKER_LOGIN_ROLE,
+                        WORKER_ROLE,
+                        "geno_v2_authz_owner",
+                    )
                 ):
                     raise LoginProvisionError("provision_database_identity_mismatch")
-                cursor.execute(
-                    "SELECT count(*) FROM schema_migration_ledger WHERE migration_id = %s",
-                    (REQUIRED_BASELINE_FILE,),
-                )
-                if cursor.fetchone() != (1,):
-                    raise LoginProvisionError("auth_login_provision_contract_missing")
+                for required_baseline_file in profile.required_baseline_files:
+                    cursor.execute(
+                        "SELECT count(*) FROM schema_migration_ledger "
+                        "WHERE migration_id = %s",
+                        (required_baseline_file,),
+                    )
+                    if cursor.fetchone() != (1,):
+                        raise LoginProvisionError("auth_login_provision_contract_missing")
                 cursor.execute(
                     "SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, "
                     "rolinherit, rolreplication, rolbypassrls, rolconfig "
                     "FROM pg_roles WHERE rolname = %s",
-                    (API_LOGIN_ROLE,),
+                    (profile.login_role,),
                 )
                 role = cursor.fetchone()
                 if role is None or any(bool(value) for value in role[1:7]) or role[7] is not None:
-                    raise LoginProvisionError("api_login_role_contract_invalid")
+                    raise LoginProvisionError(profile.error("role_contract_invalid"))
                 cursor.execute(
                     "SELECT parent.rolname, child.rolname, membership.admin_option, "
                     "membership.inherit_option, membership.set_option "
@@ -346,25 +475,37 @@ def _verify_installed_contract(connection: Any) -> None:
                     "JOIN pg_roles AS parent ON parent.oid = membership.roleid "
                     "JOIN pg_roles AS child ON child.oid = membership.member "
                     "WHERE parent.rolname = %s OR child.rolname = %s",
-                    (API_LOGIN_ROLE, API_LOGIN_ROLE),
+                    (profile.login_role, profile.login_role),
                 )
                 memberships = cursor.fetchall()
-                if memberships != [(RUNTIME_ROLE, API_LOGIN_ROLE, False, False, True)]:
-                    raise LoginProvisionError("api_login_membership_contract_invalid")
+                if memberships != [
+                    (
+                        profile.execution_role,
+                        profile.login_role,
+                        False,
+                        False,
+                        True,
+                    )
+                ]:
+                    raise LoginProvisionError(profile.error("membership_contract_invalid"))
                 cursor.execute(
                     "SELECT count(*) FROM pg_db_role_setting "
                     "WHERE setrole = (SELECT oid FROM pg_roles WHERE rolname = %s)",
-                    (API_LOGIN_ROLE,),
+                    (profile.login_role,),
                 )
                 if cursor.fetchone() != (0,):
-                    raise LoginProvisionError("api_login_role_settings_invalid")
+                    raise LoginProvisionError(profile.error("role_settings_invalid"))
     except LoginProvisionError:
         raise
     except Exception:
         raise LoginProvisionError("auth_login_provision_contract_verification_failed") from None
 
 
-def _set_login_credential(cursor: Any, verifier: str) -> None:
+def _set_login_credential(
+    cursor: Any,
+    verifier: str,
+    profile: LoginProfile = LOGIN_PROFILES["api"],
+) -> None:
     try:
         from psycopg import sql
 
@@ -375,27 +516,43 @@ def _set_login_credential(cursor: Any, verifier: str) -> None:
         cursor.execute("SELECT set_config('pgaudit.log_parameter', 'off', true)")
         cursor.execute(
             sql.SQL(
-                "ALTER ROLE geno_v2_api_login "
+                "ALTER ROLE {} "
                 "LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT "
                 "NOREPLICATION NOBYPASSRLS PASSWORD {}"
-            ).format(sql.Literal(verifier))
+            ).format(sql.Identifier(profile.login_role), sql.Literal(verifier))
         )
         cursor.execute("SELECT 1")
     except Exception:
-        raise LoginProvisionError("api_login_role_update_failed") from None
+        raise LoginProvisionError(profile.error("role_update_failed")) from None
 
 
-def _seal_login(cursor: Any) -> None:
+def _seal_login(
+    cursor: Any,
+    profile: LoginProfile = LOGIN_PROFILES["api"],
+) -> None:
+    from psycopg import sql
+
     cursor.execute(
-        "ALTER ROLE geno_v2_api_login "
-        "NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT "
-        "NOREPLICATION NOBYPASSRLS PASSWORD NULL"
+        sql.SQL(
+            "ALTER ROLE {} "
+            "NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT "
+            "NOREPLICATION NOBYPASSRLS PASSWORD NULL"
+        ).format(sql.Identifier(profile.login_role))
     )
-    cursor.execute("ALTER ROLE geno_v2_api_login RESET ALL")
-    cursor.execute("ALTER ROLE geno_v2_api_login IN DATABASE geno_v2 RESET ALL")
+    cursor.execute(
+        sql.SQL("ALTER ROLE {} RESET ALL").format(sql.Identifier(profile.login_role))
+    )
+    cursor.execute(
+        sql.SQL("ALTER ROLE {} IN DATABASE geno_v2 RESET ALL").format(
+            sql.Identifier(profile.login_role)
+        )
+    )
 
 
-def _recover_pending_attempt(connection: Any) -> bool:
+def _recover_pending_attempt(
+    connection: Any,
+    profile: LoginProfile = LOGIN_PROFILES["api"],
+) -> bool:
     recovered = False
     try:
         with connection.transaction():
@@ -403,12 +560,13 @@ def _recover_pending_attempt(connection: Any) -> bool:
                 cursor.execute(
                     "SELECT id, operation, credential_version "
                     "FROM auth_login_provision_attempts "
-                    "WHERE login_kind = 'api' AND status = 'preparing' FOR UPDATE"
+                    "WHERE login_kind = %s AND status = 'preparing' FOR UPDATE",
+                    (profile.kind,),
                 )
                 pending = cursor.fetchall()
                 if not pending:
                     return False
-                _seal_login(cursor)
+                _seal_login(cursor, profile)
                 for attempt_id, operation, credential_version in pending:
                     cursor.execute(
                         "UPDATE auth_login_provision_attempts "
@@ -420,9 +578,10 @@ def _recover_pending_attempt(connection: Any) -> bool:
                         "INSERT INTO auth_login_provision_receipts ("
                         "attempt_id, login_kind, operation, outcome, credential_version, "
                         "login_enabled, smoke_verified, reason_code) "
-                        "VALUES (%s, 'api', %s, 'failed', %s, false, false, %s)",
+                        "VALUES (%s, %s, %s, 'failed', %s, false, false, %s)",
                         (
                             attempt_id,
+                            profile.kind,
                             operation,
                             credential_version,
                             "interrupted_attempt_recovered",
@@ -434,7 +593,10 @@ def _recover_pending_attempt(connection: Any) -> bool:
     return recovered
 
 
-def _latest_login_attempt(connection: Any) -> LatestLoginAttempt | None:
+def _latest_login_attempt(
+    connection: Any,
+    profile: LoginProfile = LOGIN_PROFILES["api"],
+) -> LatestLoginAttempt | None:
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT attempt.operation, attempt.status, attempt.credential_version, "
@@ -442,8 +604,9 @@ def _latest_login_attempt(connection: Any) -> LatestLoginAttempt | None:
             "FROM auth_login_provision_attempts AS attempt "
             "LEFT JOIN auth_login_provision_receipts AS receipt "
             "ON receipt.attempt_id = attempt.id "
-            "WHERE attempt.login_kind = 'api' "
-            "ORDER BY attempt.attempt_sequence DESC LIMIT 1"
+            "WHERE attempt.login_kind = %s "
+            "ORDER BY attempt.attempt_sequence DESC LIMIT 1",
+            (profile.kind,),
         )
         row = cursor.fetchone()
     if row is None:
@@ -461,42 +624,49 @@ def _latest_login_attempt(connection: Any) -> LatestLoginAttempt | None:
 def _verify_live_role_matches_attempt(
     connection: Any,
     latest: LatestLoginAttempt | None,
+    profile: LoginProfile = LOGIN_PROFILES["api"],
 ) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT rolcanlogin, rolpassword IS NOT NULL FROM pg_authid "
             "WHERE rolname = %s",
-            (API_LOGIN_ROLE,),
+            (profile.login_role,),
         )
         row = cursor.fetchone()
     if row is None:
-        raise LoginProvisionError("api_login_role_contract_invalid")
+        raise LoginProvisionError(profile.error("role_contract_invalid"))
     has_live_credential = row == (True, True)
     expected_active = latest is not None and latest.active
     if expected_active and not has_live_credential:
-        raise LoginProvisionError("api_login_active_state_mismatch")
+        raise LoginProvisionError(profile.error("active_state_mismatch"))
     if not expected_active and (bool(row[0]) or bool(row[1])):
         try:
             with connection.transaction():
                 with connection.cursor() as cursor:
-                    _seal_login(cursor)
+                    _seal_login(cursor, profile)
         except Exception:
-            raise LoginProvisionError("api_login_untracked_credential_seal_failed") from None
-        raise LoginProvisionError("api_login_untracked_credential_sealed")
+            raise LoginProvisionError(
+                profile.error("untracked_credential_seal_failed")
+            ) from None
+        raise LoginProvisionError(profile.error("untracked_credential_sealed"))
 
 
-def _new_scram_verifier(connection: Any, secret: str) -> str:
+def _new_scram_verifier(
+    connection: Any,
+    secret: str,
+    profile: LoginProfile = LOGIN_PROFILES["api"],
+) -> str:
     try:
         verifier = connection.pgconn.encrypt_password(
             secret.encode("utf-8"),
-            API_LOGIN_ROLE.encode("utf-8"),
+            profile.login_role.encode("utf-8"),
             b"scram-sha-256",
         )
         value = verifier.decode("ascii")
     except Exception:
-        raise LoginProvisionError("api_login_verifier_generation_failed") from None
+        raise LoginProvisionError(profile.error("verifier_generation_failed")) from None
     if not value.startswith("SCRAM-SHA-256$"):
-        raise LoginProvisionError("api_login_verifier_generation_failed")
+        raise LoginProvisionError(profile.error("verifier_generation_failed"))
     return value
 
 
@@ -506,108 +676,192 @@ def _smoke_login(
     *,
     credential_version: str | None = None,
     require_receipt: bool = False,
+    profile: LoginProfile = LOGIN_PROFILES["api"],
 ) -> None:
-    connection = _connect_api(endpoint, secret)
+    import psycopg
+    from psycopg import sql
+
+    connection = _connect_login(endpoint, secret, profile)
     try:
-        with connection.transaction():
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT current_database(), session_user, current_user")
-                if cursor.fetchone() != (DATABASE_NAME, API_LOGIN_ROLE, API_LOGIN_ROLE):
-                    raise LoginProvisionError("api_login_identity_smoke_failed")
-                cursor.execute(
-                    "SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, "
-                    "rolinherit, rolreplication, rolbypassrls, rolconfig "
-                    "FROM pg_roles WHERE rolname = session_user"
-                )
-                if cursor.fetchone() != (
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT current_database(), session_user, current_user")
+            if cursor.fetchone() != (
+                DATABASE_NAME,
+                profile.login_role,
+                profile.login_role,
+            ):
+                raise LoginProvisionError(profile.error("identity_smoke_failed"))
+            cursor.execute(
+                "SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, "
+                "rolinherit, rolreplication, rolbypassrls, rolconfig "
+                "FROM pg_roles WHERE rolname = session_user"
+            )
+            if cursor.fetchone() != (
+                True,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                None,
+            ):
+                raise LoginProvisionError(profile.error("role_attributes_smoke_failed"))
+            cursor.execute(
+                "SELECT parent.rolname, child.rolname, membership.admin_option, "
+                "membership.inherit_option, membership.set_option "
+                "FROM pg_auth_members AS membership "
+                "JOIN pg_roles AS parent ON parent.oid = membership.roleid "
+                "JOIN pg_roles AS child ON child.oid = membership.member "
+                "WHERE parent.rolname = %s OR child.rolname = %s",
+                (profile.login_role, profile.login_role),
+            )
+            if cursor.fetchall() != [
+                (
+                    profile.execution_role,
+                    profile.login_role,
+                    False,
+                    False,
                     True,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    None,
-                ):
-                    raise LoginProvisionError("api_login_role_attributes_smoke_failed")
-                cursor.execute(
-                    "SELECT parent.rolname, child.rolname, membership.admin_option, "
-                    "membership.inherit_option, membership.set_option "
-                    "FROM pg_auth_members AS membership "
-                    "JOIN pg_roles AS parent ON parent.oid = membership.roleid "
-                    "JOIN pg_roles AS child ON child.oid = membership.member "
-                    "WHERE parent.rolname = %s OR child.rolname = %s",
-                    (API_LOGIN_ROLE, API_LOGIN_ROLE),
                 )
-                if cursor.fetchall() != [
-                    (RUNTIME_ROLE, API_LOGIN_ROLE, False, False, True)
-                ]:
-                    raise LoginProvisionError("api_login_membership_smoke_failed")
+            ]:
+                raise LoginProvisionError(profile.error("membership_smoke_failed"))
+            cursor.execute(
+                "SELECT has_database_privilege(session_user, current_database(), 'CONNECT'), "
+                "has_database_privilege(session_user, current_database(), 'TEMPORARY'), "
+                "(SELECT count(*) FROM pg_db_role_setting WHERE setrole = ("
+                "SELECT oid FROM pg_roles WHERE rolname = session_user))"
+            )
+            if cursor.fetchone() != (True, False, 0):
+                raise LoginProvisionError(profile.error("database_acl_smoke_failed"))
+            cursor.execute(
+                "SELECT has_schema_privilege(session_user, 'public', 'USAGE'), "
+                "EXISTS (SELECT 1 FROM pg_class AS relation "
+                "JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace "
+                "WHERE namespace.nspname = 'public' "
+                "AND relation.relkind IN ('r', 'p', 'v', 'm', 'f') AND ("
+                "has_table_privilege(session_user, relation.oid, 'SELECT') OR "
+                "has_table_privilege(session_user, relation.oid, 'INSERT') OR "
+                "has_table_privilege(session_user, relation.oid, 'UPDATE') OR "
+                "has_table_privilege(session_user, relation.oid, 'DELETE'))), "
+                "EXISTS (SELECT 1 FROM pg_class AS sequence "
+                "JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace "
+                "WHERE namespace.nspname = 'public' AND sequence.relkind = 'S' AND ("
+                "has_sequence_privilege(session_user, sequence.oid, 'USAGE') OR "
+                "has_sequence_privilege(session_user, sequence.oid, 'SELECT') OR "
+                "has_sequence_privilege(session_user, sequence.oid, 'UPDATE'))), "
+                "EXISTS (SELECT 1 FROM pg_proc AS procedure "
+                "JOIN pg_namespace AS namespace ON namespace.oid = procedure.pronamespace "
+                "WHERE namespace.nspname = 'public' "
+                "AND has_function_privilege(session_user, procedure.oid, 'EXECUTE'))"
+            )
+            if cursor.fetchone() != (False, False, False, False):
+                raise LoginProvisionError(profile.error("direct_privilege_smoke_failed"))
+
+            cursor.execute("SAVEPOINT denied_role_probe")
+            try:
                 cursor.execute(
-                    "SELECT has_database_privilege(session_user, current_database(), 'CONNECT'), "
-                    "has_database_privilege(session_user, current_database(), 'TEMPORARY'), "
-                    "(SELECT count(*) FROM pg_db_role_setting WHERE setrole = ("
-                    "SELECT oid FROM pg_roles WHERE rolname = session_user))"
+                    sql.SQL("SET LOCAL ROLE {}").format(
+                        sql.Identifier(profile.denied_role)
+                    )
                 )
-                if cursor.fetchone() != (True, False, 0):
-                    raise LoginProvisionError("api_login_database_acl_smoke_failed")
+            except psycopg.errors.InsufficientPrivilege:
+                cursor.execute("ROLLBACK TO SAVEPOINT denied_role_probe")
+                cursor.execute("RELEASE SAVEPOINT denied_role_probe")
+            else:
+                raise LoginProvisionError(profile.error("forbidden_role_settable"))
+
+            cursor.execute(
+                sql.SQL("SET LOCAL ROLE {}").format(
+                    sql.Identifier(profile.execution_role)
+                )
+            )
+            cursor.execute("SELECT current_user, current_setting('role', true)")
+            if cursor.fetchone() != (
+                profile.execution_role,
+                profile.execution_role,
+            ):
+                raise LoginProvisionError(profile.error("role_smoke_failed"))
+
+            if profile.kind == "worker":
                 cursor.execute(
-                    "SELECT has_schema_privilege(session_user, 'public', 'USAGE'), "
-                    "EXISTS (SELECT 1 FROM pg_class AS relation "
-                    "JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace "
+                    "SELECT EXISTS (SELECT 1 FROM pg_class AS relation "
+                    "JOIN pg_namespace AS namespace "
+                    "ON namespace.oid = relation.relnamespace "
                     "WHERE namespace.nspname = 'public' "
                     "AND relation.relkind IN ('r', 'p', 'v', 'm', 'f') AND ("
-                    "has_table_privilege(session_user, relation.oid, 'SELECT') OR "
-                    "has_table_privilege(session_user, relation.oid, 'INSERT') OR "
-                    "has_table_privilege(session_user, relation.oid, 'UPDATE') OR "
-                    "has_table_privilege(session_user, relation.oid, 'DELETE'))), "
+                    "has_table_privilege(current_user, relation.oid, 'SELECT') OR "
+                    "has_table_privilege(current_user, relation.oid, 'INSERT') OR "
+                    "has_table_privilege(current_user, relation.oid, 'UPDATE') OR "
+                    "has_table_privilege(current_user, relation.oid, 'DELETE'))), "
                     "EXISTS (SELECT 1 FROM pg_class AS sequence "
-                    "JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace "
+                    "JOIN pg_namespace AS namespace "
+                    "ON namespace.oid = sequence.relnamespace "
                     "WHERE namespace.nspname = 'public' AND sequence.relkind = 'S' AND ("
-                    "has_sequence_privilege(session_user, sequence.oid, 'USAGE') OR "
-                    "has_sequence_privilege(session_user, sequence.oid, 'SELECT') OR "
-                    "has_sequence_privilege(session_user, sequence.oid, 'UPDATE'))), "
-                    "EXISTS (SELECT 1 FROM pg_proc AS procedure "
-                    "JOIN pg_namespace AS namespace ON namespace.oid = procedure.pronamespace "
-                    "WHERE namespace.nspname = 'public' "
-                    "AND has_function_privilege(session_user, procedure.oid, 'EXECUTE'))"
+                    "has_sequence_privilege(current_user, sequence.oid, 'USAGE') OR "
+                    "has_sequence_privilege(current_user, sequence.oid, 'SELECT') OR "
+                    "has_sequence_privilege(current_user, sequence.oid, 'UPDATE')))"
                 )
-                if cursor.fetchone() != (False, False, False, False):
-                    raise LoginProvisionError("api_login_direct_privilege_smoke_failed")
-                cursor.execute("SET LOCAL ROLE geno_v2_runtime")
-                cursor.execute("SELECT current_user, current_setting('role', true)")
-                if cursor.fetchone() != (RUNTIME_ROLE, RUNTIME_ROLE):
-                    raise LoginProvisionError("api_login_role_smoke_failed")
+                if cursor.fetchone() != (False, False):
+                    raise LoginProvisionError("worker_login_direct_data_acl_smoke_failed")
+                cursor.execute(
+                    "SELECT format('%I.%I(%s)', namespace.nspname, "
+                    "procedure.proname, oidvectortypes(procedure.proargtypes)) "
+                    "FROM pg_proc AS procedure "
+                    "JOIN pg_namespace AS namespace "
+                    "ON namespace.oid = procedure.pronamespace "
+                    "WHERE namespace.nspname = 'public' "
+                    "AND has_function_privilege(current_user, procedure.oid, 'EXECUTE')"
+                )
+                executable_functions = {str(row[0]) for row in cursor.fetchall()}
+                if executable_functions != WORKER_EXECUTION_FUNCTION_SIGNATURES:
+                    raise LoginProvisionError("worker_login_function_acl_smoke_failed")
+
+            for table_name in SENSITIVE_TABLES:
+                cursor.execute(
+                    "SELECT has_table_privilege(%s, %s, 'SELECT'), "
+                    "has_table_privilege(%s, %s, 'INSERT'), "
+                    "has_table_privilege(%s, %s, 'UPDATE'), "
+                    "has_table_privilege(%s, %s, 'DELETE')",
+                    tuple(
+                        value
+                        for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE")
+                        for value in (profile.execution_role, f"public.{table_name}")
+                    ),
+                )
+                privileges = cursor.fetchone()
+                if profile.kind == "api":
+                    privileges = privileges[1:]
+                if any(bool(value) for value in privileges):
+                    raise LoginProvisionError(profile.error("sensitive_dml_smoke_failed"))
+
+            if profile.kind == "api":
                 cursor.execute("SELECT count(*) FROM geno_v2_resolve_session_context()")
                 if cursor.fetchone() != (0,):
                     raise LoginProvisionError("api_login_anonymous_context_smoke_failed")
-                for table_name in SENSITIVE_TABLES:
-                    cursor.execute(
-                        "SELECT has_table_privilege(%s, %s, 'INSERT'), "
-                        "has_table_privilege(%s, %s, 'UPDATE'), "
-                        "has_table_privilege(%s, %s, 'DELETE')",
-                        (
-                            RUNTIME_ROLE,
-                            f"public.{table_name}",
-                            RUNTIME_ROLE,
-                            f"public.{table_name}",
-                            RUNTIME_ROLE,
-                            f"public.{table_name}",
-                        ),
-                    )
-                    if cursor.fetchone() != (False, False, False):
-                        raise LoginProvisionError("api_login_sensitive_dml_smoke_failed")
-                if require_receipt:
-                    cursor.execute(
-                        "SELECT geno_v2_auth_login_startup_ready(%s)",
-                        (credential_version,),
-                    )
-                    if cursor.fetchone() != (True,):
-                        raise LoginProvisionError("api_login_startup_readiness_failed")
+            if require_receipt:
+                cursor.execute(
+                    sql.SQL("SELECT {}(%s)").format(
+                        sql.Identifier(profile.readiness_function)
+                    ),
+                    (credential_version,),
+                )
+                if cursor.fetchone() != (True,):
+                    raise LoginProvisionError(profile.error("startup_readiness_failed"))
+        connection.rollback()
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT current_user, session_user, current_setting('role', true)")
+            current_user, session_user, active_role = cursor.fetchone()
+            if (
+                current_user != profile.login_role
+                or session_user != profile.login_role
+                or active_role not in (None, "none")
+            ):
+                raise LoginProvisionError(profile.error("connection_cleanup_smoke_failed"))
     except LoginProvisionError:
         raise
     except Exception:
-        raise LoginProvisionError("api_login_smoke_failed") from None
+        raise LoginProvisionError(profile.error("smoke_failed")) from None
     finally:
         try:
             connection.rollback()
@@ -632,7 +886,9 @@ def provision_or_rotate(
     lock_timeout_seconds: float,
     drain_confirmed: bool,
     env: Mapping[str, str] | None = None,
+    login_kind: str = "api",
 ) -> UUID:
+    profile = _login_profile(login_kind)
     if operation not in ("provision", "rotate"):
         raise LoginProvisionError("provision_operation_invalid")
     if operation == "rotate" and not drain_confirmed:
@@ -654,18 +910,18 @@ def provision_or_rotate(
     connection = _connect_installer(config)
     attempt_id = uuid4()
     try:
-        _acquire_provision_locks(connection, lock_timeout_seconds)
-        _verify_installed_contract(connection)
-        _recover_pending_attempt(connection)
-        latest = _latest_login_attempt(connection)
-        _verify_live_role_matches_attempt(connection, latest)
+        _acquire_provision_locks(connection, lock_timeout_seconds, profile)
+        _verify_installed_contract(connection, profile)
+        _recover_pending_attempt(connection, profile)
+        latest = _latest_login_attempt(connection, profile)
+        _verify_live_role_matches_attempt(connection, latest, profile)
         latest_active = latest is not None and latest.active
         if operation == "provision" and latest_active:
-            raise LoginProvisionError("api_login_already_provisioned")
+            raise LoginProvisionError(profile.error("already_provisioned"))
         if operation == "rotate" and not latest_active:
-            raise LoginProvisionError("api_login_rotation_source_missing")
+            raise LoginProvisionError(profile.error("rotation_source_missing"))
         previous_version = latest.credential_version if latest_active else None
-        verifier = _new_scram_verifier(connection, secret)
+        verifier = _new_scram_verifier(connection, secret, profile)
         try:
             with connection.transaction():
                 with connection.cursor() as cursor:
@@ -673,20 +929,27 @@ def provision_or_rotate(
                         "INSERT INTO auth_login_provision_attempts ("
                         "id, login_kind, operation, credential_version, "
                         "previous_credential_version, initiated_by) "
-                        "VALUES (%s, 'api', %s, %s, %s, %s)",
-                        (attempt_id, operation, version, previous_version, initiated_by),
+                        "VALUES (%s, %s, %s, %s, %s, %s)",
+                        (
+                            attempt_id,
+                            profile.kind,
+                            operation,
+                            version,
+                            previous_version,
+                            initiated_by,
+                        ),
                     )
-                    _set_login_credential(cursor, verifier)
+                    _set_login_credential(cursor, verifier, profile)
         finally:
             verifier = ""
 
         try:
-            _smoke_login(config.endpoint, secret)
+            _smoke_login(config.endpoint, secret, profile=profile)
         except LoginProvisionError:
             try:
                 with connection.transaction():
                     with connection.cursor() as cursor:
-                        _seal_login(cursor)
+                        _seal_login(cursor, profile)
                         cursor.execute(
                             "UPDATE auth_login_provision_attempts "
                             "SET status = 'failed', failure_code = %s, "
@@ -697,17 +960,20 @@ def provision_or_rotate(
                             "INSERT INTO auth_login_provision_receipts ("
                             "attempt_id, login_kind, operation, outcome, credential_version, "
                             "login_enabled, smoke_verified, reason_code) "
-                            "VALUES (%s, 'api', %s, 'failed', %s, false, false, %s)",
+                            "VALUES (%s, %s, %s, 'failed', %s, false, false, %s)",
                             (
                                 attempt_id,
+                                profile.kind,
                                 operation,
                                 version,
                                 "new_credential_smoke_failed",
                             ),
                         )
             except Exception:
-                raise LoginProvisionError("api_login_smoke_compensation_failed") from None
-            raise LoginProvisionError("api_login_smoke_failed") from None
+                raise LoginProvisionError(
+                    profile.error("smoke_compensation_failed")
+                ) from None
+            raise LoginProvisionError(profile.error("smoke_failed")) from None
 
         with connection.transaction():
             with connection.cursor() as cursor:
@@ -721,14 +987,20 @@ def provision_or_rotate(
                     "INSERT INTO auth_login_provision_receipts ("
                     "attempt_id, login_kind, operation, outcome, credential_version, "
                     "login_enabled, smoke_verified, reason_code) "
-                    "VALUES (%s, 'api', %s, 'succeeded', %s, true, true, %s)",
-                    (attempt_id, operation, version, "login_smoke_succeeded"),
+                    "VALUES (%s, %s, %s, 'succeeded', %s, true, true, %s)",
+                    (
+                        attempt_id,
+                        profile.kind,
+                        operation,
+                        version,
+                        "login_smoke_succeeded",
+                    ),
                 )
         return attempt_id
     except LoginProvisionError:
         raise
     except Exception:
-        raise LoginProvisionError("api_login_provision_failed") from None
+        raise LoginProvisionError(profile.error("provision_failed")) from None
     finally:
         secret = ""
         try:
@@ -742,7 +1014,9 @@ def disable_login(
     initiated_by: str,
     lock_timeout_seconds: float,
     env: Mapping[str, str] | None = None,
+    login_kind: str = "api",
 ) -> UUID:
+    profile = _login_profile(login_kind)
     if not initiated_by.strip():
         raise LoginProvisionError("provision_initiator_invalid")
     config = installer_config_from_env(env)
@@ -753,11 +1027,11 @@ def disable_login(
     connection = _connect_installer(config)
     attempt_id = uuid4()
     try:
-        _acquire_provision_locks(connection, lock_timeout_seconds)
-        _verify_installed_contract(connection)
-        _recover_pending_attempt(connection)
-        latest = _latest_login_attempt(connection)
-        _verify_live_role_matches_attempt(connection, latest)
+        _acquire_provision_locks(connection, lock_timeout_seconds, profile)
+        _verify_installed_contract(connection, profile)
+        _recover_pending_attempt(connection, profile)
+        latest = _latest_login_attempt(connection, profile)
+        _verify_live_role_matches_attempt(connection, latest, profile)
         previous_version = latest.credential_version if latest and latest.active else None
         with connection.transaction():
             with connection.cursor() as cursor:
@@ -765,10 +1039,10 @@ def disable_login(
                     "INSERT INTO auth_login_provision_attempts ("
                     "id, login_kind, operation, credential_version, "
                     "previous_credential_version, initiated_by) "
-                    "VALUES (%s, 'api', 'disable', NULL, %s, %s)",
-                    (attempt_id, previous_version, initiated_by),
+                    "VALUES (%s, %s, 'disable', NULL, %s, %s)",
+                    (attempt_id, profile.kind, previous_version, initiated_by),
                 )
-                _seal_login(cursor)
+                _seal_login(cursor, profile)
                 cursor.execute(
                     "UPDATE auth_login_provision_attempts "
                     "SET status = 'succeeded', completed_at = clock_timestamp() "
@@ -779,14 +1053,14 @@ def disable_login(
                     "INSERT INTO auth_login_provision_receipts ("
                     "attempt_id, login_kind, operation, outcome, credential_version, "
                     "login_enabled, smoke_verified, reason_code) "
-                    "VALUES (%s, 'api', 'disable', 'disabled', NULL, false, false, %s)",
-                    (attempt_id, "login_disabled"),
+                    "VALUES (%s, %s, 'disable', 'disabled', NULL, false, false, %s)",
+                    (attempt_id, profile.kind, "login_disabled"),
                 )
         return attempt_id
     except LoginProvisionError:
         raise
     except Exception:
-        raise LoginProvisionError("api_login_disable_failed") from None
+        raise LoginProvisionError(profile.error("disable_failed")) from None
     finally:
         connection.close()
 
@@ -797,10 +1071,12 @@ def check_login(
     credential_version: str,
     repository_root: Path,
     env: Mapping[str, str] | None = None,
+    login_kind: str = "api",
 ) -> None:
+    profile = _login_profile(login_kind)
     runtime_env = os.environ if env is None else env
     if runtime_env.get("PGUSER") or runtime_env.get("PGPASSWORD"):
-        raise LoginProvisionError("api_login_installer_environment_forbidden")
+        raise LoginProvisionError(profile.error("installer_environment_forbidden"))
     _require_safe_environment(
         runtime_env,
         allowed_pg_environment=API_CHECK_PG_ENVIRONMENT,
@@ -820,15 +1096,17 @@ def check_login(
             secret,
             credential_version=_validate_version(credential_version),
             require_receipt=True,
+            profile=profile,
         )
     finally:
         secret = ""
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Provision the sealed Schema v2 API LOGIN")
+    parser = argparse.ArgumentParser(description="Provision a sealed Schema v2 LOGIN")
     parser.add_argument("--lock-timeout-seconds", type=float, default=10.0)
     parser.add_argument("--initiated-by", default="schema-v2-login-provisioner")
+    parser.add_argument("--login-kind", choices=tuple(LOGIN_PROFILES), default="api")
     subparsers = parser.add_subparsers(dest="command", required=True)
     for command in ("provision", "rotate", "check"):
         child = subparsers.add_parser(command)
@@ -853,22 +1131,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                 repository_root=repository_root,
                 lock_timeout_seconds=args.lock_timeout_seconds,
                 drain_confirmed=bool(getattr(args, "drain_confirmed", False)),
+                login_kind=args.login_kind,
             )
         elif args.command == "disable":
             disable_login(
                 initiated_by=args.initiated_by,
                 lock_timeout_seconds=args.lock_timeout_seconds,
+                login_kind=args.login_kind,
             )
         else:
             check_login(
                 credential_file=args.credential_file,
                 credential_version=args.credential_version,
                 repository_root=repository_root,
+                login_kind=args.login_kind,
             )
     except LoginProvisionError as exc:
         print(exc.code, file=sys.stderr)
         return 2
-    print(f"api_login_{args.command}_succeeded")
+    print(f"{args.login_kind}_login_{args.command}_succeeded")
     return 0
 
 

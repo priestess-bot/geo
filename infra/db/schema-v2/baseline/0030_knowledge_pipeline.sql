@@ -1358,13 +1358,19 @@ DECLARE
     canonical_idempotency text;
     canonical_replay_nonce integer;
 BEGIN
-    canonical_kind := CASE TG_TABLE_NAME
-        WHEN 'collection_jobs' THEN 'collection'
-        WHEN 'visibility_score_runs' THEN 'visibility_score'
-        WHEN 'retest_runs' THEN 'retest'
-        WHEN 'knowledge_pipeline_jobs' THEN 'knowledge_' || NEW.job_type
-        ELSE NULL
-    END;
+    -- Trigger records have different row types. Keep the Knowledge-only field
+    -- access inside its branch so collection/scoring/retest inserts remain valid.
+    IF TG_TABLE_NAME = 'knowledge_pipeline_jobs' THEN
+        canonical_kind := 'knowledge_' || NEW.job_type;
+    ELSIF TG_TABLE_NAME = 'collection_jobs' THEN
+        canonical_kind := 'collection';
+    ELSIF TG_TABLE_NAME = 'visibility_score_runs' THEN
+        canonical_kind := 'visibility_score';
+    ELSIF TG_TABLE_NAME = 'retest_runs' THEN
+        canonical_kind := 'retest';
+    ELSE
+        canonical_kind := NULL;
+    END IF;
     IF canonical_kind IS NULL THEN
         RAISE EXCEPTION 'unsupported durable job dispatch source'
             USING ERRCODE = '23514';

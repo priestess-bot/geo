@@ -140,6 +140,20 @@ services:
       postgres-v2:
         condition: service_healthy
 
+  schema-v2-worker-login-provision-behavior-test:
+    image: ${SCHEMA_V2_RUNNER_IMAGE:-geno-schema-v2-runner:local}
+    environment:
+      <<: *schema-v2-pg-environment
+      SCHEMA_V2_BEHAVIOR_TEST: "1"
+    command:
+      - python
+      - /app/tests/test_schema_v2_worker_login_provision_postgres.py
+    volumes:
+      - ../tests/test_schema_v2_worker_login_provision_postgres.py:/app/tests/test_schema_v2_worker_login_provision_postgres.py:ro
+    depends_on:
+      postgres-v2:
+        condition: service_healthy
+
   schema-v2-collection-scoring-behavior-test:
     image: ${SCHEMA_V2_RUNNER_IMAGE:-geno-schema-v2-runner:local}
     environment:
@@ -150,6 +164,20 @@ services:
       - /app/tests/test_schema_v2_collection_scoring_postgres.py
     volumes:
       - ../tests/test_schema_v2_collection_scoring_postgres.py:/app/tests/test_schema_v2_collection_scoring_postgres.py:ro
+    depends_on:
+      postgres-v2:
+        condition: service_healthy
+
+  schema-v2-knowledge-behavior-test:
+    image: ${SCHEMA_V2_RUNNER_IMAGE:-geno-schema-v2-runner:local}
+    environment:
+      <<: *schema-v2-pg-environment
+      SCHEMA_V2_BEHAVIOR_TEST: "1"
+    command:
+      - python
+      - /app/tests/test_schema_v2_knowledge_postgres.py
+    volumes:
+      - ../tests/test_schema_v2_knowledge_postgres.py:/app/tests/test_schema_v2_knowledge_postgres.py:ro
     depends_on:
       postgres-v2:
         condition: service_healthy

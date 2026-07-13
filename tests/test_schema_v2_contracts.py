@@ -106,6 +106,8 @@ class SchemaV2ManifestContractsTest(unittest.TestCase):
                 "baseline/0013_auth_commands.sql",
                 "baseline/0014_auth_login_provision.sql",
                 "baseline/0020_collection_geo_scoring.sql",
+                "baseline/0021_worker_login_provision.sql",
+                "baseline/0030_knowledge_pipeline.sql",
             ],
         )
         self.assertEqual(manifest.migration_files, ())
@@ -753,6 +755,7 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
         collection_scoring_behavior_test = services[
             "schema-v2-collection-scoring-behavior-test"
         ]
+        knowledge_behavior_test = services["schema-v2-knowledge-behavior-test"]
         auth_commands_behavior_test = services[
             "schema-v2-auth-commands-behavior-test"
         ]
@@ -761,6 +764,9 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
         ]
         login_provision_behavior_test = services[
             "schema-v2-login-provision-behavior-test"
+        ]
+        worker_login_provision_behavior_test = services[
+            "schema-v2-worker-login-provision-behavior-test"
         ]
 
         self.assertEqual(database["environment"]["POSTGRES_DB"], "geno_v2")
@@ -783,9 +789,11 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
             behavior_test,
             session_uow_behavior_test,
             collection_scoring_behavior_test,
+            knowledge_behavior_test,
             auth_commands_behavior_test,
             anonymous_auth_uow_behavior_test,
             login_provision_behavior_test,
+            worker_login_provision_behavior_test,
         ):
             for key, expected_value in expected_pg_environment.items():
                 self.assertEqual(service["environment"][key], expected_value)
@@ -808,6 +816,21 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
                 == "/app/tests/test_schema_v2_collection_scoring_postgres.py"
                 and volume["read_only"]
                 for volume in collection_scoring_behavior_test["volumes"]
+            )
+        )
+        self.assertEqual(
+            knowledge_behavior_test["command"],
+            ["python", "/app/tests/test_schema_v2_knowledge_postgres.py"],
+        )
+        self.assertEqual(
+            knowledge_behavior_test["environment"]["SCHEMA_V2_BEHAVIOR_TEST"],
+            "1",
+        )
+        self.assertTrue(
+            any(
+                volume["target"] == "/app/tests/test_schema_v2_knowledge_postgres.py"
+                and volume["read_only"]
+                for volume in knowledge_behavior_test["volumes"]
             )
         )
         self.assertIn("scripts/schema_v2_runner.py", installer["command"])
@@ -890,11 +913,12 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
             "schema-v2-gate: schema-v2-contracts schema-v2-config schema-v2-fresh-install",
             makefile,
         )
-        self.assertEqual(makefile.count("run --rm schema-v2-install"), 4)
-        self.assertEqual(makefile.count("run --rm schema-v2-verify"), 4)
+        self.assertEqual(makefile.count("run --rm schema-v2-install"), 5)
+        self.assertEqual(makefile.count("run --rm schema-v2-verify"), 5)
         self.assertIn("run --rm schema-v2-behavior-test", makefile)
         self.assertIn("run --rm schema-v2-session-uow-behavior-test", makefile)
         self.assertIn("run --rm schema-v2-collection-scoring-behavior-test", makefile)
+        self.assertIn("run --rm schema-v2-knowledge-behavior-test", makefile)
         self.assertIn("run --rm schema-v2-auth-commands-behavior-test", makefile)
         self.assertIn("schema-v2-anonymous-auth-uow-gate:", makefile)
         self.assertIn(
@@ -904,6 +928,12 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
         self.assertIn("schema-v2-login-provision-gate:", makefile)
         self.assertIn("run --rm schema-v2-login-provision-behavior-test", makefile)
         self.assertIn("geno-schema-v2-login-provision-pg", makefile)
+        self.assertIn("schema-v2-worker-login-provision-gate:", makefile)
+        self.assertIn(
+            "run --rm schema-v2-worker-login-provision-behavior-test",
+            makefile,
+        )
+        self.assertIn("geno-schema-v2-worker-login-provision-pg", makefile)
         self.assertIn("SCRAM-SHA-256$$", makefile)
         self.assertIn("appeared in PostgreSQL logs", makefile)
         self.assertIn("down --remove-orphans -v", makefile)

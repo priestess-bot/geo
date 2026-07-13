@@ -61,7 +61,25 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
     def _drop_bootstrap_metadata(self, connection: psycopg.Connection[object]) -> None:
         with connection.cursor() as cursor:
             cursor.execute(
-                "DROP TABLE IF EXISTS durable_job_dispatch_outbox, "
+                "DROP TABLE IF EXISTS knowledge_risk_acceptances, "
+                "knowledge_quality_findings, knowledge_quality_runs, "
+                "knowledge_job_quality_definitions, knowledge_quality_definitions, "
+                "knowledge_fact_version_sources, knowledge_fact_versions, knowledge_facts, "
+                "knowledge_fact_candidate_reviews, knowledge_fact_candidate_sources, "
+                "knowledge_fact_candidates, knowledge_job_input_snapshots, "
+                "knowledge_chunk_set_job_inputs, knowledge_parse_job_inputs, "
+                "knowledge_chunk_job_inputs, knowledge_chunk_embeddings, "
+                "knowledge_chunk_subjects, knowledge_chunk_tables, knowledge_chunk_blocks, "
+                "knowledge_chunks, knowledge_pages, knowledge_ocr_spans, knowledge_tables, "
+                "knowledge_blocks, knowledge_parser_artifacts, knowledge_parser_runs, "
+                "knowledge_source_revision_artifacts, knowledge_source_subjects, "
+                "knowledge_source_channels, knowledge_source_governance_channels, "
+                "knowledge_source_governance_versions, knowledge_source_asset_revisions, "
+                "knowledge_source_assets, knowledge_job_artifacts, "
+                "knowledge_pipeline_job_dependencies, knowledge_pipeline_jobs, "
+                "knowledge_import_source_channels, knowledge_import_source_subjects, "
+                "knowledge_import_sources, knowledge_pipeline_stages, knowledge_pipeline_runs, "
+                "durable_job_dispatch_outbox, "
                 "review_assignments, retest_comparisons, "
                 "retest_run_queries, retest_runs, action_tasks, "
                 "action_competitor_benchmarks, action_score_contributions, "
@@ -119,6 +137,7 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 "geno_v2_guard_used_weight_profile_update()",
                 "geno_v2_guard_evidence_asset_finalize()",
                 "geno_v2_reject_immutable_domain_update()",
+                "geno_v2_worker_login_startup_ready(text)",
                 "geno_v2_auth_login_startup_ready(text)",
                 "geno_v2_audit_auth_login_provision_receipt()",
                 "geno_v2_validate_auth_login_provision_lineage()",
@@ -183,6 +202,25 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 "geno_v2_permissions_for_role(text)",
             ):
                 cursor.execute(f"DROP FUNCTION IF EXISTS {signature} CASCADE")
+            cursor.execute(
+                """
+                DO $drop_schema_v2_functions$
+                DECLARE routine record;
+                BEGIN
+                    FOR routine IN
+                        SELECT procedure.oid::regprocedure::text AS signature
+                        FROM pg_catalog.pg_proc AS procedure
+                        JOIN pg_catalog.pg_namespace AS namespace
+                          ON namespace.oid = procedure.pronamespace
+                        WHERE namespace.nspname = 'public'
+                          AND procedure.proname LIKE 'geno_v2_%'
+                    LOOP
+                        EXECUTE format('DROP FUNCTION IF EXISTS %s CASCADE', routine.signature);
+                    END LOOP;
+                END;
+                $drop_schema_v2_functions$;
+                """
+            )
             cursor.execute("DROP TABLE IF EXISTS app_schema_metadata CASCADE")
             cursor.execute("DROP TABLE IF EXISTS schema_migration_ledger CASCADE")
             cursor.execute("DROP FUNCTION IF EXISTS geno_schema_v2_reject_ledger_mutation()")
@@ -1251,13 +1289,54 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     "geno_v2_request_retest_run_cancel",
                     "geno_v2_request_visibility_score_run_cancel",
                 )
+                knowledge_functions = (
+                    "geno_v2_accept_knowledge_risk",
+                    "geno_v2_ack_knowledge_job_cancel",
+                    "geno_v2_begin_finalizing_knowledge_job",
+                    "geno_v2_claim_knowledge_job",
+                    "geno_v2_complete_knowledge_job",
+                    "geno_v2_create_knowledge_governance_version",
+                    "geno_v2_create_knowledge_job",
+                    "geno_v2_create_knowledge_quality_definition",
+                    "geno_v2_fail_knowledge_job",
+                    "geno_v2_guard_candidate_transition",
+                    "geno_v2_guard_fact_head",
+                    "geno_v2_guard_knowledge_asset_head",
+                    "geno_v2_guard_knowledge_risk_acceptance",
+                    "geno_v2_heartbeat_knowledge_job",
+                    "geno_v2_knowledge_job_inputs_ready",
+                    "geno_v2_knowledge_quality_certificate_complete",
+                    "geno_v2_persist_knowledge_job_result",
+                    "geno_v2_read_approved_knowledge",
+                    "geno_v2_read_knowledge_job_input",
+                    "geno_v2_refresh_knowledge_pipeline_state",
+                    "geno_v2_reject_knowledge_immutable_update",
+                    "geno_v2_replay_knowledge_job",
+                    "geno_v2_request_knowledge_job_cancel",
+                    "geno_v2_require_finalized_knowledge_artifact",
+                    "geno_v2_require_finalized_parser_input",
+                    "geno_v2_require_ready_knowledge_job_inputs",
+                    "geno_v2_retry_knowledge_pipeline_stage",
+                    "geno_v2_review_knowledge_fact_candidate",
+                    "geno_v2_set_knowledge_source_status",
+                    "geno_v2_validate_candidate_review_consistency",
+                    "geno_v2_validate_chunk_set_input_kind",
+                    "geno_v2_validate_fact_source_governance_lineage",
+                    "geno_v2_validate_job_quality_definition",
+                    "geno_v2_validate_knowledge_job_result_type",
+                    "geno_v2_validate_knowledge_job_stage",
+                    "geno_v2_validate_knowledge_revision_job_type",
+                    "geno_v2_validate_knowledge_subject",
+                    "geno_v2_withdraw_knowledge_fact",
+                )
+                non_auth_functions = collection_scoring_functions + knowledge_functions
                 cursor.execute(
                     "SELECT proname, "
                     "has_function_privilege('geno_v2_runtime', pg_proc.oid, 'EXECUTE') "
                     "FROM pg_proc JOIN pg_namespace ON pg_namespace.oid = pronamespace "
                     "WHERE nspname = 'public' AND proname LIKE 'geno_v2_%%' "
                     "AND NOT (proname = ANY(%s)) ORDER BY proname",
-                    (list(collection_scoring_functions),),
+                    (list(non_auth_functions),),
                 )
                 function_acl_rows = cursor.fetchall()
                 runtime_function_names = {
@@ -1290,7 +1369,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     "FROM pg_proc JOIN pg_namespace ON pg_namespace.oid = pronamespace "
                     "WHERE nspname = 'public' AND proname LIKE 'geno_v2_%%' "
                     "AND NOT (proname = ANY(%s)) ORDER BY proname",
-                    (list(collection_scoring_functions),),
+                    (list(non_auth_functions),),
                 )
                 function_rows = cursor.fetchall()
                 self.assertEqual(
@@ -1298,6 +1377,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     {
                         "geno_v2_audit_auth_login_provision_receipt",
                         "geno_v2_auth_login_startup_ready",
+                        "geno_v2_worker_login_startup_ready",
                         "geno_v2_auth_context_has_project_permission",
                         "geno_v2_auth_redeem_request_hash",
                         "geno_v2_build_locked_auth_scope",
@@ -1364,6 +1444,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     {
                         "geno_v2_audit_auth_login_provision_receipt",
                         "geno_v2_auth_login_startup_ready",
+                        "geno_v2_worker_login_startup_ready",
                         "geno_v2_auth_context_has_project_permission",
                         "geno_v2_auth_redeem_request_hash",
                         "geno_v2_build_locked_auth_scope",
