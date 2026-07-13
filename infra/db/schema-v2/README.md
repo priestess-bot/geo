@@ -80,6 +80,14 @@ replay, same-invitation concurrency, recovery expiry and replay-limit erasure
 with the write switch disabled, lifecycle idempotency, and the final runtime
 ACL surface.
 
+The Anonymous Auth UoW PostgreSQL gate additionally uses a real
+`AuthDeliveryKeyring` and AES-GCM envelope to exercise preflight, redemption,
+idempotent concurrency, delivery recovery, transaction cleanup, and immediate
+reuse of one physical connection by the authenticated Session UoW. A network
+disconnect during `COMMIT` cannot be made deterministic in this local gate;
+the commit-outcome-unknown and forced-discard path remains covered by the
+fault-injected unit gate in `tests/test_schema_v2_anonymous_auth_uow.py`.
+
 The baseline creates `geno_v2_api_login` as a `NOLOGIN`, passwordless,
 `NOINHERIT`, `NOBYPASSRLS` deployment placeholder. It is the only permitted
 member of `geno_v2_runtime`, with inheritance disabled and `SET` enabled. A
